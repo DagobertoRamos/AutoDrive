@@ -1,0 +1,1080 @@
+-- AlterEnum
+BEGIN;
+CREATE TYPE "CommissionRuleType_new" AS ENUM ('VENDA', 'TROCA', 'COMPRA', 'GARANTIA', 'RETORNO', 'SERVICO', 'DOCUMENTO', 'BONUS_META', 'BONUS_DEZENA', 'EXCECAO');
+ALTER TABLE "commission_rules" ALTER COLUMN "ruleType" TYPE "CommissionRuleType_new" USING ("ruleType"::text::"CommissionRuleType_new");
+ALTER TYPE "CommissionRuleType" RENAME TO "CommissionRuleType_old";
+ALTER TYPE "CommissionRuleType_new" RENAME TO "CommissionRuleType";
+DROP TYPE "CommissionRuleType_old";
+COMMIT;
+
+-- AlterEnum
+BEGIN;
+CREATE TYPE "NotificationType_new" AS ENUM ('RESPOSTA', 'PENDENCIA_CRITICA', 'NOVA_PENDENCIA', 'PENDENCIA_FINALIZADA', 'NEGOCIACAO_NOVA', 'NEGOCIACAO_LIBERADA', 'NEGOCIACAO_RECUSADA', 'COMISSAO_APROVADA', 'COMISSAO_PAGA', 'IMPORTACAO_CONCLUIDA', 'ERRO_INTEGRACAO', 'DISPARO_MANUAL', 'SISTEMA', 'INFO');
+ALTER TABLE "notifications" ALTER COLUMN "type" DROP DEFAULT;
+ALTER TABLE "notifications" ALTER COLUMN "type" TYPE "NotificationType_new" USING ("type"::text::"NotificationType_new");
+ALTER TYPE "NotificationType" RENAME TO "NotificationType_old";
+ALTER TYPE "NotificationType_new" RENAME TO "NotificationType";
+DROP TYPE "NotificationType_old";
+ALTER TABLE "notifications" ALTER COLUMN "type" SET DEFAULT 'INFO';
+COMMIT;
+
+-- AlterEnum
+BEGIN;
+CREATE TYPE "PendencyPriority_new" AS ENUM ('BAIXA', 'MEDIA', 'ALTA', 'URGENTE');
+ALTER TABLE "pendencies" ALTER COLUMN "priority" DROP DEFAULT;
+ALTER TABLE "pendencies" ALTER COLUMN "priority" TYPE "PendencyPriority_new" USING ("priority"::text::"PendencyPriority_new");
+ALTER TYPE "PendencyPriority" RENAME TO "PendencyPriority_old";
+ALTER TYPE "PendencyPriority_new" RENAME TO "PendencyPriority";
+DROP TYPE "PendencyPriority_old";
+ALTER TABLE "pendencies" ALTER COLUMN "priority" SET DEFAULT 'MEDIA';
+COMMIT;
+
+-- AlterEnum
+BEGIN;
+CREATE TYPE "PendencyStatus_new" AS ENUM ('ABERTA', 'EM_ANDAMENTO', 'AGUARDANDO_RESPOSTA', 'PAUSADA', 'FINALIZADA', 'REATIVADA', 'CANCELADA', 'VENCIDA');
+ALTER TABLE "pendencies" ALTER COLUMN "status" DROP DEFAULT;
+ALTER TABLE "pendencies" ALTER COLUMN "status" TYPE "PendencyStatus_new" USING ("status"::text::"PendencyStatus_new");
+ALTER TYPE "PendencyStatus" RENAME TO "PendencyStatus_old";
+ALTER TYPE "PendencyStatus_new" RENAME TO "PendencyStatus";
+DROP TYPE "PendencyStatus_old";
+ALTER TABLE "pendencies" ALTER COLUMN "status" SET DEFAULT 'ABERTA';
+COMMIT;
+
+-- AlterEnum
+BEGIN;
+CREATE TYPE "UserRole_new" AS ENUM ('MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO');
+ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
+ALTER TABLE "users" ALTER COLUMN "role" TYPE "UserRole_new" USING ("role"::text::"UserRole_new");
+ALTER TABLE "commission_rules" ALTER COLUMN "role" TYPE "UserRole_new" USING ("role"::text::"UserRole_new");
+ALTER TYPE "UserRole" RENAME TO "UserRole_old";
+ALTER TYPE "UserRole_new" RENAME TO "UserRole";
+DROP TYPE "UserRole_old";
+ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'USUARIO';
+COMMIT;
+
+-- DropForeignKey
+ALTER TABLE "commission_ranges" DROP CONSTRAINT "commission_ranges_unitId_fkey";
+
+-- DropIndex
+DROP INDEX "pendency_messages_whatsappMessageId_idx";
+
+-- AlterTable
+ALTER TABLE "api_tokens" ADD COLUMN     "tenantId" TEXT;
+
+-- AlterTable
+ALTER TABLE "audit_logs" DROP COLUMN "newValue",
+DROP COLUMN "oldValue",
+ADD COLUMN     "afterData" JSONB,
+ADD COLUMN     "beforeData" JSONB,
+ADD COLUMN     "errorMessage" TEXT,
+ADD COLUMN     "status" TEXT DEFAULT 'SUCCESS',
+ADD COLUMN     "tenantId" TEXT,
+ADD COLUMN     "userName" TEXT,
+ADD COLUMN     "userRole" TEXT;
+
+-- AlterTable
+ALTER TABLE "commission_extracts" ADD COLUMN     "approvedAt" TIMESTAMP(3),
+ADD COLUMN     "approvedById" TEXT,
+ADD COLUMN     "calculationId" TEXT,
+ADD COLUMN     "notes" TEXT,
+ADD COLUMN     "paidAt" TIMESTAMP(3),
+ADD COLUMN     "sellerId" TEXT,
+ADD COLUMN     "tenantId" TEXT,
+ADD COLUMN     "unitId" TEXT,
+DROP COLUMN "status",
+ADD COLUMN     "status" "CommissionStatus" NOT NULL DEFAULT 'PREVISTO';
+
+-- AlterTable
+ALTER TABLE "commission_rules" DROP COLUMN "returnType",
+ADD COLUMN     "bank" TEXT,
+ADD COLUMN     "commissionType" TEXT NOT NULL DEFAULT 'PERCENTUAL',
+ADD COLUMN     "description" TEXT,
+ADD COLUMN     "fromValue" DECIMAL(12,2),
+ADD COLUMN     "name" TEXT NOT NULL,
+ADD COLUMN     "notes" TEXT,
+ADD COLUMN     "priority" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "tenantId" TEXT,
+ADD COLUMN     "toValue" DECIMAL(12,2),
+ADD COLUMN     "validFrom" TIMESTAMP(3),
+ADD COLUMN     "validUntil" TIMESTAMP(3),
+ALTER COLUMN "percentage" SET DATA TYPE DECIMAL(7,4);
+
+-- AlterTable
+ALTER TABLE "managers" ALTER COLUMN "cpf" DROP NOT NULL;
+
+-- AlterTable
+ALTER TABLE "message_returns" DROP COLUMN "negotiation",
+DROP COLUMN "vehicle";
+
+-- AlterTable
+ALTER TABLE "notifications" ADD COLUMN     "metadata" JSONB,
+ADD COLUMN     "tenantId" TEXT;
+
+-- AlterTable
+ALTER TABLE "pendencies" DROP COLUMN "initialDate",
+ADD COLUMN     "contractId" TEXT,
+ADD COLUMN     "customerId" TEXT,
+ADD COLUMN     "tenantId" TEXT,
+ADD COLUMN     "vehicleId" TEXT,
+ALTER COLUMN "status" SET DEFAULT 'ABERTA';
+
+-- AlterTable
+ALTER TABLE "pendency_messages" ADD COLUMN     "channel" "NotificationChannel" NOT NULL DEFAULT 'WHATSAPP';
+
+-- AlterTable
+ALTER TABLE "sellers" DROP COLUMN "commissionProfileId",
+ALTER COLUMN "cpf" DROP NOT NULL;
+
+-- AlterTable
+ALTER TABLE "services" ADD COLUMN     "commissionType" TEXT NOT NULL DEFAULT 'PERCENTUAL',
+ADD COLUMN     "tenantId" TEXT;
+
+-- AlterTable
+ALTER TABLE "system_settings" ADD COLUMN     "group" TEXT,
+ADD COLUMN     "isPublic" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "tenantId" TEXT;
+
+-- AlterTable
+ALTER TABLE "units" ADD COLUMN     "notes" TEXT,
+ADD COLUMN     "tenantId" TEXT,
+ADD COLUMN     "zipCode" TEXT,
+ALTER COLUMN "razaoSocial" DROP NOT NULL;
+
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN     "image" TEXT,
+ADD COLUMN     "tenantId" TEXT,
+ALTER COLUMN "role" SET DEFAULT 'USUARIO';
+
+-- AlterTable
+ALTER TABLE "warranties" ADD COLUMN     "commissionType" TEXT NOT NULL DEFAULT 'PERCENTUAL',
+ADD COLUMN     "minValue" DECIMAL(10,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "tenantId" TEXT;
+
+-- AlterTable
+ALTER TABLE "whatsapp_providers" DROP COLUMN "defaultImageUrl",
+ADD COLUMN     "businessAccountId" TEXT,
+ADD COLUMN     "tenantId" TEXT;
+
+-- AlterTable
+ALTER TABLE "whatsapp_templates" ADD COLUMN     "bodyText" TEXT,
+ADD COLUMN     "tenantId" TEXT,
+ADD COLUMN     "variables" TEXT[];
+
+-- DropTable
+DROP TABLE "commission_ranges";
+
+-- DropTable
+DROP TABLE "import_logs";
+
+-- DropEnum
+DROP TYPE "ExtractStatus";
+
+-- CreateTable
+CREATE TABLE "tenants" (
+    "id" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "razaoSocial" TEXT,
+    "cnpj" TEXT,
+    "cpf" TEXT,
+    "inscricaoEstadual" TEXT,
+    "address" TEXT,
+    "city" TEXT,
+    "state" TEXT,
+    "zipCode" TEXT,
+    "phone" TEXT,
+    "email" TEXT,
+    "logoUrl" TEXT,
+    "faviconUrl" TEXT,
+    "slogan" TEXT,
+    "primaryColor" TEXT DEFAULT '#166534',
+    "secondaryColor" TEXT,
+    "plan" "TenantPlan" NOT NULL DEFAULT 'BASICO',
+    "status" "TenantStatus" NOT NULL DEFAULT 'TESTE',
+    "responsavel" TEXT,
+    "responsavelEmail" TEXT,
+    "responsavelPhone" TEXT,
+    "trialEndsAt" TIMESTAMP(3),
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "tenants_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "tenant_modules" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "module" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "limit" INTEGER,
+    "enabledAt" TIMESTAMP(3),
+    "disabledAt" TIMESTAMP(3),
+    "enabledBy" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "tenant_modules_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "persons" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "type" "PersonType" NOT NULL DEFAULT 'FISICA',
+    "cpf" TEXT,
+    "rg" TEXT,
+    "nomeMae" TEXT,
+    "nomePai" TEXT,
+    "dataNascimento" TIMESTAMP(3),
+    "cnpj" TEXT,
+    "razaoSocial" TEXT,
+    "nomeFantasia" TEXT,
+    "inscricaoEstadual" TEXT,
+    "possuiIE" BOOLEAN NOT NULL DEFAULT false,
+    "socioAdmCpf" TEXT,
+    "socioAdmNome" TEXT,
+    "socioAdmNomeMae" TEXT,
+    "socioAdmEmail" TEXT,
+    "socioAdmPhone" TEXT,
+    "socioAdmWhatsapp" BOOLEAN NOT NULL DEFAULT false,
+    "socioAdmCota" DECIMAL(5,2),
+    "nomeCompleto" TEXT NOT NULL,
+    "email" TEXT,
+    "phone" TEXT,
+    "whatsapp" BOOLEAN NOT NULL DEFAULT false,
+    "cep" TEXT,
+    "logradouro" TEXT,
+    "numero" TEXT,
+    "complemento" TEXT,
+    "bairro" TEXT,
+    "cidade" TEXT,
+    "estado" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "persons_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "customers" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "personId" TEXT,
+    "name" TEXT NOT NULL,
+    "cpf" TEXT,
+    "phone" TEXT,
+    "email" TEXT,
+    "address" TEXT,
+    "city" TEXT,
+    "state" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "customers_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "vehicles" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "plate" TEXT,
+    "brand" TEXT,
+    "model" TEXT,
+    "year" INTEGER,
+    "color" TEXT,
+    "chassi" TEXT,
+    "renavam" TEXT,
+    "customerId" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "vehicles_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "contracts" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "number" TEXT,
+    "type" "ContractType" NOT NULL DEFAULT 'VENDA',
+    "customerId" TEXT,
+    "vehicleId" TEXT,
+    "sellerId" TEXT,
+    "managerId" TEXT,
+    "unitId" TEXT,
+    "saleValue" DECIMAL(12,2),
+    "financedValue" DECIMAL(12,2),
+    "bank" TEXT,
+    "returnRate" DECIMAL(5,3),
+    "warrantyValue" DECIMAL(10,2),
+    "warrantyProduct" TEXT,
+    "docValue" DECIMAL(10,2),
+    "saleDate" TIMESTAMP(3),
+    "status" TEXT DEFAULT 'ATIVO',
+    "pdfPath" TEXT,
+    "notes" TEXT,
+    "rawData" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "contracts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "contract_parse_results" (
+    "id" TEXT NOT NULL,
+    "contractId" TEXT,
+    "pdfOriginalName" TEXT NOT NULL,
+    "pdfPath" TEXT,
+    "parsedData" JSONB NOT NULL,
+    "extractedFields" JSONB,
+    "validationErrors" JSONB,
+    "status" TEXT NOT NULL DEFAULT 'PENDENTE',
+    "reviewedById" TEXT,
+    "reviewedAt" TIMESTAMP(3),
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "contract_parse_results_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "deals" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "unitId" TEXT,
+    "sellerId" TEXT,
+    "customerId" TEXT,
+    "personId" TEXT,
+    "type" "DealType" NOT NULL DEFAULT 'VENDA',
+    "status" "DealStatus" NOT NULL DEFAULT 'RASCUNHO',
+    "vehicleValue" DECIMAL(12,2),
+    "tradeValue" DECIMAL(12,2),
+    "totalDebts" DECIMAL(12,2),
+    "totalPayments" DECIMAL(12,2),
+    "balance" DECIMAL(12,2),
+    "changeAmount" DECIMAL(12,2),
+    "changeBeneficiary" TEXT,
+    "changeBeneficiaryCpf" TEXT,
+    "changeBank" TEXT,
+    "changeAgency" TEXT,
+    "changeAccount" TEXT,
+    "changePix" TEXT,
+    "notificationSentAt" TIMESTAMP(3),
+    "releasedAt" TIMESTAMP(3),
+    "releasedByUserId" TEXT,
+    "recusedAt" TIMESTAMP(3),
+    "recusedByUserId" TEXT,
+    "recusedReason" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "deals_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "deal_vehicles" (
+    "id" TEXT NOT NULL,
+    "dealId" TEXT NOT NULL,
+    "vehicleId" TEXT,
+    "role" TEXT NOT NULL,
+    "plate" TEXT,
+    "brand" TEXT,
+    "model" TEXT,
+    "year" INTEGER,
+    "color" TEXT,
+    "chassi" TEXT,
+    "renavam" TEXT,
+    "agreedValue" DECIMAL(12,2),
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "deal_vehicles_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "deal_debts" (
+    "id" TEXT NOT NULL,
+    "dealId" TEXT NOT NULL,
+    "vehicleRole" TEXT,
+    "type" TEXT NOT NULL,
+    "description" TEXT,
+    "value" DECIMAL(12,2) NOT NULL,
+    "dueDate" TIMESTAMP(3),
+    "responsavel" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "deal_debts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "deal_payments" (
+    "id" TEXT NOT NULL,
+    "dealId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "value" DECIMAL(12,2) NOT NULL,
+    "bank" TEXT,
+    "installments" INTEGER,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "deal_payments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "deal_status_history" (
+    "id" TEXT NOT NULL,
+    "dealId" TEXT NOT NULL,
+    "previousStatus" TEXT,
+    "newStatus" TEXT NOT NULL,
+    "changedByUserId" TEXT,
+    "reason" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "deal_status_history_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "deal_release_requests" (
+    "id" TEXT NOT NULL,
+    "dealId" TEXT NOT NULL,
+    "requestedBy" TEXT,
+    "requestedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "reviewedBy" TEXT,
+    "reviewedAt" TIMESTAMP(3),
+    "status" TEXT NOT NULL DEFAULT 'PENDENTE',
+    "reason" TEXT,
+    "notes" TEXT,
+
+    CONSTRAINT "deal_release_requests_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "appointments" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "dealId" TEXT,
+    "type" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "date" TIMESTAMP(3) NOT NULL,
+    "durationMinutes" INTEGER,
+    "location" TEXT,
+    "responsavelId" TEXT,
+    "responsavelName" TEXT,
+    "googleEventId" TEXT,
+    "googleCalendarSynced" BOOLEAN NOT NULL DEFAULT false,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "appointments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "pendency_comments" (
+    "id" TEXT NOT NULL,
+    "pendencyId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "internal" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "pendency_comments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "return_percent_rules" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "name" TEXT NOT NULL,
+    "percentualInformado" DECIMAL(5,3) NOT NULL,
+    "percentualAplicado" DECIMAL(5,3) NOT NULL,
+    "bank" TEXT,
+    "tipoRetorno" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "validFrom" TIMESTAMP(3),
+    "validUntil" TIMESTAMP(3),
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "return_percent_rules_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "warranty_rules" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "warrantyId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "defaultValue" DECIMAL(10,2) NOT NULL,
+    "minValue" DECIMAL(10,2) NOT NULL,
+    "commissionDefault" DECIMAL(7,4) NOT NULL,
+    "commissionDiscount" DECIMAL(7,4) NOT NULL,
+    "commissionType" TEXT NOT NULL DEFAULT 'PERCENTUAL',
+    "sellerId" TEXT,
+    "managerId" TEXT,
+    "unitId" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "warranty_rules_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "commission_calculations" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "contractId" TEXT,
+    "sellerId" TEXT,
+    "managerId" TEXT,
+    "unitId" TEXT,
+    "period" TEXT NOT NULL,
+    "ruleId" TEXT,
+    "ruleType" "CommissionRuleType" NOT NULL,
+    "description" TEXT NOT NULL,
+    "baseValue" DECIMAL(12,2) NOT NULL,
+    "rateApplied" DECIMAL(7,4),
+    "commissionValue" DECIMAL(10,2) NOT NULL,
+    "ruleDetails" JSONB,
+    "status" "CommissionStatus" NOT NULL DEFAULT 'PREVISTO',
+    "approvedById" TEXT,
+    "approvedAt" TIMESTAMP(3),
+    "paidAt" TIMESTAMP(3),
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "commission_calculations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "commission_adjustments" (
+    "id" TEXT NOT NULL,
+    "calculationId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "previousValue" DECIMAL(10,2) NOT NULL,
+    "newValue" DECIMAL(10,2) NOT NULL,
+    "reason" TEXT NOT NULL,
+    "approvedById" TEXT,
+    "approvedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "commission_adjustments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "notification_deliveries" (
+    "id" TEXT NOT NULL,
+    "notificationId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "channel" "NotificationChannel" NOT NULL,
+    "status" "NotificationStatus" NOT NULL DEFAULT 'PENDENTE',
+    "sentAt" TIMESTAMP(3),
+    "deliveredAt" TIMESTAMP(3),
+    "readAt" TIMESTAMP(3),
+    "errorMessage" TEXT,
+    "externalId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "notification_deliveries_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "notification_preferences" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "appWeb" BOOLEAN NOT NULL DEFAULT true,
+    "appMobile" BOOLEAN NOT NULL DEFAULT false,
+    "whatsapp" BOOLEAN NOT NULL DEFAULT true,
+    "email" BOOLEAN NOT NULL DEFAULT false,
+    "push" BOOLEAN NOT NULL DEFAULT false,
+    "newPendency" BOOLEAN NOT NULL DEFAULT true,
+    "pendencyUrgent" BOOLEAN NOT NULL DEFAULT true,
+    "commissionPaid" BOOLEAN NOT NULL DEFAULT true,
+    "systemAlerts" BOOLEAN NOT NULL DEFAULT true,
+    "quietHoursStart" TEXT,
+    "quietHoursEnd" TEXT,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "notification_preferences_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "google_sheet_configs" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "name" TEXT NOT NULL,
+    "spreadsheetId" TEXT NOT NULL,
+    "description" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "lastSyncAt" TIMESTAMP(3),
+    "syncStatus" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "google_sheet_configs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "google_sheet_tabs" (
+    "id" TEXT NOT NULL,
+    "configId" TEXT NOT NULL,
+    "internalName" TEXT NOT NULL,
+    "sheetName" TEXT NOT NULL,
+    "description" TEXT,
+    "tabType" "SheetTabType" NOT NULL DEFAULT 'PERSONALIZADO',
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "headerRow" INTEGER NOT NULL DEFAULT 1,
+    "lastSyncAt" TIMESTAMP(3),
+    "lastSyncStatus" TEXT,
+    "lastSyncError" TEXT,
+    "totalRowsLast" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "google_sheet_tabs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "google_sheet_column_maps" (
+    "id" TEXT NOT NULL,
+    "tabId" TEXT NOT NULL,
+    "columnLetter" TEXT NOT NULL,
+    "columnHeader" TEXT,
+    "fieldName" TEXT NOT NULL,
+    "fieldLabel" TEXT,
+    "required" BOOLEAN NOT NULL DEFAULT false,
+    "transform" TEXT,
+    "defaultValue" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "google_sheet_column_maps_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "import_jobs" (
+    "id" TEXT NOT NULL,
+    "configId" TEXT,
+    "tabId" TEXT,
+    "triggeredById" TEXT,
+    "status" "ImportJobStatus" NOT NULL DEFAULT 'AGUARDANDO',
+    "totalRows" INTEGER NOT NULL DEFAULT 0,
+    "processedRows" INTEGER NOT NULL DEFAULT 0,
+    "newRecords" INTEGER NOT NULL DEFAULT 0,
+    "updatedRecords" INTEGER NOT NULL DEFAULT 0,
+    "errorRows" INTEGER NOT NULL DEFAULT 0,
+    "errors" JSONB,
+    "startedAt" TIMESTAMP(3),
+    "finishedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "import_jobs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "email_configs" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "name" TEXT NOT NULL DEFAULT 'Principal',
+    "smtpHost" TEXT NOT NULL,
+    "smtpPort" INTEGER NOT NULL DEFAULT 587,
+    "smtpSecure" BOOLEAN NOT NULL DEFAULT false,
+    "smtpUser" TEXT NOT NULL,
+    "smtpPass" TEXT NOT NULL,
+    "fromName" TEXT NOT NULL,
+    "fromEmail" TEXT NOT NULL,
+    "replyTo" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "lastTestedAt" TIMESTAMP(3),
+    "lastTestOk" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "email_configs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "tenants_publicId_key" ON "tenants"("publicId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "tenants_slug_key" ON "tenants"("slug");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "tenants_cnpj_key" ON "tenants"("cnpj");
+
+-- CreateIndex
+CREATE INDEX "tenants_status_idx" ON "tenants"("status");
+
+-- CreateIndex
+CREATE INDEX "tenants_publicId_idx" ON "tenants"("publicId");
+
+-- CreateIndex
+CREATE INDEX "tenant_modules_tenantId_idx" ON "tenant_modules"("tenantId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "tenant_modules_tenantId_module_key" ON "tenant_modules"("tenantId", "module");
+
+-- CreateIndex
+CREATE INDEX "persons_tenantId_idx" ON "persons"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "persons_cpf_idx" ON "persons"("cpf");
+
+-- CreateIndex
+CREATE INDEX "persons_cnpj_idx" ON "persons"("cnpj");
+
+-- CreateIndex
+CREATE INDEX "persons_nomeCompleto_idx" ON "persons"("nomeCompleto");
+
+-- CreateIndex
+CREATE INDEX "customers_tenantId_idx" ON "customers"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "customers_cpf_idx" ON "customers"("cpf");
+
+-- CreateIndex
+CREATE INDEX "customers_name_idx" ON "customers"("name");
+
+-- CreateIndex
+CREATE INDEX "vehicles_tenantId_idx" ON "vehicles"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "vehicles_plate_idx" ON "vehicles"("plate");
+
+-- CreateIndex
+CREATE INDEX "contracts_tenantId_idx" ON "contracts"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "contracts_customerId_idx" ON "contracts"("customerId");
+
+-- CreateIndex
+CREATE INDEX "contracts_vehicleId_idx" ON "contracts"("vehicleId");
+
+-- CreateIndex
+CREATE INDEX "contracts_sellerId_idx" ON "contracts"("sellerId");
+
+-- CreateIndex
+CREATE INDEX "contracts_saleDate_idx" ON "contracts"("saleDate");
+
+-- CreateIndex
+CREATE INDEX "contract_parse_results_contractId_idx" ON "contract_parse_results"("contractId");
+
+-- CreateIndex
+CREATE INDEX "contract_parse_results_status_idx" ON "contract_parse_results"("status");
+
+-- CreateIndex
+CREATE INDEX "deals_tenantId_idx" ON "deals"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "deals_unitId_idx" ON "deals"("unitId");
+
+-- CreateIndex
+CREATE INDEX "deals_sellerId_idx" ON "deals"("sellerId");
+
+-- CreateIndex
+CREATE INDEX "deals_status_idx" ON "deals"("status");
+
+-- CreateIndex
+CREATE INDEX "deals_type_idx" ON "deals"("type");
+
+-- CreateIndex
+CREATE INDEX "deal_vehicles_dealId_idx" ON "deal_vehicles"("dealId");
+
+-- CreateIndex
+CREATE INDEX "deal_debts_dealId_idx" ON "deal_debts"("dealId");
+
+-- CreateIndex
+CREATE INDEX "deal_payments_dealId_idx" ON "deal_payments"("dealId");
+
+-- CreateIndex
+CREATE INDEX "deal_status_history_dealId_idx" ON "deal_status_history"("dealId");
+
+-- CreateIndex
+CREATE INDEX "deal_release_requests_dealId_idx" ON "deal_release_requests"("dealId");
+
+-- CreateIndex
+CREATE INDEX "deal_release_requests_status_idx" ON "deal_release_requests"("status");
+
+-- CreateIndex
+CREATE INDEX "appointments_tenantId_idx" ON "appointments"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "appointments_dealId_idx" ON "appointments"("dealId");
+
+-- CreateIndex
+CREATE INDEX "appointments_date_idx" ON "appointments"("date");
+
+-- CreateIndex
+CREATE INDEX "pendency_comments_pendencyId_idx" ON "pendency_comments"("pendencyId");
+
+-- CreateIndex
+CREATE INDEX "return_percent_rules_tenantId_idx" ON "return_percent_rules"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "return_percent_rules_percentualInformado_idx" ON "return_percent_rules"("percentualInformado");
+
+-- CreateIndex
+CREATE INDEX "return_percent_rules_bank_idx" ON "return_percent_rules"("bank");
+
+-- CreateIndex
+CREATE INDEX "warranty_rules_tenantId_idx" ON "warranty_rules"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "warranty_rules_warrantyId_idx" ON "warranty_rules"("warrantyId");
+
+-- CreateIndex
+CREATE INDEX "commission_calculations_tenantId_idx" ON "commission_calculations"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "commission_calculations_contractId_idx" ON "commission_calculations"("contractId");
+
+-- CreateIndex
+CREATE INDEX "commission_calculations_sellerId_idx" ON "commission_calculations"("sellerId");
+
+-- CreateIndex
+CREATE INDEX "commission_calculations_managerId_idx" ON "commission_calculations"("managerId");
+
+-- CreateIndex
+CREATE INDEX "commission_calculations_period_idx" ON "commission_calculations"("period");
+
+-- CreateIndex
+CREATE INDEX "commission_calculations_status_idx" ON "commission_calculations"("status");
+
+-- CreateIndex
+CREATE INDEX "commission_adjustments_calculationId_idx" ON "commission_adjustments"("calculationId");
+
+-- CreateIndex
+CREATE INDEX "notification_deliveries_notificationId_idx" ON "notification_deliveries"("notificationId");
+
+-- CreateIndex
+CREATE INDEX "notification_deliveries_userId_channel_idx" ON "notification_deliveries"("userId", "channel");
+
+-- CreateIndex
+CREATE INDEX "notification_deliveries_status_idx" ON "notification_deliveries"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "notification_preferences_userId_key" ON "notification_preferences"("userId");
+
+-- CreateIndex
+CREATE INDEX "google_sheet_configs_tenantId_idx" ON "google_sheet_configs"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "google_sheet_tabs_configId_idx" ON "google_sheet_tabs"("configId");
+
+-- CreateIndex
+CREATE INDEX "google_sheet_column_maps_tabId_idx" ON "google_sheet_column_maps"("tabId");
+
+-- CreateIndex
+CREATE INDEX "import_jobs_configId_idx" ON "import_jobs"("configId");
+
+-- CreateIndex
+CREATE INDEX "import_jobs_status_idx" ON "import_jobs"("status");
+
+-- CreateIndex
+CREATE INDEX "import_jobs_createdAt_idx" ON "import_jobs"("createdAt");
+
+-- CreateIndex
+CREATE INDEX "email_configs_tenantId_idx" ON "email_configs"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "api_tokens_tenantId_idx" ON "api_tokens"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "audit_logs_tenantId_idx" ON "audit_logs"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "audit_logs_action_idx" ON "audit_logs"("action");
+
+-- CreateIndex
+CREATE INDEX "commission_extracts_tenantId_idx" ON "commission_extracts"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "commission_extracts_sellerId_period_idx" ON "commission_extracts"("sellerId", "period");
+
+-- CreateIndex
+CREATE INDEX "commission_extracts_status_idx" ON "commission_extracts"("status");
+
+-- CreateIndex
+CREATE INDEX "commission_rules_tenantId_idx" ON "commission_rules"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "commission_rules_active_idx" ON "commission_rules"("active");
+
+-- CreateIndex
+CREATE INDEX "notifications_tenantId_idx" ON "notifications"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "pendencies_tenantId_idx" ON "pendencies"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "pendencies_customerId_idx" ON "pendencies"("customerId");
+
+-- CreateIndex
+CREATE INDEX "pendencies_plate_idx" ON "pendencies"("plate");
+
+-- CreateIndex
+CREATE INDEX "services_tenantId_idx" ON "services"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "system_settings_tenantId_idx" ON "system_settings"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "units_tenantId_idx" ON "units"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "users_tenantId_idx" ON "users"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "users_email_idx" ON "users"("email");
+
+-- CreateIndex
+CREATE INDEX "warranties_tenantId_idx" ON "warranties"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "whatsapp_providers_tenantId_idx" ON "whatsapp_providers"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "whatsapp_templates_tenantId_idx" ON "whatsapp_templates"("tenantId");
+
+-- AddForeignKey
+ALTER TABLE "tenant_modules" ADD CONSTRAINT "tenant_modules_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "users" ADD CONSTRAINT "users_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "units" ADD CONSTRAINT "units_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "customers" ADD CONSTRAINT "customers_personId_fkey" FOREIGN KEY ("personId") REFERENCES "persons"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicles" ADD CONSTRAINT "vehicles_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "customers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "contracts" ADD CONSTRAINT "contracts_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "customers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "contracts" ADD CONSTRAINT "contracts_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "vehicles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "contract_parse_results" ADD CONSTRAINT "contract_parse_results_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "contracts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "contract_parse_results" ADD CONSTRAINT "contract_parse_results_reviewedById_fkey" FOREIGN KEY ("reviewedById") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deals" ADD CONSTRAINT "deals_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deals" ADD CONSTRAINT "deals_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "sellers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deals" ADD CONSTRAINT "deals_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "customers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deals" ADD CONSTRAINT "deals_personId_fkey" FOREIGN KEY ("personId") REFERENCES "persons"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deal_vehicles" ADD CONSTRAINT "deal_vehicles_dealId_fkey" FOREIGN KEY ("dealId") REFERENCES "deals"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deal_vehicles" ADD CONSTRAINT "deal_vehicles_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "vehicles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deal_debts" ADD CONSTRAINT "deal_debts_dealId_fkey" FOREIGN KEY ("dealId") REFERENCES "deals"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deal_payments" ADD CONSTRAINT "deal_payments_dealId_fkey" FOREIGN KEY ("dealId") REFERENCES "deals"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deal_status_history" ADD CONSTRAINT "deal_status_history_dealId_fkey" FOREIGN KEY ("dealId") REFERENCES "deals"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deal_release_requests" ADD CONSTRAINT "deal_release_requests_dealId_fkey" FOREIGN KEY ("dealId") REFERENCES "deals"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "deal_release_requests" ADD CONSTRAINT "deal_release_requests_reviewedBy_fkey" FOREIGN KEY ("reviewedBy") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "appointments" ADD CONSTRAINT "appointments_dealId_fkey" FOREIGN KEY ("dealId") REFERENCES "deals"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pendencies" ADD CONSTRAINT "pendencies_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "customers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pendencies" ADD CONSTRAINT "pendencies_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "vehicles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pendencies" ADD CONSTRAINT "pendencies_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "contracts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pendency_comments" ADD CONSTRAINT "pendency_comments_pendencyId_fkey" FOREIGN KEY ("pendencyId") REFERENCES "pendencies"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pendency_comments" ADD CONSTRAINT "pendency_comments_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "warranty_rules" ADD CONSTRAINT "warranty_rules_warrantyId_fkey" FOREIGN KEY ("warrantyId") REFERENCES "warranties"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "commission_calculations" ADD CONSTRAINT "commission_calculations_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "contracts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "commission_adjustments" ADD CONSTRAINT "commission_adjustments_calculationId_fkey" FOREIGN KEY ("calculationId") REFERENCES "commission_calculations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "commission_adjustments" ADD CONSTRAINT "commission_adjustments_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "commission_extracts" ADD CONSTRAINT "commission_extracts_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "sellers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "commission_extracts" ADD CONSTRAINT "commission_extracts_unitId_fkey" FOREIGN KEY ("unitId") REFERENCES "units"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "commission_extracts" ADD CONSTRAINT "commission_extracts_calculationId_fkey" FOREIGN KEY ("calculationId") REFERENCES "commission_calculations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "notification_deliveries" ADD CONSTRAINT "notification_deliveries_notificationId_fkey" FOREIGN KEY ("notificationId") REFERENCES "notifications"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "notification_deliveries" ADD CONSTRAINT "notification_deliveries_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "notification_preferences" ADD CONSTRAINT "notification_preferences_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "google_sheet_tabs" ADD CONSTRAINT "google_sheet_tabs_configId_fkey" FOREIGN KEY ("configId") REFERENCES "google_sheet_configs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "google_sheet_column_maps" ADD CONSTRAINT "google_sheet_column_maps_tabId_fkey" FOREIGN KEY ("tabId") REFERENCES "google_sheet_tabs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "import_jobs" ADD CONSTRAINT "import_jobs_configId_fkey" FOREIGN KEY ("configId") REFERENCES "google_sheet_configs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "import_jobs" ADD CONSTRAINT "import_jobs_tabId_fkey" FOREIGN KEY ("tabId") REFERENCES "google_sheet_tabs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "import_jobs" ADD CONSTRAINT "import_jobs_triggeredById_fkey" FOREIGN KEY ("triggeredById") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

@@ -1,0 +1,2362 @@
+// =============================================================================
+// AutoDrive — Sua loja no piloto automático
+// Schema Prisma — PostgreSQL — Multi-tenant SaaS Enterprise
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Hierarquia de perfis do sistema (pirâmide de acesso)
+enum UserRole {
+  MASTER          // Acesso total — controle da plataforma SaaS
+  ADM             // Administrador do tenant — quase total
+  GERENTE_GERAL   // Gerencia unidades, gerentes, relatórios
+  GERENTE         // Gerencia equipe e pendências da unidade
+  VENDEDOR_LIDER  // Líder de equipe com permissões ampliadas
+  VENDEDOR        // Vê suas próprias pendências e comissões
+  USUARIO_LIDER   // Módulos específicos com permissão ampliada
+  USUARIO         // Acesso básico conforme permissões
+}
+
+enum UserStatus {
+  ATIVO
+  INATIVO
+  PENDENTE
+  BLOQUEADO
+}
+
+enum TenantPlan {
+  BASICO
+  PRO
+  VIP
+  CUSTOM
+}
+
+enum TenantStatus {
+  ATIVO
+  SUSPENSO
+  BLOQUEADO
+  BANIDO
+  CANCELADO
+  TESTE
+  INADIMPLENTE
+  PAUSADO
+}
+
+enum PartnerRole {
+  SOCIO_ADMINISTRADOR
+  SOCIO
+  REPRESENTANTE_LEGAL
+  PROCURADOR
+}
+
+enum PendencyPriority {
+  BAIXA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+enum PendencyStatus {
+  ABERTA
+  EM_ANDAMENTO
+  AGUARDANDO_RESPOSTA
+  PAUSADA
+  FINALIZADA
+  REATIVADA
+  CANCELADA
+  VENCIDA
+}
+
+enum DealType {
+  VENDA
+  COMPRA
+  TROCA
+  CONSIGNACAO
+}
+
+enum DealStatus {
+  RASCUNHO
+  AGUARDANDO_LIBERACAO
+  LIBERADA
+  RECUSADA
+  EM_ANDAMENTO
+  FINALIZADA
+  CANCELADA
+  REABERTA
+}
+
+enum PersonType {
+  FISICA
+  JURIDICA
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum NotificationType {
+  RESPOSTA
+  PENDENCIA_CRITICA
+  NOVA_PENDENCIA
+  PENDENCIA_FINALIZADA
+  PENDENCIA_RESOLVIDA
+  PENDENCIA_NAO_RESOLVIDA
+  ESCALONAMENTO
+  NEGOCIACAO_NOVA
+  NEGOCIACAO_LIBERADA
+  NEGOCIACAO_RECUSADA
+  COMISSAO_APROVADA
+  COMISSAO_PAGA
+  IMPORTACAO_CONCLUIDA
+  ERRO_INTEGRACAO
+  ERRO_ENVIO
+  DISPARO_MANUAL
+  SISTEMA
+  INFO
+}
+
+enum NotificationChannel {
+  APP_WEB
+  APP_MOBILE
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDENTE
+  ENVIANDO
+  ENVIADO
+  ENTREGUE
+  LIDO
+  ERRO
+  CANCELADO
+}
+
+enum CommissionRuleType {
+  VENDA
+  TROCA
+  COMPRA
+  GARANTIA
+  RETORNO
+  SERVICO
+  DOCUMENTO
+  BONUS_META
+  BONUS_DEZENA
+  EXCECAO
+}
+
+enum CommissionStatus {
+  PREVISTO
+  APROVADO
+  PAGO
+  CANCELADO
+  AJUSTADO
+}
+
+enum ContractType {
+  VENDA
+  TROCA
+  COMPRA
+  CONSIGNACAO
+}
+
+enum ImportJobStatus {
+  AGUARDANDO
+  PROCESSANDO
+  CONCLUIDO
+  CONCLUIDO_COM_ERROS
+  ERRO
+}
+
+enum AutoSyncMode {
+  SIMULATION
+  REAL
+}
+
+enum AutoSyncStatus {
+  ATIVO
+  PAUSADO
+  ERRO
+  RODANDO
+  AGUARDANDO
+}
+
+enum AutoSyncJobStatus {
+  RUNNING
+  SUCCESS
+  ERROR
+  SKIPPED
+  LOCKED
+}
+
+enum AutoSyncTriggerType {
+  AUTO
+  MANUAL
+  SIMULATION
+}
+
+enum AutoSyncAction {
+  APENAS_BAIXAR
+  IMPORTAR_PENDENCIAS
+  IMPORTAR_E_ALERTAR
+  IMPORTAR_E_NOTIFICAR_GERENTE
+  IMPORTAR_E_NOTIFICAR_TODOS
+}
+
+enum SheetTabType {
+  VENDAS
+  TROCAS
+  CLIENTES
+  VEICULOS
+  CONTRATOS
+  COMISSOES
+  GARANTIAS
+  RETORNOS
+  PENDENCIAS
+  VENDEDORES
+  GERENTES
+  UNIDADES
+  CONFIGURACOES
+  PERSONALIZADO
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ENUMS — MÓDULO ESTOQUE
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum VehicleType {
+  CAR
+  MOTORCYCLE
+  TRUCK
+}
+
+enum VehicleCondition {
+  ZERO_KM
+  SEMINOVO
+  USADO
+}
+
+enum VehicleStockType {
+  PROPRIO
+  CONSIGNADO
+}
+
+enum VehicleStockLocation {
+  SHOWROOM
+  ATACADO
+  FORA_ESTOQUE
+  OUTROS
+}
+
+enum VehicleStockStatus {
+  DISPONIVEL
+  VENDIDO
+  COMPRADO
+  CANCELADO
+  DEVOLVIDO
+  BLOQUEADO
+  EM_PROMOCAO
+  EM_ATACADO
+  EM_NEGOCIACAO
+  EM_SERVICO
+  RESERVADO
+  PENDENTE_DOCUMENTACAO
+  PENDENTE_AVALIACAO
+  PENDENTE_PREPARACAO
+}
+
+enum CautelarStatus {
+  APROVADA
+  REPROVADA
+  PENDENTE
+  COM_APONTAMENTO
+  SEM_CAUTELAR
+}
+
+enum EvaluationResult {
+  APROVADO
+  RECUSADO
+  PENDENTE
+}
+
+enum EvaluationIntention {
+  COMPRA
+  TROCA
+  CONSIGNACAO
+  APENAS_AVALIACAO
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TENANT — Multi-tenancy SaaS
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Tenant = Loja/Revendedora cadastrada na plataforma AutoDrive
+model Tenant {
+  id                String       @id @default(cuid())
+  publicId          String       @unique // ex: AD-7K92P00LJ01
+  slug              String       @unique // ex: easycar-sp
+  name              String       // nome comercial da loja (= nomeFantasia ou razaoSocial)
+  razaoSocial       String?
+  nomeFantasia      String?
+  cnpj              String?      @unique
+  cpf               String?
+  inscricaoEstadual String?
+  isentoInscricaoEstadual Boolean @default(false)
+  situacaoCadastral String?      // ATIVA, INAPTA, BAIXADA, SUSPENSA
+  dataAbertura      DateTime?
+  cnaeCode          String?      // CNAE principal ex: "4511-1/01"
+  // Endereço estruturado (adicional ao address legado)
+  address           String?      // campo legado — string única
+  logradouro        String?
+  numero            String?
+  complemento       String?
+  bairro            String?
+  city              String?
+  state             String?
+  zipCode           String?      // CEP normalizado (sem hífen)
+  phone             String?
+  email             String?
+  logoUrl           String?
+  faviconUrl        String?
+  slogan            String?
+  primaryColor      String?      @default("#166534")
+  secondaryColor    String?
+  plan              TenantPlan   @default(BASICO)
+  status            TenantStatus @default(TESTE)
+  statusReason      String?      // motivo de suspensão/banimento
+  responsavel       String?      // nome do responsável
+  responsavelEmail  String?
+  responsavelPhone  String?
+  trialEndsAt       DateTime?
+  // Limites do plano
+  maxUsers          Int          @default(10)
+  maxVehicles       Int          @default(100)
+  maxUnits          Int          @default(1)
+  notes             String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  // Relations
+  units        Unit[]
+  users        User[]
+  modules      TenantModule[]
+  deals        Deal[]
+  partners     TenantPartner[]
+  featureFlags TenantFeatureFlag[]
+
+  @@index([status])
+  @@index([publicId])
+  @@index([cnpj])
+  @@map("tenants")
+}
+
+/// Controle de módulos ativados por tenant (substituição do plano fixo)
+model TenantModule {
+  id         String    @id @default(cuid())
+  tenantId   String
+  module     String    // ex: 'commissions', 'crm', 'marketing'
+  active     Boolean   @default(true)
+  limit      Int?      // limite de uso (0 = ilimitado)
+  enabledAt  DateTime?
+  disabledAt DateTime?
+  enabledBy  String?   // userId de quem ativou (MASTER)
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, module])
+  @@index([tenantId])
+  @@map("tenant_modules")
+}
+
+/// Sócios/responsáveis vinculados ao tenant (contrato social)
+model TenantPartner {
+  id           String      @id @default(cuid())
+  tenantId     String
+  cpf          String      // CPF normalizado (somente dígitos)
+  nomeCompleto String
+  rg           String?
+  celular      String?     // normalizado (somente dígitos)
+  email        String?
+  dataNascimento DateTime?
+  role         PartnerRole @default(SOCIO)
+  participacao Decimal?    @db.Decimal(5, 2)  // % de participação/cota
+  principal    Boolean     @default(false)    // sócio majoritário / responsável principal
+  // Endereço do sócio
+  cep          String?
+  logradouro   String?
+  numero       String?
+  complemento  String?
+  bairro       String?
+  cidade       String?
+  estado       String?
+  // Usuário criado automaticamente para este sócio
+  userId       String?     @unique
+  active       Boolean     @default(true)
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([cpf])
+  @@map("tenant_partners")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// USUÁRIOS & ACESSO
+// ═════════════════════════════════════════════════════════════════════════════
+
+model User {
+  id                String     @id @default(cuid())
+  tenantId          String?    // null = usuário de plataforma (MASTER)
+  name              String
+  email             String     @unique
+  cpf               String?    @unique
+  phone             String?
+  passwordHash      String
+  role              UserRole   @default(USUARIO)
+  status            UserStatus @default(PENDENTE)
+  unitId            String?
+  image             String?
+  mustChangePassword Boolean   @default(false)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  lastLoginAt       DateTime?
+
+  // Relations
+  tenant                 Tenant?                 @relation(fields: [tenantId], references: [id])
+  unit                   Unit?                   @relation(fields: [unitId], references: [id])
+  seller                 Seller?
+  manager                Manager?
+  notifications          Notification[]
+  commissionExtracts     CommissionExtract[]
+  commissionAdjustments  CommissionAdjustment[]
+  systemSettings         SystemSetting[]         @relation("SettingUpdatedBy")
+  auditLogs              AuditLog[]
+  passwordResets         PasswordReset[]
+  apiTokens              ApiToken[]
+  pendenciesResolved      Pendency[]              @relation("ResolvedByUser")
+  pendenciesAssigned      Pendency[]              @relation("AssignedPendencies")
+  pendenciesValidated     Pendency[]              @relation("ValidatedPendencies")
+  pendenciesEscalated     Pendency[]              @relation("EscalatedByUser")
+  pendencyStatusHistory   PendencyStatusHistory[] @relation("ChangedByUser")
+  pendencyComments        PendencyComment[]
+  importJobs              ImportJob[]
+  notificationDeliveries  NotificationDelivery[]
+  notificationPreference  NotificationPreference?
+  contractParseResults    ContractParseResult[]
+  dealReleaseRequests     DealReleaseRequest[]    @relation("ReleasedByUser")
+  vehicleEvaluations      VehicleEvaluation[]     @relation("EvaluatedByUser")
+  resolvedStockPendencies VehicleStockPendency[]  @relation("ResolvedStockPendencies")
+  tenantPartner           TenantPartner?
+  notificationRules       NotificationRule[]      @relation("NotificationRuleCreator")
+  mobileDevices           MobileDevice[]
+  communicationTestLogs   CommunicationTestLog[]  @relation("CommunicationTestLogs")
+  autoSyncJobs            GoogleSheetsAutoSyncJob[] @relation("AutoSyncJobCreator")
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([cpf])
+  @@map("users")
+}
+
+model Unit {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  name        String
+  razaoSocial String?
+  cnpj        String   @unique
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  phone       String?
+  email       String?
+  responsavel String?
+  active      Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id])
+  users              User[]
+  sellers            Seller[]
+  managers           Manager[]
+  pendencies         Pendency[]
+  commissionRules    CommissionRule[]
+  commissionExtracts CommissionExtract[]
+  stockVehicles      Vehicle[]           @relation("UnitStockVehicles")
+  evaluations        VehicleEvaluation[] @relation("UnitEvaluations")
+
+  @@index([tenantId])
+  @@map("units")
+}
+
+model Seller {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  fullName       String
+  shortName      String?
+  cpf            String?   @unique
+  rg             String?
+  birthDate      DateTime?
+  whatsapp       String?
+  email          String?
+  unitId         String
+  managerId      String?
+  cargo          String?
+  active         Boolean   @default(true)
+  receivesCharge Boolean   @default(true)
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  user            User             @relation(fields: [userId], references: [id])
+  unit            Unit             @relation(fields: [unitId], references: [id])
+  manager         Manager?         @relation("ManagerSellers", fields: [managerId], references: [id])
+  pendencies      Pendency[]       @relation("SellerPendencies")
+  messageReturns  MessageReturn[]
+  commissionRules CommissionRule[] @relation("SellerCommissionRules")
+  extracts        CommissionExtract[]
+  deals           Deal[]
+
+  @@map("sellers")
+}
+
+model Manager {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  fullName              String
+  cpf                   String?  @unique
+  whatsapp              String?
+  email                 String?
+  unitId                String
+  accessProfile         String?
+  active                Boolean  @default(true)
+  receivesNotifications Boolean  @default(true)
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  user            User             @relation(fields: [userId], references: [id])
+  unit            Unit             @relation(fields: [unitId], references: [id])
+  sellers         Seller[]         @relation("ManagerSellers")
+  pendencies      Pendency[]       @relation("ManagerPendencies")
+  messageReturns  MessageReturn[]
+  commissionRules CommissionRule[] @relation("ManagerCommissionRules")
+
+  @@map("managers")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PESSOAS — Modelo universal PF/PJ
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Modelo unificado de pessoa (PF ou PJ) — clientes, fornecedores, sócios, etc.
+model Person {
+  id                String     @id @default(cuid())
+  tenantId          String?
+  type              PersonType @default(FISICA)
+
+  // Pessoa Física
+  cpf               String?
+  rg                String?
+  nomeMae           String?
+  nomePai           String?
+  dataNascimento    DateTime?
+
+  // Pessoa Jurídica
+  cnpj              String?
+  razaoSocial       String?
+  nomeFantasia      String?
+  inscricaoEstadual String?
+  possuiIE          Boolean    @default(false)
+
+  // Sócio administrador (PJ)
+  socioAdmCpf       String?
+  socioAdmNome      String?
+  socioAdmNomeMae   String?
+  socioAdmEmail     String?
+  socioAdmPhone     String?
+  socioAdmWhatsapp  Boolean    @default(false)
+  socioAdmCota      Decimal?   @db.Decimal(5, 2)
+
+  // Compartilhados
+  nomeCompleto      String     // nome completo ou razão social para exibição
+  email             String?
+  phone             String?
+  whatsapp          Boolean    @default(false)
+
+  // Endereço
+  cep               String?
+  logradouro        String?
+  numero            String?
+  complemento       String?
+  bairro            String?
+  cidade            String?
+  estado            String?
+
+  notes             String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  // Relations
+  customers Customer[]
+  deals     Deal[]     @relation("DealCustomerPerson")
+
+  @@index([tenantId])
+  @@index([cpf])
+  @@index([cnpj])
+  @@index([nomeCompleto])
+  @@map("persons")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CLIENTES & VEÍCULOS & CONTRATOS
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  personId  String?  // vínculo com Person (modelo universal)
+  name      String
+  cpf       String?
+  phone     String?
+  email     String?
+  address   String?
+  city      String?
+  state     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  person     Person?    @relation(fields: [personId], references: [id])
+  vehicles   Vehicle[]
+  contracts  Contract[]
+  pendencies Pendency[]
+  deals      Deal[]
+
+  @@index([tenantId])
+  @@index([cpf])
+  @@index([name])
+  @@map("customers")
+}
+
+model Vehicle {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  unitId     String?  // unidade/revenda responsável
+
+  // Identificação
+  plate      String?
+  chassi     String?
+  renavam    String?
+
+  // Descrição
+  brand      String?
+  model      String?
+  version    String?   // versão/trim (ex: "Sport 2.0 4x4 Turbo")
+  year       Int?      // ano de fabricação (campo legado mantido)
+  modelYear  Int?      // ano do modelo
+  color      String?
+  fuel       String?   // GASOLINA, ETANOL, FLEX, DIESEL, ELETRICO, HIBRIDO
+  transmission String? // MANUAL, AUTOMATICO, CVT, SEMI_AUTOMATICO
+  doors      Int?
+  km         Int?
+
+  // Classificação
+  vehicleType   VehicleType?
+  conditionType VehicleCondition?
+
+  // Estoque
+  stockType     VehicleStockType?
+  stockLocation VehicleStockLocation?
+  stockStatus   VehicleStockStatus?  @default(DISPONIVEL)
+
+  // Especificações técnicas extras
+  engine        String?   // ex: "1.0 Turbo Flex"
+  displacement  String?   // ex: "999 cc"
+  power         String?   // ex: "116 cv"
+  bodyType      String?   // ex: "Sedan", "SUV", "Hatch"
+
+  // Financeiro
+  salePrice     Decimal?  @db.Decimal(12, 2)
+  purchasePrice Decimal?  @db.Decimal(12, 2)
+  fipeValue     Decimal?  @db.Decimal(12, 2)
+  fipeCode         String?   // código FIPE ex: "005415-6"
+  fipeReferenceMonth String? // ex: "maio/2026"
+
+  // Cautelar/perícia
+  cautelarStatus  CautelarStatus?  @default(SEM_CAUTELAR)
+  cautelarNumber  String?
+  cautelarNotes   String?
+
+  // Mídia
+  mainPhotoUrl String?
+
+  // Origem
+  originEvaluationId String?   // avaliação que originou este cadastro
+
+  // Meta
+  active     Boolean  @default(true)
+  entryDate  DateTime?  // data de entrada no estoque
+  exitDate   DateTime?  // data de saída do estoque
+  notes      String?
+  customerId String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  unit         Unit?        @relation("UnitStockVehicles", fields: [unitId], references: [id])
+  customer     Customer?    @relation(fields: [customerId], references: [id])
+  contracts    Contract[]
+  pendencies   Pendency[]   // pendências de atendimento (modelo existente)
+  dealVehicles DealVehicle[]
+  photos       VehiclePhoto[]
+  evaluations  VehicleEvaluation[]
+  stockPendencies VehicleStockPendency[]  // pendências de estoque configuráveis
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([plate])
+  @@index([stockStatus])
+  @@index([stockLocation])
+  @@index([brand, model])
+  @@map("vehicles")
+}
+
+// ── Fotos do veículo ──────────────────────────────────────────────────────────
+
+model VehiclePhoto {
+  id        String   @id @default(cuid())
+  vehicleId String
+  url       String
+  caption   String?
+  order     Int      @default(0)
+  isMain    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@map("vehicle_photos")
+}
+
+// ── Avaliação de veículo ──────────────────────────────────────────────────────
+
+/// Avaliações realizadas antes de compra/troca/consignação
+model VehicleEvaluation {
+  id        String  @id @default(cuid())
+  tenantId  String?
+  unitId    String?
+  vehicleId String?  // preenchido se aprovado e adicionado ao estoque
+
+  // Dados do veículo na avaliação
+  plate           String?
+  brand           String?
+  model           String?
+  version         String?
+  manufactureYear Int?
+  modelYear       Int?
+  km              Int?
+  color           String?
+  fuel            String?
+  transmission    String?
+  chassi          String?
+  renavam         String?
+  vehicleType     VehicleType?
+  conditionType   VehicleCondition?
+
+  // Specs extras capturadas na avaliação
+  doors         Int?
+  engine        String?   // motorização ex: "1.0 Turbo"
+  displacement  String?   // cilindradas ex: "999 cc"
+  power         String?   // potência ex: "116 cv"
+  bodyType      String?   // carroceria ex: "Sedan"
+
+  // FIPE
+  fipeCode            String?
+  fipeReferenceMonth  String?
+
+  // Dados da avaliação
+  fipeValue      Decimal?  @db.Decimal(12, 2)  // FIPE consultada
+  evaluatedValue Decimal?  @db.Decimal(12, 2)  // valor avaliado pelo avaliador
+  desiredValue   Decimal?  @db.Decimal(12, 2)  // valor desejado pelo proprietário
+  minimumValue   Decimal?  @db.Decimal(12, 2)  // mínimo aceitável para compra
+  suggestedSalePrice Decimal? @db.Decimal(12, 2) // sugestão de preço de venda
+  stockType      VehicleStockType?               // tipo de estoque pós-aprovação
+  evaluationNotes String?
+  result          EvaluationResult    @default(PENDENTE)
+  intention       EvaluationIntention @default(APENAS_AVALIACAO)
+
+  // Rastreabilidade da consulta por placa
+  lookupSource   String?  // "internal_cache" | "authorized_provider" | "manual"
+  lookupDataRaw  Json?    // payload bruto retornado pelo provedor
+
+  // Cautelar
+  cautelarStatus CautelarStatus?
+  cautelarNumber String?
+  cautelarNotes  String?
+
+  // Dados do proprietário/cliente
+  ownerName  String?
+  ownerCpf   String?
+  ownerPhone String?
+  ownerEmail String?
+  ownerNotes String?
+
+  // Pendências identificadas
+  pendencyNotes String?
+
+  // Meta
+  evaluatedById String?
+  evaluatedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  vehicle     Vehicle? @relation(fields: [vehicleId], references: [id])
+  unit        Unit?    @relation("UnitEvaluations", fields: [unitId], references: [id])
+  evaluatedBy User?    @relation("EvaluatedByUser", fields: [evaluatedById], references: [id])
+
+  @@index([tenantId])
+  @@index([vehicleId])
+  @@index([unitId])
+  @@index([result])
+  @@index([createdAt])
+  @@map("vehicle_evaluations")
+}
+
+// ── Opções de pendências de estoque (configuráveis) ───────────────────────────
+
+/// Categorias de pendência configuráveis pelo MASTER (global) ou ADM (tenant)
+model StockPendencyOption {
+  id              String  @id @default(cuid())
+  tenantId        String?  // null = global (MASTER), preenchido = tenant-specific (ADM)
+  label           String   // nome exibido no filtro e nos cards
+  description     String?
+  category        String?  // DOCUMENTACAO, PREPARACAO, AVALIACAO, FINANCEIRO, OUTROS
+  active          Boolean @default(true)
+  createdByMaster Boolean @default(false)  // MASTER criou → ADM não pode excluir/desativar
+  order           Int     @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  vehicleStockPendencies VehicleStockPendency[]
+
+  @@index([tenantId])
+  @@index([active])
+  @@map("stock_pendency_options")
+}
+
+// ── Pendências de estoque aplicadas ao veículo ────────────────────────────────
+
+model VehicleStockPendency {
+  id           String    @id @default(cuid())
+  vehicleId    String
+  optionId     String
+  notes        String?
+  resolved     Boolean   @default(false)
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  vehicle    Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  option     StockPendencyOption @relation(fields: [optionId], references: [id])
+  resolvedBy User?               @relation("ResolvedStockPendencies", fields: [resolvedById], references: [id])
+
+  @@unique([vehicleId, optionId])
+  @@index([vehicleId])
+  @@index([optionId])
+  @@map("vehicle_stock_pendencies")
+}
+
+model Contract {
+  id              String       @id @default(cuid())
+  tenantId        String?
+  number          String?
+  type            ContractType @default(VENDA)
+  customerId      String?
+  vehicleId       String?
+  sellerId        String?
+  managerId       String?
+  unitId          String?
+  saleValue       Decimal?     @db.Decimal(12, 2)
+  financedValue   Decimal?     @db.Decimal(12, 2)
+  bank            String?
+  returnRate      Decimal?     @db.Decimal(5, 3)
+  warrantyValue   Decimal?     @db.Decimal(10, 2)
+  warrantyProduct String?
+  docValue        Decimal?     @db.Decimal(10, 2)
+  saleDate        DateTime?
+  status          String?      @default("ATIVO")
+  pdfPath         String?
+  notes           String?
+  rawData         Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  customer        Customer?           @relation(fields: [customerId], references: [id])
+  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id])
+  parseResults    ContractParseResult[]
+  commissionCalcs CommissionCalculation[]
+  pendencies      Pendency[]
+
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([sellerId])
+  @@index([saleDate])
+  @@map("contracts")
+}
+
+model ContractParseResult {
+  id               String   @id @default(cuid())
+  contractId       String?
+  pdfOriginalName  String
+  pdfPath          String?
+  parsedData       Json
+  extractedFields  Json?
+  validationErrors Json?
+  status           String   @default("PENDENTE")
+  reviewedById     String?
+  reviewedAt       DateTime?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  contract   Contract? @relation(fields: [contractId], references: [id])
+  reviewedBy User?     @relation(fields: [reviewedById], references: [id])
+
+  @@index([contractId])
+  @@index([status])
+  @@map("contract_parse_results")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// NEGOCIAÇÕES — Módulo de vendas, compras, trocas e consignações
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Negociação — unidade central do módulo comercial
+model Deal {
+  id         String     @id @default(cuid())
+  tenantId   String?
+  unitId     String?
+  sellerId   String?
+  customerId String?    // Customer vinculado
+  personId   String?    // Person universal PF/PJ
+  type       DealType   @default(VENDA)
+  status     DealStatus @default(RASCUNHO)
+
+  // Valores de resumo (calculados no save)
+  vehicleValue    Decimal? @db.Decimal(12, 2)
+  tradeValue      Decimal? @db.Decimal(12, 2)
+  totalDebts      Decimal? @db.Decimal(12, 2)
+  totalPayments   Decimal? @db.Decimal(12, 2)
+  balance         Decimal? @db.Decimal(12, 2)
+  changeAmount    Decimal? @db.Decimal(12, 2) // troco
+
+  // Troco destinatário
+  changeBeneficiary    String?
+  changeBeneficiaryCpf String?
+  changeBank           String?
+  changeAgency         String?
+  changeAccount        String?
+  changePix            String?
+
+  // Controle de notificação (evita reenvio em edições)
+  notificationSentAt DateTime?
+
+  // Quem liberou/recusou
+  releasedAt      DateTime?
+  releasedByUserId String?
+  recusedAt       DateTime?
+  recusedByUserId String?
+  recusedReason   String?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant           Tenant?            @relation(fields: [tenantId], references: [id])
+  seller           Seller?            @relation(fields: [sellerId], references: [id])
+  customer         Customer?          @relation(fields: [customerId], references: [id])
+  person           Person?            @relation("DealCustomerPerson", fields: [personId], references: [id])
+  vehicles         DealVehicle[]
+  debts            DealDebt[]
+  payments         DealPayment[]
+  history          DealStatusHistory[]
+  releaseRequests  DealReleaseRequest[]
+  appointments     Appointment[]
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([type])
+  @@map("deals")
+}
+
+/// Veículo envolvido na negociação (vendido, trocado, comprado, consignado)
+model DealVehicle {
+  id          String  @id @default(cuid())
+  dealId      String
+  vehicleId   String?
+  role        String  // VENDIDO, TROCA, COMPRADO, CONSIGNADO
+  plate       String?
+  brand       String?
+  model       String?
+  year        Int?
+  color       String?
+  chassi      String?
+  renavam     String?
+  agreedValue Decimal? @db.Decimal(12, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+
+  @@index([dealId])
+  @@map("deal_vehicles")
+}
+
+/// Débito do veículo envolvido na negociação
+model DealDebt {
+  id          String   @id @default(cuid())
+  dealId      String
+  vehicleRole String?  // VENDIDO ou TROCA
+  type        String   // MULTA, IPVA, LICENCIAMENTO, FINANCIAMENTO, etc.
+  description String?
+  value       Decimal  @db.Decimal(12, 2)
+  dueDate     DateTime?
+  responsavel String?  // quem paga: COMPRADOR, VENDEDOR, LOJA
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@map("deal_debts")
+}
+
+/// Forma de pagamento da negociação
+model DealPayment {
+  id          String   @id @default(cuid())
+  dealId      String
+  type        String   // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, BOLETO, TROCA, OUTROS
+  value       Decimal  @db.Decimal(12, 2)
+  bank        String?
+  installments Int?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@map("deal_payments")
+}
+
+/// Histórico de status da negociação
+model DealStatusHistory {
+  id              String   @id @default(cuid())
+  dealId          String
+  previousStatus  String?
+  newStatus       String
+  changedByUserId String?
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@map("deal_status_history")
+}
+
+/// Solicitação de liberação de negociação
+model DealReleaseRequest {
+  id           String   @id @default(cuid())
+  dealId       String
+  requestedBy  String?  // userId do vendedor
+  requestedAt  DateTime @default(now())
+  reviewedBy   String?  // userId de quem avaliou
+  reviewedAt   DateTime?
+  status       String   @default("PENDENTE") // PENDENTE, LIBERADA, RECUSADA
+  reason       String?  // motivo se recusado
+  notes        String?
+
+  deal         Deal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  reviewer     User? @relation("ReleasedByUser", fields: [reviewedBy], references: [id])
+
+  @@index([dealId])
+  @@index([status])
+  @@map("deal_release_requests")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AGENDAMENTOS
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Appointment {
+  id              String    @id @default(cuid())
+  tenantId        String?
+  dealId          String?
+  type            String    // ENTREGA_VENDA, RECEBIMENTO_TROCA, RECEBIMENTO_COMPRA, RECEBIMENTO_CONSIGNADO, OUTRO
+  title           String
+  description     String?
+  date            DateTime
+  durationMinutes Int?
+  location        String?
+  responsavelId   String?   // userId
+  responsavelName String?
+  googleEventId   String?   // ID no Google Calendar
+  googleCalendarSynced Boolean @default(false)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  deal Deal? @relation(fields: [dealId], references: [id])
+
+  @@index([tenantId])
+  @@index([dealId])
+  @@index([date])
+  @@map("appointments")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SERVIÇOS & GARANTIAS
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Service {
+  id                String   @id @default(cuid())
+  tenantId          String?
+  name              String
+  category          String?
+  defaultValue      Decimal  @default(0) @db.Decimal(10, 2)
+  defaultCommission Decimal  @default(0) @db.Decimal(10, 2)
+  commissionType    String   @default("PERCENTUAL")
+  active            Boolean  @default(true)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  commissionRules CommissionRule[] @relation("ServiceCommissionRules")
+
+  @@index([tenantId])
+  @@map("services")
+}
+
+model Warranty {
+  id                String   @id @default(cuid())
+  tenantId          String?
+  name              String
+  provider          String?
+  defaultValue      Decimal  @default(0) @db.Decimal(10, 2)
+  minValue          Decimal  @default(0) @db.Decimal(10, 2)
+  defaultCommission Decimal  @default(0) @db.Decimal(10, 2)
+  commissionType    String   @default("PERCENTUAL")
+  active            Boolean  @default(true)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  commissionRules CommissionRule[] @relation("WarrantyCommissionRules")
+  warrantyRules   WarrantyRule[]
+
+  @@index([tenantId])
+  @@map("warranties")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PENDÊNCIAS
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Pendency {
+  id               String           @id @default(cuid())
+  tenantId         String?
+  responsibleId    String
+  managerId        String?
+  customerId       String?
+  vehicleId        String?
+  contractId       String?
+  customerName     String
+  plate            String?
+  vehicle          String?
+  negotiation      String?
+  description      String?
+  lead             String?
+  priority         PendencyPriority @default(MEDIA)
+  status           PendencyStatus   @default(ABERTA)
+  type             String?
+  unitId           String
+  chargeRecipient  String?
+  dueDate          DateTime?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  lastSentAt       DateTime?
+  nextSendAt       DateTime?
+  totalSent        Int              @default(0)
+  maxSends         Int?
+  sendsPerDay      Int?
+  automaticSend    Boolean          @default(false)
+  frequency        String?
+  allowedDays      String[]
+  startTime        String?
+  endTime          String?
+  templateId       String?
+  source           String?
+  referenceMonth   String?
+  // Central de Avisos — campos de severidade, SLA, atribuição e rastreamento
+  severity         String?          // LOW | MEDIUM | HIGH | CRITICAL (complementa priority)
+  slaMinutes       Int?             // tempo alvo em minutos para resolução
+  slaDeadline      DateTime?        // calculado: createdAt + slaMinutes
+  assignedUserId   String?          // usuário designado para tratar
+  originModule     String?          // DEALS | COMMISSIONS | STOCK | CRM | WHATSAPP | MANUAL
+  originRecordId   String?          // ID do registro que originou a pendência
+  cancelReason     String?
+  reopenedAt       DateTime?
+  validatedAt      DateTime?        // quando foi validada como resolvida
+  validatedByUserId String?         // quem validou
+  escalatedAt      DateTime?
+  escalatedByUserId String?         // quem escalou
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Relations
+  responsible       Seller                  @relation("SellerPendencies", fields: [responsibleId], references: [id])
+  manager           Manager?                @relation("ManagerPendencies", fields: [managerId], references: [id])
+  unit              Unit                    @relation(fields: [unitId], references: [id])
+  resolvedByUser    User?                   @relation("ResolvedByUser", fields: [resolvedByUserId], references: [id])
+  assignedUser      User?                   @relation("AssignedPendencies", fields: [assignedUserId], references: [id])
+  validatedByUser   User?                   @relation("ValidatedPendencies", fields: [validatedByUserId], references: [id])
+  escalatedByUser   User?                   @relation("EscalatedByUser", fields: [escalatedByUserId], references: [id])
+  customer       Customer?               @relation(fields: [customerId], references: [id])
+  vehicleRef     Vehicle?                @relation(fields: [vehicleId], references: [id])
+  contract       Contract?               @relation(fields: [contractId], references: [id])
+  template       WhatsappTemplate?       @relation(fields: [templateId], references: [id])
+  statusHistory  PendencyStatusHistory[]
+  messages       PendencyMessage[]
+  messageReturns MessageReturn[]
+  comments       PendencyComment[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([responsibleId])
+  @@index([managerId])
+  @@index([unitId])
+  @@index([customerId])
+  @@index([plate])
+  @@index([nextSendAt])
+  @@index([dueDate])
+  @@index([assignedUserId])
+  @@index([slaDeadline])
+  @@index([originModule, originRecordId])
+  @@map("pendencies")
+}
+
+model PendencyStatusHistory {
+  id              String   @id @default(cuid())
+  pendencyId      String
+  previousStatus  String?
+  newStatus       String
+  changedByUserId String?
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  pendency      Pendency @relation(fields: [pendencyId], references: [id], onDelete: Cascade)
+  changedByUser User?    @relation("ChangedByUser", fields: [changedByUserId], references: [id])
+
+  @@index([pendencyId])
+  @@map("pendency_status_history")
+}
+
+model PendencyMessage {
+  id                String              @id @default(cuid())
+  pendencyId        String
+  direction         MessageDirection    @default(OUTBOUND)
+  channel           NotificationChannel @default(WHATSAPP)
+  messageType       String?
+  content           String?
+  whatsappMessageId String?
+  status            String?
+  sentAt            DateTime?
+  createdAt         DateTime            @default(now())
+
+  // Relations
+  pendency Pendency @relation(fields: [pendencyId], references: [id], onDelete: Cascade)
+
+  @@index([pendencyId])
+  @@map("pendency_messages")
+}
+
+model PendencyComment {
+  id         String   @id @default(cuid())
+  pendencyId String
+  userId     String
+  content    String
+  internal   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  pendency Pendency @relation(fields: [pendencyId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([pendencyId])
+  @@map("pendency_comments")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COMISSÕES
+// ═════════════════════════════════════════════════════════════════════════════
+
+model CommissionRule {
+  id             String             @id @default(cuid())
+  tenantId       String?
+  name           String
+  description    String?
+  ruleType       CommissionRuleType
+  role           UserRole?
+  sellerId       String?
+  managerId      String?
+  unitId         String?
+  serviceId      String?
+  warrantyId     String?
+  bank           String?
+  fromQuantity   Int?
+  toQuantity     Int?
+  fromValue      Decimal?           @db.Decimal(12, 2)
+  toValue        Decimal?           @db.Decimal(12, 2)
+  fixedValue     Decimal?           @db.Decimal(10, 2)
+  percentage     Decimal?           @db.Decimal(7, 4)
+  commissionType String             @default("PERCENTUAL")
+  active         Boolean            @default(true)
+  priority       Int                @default(0)
+  validFrom      DateTime?
+  validUntil     DateTime?
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // Relations
+  seller   Seller?   @relation("SellerCommissionRules", fields: [sellerId], references: [id])
+  manager  Manager?  @relation("ManagerCommissionRules", fields: [managerId], references: [id])
+  unit     Unit?     @relation(fields: [unitId], references: [id])
+  service  Service?  @relation("ServiceCommissionRules", fields: [serviceId], references: [id])
+  warranty Warranty? @relation("WarrantyCommissionRules", fields: [warrantyId], references: [id])
+
+  @@index([tenantId])
+  @@index([sellerId])
+  @@index([managerId])
+  @@index([unitId])
+  @@index([ruleType])
+  @@index([active])
+  @@map("commission_rules")
+}
+
+model ReturnPercentRule {
+  id                  String    @id @default(cuid())
+  tenantId            String?
+  name                String
+  percentualInformado Decimal   @db.Decimal(5, 3)
+  percentualAplicado  Decimal   @db.Decimal(5, 3)
+  bank                String?
+  tipoRetorno         String?
+  active              Boolean   @default(true)
+  validFrom           DateTime?
+  validUntil          DateTime?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([percentualInformado])
+  @@index([bank])
+  @@map("return_percent_rules")
+}
+
+model WarrantyRule {
+  id                 String   @id @default(cuid())
+  tenantId           String?
+  warrantyId         String
+  name               String
+  defaultValue       Decimal  @db.Decimal(10, 2)
+  minValue           Decimal  @db.Decimal(10, 2)
+  commissionDefault  Decimal  @db.Decimal(7, 4)
+  commissionDiscount Decimal  @db.Decimal(7, 4)
+  commissionType     String   @default("PERCENTUAL")
+  sellerId           String?
+  managerId          String?
+  unitId             String?
+  active             Boolean  @default(true)
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  warranty Warranty @relation(fields: [warrantyId], references: [id])
+
+  @@index([tenantId])
+  @@index([warrantyId])
+  @@map("warranty_rules")
+}
+
+model CommissionCalculation {
+  id              String             @id @default(cuid())
+  tenantId        String?
+  contractId      String?
+  sellerId        String?
+  managerId       String?
+  unitId          String?
+  period          String
+  ruleId          String?
+  ruleType        CommissionRuleType
+  description     String
+  baseValue       Decimal            @db.Decimal(12, 2)
+  rateApplied     Decimal?           @db.Decimal(7, 4)
+  commissionValue Decimal            @db.Decimal(10, 2)
+  ruleDetails     Json?
+  status          CommissionStatus   @default(PREVISTO)
+  approvedById    String?
+  approvedAt      DateTime?
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  // Relations
+  contract    Contract? @relation(fields: [contractId], references: [id])
+  adjustments CommissionAdjustment[]
+  extracts    CommissionExtract[]
+
+  @@index([tenantId])
+  @@index([contractId])
+  @@index([sellerId])
+  @@index([managerId])
+  @@index([period])
+  @@index([status])
+  @@map("commission_calculations")
+}
+
+model CommissionAdjustment {
+  id            String   @id @default(cuid())
+  calculationId String
+  userId        String
+  previousValue Decimal  @db.Decimal(10, 2)
+  newValue      Decimal  @db.Decimal(10, 2)
+  reason        String
+  approvedById  String?
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  // Relations
+  calculation CommissionCalculation @relation(fields: [calculationId], references: [id])
+  user        User                  @relation(fields: [userId], references: [id])
+
+  @@index([calculationId])
+  @@map("commission_adjustments")
+}
+
+model CommissionExtract {
+  id            String           @id @default(cuid())
+  tenantId      String?
+  userId        String
+  sellerId      String?
+  unitId        String?
+  calculationId String?
+  period        String           // YYYY-MM
+  type          String           // BASE, AJUSTE, GARANTIA, RETORNO, SERVICO, BONUS, DESCONTO
+  referenceId   String?
+  description   String?
+  value         Decimal          @db.Decimal(10, 2)
+  status        CommissionStatus @default(PREVISTO)
+  approvedById  String?
+  approvedAt    DateTime?
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  // Relations
+  user        User                   @relation(fields: [userId], references: [id])
+  seller      Seller?                @relation(fields: [sellerId], references: [id])
+  unit        Unit?                  @relation(fields: [unitId], references: [id])
+  calculation CommissionCalculation? @relation(fields: [calculationId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId, period])
+  @@index([sellerId, period])
+  @@index([status])
+  @@map("commission_extracts")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// NOTIFICAÇÕES
+// ═════════════════════════════════════════════════════════════════════════════
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  tenantId  String?
+  title     String
+  message   String
+  type      NotificationType @default(INFO)
+  read      Boolean          @default(false)
+  actionUrl String?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  // Relations
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@index([tenantId])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id             String              @id @default(cuid())
+  notificationId String
+  userId         String
+  channel        NotificationChannel
+  status         NotificationStatus  @default(PENDENTE)
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  errorMessage   String?
+  externalId     String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  // Relations
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([notificationId])
+  @@index([userId, channel])
+  @@index([status])
+  @@map("notification_deliveries")
+}
+
+model NotificationPreference {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  appWeb          Boolean  @default(true)
+  appMobile       Boolean  @default(false)
+  whatsapp        Boolean  @default(true)
+  email           Boolean  @default(false)
+  push            Boolean  @default(false)
+  newPendency     Boolean  @default(true)
+  pendencyUrgent  Boolean  @default(true)
+  commissionPaid  Boolean  @default(true)
+  systemAlerts    Boolean  @default(true)
+  quietHoursStart String?
+  quietHoursEnd   String?
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WHATSAPP & MENSAGENS
+// ═════════════════════════════════════════════════════════════════════════════
+
+model MessageReturn {
+  id                String   @id @default(cuid())
+  whatsappFrom      String
+  profileName       String?
+  messageType       String?
+  messageBody       String?
+  whatsappMessageId String?
+  pendencyId        String?
+  sellerId          String?
+  managerId         String?
+  customerName      String?
+  plate             String?
+  rawPayload        Json?
+  createdAt         DateTime @default(now())
+
+  // Relations
+  pendency Pendency? @relation(fields: [pendencyId], references: [id])
+  seller   Seller?   @relation(fields: [sellerId], references: [id])
+  manager  Manager?  @relation(fields: [managerId], references: [id])
+
+  @@index([whatsappFrom])
+  @@index([pendencyId])
+  @@index([sellerId])
+  @@map("message_returns")
+}
+
+model WhatsappProvider {
+  id                   String   @id @default(cuid())
+  tenantId             String?
+  name                 String
+  active               Boolean  @default(false)
+  apiVersion           String?
+  phoneNumberId        String?
+  businessAccountId    String?
+  accessToken          String?
+  webhookVerifyToken   String?
+  useOfficialTemplates Boolean  @default(true)
+  language             String   @default("pt_BR")
+  fallbackToText       Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("whatsapp_providers")
+}
+
+model WhatsappTemplate {
+  id                  String   @id @default(cuid())
+  tenantId            String?
+  name                String
+  description         String?
+  templateName        String
+  bodyText            String?
+  bodyParams          Json?
+  variables           String[]
+  hasHeaderImage      Boolean  @default(false)
+  headerImageUrl      String?
+  expectedParamsCount Int      @default(0)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  pendencies Pendency[]
+
+  @@index([tenantId])
+  @@map("whatsapp_templates")
+}
+
+model WebhookLog {
+  id        String   @id @default(cuid())
+  provider  String?
+  direction String?
+  payload   Json
+  processed Boolean  @default(false)
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([processed])
+  @@index([createdAt])
+  @@map("webhook_logs")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GOOGLE SHEETS & IMPORTAÇÃO
+// ═════════════════════════════════════════════════════════════════════════════
+
+model GoogleSheetConfig {
+  id            String    @id @default(cuid())
+  tenantId      String?
+  unitId        String?   // unidade vinculada para importação
+  name          String
+  spreadsheetId String
+  description   String?
+  active        Boolean   @default(true)
+  columnMapping Json?     // mapeamento de colunas (índice → campo)
+  dedupeField   String?   @default("negotiation") // campo de deduplicação
+  lastSyncAt    DateTime?
+  syncStatus    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  tabs       GoogleSheetTab[]
+  importJobs ImportJob[]
+  autoSync   GoogleSheetsAutoSyncConfig?
+
+  @@index([tenantId])
+  @@map("google_sheet_configs")
+}
+
+model GoogleSheetTab {
+  id             String       @id @default(cuid())
+  configId       String
+  internalName   String
+  sheetName      String
+  gid            String?      // Google Sheet numeric tab GID (ex: "1507200471")
+  monthReference String?      // ex: "Abril", "Maio", "Junho"
+  sortOrder      Int?         @default(0)
+  description    String?
+  tabType        SheetTabType @default(PERSONALIZADO)
+  active         Boolean      @default(true)
+  headerRow      Int          @default(1)
+  lastSyncAt     DateTime?
+  lastSyncStatus String?
+  lastSyncError  String?
+  totalRowsLast  Int?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  config     GoogleSheetConfig    @relation(fields: [configId], references: [id], onDelete: Cascade)
+  columnMaps GoogleSheetColumnMap[]
+  importJobs ImportJob[]
+
+  @@index([configId])
+  @@map("google_sheet_tabs")
+}
+
+model GoogleSheetColumnMap {
+  id           String   @id @default(cuid())
+  tabId        String
+  columnLetter String
+  columnHeader String?
+  fieldName    String
+  fieldLabel   String?
+  required     Boolean  @default(false)
+  transform    String?
+  defaultValue String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  tab GoogleSheetTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+
+  @@index([tabId])
+  @@map("google_sheet_column_maps")
+}
+
+model ImportJob {
+  id            String          @id @default(cuid())
+  configId      String?
+  tabId         String?
+  triggeredById String?
+  status        ImportJobStatus @default(AGUARDANDO)
+  totalRows     Int             @default(0)
+  processedRows Int             @default(0)
+  newRecords    Int             @default(0)
+  updatedRecords Int            @default(0)
+  errorRows     Int             @default(0)
+  errors        Json?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime        @default(now())
+
+  // Relations
+  config      GoogleSheetConfig? @relation(fields: [configId], references: [id])
+  tab         GoogleSheetTab?    @relation(fields: [tabId], references: [id])
+  triggeredBy User?              @relation(fields: [triggeredById], references: [id])
+
+  @@index([configId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("import_jobs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTO-SYNC — Atualizador automático programável do Google Sheets
+// ─────────────────────────────────────────────────────────────────────────────
+
+model GoogleSheetsAutoSyncConfig {
+  id                  String          @id @default(cuid())
+  importerId          String          @unique
+  enabled             Boolean         @default(false)
+  mode                AutoSyncMode    @default(SIMULATION)
+  frequencyMinutes    Int             @default(30)
+  allowedDays         Json            @default("[1,2,3,4,5]") // 0=Dom…6=Sab
+  startTime           String          @default("08:00")       // HH:mm
+  endTime             String          @default("18:00")
+  selectedTabs        Json?           // null = todas as abas ativas
+  actionAfterDownload AutoSyncAction  @default(IMPORTAR_PENDENCIAS)
+  notifyOnNewRecords  Boolean         @default(false)
+  notifyOnError       Boolean         @default(true)
+  errorNotifyTarget   String?
+  maxRowsPerRun       Int             @default(500)
+  timeoutSeconds      Int             @default(120)
+  status              AutoSyncStatus  @default(PAUSADO)
+  isRunning           Boolean         @default(false)
+  lockUntil           DateTime?
+  lastRunAt           DateTime?
+  nextRunAt           DateTime?
+  lastStatus          String?
+  lastError           String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  // Relations
+  importer GoogleSheetConfig         @relation(fields: [importerId], references: [id], onDelete: Cascade)
+  jobs     GoogleSheetsAutoSyncJob[]
+
+  @@map("google_sheets_auto_sync_configs")
+}
+
+model GoogleSheetsAutoSyncJob {
+  id              String               @id @default(cuid())
+  importerId      String
+  configId        String
+  status          AutoSyncJobStatus    @default(RUNNING)
+  triggerType     AutoSyncTriggerType  @default(AUTO)
+  startedAt       DateTime             @default(now())
+  finishedAt      DateTime?
+  durationMs      Int?
+  rowsRead        Int                  @default(0)
+  rowsImported    Int                  @default(0)
+  rowsUpdated     Int                  @default(0)
+  rowsIgnored     Int                  @default(0)
+  rowsError       Int                  @default(0)
+  sheetsRead      Json?
+  sheetsNotFound  Json?
+  errors          Json?
+  summary         Json?
+  createdByUserId String?
+  createdAt       DateTime             @default(now())
+
+  // Relations
+  config    GoogleSheetsAutoSyncConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  createdBy User?                      @relation("AutoSyncJobCreator", fields: [createdByUserId], references: [id])
+
+  @@index([importerId, createdAt])
+  @@index([configId, createdAt])
+  @@index([status])
+  @@map("google_sheets_auto_sync_jobs")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// E-MAIL
+// ═════════════════════════════════════════════════════════════════════════════
+
+model EmailConfig {
+  id           String    @id @default(cuid())
+  tenantId     String?
+  name         String    @default("Principal")
+  smtpHost     String
+  smtpPort     Int       @default(587)
+  smtpSecure   Boolean   @default(false)
+  smtpUser     String
+  smtpPass     String
+  fromName     String
+  fromEmail    String
+  replyTo      String?
+  active       Boolean   @default(true)
+  lastTestedAt DateTime?
+  lastTestOk   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("email_configs")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CONFIGURAÇÕES & LOGS
+// ═════════════════════════════════════════════════════════════════════════════
+
+model SystemSetting {
+  id              String   @id @default(cuid())
+  tenantId        String?  // null = configuração global da plataforma
+  key             String   @unique  // TODO: migrar para @@unique([tenantId, key]) quando multi-tenancy ativo
+  value           String
+  description     String?
+  group           String?
+  isPublic        Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+  updatedByUserId String?
+
+  // Relations
+  updatedByUser User? @relation("SettingUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@map("system_settings")
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  userId       String?
+  userName     String?
+  userRole     String?
+  action       String
+  entity       String
+  entityId     String?
+  beforeData   Json?
+  afterData    Json?
+  ipAddress    String?
+  userAgent    String?
+  status       String?  @default("SUCCESS")
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_resets")
+}
+
+// =============================================================================
+// Cache de consultas por placa — evita chamadas repetidas a APIs pagas
+// =============================================================================
+
+model VehicleLookupCache {
+  id           String   @id @default(cuid())
+  plate        String   @unique  // normalizado sem hífen, maiúsculo
+  found        Boolean  @default(false)
+  source       String?  // "authorized_provider" | "internal_cache"
+  data         Json?    // VehicleLookupData normalizado
+  expiresAt    DateTime // TTL configurável (padrão: 30 dias)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([plate])
+  @@index([expiresAt])
+  @@map("vehicle_lookup_cache")
+}
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tenantId   String?
+  name       String
+  token      String    @unique
+  permissions Json?
+  active     Boolean   @default(true)
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("api_tokens")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PLATAFORMA — Modelos globais gerenciados pelo MASTER
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Planos da plataforma — CRUD completo via Painel Master
+model Plan {
+  id               String   @id @default(cuid())
+  code             String   @unique // BASICO | PRO | VIP | CUSTOM | ENTERPRISE | etc.
+  name             String
+  description      String?
+  priceMonthly     Decimal? @db.Decimal(10, 2)
+  priceYearly      Decimal? @db.Decimal(10, 2)
+  active           Boolean  @default(true)
+  // Limites padrão
+  maxUsers         Int      @default(10)
+  maxVehicles      Int      @default(100)
+  maxUnits         Int      @default(1)
+  maxStorageMb     Int      @default(1024)
+  whatsappMonthly  Int      @default(1000)
+  emailMonthly     Int      @default(5000)
+  trialDays        Int      @default(14)
+  // Recursos liberados
+  allowWhiteLabel     Boolean @default(false)
+  allowCustomDomain   Boolean @default(false)
+  allowGoogleSheets   Boolean @default(true)
+  allowAdvancedReports Boolean @default(false)
+  allowApiAccess      Boolean @default(false)
+  // Módulos incluídos (lista de chaves de módulo)
+  modules          String[]
+  sortOrder        Int      @default(0)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([active])
+  @@map("plans")
+}
+
+/// Feature flags globais da plataforma
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique  // ex: new_evaluation_flow
+  name        String
+  description String?
+  enabled     Boolean  @default(false) // estado global padrão
+  rolloutPct  Int      @default(0)     // 0-100 — rollout gradual
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenantFlags TenantFeatureFlag[]
+
+  @@map("feature_flags")
+}
+
+/// Override de feature flag por tenant
+model TenantFeatureFlag {
+  tenantId String
+  flagKey  String
+  enabled  Boolean  @default(true)
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flag   FeatureFlag @relation(fields: [flagKey], references: [key], onDelete: Cascade)
+
+  @@id([tenantId, flagKey])
+  @@index([flagKey])
+  @@map("tenant_feature_flags")
+}
+
+/// Modo de manutenção — pode ser global, por módulo ou por tenant
+model MaintenanceMode {
+  id           String    @id @default(cuid())
+  active       Boolean   @default(false)
+  message      String?   @db.Text
+  startAt      DateTime?
+  endAt        DateTime?
+  scope        String    @default("GLOBAL") // GLOBAL | MODULE | TENANT
+  scopeId      String?                      // moduleKey ou tenantId
+  allowedRoles String[]                     // roles que ignoram manutenção (ex: MASTER)
+  activatedBy  String?                      // userId de quem ativou
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([active])
+  @@map("maintenance_modes")
+}
+
+/// Avisos internos (in-app notices) enviados pelo MASTER
+model InternalNotice {
+  id               String    @id @default(cuid())
+  title            String
+  message          String    @db.Text
+  type             String    @default("INFO")        // INFO | WARNING | CRITICAL | MAINTENANCE | BILLING | RELEASE
+  severity         String    @default("INFO")        // INFO | SUCCESS | WARNING | ERROR | CRITICAL
+  priority         String    @default("MEDIUM")      // LOW | MEDIUM | HIGH | CRITICAL
+  status           String    @default("ACTIVE")      // DRAFT | SCHEDULED | ACTIVE | PAUSED | CANCELLED | EXPIRED | ARCHIVED | DELETED
+  targetType       String    @default("ALL")         // ALL | ALL_TENANTS | SELECTED_TENANTS | SELECTED_UNITS | SELECTED_ROLES | SELECTED_USERS | MASTER_ONLY | ADM_ONLY | MANAGER_ONLY | SELLER_ONLY
+  targetId         String?                           // legado: id conforme targetType original
+  targetTenants    Json?                             // Array<string> de tenantIds
+  targetUnits      Json?                             // Array<string> de unitIds
+  targetRoles      Json?                             // Array<string> de roles
+  targetUsers      Json?                             // Array<string> de userIds
+  displayType      String    @default("BELL")        // BELL | BANNER | MODAL | TOAST (legado)
+  displayChannels  Json      @default("[\"BELL\"]")  // Array<BELL|BALLOON|BANNER|MODAL|DASHBOARD>
+  startsAt         DateTime  @default(now())
+  endsAt           DateTime?
+  required         Boolean   @default(false)
+  dismissible      Boolean   @default(true)
+  blockUntilRead   Boolean   @default(false)
+  allowComments    Boolean   @default(false)
+  actionUrl        String?
+  actionLabel      String?
+  createdBy        String                            // userId do MASTER
+  updatedById      String?
+  active           Boolean   @default(true)          // legado — mantido para compat.
+  publishedAt      DateTime?
+  pausedAt         DateTime?
+  cancelledAt      DateTime?
+  archivedAt       DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  reads InternalNoticeRead[]
+  logs  InternalNoticeLog[]
+
+  @@index([status])
+  @@index([active])
+  @@index([targetType, targetId])
+  @@index([startsAt, endsAt])
+  @@map("internal_notices")
+}
+
+/// Controle de leitura e confirmação de avisos internos
+model InternalNoticeRead {
+  id          String    @id @default(cuid())
+  noticeId    String
+  userId      String
+  displayedAt DateTime?
+  readAt      DateTime  @default(now())
+  clickedAt   DateTime?
+  dismissed   Boolean   @default(false)
+  confirmed   Boolean   @default(false)
+
+  notice InternalNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, userId])
+  @@index([noticeId])
+  @@index([userId])
+  @@map("internal_notice_reads")
+}
+
+/// Auditoria completa de ações sobre avisos internos
+model InternalNoticeLog {
+  id        String   @id @default(cuid())
+  noticeId  String
+  userId    String?
+  action    String   // CREATED | EDITED | PUBLISHED | SCHEDULED | PAUSED | RESUMED | CANCELLED | ARCHIVED | DELETED | DUPLICATED | TESTED | READ | CLICKED | DISMISSED | EXPIRED
+  success   Boolean  @default(true)
+  details   Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  notice InternalNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@index([noticeId, createdAt])
+  @@index([action])
+  @@map("internal_notice_logs")
+}
+
+/// Sessões de impersonation — auditoria obrigatória
+model ImpersonationSession {
+  id             String    @id @default(cuid())
+  masterId       String    // MASTER executando a impersonation
+  targetUserId   String    // usuário alvo
+  targetTenantId String?   // tenant do usuário alvo
+  reason         String    // motivo obrigatório
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  ipAddress      String?
+  userAgent      String?
+
+  @@index([masterId])
+  @@index([targetUserId])
+  @@index([startedAt])
+  @@map("impersonation_sessions")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// IDENTIDADE GLOBAL DO SISTEMA — gerenciada pelo MASTER
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Identidade visual e institucional global da plataforma (singleton)
+model SystemIdentity {
+  id             String   @id @default(cuid())
+  systemName     String   @default("AutoDrive")
+  systemSlogan   String?
+  logoUrl        String?
+  faviconUrl     String?
+  primaryColor   String   @default("#166534")
+  secondaryColor String?
+  accentColor    String?
+  footerText     String?
+  supportEmail   String?
+  supportPhone   String?
+  supportUrl     String?
+  termsUrl       String?
+  privacyUrl     String?
+  customDomain   String?   // domínio padrão da plataforma
+  timezone       String   @default("America/Sao_Paulo")
+  locale         String   @default("pt-BR")
+  currency       String   @default("BRL")
+  updatedById    String?
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@map("system_identity")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CREDENCIAIS DE INTEGRAÇÃO — gerenciadas pelo MASTER
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Credenciais de APIs externas controladas pelo MASTER
+model IntegrationCredential {
+  id            String    @id @default(cuid())
+  service       String    // FIPE | PLATE_LOOKUP | RENAVAM | CNPJ_LOOKUP | CEP | STORAGE | PAYMENT | DIGITAL_SIGN | OTHER
+  name          String    // nome amigável
+  description   String?
+  apiUrl        String?
+  apiKey        String?   // ⚠️ sensível
+  apiSecret     String?   // ⚠️ sensível
+  token         String?   // ⚠️ sensível
+  username      String?
+  webhookSecret String?   // ⚠️ sensível
+  active        Boolean   @default(true)
+  isDefault     Boolean   @default(false) // credencial padrão para o serviço
+  lastTestedAt  DateTime?
+  lastTestOk    Boolean   @default(false)
+  lastTestMsg   String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   String?
+
+  @@index([service])
+  @@index([active])
+  @@map("integration_credentials")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CENTRAL DE AVISOS — Regras e dispositivos móveis
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Regras configuráveis de notificação/pendência (MASTER global ou por tenant)
+model NotificationRule {
+  id              String    @id @default(cuid())
+  scope           String    @default("GLOBAL") // GLOBAL | TENANT
+  tenantId        String?   // null = global (MASTER)
+  name            String
+  description     String?
+  module          String    // DEALS | PENDENCIES | COMMISSIONS | STOCK | CRM | WHATSAPP
+  conditionType   String    // ex: DEAL_PENDING_RELEASE | COMMISSION_OVERDUE | STOCK_PENDENCY | etc.
+  conditionConfig Json?     // parâmetros específicos da condição
+  priority        String    @default("MEDIA")   // BAIXA | MEDIA | ALTA | URGENTE
+  severity        String    @default("MEDIA")   // LOW | MEDIUM | HIGH | CRITICAL
+  slaMinutes      Int?      // SLA padrão para pendências geradas por esta regra
+  channels        String[]  // APP_WEB | APP_MOBILE | WHATSAPP | EMAIL | PUSH
+  targetRoles     String[]  // roles que recebem: GERENTE | ADM | GERENTE_GERAL | etc.
+  escalationRoles String[]  // roles para escalonamento
+  escalationAfterMinutes Int? // minutos antes de escalonar
+  maxPerDay       Int       @default(10)  // máximo de notificações por dia por usuário
+  isActive        Boolean   @default(true)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  creator   User?             @relation("NotificationRuleCreator", fields: [createdByUserId], references: [id])
+
+  @@index([scope, isActive])
+  @@index([tenantId])
+  @@index([module])
+  @@map("notification_rules")
+}
+
+/// Dispositivos móveis para push notifications futuras
+model MobileDevice {
+  id          String    @id @default(cuid())
+  userId      String
+  deviceToken String    @unique // FCM/APNs token
+  platform    String    // ANDROID | IOS | WEB
+  deviceName  String?   // ex: "iPhone 15 Pro"
+  appVersion  String?
+  isActive    Boolean   @default(true)
+  lastSeenAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([deviceToken])
+  @@map("mobile_devices")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// POLÍTICA DE SEGURANÇA GLOBAL — gerenciada pelo MASTER
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Política de segurança global da plataforma (singleton por escopo)
+model SecurityPolicy {
+  id                    String   @id @default(cuid())
+  scope                 String   @default("GLOBAL") // GLOBAL | TENANT
+  scopeId               String?  // tenantId se scope=TENANT
+  // Senha
+  minPasswordLength     Int      @default(8)
+  requireUppercase      Boolean  @default(true)
+  requireNumber         Boolean  @default(true)
+  requireSpecialChar    Boolean  @default(false)
+  passwordExpiryDays    Int      @default(0) // 0 = nunca expira
+  // Sessão
+  sessionMaxAgeSecs     Int      @default(28800) // 8h
+  inactivityTimeoutSecs Int      @default(0)     // 0 = sem timeout
+  maxActiveSessions     Int      @default(5)
+  // Bloqueio por tentativas
+  maxLoginAttempts      Int      @default(5)
+  lockoutDurationMins   Int      @default(15)
+  // 2FA
+  require2FA            Boolean  @default(false)
+  require2FAForMaster   Boolean  @default(true)
+  // IP allowlist (MASTER)
+  masterIpAllowlist     String[] // IPs permitidos para MASTER (vazio = todos)
+  // Dados
+  dataRetentionDays     Int      @default(365)
+  updatedById           String?
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  @@unique([scope, scopeId])
+  @@map("security_policies")
+}
+
+// =============================================================================
+// CommunicationTestLog — Registro de testes de conexão/envio (E-mail e WhatsApp)
+// Gravado a cada teste disparado pela Central de Comunicação do painel Master.
+// =============================================================================
+
+model CommunicationTestLog {
+  id           String   @id @default(cuid())
+  channel      String   // EMAIL | WHATSAPP
+  provider     String?  // smtp | sendgrid | ses | mailgun | resend | meta | evolution | zapi | twilio
+  triggeredBy  String   // userId do master que disparou o teste
+  target       String   // e-mail ou telefone testado
+  success      Boolean
+  errorCode    String?  // código do erro (ex: ECONNREFUSED, 535, 131047)
+  errorMessage String?  // mensagem descritiva do erro
+  errorDetails String?  // stack / response body completo para debug
+  responseMs   Int?     // latência em ms
+  messageId    String?  // ID externo da mensagem (sucesso)
+  metadata     Json?    // payload de resposta completo
+  createdAt    DateTime @default(now())
+
+  user User @relation("CommunicationTestLogs", fields: [triggeredBy], references: [id])
+
+  @@index([channel, createdAt])
+  @@index([triggeredBy])
+  @@index([success])
+  @@map("communication_test_logs")
+}
