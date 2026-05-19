@@ -24,7 +24,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       data: {
         name:        String(name),
         razaoSocial: razaoSocial ? String(razaoSocial) : null,
-        cnpj:        cnpj ? String(cnpj) : null,
+        // Unit.cnpj é required no schema; só atualizamos se vier valor.
+        ...(cnpj ? { cnpj: String(cnpj) } : {}),
         address:     address ? String(address) : null,
         city:        city ? String(city) : null,
         state:       state ? String(state) : null,

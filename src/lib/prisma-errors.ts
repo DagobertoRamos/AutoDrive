@@ -25,6 +25,29 @@ export interface ApiError {
   success: false
   error:   string
   code?:   string  // Apenas em desenvolvimento
+  field?:  string  // Nome da coluna/relação que falhou (P2002/P2003)
+  hint?:   string  // Sugestão amigável de próxima ação
+}
+
+// ── Mensagens específicas P2003 por campo conhecido ──────────────────────────
+// Quando o Prisma reporta P2003 ele inclui `meta.field_name` (ou modelName).
+// Mapeamos os campos mais comuns para mensagens com contexto + ação sugerida.
+const P2003_FIELD_HINTS: Array<{ match: RegExp; hint: string }> = [
+  { match: /tenantId/i,   hint: 'O tenant referenciado não existe. Faça logout/login novamente — sua sessão pode estar apontando para um tenant removido.' },
+  { match: /unitId/i,     hint: 'A unidade referenciada não existe. Crie a unidade matriz antes de vincular registros a ela.' },
+  { match: /userId|ownerId|createdById|enabledBy/i, hint: 'O usuário referenciado não existe. Se você é MASTER, faça logout/login. Se for criação de tenant, o sistema deve permitir userId nulo no AuditLog.' },
+  { match: /sellerId/i,   hint: 'O vendedor referenciado não existe.' },
+  { match: /personId/i,   hint: 'A pessoa (cliente) referenciada não existe.' },
+  { match: /vehicleId/i,  hint: 'O veículo referenciado não existe.' },
+  { match: /dealId/i,     hint: 'A negociação referenciada não existe.' },
+  { match: /planId/i,     hint: 'O plano referenciado não existe.' },
+]
+
+function buildP2003Hint(fieldName: string | null): string {
+  if (!fieldName) return 'Verifique se todos os registros relacionados (tenant, unidade, usuário, etc) existem no banco.'
+  const found = P2003_FIELD_HINTS.find(({ match }) => match.test(fieldName))
+  if (found) return found.hint
+  return `Campo "${fieldName}" referencia um registro inexistente.`
 }
 
 // ── mapPrismaError ────────────────────────────────────────────────────────────
@@ -40,10 +63,30 @@ export function mapPrismaError(err: unknown): { body: ApiError; status: number }
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     const mapped = PRISMA_CODE_MAP[err.code]
     if (isDev) console.error('[prisma-error]', err.code, err.meta, err.message)
+
+    // P2002 e P2003 expõem `meta.field_name` (string ou array).
+    const metaField = err.meta && (err.meta as Record<string, unknown>).field_name
+    const fieldStr  = Array.isArray(metaField) ? (metaField as string[]).join(', ') : (typeof metaField === 'string' ? metaField : null)
+
+    // P2003 — Referência inválida: detalha o campo problemático.
+    if (err.code === 'P2003') {
+      return {
+        body: {
+          success: false,
+          error:   'Não foi possível salvar porque uma referência interna está inválida. Atualize a página, faça login novamente e tente de novo. Se persistir, verifique plano/unidade/usuário relacionado.',
+          hint:    buildP2003Hint(fieldStr),
+          field:   fieldStr ?? undefined,
+          ...(isDev ? { code: err.code } : {}),
+        },
+        status: 400,
+      }
+    }
+
     return {
       body: {
         success: false,
         error:   mapped?.message ?? `Erro de banco de dados. [${err.code}]`,
+        field:   fieldStr ?? undefined,
         ...(isDev ? { code: err.code } : {}),
       },
       status: mapped?.status ?? 500,

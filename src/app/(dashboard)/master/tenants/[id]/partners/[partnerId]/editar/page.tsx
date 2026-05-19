@@ -119,6 +119,7 @@ export default function EditarPartnerPage() {
       const t = setTimeout(() => router.replace(`/master/tenants/${id}`), 1500)
       return () => clearTimeout(t)
     }
+    return undefined
   }, [successInfo, router, id])
 
   // CEP lookup

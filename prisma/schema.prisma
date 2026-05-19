@@ -86,14 +86,37 @@ enum DealType {
 }
 
 enum DealStatus {
+  // ── Status base (legado — mantidos para compatibilidade) ──────────────────
   RASCUNHO
-  AGUARDANDO_LIBERACAO
-  LIBERADA
-  RECUSADA
+  AGUARDANDO_LIBERACAO        // legado → equivale a AGUARDANDO_APROVACAO
+  LIBERADA                    // legado → equivale a APROVADA
+  RECUSADA                    // legado → equivale a DESAPROVADA
   EM_ANDAMENTO
   FINALIZADA
   CANCELADA
   REABERTA
+
+  // ── Status expandidos (motor completo) ───────────────────────────────────
+  EM_PREENCHIMENTO
+  AGUARDANDO_APROVACAO
+  APROVADA
+  DESAPROVADA
+  DEVOLVIDA_PARA_CORRECAO
+  AGUARDANDO_SINAL
+  SINAL_RECEBIDO
+  RESERVADA
+  AGUARDANDO_FINANCEIRO
+  FINANCEIRO_APROVADO
+  FINANCEIRO_REPROVADO
+  AGUARDANDO_DOCUMENTACAO
+  DOCUMENTACAO_CONCLUIDA
+  AGUARDANDO_CONTRATO
+  CONTRATO_GERADO
+  AGUARDANDO_ASSINATURA
+  ASSINADA
+  AGUARDANDO_ENTREGA
+  ENTREGUE
+  BLOQUEADA
 }
 
 enum PersonType {
@@ -206,6 +229,16 @@ enum AutoSyncTriggerType {
   AUTO
   MANUAL
   SIMULATION
+}
+
+enum SheetRowStatus {
+  PENDENTE
+  PROCESSANDO
+  NEGOCIACAO_CRIADA
+  NEGOCIACAO_ATUALIZADA
+  IGNORADA
+  ERRO
+  AGUARDANDO_CONFERENCIA
 }
 
 enum AutoSyncAction {
@@ -464,6 +497,7 @@ model User {
   notificationPreference  NotificationPreference?
   contractParseResults    ContractParseResult[]
   dealReleaseRequests     DealReleaseRequest[]    @relation("ReleasedByUser")
+  managedDeals            Deal[]                  @relation("DealManager")
   vehicleEvaluations      VehicleEvaluation[]     @relation("EvaluatedByUser")
   resolvedStockPendencies VehicleStockPendency[]  @relation("ResolvedStockPendencies")
   tenantPartner           TenantPartner?
@@ -837,6 +871,21 @@ model VehicleEvaluation {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // ── Reformulação Avaliação completa (etapas, gastos, integração) ─────────
+  // Status de workflow paralelo ao `result`: DRAFT | IN_PROGRESS |
+  // PENDING_REVIEW | FINALIZED | APPROVED | REJECTED | REOPENED | CANCELED
+  status            String?   @default("DRAFT")
+  /// Soma de todos os EvaluationService.estimatedCost (cache calculado no save)
+  totalExpenses     Decimal?  @default(0) @db.Decimal(12, 2)
+  /// Previsão de dias para realizar os serviços
+  estimatedDays     Int?
+  /// Feedback final do avaliador no Resumo
+  evaluatorFeedback String?
+  /// Vínculo com Deal (negociação) quando aplicável
+  negotiationId     String?
+  /// Para test-drive: usuário realizou? Observações opcionais
+  testDriveDone     Boolean?  @default(false)
+
   // Relations
   vehicle     Vehicle? @relation(fields: [vehicleId], references: [id])
   unit        Unit?    @relation("UnitEvaluations", fields: [unitId], references: [id])
@@ -846,6 +895,8 @@ model VehicleEvaluation {
   @@index([vehicleId])
   @@index([unitId])
   @@index([result])
+  @@index([status])
+  @@index([negotiationId])
   @@index([createdAt])
   @@map("vehicle_evaluations")
 }
@@ -929,11 +980,15 @@ model Contract {
   commissionCalcs CommissionCalculation[]
   pendencies      Pendency[]
 
+  dealId          String?
+  deal            Deal?           @relation("DealContracts", fields: [dealId], references: [id])
+
   @@index([tenantId])
   @@index([customerId])
   @@index([vehicleId])
   @@index([sellerId])
   @@index([saleDate])
+  @@index([dealId])
   @@map("contracts")
 }
 
@@ -968,15 +1023,36 @@ model ContractParseResult {
 /// Negociação — unidade central do módulo comercial
 model Deal {
   id         String     @id @default(cuid())
+  dealNumber String?    // número legível da negociação (ex: NEG-2026-001)
   tenantId   String?
   unitId     String?
   sellerId   String?
+  managerId  String?    // gerente responsável (User.id)
   customerId String?    // Customer vinculado
   personId   String?    // Person universal PF/PJ
   type       DealType   @default(VENDA)
   status     DealStatus @default(RASCUNHO)
+  source     String?    @default("MANUAL") // MANUAL, PLANILHA, API
 
-  // Valores de resumo (calculados no save)
+  // ── Valores financeiros expandidos ───────────────────────────────────────
+  saleAmount        Decimal? @db.Decimal(12, 2) // valor de venda
+  purchaseAmount    Decimal? @db.Decimal(12, 2) // valor de compra
+  financedAmount    Decimal? @db.Decimal(12, 2) // valor financiado
+  documentationFee  Decimal? @db.Decimal(12, 2) // taxa de documentação
+  signalAmount      Decimal? @db.Decimal(12, 2) // sinal / entrada
+  payoffAmount      Decimal? @db.Decimal(12, 2) // quitação do veículo recebido
+  discountAmount    Decimal? @db.Decimal(12, 2) // desconto concedido
+  servicesAmount    Decimal? @db.Decimal(12, 2) // total de serviços adicionais
+  marginAmount      Decimal? @db.Decimal(12, 2) // margem calculada
+  paymentBank       String?  // banco/financeira
+  paymentType       String?  // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, MISTO
+
+  // ── Consignação ──────────────────────────────────────────────────────────
+  consignMinValue   Decimal?  @db.Decimal(12, 2) // valor mínimo aceito
+  consignCommPct    Decimal?  @db.Decimal(6, 4)  // comissão da loja (%)
+  consignDeadline   DateTime?                     // prazo da consignação
+
+  // ── Valores de resumo (calculados no save) — mantidos para compatibilidade
   vehicleValue    Decimal? @db.Decimal(12, 2)
   tradeValue      Decimal? @db.Decimal(12, 2)
   totalDebts      Decimal? @db.Decimal(12, 2)
@@ -984,7 +1060,7 @@ model Deal {
   balance         Decimal? @db.Decimal(12, 2)
   changeAmount    Decimal? @db.Decimal(12, 2) // troco
 
-  // Troco destinatário
+  // ── Troco — destinatário ─────────────────────────────────────────────────
   changeBeneficiary    String?
   changeBeneficiaryCpf String?
   changeBank           String?
@@ -992,64 +1068,143 @@ model Deal {
   changeAccount        String?
   changePix            String?
 
-  // Controle de notificação (evita reenvio em edições)
+  // ── Aprovação / Rejeição ─────────────────────────────────────────────────
+  approvalNotes    String?
+  approvedById     String?   // User.id de quem aprovou/rejeitou
+  approvedAt       DateTime?
+
+  // ── Datas operacionais ───────────────────────────────────────────────────
+  deliveryDate     DateTime? // data prevista de entrega
+  finalizedAt      DateTime? // quando foi finalizada
+  cancelledAt      DateTime? // quando foi cancelada
+  cancelledById    String?   // User.id de quem cancelou
+  cancelledReason  String?   // motivo obrigatório do cancelamento
+
+  // ── Controle de notificação ──────────────────────────────────────────────
   notificationSentAt DateTime?
 
-  // Quem liberou/recusou
-  releasedAt      DateTime?
+  // ── Legado (mantido para compatibilidade) ────────────────────────────────
+  releasedAt       DateTime?
   releasedByUserId String?
-  recusedAt       DateTime?
-  recusedByUserId String?
-  recusedReason   String?
+  recusedAt        DateTime?
+  recusedByUserId  String?
+  recusedReason    String?
 
-  notes     String?
+  notes String?
+
+  // ── Importação de planilha ───────────────────────────────────────────────
+  externalId          String?
+  saleDate            DateTime?
+  sellerNameFromSheet String?
+  isSellerProvisional Boolean   @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  tenant           Tenant?            @relation(fields: [tenantId], references: [id])
-  seller           Seller?            @relation(fields: [sellerId], references: [id])
-  customer         Customer?          @relation(fields: [customerId], references: [id])
-  person           Person?            @relation("DealCustomerPerson", fields: [personId], references: [id])
-  vehicles         DealVehicle[]
-  debts            DealDebt[]
-  payments         DealPayment[]
-  history          DealStatusHistory[]
-  releaseRequests  DealReleaseRequest[]
-  appointments     Appointment[]
+  tenant          Tenant?              @relation(fields: [tenantId], references: [id])
+  seller          Seller?              @relation(fields: [sellerId], references: [id])
+  customer        Customer?            @relation(fields: [customerId], references: [id])
+  person          Person?              @relation("DealCustomerPerson", fields: [personId], references: [id])
+  manager         User?                @relation("DealManager", fields: [managerId], references: [id])
+  vehicles        DealVehicle[]
+  debts           DealDebt[]
+  payments        DealPayment[]
+  services        DealService[]
+  history         DealStatusHistory[]
+  auditLogs       DealAuditLog[]
+  releaseRequests DealReleaseRequest[]
+  appointments    Appointment[]
+  pendencies      Pendency[]           @relation("DealPendencies")
+  contracts       Contract[]           @relation("DealContracts")
+  sheetImportRows SheetImportRow[]     @relation("DealSheetRows")
 
   @@index([tenantId])
   @@index([unitId])
   @@index([sellerId])
+  @@index([managerId])
   @@index([status])
   @@index([type])
+  @@index([externalId])
+  @@index([dealNumber])
   @@map("deals")
 }
 
 /// Veículo envolvido na negociação (vendido, trocado, comprado, consignado)
 model DealVehicle {
-  id          String  @id @default(cuid())
-  dealId      String
-  vehicleId   String?
-  role        String  // VENDIDO, TROCA, COMPRADO, CONSIGNADO
-  plate       String?
-  brand       String?
-  model       String?
-  year        Int?
-  color       String?
-  chassi      String?
-  renavam     String?
-  agreedValue Decimal? @db.Decimal(12, 2)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  dealId         String
+  vehicleId      String?
+  role           String   // VENDIDO, TROCA, COMPRADO, CONSIGNADO
+  plate          String?
+  brand          String?
+  model          String?
+  year           Int?
+  color          String?
+  chassi         String?
+  renavam        String?
+  km             Int?     // quilometragem
+  condition      String?  // OTIMO, BOM, REGULAR, RUIM
+  agreedValue    Decimal? @db.Decimal(12, 2) // valor acordado na negociação
+  evaluatedValue Decimal? @db.Decimal(12, 2) // valor avaliado
+  fipeValue      Decimal? @db.Decimal(12, 2) // valor FIPE
+  hasFinancing   Boolean  @default(false)    // tem financiamento ativo?
+  payoffValue    Decimal? @db.Decimal(12, 2) // valor de quitação
+  payoffBank     String?  // banco da quitação
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relations
   deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
   vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
 
   @@index([dealId])
+  @@index([dealId, role])
   @@map("deal_vehicles")
+}
+
+/// Serviços adicionais vinculados à negociação
+model DealService {
+  id         String   @id @default(cuid())
+  dealId     String
+  name       String   // ex: Garantia, Vitrificação, Insulfilm, Higienização…
+  value      Decimal  @db.Decimal(12, 2) // valor cobrado do cliente
+  cost       Decimal? @db.Decimal(12, 2) // custo para a loja
+  supplier   String?  // fornecedor
+  commission Decimal? @db.Decimal(12, 2) // comissão sobre o serviço
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@map("deal_services")
+}
+
+/// Auditoria detalhada (campo a campo) de ações nas negociações
+model DealAuditLog {
+  id       String   @id @default(cuid())
+  dealId   String
+  tenantId String?
+  unitId   String?
+  userId   String?
+  userName String?
+  userRole String?
+  action   String   // CRIAR, EDITAR, APROVAR, REJEITAR, CANCELAR, FINALIZAR, STATUS, etc.
+  field    String?  // campo alterado (ex: "status", "saleAmount")
+  oldValue String?  // valor anterior (serializado)
+  newValue String?  // valor novo (serializado)
+  reason   String?  // motivo informado
+  metadata Json?    // dados extras estruturados
+  createdAt DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([tenantId])
+  @@index([action])
+  @@map("deal_audit_logs")
 }
 
 /// Débito do veículo envolvido na negociação
@@ -1253,6 +1408,8 @@ model Pendency {
   escalatedAt      DateTime?
   escalatedByUserId String?         // quem escalou
   notes            String?
+  // Vínculo com negociação (Deal)
+  dealId           String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -1267,6 +1424,7 @@ model Pendency {
   customer       Customer?               @relation(fields: [customerId], references: [id])
   vehicleRef     Vehicle?                @relation(fields: [vehicleId], references: [id])
   contract       Contract?               @relation(fields: [contractId], references: [id])
+  deal           Deal?                   @relation("DealPendencies", fields: [dealId], references: [id])
   template       WhatsappTemplate?       @relation(fields: [templateId], references: [id])
   statusHistory  PendencyStatusHistory[]
   messages       PendencyMessage[]
@@ -1704,9 +1862,10 @@ model GoogleSheetConfig {
   updatedAt     DateTime  @updatedAt
 
   // Relations
-  tabs       GoogleSheetTab[]
-  importJobs ImportJob[]
-  autoSync   GoogleSheetsAutoSyncConfig?
+  tabs            GoogleSheetTab[]
+  importJobs      ImportJob[]
+  autoSync        GoogleSheetsAutoSyncConfig?
+  sheetImportRows SheetImportRow[]
 
   @@index([tenantId])
   @@map("google_sheet_configs")
@@ -1788,6 +1947,60 @@ model ImportJob {
   @@map("import_jobs")
 }
 
+// ── Staging de linhas importadas (raw) — base para o processador de negociações ─
+
+model SheetImportRow {
+  id             String         @id @default(cuid())
+  configId       String
+  tabId          String?
+  sheetName      String
+  rowIndex       Int
+  referenceMonth String?
+
+  // Dados brutos mapeados (todos os campos do columnMapping)
+  rawData        Json
+
+  // Campos-chave denormalizados para query eficiente
+  externalId     String?        // negotiation ID (Negociação Saida ID)
+  dedupeKey      String?        // configId:sheetName:externalId — para upsert idempotente
+
+  // Campos mapeados mais usados (para listagem sem parsear rawData)
+  customerName   String?
+  sellerName     String?
+  plate          String?
+  vehicleModel   String?
+  saleDate       String?        // string original da planilha
+  statusMain     String?
+  statusDetail   String?
+  saleValue      String?
+  docValue       String?
+  financedValue  String?
+  bank           String?
+  returnType     String?
+  dealType       String?
+  timeInStock    String?
+
+  // Estado do processamento
+  status         SheetRowStatus @default(PENDENTE)
+  dealId         String?        // Deal criado/atualizado a partir desta linha
+  errorMessage   String?
+  warningMessage String?
+  processedAt    DateTime?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  // Relations
+  config  GoogleSheetConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  deal    Deal?             @relation("DealSheetRows", fields: [dealId], references: [id])
+
+  @@index([configId, status])
+  @@index([dedupeKey])
+  @@index([dealId])
+  @@index([configId, sheetName, externalId])
+  @@map("sheet_import_rows")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTO-SYNC — Atualizador automático programável do Google Sheets
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1803,6 +2016,7 @@ model GoogleSheetsAutoSyncConfig {
   endTime             String          @default("18:00")
   selectedTabs        Json?           // null = todas as abas ativas
   actionAfterDownload AutoSyncAction  @default(IMPORTAR_PENDENCIAS)
+  processDeals        Boolean         @default(false) // processa negociações automaticamente após importação
   notifyOnNewRecords  Boolean         @default(false)
   notifyOnError       Boolean         @default(true)
   errorNotifyTarget   String?
@@ -2237,6 +2451,167 @@ model IntegrationCredential {
   @@index([service])
   @@index([active])
   @@map("integration_credentials")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CATÁLOGOS PERSISTENTES — Bancos (BrasilAPI)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Catálogo de bancos brasileiros — espelho persistente da BrasilAPI.
+/// Permite consultas offline e sobrevive a restart sem hit na API externa.
+/// Atualizado via /api/integrations/brasilapi/banks?refresh=1 (MASTER/ADM).
+model Bank {
+  id          String    @id @default(cuid())
+  /// Código compe (3 dígitos). Pode ser nulo (ISPB-only).
+  code        Int?
+  /// Identificador único oficial (ISPB) — 8 dígitos.
+  ispb        String    @unique
+  name        String
+  fullName    String?
+  active      Boolean   @default(true)
+  fetchedAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([code])
+  @@index([active])
+  @@map("banks")
+}
+
+/// Cache persistente de respostas FIPE (provider Parallelum).
+/// `cacheKey` é um identificador único por endpoint + parâmetros.
+/// `expiresAt` é consultado pelo service para decidir se reaproveita ou refresca.
+model FipeCache {
+  id          String   @id @default(cuid())
+  provider    String   @default("parallelum")
+  cacheKey    String   @unique
+  endpoint    String   // references | brands | models | years | price | priceByCode
+  vehicleType String?  // cars | motorcycles | trucks
+  brandId     String?
+  modelId     String?
+  yearId      String?
+  codeFipe    String?
+  reference   String?  // mês/ano referência da tabela FIPE
+  data        Json
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([provider])
+  @@index([endpoint])
+  @@index([vehicleType])
+  @@index([expiresAt])
+  @@map("fipe_cache")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AVALIAÇÃO DE VEÍCULOS — Item / Service / Attachment / History
+// Estende o modelo VehicleEvaluation existente sem alterá-lo.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Item individual de checklist dentro de uma avaliação.
+/// Exemplo: "Banco motorista" da seção "INTERIOR".
+model EvaluationItem {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  evaluationId  String
+  section       String   // INTERIOR | FRENTE | DIREITA | TRASEIRA | ESQUERDA | TEST_DRIVE | DOCUMENTOS | SERVICOS
+  catalogKey    String?  // chave canônica do catálogo (ex: "interior.banco_motorista")
+  name          String
+  status        String   @default("PENDING") // PENDING | CONFORME | ATENCAO | REPARO | OBRIGATORIO | NA | REAVALIAR
+  priority      String?  // BAIXA | MEDIA | ALTA | URGENTE
+  notes         String?
+  totalExpenses Decimal? @default(0) @db.Decimal(12, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  services    EvaluationService[]
+  attachments EvaluationAttachment[]
+  history     EvaluationHistory[]
+
+  @@index([evaluationId])
+  @@index([evaluationId, section])
+  @@index([catalogKey])
+  @@map("evaluation_items")
+}
+
+/// Serviço associado a um item (ou solto, com itemId=null para serviços gerais).
+model EvaluationService {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  evaluationId  String
+  itemId        String?  // null = serviço geral da avaliação
+  section       String?  // copiado do item, ou GERAL
+  description   String
+  serviceType   String   // PINTURA | FUNILARIA | POLIMENTO | HIGIENIZACAO | MECANICA | ... | OUTRO
+  estimatedCost Decimal? @default(0) @db.Decimal(12, 2)
+  actualCost    Decimal? @db.Decimal(12, 2)
+  priority      String?
+  status        String   @default("PREDICTED") // PREDICTED | APPROVED | IN_PROGRESS | DONE | CANCELED
+  responsibleId String?  // userId responsável sugerido
+  notes         String?
+  createdAt     DateTime @default(now())
+  createdById   String?
+  updatedAt     DateTime @updatedAt
+
+  item EvaluationItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([evaluationId])
+  @@index([itemId])
+  @@index([status])
+  @@map("evaluation_services")
+}
+
+/// Anexo (foto/PDF/documento) de uma avaliação.
+/// Pode estar ligado a um item, a um serviço, ou solto na avaliação.
+model EvaluationAttachment {
+  id           String   @id @default(cuid())
+  tenantId     String
+  evaluationId String
+  itemId       String?
+  serviceId    String?
+  section      String?  // INTERIOR | FRENTE | DOCUMENTOS | ...
+  category     String?  // CRLV | ATPV_E | DUT_CRV | LAUDO_CAUTELAR | COMPROVANTE | CNH | FOTO | OUTRO
+  fileName     String
+  fileType     String   // image | pdf | other
+  mimeType     String
+  fileSize     Int?
+  storageKey   String   // chave no storage (path local ou S3 key)
+  publicUrl    String?
+  uploadedById String?
+  uploadedByName String?
+  createdAt    DateTime @default(now())
+
+  item EvaluationItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([evaluationId])
+  @@index([itemId])
+  @@index([section])
+  @@index([category])
+  @@map("evaluation_attachments")
+}
+
+/// Histórico de reavaliações de itens / mudanças sensíveis.
+model EvaluationHistory {
+  id           String   @id @default(cuid())
+  tenantId     String
+  evaluationId String
+  itemId       String?
+  serviceId    String?
+  userId       String?
+  userName     String?
+  userRole     String?
+  action       String   // CREATE_ITEM | REVALUATE | ADD_SERVICE | UPDATE_SERVICE | REMOVE_SERVICE | ADD_ATTACHMENT | REMOVE_ATTACHMENT | FINISH | REOPEN
+  oldValue     Json?
+  newValue     Json?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  item EvaluationItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([evaluationId])
+  @@index([itemId])
+  @@index([action])
+  @@map("evaluation_history")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -49,6 +49,7 @@ export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateI
   const [display,    setDisplay]    = useState('')
   const [status,     setStatus]     = useState<LookupStatus>('idle')
   const [lastLooked, setLastLooked] = useState('')
+  const [overrideMsg, setOverrideMsg] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Sincroniza display quando value chega como prop normalizado
@@ -59,6 +60,7 @@ export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateI
   const doLookup = useCallback(async (plate: string, force = false) => {
     if (!force && plate === lastLooked) return
     setStatus('loading')
+    setOverrideMsg(null)
     setLastLooked(plate)
 
     try {
@@ -68,6 +70,7 @@ export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateI
 
       if (!res.ok || !data.success) {
         setStatus('error')
+        if (data?.error) setOverrideMsg(String(data.error))
         onLookupResult?.(null, 'error')
         return
       }
@@ -77,6 +80,9 @@ export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateI
         onLookupResult?.(data.data, 'found')
       } else {
         setStatus('not_found')
+        // O backend agora envia mensagem específica quando API de placa
+        // não está configurada (PLATE_LOOKUP). Usamos ela quando vier.
+        if (data?.message) setOverrideMsg(String(data.message))
         onLookupResult?.(null, 'not_found')
       }
     } catch (_) {
@@ -141,11 +147,11 @@ export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateI
         </div>
       </div>
 
-      {/* Mensagem de status */}
+      {/* Mensagem de status — usa override do servidor quando disponível */}
       {statusConfig && (
         <div className={`flex items-center gap-2 text-sm font-medium ${statusConfig.className}`}>
           {statusConfig.icon}
-          <span>{statusConfig.text}</span>
+          <span>{overrideMsg ?? statusConfig.text}</span>
         </div>
       )}
 

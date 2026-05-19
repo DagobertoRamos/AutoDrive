@@ -30,46 +30,6 @@ export interface CoreImportSummary {
   durationMs:     number
 }
 
-// ── Mapeamento de tipos de pendência ──────────────────────────────────────────
-
-const TYPE_MAP: Record<string, string> = {
-  'pendência vendedor':                            'PENDENCIA_VENDEDOR',
-  'pendência gerência':                            'PENDENCIA_GERENCIA',
-  'outras pendências':                             'OUTRAS',
-  'processo entregue com pendência vendedor':      'ENTREGUE_PENDENCIA_VENDEDOR',
-  'processo entregue com pendência gerência':      'ENTREGUE_PENDENCIA_GERENCIA',
-  'processo com o vendedor':                       'COM_VENDEDOR',
-  'processo com a gerência':                       'COM_GERENCIA',
-  'veículo não entregue':                          'VEICULO_NAO_ENTREGUE',
-  'contrato pendente':                             'CONTRATO_PENDENTE',
-  'pendência financeira':                          'PENDENCIA_FINANCEIRA',
-  'documentação interna':                          'DOCUMENTACAO_INTERNA',
-  'pendência renave':                              'PENDENCIA_RENAVE',
-  'laudo pendente':                                'LAUDO_PENDENTE',
-  'preparação pendente':                           'PREPARACAO_PENDENTE',
-  'pós-venda pendente':                            'POS_VENDA_PENDENTE',
-  'processo de compra pendente':                   'PROCESSO_COMPRA_PENDENTE',
-  'processo de venda pendente':                    'PROCESSO_VENDA_PENDENTE',
-}
-
-function classifyType(status: string): string {
-  return TYPE_MAP[(status ?? '').toLowerCase().trim()] ?? 'OUTRAS'
-}
-
-function buildDescription(
-  row: Record<string, string>,
-  tab: { sheetName: string; monthReference?: string | null },
-): string {
-  return [
-    `Pendência importada da aba ${tab.monthReference ?? tab.sheetName}`,
-    row.statusMain   ? `Status na origem: ${row.statusMain}`   : null,
-    row.statusDetail ? `Detalhe: ${row.statusDetail}`          : null,
-    row.saleDate     ? `Data da venda: ${row.saleDate}`        : null,
-    row.timeInStock  ? `TV: ${row.timeInStock}`                : null,
-    row.negotiation  ? `Negociação: #${row.negotiation}`       : null,
-  ].filter(Boolean).join(' | ')
-}
-
 // ── Função principal ──────────────────────────────────────────────────────────
 
 export async function runCoreImport(opts: CoreImportOptions): Promise<CoreImportSummary> {
@@ -95,7 +55,7 @@ export async function runCoreImport(opts: CoreImportOptions): Promise<CoreImport
     : config.tabs
 
   const mapping    = (config.columnMapping ?? {}) as Record<string, string>
-  const auth       = buildGoogleAuth()
+  const auth       = await buildGoogleAuth()
   const sheets     = google.sheets({ version: 'v4', auth })
   const maxRows    = opts.maxRows && opts.maxRows > 0 ? opts.maxRows : Infinity
 
@@ -111,7 +71,7 @@ export async function runCoreImport(opts: CoreImportOptions): Promise<CoreImport
     try {
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: config.spreadsheetId,
-        range:         `${tab.sheetName}!A1:Z`,
+        range:         `${tab.sheetName}!A1:ZZ`,
       })
 
       sheetsRead.push(tab.sheetName)
@@ -119,10 +79,12 @@ export async function runCoreImport(opts: CoreImportOptions): Promise<CoreImport
       if (rows.length < 2) continue
 
       const dataRows = rows.slice(tab.headerRow ?? 1)
+      let rowIndex   = tab.headerRow ?? 1
 
       for (const rawRow of dataRows) {
         if (totalRows >= maxRows) break
         totalRows++
+        rowIndex++
 
         const row: Record<string, string> = {}
         Object.entries(mapping).forEach(([idx, field]) => {
@@ -138,60 +100,67 @@ export async function runCoreImport(opts: CoreImportOptions): Promise<CoreImport
 
         if (opts.dryRun) { newRecords++; continue }
 
-        try {
-          let responsibleId: string | null = null
-          if (row.sellerName) {
-            const seller = await prisma.seller.findFirst({
-              where: { fullName: { contains: row.sellerName, mode: 'insensitive' } },
+        // ── Salva na staging table SheetImportRow (sempre, independente do vendedor) ──
+        if (config.tenantId && config.unitId) {
+          try {
+            const dedupeKey = `${config.id}:${tab.sheetName}:${row.negotiation}`
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const existingRow = await (prisma.sheetImportRow as any).findFirst({
+              where: { dedupeKey },
             })
-            responsibleId = seller?.id ?? null
-          }
 
-          const existing = await prisma.pendency.findFirst({
-            where: {
-              tenantId:    config.tenantId,
-              negotiation: row.negotiation,
-              status:      { notIn: ['FINALIZADA', 'CANCELADA'] },
-            },
-          })
+            const stagingData = {
+              configId:      config.id,
+              tabId:         tab.id,
+              sheetName:     tab.sheetName,
+              rowIndex,
+              referenceMonth:tab.monthReference ?? undefined,
+              rawData:       row,
+              externalId:    row.negotiation    || undefined,
+              dedupeKey,
+              customerName:  row.customerName   || row.unit || undefined,
+              sellerName:    row.sellerName      || undefined,
+              plate:         row.plate           || undefined,
+              vehicleModel:  row.vehicle         || undefined,
+              saleDate:      row.saleDate        || undefined,
+              statusMain:    row.statusMain      || undefined,
+              statusDetail:  row.statusDetail    || undefined,
+              saleValue:     row.saleValue       || undefined,
+              docValue:      row.docValue        || undefined,
+              financedValue: row.financedValue   || undefined,
+              bank:          row.bank            || undefined,
+              returnType:    row.returnType      || undefined,
+              dealType:      row.dealType        || undefined,
+              timeInStock:   row.timeInStock     || undefined,
+              updatedAt:     new Date(),
+            }
 
-          if (existing) {
-            await prisma.pendency.update({
-              where: { id: existing.id },
-              data:  {
-                vehicle:     row.vehicle || existing.vehicle,
-                description: buildDescription(row, tab),
-                source:      'SHEETS',
-              },
-            })
-            updatedRecords++
-          } else {
-            await prisma.pendency.create({
-              data: {
-                tenantId:       config.tenantId,
-                unitId:         config.unitId!,
-                customerName:   row.customerName || row.unit || '(não informado)',
-                plate:          row.plate || null,
-                vehicle:        row.vehicle || null,
-                negotiation:    row.negotiation,
-                responsibleId:  responsibleId ?? undefined,
-                description:    buildDescription(row, tab),
-                type:           classifyType(row.statusMain),
-                priority:       'MEDIA',
-                status:         'ABERTA',
-                source:         'SHEETS',
-                referenceMonth: tab.monthReference ?? null,
-                allowedDays:    [],
-                originModule:   'SHEETS',
-                originRecordId: `${tab.sheetName}:${row.negotiation}`,
-              },
-            })
-            newRecords++
+            if (existingRow && ['NEGOCIACAO_CRIADA', 'NEGOCIACAO_ATUALIZADA'].includes(existingRow.status)) {
+              // Já processado com sucesso — só atualiza rawData para manter dados frescos
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (prisma.sheetImportRow as any).update({
+                where: { id: existingRow.id },
+                data:  { rawData: row, updatedAt: new Date() },
+              })
+            } else if (existingRow) {
+              // Existe mas não foi processado com sucesso → reseta para PENDENTE
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (prisma.sheetImportRow as any).update({
+                where: { id: existingRow.id },
+                data:  { ...stagingData, status: 'PENDENTE', errorMessage: null, processedAt: null },
+              })
+            } else {
+              // Nova linha — cria como PENDENTE para o deal processor processar
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (prisma.sheetImportRow as any).create({ data: { ...stagingData, status: 'PENDENTE' } })
+            }
+          } catch {
+            // Falha no staging não impede o fluxo de pendências (não-bloqueante)
           }
-        } catch (rowErr) {
-          errorRows++
-          errors.push(`Linha (neg: ${row.negotiation}): ${String(rowErr)}`)
         }
+
+        // Linha salva na staging — o deal processor criará negociação e pendência vinculada
+        newRecords++
       }
 
       if (!opts.dryRun) {

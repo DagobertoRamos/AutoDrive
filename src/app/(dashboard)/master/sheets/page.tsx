@@ -20,8 +20,11 @@ import {
   AlertCircle, Play, Eye, RefreshCw, ChevronDown, ChevronRight,
   ToggleLeft, ToggleRight, Database, Search,
   Clock, Pause, Zap, Settings2, ListChecks, Calendar, Timer, Bot, History,
+  SlidersHorizontal, ArrowRightLeft, RotateCcw, UserX, BadgeAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import PlanilhaConfigModal          from './PlanilhaConfigModal'
+import SheetCredentialsSettings     from './SheetCredentialsSettings'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +99,31 @@ interface TestResult {
   responseMs?: number
 }
 
+interface DealProcessResult {
+  success:            boolean
+  message:            string
+  dryRun:             boolean
+  totalRows:          number
+  dealsCreated:       number
+  dealsUpdated:       number
+  provisionalSellers: number
+  pendenciesCreated:  number
+  errors:             number
+  errorDetails:       string[]
+  durationMs:         number
+}
+
+interface SheetRowStats {
+  total:           number
+  pending:         number
+  dealCreated:     number
+  dealUpdated:     number
+  waitingReview:   number
+  error:           number
+  ignored:         number
+  lastProcessedAt: string | null
+}
+
 interface AutoSyncJob {
   id:           string
   status:       'RUNNING' | 'SUCCESS' | 'ERROR' | 'SKIPPED' | 'LOCKED'
@@ -124,6 +152,7 @@ interface AutoSyncConfig {
   endTime:             string
   selectedTabs:        string[] | null
   actionAfterDownload: string
+  processDeals:        boolean
   notifyOnNewRecords:  boolean
   notifyOnError:       boolean
   errorNotifyTarget:   string | null
@@ -415,6 +444,7 @@ function AutoSyncModal({ configId, tabs, initial, onClose, onSaved }: {
     endTime:             initial?.endTime              ?? '18:00',
     selectedTabs:        initial?.selectedTabs         ?? null as string[] | null,
     actionAfterDownload: initial?.actionAfterDownload  ?? 'IMPORTAR_PENDENCIAS',
+    processDeals:        initial?.processDeals         ?? false,
     notifyOnNewRecords:  initial?.notifyOnNewRecords   ?? false,
     notifyOnError:       initial?.notifyOnError        ?? true,
     errorNotifyTarget:   initial?.errorNotifyTarget    ?? '',
@@ -460,6 +490,7 @@ function AutoSyncModal({ configId, tabs, initial, onClose, onSaved }: {
           endTime:             form.endTime,
           selectedTabs:        form.selectedTabs,
           actionAfterDownload: form.actionAfterDownload,
+          processDeals:        form.processDeals,
           notifyOnNewRecords:  form.notifyOnNewRecords,
           notifyOnError:       form.notifyOnError,
           errorNotifyTarget:   form.errorNotifyTarget || null,
@@ -689,6 +720,25 @@ function AutoSyncModal({ configId, tabs, initial, onClose, onSaved }: {
             </div>
           </div>
 
+          {/* Processamento de Negociações */}
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-2">
+            <p className="text-xs font-semibold text-indigo-800">Conversão em Negociações</p>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600"
+                checked={form.processDeals}
+                onChange={e => setForm(p => ({ ...p, processDeals: e.target.checked }))}
+              />
+              <span className="text-xs text-indigo-700 leading-relaxed">
+                Processar automaticamente cada linha como Negociação (Deal) após a importação
+              </span>
+            </label>
+            {form.processDeals && (
+              <p className="text-[10px] text-indigo-500 pl-6.5">
+                Vendedores não encontrados terão um responsável provisório designado e uma pendência de revisão gerada.
+              </p>
+            )}
+          </div>
+
           {/* Notificações */}
           <div className="rounded-xl border border-gray-200 p-4 space-y-3">
             <p className="text-xs font-semibold text-gray-700">Notificações</p>
@@ -837,18 +887,23 @@ function AutoSyncCard({ configId, tabs, initialConfig, onConfigChange }: {
 
   async function handleToggle() {
     setToggling(true)
+    setRunResult(null)
     try {
       const enabled = !(autoSync?.enabled ?? false)
-      const res = await fetch(`/api/master/sheets/${configId}/auto-sync`, {
-        method: 'PUT',
+      const res  = await fetch(`/api/master/sheets/${configId}/auto-sync`, {
+        method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body:    JSON.stringify({ enabled }),
       })
       const data = await res.json()
       if (data.success) {
         setAutoSync(data.data)
         onConfigChange(data.data)
+      } else {
+        setRunResult({ success: false, msg: data.error ?? 'Erro ao alterar estado do robô.' })
       }
+    } catch {
+      setRunResult({ success: false, msg: 'Erro de conexão ao alterar estado do robô.' })
     } finally {
       setToggling(false)
     }
@@ -1119,9 +1174,17 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
   const [previewing, setPreviewing] = useState(false)
   const [testResult, setTestResult] = useState<TestResult | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
-  const [previewData, setPreviewData] = useState<PreviewData | null>(null)
-  const [selectedTab, setSelectedTab] = useState<string>('')
-  const [autoSyncCfg, setAutoSyncCfg] = useState<AutoSyncConfig | null>(config.autoSync ?? null)
+  const [previewData,       setPreviewData]       = useState<PreviewData | null>(null)
+  const [selectedTab,       setSelectedTab]       = useState<string>('')
+  const [autoSyncCfg,       setAutoSyncCfg]       = useState<AutoSyncConfig | null>(config.autoSync ?? null)
+  const [showConfigModal,   setShowConfigModal]   = useState(false)
+
+  // ── Deal Processor ────────────────────────────────────────────────────────
+  const [rowStats,          setRowStats]          = useState<SheetRowStats | null>(null)
+  const [rowStatsLoading,   setRowStatsLoading]   = useState(false)
+  const [processing,        setProcessing]        = useState(false)
+  const [processResult,     setProcessResult]     = useState<DealProcessResult | null>(null)
+  const [showDealSection,   setShowDealSection]   = useState(false)
 
   const tabs = asArray<SheetTab>(config.tabs)
   const importJobs = asArray<ImportJob>(config.importJobs)
@@ -1214,17 +1277,51 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
     onRefresh()
   }
 
+  async function loadRowStats() {
+    setRowStatsLoading(true)
+    try {
+      const res  = await fetch(`/api/master/sheets/${config.id}/process-deals/status`)
+      const data = await res.json()
+      if (data.success) setRowStats(data.data)
+    } catch { /* silencioso */ }
+    finally { setRowStatsLoading(false) }
+  }
+
+  async function handleProcessDeals(dryRun: boolean, reset = false) {
+    setProcessing(true)
+    setProcessResult(null)
+    try {
+      const res  = await fetch(`/api/master/sheets/${config.id}/process-deals`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ dryRun, resetPending: reset }),
+      })
+      const data = await res.json()
+      setProcessResult(data)
+      await loadRowStats()
+    } catch (err: unknown) {
+      setProcessResult({
+        success: false, message: err instanceof Error ? err.message : 'Erro ao processar.', dryRun,
+        totalRows: 0, dealsCreated: 0, dealsUpdated: 0, provisionalSellers: 0,
+        pendenciesCreated: 0, errors: 1, errorDetails: [], durationMs: 0,
+      })
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   async function deleteTab(tab: SheetTab) {
     if (!confirm(`Remover aba "${tab.sheetName}"?`)) return
     await fetch(`/api/master/sheets/${config.id}/tabs/${tab.id}`, { method: 'DELETE' })
     onRefresh()
   }
 
-  const availableSheets = asArray<{ title: string; gid: string }>(testResult?.availableSheets)
-  const previewColumnDefs = asArray<{ index: number; field: string; label: string; headerValue: string }>(previewData?.columnDefs)
-  const previewRows = asArray<Record<string, string>>(previewData?.preview)
-  const importSheetsNotFound = asArray<string>(importResult?.sheetsNotFound)
-  const importErrors = asArray<string>(importResult?.errors)
+  const availableSheets        = asArray<{ title: string; gid: string }>(testResult?.availableSheets)
+  const previewColumnDefs      = asArray<{ index: number; field: string; label: string; headerValue: string }>(previewData?.columnDefs)
+  const previewRows            = asArray<Record<string, string>>(previewData?.preview)
+  const importSheetsNotFound   = asArray<string>(importResult?.sheetsNotFound)
+  const importErrors           = asArray<string>(importResult?.errors)
+  const processErrorDetails    = asArray<string>(processResult?.errorDetails)
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -1252,7 +1349,15 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <button onClick={() => setEditImporter(true)} title="Editar" className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><Edit2 size={14} /></button>
+          <button
+            onClick={() => setShowConfigModal(true)}
+            title="Configurar planilha completo"
+            className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+          >
+            <SlidersHorizontal size={13} />
+            Configurar planilha
+          </button>
+          <button onClick={() => setEditImporter(true)} title="Editar rápido" className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><Edit2 size={14} /></button>
           <button onClick={handleDelete} title="Apagar" className="rounded p-1.5 text-red-400 hover:bg-red-50"><Trash2 size={14} /></button>
           <button onClick={() => setExpanded(p => !p)} className="rounded p-1.5 text-gray-400 hover:bg-gray-100">
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -1436,6 +1541,178 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
             )}
           </div>
 
+          {/* ── Converter em Negociações ───────────────────────────────────── */}
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50/40">
+            {/* Cabeçalho colapsável */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !showDealSection
+                setShowDealSection(next)
+                if (next && !rowStats) loadRowStats()
+              }}
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
+            >
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft size={15} className="text-indigo-600" />
+                <span className="text-sm font-semibold text-indigo-800">Converter em Negociações</span>
+                {rowStats && rowStats.pending > 0 && (
+                  <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                    {rowStats.pending} pendentes
+                  </span>
+                )}
+              </div>
+              <ChevronDown size={14} className={cn('text-indigo-500 transition-transform', showDealSection && 'rotate-180')} />
+            </button>
+
+            {showDealSection && (
+              <div className="border-t border-indigo-200 px-4 pb-5 pt-4 space-y-4">
+                <p className="text-xs text-indigo-700/80 leading-relaxed">
+                  Processa as linhas já importadas da planilha e as converte em{' '}
+                  <strong>Negociações oficiais</strong> do AutoDrive — criando automaticamente
+                  Cliente, Veículo, Contrato e Pendências vinculadas.
+                  Vendedores não localizados são vinculados provisoriamente com pendência de revisão.
+                </p>
+
+                {/* Stats */}
+                {rowStatsLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-indigo-600">
+                    <Loader2 size={13} className="animate-spin" /> Carregando estatísticas…
+                  </div>
+                ) : rowStats ? (
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {[
+                      { label: 'Total',       value: rowStats.total,         color: 'text-gray-700  bg-white          border border-gray-200' },
+                      { label: 'Pendentes',   value: rowStats.pending,       color: 'text-indigo-700 bg-indigo-50    border border-indigo-200' },
+                      { label: 'Criadas',     value: rowStats.dealCreated,   color: 'text-emerald-700 bg-emerald-50  border border-emerald-200' },
+                      { label: 'Atualizadas', value: rowStats.dealUpdated,   color: 'text-blue-700   bg-blue-50      border border-blue-200' },
+                      { label: 'Revisão',     value: rowStats.waitingReview, color: 'text-amber-700  bg-amber-50     border border-amber-200' },
+                      { label: 'Ignoradas',   value: rowStats.ignored,       color: 'text-gray-500   bg-gray-50      border border-gray-200' },
+                      { label: 'Erros',       value: rowStats.error,         color: 'text-red-700    bg-red-50       border border-red-200' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} className={cn('rounded-lg p-2 text-center', color)}>
+                        <p className="text-base font-bold">{value}</p>
+                        <p className="text-[10px] font-medium">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-indigo-500 italic">Nenhuma linha importada ainda. Execute a importação da planilha primeiro.</p>
+                )}
+
+                {rowStats?.lastProcessedAt && (
+                  <p className="text-[11px] text-indigo-500">
+                    Último processamento: {formatNullableDateTime(rowStats.lastProcessedAt)}
+                  </p>
+                )}
+
+                {/* Alertas de revisão */}
+                {(rowStats?.waitingReview ?? 0) > 0 && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <UserX size={13} className="mt-0.5 shrink-0 text-amber-600" />
+                    <span>
+                      <strong>{rowStats!.waitingReview} negociações</strong> com vendedor não localizado
+                      — acesse as pendências para corrigir manualmente.
+                    </span>
+                  </div>
+                )}
+
+                {/* Botões de ação */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={processing}
+                    onClick={() => handleProcessDeals(true)}
+                    className="flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+                  >
+                    {processing ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                    Simular conversão
+                  </button>
+                  <button
+                    type="button"
+                    disabled={processing || (rowStats?.pending === 0 && !rowStats)}
+                    onClick={() => handleProcessDeals(false)}
+                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {processing ? <Loader2 size={12} className="animate-spin" /> : <ArrowRightLeft size={12} />}
+                    Processar como Negociações
+                  </button>
+                  {(rowStats?.error ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      disabled={processing}
+                      onClick={() => handleProcessDeals(false, true)}
+                      title="Reprocessar linhas com erro"
+                      className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <RotateCcw size={12} />
+                      Reprocessar erros ({rowStats!.error})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={rowStatsLoading}
+                    onClick={loadRowStats}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-2 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <RefreshCw size={11} className={rowStatsLoading ? 'animate-spin' : ''} />
+                    Atualizar
+                  </button>
+                </div>
+
+                {/* Resultado do processamento */}
+                {processResult && (
+                  <div className={cn(
+                    'rounded-lg border p-3 text-xs space-y-2',
+                    processResult.success ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50',
+                  )}>
+                    <p className={cn('font-semibold flex items-center gap-1.5', processResult.success ? 'text-emerald-800' : 'text-red-800')}>
+                      {processResult.success ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                      {processResult.dryRun ? '[SIMULAÇÃO] ' : ''}{processResult.message}
+                    </p>
+
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                      {[
+                        ['Linhas',       processResult.totalRows],
+                        ['Criadas',      processResult.dealsCreated],
+                        ['Atualizadas',  processResult.dealsUpdated],
+                        ['Provisórios',  processResult.provisionalSellers],
+                        ['Pendências',   processResult.pendenciesCreated],
+                        ['Erros',        processResult.errors],
+                      ].map(([l, v]) => (
+                        <div key={String(l)} className="rounded bg-white/60 p-1.5 text-center">
+                          <p className="text-base font-bold text-gray-800">{v}</p>
+                          <p className="text-gray-500">{l}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {processResult.provisionalSellers > 0 && (
+                      <div className="flex items-center gap-1.5 text-amber-700">
+                        <BadgeAlert size={12} />
+                        <span>{processResult.provisionalSellers} negociações com vendedor vinculado provisoriamente — verifique as pendências de revisão.</span>
+                      </div>
+                    )}
+
+                    {processErrorDetails.length > 0 && (
+                      <div>
+                        <p className="font-medium text-red-700">Erros encontrados:</p>
+                        <ul className="mt-1 space-y-0.5 text-red-600">
+                          {processErrorDetails.slice(0, 5).map((e, i) => <li key={i}>• {e}</li>)}
+                          {processErrorDetails.length > 5 && (
+                            <li className="text-gray-500">… e mais {processErrorDetails.length - 5}</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    <p className="text-gray-400">Duração: {processResult.durationMs} ms</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Atualizador automático */}
           <AutoSyncCard
             configId={config.id}
@@ -1467,6 +1744,45 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
           initial={editTab}
           onClose={() => setEditTab(null)}
           onSaved={() => { setEditTab(null); onRefresh() }}
+        />
+      )}
+      {showConfigModal && (
+        <PlanilhaConfigModal
+          configId={config.id}
+          initialData={{
+            name:          config.name,
+            spreadsheetId: config.spreadsheetId,
+            description:   config.description ?? null,
+            active:        config.active,
+            tabs: asArray<SheetTab>(config.tabs).map(t => ({
+              id:            t.id,
+              sheetName:     t.sheetName,
+              internalName:  t.internalName,
+              gid:           t.gid,
+              monthReference: t.monthReference,
+              tabType:       'PERSONALIZADO',
+              sortOrder:     t.sortOrder,
+              active:        t.active,
+              headerRow:     t.headerRow,
+            })),
+            autoSync: config.autoSync ? {
+              enabled:             config.autoSync.enabled,
+              mode:                config.autoSync.mode,
+              frequencyMinutes:    config.autoSync.frequencyMinutes,
+              allowedDays:         config.autoSync.allowedDays,
+              startTime:           config.autoSync.startTime,
+              endTime:             config.autoSync.endTime,
+              actionAfterDownload: config.autoSync.actionAfterDownload,
+              processDeals:        (config.autoSync as AutoSyncConfig).processDeals ?? false,
+              notifyOnNewRecords:  config.autoSync.notifyOnNewRecords,
+              notifyOnError:       config.autoSync.notifyOnError,
+              errorNotifyTarget:   config.autoSync.errorNotifyTarget,
+              maxRowsPerRun:       config.autoSync.maxRowsPerRun,
+              timeoutSeconds:      config.autoSync.timeoutSeconds,
+            } : null,
+          }}
+          onClose={() => setShowConfigModal(false)}
+          onSaved={() => { setShowConfigModal(false); onRefresh() }}
         />
       )}
     </div>
@@ -1535,14 +1851,8 @@ export default function SheetsPage() {
         </div>
       </div>
 
-      {/* Nota sobre credenciais */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        <p className="font-medium">Credenciais Google necessárias</p>
-        <p className="mt-0.5 text-xs text-amber-700">
-          Configure <code className="rounded bg-amber-100 px-1">GOOGLE_SHEETS_CREDENTIALS</code> (JSON da Service Account) e
-          compartilhe a planilha com o e-mail da service account para que o acesso funcione.
-        </p>
-      </div>
+      {/* Credenciais Google Sheets */}
+      <SheetCredentialsSettings />
 
       {/* Lista de importadores */}
       {configs.length === 0 ? (

@@ -73,18 +73,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       ? config.tabs.filter(t => t.id === tabId)
       : config.tabs
 
-    // Cria job de importação
+    // Cria job de importação (simulações ficam com status próprio, não poluem histórico real)
     const job = await prisma.importJob.create({
       data: {
         configId:      config.id,
         triggeredById: session.id,
-        status:        'PROCESSANDO',
+        status:        dryRun ? 'AGUARDANDO' : 'PROCESSANDO',
         startedAt,
       },
     })
 
     const mapping = (config.columnMapping ?? {}) as Record<string, string>
-    const auth    = buildGoogleAuth()
+    const auth    = await buildGoogleAuth()
     const sheets  = google.sheets({ version: 'v4', auth })
 
     let totalRows     = 0
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     for (const tab of activeTabs) {
       try {
-        const range    = `${tab.sheetName}!A1:Z`
+        const range    = `${tab.sheetName}!A1:ZZ`
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId: config.spreadsheetId,
           range,
@@ -130,13 +130,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           if (dryRun) { newRecords++; continue }
 
           try {
-            // Busca responsável pelo nome
+            // Busca responsável pelo nome — responsibleId é NOT NULL no schema
             let responsibleId: string | null = null
             if (row.sellerName) {
               const seller = await prisma.seller.findFirst({
                 where: { fullName: { contains: row.sellerName, mode: 'insensitive' } },
               })
               responsibleId = seller?.id ?? null
+            }
+
+            // Pula a linha se não encontrou o vendedor (responsibleId é obrigatório)
+            if (!responsibleId) {
+              errorRows++
+              errors.push(
+                row.sellerName
+                  ? `Vendedor não encontrado: "${row.sellerName}" (neg: ${row.negotiation})`
+                  : `Coluna de vendedor não mapeada ou vazia (neg: ${row.negotiation})`,
+              )
+              continue
             }
 
             // Deduplicação por chave configurada dentro do tenant
@@ -167,7 +178,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                   plate:          row.plate || null,
                   vehicle:        row.vehicle || null,
                   negotiation:    row.negotiation,
-                  responsibleId:  responsibleId ?? undefined,
+                  responsibleId,
                   description:    buildDescription(row, tab),
                   type:           classifyType(row.statusMain),
                   priority:       'MEDIA',
@@ -211,10 +222,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const finishedAt = new Date()
 
     // Atualiza job
+    const finalStatus = dryRun
+      ? 'CONCLUIDO'
+      : errors.length > 0 || sheetsNotFound.length > 0
+        ? 'CONCLUIDO_COM_ERROS'
+        : 'CONCLUIDO'
+
     await prisma.importJob.update({
       where: { id: job.id },
       data:  {
-        status:         errors.length > 0 || sheetsNotFound.length > 0 ? 'CONCLUIDO_COM_ERROS' : 'CONCLUIDO',
+        status:         finalStatus,
         totalRows,
         newRecords,
         updatedRecords,

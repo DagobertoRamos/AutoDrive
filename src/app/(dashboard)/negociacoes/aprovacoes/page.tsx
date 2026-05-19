@@ -53,9 +53,16 @@ export default function AprovacoesPage() {
   const load = useCallback(() => {
     if (!canAccessModule(role, 'negotiations.approve')) return
     setLoading(true)
-    fetch('/api/negotiations?status=AGUARDANDO_LIBERACAO')
-      .then((r) => r.json())
-      .then((d) => setDeals(d.data ?? []))
+    // Busca ambos os status (legado + novo) em paralelo
+    Promise.all([
+      fetch('/api/negotiations?status=AGUARDANDO_APROVACAO').then(r => r.json()),
+      fetch('/api/negotiations?status=AGUARDANDO_LIBERACAO').then(r => r.json()),
+    ])
+      .then(([a, b]) => {
+        const all = [...(a.data ?? []), ...(b.data ?? [])]
+        // Remove duplicatas por id
+        setDeals(all.filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i))
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [role])

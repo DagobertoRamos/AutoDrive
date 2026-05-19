@@ -175,7 +175,7 @@ export default function PendenciasGerenciaPage() {
                           : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="max-w-[140px] truncate whitespace-nowrap px-4 py-3 text-gray-600">
-                        {p.vehicle ?? '—'}
+                        {p.vehicleLabel ?? p.vehicle?.plate ?? p.vehicle?.model ?? '—'}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-gray-600">
                         {p.responsible?.shortName ?? p.responsible?.fullName ?? '—'}

@@ -26,27 +26,57 @@
 // =============================================================================
 
 import type { VehicleLookupProvider, VehicleLookupResult, VehicleLookupData } from '../types'
+import { getActiveIntegrationCredential } from '@/lib/integrations/active'
 
-const API_URL     = process.env.VEHICLE_LOOKUP_API_URL
-const API_KEY     = process.env.VEHICLE_LOOKUP_API_KEY
+const ENV_API_URL = process.env.VEHICLE_LOOKUP_API_URL
+const ENV_API_KEY = process.env.VEHICLE_LOOKUP_API_KEY
 const TIMEOUT_MS  = Number(process.env.VEHICLE_LOOKUP_TIMEOUT_MS ?? 8_000)
 
-/** Verifica se o provedor está configurado */
-export function isAuthorizedProviderConfigured(): boolean {
-  return Boolean(API_URL && API_KEY)
+interface ResolvedPlateConfig {
+  url:   string
+  key:   string
+  source: 'integration' | 'env'
+}
+
+/**
+ * Resolve a configuração ativa: primeiro tenta IntegrationCredential
+ * (service=PLATE_LOOKUP, configurada via /master/integrations), depois
+ * cai no fallback de variáveis de ambiente (dev local).
+ */
+async function resolvePlateConfig(): Promise<ResolvedPlateConfig | null> {
+  try {
+    const cred = await getActiveIntegrationCredential('PLATE_LOOKUP')
+    if (cred?.apiUrl && cred?.apiKey) {
+      return { url: cred.apiUrl.replace(/\/+$/, ''), key: cred.apiKey, source: 'integration' }
+    }
+  } catch { /* DB indisponível — segue para env */ }
+
+  if (ENV_API_URL && ENV_API_KEY) {
+    return { url: ENV_API_URL.replace(/\/+$/, ''), key: ENV_API_KEY, source: 'env' }
+  }
+  return null
+}
+
+/** Verifica se o provedor está configurado (DB ou env). */
+export async function isAuthorizedProviderConfigured(): Promise<boolean> {
+  const cfg = await resolvePlateConfig()
+  return !!cfg
 }
 
 export class AuthorizedProvider implements VehicleLookupProvider {
   readonly name = 'authorized_provider'
 
   async lookupByPlate(plate: string): Promise<VehicleLookupResult> {
-    if (!isAuthorizedProviderConfigured()) {
+    const cfg = await resolvePlateConfig()
+    if (!cfg) {
       return {
         success: true,
         found:   false,
-        message: 'Nenhum provedor autorizado configurado. Preencha manualmente.',
+        message: 'API de placa não configurada. Configure uma credencial PLATE_LOOKUP em /master/integrations ou preencha os dados manualmente.',
       }
     }
+    const API_URL = cfg.url
+    const API_KEY = cfg.key
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)

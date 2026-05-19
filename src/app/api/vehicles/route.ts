@@ -152,13 +152,28 @@ export async function GET(req: NextRequest) {
             },
           },
           // Verificar negociações abertas via DealVehicle → Deal
+          // Inclui vendedor e unidade para exibir tag "Em negociação por X da unidade Y"
           dealVehicles: {
             where: {
-              deal: { status: { in: OPEN_DEAL_STATUSES } },
+              deal: { status: { in: OPEN_DEAL_STATUSES as never } },
             },
             select: {
               dealId: true,
-              deal: { select: { id: true, status: true } },
+              deal: {
+                select: {
+                  id:         true,
+                  dealNumber: true,
+                  status:     true,
+                  unitId:     true,
+                  seller: {
+                    select: {
+                      id:       true,
+                      fullName: true,
+                      user:     { select: { id: true, name: true } },
+                    },
+                  },
+                },
+              },
             },
             take: 1,
           },
@@ -167,13 +182,41 @@ export async function GET(req: NextRequest) {
       }),
     ])
 
-    // Computa hasOpenNegotiation no mapa
-    const data = vehicles.map((v) => {
-      const openDeal = v.dealVehicles[0]
+    // ── A relação dealVehicles vem do select via Prisma mas o TS pode perder
+    // o tipo após `as never` no `status: { in: ... }`. Tratamos como `any[]`
+    // só nessa transformação para evitar TS2339 spurious.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vehiclesAny = vehicles as any[]
+
+    // Buscar nomes de unidades referenciadas pelas negociações abertas (em batch)
+    const dealUnitIds = Array.from(new Set(
+      vehiclesAny
+        .map((v) => v.dealVehicles?.[0]?.deal?.unitId as string | undefined)
+        .filter((id): id is string => !!id),
+    ))
+    const dealUnits = dealUnitIds.length > 0
+      ? await prisma.unit.findMany({
+          where:  { id: { in: dealUnitIds } },
+          select: { id: true, name: true },
+        })
+      : []
+    const unitNameMap = Object.fromEntries(dealUnits.map((u) => [u.id, u.name]))
+
+    // Computa hasOpenNegotiation com info de vendedor e unidade da negociação
+    const data = vehiclesAny.map((v) => {
+      const openDealRow = v.dealVehicles?.[0]
+      const openDeal    = openDealRow?.deal
+      const sellerName  = openDeal?.seller?.fullName
+                        ?? openDeal?.seller?.user?.name
+                        ?? null
+      const unitName    = openDeal?.unitId ? (unitNameMap[openDeal.unitId] ?? null) : null
       return {
         ...v,
-        hasOpenNegotiation: !!openDeal,
-        openNegotiationId:  openDeal?.dealId ?? null,
+        hasOpenNegotiation:  !!openDeal,
+        openNegotiationId:   openDeal?.id          ?? null,
+        openNegotiationNumber: openDeal?.dealNumber ?? null,
+        openNegotiationSeller: sellerName,
+        openNegotiationUnit:   unitName,
       }
     })
 

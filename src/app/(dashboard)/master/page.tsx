@@ -252,7 +252,7 @@ export default function MasterPage() {
       <section>
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Plataforma</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricCard label="Feature Flags ativas"   value={stats.platform.activeFlagsCount}       icon={Flag}       color="indigo" href="/master/feature-flags" />
+          <MetricCard label="Feature Flags ativas"   value={stats.platform.activeFlagsCount}       icon={Flag}       color="purple" href="/master/feature-flags" />
           <MetricCard label="Avisos internos ativos" value={stats.platform.activeNoticesCount}      icon={Bell}       color="amber"  href="/master/communication" />
           <MetricCard label="Ações master este mês"  value={stats.platform.masterActionsThisMonth}  icon={ShieldCheck} color="purple" href="/master/audit" />
           <MetricCard label="Total de logs auditoria" value={stats.platform.totalAuditLogs}         icon={BarChart3}   color="slate"  href="/master/audit" />

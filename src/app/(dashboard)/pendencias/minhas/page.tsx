@@ -74,7 +74,9 @@ export default function MinhasPendenciasPage() {
     return (
       p.customerName?.toLowerCase().includes(q) ||
       p.plate?.toLowerCase().includes(q)        ||
-      p.vehicle?.toLowerCase().includes(q)      ||
+      p.vehicleLabel?.toLowerCase().includes(q) ||
+      p.vehicle?.plate?.toLowerCase().includes(q) ||
+      p.vehicle?.model?.toLowerCase().includes(q) ||
       p.negotiation?.toLowerCase().includes(q)
     )
   })

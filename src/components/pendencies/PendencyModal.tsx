@@ -116,11 +116,11 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
             <div className="grid grid-cols-2 gap-4">
               <Field label="Cliente" value={pendency.customerName} />
               <Field label="Placa" value={pendency.plate} mono />
-              <Field label="Veículo" value={pendency.vehicle} />
+              <Field label="Veículo" value={pendency.vehicleLabel ?? pendency.vehicle?.plate ?? pendency.vehicle?.model ?? null} />
               <Field label="Negociação" value={pendency.negotiation} />
               <Field label="Tipo" value={pendency.type} />
               <Field label="Responsável" value={pendency.responsible?.fullName} />
-              <Field label="Data Inicial" value={pendency.initialDate ? formatDate(new Date(pendency.initialDate)) : undefined} />
+              <Field label="Data Inicial" value={pendency.initialDate ? formatDate(new Date(pendency.initialDate as string)) : undefined} />
               <Field label="Data Vencimento" value={pendency.dueDate ? formatDate(new Date(pendency.dueDate)) : undefined} danger={pendency.dueDate ? new Date(pendency.dueDate) < new Date() : false} />
               <Field label="Último Envio" value={pendency.lastSentAt ? formatDate(new Date(pendency.lastSentAt)) : 'Nenhum'} />
               <Field label="Próximo Envio" value={pendency.nextSendAt ? formatDate(new Date(pendency.nextSendAt)) : '—'} />

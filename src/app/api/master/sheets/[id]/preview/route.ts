@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     if (!tab) return NextResponse.json({ success: false, error: 'Nenhuma aba selecionada ou ativa.' }, { status: 400 })
 
-    const auth   = buildGoogleAuth()
+    const auth   = await buildGoogleAuth()
     const sheets = google.sheets({ version: 'v4', auth })
 
     // Tenta pelo nome da aba

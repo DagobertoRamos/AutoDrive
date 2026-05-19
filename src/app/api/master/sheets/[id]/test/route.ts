@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const tabId     = body.tabId as string | undefined
     const targetTab = tabId ? config.tabs.find(t => t.id === tabId) : null
 
-    const auth   = buildGoogleAuth()
+    const auth   = await buildGoogleAuth()
     const sheets = google.sheets({ version: 'v4', auth })
 
     // Testa acesso à planilha principal

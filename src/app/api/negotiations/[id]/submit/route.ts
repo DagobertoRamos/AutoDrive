@@ -1,11 +1,19 @@
 // =============================================================================
-// POST /api/negotiations/[id]/submit — Enviar para aprovação
+// POST /api/negotiations/[id]/submit — Enviar negociação para aprovação
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { requireModule } from '@/lib/permissions'
+import { prisma }               from '@/lib/prisma'
+import { requireModule }        from '@/lib/permissions'
+import { handlePrismaError }    from '@/lib/prisma-errors'
+
+const SUBMITTABLE_STATUSES = new Set([
+  'RASCUNHO',
+  'EM_PREENCHIMENTO',
+  'REABERTA',
+  'DEVOLVIDA_PARA_CORRECAO',
+])
 
 export async function POST(
   _req: NextRequest,
@@ -14,35 +22,56 @@ export async function POST(
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
+  try { requireModule(session.user.role, 'negotiations') }
+  catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+
   try {
-    requireModule(session.user.role, 'negotiations')
-  } catch {
-    return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-  }
+    const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+    if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
-  const deal = await prisma.deal.findUnique({ where: { id: params.id } })
-  if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
+    // Isolamento de tenant
+    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+    }
 
-  if (deal.status !== 'RASCUNHO' && deal.status !== 'REABERTA') {
-    return NextResponse.json({ error: 'Apenas rascunhos podem ser enviados para aprovação' }, { status: 409 })
-  }
+    if (!SUBMITTABLE_STATUSES.has(deal.status)) {
+      return NextResponse.json(
+        { error: 'Apenas negociações em rascunho ou devolvidas podem ser enviadas para aprovação' },
+        { status: 409 },
+      )
+    }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const d = await tx.deal.update({
-      where: { id: params.id },
-      data:  { status: 'AGUARDANDO_LIBERACAO' },
+    const updated = await prisma.$transaction(async (tx) => {
+      const d = await tx.deal.update({
+        where: { id: params.id },
+        data:  { status: 'AGUARDANDO_APROVACAO' },
+      })
+      await tx.dealStatusHistory.create({
+        data: {
+          dealId:          params.id,
+          previousStatus:  deal.status,
+          newStatus:       'AGUARDANDO_APROVACAO',
+          changedByUserId: session.user.id,
+          reason:          'Enviado para aprovação',
+        },
+      })
+      await tx.auditLog.create({
+        data: {
+          userId:   session.user.id,
+          tenantId: session.user.tenantId ?? null,
+          action:   'SUBMIT',
+          entity:   'Deal',
+          entityId: params.id,
+          userName: session.user.name,
+          userRole: session.user.role,
+          status:   'SUCCESS',
+        },
+      })
+      return d
     })
-    await tx.dealStatusHistory.create({
-      data: {
-        dealId:         params.id,
-        previousStatus: deal.status,
-        newStatus:      'AGUARDANDO_LIBERACAO',
-        changedByUserId:    session.user.id,
-        reason:         'Enviado para aprovação pelo vendedor',
-      },
-    })
-    return d
-  })
 
-  return NextResponse.json({ data: updated })
+    return NextResponse.json({ data: updated })
+  } catch (err) {
+    return handlePrismaError(err)
+  }
 }

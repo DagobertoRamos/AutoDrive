@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'commissions')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
 
     const rules = await prisma.returnPercentRule.findMany({
-      orderBy: { minReturnPercent: 'asc' },
+      orderBy: { percentualInformado: 'asc' },
     })
 
     return NextResponse.json({ success: true, data: rules })

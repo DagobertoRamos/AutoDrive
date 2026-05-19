@@ -331,12 +331,18 @@ export interface Pendency {
   updatedAt:       Date
 }
 
-export interface PendencyWithRelations extends Pendency {
+// Pendency.vehicle (no schema Prisma) é um texto legado (string?). A relação
+// real com Vehicle vem por vehicleId. Omitimos a coluna texto para reutilizá-la
+// como objeto rico aqui (ex: `pendency.vehicle?.plate`).
+export interface PendencyWithRelations extends Omit<Pendency, 'vehicle'> {
+  /** Texto legado do veículo (placa/modelo livre) — mantido para compat. */
+  vehicleLabel?: string | null
   unit:        { id: string; name: string }
   responsible: { id: string; fullName: string; shortName: string | null; whatsapp: string | null }
   manager:     { id: string; fullName: string; whatsapp: string | null } | null
   customer?:   Customer | null
   vehicle?:    Vehicle | null
+  initialDate?: string | Date | null
   resolvedByUser?:  { id: string; name: string } | null
   assignedUser?:    { id: string; name: string; role: string } | null
   validatedByUser?: { id: string; name: string } | null
@@ -403,6 +409,7 @@ export interface NotificationToast {
   avatar?:    string | null
   duration?:  number
   href?:      string | null
+  actionUrl?: string | null  // URL para a qual o toast direciona quando clicado
   createdAt:  Date
 }
 

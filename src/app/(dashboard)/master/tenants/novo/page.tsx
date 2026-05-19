@@ -313,12 +313,14 @@ function NovoTenantForm() {
   const cnpjDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function checkAndLookupCNPJ(cnpj: string) {
+    // IMPORTANTE: cnpj aqui já vem normalizado (string com zero à esquerda).
+    // Nunca converter para Number — `Number("03367717000164")` perde o zero.
     setCnpjStatus('checking')
     setCnpjMessage('Verificando...')
 
     try {
       // 1. Verifica duplicidade
-      const checkRes  = await fetch(`/api/master/tenants/check-cnpj?cnpj=${cnpj}`)
+      const checkRes  = await fetch(`/api/master/tenants/check-cnpj?cnpj=${encodeURIComponent(cnpj)}`)
       const checkData = await checkRes.json()
 
       if (!checkData.success && checkData.duplicated) {
@@ -327,12 +329,30 @@ function NovoTenantForm() {
         return
       }
 
-      // 2. Busca dados da empresa
-      setCnpjMessage('Consultando dados da empresa...')
-      const lookupRes  = await fetch(`/api/companies/lookup-by-cnpj?cnpj=${cnpj}`)
+      // 2. Busca dados da empresa via BrasilAPI
+      setCnpjMessage('Consultando dados da empresa na BrasilAPI...')
+      const lookupRes  = await fetch(`/api/companies/lookup-by-cnpj?cnpj=${encodeURIComponent(cnpj)}`)
       const lookupData = await lookupRes.json()
 
-      if (lookupData.success && lookupData.found && lookupData.data) {
+      // ── (a) Erro técnico — HTTP 502 ou success=false ─────────────────────
+      // BrasilAPI fora, URL errada, timeout, credencial mal configurada.
+      // NÃO mostrar "empresa não encontrada" — isso é um erro de integração.
+      if (!lookupRes.ok || lookupData.success === false) {
+        setCnpjStatus('error')
+        const isConfigError = /URL inválida|configurada incorretamente/i.test(lookupData.error ?? '')
+        setCnpjMessage(
+          isConfigError
+            ? 'Integração BrasilAPI configurada incorretamente. Verifique em Master → Integrações.'
+            : 'Não foi possível consultar a BrasilAPI neste momento. Preencha manualmente ou tente novamente.',
+        )
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[tenant/novo] BrasilAPI erro técnico:', lookupData)
+        }
+        return
+      }
+
+      // ── (b) Sucesso com dados ────────────────────────────────────────────
+      if (lookupData.found && lookupData.data) {
         const d = lookupData.data
         setCnpjStatus('found')
         setCnpjMessage('Dados carregados automaticamente. Revise e corrija se necessário.')
@@ -363,14 +383,16 @@ function NovoTenantForm() {
         if (d.situacaoCadastral && d.situacaoCadastral !== 'ATIVA') {
           setCnpjMessage(`⚠️ Empresa com situação cadastral: ${d.situacaoCadastral}. Verifique antes de prosseguir.`)
         }
-
-      } else {
-        setCnpjStatus('not_found')
-        setCnpjMessage('Empresa não encontrada automaticamente. Preencha os dados manualmente.')
+        return
       }
-    } catch {
+
+      // ── (c) CNPJ válido mas não está na Receita ─────────────────────────
+      setCnpjStatus('not_found')
+      setCnpjMessage('Empresa não encontrada na BrasilAPI. Preencha os dados manualmente.')
+    } catch (e) {
       setCnpjStatus('error')
-      setCnpjMessage('Não foi possível consultar o CNPJ neste momento. Preencha manualmente.')
+      setCnpjMessage('Não foi possível consultar a BrasilAPI neste momento. Preencha manualmente ou tente novamente.')
+      if (process.env.NODE_ENV !== 'production') console.warn('[tenant/novo] fetch erro:', e)
     }
   }
 
@@ -614,10 +636,19 @@ function NovoTenantForm() {
         },
       }
 
+      // ── Sanitização final do payload ──────────────────────────────────────
+      // Limpa recursivamente "" / "null" / undefined para evitar que o backend
+      // receba strings vazias em campos de relação ou opcionais.
+      // - "" → undefined  (campo não enviado)
+      // - "null" string → undefined
+      // - whitespace puro → undefined
+      // Mantém zero numérico, false booleano e objetos vazios.
+      const sanitized = sanitizePayload(payload)
+
       const res  = await fetch('/api/master/tenants', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        body:    JSON.stringify(sanitized),
       })
       const data = await res.json()
 
@@ -625,13 +656,42 @@ function NovoTenantForm() {
         setCreatedId(data.data?.tenant?.id ?? '')
         setSuccess(true)
       } else {
-        setError(data.error ?? 'Erro ao criar tenant.')
+        // Mensagens vindas de P2003 incluem `hint` específico (campo, ação).
+        const msg = data.error ?? 'Erro ao criar tenant.'
+        const hint = data.hint ? ` — ${data.hint}` : ''
+        setError(msg + hint)
       }
     } catch {
       setError('Erro de conexão. Tente novamente.')
     } finally {
       setSaving(false)
     }
+  }
+
+  // ── Helper de sanitização recursiva ─────────────────────────────────────────
+  // Coloca aqui (não em escopo de componente externo) para manter o file conciso.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function sanitizePayload(value: any): any {
+    if (value === null || value === undefined) return undefined
+    if (typeof value === 'string') {
+      const t = value.trim()
+      if (!t || t.toLowerCase() === 'null' || t.toLowerCase() === 'undefined') return undefined
+      return t
+    }
+    if (Array.isArray(value)) {
+      const arr = value.map(sanitizePayload).filter((v) => v !== undefined)
+      return arr.length ? arr : undefined
+    }
+    if (typeof value === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const out: any = {}
+      for (const [k, v] of Object.entries(value)) {
+        const cleaned = sanitizePayload(v)
+        if (cleaned !== undefined) out[k] = cleaned
+      }
+      return Object.keys(out).length ? out : undefined
+    }
+    return value
   }
 
   // ── Tela de sucesso ───────────────────────────────────────────────────────

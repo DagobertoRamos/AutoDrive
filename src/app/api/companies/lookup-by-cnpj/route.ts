@@ -44,20 +44,35 @@ export async function GET(req: NextRequest) {
     status:   result.success ? 'SUCCESS' : 'ERROR',
   })
 
+  // ── Erro técnico (timeout, URL inválida, credencial errada, rede caída) ──
+  // Distingue claramente do "CNPJ não existe na Receita" (404 lógico).
   if (!result.success) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[lookup-by-cnpj] CNPJ=${cnpj} fonte=${result.source} erro=`, result.error)
+    }
     return NextResponse.json(
-      { success: false, error: result.error ?? 'Não foi possível consultar o CNPJ neste momento. Preencha manualmente.' },
-      { status: 503 },
+      {
+        success:       false,
+        found:         false,
+        ok:            false,
+        source:        result.source ?? 'brasilapi',
+        error:         result.error ?? 'Não foi possível consultar a BrasilAPI neste momento.',
+        technicalCode: 'BRASILAPI_CNPJ_FAILED',
+        retryable:     true,
+      },
+      { status: 502 },
     )
   }
 
+  // ── Sucesso (encontrado ou não-encontrado validado pela API) ────────────
   return NextResponse.json({
     success:  true,
+    ok:       true,
     found:    result.found,
     source:   result.source,
     data:     result.data ?? null,
     message:  result.found
       ? 'Dados da empresa carregados automaticamente.'
-      : (result.message ?? 'CNPJ não encontrado. Preencha manualmente.'),
+      : (result.message ?? 'CNPJ não encontrado na Receita Federal. Preencha os dados manualmente.'),
   })
 }

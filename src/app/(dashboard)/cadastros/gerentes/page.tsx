@@ -325,7 +325,9 @@ export default function GerentesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Bell className={cn('h-4 w-4', m.receivesNotifications ? 'text-brand-600' : 'text-gray-300')} title={m.receivesNotifications ? 'Recebe notificações' : 'Sem notificações'} />
+                      <span title={m.receivesNotifications ? 'Recebe notificações' : 'Sem notificações'}>
+                        <Bell className={cn('h-4 w-4', m.receivesNotifications ? 'text-brand-600' : 'text-gray-300')} />
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', profileColor[m.accessProfile] ?? 'bg-gray-100 text-gray-600')}>

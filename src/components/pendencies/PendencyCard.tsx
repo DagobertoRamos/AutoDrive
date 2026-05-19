@@ -61,8 +61,10 @@ export function PendencyCard({ pendency, onRefresh }: PendencyCardProps) {
               {pendency.plate || '—'}
             </span>
           </div>
-          {pendency.vehicle && (
-            <span className="text-xs text-gray-500 truncate">{pendency.vehicle}</span>
+          {(pendency.vehicleLabel || pendency.vehicle) && (
+            <span className="text-xs text-gray-500 truncate">
+              {pendency.vehicleLabel ?? pendency.vehicle?.plate ?? pendency.vehicle?.model ?? ''}
+            </span>
           )}
         </div>
 

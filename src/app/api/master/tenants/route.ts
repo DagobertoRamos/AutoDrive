@@ -286,6 +286,25 @@ export async function POST(req: NextRequest) {
     const adminPassword     = principalCPF  // senha = CPF sem pontuação
     const adminPasswordHash = await bcrypt.hash(adminPassword, 12)
 
+    // ── Garantir que o User MASTER da sessão existe no banco ────────────────
+    // Causa raiz histórica do erro P2003 "Referência inválida":
+    // se a sessão JWT do MASTER aponta para um User.id que foi removido (reset
+    // parcial / seed apagado), o AuditLog.create dentro da transação dispara
+    // P2003 → toda a criação do tenant é abortada.
+    // Solução: verificar antes; se o user não existir, gravar AuditLog sem
+    // userId (campo é opcional no schema) e prosseguir.
+    const sessionUserExists = await prisma.user.findUnique({
+      where:  { id: session.user.id },
+      select: { id: true },
+    }).then((u) => !!u).catch(() => false)
+
+    if (!sessionUserExists) {
+      console.warn(
+        `[POST /api/master/tenants] Sessão MASTER aponta para User.id="${session.user.id}" inexistente. ` +
+        'Criando tenant sem userId no AuditLog. Verifique se o banco foi resetado e refaça login.',
+      )
+    }
+
     // ── Transação atômica ────────────────────────────────────────────────────
 
     const result = await prisma.$transaction(async (tx) => {
@@ -326,12 +345,21 @@ export async function POST(req: NextRequest) {
       })
 
       // 2. Criar Unit principal
+      // Antes existia um hack: criava com `cnpj + '_unit'` para evitar conflito
+      // com a constraint @unique de Unit.cnpj e depois atualizava. Em retentativas
+      // após erros parciais, esse placeholder podia persistir e gerar P2002.
+      //
+      // Agora salvamos direto com o CNPJ real. A Unit Matriz tem o mesmo CNPJ
+      // do Tenant (mesma pessoa jurídica). Antes da criação, removemos qualquer
+      // Unit órfã com esse CNPJ (de tentativa anterior abortada).
+      await tx.unit.deleteMany({ where: { cnpj, tenantId: null } }).catch(() => {})
+
       const mainUnit = await tx.unit.create({
         data: {
           tenantId:    tenant.id,
           name:        company.nomeFantasia?.trim() || company.razaoSocial.trim(),
           razaoSocial: company.razaoSocial.trim(),
-          cnpj:        cnpj + '_unit',  // temporário — evita conflito @unique
+          cnpj,
           address:     [company.address.logradouro, company.address.numero, company.address.complemento].filter(Boolean).join(', '),
           city:        company.address.cidade?.trim()  || null,
           state:       company.address.estado?.toUpperCase().trim() || null,
@@ -341,12 +369,6 @@ export async function POST(req: NextRequest) {
           responsavel: principalPartner.nomeCompleto?.trim() || null,
           active:      true,
         },
-      })
-
-      // Atualiza Unit com CNPJ real após criação (evita conflito da constraint @unique)
-      await tx.unit.update({
-        where: { id: mainUnit.id },
-        data:  { cnpj },
       })
 
       // 3. Criar User ADM (sócio principal)
@@ -399,6 +421,8 @@ export async function POST(req: NextRequest) {
       }
 
       // 5. Criar módulos ativos conforme configuração do plano
+      // enabledBy é só String? sem FK declarada, mas mesmo assim só passamos
+      // o userId se o user realmente existe no banco.
       const modulesToActivate = planConfig?.modules ?? [
         'dashboard', 'estoque', 'negociacoes', 'comissoes', 'clientes',
       ]
@@ -407,22 +431,24 @@ export async function POST(req: NextRequest) {
           tenantId:  tenant.id,
           module:    module.toLowerCase(),
           active:    true,
-          enabledBy: session.user.id,
+          enabledBy: sessionUserExists ? session.user.id : null,
           enabledAt: new Date(),
         })),
         skipDuplicates: true,
       })
 
       // 6. AuditLog dentro da transação
+      // userId é opcional (FK para User.id). Se a sessão aponta para um user
+      // inexistente, gravamos sem userId — mantendo o nome/role para rastreio.
       await tx.auditLog.create({
         data: {
-          userId:   session.user.id,
+          userId:   sessionUserExists ? session.user.id : null,
           tenantId: tenant.id,
           action:   'CREATE',
           entity:   'Tenant',
           entityId: tenant.id,
-          userName: session.user.name,
-          userRole: session.user.role,
+          userName: session.user.name ?? 'MASTER',
+          userRole: session.user.role ?? 'MASTER',
           status:   'SUCCESS',
         },
       })

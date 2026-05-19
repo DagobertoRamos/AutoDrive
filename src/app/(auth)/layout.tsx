@@ -10,6 +10,12 @@ export const metadata: Metadata = {
   description: 'Acesse o AutoDrive — Sua loja no piloto automático',
 }
 
+// As páginas /login, /ativar-cadastro e /recuperar-senha usam useSearchParams
+// para tokens/callbacks. Forçamos rendering dinâmico no layout pai para evitar
+// o bailout de SSG ("missing-suspense-with-csr-bailout") sem precisar refatorar
+// cada page em Suspense boundaries.
+export const dynamic = 'force-dynamic'
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#0A1F12] px-4 py-12">

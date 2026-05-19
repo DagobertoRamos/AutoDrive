@@ -64,7 +64,10 @@ export async function POST(req: Request) {
         tenantId,
         name:        String(name),
         razaoSocial: razaoSocial ? String(razaoSocial) : null,
-        cnpj:        cnpj        ? String(cnpj)        : null,
+        // Unit.cnpj é @unique no schema; sem cnpj real geramos placeholder
+        // único para evitar violar a constraint (Units sem CNPJ raramente
+        // existem na prática mas o schema legacy exige string).
+        cnpj:        cnpj ? String(cnpj) : `_NOCNPJ_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         address:     address     ? String(address)     : null,
         city:        city        ? String(city)        : null,
         state:       state       ? String(state)       : null,

@@ -374,7 +374,7 @@ export function VehicleComboBox({ value, onChange, initialType, disabled }: Vehi
               const i = item as { code?: string; yearLabel?: string; modelYear?: number; fuelLabel?: string; name?: string; nome?: string }
               const code = String(i?.code ?? '')
               const name = i?.yearLabel
-                ?? (i?.modelYear ? `${i.modelYear} — ${i.fuelLabel ?? ''}` : '')
+                ?? (i?.modelYear ? `${i.modelYear} — ${i.fuelLabel ?? ''}` : null)
                 ?? String(i?.name ?? i?.nome ?? code)
               return { code, name: name.trim() }
             })

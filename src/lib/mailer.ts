@@ -52,7 +52,7 @@ async function getEmailSettings(): Promise<EmailSettings> {
     select: { key: true, value: true },
   })
   const map = Object.fromEntries(rows.map(r => [r.key.replace('email.', ''), r.value ?? '']))
-  return map as EmailSettings
+  return map as unknown as EmailSettings
 }
 
 // ── Construção do transporter ─────────────────────────────────────────────────

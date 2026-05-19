@@ -190,7 +190,7 @@ export default function AuditoriaPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {(log.beforeData || log.afterData) && (
+                      {Boolean(log.beforeData || log.afterData) && (
                         <button
                           onClick={() => toggleExpand(log.id)}
                           className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
@@ -207,7 +207,7 @@ export default function AuditoriaPage() {
                     <tr key={`${log.id}-expand`} className="bg-gray-50">
                       <td colSpan={7} className="px-4 pb-4 pt-2">
                         <div className="grid gap-3 sm:grid-cols-2">
-                          {log.beforeData && (
+                          {Boolean(log.beforeData) && (
                             <div>
                               <p className="mb-1 text-xs font-semibold text-gray-500">Antes</p>
                               <pre className="rounded-lg bg-white border border-gray-200 p-3 text-xs text-gray-600 overflow-auto max-h-40">
@@ -215,7 +215,7 @@ export default function AuditoriaPage() {
                               </pre>
                             </div>
                           )}
-                          {log.afterData && (
+                          {Boolean(log.afterData) && (
                             <div>
                               <p className="mb-1 text-xs font-semibold text-gray-500">Depois</p>
                               <pre className="rounded-lg bg-white border border-gray-200 p-3 text-xs text-gray-600 overflow-auto max-h-40">

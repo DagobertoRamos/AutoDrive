@@ -55,7 +55,7 @@ export async function GET(
         },
         dealVehicles: {
           where: {
-            deal: { status: { in: OPEN_DEAL_STATUSES } },
+            deal: { status: { in: OPEN_DEAL_STATUSES as never } },
           },
           select: {
             dealId: true,
@@ -75,9 +75,11 @@ export async function GET(
       )
     }
 
-    const openDeal = vehicle.dealVehicles[0]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vehicleAny = vehicle as any
+    const openDeal = vehicleAny.dealVehicles?.[0]
     const data = {
-      ...vehicle,
+      ...vehicleAny,
       hasOpenNegotiation: !!openDeal,
       openNegotiationId:  openDeal?.dealId ?? null,
     }

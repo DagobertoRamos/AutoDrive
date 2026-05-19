@@ -25,7 +25,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
         targetRoles:     original.targetRoles   ?? undefined,
         targetUsers:     original.targetUsers   ?? undefined,
         displayType:     original.displayType,
-        displayChannels: original.displayChannels,
+        displayChannels: (original.displayChannels ?? undefined) as never,
         startsAt:        new Date(),
         endsAt:          null,
         required:        original.required,

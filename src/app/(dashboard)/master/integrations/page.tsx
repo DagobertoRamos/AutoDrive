@@ -4,14 +4,21 @@
 // /master/integrations — Credenciais de integrações globais (MASTER only)
 // =============================================================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession }                        from 'next-auth/react'
 import { useRouter }                         from 'next/navigation'
 import {
   Plug, Plus, Trash2, Loader2, AlertCircle, CheckCircle2,
   X, Save, Eye, EyeOff, RefreshCw, TestTube, ToggleRight,
-  ToggleLeft, Star,
+  ToggleLeft, Star, Info,
 } from 'lucide-react'
+import {
+  SERVICES as SERVICE_CATALOG,
+  DEFAULT_FIELD_LABELS,
+  SENSITIVE_FIELDS as CATALOG_SENSITIVE,
+  getServiceDef,
+  type FieldKey, type ServiceKey,
+} from '@/lib/integrations/catalog'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -39,31 +46,15 @@ interface Credential {
 
 const MASKED = '••••••••'
 
-const SERVICE_LABELS: Record<string, string> = {
-  FIPE:            'Consulta FIPE',
-  PLATE_LOOKUP:    'Consulta por Placa',
-  RENAVAM:         'RENAVAM / SERPRO',
-  CNPJ_LOOKUP:     'Consulta CNPJ',
-  CEP:             'Consulta CEP',
-  STORAGE:         'Storage (S3 / R2 / GCS)',
-  PAYMENT_GATEWAY: 'Gateway de Pagamento',
-  DIGITAL_SIGN:    'Assinatura Digital',
-  MAPS:            'Mapas / Geolocalização',
-  OTHER:           'Outro',
-}
-
-const SERVICE_COLOR: Record<string, string> = {
-  FIPE:            'bg-blue-50 text-blue-700 border-blue-200',
-  PLATE_LOOKUP:    'bg-indigo-50 text-indigo-700 border-indigo-200',
-  RENAVAM:         'bg-purple-50 text-purple-700 border-purple-200',
-  CNPJ_LOOKUP:     'bg-cyan-50 text-cyan-700 border-cyan-200',
-  CEP:             'bg-teal-50 text-teal-700 border-teal-200',
-  STORAGE:         'bg-orange-50 text-orange-700 border-orange-200',
-  PAYMENT_GATEWAY: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  DIGITAL_SIGN:    'bg-violet-50 text-violet-700 border-violet-200',
-  MAPS:            'bg-red-50 text-red-700 border-red-200',
-  OTHER:           'bg-gray-100 text-gray-600 border-gray-200',
-}
+// Labels e cores derivam do catálogo central (src/lib/integrations/catalog.ts)
+const SERVICE_LABELS: Record<string, string> = Object.fromEntries(
+  SERVICE_CATALOG.map((s) => [s.key, s.label]),
+)
+const SERVICE_COLOR: Record<string, string> = Object.fromEntries(
+  SERVICE_CATALOG.map((s) => [s.key, s.badgeColor]),
+)
+// Apenas serviços não-legados aparecem no dropdown de criação.
+const CREATABLE_SERVICES = SERVICE_CATALOG.filter((s) => !s.legacy)
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const labelCls = 'text-xs font-medium text-gray-600 block mb-1'
@@ -80,32 +71,84 @@ function CredentialModal({
   onSaved:  () => void
 }) {
   const isEdit = !!existing
-  const [form, setForm] = useState({
-    service:       existing?.service       ?? 'FIPE',
-    name:          existing?.name          ?? '',
-    description:   existing?.description   ?? '',
-    apiUrl:        existing?.apiUrl        ?? '',
-    apiKey:        existing?.apiKey        ?? '',
-    apiSecret:     existing?.apiSecret     ?? '',
-    token:         existing?.token         ?? '',
-    username:      existing?.username      ?? '',
-    webhookSecret: existing?.webhookSecret ?? '',
-    isDefault:     existing?.isDefault     ?? false,
-    notes:         existing?.notes         ?? '',
+  // Default sugerido: FIPE Parallelum (não-legado).
+  const initialService: ServiceKey = (existing?.service as ServiceKey) ?? 'FIPE_PROVIDER'
+
+  // ── State não-sensível ────────────────────────────────────────────────────
+  const [service, setService]         = useState<ServiceKey>(initialService)
+  const [name, setName]               = useState<string>(existing?.name        ?? '')
+  const [description, setDescription] = useState<string>(existing?.description ?? '')
+  const [apiUrl, setApiUrl]           = useState<string>(existing?.apiUrl      ?? '')
+  const [username, setUsername]       = useState<string>(existing?.username    ?? '')
+  const [notes, setNotes]             = useState<string>(existing?.notes       ?? '')
+  const [isDefault, setIsDefault]     = useState<boolean>(existing?.isDefault  ?? false)
+
+  // ── State sensível ────────────────────────────────────────────────────────
+  // CRÍTICO: NÃO inicializamos com `existing?.apiKey` (que vem mascarado do GET).
+  // Sempre começa vazio; valor vazio = "manter atual" no PATCH.
+  const [secrets, setSecrets] = useState<Record<FieldKey, string>>({
+    apiUrl:        '',  // não-sensível, mas mantido para tipagem; ignorado
+    apiKey:        '',
+    apiSecret:     '',
+    token:         '',
+    username:      '',
+    webhookSecret: '',
   })
-  const [show, setShow] = useState({ apiKey: false, apiSecret: false, token: false, webhookSecret: false })
+  const [show, setShow] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
-  function set(k: keyof typeof form) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setForm(p => ({ ...p, [k]: e.target.value }))
+  // ── Definição do serviço ──────────────────────────────────────────────────
+  const serviceDef = useMemo(() => getServiceDef(service), [service])
+
+  // Quando troca de serviço (criação), aplica default URL automaticamente.
+  // Mas NUNCA toca em campos sensíveis nem em username/notes.
+  useEffect(() => {
+    if (isEdit) return
+    const def = getServiceDef(service)
+    if (def?.defaultUrl && !apiUrl) setApiUrl(def.defaultUrl)
+    // Reset secrets quando o usuário escolhe outro serviço (evita confusão)
+    setSecrets({ apiUrl: '', apiKey: '', apiSecret: '', token: '', username: '', webhookSecret: '' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, isEdit])
+
+  function setSecret(field: FieldKey, value: string) {
+    setSecrets((p) => ({ ...p, [field]: value }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.service || !form.name.trim()) { setError('Serviço e nome são obrigatórios.'); return }
+    if (!service || !name.trim()) {
+      setError('Serviço e nome são obrigatórios.')
+      return
+    }
+    if (!serviceDef) {
+      setError('Serviço inválido.')
+      return
+    }
+
+    // Monta payload SOMENTE com os campos que o serviço usa.
+    const fields = serviceDef.fields
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: any = {
+      service,
+      name:        name.trim(),
+      description: description.trim(),
+      isDefault,
+      notes:       notes.trim(),
+    }
+    if (fields.includes('apiUrl'))   payload.apiUrl   = apiUrl.trim() || null
+    if (fields.includes('username')) payload.username = username.trim() || null
+
+    // Sensíveis: enviar SOMENTE se o usuário digitou algo no input.
+    // Em modo edit, vazio = "manter atual"; backend já entende isso.
+    for (const f of CATALOG_SENSITIVE) {
+      if (!fields.includes(f)) continue
+      const v = secrets[f]
+      if (v && v.trim()) payload[f] = v.trim()
+    }
+
     setSaving(true)
     try {
       const url    = isEdit ? `/api/master/integrations/${existing!.id}` : '/api/master/integrations'
@@ -113,7 +156,7 @@ function CredentialModal({
       const res    = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(form),
+        body:    JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro.')
@@ -125,25 +168,84 @@ function CredentialModal({
     }
   }
 
-  const SecretField = ({ field, label }: { field: 'apiKey' | 'apiSecret' | 'token' | 'webhookSecret'; label: string }) => (
-    <div>
-      <label className={labelCls}>{label}</label>
-      <div className="relative">
-        <input
-          type={show[field] ? 'text' : 'password'}
-          className={`${inputCls} pr-9 font-mono text-xs`}
-          value={form[field]}
-          onChange={set(field)}
-          placeholder={isEdit ? MASKED : 'Cole o valor aqui'}
-        />
-        <button type="button" onClick={() => setShow(p => ({ ...p, [field]: !p[field] }))}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-        >
-          {show[field] ? <EyeOff size={13} /> : <Eye size={13} />}
-        </button>
+  // ── Renderiza um campo sensível (apiKey/apiSecret/token/webhookSecret) ────
+  function renderSecret(field: FieldKey) {
+    if (!serviceDef?.fields.includes(field)) return null
+    const label   = serviceDef.fieldLabels?.[field] ?? DEFAULT_FIELD_LABELS[field]
+    const hint    = serviceDef.fieldHints?.[field]
+    const required = serviceDef.fieldRequired?.[field]
+    const hasSaved = isEdit && !!existing && !!existing[field as keyof Credential]
+    return (
+      <div key={field}>
+        <label className={labelCls}>
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        <div className="relative">
+          <input
+            type={show[field] ? 'text' : 'password'}
+            // ── Truques anti-autofill: name aleatório + autoComplete sintético ──
+            name={`__sec_${field}_${existing?.id ?? 'new'}`}
+            autoComplete="new-password"
+            data-form-type="other"
+            spellCheck={false}
+            className={`${inputCls} pr-9 font-mono text-xs`}
+            value={secrets[field]}
+            onChange={(e) => setSecret(field, e.target.value)}
+            placeholder={hasSaved ? 'Salvo · deixe vazio para manter o atual' : 'Cole o valor aqui'}
+          />
+          <button type="button" onClick={() => setShow((p) => ({ ...p, [field]: !p[field] }))}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            {show[field] ? <EyeOff size={13} /> : <Eye size={13} />}
+          </button>
+        </div>
+        {hint && <p className="mt-1 text-[10px] text-gray-500">{hint}</p>}
+        {hasSaved && !secrets[field] && (
+          <p className="mt-1 text-[10px] text-amber-700">Valor atual preservado. Digite um novo valor para substituir.</p>
+        )}
       </div>
-    </div>
-  )
+    )
+  }
+
+  function renderApiUrl() {
+    if (!serviceDef?.fields.includes('apiUrl')) return null
+    const hint  = serviceDef.fieldHints?.apiUrl
+    const required = serviceDef.fieldRequired?.apiUrl
+    return (
+      <div>
+        <label className={labelCls}>
+          {serviceDef.fieldLabels?.apiUrl ?? DEFAULT_FIELD_LABELS.apiUrl}
+          {required && <span className="text-red-500"> *</span>}
+        </label>
+        <input
+          className={`${inputCls} font-mono text-xs`}
+          value={apiUrl}
+          onChange={(e) => setApiUrl(e.target.value)}
+          placeholder={serviceDef.defaultUrl ?? 'https://...'}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {hint && <p className="mt-1 text-[10px] text-gray-500">{hint}</p>}
+      </div>
+    )
+  }
+
+  function renderUsername() {
+    if (!serviceDef?.fields.includes('username')) return null
+    return (
+      <div>
+        <label className={labelCls}>{serviceDef.fieldLabels?.username ?? DEFAULT_FIELD_LABELS.username}</label>
+        <input
+          // Anti-autofill agressivo do Chrome para usuário/email
+          name={`__user_${existing?.id ?? 'new'}`}
+          autoComplete="off"
+          className={inputCls}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
@@ -153,56 +255,96 @@ function CredentialModal({
           <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-gray-100"><X size={15} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
-          {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={13} />{error}</div>}
+        {/* O autocomplete agressivo do browser também é atenuado por essa flag */}
+        <form
+          onSubmit={handleSubmit}
+          autoComplete="off"
+          className="space-y-4 px-5 py-5"
+        >
+          {/* Honeypots invisíveis para Chrome não usar este formulário como "login" */}
+          <input type="text" name="username" autoComplete="username" className="hidden" tabIndex={-1} aria-hidden="true" defaultValue="" />
+          <input type="password" name="password" autoComplete="new-password" className="hidden" tabIndex={-1} aria-hidden="true" defaultValue="" />
+
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertCircle size={13} />{error}
+            </div>
+          )}
+
+          {serviceDef?.description && (
+            <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              <Info size={13} className="mt-0.5 shrink-0" />{serviceDef.description}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Serviço *</label>
-              <select className={inputCls} value={form.service} onChange={set('service')} disabled={isEdit}>
-                {Object.entries(SERVICE_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+              <select
+                className={inputCls}
+                value={service}
+                onChange={(e) => setService(e.target.value as ServiceKey)}
+                disabled={isEdit}
+              >
+                {(isEdit ? SERVICE_CATALOG : CREATABLE_SERVICES).map((s) => (
+                  <option key={s.key} value={s.key}>{s.label}</option>
                 ))}
               </select>
             </div>
             <div>
               <label className={labelCls}>Nome amigável *</label>
-              <input className={inputCls} value={form.name} onChange={set('name')} placeholder="Ex: FIPE Principal" />
+              <input
+                className={inputCls}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={service === 'FIPE_PROVIDER' ? 'FIPE Parallelum' : 'Ex: Principal'}
+                autoComplete="off"
+              />
             </div>
             <div className="col-span-2">
               <label className={labelCls}>Descrição</label>
-              <input className={inputCls} value={form.description} onChange={set('description')} placeholder="Opcional" />
+              <input
+                className={inputCls}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Opcional"
+                autoComplete="off"
+              />
             </div>
           </div>
 
-          <div>
-            <label className={labelCls}>URL base da API</label>
-            <input className={`${inputCls} font-mono text-xs`} value={form.apiUrl} onChange={set('apiUrl')} placeholder="https://parallelum.com.br/fipe/api/v1" />
+          {renderApiUrl()}
+
+          {/* Sensíveis — renderizados apenas se o serviço usa */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(['apiKey', 'apiSecret', 'token', 'webhookSecret'] as FieldKey[]).map(renderSecret)}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <SecretField field="apiKey"        label="API Key" />
-            <SecretField field="apiSecret"     label="API Secret" />
-            <SecretField field="token"         label="Token / Bearer" />
-            <SecretField field="webhookSecret" label="Webhook Secret" />
-          </div>
-
-          <div>
-            <label className={labelCls}>Usuário (se autenticação básica)</label>
-            <input className={inputCls} value={form.username} onChange={set('username')} />
-          </div>
+          {renderUsername()}
 
           <div>
             <label className={labelCls}>Notas internas</label>
-            <textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} placeholder="Referência de contrato, link de docs, etc." />
+            <textarea
+              className={inputCls}
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Referência de contrato, link de docs, etc."
+              autoComplete="off"
+            />
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
-              checked={form.isDefault}
-              onChange={e => setForm(p => ({ ...p, isDefault: e.target.checked }))}
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300 text-brand-600"
+              checked={isDefault}
+              onChange={(e) => setIsDefault(e.target.checked)}
             />
-            <span className="text-sm text-gray-700 flex items-center gap-1"><Star size={12} className="text-amber-500" />Credencial padrão para este serviço</span>
+            <span className="text-sm text-gray-700 flex items-center gap-1">
+              <Star size={12} className="text-amber-500" />
+              Credencial padrão para este serviço
+            </span>
           </label>
 
           <div className="flex gap-3 pt-2 border-t border-gray-100">

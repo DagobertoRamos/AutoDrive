@@ -109,7 +109,7 @@ export function NotificationToastContainer() {
           title={toast.title}
           message={toast.message}
           type={toast.type as NotificationType}
-          actionUrl={toast.actionUrl}
+          actionUrl={toast.actionUrl ?? undefined}
           onClose={removeToast}
         />
       ))}

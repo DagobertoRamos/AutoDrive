@@ -145,7 +145,7 @@ export default function DisparoManualPage() {
                             <span className="font-mono">{p.plate}</span>
                           </span>
                         )}
-                        {p.vehicle && <span>{p.vehicle}</span>}
+                        {(p.vehicleLabel || p.vehicle) && <span>{p.vehicleLabel ?? p.vehicle?.plate ?? p.vehicle?.model ?? ''}</span>}
                         {p.responsible && (
                           <span className="flex items-center gap-1">
                             <Phone size={11} />

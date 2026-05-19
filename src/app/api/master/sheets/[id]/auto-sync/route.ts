@@ -25,6 +25,7 @@ const schema = z.object({
     'IMPORTAR_E_NOTIFICAR_GERENTE',
     'IMPORTAR_E_NOTIFICAR_TODOS',
   ]).optional(),
+  processDeals:        z.boolean().optional(),
   notifyOnNewRecords:  z.boolean().optional(),
   notifyOnError:       z.boolean().optional(),
   errorNotifyTarget:   z.string().nullable().optional(),
@@ -114,17 +115,34 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const upsertData: Record<string, unknown> = { ...data }
     if (nextRunAt !== undefined) upsertData.nextRunAt = nextRunAt
-    // Ao ativar, garante status AGUARDANDO; ao desativar, PAUSADO
-    if (data.enabled === true)  upsertData.status = 'AGUARDANDO'
-    if (data.enabled === false) upsertData.status = 'PAUSADO'
+    // Ao ativar → AGUARDANDO; ao desativar → PAUSADO + limpa nextRunAt
+    if (data.enabled === true)  { upsertData.status = 'AGUARDANDO' }
+    if (data.enabled === false) { upsertData.status = 'PAUSADO'; upsertData.nextRunAt = null }
 
-    const autoSync = await prisma.googleSheetsAutoSyncConfig.upsert({
+    await prisma.googleSheetsAutoSyncConfig.upsert({
       where:  { importerId: params.id },
       create: { importerId: params.id, ...upsertData },
       update: upsertData,
     })
 
-    return NextResponse.json({ success: true, data: autoSync })
+    // Relê com jobs incluídos para o frontend manter o estado correto
+    const updated = await prisma.googleSheetsAutoSyncConfig.findUnique({
+      where:   { importerId: params.id },
+      include: { jobs: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: updated
+        ? {
+            ...updated,
+            allowedDays:  (updated.allowedDays as number[])       ?? [],
+            selectedTabs: (updated.selectedTabs as string[] | null) ?? null,
+            nextRunAt:    updated.nextRunAt?.toISOString()         ?? null,
+            lastJob:      updated.jobs[0]                          ?? null,
+          }
+        : null,
+    })
   } catch (err) {
     return handlePrismaError(err)
   }

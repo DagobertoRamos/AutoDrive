@@ -1,10 +1,11 @@
 // =============================================================================
-// Google Sheets Import Service
+// Google Sheets Import Service (legado)
+// Usado por /api/import/sheets/run
 // Importa dados da planilha fonte para o banco próprio do sistema
 // =============================================================================
 
-import { prisma }                         from '@/lib/prisma'
-import { parseGoogleSheetsCredentials }  from '@/lib/google-auth'
+import { prisma }                                        from '@/lib/prisma'
+import { parseGoogleSheetsCredentials, getSheetsCredsFromDB, getMasterSheetIdFromDB } from '@/lib/google-auth'
 
 interface SheetRow {
   status?: string
@@ -32,12 +33,16 @@ interface ImportResult {
 }
 
 class SheetsImportService {
-  private get sheetId() {
-    return process.env.GOOGLE_SHEETS_ID ?? ''
+  private async getSheetId(): Promise<string> {
+    return (await getMasterSheetIdFromDB()) ?? process.env.GOOGLE_SHEETS_ID ?? ''
   }
 
   async fetchSheetData(sheetName = 'PENDENCIAS'): Promise<SheetRow[]> {
-    const credentials = parseGoogleSheetsCredentials(process.env.GOOGLE_SHEETS_CREDENTIALS)
+    // Prioridade: banco de dados > variável de ambiente
+    const rawCreds =
+      (await getSheetsCredsFromDB()) ??
+      process.env.GOOGLE_SHEETS_CREDENTIALS
+    const credentials = parseGoogleSheetsCredentials(rawCreds)
 
     const { google } = await import('googleapis')
     const auth = new google.auth.GoogleAuth({
@@ -47,8 +52,8 @@ class SheetsImportService {
 
     const sheets = google.sheets({ version: 'v4', auth })
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: this.sheetId,
-      range: `${sheetName}!A1:Z`,
+      spreadsheetId: await this.getSheetId(),
+      range: `${sheetName}!A1:ZZ`,
     })
 
     const rows = response.data.values ?? []
@@ -74,8 +79,9 @@ class SheetsImportService {
       errors: [],
     }
 
-    const importLog = await prisma.importLog.create({
-      data: { sheetId: this.sheetId, status: 'RUNNING', totalRows: 0, newPendencies: 0, updatedPendencies: 0 },
+    // Registra job de importação usando o modelo correto (ImportJob)
+    const job = await prisma.importJob.create({
+      data: { status: 'PROCESSANDO', startedAt: new Date() },
     })
 
     try {
@@ -98,83 +104,70 @@ class SheetsImportService {
             continue
           }
 
-          if (!row.customerName && !row['cliente']) {
+          const customerName = row.customerName ?? row['cliente'] ?? ''
+          if (!customerName) {
             result.skipped++
             continue
           }
 
-          const customerName = row.customerName ?? row['cliente'] ?? ''
-          const plate = row.plate ?? row['placa'] ?? null
-          const vehicle = row.vehicle ?? row['veiculo'] ?? row['veículo'] ?? null
+          const plate       = row.plate       ?? row['placa']                      ?? null
+          const vehicle     = row.vehicle     ?? row['veiculo'] ?? row['veículo']  ?? null
           const negotiation = row.negotiation ?? row['negociacao'] ?? row['negociação'] ?? null
+          const sellerName  = row.sellerName  ?? row['vendedor']                   ?? null
 
-          // Buscar vendedor pelo nome
-          let responsibleId: string | null = null
-          const sellerName = row.sellerName ?? row['vendedor'] ?? null
-          if (sellerName) {
-            const seller = await prisma.seller.findFirst({
-              where: { fullName: { contains: sellerName, mode: 'insensitive' } },
-            })
-            responsibleId = seller?.id ?? null
+          // Buscar vendedor pelo nome — obrigatório (responsibleId é NOT NULL)
+          if (!sellerName) {
+            result.errors.push(`Vendedor não informado (linha: ${customerName})`)
+            result.skipped++
+            continue
           }
 
-          if (!responsibleId) {
+          const seller = await prisma.seller.findFirst({
+            where: { fullName: { contains: sellerName, mode: 'insensitive' } },
+          })
+
+          if (!seller) {
             result.errors.push(`Vendedor não encontrado: ${sellerName} (linha: ${customerName})`)
             result.skipped++
             continue
           }
 
-          // Verificar se já existe (deduplicação por placa + negociação)
-          const existing = await prisma.pendency.findFirst({
-            where: {
-              plate: plate ?? undefined,
-              negotiation: negotiation ?? undefined,
-              responsibleId,
-              status: { in: ['ABERTA', 'EM_ANDAMENTO', 'VENCIDA'] },
-            },
-          })
+          // Verificar se já existe (deduplicação por negociação + vendedor)
+          const existing = plate || negotiation
+            ? await prisma.pendency.findFirst({
+                where: {
+                  responsibleId: seller.id,
+                  ...(negotiation ? { negotiation } : {}),
+                  ...(plate && !negotiation ? { plate } : {}),
+                  status: { notIn: ['FINALIZADA', 'CANCELADA'] },
+                },
+              })
+            : null
 
           if (existing) {
             await prisma.pendency.update({
               where: { id: existing.id },
-              data: { vehicle: vehicle ?? existing.vehicle, source: 'SHEETS' },
+              data:  { vehicle: vehicle ?? existing.vehicle, source: 'SHEETS' },
             })
             result.updatedPendencies++
           } else {
-            const pendency = await prisma.pendency.create({
+            await prisma.pendency.create({
               data: {
                 customerName,
                 plate,
                 vehicle,
                 negotiation,
-                responsibleId,
-                unitId: defaultUnit.id,
-                priority: 'MEDIA',
-                status: 'ABERTA',
-                source: 'SHEETS',
+                responsibleId:  seller.id,
+                unitId:         defaultUnit.id,
+                priority:       'MEDIA',
+                status:         'ABERTA',
+                source:         'SHEETS',
+                allowedDays:    [],
                 referenceMonth: row.referenceMonth ?? row['mes_referencia'] ?? null,
-                description: row.description ?? row['descricao'] ?? null,
-                type: row.type ?? row['tipo'] ?? null,
-                initialDate: new Date(),
+                description:    row.description    ?? row['descricao']      ?? null,
+                type:           row.type           ?? row['tipo']           ?? null,
               },
             })
-
-            // Notificar sobre nova pendência importada
-            const delay = parseInt(
-              (await prisma.systemSetting.findUnique({ where: { key: 'import_delay_seconds' } }))?.value ?? '5'
-            )
-            setTimeout(async () => {
-              await prisma.notification.create({
-                data: {
-                  userId: (await prisma.user.findFirst({ where: { role: { in: ['MASTER', 'ADM'] } } }))?.id ?? '',
-                  type: 'NOVA_PENDENCIA',
-                  title: 'Nova pendência importada',
-                  message: `Cliente: ${customerName} | Placa: ${plate ?? '—'} | Vendedor: ${sellerName}`,
-                  actionUrl: '/pendencias/gerencia',
-                },
-              }).catch(() => { /* silent */ })
-            }, delay * 1000)
-
             result.newPendencies++
           }
         } catch (rowErr) {
@@ -184,21 +177,23 @@ class SheetsImportService {
 
       result.success = true
 
-      await prisma.importLog.update({
-        where: { id: importLog.id },
-        data: {
-          status: 'SUCCESS',
-          totalRows: result.totalRows,
-          newPendencies: result.newPendencies,
-          updatedPendencies: result.updatedPendencies,
-          errors: result.errors,
+      await prisma.importJob.update({
+        where: { id: job.id },
+        data:  {
+          status:        'CONCLUIDO',
+          totalRows:     result.totalRows,
+          newRecords:    result.newPendencies,
+          updatedRecords: result.updatedPendencies,
+          errorRows:     result.skipped,
+          errors:        result.errors.length > 0 ? result.errors : undefined,
+          finishedAt:    new Date(),
         },
       })
     } catch (err) {
       result.errors.push(String(err))
-      await prisma.importLog.update({
-        where: { id: importLog.id },
-        data: { status: 'ERROR', errors: result.errors },
+      await prisma.importJob.update({
+        where: { id: job.id },
+        data:  { status: 'ERRO', errors: result.errors, finishedAt: new Date() },
       })
     }
 

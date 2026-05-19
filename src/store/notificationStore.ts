@@ -25,6 +25,7 @@ interface NotificationState {
   // ── Toast actions ──────────────────────────────────────────────────────────
   addToast:    (toast: Omit<NotificationToast, 'id' | 'createdAt'>) => void
   dismissToast:(id: string) => void
+  removeToast: (id: string) => void   // alias retrocompatível
   clearToasts: () => void
 
   // ── Notification actions ───────────────────────────────────────────────────

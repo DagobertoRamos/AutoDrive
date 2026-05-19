@@ -430,8 +430,11 @@ export function parseContractText(rawText: string): ParsedContract {
  *   const result = await parseContractPdf(buffer)
  */
 export async function parseContractPdf(buffer: Buffer): Promise<ParsedContract> {
-  // pdf-parse é importado dinamicamente para evitar problemas com o bundler Next.js
-  const pdfParse = (await import('pdf-parse')).default
+  // pdf-parse é importado dinamicamente para evitar problemas com o bundler Next.js.
+  // O export muda entre versões/ESM — fazemos fallback.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod = (await import('pdf-parse')) as any
+  const pdfParse = mod.default ?? mod
 
   const data = await pdfParse(buffer, {
     // Preserva quebras de linha para facilitar detecção de blocos

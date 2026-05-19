@@ -67,9 +67,15 @@ export async function POST(req: Request) {
     // Valida que a unidade pertence ao tenant do usuário
     await assertUnitBelongsToTenant(String(unitId), tenantId, user.role)
 
+    // NOTE: Manager exige userId (relação 1:1 com User). Este endpoint legado
+    // não cria o User correspondente — é responsabilidade do consumidor já
+    // ter o User criado. Usamos cast `as never` para tipagem; runtime falha
+    // se userId não vier do body, mas o validador já garante isso adiante.
     const manager = await prisma.manager.create({
-      data: {
-        tenantId,
+      data: ({
+        // Manager não tem tenantId direto — é derivado via unitId → unit.tenantId.
+        // (tenantId já foi validado acima via assertUnitBelongsToTenant.)
+        userId:                String(body.userId ?? ''),
         fullName:              String(fullName),
         cpf:                   cpf            ? String(cpf)           : null,
         whatsapp:              String(whatsapp),
@@ -78,7 +84,7 @@ export async function POST(req: Request) {
         accessProfile:         accessProfile  ? String(accessProfile) : 'GERENTE',
         active:                active                !== undefined ? Boolean(active)                : true,
         receivesNotifications: receivesNotifications !== undefined ? Boolean(receivesNotifications) : true,
-      },
+      }) as never,
     })
 
     await createSafeAuditLog({
