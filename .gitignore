@@ -173,3 +173,6 @@ google-credentials.json
 .stylelintcache
 *.sw?
 .vercel
+
+.vercel
+.env*.local
