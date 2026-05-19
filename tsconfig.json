@@ -38,5 +38,16 @@
     "exactOptionalPropertyTypes": false
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", ".next", "out", "dist"]
+  "exclude": [
+    "node_modules",
+    ".next",
+    "out",
+    "dist",
+    "build",
+    "autodrive_diagnostico_prisma_nextauth/**",
+    "_archive_autodrive_diagnostico_prisma_nextauth/**",
+    "**/*.example.ts",
+    "**/*.example.tsx",
+    "**/examples/**"
+  ]
 }

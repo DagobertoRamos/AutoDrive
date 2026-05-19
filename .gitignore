@@ -33,9 +33,11 @@ yarn-error.log*
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+
+# IMPORTANTE: lockfiles NÃO ficam mais no .gitignore.
+# package-lock.json precisa ser commitado para garantir builds determinísticos
+# na Vercel (npm ci) e evitar warnings de versão divergente.
+# Se você usa pnpm/yarn ao invés de npm, escolha UM lockfile e commit ele.
 
 # -----------------------------------------------------------------------------
 # Variáveis de Ambiente — NUNCA commite arquivos .env reais!
