@@ -516,6 +516,15 @@ function AvaliacaoForm() {
   const parseMoney = parseBRL
 
   // ── Salvar avaliação ──────────────────────────────────────────────────────────
+  // Fluxo unificado: usa SEMPRE o mesmo registro criado em ensureDraft().
+  //   1. Garante evaluationId (chama ensureDraft se ainda não existir).
+  //   2. PATCH /api/evaluations/[id] — atualiza todos os campos editáveis.
+  //   3. POST  /api/evaluations/[id]/finish — transiciona DRAFT → FINALIZED.
+  //   4. Upload de documentos pendentes (idem fluxo anterior).
+  //   5. Se APROVADO + canApprove → chama /approve legacy (promove a Vehicle).
+  //   6. Redireciona para /estoque/avaliacao/[id]/inspecao (mesmo id).
+  // O endpoint legacy /api/vehicles/evaluations (POST de criação) NÃO é mais
+  // chamado — isso eliminava o registro duplicado.
   async function handleSave() {
     // Prioridade: seleção do combo → entrada manual → dado do lookup
     const brand = combo.brandName  || manualBrand  || lookupData?.brand  || ''
@@ -527,6 +536,18 @@ function AvaliacaoForm() {
     setSaving(true)
     setError('')
     try {
+      // Garante o rascunho — caso o usuário pule etapas ou ensureDraft tenha
+      // falhado anteriormente sem registro. Reaproveita a função idempotente.
+      let id = evaluationId
+      if (!id) {
+        id = await ensureDraft()
+        if (!id) {
+          setError('Não foi possível criar a avaliação. Verifique os dados obrigatórios.')
+          setSaving(false)
+          return
+        }
+      }
+
       // Combina notes do avaliador com o ano modelo (que ainda não tem coluna
       // dedicada no schema). Mantém o dado sem perda enquanto a migration
       // futura não cria a coluna.
@@ -534,28 +555,23 @@ function AvaliacaoForm() {
       if (yearModel) extraNotes.push(`[Ano Modelo] ${yearModel}`)
       const combinedNotes = [evaluationNotes, ...extraNotes].filter(Boolean).join('\n').trim() || null
 
-      const body = {
-        vehicleId:    searchParams.get('vehicleId') || null,
-        unitId:       unitId || null,
+      // PATCH — campos pertencentes ao whitelist do endpoint /api/evaluations/[id].
+      // Campos de pricing são automaticamente filtrados pelo backend conforme RBAC.
+      const patchBody = {
         plate:        plate  || null,
         chassi:       chassi || null,
         renavam:      renavam || null,
         brand,
         model,
         version:      version || combo.versionLabel || lookupData?.version || null,
-        year:         year ? Number(year) : null,
+        manufactureYear: year ? Number(year) : null,
         modelYear:    yearModel ? Number(yearModel) : (combo.modelYear ?? null),
         km:           km ? Number(km) : null,
         color:        color || null,
         fuel:         fuel || null,
         transmission: transmission || null,
-        doors:        doors ? Number(doors) : null,
         vehicleType:  combo.vehicleType || lookupData?.vehicleType || null,
         conditionType: conditionType || null,
-        engine:       engine || null,
-        displacement: displacement || null,
-        power:        power || null,
-        bodyType:     bodyType || null,
         fipeCode:     fipeCode || combo.fipeCode || null,
         fipeReferenceMonth: fipeMonth || combo.fipeMonth || null,
         fipeValue:       parseMoney(fipeValue),
@@ -563,7 +579,6 @@ function AvaliacaoForm() {
         desiredValue:    parseMoney(desiredValue),
         minimumValue:    parseMoney(minimumValue),
         suggestedSalePrice: parseMoney(suggestedSale),
-        stockType:       stockType || 'PROPRIO',
         cautelarStatus:  cautelarStatus || 'SEM_CAUTELAR',
         cautelarNumber:  cautelarNumber || null,
         cautelarNotes:   cautelarNotes  || null,
@@ -571,51 +586,66 @@ function AvaliacaoForm() {
         ownerPhone:      ownerPhone || null,
         ownerCpf:        ownerCpf   || null,
         ownerEmail:      ownerEmail || null,
-        result:          result   || 'PENDENTE',
-        intention:       intention || 'APENAS_AVALIACAO',
-        notes:           combinedNotes,
-        lookupSource:    dataSource || 'manual',
+        evaluationNotes: combinedNotes,
       }
 
-      const res  = await fetch('/api/vehicles/evaluations', {
-        method:  'POST',
+      const patchRes = await fetch(`/api/evaluations/${id}`, {
+        method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
+        body:    JSON.stringify(patchBody),
       })
-      const data = await res.json()
+      const patchData = await patchRes.json().catch(() => ({}))
+      if (!patchRes.ok) {
+        setError(patchData?.error ?? 'Erro ao salvar dados da avaliação.')
+        setSaving(false)
+        return
+      }
 
-      if (data.success) {
-        setSavedId(data.data.id)
+      // Upload dos documentos pendentes (Step 1) — mesmo comportamento anterior.
+      if (pendingDocs.length > 0) {
+        await Promise.all(
+          pendingDocs.map(async (file) => {
+            try {
+              const fd = new FormData()
+              fd.append('file', file)
+              fd.append('section',  'DOCUMENTOS')
+              fd.append('category', file.type === 'application/pdf' ? 'OUTRO' : 'FOTO')
+              await fetch(`/api/evaluations/${id}/attachments`, {
+                method: 'POST',
+                body:   fd,
+              })
+            } catch { /* silent — segue o fluxo */ }
+          }),
+        )
+        // Limpa a fila para não reenviar caso o usuário interaja novamente.
+        setPendingDocs([])
+      }
 
-        // Upload dos documentos pendentes (Step 1) após o create — sempre que
-        // o endpoint /api/evaluations/[id]/attachments aceitar. Se a tabela de
-        // attachments ainda não estiver migrada, falha silenciosa para não
-        // bloquear a finalização da avaliação.
-        if (pendingDocs.length > 0) {
-          await Promise.all(
-            pendingDocs.map(async (file) => {
-              try {
-                const fd = new FormData()
-                fd.append('file', file)
-                fd.append('section',  'DOCUMENTOS')
-                fd.append('category', file.type === 'application/pdf' ? 'OUTRO' : 'FOTO')
-                await fetch(`/api/evaluations/${data.data.id}/attachments`, {
-                  method: 'POST',
-                  body:   fd,
-                })
-              } catch { /* silent — segue o fluxo */ }
-            }),
-          )
+      // Transição de status: DRAFT → FINALIZED via /finish (validação mínima
+      // server-side: plate + brand/model). Não bloqueia o fluxo se já estiver
+      // FINALIZED ou se o backend reportar erro de transição não-fatal.
+      const finishRes = await fetch(`/api/evaluations/${id}/finish`, { method: 'POST' })
+      if (!finishRes.ok) {
+        const fd = await finishRes.json().catch(() => ({}))
+        // Se o erro for de validação, mostra mas mantém os dados salvos via PATCH.
+        if (finishRes.status === 400) {
+          setError(fd?.error ?? 'Avaliação salva, mas não pôde ser finalizada.')
         }
+        // Em outros casos (403 de permissão, etc) também segue para inspeção.
+      }
 
-        if (result === 'APROVADO' && canApprove) {
-          await handleApprove(data.data.id)
-        } else {
-          setSuccess('saved')
-          setTimeout(() => router.push('/estoque'), 2500)
-        }
+      setSavedId(id)
+
+      // Se APROVADO + canApprove, promove a Vehicle no estoque via endpoint legacy
+      // (que cria a linha em vehicles a partir desta evaluation). NÃO é duplicação:
+      // approve atualiza a MESMA evaluation e cria um Vehicle vinculado.
+      if (result === 'APROVADO' && canApprove) {
+        await handleApprove(id)
       } else {
-        setError(data.error ?? 'Erro ao salvar avaliação.')
+        setSuccess('saved')
+        // Redireciona para a inspeção da MESMA avaliação (mesmo id usado ao longo
+        // de todo o wizard) — não há mais id "novo" sendo gerado.
+        setTimeout(() => router.push(`/estoque/avaliacao/${id}/inspecao`), 1500)
       }
     } catch (_) {
       setError('Erro de conexão.')
@@ -676,7 +706,7 @@ function AvaliacaoForm() {
       <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
         <CheckCircle className="h-16 w-16 text-brand-500" />
         <h2 className="text-xl font-bold text-brand-700">Avaliação salva!</h2>
-        <p className="text-sm text-gray-500">Redirecionando para o estoque...</p>
+        <p className="text-sm text-gray-500">Redirecionando para a inspeção...</p>
         {savedId && canApprove && (
           <button
             onClick={() => handleApprove()}
@@ -1330,8 +1360,8 @@ function AvaliacaoForm() {
             {evaluationId ? (
               <EvaluationSections
                 evaluationId={evaluationId}
-                evaluationStatus="DRAFT"
-                reopenCount={0}
+                evaluationStatus={evalStatus}
+                reopenCount={evalReopenCount}
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
