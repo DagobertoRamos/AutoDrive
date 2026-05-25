@@ -8,7 +8,10 @@ import { getServerAuthSession } from '@/lib/auth'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { prisma }               from '@/lib/prisma'
 import { loadEvaluationContext, recalcTotals } from '@/lib/evaluation/service'
-import { canViewEvaluation, canEditEvaluation } from '@/lib/evaluation/permissions'
+import {
+  canViewEvaluation, canEditEvaluation, canEditPricing, canViewPricing,
+  PRICING_FIELDS,
+} from '@/lib/evaluation/permissions'
 
 export async function GET(
   _req: NextRequest,
@@ -45,8 +48,22 @@ export async function GET(
       orderBy: { createdAt: 'desc' },
     }).catch(() => [])
 
+    // Mascara pricing para quem não pode visualizar
+    const showPricing = ev ? canViewPricing(user, {
+      status: ev.status ?? 'DRAFT',
+      tenantId: ev.tenantId,
+      unitId: ev.unitId,
+      evaluatorId: ev.evaluatedById,
+      result: ev.result,
+    }) : false
+    const safeEv = ev ? { ...ev } as Record<string, unknown> : ev
+    if (safeEv && !showPricing) {
+      for (const f of PRICING_FIELDS) safeEv[f] = null
+      safeEv.evaluatorFeedback = null
+    }
+
     return NextResponse.json({
-      data: { ...ev, items, services, attachments },
+      data: { ...(safeEv as object), items, services, attachments, _pricingHidden: !showPricing },
     })
   } catch (err) {
     return handlePrismaError(err)
@@ -81,18 +98,26 @@ export async function PATCH(
       'cautelarNotes', 'pendencyNotes', 'estimatedDays',
       'evaluatorFeedback', 'testDriveDone', 'status',
     ]
+    const pricingSet = new Set<string>(PRICING_FIELDS as readonly string[])
+    const canPrice = canEditPricing(user)
     for (const key of allowed) {
-      if (key in body) data[key] = body[key]
+      if (!(key in body)) continue
+      // Bloqueia VENDEDOR/etc de tocar em pricing pelo PATCH genérico
+      if (pricingSet.has(key) && !canPrice) continue
+      data[key] = body[key]
     }
 
-    // Coerções numéricas
+    // Coerções numéricas com guard anti-NaN
+    const safeNumber = (v: unknown): number | null => {
+      if (v == null || v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
     for (const key of ['manufactureYear', 'modelYear', 'km', 'estimatedDays']) {
-      if (data[key] != null && data[key] !== '') data[key] = Number(data[key])
-      else if (key in data) data[key] = null
+      if (key in data) data[key] = safeNumber(data[key])
     }
     for (const key of ['fipeValue', 'evaluatedValue', 'desiredValue', 'minimumValue', 'suggestedSalePrice']) {
-      if (data[key] != null && data[key] !== '') data[key] = Number(data[key])
-      else if (key in data) data[key] = null
+      if (key in data) data[key] = safeNumber(data[key])
     }
 
     const updated = await prisma.vehicleEvaluation.update({

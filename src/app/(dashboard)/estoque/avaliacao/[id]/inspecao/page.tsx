@@ -13,7 +13,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { AwaitingReleaseBanner } from '../../_components/AwaitingReleaseBanner'
+import { EvaluationSections } from '../../_components/EvaluationSections'
+import { CautelarUploader, type AttachmentLite } from '../../_components/CautelarUploader'
 import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
   Gauge, Wrench, FileText, CheckCircle2, AlertTriangle, Plus, X, Save,
@@ -73,6 +77,9 @@ interface Evaluation {
   totalExpenses?: number | string | null
   evaluatorFeedback?: string | null
   estimatedDays?: number | null
+  releasedAt?:   string | null
+  reopenCount?:  number | null
+  _pricingHidden?: boolean | null
   items?:       EvalItem[]
   services?:    EvalService[]
   attachments?: EvalAttachment[]
@@ -89,17 +96,28 @@ function Icon({ name, size = 14 }: { name: string; size?: number }) {
   return <Cmp size={size} />
 }
 const fmtBRL = (v: unknown): string => {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''))
-  return isNaN(n) ? 'R$ 0,00' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  // Anti-NaN: aceita number, string mascarada e Decimal-string. Sempre coerce
+  // via Number() final e cai em "R$ 0,00" quando inválido.
+  if (v == null || v === '') return 'R$ 0,00'
+  const n = typeof v === 'number' ? v : Number(String(v).replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.'))
+  if (!Number.isFinite(n)) return 'R$ 0,00'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 function maskBRLInput(value: string): string {
   const digits = value.replace(/\D/g, '')
   if (!digits) return ''
-  return (parseInt(digits, 10) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const cents = parseInt(digits, 10)
+  if (!Number.isFinite(cents)) return ''
+  return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 function parseBRL(value: string): number {
-  const n = parseFloat(value.replace(/\./g, '').replace(',', '.'))
-  return isNaN(n) ? 0 : n
+  // Usa convenção dígitos-como-centavos (consistente com maskBRLInput) para
+  // evitar o bug clássico "3,00" → 3 → "0,03".
+  if (!value) return 0
+  const digits = String(value).replace(/\D/g, '')
+  if (!digits) return 0
+  const cents = parseInt(digits, 10)
+  return Number.isFinite(cents) ? cents / 100 : 0
 }
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
@@ -122,6 +140,8 @@ export default function InspecaoPage() {
   const [data, setData]       = useState<Evaluation | null>(null)
   const [drawer, setDrawer]   = useState<{ open: boolean; item: EvalItem | null }>({ open: false, item: null })
   const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null)
+  const { data: session }     = useSession()
+  const role                  = (session?.user as { role?: string })?.role ?? null
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok })
@@ -294,6 +314,13 @@ export default function InspecaoPage() {
         </div>
       </div>
 
+      {/* Banner para VENDEDOR: aguardando liberação do gerente */}
+      <AwaitingReleaseBanner
+        pricingHidden={data._pricingHidden ?? null}
+        releasedAt={data.releasedAt ?? null}
+        role={role}
+      />
+
       {/* Totalizador sticky */}
       <div className="sticky top-0 z-20 grid grid-cols-2 gap-2 rounded-xl border border-brand-200 bg-white/95 p-3 shadow-sm backdrop-blur sm:grid-cols-4">
         <Stat label="FIPE"       value={data.fipeValue != null ? fmtBRL(data.fipeValue) : '—'} />
@@ -353,23 +380,20 @@ export default function InspecaoPage() {
         )}
         {tab === 'RESUMO' && <ResumoTab data={data} />}
 
-        {/* Seções de inspeção */}
+        {/* Seções de inspeção — usa EvaluationSections com tabs próprias */}
         {(['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE'] as const).includes(tab as never) && (
-          <SectionItemsTab
-            sectionKey={tab as SectionKey}
-            items={itemsBySection[tab] ?? []}
-            servicesByItem={servicesByItem}
-            attachments={attachmentsBySection[tab] ?? []}
-            disabled={isLocked}
-            evalId={evalId}
-            onOpenDrawer={(item) => setDrawer({ open: true, item })}
-            onChanged={load}
-            showToast={showToast}
+          <EvaluationSections
+            evaluationId={evalId}
+            evaluationStatus={status}
+            reopenCount={data.reopenCount ?? 0}
+            readOnly={isLocked}
           />
         )}
       </div>
 
-      {/* Drawer de reavaliação */}
+      {/* Drawer de reavaliação legado — substituído por ItemDrawer dentro de
+          EvaluationSections. Mantido como fallback apenas se for explicitamente
+          aberto (atualmente nenhum trigger ativo após a migração). */}
       {drawer.open && drawer.item && (
         <RevaluateDrawer
           evalId={evalId}
@@ -444,7 +468,7 @@ function Info({ label, value }: { label: string; value: string }) {
 // ── Tab: Itens de uma seção (Interior / Frente / etc) ────────────────────────
 
 function SectionItemsTab({
-  sectionKey, items, servicesByItem, attachments, evalId, onOpenDrawer, onChanged, disabled, showToast,
+  sectionKey, items, servicesByItem, attachments, evalId, onOpenDrawer, onChanged, disabled, showToast, evalStatus,
 }: {
   sectionKey: SectionKey
   items: EvalItem[]
@@ -455,7 +479,10 @@ function SectionItemsTab({
   onChanged: () => void
   disabled: boolean
   showToast: (msg: string, ok?: boolean) => void
+  evalStatus: string
 }) {
+  // "Reavaliar" só faz sentido depois que a avaliação foi reaberta.
+  const isReopened = evalStatus === 'REOPENED'
   const sectionDef = SECTIONS.find((s) => s.key === sectionKey)
   return (
     <div className="space-y-4">
@@ -520,7 +547,9 @@ function SectionItemsTab({
                       : 'bg-brand-600 text-white hover:bg-brand-700'
                 }`}
               >
-                {has ? 'Editar' : 'Reavaliar'}
+                {has
+                  ? (isReopened ? 'Reavaliar' : 'Editar')
+                  : 'Avaliar item'}
               </button>
             </div>
           )
@@ -542,17 +571,41 @@ function DocumentosTab({
   showToast: (msg: string, ok?: boolean) => void
 }) {
   const [category, setCategory] = useState('CRLV')
+  // Particiona: anexos cautelares ficam no widget dedicado; demais (CRLV, OUTRO,
+  // FOTO genérica) continuam no widget existente, que aceita todas as categorias.
+  const cautelar = attachments.filter((a) => a.category === 'LAUDO_CAUTELAR')
+  const outros   = attachments.filter((a) => a.category !== 'LAUDO_CAUTELAR')
+  const cautelarLite: AttachmentLite[] = cautelar.map((a) => ({
+    id:        a.id,
+    fileName:  a.fileName,
+    fileType:  a.fileType,
+    mimeType:  null,
+    fileSize:  null,
+    publicUrl: a.publicUrl,
+    category:  a.category,
+    uploadedByName: a.uploadedByName,
+    createdAt: a.createdAt,
+  }))
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Widget dedicado: Laudo Cautelar */}
+      <CautelarUploader
+        evaluationId={evalId}
+        existingFiles={cautelarLite}
+        onChange={() => { onChanged(); showToast('Arquivos cautelar atualizados.', true) }}
+        readOnly={disabled}
+      />
+
+      <div className="border-t border-gray-100 pt-4 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-semibold text-gray-800">Documentos e anexos</p>
+        <p className="text-sm font-semibold text-gray-800">Outros documentos e anexos</p>
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
           disabled={disabled}
         >
-          {ATTACHMENT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+          {ATTACHMENT_CATEGORIES.filter((c) => c.value !== 'LAUDO_CAUTELAR').map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
         {!disabled && (
           <AttachmentUploader
@@ -564,17 +617,18 @@ function DocumentosTab({
         )}
       </div>
 
-      {attachments.length === 0 ? (
+      {outros.length === 0 ? (
         <p className="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-400">
-          Nenhum documento anexado. Use o botão acima para enviar.
+          Nenhum outro documento anexado. Use o botão acima para enviar.
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {attachments.map((a) => (
+          {outros.map((a) => (
             <AttachmentCard key={a.id} a={a} evalId={evalId} onDeleted={onChanged} canDelete={!disabled} />
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

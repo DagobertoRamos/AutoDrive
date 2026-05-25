@@ -13,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
 import { getBanks, getCep, getCnpj, clearBrasilApiCache } from '@/lib/brasilapi/service'
 import { isAnyPlateProviderConfigured, clearPlateProviderCache } from '@/lib/plate-lookup/service'
+import { clearPlacasCredentialCache, isPlacasConfigured, getBalance as getPlacasBalance } from '@/lib/integrations/placas/client'
 import { getReferences as getFipeReferences, clearFipeConfigCache } from '@/lib/fipe/parallelum'
 import { getServiceDef } from '@/lib/integrations/catalog'
 import { clearActiveCredentialCache } from '@/lib/integrations/active'
@@ -132,7 +133,7 @@ export async function PATCH(
     // Limpa caches de service-specific (FIPE/Brasil/Plate) que possam ter
     // memorizado credencial antiga.
     if (cred.service === 'FIPE_PROVIDER' || cred.service === 'FIPE') clearFipeConfigCache()
-    if (cred.service === 'PLATE_LOOKUP') clearPlateProviderCache()
+    if (cred.service === 'PLATE_LOOKUP') { clearPlateProviderCache(); clearPlacasCredentialCache() }
     if (cred.service === 'BRASILAPI')    clearBrasilApiCache()
 
     await logMasterAction(session, 'UPDATE_INTEGRATION', 'IntegrationCredential', params.id, {
@@ -170,7 +171,7 @@ export async function DELETE(
     await prisma.integrationCredential.delete({ where: { id: params.id } })
     clearActiveCredentialCache()
     if (cred.service === 'FIPE_PROVIDER' || cred.service === 'FIPE') clearFipeConfigCache()
-    if (cred.service === 'PLATE_LOOKUP') clearPlateProviderCache()
+    if (cred.service === 'PLATE_LOOKUP') { clearPlateProviderCache(); clearPlacasCredentialCache() }
     if (cred.service === 'BRASILAPI')    clearBrasilApiCache()
 
     await logMasterAction(session, 'DELETE_INTEGRATION', 'IntegrationCredential', params.id, {
@@ -246,11 +247,23 @@ export async function POST(
           }
           case 'PLATE_LOOKUP': {
             clearPlateProviderCache()
-            const configured = await isAnyPlateProviderConfigured()
-            ok      = configured
-            message = configured
-              ? 'Provedor de placa configurado. O teste real depende de placa válida — verifique no módulo de Avaliação.'
-              : 'Nenhum provedor de placa pôde ser carregado. Verifique apiUrl/apiKey.'
+            clearPlacasCredentialCache()
+            // Prefer real check via API Placas balance se aplicável
+            const apiUrl = (cred.apiUrl ?? '').toLowerCase()
+            const isWdapi = apiUrl.includes('wdapi') || apiUrl.includes('apiplacas')
+            if (isWdapi && (await isPlacasConfigured())) {
+              const b = await getPlacasBalance()
+              ok = b.success
+              message = b.success
+                ? `API Placas OK — saldo: ${b.balance} consultas.`
+                : `API Placas falhou: ${b.errorMessage ?? 'sem retorno'}.`
+            } else {
+              const configured = await isAnyPlateProviderConfigured()
+              ok = configured
+              message = configured
+                ? 'Provedor de placa configurado. Teste real requer placa válida no módulo de Avaliação.'
+                : 'Nenhum provedor de placa pôde ser carregado. Verifique apiUrl/token.'
+            }
             break
           }
           case 'FIPE_PROVIDER': {

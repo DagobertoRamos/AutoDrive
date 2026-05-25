@@ -20,6 +20,10 @@ import { VehicleComboBox, type VehicleComboSelection } from '@/components/estoqu
 import { FipeWizard, type FipeResult } from '@/components/estoque/FipeWizard'
 import type { VehicleLookupData, VehicleCategory } from '@/lib/vehicle-lookup/types'
 import { maskBRL, parseBRL, maskKM, parseKM } from '@/lib/masks'
+import { StepCliente, type CustomerLite } from './_components/StepCliente'
+import { FipeMiniChart } from './_components/FipeMiniChart'
+import { EvaluationSections } from './_components/EvaluationSections'
+import { CautelarUploader, type AttachmentLite } from './_components/CautelarUploader'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -27,7 +31,7 @@ interface Unit { id: string; name: string }
 
 // Steps reformulados: Step 1 agora consolida placa + documentos + dados do veículo.
 // Step 2 (legado "Veículo") foi mergeado em Step 1 e não é mais navegado.
-type Step = 1 | 2 | 3 | 4 | 5 | 6
+type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
 // ── Tipos auxiliares para Step 1 (FIPE-driven) ──────────────────────────────
 type TipoVeiculoPt = 'CARRO' | 'MOTO' | 'CAMINHAO'
@@ -132,10 +136,11 @@ function Section({ title, icon, children }: {
 // STEPS atualizado: Step 1 agora cobre Placa + Documentos + Dados do Veículo.
 // "Veículo" (antigo step 2) foi removido da navegação para evitar duplicidade.
 const STEPS = [
+  { num: 0, label: 'Cliente',      icon: <User className="h-4 w-4" /> },
   { num: 1, label: 'Veículo',      icon: <Car className="h-4 w-4" /> },
   { num: 3, label: 'FIPE / Preços', icon: <DollarSign className="h-4 w-4" /> },
   { num: 4, label: 'Cautelar',     icon: <ShieldCheck className="h-4 w-4" /> },
-  { num: 5, label: 'Cliente',      icon: <User className="h-4 w-4" /> },
+  { num: 5, label: 'Avaliação',    icon: <ClipboardCheck className="h-4 w-4" /> },
   { num: 6, label: 'Resultado',    icon: <FileCheck className="h-4 w-4" /> },
 ]
 
@@ -191,7 +196,18 @@ function AvaliacaoForm() {
   const canAccess  = canAccessModule(role, 'stock.evaluate')
   const canApprove = canAccessModule(role, 'stock.manage')
 
-  const [step,       setStep]       = useState<Step>(1)
+  const [step,       setStep]       = useState<Step>(0)
+  const [customer,   setCustomer]   = useState<CustomerLite | null>(null)
+  // RASCUNHO id — criado quando o usuário avança do Step 1 (Veículo). Habilita
+  // sub-componentes que dependem do backend (EvaluationSections, CautelarUploader).
+  const [evaluationId,    setEvaluationId]    = useState<string | null>(null)
+  const [autoSavingDraft, setAutoSavingDraft] = useState(false)
+  const [draftAttempted,  setDraftAttempted]  = useState(false)
+  const [cautelarFiles,   setCautelarFiles]   = useState<AttachmentLite[]>([])
+  // Status/reopenCount reais da avaliação (carregados via GET /api/evaluations/[id]
+  // quando o usuário entra em modo edição via ?id=).
+  const [evalStatus,     setEvalStatus]     = useState<string>('DRAFT')
+  const [evalReopenCount, setEvalReopenCount] = useState<number>(0)
   const [units,      setUnits]      = useState<Unit[]>([])
   const [lookupData, setLookupData] = useState<VehicleLookupData | null>(null)
   const [dataSource, setDataSource] = useState<string>('')
@@ -358,6 +374,98 @@ function AvaliacaoForm() {
         .catch(() => {})
     }
   }, [searchParams])
+
+  // ── Preload de evaluationId via URL (?id=) ─────────────────────────────────
+  useEffect(() => {
+    const idParam = searchParams.get('id')
+    if (idParam && !evaluationId) setEvaluationId(idParam)
+  }, [searchParams, evaluationId])
+
+  // ── Refresh dos anexos cautelares + status/reopenCount reais ───────────────
+  const refreshCautelar = useCallback(async () => {
+    if (!evaluationId) return
+    try {
+      const r = await fetch(`/api/evaluations/${evaluationId}`, { cache: 'no-store' })
+      const d = await r.json()
+      const list = Array.isArray(d?.data?.attachments) ? d.data.attachments : []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setCautelarFiles(list.filter((a: any) => a?.category === 'LAUDO_CAUTELAR'))
+      // Mantém status/reopenCount em dia para passar valores reais ao
+      // EvaluationSections (e não o hardcode "DRAFT" / 0).
+      if (d?.data?.status) setEvalStatus(String(d.data.status))
+      if (d?.data?.reopenCount != null) setEvalReopenCount(Number(d.data.reopenCount) || 0)
+    } catch { /* silent */ }
+  }, [evaluationId])
+
+  useEffect(() => { void refreshCautelar() }, [refreshCautelar])
+
+  // ── Cria RASCUNHO no backend para habilitar sections/cautelar ───────────────
+  // Idempotente: se já temos evaluationId (criado nesta sessão ou vindo de ?id=),
+  // não tenta criar de novo. Também usa draftAttempted como guard para evitar
+  // dupla chamada concorrente (ex: usuário cliclando "Próxima etapa" 2x rápido).
+  async function ensureDraft(): Promise<string | null> {
+    if (evaluationId) return evaluationId
+    if (autoSavingDraft) return null
+    if (draftAttempted)  return evaluationId  // já tentou; não repete
+    const brand = brandName || manualBrand || lookupData?.brand || ''
+    const model = modelName || manualModel || lookupData?.model || ''
+    if (!plate && !(brand && model)) {
+      setError('Preencha placa ou marca/modelo antes de avançar.')
+      return null
+    }
+    setAutoSavingDraft(true)
+    setDraftAttempted(true)
+    try {
+      const body = {
+        plate:        plate || null,
+        chassi:       chassi || null,
+        renavam:      renavam || null,
+        brand,
+        model,
+        version:      version || null,
+        manufactureYear: year ? Number(year) : null,
+        modelYear:    yearModel ? Number(yearModel) : null,
+        km:           km ? Number(km) : null,
+        color:        color || null,
+        fuel:         fuel  || null,
+        transmission: transmission || null,
+        vehicleType:  combo.vehicleType || lookupData?.vehicleType || null,
+        conditionType: conditionType || null,
+        fipeCode:     fipeCode || null,
+        fipeReferenceMonth: fipeMonth || null,
+        fipeValue:    parseBRL(fipeValue),
+        evaluatedValue:  parseBRL(evaluatedValue),
+        desiredValue:    parseBRL(desiredValue),
+        minimumValue:    parseBRL(minimumValue),
+        suggestedSalePrice: parseBRL(suggestedSale),
+        ownerName:  customer?.name  ?? ownerName  ?? null,
+        ownerCpf:   customer?.cpf   ?? ownerCpf   ?? null,
+        ownerPhone: customer?.phone ?? ownerPhone ?? null,
+        ownerEmail: customer?.email ?? ownerEmail ?? null,
+        unitId:     unitId || null,
+        seedItems:  true,
+      }
+      const r = await fetch('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const d = await r.json()
+      if (!r.ok || !d?.data?.id) {
+        setError(d?.error ?? 'Falha ao criar rascunho da avaliação.')
+        setDraftAttempted(false)  // permite retry
+        return null
+      }
+      setEvaluationId(d.data.id)
+      return d.data.id
+    } catch {
+      setError('Erro de conexão ao criar rascunho.')
+      setDraftAttempted(false)  // permite retry
+      return null
+    } finally {
+      setAutoSavingDraft(false)
+    }
+  }
 
   // ── Auto-preencher a partir do resultado da consulta por placa ───────────────
   const handleLookupResult = useCallback((data: VehicleLookupData | null, status: string) => {
@@ -618,6 +726,40 @@ function AvaliacaoForm() {
         <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {/* ── Etapa 0 — Cliente (busca / cadastro rápido) ── */}
+      {step === 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
+          <Section title="Quem é o cliente desta avaliação?" icon={<User className="h-5 w-5" />}>
+            <StepCliente
+              selected={customer}
+              onSelect={(c) => {
+                setCustomer(c)
+                if (c) {
+                  if (c.name)  setOwnerName(c.name)
+                  if (c.phone) setOwnerPhone(c.phone)
+                  if (c.cpf)   setOwnerCpf(c.cpf)
+                  if (c.email) setOwnerEmail(c.email)
+                }
+              }}
+            />
+          </Section>
+
+          <div className="flex justify-between border-t border-gray-100 pt-4">
+            <Link href="/estoque" className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+              <ArrowLeft className="h-4 w-4" /> Cancelar
+            </Link>
+            <button
+              type="button"
+              disabled={!customer}
+              onClick={() => setStep(1)}
+              className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              Próxima etapa <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -937,23 +1079,25 @@ function AvaliacaoForm() {
             </Link>
             <button
               type="button"
-              disabled={!plate || !brandName || !modelName || !unitId || !conditionType}
-              onClick={() => {
+              disabled={!plate || !brandName || !modelName || !unitId || !conditionType || autoSavingDraft}
+              onClick={async () => {
                 // Persiste manualBrand/manualModel a partir das combos FIPE selecionadas
                 setManualBrand(brandName)
                 setManualModel(modelName)
                 // Mantém o objeto combo sincronizado para uso na etapa FIPE
                 setCombo((c) => ({
                   ...c,
-                  // vehicleType preservado (combo usa enum próprio CAR/MOTORCYCLE/TRUCK)
                   brandCode, brandName, modelCode, modelName,
                   modelYear: yearModel ? Number(yearModel) : null,
                 }))
+                // Cria RASCUNHO no backend para habilitar EvaluationSections / CautelarUploader
+                const id = await ensureDraft()
+                if (!id) return  // erro já exibido
                 setStep(3)
               }}
               className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              Próxima etapa
+              {autoSavingDraft ? 'Salvando rascunho...' : 'Próxima etapa'}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -1035,6 +1179,15 @@ function AvaliacaoForm() {
               </Field>
             </Grid>
           </Section>
+
+          {/* Mini-chart histórico FIPE (6 meses) — renderiza só com fipeCode válido */}
+          {fipeCode && (
+            <FipeMiniChart
+              fipeCode={fipeCode}
+              vehicleType={TIPO_VEICULO_API[tipoVeiculo]}
+              currentValue={parseBRL(fipeValue) ?? null}
+            />
+          )}
 
           <div className="border-t border-gray-100 pt-4">
             <Section title="Precificação da Avaliação">
@@ -1144,6 +1297,21 @@ function AvaliacaoForm() {
             </Field>
           </Section>
 
+          {/* Anexos do Laudo Cautelar (PDF/imagem) — habilitado após criar rascunho */}
+          <div className="border-t border-gray-100 pt-4">
+            {evaluationId ? (
+              <CautelarUploader
+                evaluationId={evaluationId}
+                existingFiles={cautelarFiles}
+                onChange={refreshCautelar}
+              />
+            ) : (
+              <p className="text-xs text-gray-400 italic">
+                Os anexos do laudo cautelar ficarão disponíveis assim que o rascunho da avaliação for criado.
+              </p>
+            )}
+          </div>
+
           <div className="flex justify-between pt-2">
             <button type="button" onClick={() => setStep(3)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
               <ArrowLeft className="h-4 w-4" /> Anterior
@@ -1155,24 +1323,21 @@ function AvaliacaoForm() {
         </div>
       )}
 
-      {/* ── Etapa 5 — Cliente ── */}
+      {/* ── Etapa 5 — Avaliação por seções (sectional checklist) ── */}
       {step === 5 && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
-          <Section title="Dados do Proprietário / Cliente" icon={<User className="h-5 w-5" />}>
-            <Grid>
-              <Field label="Nome completo">
-                <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} className={inputCls} placeholder="Nome do proprietário" />
-              </Field>
-              <Field label="WhatsApp / Telefone">
-                <input value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} className={inputCls} placeholder="(00) 00000-0000" />
-              </Field>
-              <Field label="CPF / CNPJ" hint="Armazenado com finalidade legítima (LGPD)">
-                <input value={ownerCpf} onChange={(e) => setOwnerCpf(e.target.value)} className={inputCls} placeholder="000.000.000-00" maxLength={18} />
-              </Field>
-              <Field label="E-mail">
-                <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} className={inputCls} placeholder="email@exemplo.com" />
-              </Field>
-            </Grid>
+          <Section title="Avaliação por seções" icon={<ClipboardCheck className="h-5 w-5" />}>
+            {evaluationId ? (
+              <EvaluationSections
+                evaluationId={evaluationId}
+                evaluationStatus="DRAFT"
+                reopenCount={0}
+              />
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Conclua a etapa "Veículo" para iniciar a avaliação por seções.
+              </div>
+            )}
           </Section>
 
           <div className="flex justify-between pt-2">

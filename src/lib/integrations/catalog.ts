@@ -73,14 +73,19 @@ export const SERVICES: ServiceDef[] = [
   {
     key:         'PLATE_LOOKUP',
     label:       'Consulta de Placa',
-    description: 'Provedor externo de consulta veicular por placa (API Placas, Cilia, Placafipe, APIBrasil, etc).',
+    defaultUrl:  'https://wdapi2.com.br',
+    description: 'Provedor externo de consulta veicular. Para API Placas (wdapi2.com.br) preencha apiUrl = https://wdapi2.com.br e cole o token no campo "Token". Outros provedores (Cilia, Placafipe) usam apiKey.',
     fields:      ['apiUrl', 'apiKey', 'token'],
     fieldLabels: {
       apiUrl: 'Base URL do provedor',
-      apiKey: 'API Key principal',
-      token:  'Token alternativo (se o provedor exigir um segundo header)',
+      apiKey: 'API Key (Cilia/Placafipe — opcional para wdapi2)',
+      token:  'Token (obrigatório para API Placas/wdapi2)',
     },
-    fieldRequired: { apiUrl: true, apiKey: true },
+    fieldHints: {
+      apiUrl: 'API Placas: https://wdapi2.com.br',
+      token:  'Cole aqui o token recebido por e-mail ao contratar API Placas.',
+    },
+    fieldRequired: { apiUrl: true },
     badgeColor:  'bg-indigo-50 text-indigo-700 border-indigo-200',
   },
   {

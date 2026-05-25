@@ -368,6 +368,33 @@ export async function getPrice(
   )
 }
 
+/**
+ * Busca preço FIPE por código com uma referência específica (histórico).
+ * vehicleType padrão: 'cars'. Cache por ref+code (12h).
+ */
+export async function getPriceByCodeAt(
+  codeFipe: string,
+  referenceCode: string,
+  vehicleType: TipoVeiculoBR | string = 'carros',
+  refresh = false,
+): Promise<FipeResult<FipePrice[]>> {
+  const code = String(codeFipe ?? '').trim()
+  const ref  = String(referenceCode ?? '').trim()
+  const tipo = normalizeTipoVeiculo(vehicleType) ?? 'cars'
+  if (!code || !ref) return { ok: false, source: 'parallelum', error: 'codeFipe e reference são obrigatórios.' }
+  return withCache(
+    {
+      endpoint:  'priceByCodeRef',
+      cacheKey:  `fipe:priceByCodeRef:${tipo}:${code}:${ref}`,
+      codeFipe:  code,
+      reference: ref,
+      vehicleType: tipo,
+      ttlMs:     TTL.code, refresh,
+    },
+    () => http<FipePrice[]>(`/${tipo}/${encodeURIComponent(code)}/years?reference=${encodeURIComponent(ref)}`),
+  )
+}
+
 /** Busca preço por código FIPE diretamente (sem navegar marcas/modelos). */
 export async function getPriceByCode(
   codeFipe: string,

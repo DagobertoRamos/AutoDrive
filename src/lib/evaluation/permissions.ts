@@ -87,3 +87,30 @@ export function canReopenEvaluation(user: SessionUser, e: EvaluationContext): bo
 export function canApproveServices(user: SessionUser): boolean {
   return MANAGER_PLUS.has(user.role)
 }
+
+/** Pode editar campos de precificação (FIPE/desejado/mínimo/avaliado/sugerido)? */
+export function canEditPricing(user: SessionUser): boolean {
+  return MANAGER_PLUS.has(user.role)
+}
+
+/**
+ * Pode ler campos sensíveis de precificação?
+ * Gerência+ sempre. VENDEDOR vê apenas após resultado liberado
+ * (`result` !== 'PENDENTE' OU `status` ∈ {APPROVED, REJECTED, FINALIZED, LIBERADA}).
+ */
+export function canViewPricing(
+  user: SessionUser,
+  e: EvaluationContext & { releasedAt?: Date | string | null; result?: string | null },
+): boolean {
+  if (MANAGER_PLUS.has(user.role)) return true
+  if (!canViewEvaluation(user, e)) return false
+  if (e.releasedAt) return true
+  if (e.result && e.result !== 'PENDENTE') return true
+  const releasedStatuses = new Set(['APPROVED', 'REJECTED', 'FINALIZED', 'LIBERADA', 'APROVADA', 'RECUSADA'])
+  return releasedStatuses.has(e.status)
+}
+
+export const PRICING_FIELDS = [
+  'fipeValue', 'evaluatedValue', 'desiredValue', 'minimumValue', 'suggestedSalePrice',
+] as const
+export type PricingField = typeof PRICING_FIELDS[number]

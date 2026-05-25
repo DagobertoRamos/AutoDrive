@@ -99,6 +99,11 @@ export async function POST(req: NextRequest) {
       if (u) resolvedUnitId = u.id
     }
 
+    const safeNum = (v: unknown): number | null => {
+      if (v == null || v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
     const ev = await prisma.vehicleEvaluation.create({
       data: {
         tenantId:        session.user.tenantId ?? null,
@@ -108,9 +113,9 @@ export async function POST(req: NextRequest) {
         brand:           brand ?? null,
         model:           model ?? null,
         version:         version ?? null,
-        manufactureYear: manufactureYear ? Number(manufactureYear) : null,
-        modelYear:       modelYear ? Number(modelYear) : null,
-        km:              km ? Number(km) : null,
+        manufactureYear: safeNum(manufactureYear),
+        modelYear:       safeNum(modelYear),
+        km:              safeNum(km),
         color:           color ?? null,
         fuel:            fuel  ?? null,
         transmission:    transmission ?? null,
@@ -120,11 +125,11 @@ export async function POST(req: NextRequest) {
         conditionType:   conditionType ?? null,
         fipeCode:           fipeCode ?? null,
         fipeReferenceMonth: fipeReferenceMonth ?? null,
-        fipeValue:          fipeValue          ? Number(fipeValue)          : null,
-        evaluatedValue:     evaluatedValue     ? Number(evaluatedValue)     : null,
-        desiredValue:       desiredValue       ? Number(desiredValue)       : null,
-        minimumValue:       minimumValue       ? Number(minimumValue)       : null,
-        suggestedSalePrice: suggestedSalePrice ? Number(suggestedSalePrice) : null,
+        fipeValue:          safeNum(fipeValue),
+        evaluatedValue:     safeNum(evaluatedValue),
+        desiredValue:       safeNum(desiredValue),
+        minimumValue:       safeNum(minimumValue),
+        suggestedSalePrice: safeNum(suggestedSalePrice),
         evaluationNotes:    evaluationNotes    ?? null,
         ownerName:          ownerName  ?? null,
         ownerCpf:           ownerCpf   ?? null,
