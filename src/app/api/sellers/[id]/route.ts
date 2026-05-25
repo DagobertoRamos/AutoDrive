@@ -45,7 +45,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     const body = await req.json()
-    const { fullName, shortName, cpf, whatsapp, email, unitId, cargo, active, receivesCharge } = body
+    const { fullName, shortName, cpf, whatsapp, email, unitId, cargo, active, receivesCharge, positionId } = body
+
+    // Valida positionId (se fornecido)
+    let positionUpdate: string | null | undefined = undefined
+    if (positionId !== undefined) {
+      if (positionId === null || positionId === '') {
+        positionUpdate = null
+      } else {
+        const pos = await prisma.position.findUnique({
+          where:  { id: String(positionId) },
+          select: { id: true, tenantId: true },
+        })
+        if (!pos || (pos.tenantId !== null && user.role !== 'MASTER' && pos.tenantId !== user.tenantId)) {
+          return NextResponse.json(
+            { success: false, error: 'Cargo inválido para este tenant.' },
+            { status: 400 },
+          )
+        }
+        positionUpdate = pos.id
+      }
+    }
 
     const seller = await prisma.seller.update({
       where: { id: params.id },
@@ -59,6 +79,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         cargo:          cargo          !== undefined ? String(cargo)                                  : undefined,
         active:         active         !== undefined ? Boolean(active)                                : undefined,
         receivesCharge: receivesCharge !== undefined ? Boolean(receivesCharge)                        : undefined,
+        positionId:     positionUpdate,
       },
     })
 

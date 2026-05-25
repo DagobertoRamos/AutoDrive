@@ -62,6 +62,7 @@ export type Module =
   | 'registrations.vehicles'
   | 'registrations.services'
   | 'registrations.warranties'
+  | 'registrations.positions'
   | 'settings'
   | 'settings.identity'
   | 'settings.sheets'
@@ -219,6 +220,10 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'registrations.warranties': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
     actions: ['read', 'create', 'update'],
+  },
+  'registrations.positions': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
+    actions: ['read', 'create', 'update', 'delete'],
   },
   settings: {
     roles: ['MASTER', 'ADM'],

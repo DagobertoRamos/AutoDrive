@@ -549,29 +549,36 @@ function VehicleInlineSearch({
   const [loading,  setLoading]  = useState(false)
   const [results,  setResults]  = useState<StockVehicle[]>([])
   const [searched, setSearched] = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
 
   const doSearch = useCallback(async (q: string) => {
     setLoading(true)
     setSearched(true)
+    setError(null)
     try {
-      // NÃO filtramos por stockStatus — queremos exibir também os que estão
-      // EM_NEGOCIACAO/RESERVADO, porém com cartão travado e tag amarela.
-      // Somente DISPONIVEL e RESERVADO entram na lista (oculta vendidos/baixados).
-      const qs = q ? `&search=${encodeURIComponent(q)}` : ''
-      const res  = await fetch(`/api/vehicles?${qs.slice(1)}&limit=30`)
-      const data = await res.json()
+      // Exibimos qualquer veículo "em estoque" — oculta apenas os que
+      // efetivamente saíram (vendidos/cancelados/devolvidos/baixados).
+      // Os EM_NEGOCIACAO/RESERVADO aparecem porém ficam com cartão travado.
+      const qs = new URLSearchParams({ limit: '30' })
+      if (q) qs.set('search', q)
+      const res  = await fetch(`/api/vehicles?${qs.toString()}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.success === false) {
+        setError(data?.error || `Falha ao buscar veículos (HTTP ${res.status}).`)
+        setResults([])
+        return
+      }
       const list: StockVehicle[] = Array.isArray(data?.data) ? data.data : []
-      // Mantém disponíveis primeiro, depois em negociação (todos visíveis)
-      const visible = list.filter((v) =>
-        ['DISPONIVEL', 'EM_NEGOCIACAO', 'RESERVADO'].includes(v.stockStatus),
-      )
+      const HIDDEN_STATUSES = ['VENDIDO', 'CANCELADO', 'DEVOLVIDO', 'BLOQUEADO']
+      const visible = list.filter((v) => !HIDDEN_STATUSES.includes(v.stockStatus))
       visible.sort((a, b) => {
         const aLock = a.hasOpenNegotiation ? 1 : 0
         const bLock = b.hasOpenNegotiation ? 1 : 0
         return aLock - bLock
       })
       setResults(visible)
-    } catch {
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro de rede ao buscar veículos.')
       setResults([])
     } finally {
       setLoading(false)
@@ -627,7 +634,13 @@ function VehicleInlineSearch({
       {/* Resultados em cards */}
       {!selected && (
         <>
-          {!loading && searched && results.length === 0 && (
+          {!loading && error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <AlertTriangle size={14} className="shrink-0" />
+              {error}
+            </div>
+          )}
+          {!loading && !error && searched && results.length === 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <AlertTriangle size={14} className="shrink-0" />
               Nenhum veículo disponível encontrado para esta busca.

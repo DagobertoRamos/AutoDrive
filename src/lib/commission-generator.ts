@@ -1,0 +1,463 @@
+// =============================================================================
+// commission-generator.ts — Geração automática de CommissionCalculation a partir
+// de um Deal finalizado.
+//
+// Estratégia:
+//   1. Carrega o Deal com vehicles + services + seller + manager.
+//   2. Compõe lista de itens (1 por par employee×tipo de comissionamento).
+//   3. Para cada item, resolve a regra via `findCommissionRule` (matcher central)
+//      e calcula o valor com `computeCommissionValue`.
+//   4. Idempotência: pula o que já existe (mesmo dealId/ruleType/employee/refId
+//      gravado em ruleDetails) — não duplica em chamadas repetidas.
+//   5. Em $transaction, insere uma CommissionCalculation (status PREVISTO) por
+//      item que casou regra. Itens sem regra são reportados como `matched: null`.
+//
+// Observação sobre schema: CommissionCalculation NÃO possui colunas dealId /
+// vehicleId / serviceId / warrantyId / bank. Esses identificadores são gravados
+// em `ruleDetails` (Json) junto com o snapshot da regra para auditoria.
+// =============================================================================
+
+import { prisma } from '@/lib/prisma'
+import {
+  findCommissionRule,
+  computeCommissionValue,
+  type EmployeeKind,
+} from '@/lib/commission-matcher'
+import type { CommissionRuleType, Prisma, UserRole } from '@prisma/client'
+
+// ── Tipos públicos ───────────────────────────────────────────────────────────
+
+export interface GenerateOptions {
+  dealId:      string
+  tenantId:    string | null
+  triggeredBy: string                // userId who triggered (for audit)
+  date?:       Date
+  dryRun?:     boolean               // when true, return what WOULD be created without writing
+}
+
+export interface GenerationItemRef {
+  contractId?: string | null
+  dealId?:     string | null
+  vehicleId?:  string | null
+  serviceId?:  string | null
+  warrantyId?: string | null
+  bank?:       string | null
+}
+
+export interface GenerationItem {
+  ruleType:      string
+  employeeKind:  EmployeeKind
+  employeeId:    string
+  employeeLabel: string
+  baseValue:     number
+  description:   string
+  reference:     GenerationItemRef
+}
+
+export interface GenerationResultItem extends GenerationItem {
+  matched: {
+    ruleId:          string
+    ruleName:        string
+    matchedBy:       string
+    rateApplied:     number | null
+    commissionValue: number
+  } | null
+  alreadyExisted?: boolean
+}
+
+export interface GenerationResult {
+  dealId:    string
+  created:   number
+  matched:   number
+  unmatched: number
+  items:     GenerationResultItem[]
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function toNum(v: unknown): number {
+  if (v == null) return 0
+  if (typeof v === 'number') return v
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function') {
+    return (v as { toNumber: () => number }).toNumber()
+  }
+  return Number(v) || 0
+}
+
+function periodOf(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
+}
+
+// Compara o identificador de referência relevante para idempotência
+function refKey(ruleType: string, ref: GenerationItemRef): string {
+  if (ref.serviceId)  return `service:${ref.serviceId}`
+  if (ref.warrantyId) return `warranty:${ref.warrantyId}`
+  if (ref.vehicleId)  return `vehicle:${ref.vehicleId}`
+  return `deal:${ruleType}`
+}
+
+// ── Função principal ─────────────────────────────────────────────────────────
+
+export async function generateCommissionsForDeal(
+  opts: GenerateOptions,
+): Promise<GenerationResult> {
+  const date    = opts.date ?? new Date()
+  const period  = periodOf(date)
+  const dryRun  = !!opts.dryRun
+
+  // 1. Carrega o Deal + relações relevantes
+  const deal = await prisma.deal.findUnique({
+    where: { id: opts.dealId },
+    include: {
+      vehicles: true,
+      services: true,
+      seller:   { select: { id: true, fullName: true, unitId: true, positionId: true, userId: true, user: { select: { role: true } } } },
+      manager:  { select: { id: true, name: true, positionId: true, role: true } },
+    },
+  })
+
+  if (!deal) {
+    return { dealId: opts.dealId, created: 0, matched: 0, unmatched: 0, items: [] }
+  }
+  const d = deal // alias para closures não precisarem reverificar nulidade
+
+  const tenantId = opts.tenantId ?? d.tenantId ?? null
+  const unitId   = d.unitId ?? d.seller?.unitId ?? null
+
+  // 2. Compor lista de itens (sem regra ainda)
+  const items: GenerationItem[] = []
+
+  // Identificação dos earners
+  const sellerEarner = d.seller
+    ? {
+        kind:        'SELLER' as const,
+        id:          d.seller.id,
+        positionId:  d.seller.positionId,
+        role:        d.seller.user?.role ?? null,
+        label:       d.seller.fullName,
+      }
+    : null
+
+  // deal.managerId aponta para User.id (não Manager.id). Tratamos como USER no matcher.
+  const managerEarner = d.manager
+    ? {
+        kind:        'USER' as const,
+        id:          d.manager.id,
+        positionId:  d.manager.positionId,
+        role:        d.manager.role,
+        label:       d.manager.name,
+      }
+    : null
+
+  function addForVehicle(dv: typeof d.vehicles[number]) {
+    const isTrade = dv.role === 'TROCA'
+    // TROCA usa a mesma regra de VENDA (cf. negotiation-service.normalizeCommissionType)
+    const ruleType: CommissionRuleType = isTrade ? 'VENDA' : (dv.role === 'COMPRADO' ? 'COMPRA' : 'VENDA')
+    const baseValue = toNum(dv.agreedValue) || toNum(d.saleAmount)
+    if (baseValue <= 0) return
+    if (!sellerEarner && !managerEarner) return
+    const baseDesc = `${ruleType} veículo ${dv.brand ?? ''} ${dv.model ?? ''} ${dv.plate ? `(${dv.plate})` : ''}`.trim()
+
+    if (sellerEarner) {
+      items.push({
+        ruleType,
+        employeeKind:  sellerEarner.kind,
+        employeeId:    sellerEarner.id,
+        employeeLabel: sellerEarner.label,
+        baseValue,
+        description:   `${baseDesc} — vendedor ${sellerEarner.label}`,
+        reference:     { dealId: d.id, vehicleId: dv.id },
+      })
+    }
+    if (managerEarner) {
+      items.push({
+        ruleType,
+        employeeKind:  managerEarner.kind,
+        employeeId:    managerEarner.id,
+        employeeLabel: managerEarner.label,
+        baseValue,
+        description:   `${baseDesc} — gerente ${managerEarner.label}`,
+        reference:     { dealId: d.id, vehicleId: dv.id },
+      })
+    }
+  }
+
+  function addForService(ds: typeof d.services[number]) {
+    // Heurística: serviço cujo nome contenha "garantia" → GARANTIA; senão SERVICO.
+    const nm = (ds.name ?? '').toLowerCase()
+    const isWarranty = nm.includes('garantia')
+    const ruleType: CommissionRuleType = isWarranty ? 'GARANTIA' : 'SERVICO'
+    const baseValue = toNum(ds.value)
+    if (baseValue <= 0) return
+    const refKind = isWarranty ? { warrantyId: ds.id } : { serviceId: ds.id }
+    const baseDesc = `${ruleType} ${ds.name}`
+
+    if (sellerEarner) {
+      items.push({
+        ruleType,
+        employeeKind:  sellerEarner.kind,
+        employeeId:    sellerEarner.id,
+        employeeLabel: sellerEarner.label,
+        baseValue,
+        description:   `${baseDesc} — vendedor ${sellerEarner.label}`,
+        reference:     { dealId: d.id, ...refKind },
+      })
+    }
+    if (managerEarner) {
+      items.push({
+        ruleType,
+        employeeKind:  managerEarner.kind,
+        employeeId:    managerEarner.id,
+        employeeLabel: managerEarner.label,
+        baseValue,
+        description:   `${baseDesc} — gerente ${managerEarner.label}`,
+        reference:     { dealId: d.id, ...refKind },
+      })
+    }
+  }
+
+  // Veículos vendidos / trocados / comprados
+  for (const dv of d.vehicles) {
+    if (dv.role === 'VENDIDO' || dv.role === 'TROCA' || dv.role === 'COMPRADO') {
+      addForVehicle(dv)
+    }
+  }
+
+  // Serviços (incluindo "garantia" detectada pelo nome)
+  for (const ds of d.services) {
+    addForService(ds)
+  }
+
+  // DOCUMENTO — para usuários com Position.slug == 'documentacao' no mesmo tenant
+  const docFee = toNum(d.documentationFee)
+  const docBase = docFee > 0 ? docFee : toNum(d.saleAmount)
+  if (docBase > 0) {
+    const docUsers = await prisma.user.findMany({
+      where: {
+        tenantId: tenantId,
+        position: { slug: 'documentacao' },
+      },
+      select: { id: true, name: true, positionId: true, role: true, unitId: true },
+    })
+    // Se o deal tiver unitId, prioriza usuários da mesma unidade
+    const eligible = unitId
+      ? docUsers.filter((u) => u.unitId == null || u.unitId === unitId)
+      : docUsers
+    for (const u of eligible) {
+      items.push({
+        ruleType:      'DOCUMENTO',
+        employeeKind:  'USER',
+        employeeId:    u.id,
+        employeeLabel: u.name,
+        baseValue:     docBase,
+        description:   `DOCUMENTO — ${u.name}`,
+        reference:     { dealId: d.id },
+      })
+    }
+  }
+
+  // RETORNO — não há DealReturn no schema atual; pulado.
+  // (Pode ser adicionado quando o módulo de retornos bancários for modelado.)
+
+  // 3. Para cada item: resolver a regra (em paralelo) + calcular o valor
+  const resolved = await Promise.all(items.map(async (it) => {
+    const matched = await findCommissionRule({
+      tenantId,
+      ruleType:   it.ruleType,
+      employee: {
+        kind:       it.employeeKind,
+        id:         it.employeeId,
+        positionId: await resolvePositionId(it),
+        role:       await resolveRole(it),
+      },
+      unitId:     unitId,
+      serviceId:  it.reference.serviceId  ?? null,
+      warrantyId: it.reference.warrantyId ?? null,
+      bank:       it.reference.bank       ?? null,
+      baseValue:  it.baseValue,
+      date,
+    })
+
+    const commissionValue = matched
+      ? computeCommissionValue(matched.rule, it.baseValue)
+      : 0
+
+    const rateApplied = matched && matched.rule.percentage != null
+      ? toNum(matched.rule.percentage)
+      : null
+
+    return {
+      item: it,
+      matched: matched
+        ? {
+            rule:            matched.rule,
+            matchedBy:       matched.matchedBy,
+            commissionValue,
+            rateApplied,
+          }
+        : null,
+    }
+  }))
+
+  // 4. Idempotência: ler CommissionCalculation existentes deste deal
+  // (ruleDetails contém { dealId, vehicleId, serviceId, warrantyId })
+  const existing = await prisma.commissionCalculation.findMany({
+    where: {
+      tenantId: tenantId,
+      ruleDetails: { path: ['dealId'], equals: d.id } as never,
+    },
+    select: { id: true, ruleType: true, sellerId: true, managerId: true, ruleDetails: true },
+  }).catch(() => [] as Array<{ id: string; ruleType: string; sellerId: string | null; managerId: string | null; ruleDetails: unknown }>)
+
+  function isDuplicate(it: GenerationItem): boolean {
+    const k = refKey(it.ruleType, it.reference)
+    return existing.some((e) => {
+      if (e.ruleType !== it.ruleType) return false
+      // Por employee
+      const empMatches =
+        (it.employeeKind === 'SELLER' && e.sellerId === it.employeeId) ||
+        (it.employeeKind === 'MANAGER' && e.managerId === it.employeeId) ||
+        (it.employeeKind === 'USER' && (
+          (e.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId === it.employeeId
+        ))
+      if (!empMatches) return false
+      const rd = e.ruleDetails as GenerationItemRef | null
+      const existingKey = refKey(it.ruleType, rd ?? {})
+      return existingKey === k
+    })
+  }
+
+  // 5. Persistir
+  const resultItems: GenerationResultItem[] = []
+  let created = 0
+  let matchedCount = 0
+  let unmatchedCount = 0
+
+  const toCreate: Array<{ item: GenerationItem; matched: NonNullable<typeof resolved[number]['matched']> }> = []
+
+  for (const r of resolved) {
+    const dup = isDuplicate(r.item)
+    if (r.matched) matchedCount++
+    else unmatchedCount++
+
+    resultItems.push({
+      ...r.item,
+      matched: r.matched
+        ? {
+            ruleId:          r.matched.rule.id,
+            ruleName:        r.matched.rule.name,
+            matchedBy:       r.matched.matchedBy,
+            rateApplied:     r.matched.rateApplied,
+            commissionValue: r.matched.commissionValue,
+          }
+        : null,
+      alreadyExisted: dup,
+    })
+
+    if (r.matched && !dup) toCreate.push({ item: r.item, matched: r.matched })
+  }
+
+  if (!dryRun && toCreate.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      for (const { item, matched } of toCreate) {
+        const ruleDetails: Prisma.JsonObject = {
+          dealId:        d.id,
+          vehicleId:     item.reference.vehicleId  ?? null,
+          serviceId:     item.reference.serviceId  ?? null,
+          warrantyId:    item.reference.warrantyId ?? null,
+          contractId:    item.reference.contractId ?? null,
+          bank:          item.reference.bank       ?? null,
+          employeeKind:  item.employeeKind,
+          employeeId:    item.employeeId,
+          employeeLabel: item.employeeLabel,
+          employeeUserId: item.employeeKind === 'USER' ? item.employeeId : null,
+          matchedBy:     matched.matchedBy,
+          rulePriority:  matched.rule.priority ?? 0,
+          commissionType: matched.rule.commissionType ?? null,
+          percentage:    matched.rule.percentage != null ? toNum(matched.rule.percentage) : null,
+          fixedValue:    matched.rule.fixedValue != null ? toNum(matched.rule.fixedValue) : null,
+          triggeredBy:   opts.triggeredBy,
+        }
+
+        await tx.commissionCalculation.create({
+          data: {
+            tenantId,
+            contractId:   item.reference.contractId ?? null,
+            sellerId:     item.employeeKind === 'SELLER'  ? item.employeeId : null,
+            managerId:    item.employeeKind === 'MANAGER' ? item.employeeId : null,
+            unitId:       unitId,
+            period,
+            ruleId:       matched.rule.id,
+            ruleType:     item.ruleType as CommissionRuleType,
+            description:  item.description,
+            baseValue:    item.baseValue,
+            rateApplied:  matched.rateApplied ?? undefined,
+            commissionValue: matched.commissionValue,
+            ruleDetails,
+            status:       'PREVISTO',
+          },
+        })
+        created++
+      }
+    })
+  }
+
+  return {
+    dealId:    d.id,
+    created,
+    matched:   matchedCount,
+    unmatched: unmatchedCount,
+    items:     resultItems,
+  }
+}
+
+// ── Helpers para enriquecimento (positionId/role do employee) ────────────────
+//
+// Quando o item já carrega esses dados (porque vieram do próprio deal.seller /
+// deal.manager), economizamos consultas. Para o usuário de documentação, os
+// dados já vêm carregados no addDocumento. Mas, por garantia, refazemos a busca
+// se necessário.
+
+const _earnerCache = new Map<string, { positionId: string | null; role: UserRole | null }>()
+
+async function loadEarner(kind: EmployeeKind, id: string): Promise<{ positionId: string | null; role: UserRole | null }> {
+  const key = `${kind}:${id}`
+  const cached = _earnerCache.get(key)
+  if (cached) return cached
+  let positionId: string | null = null
+  let role: UserRole | null = null
+  if (kind === 'SELLER') {
+    const s = await prisma.seller.findUnique({
+      where: { id }, select: { positionId: true, user: { select: { role: true } } },
+    })
+    positionId = s?.positionId ?? null
+    role = s?.user?.role ?? null
+  } else if (kind === 'MANAGER') {
+    const m = await prisma.manager.findUnique({
+      where: { id }, select: { positionId: true, user: { select: { role: true } } },
+    })
+    positionId = m?.positionId ?? null
+    role = m?.user?.role ?? null
+  } else {
+    const u = await prisma.user.findUnique({
+      where: { id }, select: { positionId: true, role: true },
+    })
+    positionId = u?.positionId ?? null
+    role = u?.role ?? null
+  }
+  const out = { positionId, role }
+  _earnerCache.set(key, out)
+  return out
+}
+
+async function resolvePositionId(it: GenerationItem): Promise<string | null> {
+  const e = await loadEarner(it.employeeKind, it.employeeId)
+  return e.positionId
+}
+
+async function resolveRole(it: GenerationItem): Promise<UserRole | null> {
+  const e = await loadEarner(it.employeeKind, it.employeeId)
+  return e.role
+}

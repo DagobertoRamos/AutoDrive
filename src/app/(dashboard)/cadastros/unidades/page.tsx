@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Building2, X, Save, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn, formatCNPJ } from '@/lib/utils'
+import { maskCNPJ, maskPhone } from '@/lib/masks'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -137,11 +138,11 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">CNPJ</label>
-              <input className={inputClass()} value={form.cnpj} onChange={(e) => set('cnpj', e.target.value)} placeholder="00.000.000/0001-00" />
+              <input className={inputClass()} value={maskCNPJ(form.cnpj)} onChange={(e) => set('cnpj', maskCNPJ(e.target.value))} placeholder="00.000.000/0001-00" inputMode="numeric" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Telefone</label>
-              <input type="tel" className={inputClass()} value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(11) 3000-0000" />
+              <input type="tel" className={inputClass()} value={maskPhone(form.phone)} onChange={(e) => set('phone', maskPhone(e.target.value))} placeholder="(11) 3000-0000" inputMode="numeric" />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Endereço</label>

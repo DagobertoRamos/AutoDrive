@@ -11,6 +11,7 @@ import {
   Palette, Loader2, AlertCircle, CheckCircle2, Save, Globe,
   Mail, Phone, Link as LinkIcon, Clock,
 } from 'lucide-react'
+import { maskPhone } from '@/lib/masks'
 
 interface Identity {
   id:             string
@@ -183,7 +184,7 @@ export default function SystemIdentityPage() {
             </div>
             <div>
               <label className={labelCls}><span className="flex items-center gap-1"><Phone size={11} />Telefone de suporte</span></label>
-              <input className={inputCls} value={form.supportPhone ?? ''} onChange={set('supportPhone')} placeholder="(11) 9 0000-0000" />
+              <input className={inputCls} value={maskPhone(form.supportPhone ?? '')} onChange={(e) => setForm(p => ({ ...p, supportPhone: maskPhone(e.target.value) }))} placeholder="(11) 99999-9999" inputMode="numeric" />
             </div>
             <div>
               <label className={labelCls}><span className="flex items-center gap-1"><LinkIcon size={11} />URL de suporte / help center</span></label>

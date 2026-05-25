@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Wrench, X, Save, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
+import { maskBRL, parseBRL } from '@/lib/masks'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -126,24 +127,22 @@ function Modal({
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Valor padrão (R$)</label>
               <input
-                type="number"
-                min={0}
-                step={0.01}
+                type="text"
+                inputMode="numeric"
                 className={inputClass()}
-                value={form.defaultValue}
-                onChange={(e) => set('defaultValue', Number(e.target.value))}
+                value={maskBRL(form.defaultValue ? Math.round(form.defaultValue * 100).toString() : '')}
+                onChange={(e) => set('defaultValue', parseBRL(maskBRL(e.target.value)) ?? 0)}
                 placeholder="0,00"
               />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Comissão padrão (R$)</label>
               <input
-                type="number"
-                min={0}
-                step={0.01}
+                type="text"
+                inputMode="numeric"
                 className={inputClass()}
-                value={form.defaultCommission}
-                onChange={(e) => set('defaultCommission', Number(e.target.value))}
+                value={maskBRL(form.defaultCommission ? Math.round(form.defaultCommission * 100).toString() : '')}
+                onChange={(e) => set('defaultCommission', parseBRL(maskBRL(e.target.value)) ?? 0)}
                 placeholder="0,00"
               />
             </div>

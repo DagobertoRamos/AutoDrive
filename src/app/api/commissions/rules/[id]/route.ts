@@ -29,7 +29,7 @@ export async function PUT(
     const body = await req.json()
     const {
       name, description, ruleType, commissionType,
-      role, sellerId, managerId, unitId, serviceId, warrantyId, bank,
+      role, positionId, sellerId, managerId, unitId, serviceId, warrantyId, bank,
       fromQuantity, toQuantity, fromValue, toValue,
       fixedValue, percentage, priority, active,
       validFrom, validUntil, notes,
@@ -46,6 +46,7 @@ export async function PUT(
         ruleType,
         commissionType: commissionType ?? rule.commissionType,
         role:           role           || null,
+        positionId:     positionId     || null,
         sellerId:       sellerId       || null,
         managerId:      managerId      || null,
         unitId:         unitId         || null,

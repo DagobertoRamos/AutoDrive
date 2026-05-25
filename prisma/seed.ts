@@ -64,6 +64,65 @@ function generatePublicId(): string {
   return id
 }
 
+// ── Cargos padrão do sistema (sempre, não-DEMO) ─────────────────────────────
+
+const SYSTEM_POSITIONS: Array<{
+  name: string
+  slug: string
+  baseRole: UserRole
+  sortOrder: number
+}> = [
+  { name: 'Vendedor',                slug: 'vendedor',             baseRole: UserRole.VENDEDOR,        sortOrder: 10 },
+  { name: 'Vendedor Líder',          slug: 'vendedor_lider',       baseRole: UserRole.VENDEDOR_LIDER,  sortOrder: 11 },
+  { name: 'Gerente',                 slug: 'gerente',              baseRole: UserRole.GERENTE,         sortOrder: 20 },
+  { name: 'Gerente Geral',           slug: 'gerente_geral',        baseRole: UserRole.GERENTE_GERAL,   sortOrder: 30 },
+  { name: 'Documentação',            slug: 'documentacao',         baseRole: UserRole.USUARIO,         sortOrder: 40 },
+  { name: 'Gerente de Documentação', slug: 'gerente_documentacao', baseRole: UserRole.USUARIO_LIDER,   sortOrder: 41 },
+  { name: 'Financeiro',              slug: 'financeiro',           baseRole: UserRole.USUARIO,         sortOrder: 50 },
+  { name: 'Gerente do Financeiro',   slug: 'gerente_financeiro',   baseRole: UserRole.USUARIO_LIDER,   sortOrder: 51 },
+  { name: 'F&I',                     slug: 'fi',                   baseRole: UserRole.USUARIO,         sortOrder: 60 },
+  { name: 'Auxiliar Geral',          slug: 'auxiliar_geral',       baseRole: UserRole.USUARIO,         sortOrder: 70 },
+  { name: 'Motorista',               slug: 'motorista',            baseRole: UserRole.USUARIO,         sortOrder: 80 },
+  { name: 'Preparador',              slug: 'preparador',           baseRole: UserRole.USUARIO,         sortOrder: 90 },
+]
+
+async function upsertSystemPositions(): Promise<void> {
+  for (const p of SYSTEM_POSITIONS) {
+    // tenantId é nullable, então @@unique([tenantId, slug]) com null é tratado
+    // como múltiplas linhas distintas pelo Postgres. Usamos findFirst + create
+    // para garantir idempotência por (tenantId IS NULL, slug).
+    const existing = await prisma.position.findFirst({
+      where: { tenantId: null, slug: p.slug },
+      select: { id: true },
+    })
+    if (existing) {
+      await prisma.position.update({
+        where: { id: existing.id },
+        data: {
+          name:      p.name,
+          baseRole:  p.baseRole,
+          isSystem:  true,
+          active:    true,
+          sortOrder: p.sortOrder,
+        },
+      })
+    } else {
+      await prisma.position.create({
+        data: {
+          tenantId:  null,
+          name:      p.name,
+          slug:      p.slug,
+          baseRole:  p.baseRole,
+          isSystem:  true,
+          active:    true,
+          sortOrder: p.sortOrder,
+        },
+      })
+    }
+  }
+  console.log(`   ✓ ${SYSTEM_POSITIONS.length} cargos padrão garantidos`)
+}
+
 // ── Função obrigatória: upsert do usuário MASTER ────────────────────────────
 
 async function upsertMaster(): Promise<{ id: string; email: string }> {
@@ -239,6 +298,9 @@ async function main() {
 
   console.log('👤 Garantindo usuário MASTER...')
   const master = await upsertMaster()
+
+  console.log('\n🎯 Garantindo cargos padrão do sistema...')
+  await upsertSystemPositions()
 
   if (SEED_DEMO) {
     await seedDemoData(master.id)

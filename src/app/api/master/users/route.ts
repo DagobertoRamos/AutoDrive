@@ -53,8 +53,9 @@ export async function GET(req: NextRequest) {
           mustChangePassword: true,
           lastLoginAt:        true,
           createdAt:          true,
-          tenant: { select: { id: true, name: true, publicId: true, status: true } },
-          unit:   { select: { id: true, name: true } },
+          tenant:   { select: { id: true, name: true, publicId: true, status: true } },
+          unit:     { select: { id: true, name: true } },
+          position: { select: { id: true, name: true, slug: true, baseRole: true } },
         },
       }),
       prisma.user.count({ where }),
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { name, email, password, role, status, tenantId, unitId, mustChangePassword } = body
+    const { name, email, password, role, status, tenantId, unitId, mustChangePassword, positionId } = body
 
     if (!name?.trim() || !email?.trim() || !password?.trim()) {
       return NextResponse.json(
@@ -103,6 +104,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Valida positionId (sistema ou do mesmo tenant)
+    let validatedPositionId: string | null = null
+    if (positionId) {
+      const pos = await prisma.position.findUnique({
+        where: { id: String(positionId) },
+        select: { id: true, tenantId: true },
+      })
+      if (!pos || (pos.tenantId !== null && pos.tenantId !== (tenantId ?? null))) {
+        return NextResponse.json(
+          { success: false, error: 'Cargo inválido para este tenant.' },
+          { status: 400 },
+        )
+      }
+      validatedPositionId = pos.id
+    }
+
     const passwordHash = await bcrypt.hash(password, 12)
 
     const user = await prisma.user.create({
@@ -115,6 +132,7 @@ export async function POST(req: NextRequest) {
         tenantId:           tenantId ?? null,
         unitId:             unitId   ?? null,
         mustChangePassword: mustChangePassword !== false,
+        positionId:         validatedPositionId,
       },
     })
 

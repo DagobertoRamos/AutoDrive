@@ -22,6 +22,7 @@ import {
   ChevronUp, BadgeAlert, CheckCircle2, UserRound,
 } from 'lucide-react'
 import { useImpersonationStore } from '@/store/impersonationStore'
+import { maskCNPJ, maskPhone } from '@/lib/masks'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -667,7 +668,7 @@ export default function TenantDetailPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">CNPJ</label>
-              <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="00.000.000/0001-00" value={form.cnpj} onChange={f('cnpj')} />
+              <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="00.000.000/0001-00" value={maskCNPJ(form.cnpj)} onChange={(e) => setForm(prev => ({ ...prev, cnpj: maskCNPJ(e.target.value) }))} inputMode="numeric" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -676,7 +677,7 @@ export default function TenantDetailPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Telefone</label>
-                <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.phone} onChange={f('phone')} />
+                <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={maskPhone(form.phone)} onChange={(e) => setForm(prev => ({ ...prev, phone: maskPhone(e.target.value) }))} placeholder="(11) 99999-9999" inputMode="numeric" />
               </div>
             </div>
             <div>
@@ -758,7 +759,7 @@ export default function TenantDetailPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Telefone</label>
-                <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.responsavelPhone} onChange={f('responsavelPhone')} />
+                <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={maskPhone(form.responsavelPhone)} onChange={(e) => setForm(prev => ({ ...prev, responsavelPhone: maskPhone(e.target.value) }))} placeholder="(11) 99999-9999" inputMode="numeric" />
               </div>
             </div>
           </div>

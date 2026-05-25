@@ -9,6 +9,9 @@ import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canFinalizeDeal, FINALIZABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/negotiation-service'
+import { generateCommissionsForDeal } from '@/lib/commission-generator'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(
   _req: NextRequest,
@@ -94,7 +97,28 @@ export async function POST(
       return d
     })
 
-    return NextResponse.json({ data: updated })
+    // Gera comissões automaticamente (não bloqueia o close em caso de falha)
+    let commissionResult: Awaited<ReturnType<typeof generateCommissionsForDeal>> | null = null
+    try {
+      commissionResult = await generateCommissionsForDeal({
+        dealId:      params.id,
+        tenantId:    deal.tenantId ?? null,
+        triggeredBy: session.user.id,
+      })
+    } catch (err) {
+      console.error('[finalize] commission generation failed', err)
+    }
+
+    return NextResponse.json({
+      data: updated,
+      commissionResult: commissionResult
+        ? {
+            created:   commissionResult.created,
+            matched:   commissionResult.matched,
+            unmatched: commissionResult.unmatched,
+          }
+        : null,
+    })
   } catch (err) {
     return handlePrismaError(err)
   }

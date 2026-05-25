@@ -2,194 +2,31 @@
 
 // =============================================================================
 // Sidebar — AutoDrive
-// Menu lateral recolhível com hierarquia de roles em pirâmide.
-// Cores 100% dinâmicas via CSS vars (--sb-*) geradas pelo ThemeInjector.
-// Desktop: estático no fluxo flex | Mobile: overlay fixo
+// Menu lateral recolhível, com filtragem por permissão, sub-itens aninhados,
+// redes sociais externas (somente se URL configurada) e logoff seguro.
+//
+// Persistência:
+//   - localStorage: 'autodrive:sidebar:collapsed' (boolean) — via zustand store
+//   - sessionStorage: 'autodrive:sidebar:openGroups' (Record<string, boolean>)
 // =============================================================================
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useSession } from 'next-auth/react'
-import { signOut } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/store/sidebarStore'
-import { canAccessModule, type Module } from '@/lib/permissions'
+import { canAccessModule } from '@/lib/permissions'
 import {
-  LayoutDashboard,
-  AlertCircle,
-  DollarSign,
-  Settings,
-  Database,
-  User,
-  LogOut,
   ChevronDown,
+  ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
-  FileText,
-  Send,
-  Users,
-  Building2,
-  ShieldCheck,
-  Car,
-  BarChart3,
-  Handshake,
-  Crown,
-  Warehouse,
-  Flag,
-  Construction,
-  Mail,
-  Plug,
-  Palette,
+  LogOut,
 } from 'lucide-react'
+import { NAV_GROUPS, type NavItem, SOCIAL_KEY_TO_FIELD } from './navigation'
 
-// ── Tipos ─────────────────────────────────────────────────────────────────────
-
-interface SubMenuItem {
-  label:   string
-  href:    string
-  module?: Module
-}
-
-interface MenuItem {
-  id:        string
-  label:     string
-  icon:      React.ElementType
-  href?:     string
-  subItems?: SubMenuItem[]
-  module?:   Module
-}
-
-// ── Estrutura do menu ─────────────────────────────────────────────────────────
-
-const MENU_ITEMS: MenuItem[] = [
-  { id: 'dashboard', label: 'Dashboard',    icon: LayoutDashboard, href: '/dashboard',  module: 'dashboard' },
-  {
-    id: 'estoque', label: 'Estoque', icon: Warehouse, module: 'stock',
-    subItems: [
-      { label: 'Ver Estoque',     href: '/estoque',           module: 'stock.view'     },
-      { label: 'Fazer Avaliação', href: '/estoque/avaliacao', module: 'stock.evaluate' },
-    ],
-  },
-  {
-    id: 'negociacoes', label: 'Negociações', icon: Handshake, module: 'negotiations',
-    subItems: [
-      { label: 'Todas',           href: '/negociacoes',             module: 'negotiations'         },
-      { label: 'Nova Negociação', href: '/negociacoes/nova',        module: 'negotiations'         },
-      { label: 'Aprovar',         href: '/negociacoes/aprovacoes',  module: 'negotiations.approve' },
-    ],
-  },
-  {
-    id: 'pendencias', label: 'Pendências', icon: AlertCircle, module: 'pendencies',
-    subItems: [
-      { label: 'Minhas Pendências', href: '/pendencias/minhas',  module: 'pendencies'         },
-      { label: 'Gerência',          href: '/pendencias/gerencia', module: 'pendencies.manage' },
-      { label: 'Central',           href: '/pendencias/central',  module: 'pendencies.central' },
-    ],
-  },
-  {
-    id: 'comunicacao', label: 'Comunicação', icon: Send, module: 'communication',
-    subItems: [
-      { label: 'Disparo Manual', href: '/comunicacao/disparo',  module: 'communication.dispatch'  },
-      { label: 'Templates',      href: '/comunicacao/templates', module: 'communication.templates' },
-    ],
-  },
-  {
-    id: 'comissoes', label: 'Comissões', icon: DollarSign, module: 'commissions',
-    subItems: [
-      { label: 'Meu Extrato', href: '/comissoes/extrato',  module: 'commissions'       },
-      { label: 'Cálculo',     href: '/comissoes/calculo',  module: 'commissions.calculate' },
-      { label: 'Regras',      href: '/comissoes/regras',   module: 'commissions.rules' },
-      { label: 'Retornos',    href: '/comissoes/retornos', module: 'commissions.rules' },
-      { label: 'Garantias',   href: '/comissoes/garantias',module: 'commissions.rules' },
-    ],
-  },
-  {
-    id: 'documentos', label: 'Documentos', icon: FileText, module: 'documents',
-    subItems: [
-      { label: 'Leitura de PDF',    href: '/documentos/pdf',       module: 'documents.pdf'    },
-      { label: 'Import. Sheets',    href: '/documentos/importacao',module: 'documents.import' },
-      { label: 'Contratos',         href: '/documentos/contratos', module: 'documents.pdf'    },
-    ],
-  },
-  {
-    id: 'cadastros', label: 'Cadastros', icon: Database, module: 'registrations',
-    subItems: [
-      { label: 'Vendedores', href: '/cadastros/vendedores', module: 'registrations.sellers'   },
-      { label: 'Gerentes',   href: '/cadastros/gerentes',   module: 'registrations.managers'  },
-      { label: 'Unidades',   href: '/cadastros/unidades',   module: 'registrations.units'     },
-      { label: 'Clientes',   href: '/cadastros/clientes',   module: 'registrations.customers' },
-      { label: 'Serviços',   href: '/cadastros/servicos',   module: 'registrations.services'  },
-      { label: 'Garantias',  href: '/cadastros/garantias',  module: 'registrations.warranties'},
-    ],
-  },
-  {
-    id: 'relatorios', label: 'Relatórios', icon: BarChart3, module: 'logs',
-    subItems: [
-      { label: 'Logs do Sistema', href: '/relatorios/logs',      module: 'logs' },
-      { label: 'Auditoria',       href: '/relatorios/auditoria', module: 'logs' },
-    ],
-  },
-  {
-    id: 'configuracoes', label: 'Configurações', icon: Settings, module: 'settings',
-    subItems: [
-      { label: 'Identidade',     href: '/configuracoes/identidade', module: 'settings.identity'   },
-      { label: 'Google Sheets',  href: '/configuracoes/sheets',     module: 'settings.sheets'     },
-      { label: 'E-mail',         href: '/configuracoes/email',      module: 'settings.email'      },
-      { label: 'WhatsApp',       href: '/configuracoes/whatsapp',   module: 'settings.whatsapp'   },
-      { label: 'Comissões',      href: '/configuracoes/comissoes',  module: 'settings.commission' },
-      { label: 'Sistema',        href: '/configuracoes/sistema',    module: 'settings.critical'   },
-    ],
-  },
-  {
-    id: 'master', label: 'Master', icon: Crown, module: 'master',
-    subItems: [
-      { label: 'Visão Geral',       href: '/master',                       module: 'master'         },
-      { label: 'Tenants',           href: '/master/tenants',               module: 'master.tenants' },
-      { label: 'Usuários',          href: '/master/users',                 module: 'master'         },
-      { label: 'Planos',            href: '/master/plans',                 module: 'master.plans'   },
-      { label: 'Módulos',           href: '/master/modules',               module: 'master.modules' },
-      { label: 'Regras de Avisos',  href: '/master/notification-rules',    module: 'master'         },
-      { label: 'Comunicação',       href: '/master/communication',         module: 'master'         },
-      { label: 'Importador Sheets', href: '/master/sheets',                module: 'master'         },
-      { label: 'Integrações',       href: '/master/integrations',          module: 'master'         },
-      { label: 'Feature Flags',     href: '/master/feature-flags',         module: 'master'         },
-      { label: 'Manutenção',        href: '/master/maintenance',           module: 'master'         },
-      { label: 'Identidade',        href: '/master/identity',              module: 'master'         },
-      { label: 'Segurança',         href: '/master/security',              module: 'master'         },
-      { label: 'Auditoria',         href: '/master/audit',                 module: 'master.audit'   },
-    ],
-  },
-  { id: 'perfil', label: 'Perfil', icon: User, href: '/perfil', module: 'profile' },
-]
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function itemHasAccess(module: Module | undefined, role: string | undefined): boolean {
-  if (!module) return true
-  if (!role)   return false
-  return canAccessModule(role, module)
-}
-
-function isPathActive(
-  currentPath: string,
-  href?: string | null,
-  subItems?: SubMenuItem[],
-): boolean {
-  if (!currentPath) return false
-  const target = href ?? ''
-  if (target && currentPath === target) return true
-  if (target && target !== '/dashboard' && currentPath.startsWith(target)) return true
-  if (Array.isArray(subItems)) {
-    return subItems.some((sub) => {
-      const h = sub?.href ?? ''
-      return h && (currentPath === h || currentPath.startsWith(h))
-    })
-  }
-  return false
-}
-
-// ── Logo — cores via CSS vars ─────────────────────────────────────────────────
+// ── Logo / Brand ──────────────────────────────────────────────────────────────
 
 function BrandLogo({ size = 22 }: { size?: number }) {
   return (
@@ -212,6 +49,229 @@ function BrandLogo({ size = 22 }: { size?: number }) {
   )
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function hasAccess(item: NavItem, role: string | undefined): boolean {
+  if (item.separator) return true
+  if (!item.module) return true
+  return canAccessModule(role, item.module)
+}
+
+function isActive(pathname: string, href?: string): boolean {
+  if (!href) return false
+  if (pathname === href) return true
+  if (href !== '/' && href !== '/dashboard' && pathname.startsWith(href + '/')) return true
+  return false
+}
+
+function anyChildActive(pathname: string, item: NavItem): boolean {
+  if (item.href && isActive(pathname, item.href)) return true
+  if (!item.children) return false
+  return item.children.some((c) => anyChildActive(pathname, c))
+}
+
+/**
+ * Filtra recursivamente o menu de acordo com (a) permissões do role e
+ * (b) presença de URL para itens externos (redes sociais).
+ */
+function filterTree(items: NavItem[], role: string | undefined, socials: Record<string, string>): NavItem[] {
+  const out: NavItem[] = []
+  for (const it of items) {
+    if (!hasAccess(it, role)) continue
+    if (it.separator) { out.push(it); continue }
+
+    // Item externo (rede social) — só renderiza se houver URL configurada
+    if (it.external) {
+      const key = it.socialKey
+      const url = key ? socials[key] : undefined
+      if (!url || !url.trim()) continue
+      out.push({ ...it, href: url })
+      continue
+    }
+
+    if (it.children && it.children.length) {
+      const filtered = filterTree(it.children, role, socials)
+      if (filtered.length === 0) continue
+      out.push({ ...it, children: filtered })
+    } else {
+      // Items que devem ter href (não-externos) — descarta se sem href
+      if (!it.href) continue
+      out.push(it)
+    }
+  }
+  return out
+}
+
+// ── Open-groups (sessionStorage) ──────────────────────────────────────────────
+
+const OPEN_GROUPS_KEY = 'autodrive:sidebar:openGroups'
+
+function readOpenGroups(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = sessionStorage.getItem(OPEN_GROUPS_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+  } catch { return {} }
+}
+
+function writeOpenGroups(state: Record<string, boolean>) {
+  if (typeof window === 'undefined') return
+  try { sessionStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(state)) } catch { /* ignore */ }
+}
+
+// ── Sub-componentes ───────────────────────────────────────────────────────────
+
+interface RenderItemProps {
+  item:          NavItem
+  depth:         number
+  collapsed:     boolean
+  pathname:      string
+  openMap:       Record<string, boolean>
+  setOpen:       (key: string, val: boolean) => void
+  onNavigate:    () => void
+}
+
+function NavLeaf({ item, depth, collapsed, pathname, onNavigate }: Omit<RenderItemProps, 'openMap' | 'setOpen'>) {
+  const active = isActive(pathname, item.href)
+  const Icon   = item.icon
+  const target = item.external ? '_blank' : undefined
+  const rel    = item.external ? 'noopener noreferrer' : undefined
+
+  // Salvaguarda: nunca renderiza link sem href
+  if (!item.href) return null
+
+  const baseClasses = cn(
+    'group flex items-center rounded-lg text-[13px] font-medium transition-all duration-150',
+    collapsed && depth === 0 ? 'justify-center h-9 w-9 mx-auto' : 'px-3 py-1.5 gap-2.5',
+    active ? '' : 'text-white/55 hover:text-white/90',
+  )
+
+  return (
+    <Link
+      href={item.href}
+      target={target}
+      rel={rel}
+      title={collapsed ? item.label : undefined}
+      onClick={onNavigate}
+      style={active ? { backgroundColor: 'var(--sb-active)', color: 'var(--sb-accent)' } : {}}
+      className={baseClasses}
+      onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--sb-hover)' }}
+      onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = '' }}
+    >
+      {Icon && (
+        <Icon
+          size={collapsed ? 16 : 15}
+          className="shrink-0"
+          style={{ color: active ? 'var(--sb-accent)' : undefined, opacity: active ? 1 : 0.5 }}
+        />
+      )}
+      {(!collapsed || depth > 0) && <span className="truncate">{item.label}</span>}
+    </Link>
+  )
+}
+
+function NavGroup(props: RenderItemProps) {
+  const { item, depth, collapsed, pathname, openMap, setOpen, onNavigate } = props
+  const key      = `${depth}:${item.label}`
+  const childAct = anyChildActive(pathname, item)
+  // Auto-abre se algum filho ativo
+  const open     = openMap[key] ?? childAct
+  const Icon     = item.icon
+
+  const labelClass = cn(
+    'w-full flex items-center rounded-lg text-[13px] font-medium transition-all duration-150',
+    collapsed && depth === 0 ? 'justify-center h-9 w-9 mx-auto' : 'px-3 py-1.5 gap-2.5 justify-between',
+    childAct ? '' : 'text-white/55 hover:text-white/90',
+  )
+
+  // Quando recolhido no nível 0: clique apenas expande a sidebar (UX simples e robusta)
+  const expand = useSidebarStore((s) => s.expand)
+
+  return (
+    <li className="relative">
+      <button
+        type="button"
+        onClick={() => {
+          if (collapsed && depth === 0) { expand(); return }
+          setOpen(key, !open)
+        }}
+        title={collapsed ? item.label : undefined}
+        style={childAct ? { backgroundColor: 'var(--sb-active)', color: 'var(--sb-accent)' } : {}}
+        className={labelClass}
+        onMouseEnter={(e) => { if (!childAct) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--sb-hover)' }}
+        onMouseLeave={(e) => { if (!childAct) (e.currentTarget as HTMLElement).style.backgroundColor = '' }}
+      >
+        <span className="flex items-center gap-2.5 min-w-0">
+          {Icon && (
+            <Icon
+              size={collapsed ? 16 : 15}
+              className="shrink-0"
+              style={{ color: childAct ? 'var(--sb-accent)' : undefined, opacity: childAct ? 1 : 0.5 }}
+            />
+          )}
+          {(!collapsed || depth > 0) && <span className="truncate">{item.label}</span>}
+        </span>
+        {(!collapsed || depth > 0) && (
+          open
+            ? <ChevronDown  size={13} className="shrink-0 opacity-40" />
+            : <ChevronRight size={13} className="shrink-0 opacity-40" />
+        )}
+      </button>
+
+      {!collapsed && open && item.children && (
+        <ul
+          className={cn('mt-0.5 space-y-px', depth === 0 ? 'ml-3 pl-2 border-l' : 'ml-2 pl-2 border-l')}
+          style={{ borderColor: 'var(--sb-border)' }}
+        >
+          {item.children.map((child, idx) => (
+            <RenderItem
+              key={`${child.label}-${idx}`}
+              item={child}
+              depth={depth + 1}
+              collapsed={collapsed}
+              pathname={pathname}
+              openMap={openMap}
+              setOpen={setOpen}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+function RenderItem(props: RenderItemProps) {
+  const { item, depth, collapsed } = props
+
+  if (item.separator) {
+    return (
+      <li className="my-2">
+        <div style={{ borderTop: '1px solid var(--sb-border)' }} />
+        {item.label && !collapsed && (
+          <p className="px-3 pt-2 text-[10px] uppercase tracking-wider text-white/30">{item.label}</p>
+        )}
+      </li>
+    )
+  }
+
+  if (item.children && item.children.length > 0) {
+    return <NavGroup {...props} />
+  }
+
+  return (
+    <li>
+      <NavLeaf
+        item={item}
+        depth={depth}
+        collapsed={collapsed}
+        pathname={props.pathname}
+        onNavigate={props.onNavigate}
+      />
+    </li>
+  )
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function Sidebar() {
@@ -220,21 +280,57 @@ export function Sidebar() {
   const userRole  = session?.user?.role as string | undefined
 
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebarStore()
-  const [openSubMenus, setOpenSubMenus] = useState<Record<string, boolean>>({})
+  const [openMap, setOpenMap] = useState<Record<string, boolean>>({})
+  const [socials, setSocials] = useState<Record<string, string>>({})
+  const [mounted, setMounted] = useState(false)
 
-  // Abre automaticamente o submenu do item ativo na navegação
+  // Hidrata open-groups e marca como montado (evita SSR mismatch)
   useEffect(() => {
-    const initial: Record<string, boolean> = {}
-    MENU_ITEMS.forEach((item) => {
-      if (item.subItems && isPathActive(pathname, item.href, item.subItems)) {
-        initial[item.id] = true
-      }
-    })
-    setOpenSubMenus(initial)
-  }, [pathname])
+    setOpenMap(readOpenGroups())
+    setMounted(true)
+  }, [])
 
-  const toggleSubMenu = (id: string) =>
-    setOpenSubMenus((prev) => ({ ...prev, [id]: !prev[id] }))
+  // Busca URLs sociais dinamicamente
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch('/api/settings/socials', { credentials: 'include' })
+        const data = await res.json()
+        if (cancelled || !data?.success || !data?.data) return
+        const out: Record<string, string> = {}
+        for (const [socialKey, field] of Object.entries(SOCIAL_KEY_TO_FIELD)) {
+          const val = data.data[field]
+          if (typeof val === 'string' && val.trim()) out[socialKey] = val.trim()
+        }
+        setSocials(out)
+      } catch { /* silent */ }
+    }
+    if (userRole) load()
+    return () => { cancelled = true }
+  }, [userRole])
+
+  const setOpen = (key: string, val: boolean) => {
+    setOpenMap((prev) => {
+      const next = { ...prev, [key]: val }
+      writeOpenGroups(next)
+      return next
+    })
+  }
+
+  const filteredTree = useMemo(
+    () => filterTree(NAV_GROUPS, userRole, socials),
+    [userRole, socials],
+  )
+
+  const handleSignOut = () => {
+    if (typeof window !== 'undefined' && !window.confirm('Deseja realmente sair do sistema?')) return
+    signOut({ callbackUrl: '/login' })
+  }
+
+  // Antes da hidratação, força expanded (estado inicial do store) para evitar
+  // mismatch entre server e client.
+  const collapsed = mounted ? isCollapsed : false
 
   return (
     <>
@@ -248,181 +344,67 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          'flex flex-col shrink-0 select-none',
-          'text-white transition-all duration-300 ease-in-out',
-          isCollapsed ? 'w-[60px]' : 'w-60',
+          'flex flex-col shrink-0 select-none text-white',
+          'transition-[width] duration-200 ease-in-out',
+          collapsed ? 'w-16' : 'w-64',
           'fixed inset-y-0 left-0 z-50 shadow-2xl',
           'lg:static lg:h-screen lg:shadow-none lg:translate-x-0',
           isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         )}
         style={{ backgroundColor: 'var(--sb-bg)' }}
       >
-
-        {/* ── Logo / Header ────────────────────────────────────────────── */}
+        {/* ── Header / Logo + toggle topo ──────────────────────────────── */}
         <div
           className={cn(
             'flex items-center shrink-0 h-14',
-            isCollapsed ? 'justify-center' : 'px-4 gap-3',
+            collapsed ? 'justify-center px-2' : 'px-3 gap-2',
           )}
           style={{ borderBottom: '1px solid var(--sb-border)' }}
         >
           <div className="shrink-0">
-            <BrandLogo size={isCollapsed ? 24 : 22} />
+            <BrandLogo size={collapsed ? 24 : 22} />
           </div>
-          {!isCollapsed && (
+          {!collapsed && (
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-white leading-tight truncate tracking-tight">
                 AutoDrive
               </p>
-              <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--sb-accent)', opacity: 0.7 }}>
+              <p
+                className="text-[10px] leading-tight truncate"
+                style={{ color: 'var(--sb-accent)', opacity: 0.7 }}
+              >
                 Sua loja no piloto automático
               </p>
             </div>
+          )}
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={toggle}
+              title="Recolher menu"
+              aria-label="Recolher menu"
+              className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md text-white/40 hover:text-white/80 hover:bg-white/5 shrink-0"
+            >
+              <PanelLeftClose size={15} />
+            </button>
           )}
         </div>
 
         {/* ── Navegação ────────────────────────────────────────────────── */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 scrollbar-hide">
           <ul className="space-y-px px-2">
-            {MENU_ITEMS.map((item) => {
-              if (!itemHasAccess(item.module, userRole)) return null
-
-              const isActive    = isPathActive(pathname, item.href, item.subItems)
-              const hasSubItems = Array.isArray(item.subItems) && item.subItems.length > 0
-              const isSubOpen   = openSubMenus[item.id] ?? false
-              const Icon        = item.icon
-
-              const visibleSubItems = hasSubItems
-                ? item.subItems!.filter((sub) => itemHasAccess(sub.module, userRole))
-                : []
-
-              if (hasSubItems && visibleSubItems.length === 0) return null
-
-              // Estilos dinâmicos via inline para active / hover
-              const activeItemStyle = isActive
-                ? { backgroundColor: 'var(--sb-active)', color: 'var(--sb-accent)' }
-                : {}
-
-              return (
-                <li key={item.id} className="relative">
-
-                  {/* Indicador lateral (barra) para item ativo */}
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full pointer-events-none"
-                      style={{ backgroundColor: 'var(--sb-accent)' }}
-                    />
-                  )}
-
-                  {/* Item principal */}
-                  {hasSubItems ? (
-                    <button
-                      type="button"
-                      onClick={() => !isCollapsed && toggleSubMenu(item.id)}
-                      title={isCollapsed ? item.label : undefined}
-                      style={activeItemStyle}
-                      className={cn(
-                        'w-full flex items-center rounded-lg text-[13px] font-medium',
-                        'transition-all duration-150',
-                        isCollapsed ? 'justify-center h-9 w-9 mx-auto' : 'justify-between px-3 py-2',
-                        !isActive && 'text-white/55 hover:text-white/90',
-                      )}
-                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--sb-hover)' }}
-                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = '' }}
-                    >
-                      <span className="flex items-center gap-2.5 min-w-0">
-                        <Icon
-                          size={16}
-                          className="shrink-0"
-                          style={{ color: isActive ? 'var(--sb-accent)' : undefined, opacity: isActive ? 1 : 0.45 }}
-                        />
-                        {!isCollapsed && (
-                          <span className="truncate">{item.label}</span>
-                        )}
-                      </span>
-                      {!isCollapsed && (
-                        <ChevronDown
-                          size={13}
-                          className={cn(
-                            'shrink-0 transition-transform duration-200',
-                            isSubOpen && 'rotate-180',
-                          )}
-                          style={{ opacity: 0.35 }}
-                        />
-                      )}
-                    </button>
-                  ) : (
-                    <Link
-                      href={item.href!}
-                      title={isCollapsed ? item.label : undefined}
-                      onClick={closeMobile}
-                      style={activeItemStyle}
-                      className={cn(
-                        'flex items-center rounded-lg text-[13px] font-medium',
-                        'transition-all duration-150',
-                        isCollapsed ? 'justify-center h-9 w-9 mx-auto' : 'px-3 py-2 gap-2.5',
-                        !isActive && 'text-white/55 hover:text-white/90',
-                      )}
-                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--sb-hover)' }}
-                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = '' }}
-                    >
-                      <Icon
-                        size={16}
-                        className="shrink-0"
-                        style={{ color: isActive ? 'var(--sb-accent)' : undefined, opacity: isActive ? 1 : 0.45 }}
-                      />
-                      {!isCollapsed && <span className="truncate">{item.label}</span>}
-                    </Link>
-                  )}
-
-                  {/* Submenu */}
-                  {hasSubItems && !isCollapsed && (
-                    <div
-                      className={cn(
-                        'overflow-hidden transition-all duration-200 ease-in-out',
-                        isSubOpen ? 'max-h-96 opacity-100 mt-0.5' : 'max-h-0 opacity-0',
-                      )}
-                    >
-                      <ul
-                        className="ml-4 pl-3 space-y-px pb-1 pt-0.5"
-                        style={{ borderLeft: '1px solid var(--sb-border)' }}
-                      >
-                        {visibleSubItems.map((sub) => {
-                          const isSubActive = pathname === sub.href || pathname.startsWith(sub.href)
-                          return (
-                            <li key={sub.href}>
-                              <Link
-                                href={sub.href}
-                                onClick={closeMobile}
-                                style={isSubActive
-                                  ? { color: 'var(--sb-accent)', backgroundColor: 'var(--sb-active)' }
-                                  : {}
-                                }
-                                className={cn(
-                                  'block px-2.5 py-1.5 rounded-md text-[12px] font-medium',
-                                  'transition-all duration-150',
-                                  isSubActive
-                                    ? ''
-                                    : 'text-white/45 hover:text-white/80',
-                                )}
-                                onMouseEnter={e => {
-                                  if (!isSubActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--sb-hover)'
-                                }}
-                                onMouseLeave={e => {
-                                  if (!isSubActive) (e.currentTarget as HTMLElement).style.backgroundColor = ''
-                                }}
-                              >
-                                {sub.label}
-                              </Link>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  )}
-                </li>
-              )
-            })}
+            {filteredTree.map((item, idx) => (
+              <RenderItem
+                key={`${item.label}-${idx}`}
+                item={item}
+                depth={0}
+                collapsed={collapsed}
+                pathname={pathname}
+                openMap={openMap}
+                setOpen={setOpen}
+                onNavigate={closeMobile}
+              />
+            ))}
           </ul>
         </nav>
 
@@ -431,56 +413,55 @@ export function Sidebar() {
           className="shrink-0 p-2 space-y-0.5"
           style={{ borderTop: '1px solid var(--sb-border)' }}
         >
-          {/* Sair */}
+          {/* Logoff */}
           <button
             type="button"
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            title={isCollapsed ? 'Sair' : undefined}
+            onClick={handleSignOut}
+            title={collapsed ? 'Sair' : undefined}
             className={cn(
               'w-full flex items-center rounded-lg text-[13px] font-medium',
-              'text-white/35 transition-colors duration-150',
-              isCollapsed ? 'justify-center h-9 w-9 mx-auto' : 'px-3 py-2 gap-2.5',
+              'text-white/55 transition-colors duration-150',
+              collapsed ? 'justify-center h-9 w-9 mx-auto' : 'px-3 py-2 gap-2.5',
             )}
-            onMouseEnter={e => {
+            onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLElement
               el.style.backgroundColor = 'rgba(239, 68, 68, 0.12)'
               el.style.color = 'rgb(248, 113, 113)'
             }}
-            onMouseLeave={e => {
+            onMouseLeave={(e) => {
               const el = e.currentTarget as HTMLElement
               el.style.backgroundColor = ''
               el.style.color = ''
             }}
           >
             <LogOut size={15} className="shrink-0" />
-            {!isCollapsed && <span>Sair</span>}
+            {!collapsed && <span>Sair</span>}
           </button>
 
-          {/* Toggle collapse — só desktop */}
+          {/* Toggle inferior — só desktop */}
           <button
             type="button"
             onClick={toggle}
-            title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
+            title={collapsed ? 'Expandir menu' : 'Recolher menu'}
             className={cn(
-              'w-full hidden lg:flex items-center rounded-lg text-[13px] font-medium',
-              'text-white/20 transition-colors duration-150',
-              isCollapsed ? 'justify-center h-9 w-9 mx-auto' : 'px-3 py-2 gap-2.5',
+              'w-full hidden lg:flex items-center rounded-lg text-[12px] font-medium',
+              'text-white/30 transition-colors duration-150',
+              collapsed ? 'justify-center h-9 w-9 mx-auto' : 'px-3 py-2 gap-2.5',
             )}
-            onMouseEnter={e => {
+            onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLElement
               el.style.backgroundColor = 'var(--sb-hover)'
-              el.style.color = 'rgba(255,255,255,0.5)'
+              el.style.color = 'rgba(255,255,255,0.6)'
             }}
-            onMouseLeave={e => {
+            onMouseLeave={(e) => {
               const el = e.currentTarget as HTMLElement
               el.style.backgroundColor = ''
               el.style.color = ''
             }}
           >
-            {isCollapsed
-              ? <PanelLeftOpen  size={15} className="shrink-0" />
-              : <><PanelLeftClose size={15} className="shrink-0" /><span>Recolher</span></>
-            }
+            {collapsed
+              ? <PanelLeftOpen  size={14} className="shrink-0" />
+              : <><PanelLeftClose size={14} className="shrink-0" /><span>Recolher menu</span></>}
           </button>
         </div>
       </aside>

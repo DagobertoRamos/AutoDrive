@@ -19,6 +19,7 @@ import { PlateInput } from '@/components/estoque/PlateInput'
 import { VehicleComboBox, type VehicleComboSelection } from '@/components/estoque/VehicleComboBox'
 import { FipeWizard, type FipeResult } from '@/components/estoque/FipeWizard'
 import type { VehicleLookupData, VehicleCategory } from '@/lib/vehicle-lookup/types'
+import { maskBRL, parseBRL, maskKM, parseKM } from '@/lib/masks'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,46 @@ const ANOS = (() => {
   for (let y = cur; y >= 1950; y--) out.push(y)
   return out
 })()
+
+// ── Listas de motorização por tipo de veículo ──────────────────────────────
+// CARRO: cilindrada em litros (1.0 → 6.0+)
+const ENGINE_CARRO = [
+  '1.0', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9',
+  '2.0', '2.2', '2.4', '2.5', '2.7', '2.8',
+  '3.0', '3.2', '3.5', '3.6', '3.8',
+  '4.0', '4.2', '4.4', '4.6', '4.8',
+  '5.0', '5.2', '5.5', '5.7',
+  '6.0+',
+]
+// MOTO: cilindrada em cc (50cc → 2.500cc+)
+const ENGINE_MOTO = [
+  '50cc', '100cc', '110cc', '125cc', '150cc', '160cc', '200cc', '250cc',
+  '300cc', '350cc', '400cc', '450cc', '500cc', '600cc', '650cc', '750cc',
+  '800cc', '900cc', '1000cc', '1100cc', '1200cc', '1300cc', '1400cc',
+  '1500cc', '1600cc', '1700cc', '1800cc', '1900cc', '2000cc', '2200cc',
+  '2300cc', '2400cc', '2500cc+',
+]
+// CAMINHAO: cilindrada (150cc → 1000cc+ — conforme especificação)
+const ENGINE_CAMINHAO = [
+  '150cc', '200cc', '250cc', '300cc', '350cc', '400cc', '450cc', '500cc',
+  '550cc', '600cc', '650cc', '700cc', '750cc', '800cc', '850cc', '900cc',
+  '950cc', '1000cc+',
+]
+
+// Potência em cv — lista cresce até 700+ cv (cobre carros, motos e caminhões)
+const POWER_OPTIONS = [
+  '50 cv', '60 cv', '70 cv', '80 cv', '90 cv', '100 cv', '110 cv', '120 cv',
+  '130 cv', '140 cv', '150 cv', '160 cv', '170 cv', '180 cv', '190 cv',
+  '200 cv', '220 cv', '240 cv', '260 cv', '280 cv', '300 cv', '320 cv',
+  '340 cv', '360 cv', '380 cv', '400 cv', '450 cv', '500 cv', '550 cv',
+  '600 cv', '650 cv', '700 cv+',
+]
+
+function getEngineOptions(tipo: 'CARRO' | 'MOTO' | 'CAMINHAO'): string[] {
+  if (tipo === 'MOTO')      return ENGINE_MOTO
+  if (tipo === 'CAMINHAO')  return ENGINE_CAMINHAO
+  return ENGINE_CARRO
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -191,8 +232,6 @@ function AvaliacaoForm() {
   const [unitId,        setUnitId]       = useState('')
 
   // ── Step 1 (novo) — campos exclusivos do layout consolidado ───────────────
-  const [horsepower,   setHorsepower]   = useState('')   // cavalos (HP) — separado de power(cv)
-  const [engineNumber, setEngineNumber] = useState('')   // nº de motor
   const [yearModel,    setYearModel]    = useState('')   // ano modelo separado do ano fabricação
   const [tipoVeiculo,  setTipoVeiculo]  = useState<TipoVeiculoPt>('CARRO')
 
@@ -365,11 +404,8 @@ function AvaliacaoForm() {
   }, [combo.fipeValue, combo.fipeCode, combo.fipeMonth, combo.fuel, combo.modelYear, combo.brandName, combo.modelName])
 
   // ── Parsers ──────────────────────────────────────────────────────────────────
-  function parseMoney(v: string): number | null {
-    if (!v.trim()) return null
-    const n = parseFloat(v.replace(/\./g, '').replace(',', '.'))
-    return isNaN(n) ? null : n
-  }
+  // Reaproveita parseBRL do módulo central de máscaras (src/lib/masks.ts)
+  const parseMoney = parseBRL
 
   // ── Salvar avaliação ──────────────────────────────────────────────────────────
   async function handleSave() {
@@ -383,13 +419,11 @@ function AvaliacaoForm() {
     setSaving(true)
     setError('')
     try {
-      // Combina notes do avaliador com campos extras do Step 1 (cavalos, nº motor,
-      // ano modelo) que ainda não têm colunas dedicadas no schema. Mantém o
-      // dado sem perda enquanto a migration futura não cria as colunas.
+      // Combina notes do avaliador com o ano modelo (que ainda não tem coluna
+      // dedicada no schema). Mantém o dado sem perda enquanto a migration
+      // futura não cria a coluna.
       const extraNotes: string[] = []
-      if (horsepower)   extraNotes.push(`[Cavalos] ${horsepower}`)
-      if (engineNumber) extraNotes.push(`[Nº Motor] ${engineNumber}`)
-      if (yearModel)    extraNotes.push(`[Ano Modelo] ${yearModel}`)
+      if (yearModel) extraNotes.push(`[Ano Modelo] ${yearModel}`)
       const combinedNotes = [evaluationNotes, ...extraNotes].filter(Boolean).join('\n').trim() || null
 
       const body = {
@@ -793,26 +827,34 @@ function AvaliacaoForm() {
           </Section>
 
           {/* ──────────────────────────────────────────────────────────────────
-              Motor: Motorização / Potência / Cavalos / Nº Motor
+              Motor: Motorização / Potência (selects por tipo de veículo)
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Motor">
             <Grid cols={2}>
-              <Field label="Motorização" hint="Ex: 1.0 Turbo Flex">
-                <input value={engine} onChange={(e) => setEngine(e.target.value)} className={inputCls} placeholder="1.0 Turbo Flex" />
+              <Field
+                label="Motorização"
+                hint={
+                  tipoVeiculo === 'MOTO'
+                    ? 'Cilindrada em cc (50cc — 2.500cc+)'
+                    : tipoVeiculo === 'CAMINHAO'
+                      ? 'Cilindrada em cc (150cc — 1.000cc+)'
+                      : 'Cilindrada em litros (1.0 — 6.0+)'
+                }
+              >
+                <select className={selectCls} value={engine} onChange={(e) => setEngine(e.target.value)}>
+                  <option value="">Selecione</option>
+                  {getEngineOptions(tipoVeiculo).map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
               </Field>
-              <Field label="Potência" hint="Em cv (cavalo-vapor) ou kW">
-                <input value={power} onChange={(e) => setPower(e.target.value)} className={inputCls} placeholder="116 cv" />
-              </Field>
-              <Field label="Cavalos (HP)" hint="Somente o número de cavalos">
-                <input value={horsepower} onChange={(e) => setHorsepower(e.target.value)} className={inputCls} placeholder="116" />
-              </Field>
-              <Field label="Número do motor">
-                <input
-                  value={engineNumber}
-                  onChange={(e) => setEngineNumber(e.target.value.toUpperCase())}
-                  className={inputCls + ' font-mono'}
-                  placeholder="Ex: ABC123456"
-                />
+              <Field label="Potência" hint="Em cv (cavalo-vapor)">
+                <select className={selectCls} value={power} onChange={(e) => setPower(e.target.value)}>
+                  <option value="">Selecione</option>
+                  {POWER_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
               </Field>
             </Grid>
           </Section>
@@ -843,7 +885,14 @@ function AvaliacaoForm() {
                 </select>
               </Field>
               <Field label="Quilometragem (KM)" required>
-                <input type="number" value={km} onChange={(e) => setKm(e.target.value)} className={inputCls} placeholder="45000" min={0} />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={maskKM(km)}
+                  onChange={(e) => setKm(String(parseKM(e.target.value) ?? ''))}
+                  className={inputCls}
+                  placeholder="45.000"
+                />
               </Field>
               <Field label="Condição" required>
                 <select className={selectCls} value={conditionType} onChange={(e) => setConditionType(e.target.value)}>
@@ -973,7 +1022,13 @@ function AvaliacaoForm() {
                 <input value={fipeCode} onChange={(e) => setFipeCode(e.target.value)} className={inputCls + ' font-mono'} placeholder="005415-6" />
               </Field>
               <Field label="Valor FIPE (R$)" hint="Preenchido automaticamente pelo assistente FIPE">
-                <input value={fipeValue} onChange={(e) => setFipeValue(e.target.value)} className={inputCls} placeholder="0,00" />
+                <input
+                  inputMode="numeric"
+                  value={maskBRL(fipeValue)}
+                  onChange={(e) => setFipeValue(maskBRL(e.target.value))}
+                  className={inputCls}
+                  placeholder="0,00"
+                />
               </Field>
               <Field label="Mês de Referência" hint={fipeLastFetch ? `Consultado em ${new Date(fipeLastFetch).toLocaleString('pt-BR')}` : undefined}>
                 <input value={fipeMonth} onChange={(e) => setFipeMonth(e.target.value)} className={inputCls} placeholder="maio/2026" />
@@ -985,16 +1040,40 @@ function AvaliacaoForm() {
             <Section title="Precificação da Avaliação">
               <Grid>
                 <Field label="Valor Avaliado (R$)" hint="Quanto o veículo vale segundo o avaliador">
-                  <input value={evaluatedValue} onChange={(e) => setEvaluatedValue(e.target.value)} className={inputCls} placeholder="0,00" />
+                  <input
+                    inputMode="numeric"
+                    value={maskBRL(evaluatedValue)}
+                    onChange={(e) => setEvaluatedValue(maskBRL(e.target.value))}
+                    className={inputCls}
+                    placeholder="0,00"
+                  />
                 </Field>
                 <Field label="Valor Desejado pelo Cliente (R$)">
-                  <input value={desiredValue} onChange={(e) => setDesiredValue(e.target.value)} className={inputCls} placeholder="0,00" />
+                  <input
+                    inputMode="numeric"
+                    value={maskBRL(desiredValue)}
+                    onChange={(e) => setDesiredValue(maskBRL(e.target.value))}
+                    className={inputCls}
+                    placeholder="0,00"
+                  />
                 </Field>
                 <Field label="Valor Mínimo de Compra (R$)">
-                  <input value={minimumValue} onChange={(e) => setMinimumValue(e.target.value)} className={inputCls} placeholder="0,00" />
+                  <input
+                    inputMode="numeric"
+                    value={maskBRL(minimumValue)}
+                    onChange={(e) => setMinimumValue(maskBRL(e.target.value))}
+                    className={inputCls}
+                    placeholder="0,00"
+                  />
                 </Field>
                 <Field label="Preço de Venda Sugerido (R$)">
-                  <input value={suggestedSale} onChange={(e) => setSuggestedSale(e.target.value)} className={inputCls} placeholder="0,00" />
+                  <input
+                    inputMode="numeric"
+                    value={maskBRL(suggestedSale)}
+                    onChange={(e) => setSuggestedSale(maskBRL(e.target.value))}
+                    className={inputCls}
+                    placeholder="0,00"
+                  />
                 </Field>
               </Grid>
 

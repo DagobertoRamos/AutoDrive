@@ -7,6 +7,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Save, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
+import { maskBRL, parseBRL } from '@/lib/masks'
+
+// Helper: serialize a numeric BRL value (in reais) back to the digits-string form
+// that maskBRL expects ("12345" → "123,45"). Avoids float drift via Math.round.
+function brlInputValue(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return ''
+  return maskBRL(String(Math.round(v * 100)))
+}
 
 // -----------------------------------------------------------------------------
 // Types
@@ -262,12 +270,10 @@ export default function ConfiguracoesComissoesPage() {
               />
               <span className="shrink-0 text-xs text-gray-500">vendas =</span>
               <input
-                type="number"
-                min={0}
-                step={0.01}
+                inputMode="numeric"
                 className={inputClass('w-32')}
-                value={range.value}
-                onChange={(e) => updateSaleRange(range.id, 'value', Number(e.target.value))}
+                value={brlInputValue(range.value)}
+                onChange={(e) => updateSaleRange(range.id, 'value', parseBRL(e.target.value) ?? 0)}
                 placeholder="0,00"
               />
               <span className="shrink-0 text-xs text-gray-500">/ venda</span>
@@ -293,12 +299,10 @@ export default function ConfiguracoesComissoesPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-700">R$</span>
           <input
-            type="number"
-            min={0}
-            step={0.01}
+            inputMode="numeric"
             className={inputClass('w-48')}
-            value={purchaseCommission}
-            onChange={(e) => setPurchaseCommission(Number(e.target.value))}
+            value={brlInputValue(purchaseCommission)}
+            onChange={(e) => setPurchaseCommission(parseBRL(e.target.value) ?? 0)}
             placeholder="0,00"
           />
           <span className="text-sm text-gray-500">por compra</span>
@@ -312,12 +316,10 @@ export default function ConfiguracoesComissoesPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-700">R$</span>
           <input
-            type="number"
-            min={0}
-            step={0.01}
+            inputMode="numeric"
             className={inputClass('w-48')}
-            value={documentCommission}
-            onChange={(e) => setDocumentCommission(Number(e.target.value))}
+            value={brlInputValue(documentCommission)}
+            onChange={(e) => setDocumentCommission(parseBRL(e.target.value) ?? 0)}
             placeholder="0,00"
           />
           <span className="text-sm text-gray-500">por documento</span>
@@ -342,12 +344,10 @@ export default function ConfiguracoesComissoesPage() {
                 ))}
               </select>
               <input
-                type="number"
-                min={0}
-                step={0.01}
+                inputMode="numeric"
                 className={inputClass('w-36')}
-                value={sc.commissionValue}
-                onChange={(e) => updateServiceCommission(sc.id, sc.serviceId, Number(e.target.value))}
+                value={brlInputValue(sc.commissionValue)}
+                onChange={(e) => updateServiceCommission(sc.id, sc.serviceId, parseBRL(e.target.value) ?? 0)}
                 placeholder="Comissão R$"
               />
               <button
@@ -383,12 +383,10 @@ export default function ConfiguracoesComissoesPage() {
                 ))}
               </select>
               <input
-                type="number"
-                min={0}
-                step={0.01}
+                inputMode="numeric"
                 className={inputClass('w-36')}
-                value={wc.commissionValue}
-                onChange={(e) => updateWarrantyCommission(wc.id, wc.warrantyId, Number(e.target.value))}
+                value={brlInputValue(wc.commissionValue)}
+                onChange={(e) => updateWarrantyCommission(wc.id, wc.warrantyId, parseBRL(e.target.value) ?? 0)}
                 placeholder="Comissão R$"
               />
               <button
@@ -430,15 +428,25 @@ export default function ConfiguracoesComissoesPage() {
                 <option value="FIXED">Valor Fixo</option>
                 <option value="PERCENTAGE">Percentual</option>
               </select>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                className={inputClass('w-36')}
-                value={rc.value}
-                onChange={(e) => updateReturnCommission(rc.id, 'value', Number(e.target.value))}
-                placeholder={rc.calcType === 'PERCENTAGE' ? 'Ex: 5 (%)' : 'Valor R$'}
-              />
+              {rc.calcType === 'PERCENTAGE' ? (
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  className={inputClass('w-36')}
+                  value={rc.value}
+                  onChange={(e) => updateReturnCommission(rc.id, 'value', Number(e.target.value))}
+                  placeholder="Ex: 5 (%)"
+                />
+              ) : (
+                <input
+                  inputMode="numeric"
+                  className={inputClass('w-36')}
+                  value={brlInputValue(rc.value)}
+                  onChange={(e) => updateReturnCommission(rc.id, 'value', parseBRL(e.target.value) ?? 0)}
+                  placeholder="Valor R$"
+                />
+              )}
               {rc.calcType === 'PERCENTAGE' && (
                 <span className="text-sm text-gray-500">%</span>
               )}

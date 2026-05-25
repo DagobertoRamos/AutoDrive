@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canActOn } from '@/lib/role-hierarchy'
 
 const PENDENCY_INCLUDE = {
   responsible: { select: { id: true, fullName: true, shortName: true, whatsapp: true } },
@@ -19,6 +20,22 @@ const PENDENCY_INCLUDE = {
     select: { id: true, profileName: true, messageBody: true, createdAt: true },
   },
 } as const
+
+// ── Helper: busca pendência e role do assignee para checagem de hierarquia ───
+async function loadPendencyAndTargetRole(id: string) {
+  const pendency = await prisma.pendency.findUnique({
+    where: { id },
+    select: { id: true, tenantId: true, assignedUserId: true, resolvedByUserId: true },
+  })
+  if (!pendency) return { pendency: null, targetRole: null }
+  const targetUserId = pendency.assignedUserId ?? pendency.resolvedByUserId
+  if (!targetUserId) return { pendency, targetRole: null }
+  const u = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { role: true },
+  })
+  return { pendency, targetRole: u?.role ?? null }
+}
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -43,6 +60,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
 
+    const { pendency: target, targetRole } = await loadPendencyAndTargetRole(params.id)
+    if (!target) return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
+
+    if (!canActOn(session.user.role, targetRole)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão para alterar esta pendência.' }, { status: 403 })
+    }
+
     const body = await req.json()
     const pendency = await prisma.pendency.update({
       where: { id: params.id },
@@ -52,7 +76,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     await prisma.auditLog.create({
       data: { userId: session.user.id, action: 'UPDATE', entity: 'Pendency', entityId: params.id },
-    })
+    }).catch(() => {})
 
     return NextResponse.json({ success: true, data: pendency })
   } catch (err) {
@@ -65,9 +89,16 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
 
-    const allowed = ['MASTER', 'ADM', 'GERENTE']
+    const allowed = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE']
     if (!allowed.includes(session.user.role)) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
+
+    const { pendency: target, targetRole } = await loadPendencyAndTargetRole(params.id)
+    if (!target) return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
+
+    if (!canActOn(session.user.role, targetRole)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão para cancelar esta pendência.' }, { status: 403 })
     }
 
     await prisma.pendency.update({

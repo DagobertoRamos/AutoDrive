@@ -28,6 +28,13 @@ interface UnitOption {
   name: string
 }
 
+interface PositionOption {
+  id:        string
+  name:      string
+  slug:      string
+  sortOrder: number
+}
+
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ROLES = [
@@ -68,10 +75,12 @@ export default function NewUserPage() {
   const [mustChangePassword, setMustChangePassword] = useState(true)
   const [selectedTenantId,   setSelectedTenantId]   = useState('')
   const [selectedUnitId,     setSelectedUnitId]     = useState('')
+  const [selectedPositionId, setSelectedPositionId] = useState('')
 
   // Data
-  const [tenants, setTenants] = useState<TenantOption[]>([])
-  const [units,   setUnits]   = useState<UnitOption[]>([])
+  const [tenants,   setTenants]   = useState<TenantOption[]>([])
+  const [units,     setUnits]     = useState<UnitOption[]>([])
+  const [positions, setPositions] = useState<PositionOption[]>([])
   const [tenantSearch, setTenantSearch] = useState('')
 
   // UI state
@@ -96,6 +105,19 @@ export default function NewUserPage() {
       .then(d => setTenants(d.data ?? []))
       .catch(() => setError('Erro ao carregar tenants.'))
       .finally(() => setLoadingTenants(false))
+  }, [session])
+
+  // Load cargos (sistema + tenant) — não filtra por tenant aqui; usuário escolhe livre.
+  useEffect(() => {
+    if (session?.user?.role !== 'MASTER') return
+    fetch('/api/positions?active=true')
+      .then(r => r.json())
+      .then(d => {
+        const list: PositionOption[] = (d?.data ?? []) as PositionOption[]
+        list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name))
+        setPositions(list)
+      })
+      .catch(() => { /* silent */ })
   }, [session])
 
   // Load units when tenant changes
@@ -149,7 +171,8 @@ export default function NewUserPage() {
           password,
           role,
           tenantId:           selectedTenantId,
-          unitId:             selectedUnitId || null,
+          unitId:             selectedUnitId   || null,
+          positionId:         selectedPositionId || null,
           mustChangePassword,
         }),
       })
@@ -267,6 +290,23 @@ export default function NewUserPage() {
             </select>
             <p className="mt-1 text-xs text-gray-400">
               Define as permissões do usuário dentro do tenant.
+            </p>
+          </div>
+
+          <div>
+            <label className={labelCls}>Cargo</label>
+            <select
+              className={inputCls}
+              value={selectedPositionId}
+              onChange={e => setSelectedPositionId(e.target.value)}
+            >
+              <option value="">— sem cargo —</option>
+              {positions.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              Cargo organizacional (opcional). Usado para regras de comissão e relatórios.
             </p>
           </div>
 

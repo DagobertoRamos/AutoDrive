@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, User, X, Save, CheckCircle, AlertCircle, KeyRound } from 'lucide-react'
 import { cn, formatCPF, formatPhone } from '@/lib/utils'
+import { maskCPF, maskPhone } from '@/lib/masks'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -15,6 +16,13 @@ import { cn, formatCPF, formatPhone } from '@/lib/utils'
 interface Unit {
   id: string
   name: string
+}
+
+interface Position {
+  id: string
+  name: string
+  slug: string
+  baseRole?: string | null
 }
 
 interface Seller {
@@ -27,11 +35,13 @@ interface Seller {
   unitId: string
   unitName?: string
   cargo: string
+  positionId: string | null
+  position?: { id: string; name: string; slug: string } | null
   active: boolean
   receivesCharge: boolean
 }
 
-type SellerForm = Omit<Seller, 'id' | 'unitName'>
+type SellerForm = Omit<Seller, 'id' | 'unitName' | 'position'>
 
 const emptyForm: SellerForm = {
   fullName: '',
@@ -41,6 +51,7 @@ const emptyForm: SellerForm = {
   email: '',
   unitId: '',
   cargo: 'VENDEDOR',
+  positionId: null,
   active: true,
   receivesCharge: true,
 }
@@ -81,7 +92,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 // -----------------------------------------------------------------------------
 
 function Modal({
-  open, onClose, onSave, initial, saving, error, units,
+  open, onClose, onSave, initial, saving, error, units, positions,
 }: {
   open: boolean
   onClose: () => void
@@ -90,19 +101,22 @@ function Modal({
   saving: boolean
   error: string | null
   units: Unit[]
+  positions: Position[]
 }) {
   const [form, setForm] = useState<SellerForm>(emptyForm)
 
   useEffect(() => {
     if (open) {
       if (initial) {
-        const { id: _id, unitName: _unitName, ...rest } = initial
-        setForm(rest)
+        const { id: _id, unitName: _unitName, position: _p, ...rest } = initial
+        setForm({ ...rest, positionId: initial.positionId ?? null })
       } else {
-        setForm({ ...emptyForm })
+        // default: cargo "Vendedor" do sistema
+        const defaultPos = positions.find((p) => p.slug === 'vendedor')
+        setForm({ ...emptyForm, positionId: defaultPos?.id ?? null })
       }
     }
-  }, [open, initial])
+  }, [open, initial, positions])
 
   if (!open) return null
 
@@ -143,11 +157,11 @@ function Modal({
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">CPF</label>
-              <input className={inputClass()} value={form.cpf} onChange={(e) => set('cpf', e.target.value)} placeholder="000.000.000-00" />
+              <input className={inputClass()} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">WhatsApp *</label>
-              <input required type="tel" className={inputClass()} value={form.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="(11) 99999-9999" />
+              <input required type="tel" className={inputClass()} value={maskPhone(form.whatsapp)} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 99999-9999" inputMode="numeric" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail * <span className="font-normal text-gray-400">(usado como login)</span></label>
@@ -164,10 +178,15 @@ function Modal({
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo</label>
-              <select className={inputClass()} value={form.cargo} onChange={(e) => set('cargo', e.target.value)}>
-                <option value="VENDEDOR">Vendedor</option>
-                <option value="CONSULTOR">Consultor</option>
-                <option value="SUPERVISOR">Supervisor</option>
+              <select
+                className={inputClass()}
+                value={form.positionId ?? ''}
+                onChange={(e) => set('positionId', e.target.value || null)}
+              >
+                <option value="">— selecione —</option>
+                {positions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -220,6 +239,7 @@ function Modal({
 export default function VendedoresPage() {
   const [sellers, setSellers] = useState<Seller[]>([])
   const [units, setUnits] = useState<Unit[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Seller | null>(null)
@@ -234,13 +254,19 @@ export default function VendedoresPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [sellersRes, unitsRes] = await Promise.all([
+      const [sellersRes, unitsRes, positionsRes] = await Promise.all([
         fetch('/api/sellers'),
         fetch('/api/units'),
+        fetch('/api/positions?active=true'),
       ])
-      const [sellersJson, unitsJson] = await Promise.all([sellersRes.json(), unitsRes.json()])
+      const [sellersJson, unitsJson, positionsJson] = await Promise.all([
+        sellersRes.json(),
+        unitsRes.json(),
+        positionsRes.json(),
+      ])
       setSellers(sellersJson?.data ?? [])
       setUnits(unitsJson?.data ?? [])
+      setPositions(positionsJson?.data ?? [])
     } catch {
       setSellers([])
     } finally {
@@ -372,7 +398,9 @@ export default function VendedoresPage() {
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">{s.whatsapp ? formatPhone(s.whatsapp) : '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{s.unitName || units.find((u) => u.id === s.unitId)?.name || '—'}</td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{s.cargo}</span>
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        {s.position?.name ?? s.cargo ?? '—'}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', s.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
@@ -397,7 +425,7 @@ export default function VendedoresPage() {
         </div>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} saving={saving} error={saveError} units={units} />
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} saving={saving} error={saveError} units={units} positions={positions} />
     </div>
   )
 }

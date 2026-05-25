@@ -39,8 +39,9 @@ export async function GET(
         lastLoginAt:        true,
         createdAt:          true,
         updatedAt:          true,
-        tenant: { select: { id: true, name: true, publicId: true, status: true, plan: true } },
-        unit:   { select: { id: true, name: true } },
+        tenant:   { select: { id: true, name: true, publicId: true, status: true, plan: true } },
+        unit:     { select: { id: true, name: true } },
+        position: { select: { id: true, name: true, slug: true, baseRole: true } },
         _count: {
           select: {
             auditLogs:    true,
@@ -89,7 +90,7 @@ export async function PATCH(
 
     const body = await req.json()
     const {
-      name, email, role, status, tenantId, unitId,
+      name, email, role, status, tenantId, unitId, positionId,
       mustChangePassword,
       // Ações especiais
       resetPassword, newPassword,
@@ -148,6 +149,24 @@ export async function PATCH(
     if (mustChangePassword != null) updateData.mustChangePassword = Boolean(mustChangePassword)
     if (resetPassword    === true) {
       updateData.mustChangePassword = true
+    }
+    if (positionId !== undefined) {
+      if (!positionId) {
+        updateData.positionId = null
+      } else {
+        const pos = await prisma.position.findUnique({
+          where: { id: String(positionId) },
+          select: { id: true, tenantId: true },
+        })
+        const targetTenant = (updateData.tenantId as string | null | undefined) ?? existing.tenantId
+        if (!pos || (pos.tenantId !== null && pos.tenantId !== targetTenant)) {
+          return NextResponse.json(
+            { success: false, error: 'Cargo inválido para este tenant.' },
+            { status: 400 },
+          )
+        }
+        updateData.positionId = pos.id
+      }
     }
 
     const updated = await prisma.user.update({

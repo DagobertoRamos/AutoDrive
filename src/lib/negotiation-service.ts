@@ -123,7 +123,12 @@ export function computeDealTotals(data: {
 //
 // Uso: ao calcular comissão de qualquer deal, normalizar o tipo primeiro:
 //   const commissionType = normalizeCommissionType(deal.type)
-//   // buscar CommissionRule onde type === commissionType
+//   const matched = await findCommissionRule({
+//     tenantId, ruleType: commissionType,
+//     employee: { kind: 'SELLER', id: deal.sellerId, positionId, role },
+//     baseValue: Number(deal.saleAmount ?? 0),
+//   })
+//   // ver: src/lib/commission-matcher.ts
 
 export function normalizeCommissionType(dealType: string): string {
   // TROCA usa a mesma regra de VENDA — sem multiplicador ou comissão extra

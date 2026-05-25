@@ -17,7 +17,8 @@ import {
   Mail, MessageSquare, Bell, Loader2, AlertCircle, CheckCircle2,
   Save, Eye, EyeOff, Send, ClipboardList, RefreshCw,
   Wifi, WifiOff, Clock, ChevronDown, ChevronRight, Trash2,
-  Phone,
+  Phone, Plus, X, Pencil, Star, Power, FileText, Image as ImageIcon,
+  Server, Layers, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import NoticesTab from './NoticesTab'
@@ -255,202 +256,870 @@ function TestPanel({ channel, placeholder, label, inputType = 'text', icon: Icon
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB: E-MAIL
+// TAB: E-MAIL (Servidores + Templates)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function EmailTab() {
-  const [config,   setConfig]   = useState<Partial<EmailConfig>>({})
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
-  const [feedback, setFeedback] = useState<{ type: 'error' | 'success'; msg: string } | null>(null)
-  const [showPass, setShowPass] = useState(false)
+type EmailPurpose = 'SYSTEM' | 'NOTICES' | 'PASSWORD_RESET' | 'TRANSACTIONAL'
 
-  useEffect(() => {
-    fetch('/api/master/communication/email')
-      .then(r => r.json())
-      .then(d => setConfig(d.data ?? {}))
-      .catch(() => setFeedback({ type: 'error', msg: 'Erro ao carregar configuração.' }))
-      .finally(() => setLoading(false))
-  }, [])
+const EMAIL_PURPOSES: { value: EmailPurpose; label: string; desc: string; color: string }[] = [
+  { value: 'SYSTEM',         label: 'Sistema',         desc: 'Comunicação geral, notificações internas', color: 'bg-slate-100 text-slate-700' },
+  { value: 'NOTICES',        label: 'Avisos',          desc: 'Sistema de avisos / notícias',             color: 'bg-blue-100 text-blue-700' },
+  { value: 'PASSWORD_RESET', label: 'Recuperar senha', desc: 'Esqueci minha senha',                       color: 'bg-amber-100 text-amber-700' },
+  { value: 'TRANSACTIONAL',  label: 'Transacional',    desc: 'Recibos, confirmações, alterações',         color: 'bg-emerald-100 text-emerald-700' },
+]
 
-  function set(k: keyof EmailConfig) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setConfig(p => ({ ...p, [k]: e.target.value }))
+function purposeBadge(p: string) {
+  const found = EMAIL_PURPOSES.find(x => x.value === p)
+  return found ?? { value: p, label: p, desc: '', color: 'bg-gray-100 text-gray-700' }
+}
+
+type EmailProvider = 'smtp' | 'sendgrid' | 'resend' | 'mailgun' | 'ses'
+
+const EMAIL_PROVIDERS: { value: EmailProvider; label: string; color: string }[] = [
+  { value: 'smtp',     label: 'SMTP',     color: 'bg-slate-100 text-slate-700' },
+  { value: 'sendgrid', label: 'SendGrid', color: 'bg-sky-100 text-sky-700' },
+  { value: 'resend',   label: 'Resend',   color: 'bg-violet-100 text-violet-700' },
+  { value: 'mailgun',  label: 'Mailgun',  color: 'bg-rose-100 text-rose-700' },
+  { value: 'ses',      label: 'AWS SES',  color: 'bg-amber-100 text-amber-700' },
+]
+
+interface EmailConfigRow {
+  id:           string
+  tenantId:     string | null
+  name:         string
+  purpose:      EmailPurpose
+  isDefault:    boolean
+  provider:     EmailProvider
+  smtpHost:     string | null
+  smtpPort:     number
+  smtpSecure:   boolean
+  smtpUser:     string | null
+  smtpPass:     string
+  apiKey:       string
+  domain:       string | null
+  region:       string | null
+  fromName:     string
+  fromEmail:    string
+  replyTo:      string | null
+  active:       boolean
+  lastTestedAt: string | null
+  lastTestOk:   boolean
+}
+
+interface EmailTemplateRow {
+  id:          string
+  tenantId:    string | null
+  purpose:     EmailPurpose
+  key:         string
+  name:        string
+  description: string | null
+  subject:     string
+  bodyHtml:    string
+  bodyText:    string | null
+  variables:   string[]
+  active:      boolean
+}
+
+// ── Drawer reutilizável ───────────────────────────────────────────────────────
+
+function Drawer({ open, onClose, title, children, width = 'max-w-xl' }: {
+  open: boolean
+  onClose: () => void
+  title: string
+  children: React.ReactNode
+  width?: string
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className={`relative ml-auto h-full w-full ${width} bg-white shadow-2xl flex flex-col`}>
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+          <button onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Form: Servidor de e-mail ──────────────────────────────────────────────────
+
+function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
+  initial?: Partial<EmailConfigRow>
+  onSubmit: (data: Partial<EmailConfigRow> & { testEmail?: string }) => Promise<void>
+  onCancel: () => void
+  submitting: boolean
+}) {
+  const [form, setForm] = useState<Partial<EmailConfigRow> & { testEmail?: string }>({
+    name:       initial?.name       ?? '',
+    purpose:    initial?.purpose    ?? 'SYSTEM',
+    provider:   initial?.provider   ?? 'smtp',
+    smtpHost:   initial?.smtpHost   ?? '',
+    smtpPort:   initial?.smtpPort   ?? 587,
+    smtpSecure: initial?.smtpSecure ?? false,
+    smtpUser:   initial?.smtpUser   ?? '',
+    smtpPass:   initial?.smtpPass   ?? '',
+    apiKey:     initial?.apiKey     ?? '',
+    domain:     initial?.domain     ?? '',
+    region:     initial?.region     ?? '',
+    fromName:   initial?.fromName   ?? '',
+    fromEmail:  initial?.fromEmail  ?? '',
+    replyTo:    initial?.replyTo    ?? '',
+    active:     initial?.active     ?? true,
+    isDefault:  initial?.isDefault  ?? false,
+  })
+  const [reveal, setReveal] = useState(false)
+  const [revealApi, setRevealApi] = useState(false)
+  const isMaskedPass = (form.smtpPass ?? '') === '••••••••'
+  const isMaskedApi  = (form.apiKey   ?? '') === '••••••••'
+  const provider = (form.provider ?? 'smtp') as EmailProvider
+
+  function up<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
+    setForm(p => ({ ...p, [k]: v }))
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
-    setFeedback(null)
-    setSaving(true)
-    try {
-      const res  = await fetch('/api/master/communication/email', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(config),
+  return (
+    <form
+      onSubmit={async e => { e.preventDefault(); await onSubmit(form) }}
+      className="space-y-4"
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Nome *</label>
+          <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} placeholder="Servidor principal" required />
+        </div>
+        <div>
+          <label className={labelCls}>Propósito *</label>
+          <select className={inputCls} value={form.purpose ?? 'SYSTEM'} onChange={e => up('purpose', e.target.value as EmailPurpose)}>
+            {EMAIL_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label} — {p.desc}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className={labelCls}>Provedor *</label>
+        <select className={inputCls} value={provider} onChange={e => up('provider', e.target.value as EmailProvider)}>
+          {EMAIL_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+      </div>
+
+      {provider === 'smtp' && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-2">
+            <label className={labelCls}>Host SMTP *</label>
+            <input className={inputCls} value={form.smtpHost ?? ''} onChange={e => up('smtpHost', e.target.value)} placeholder="smtp.exemplo.com" required />
+          </div>
+          <div>
+            <label className={labelCls}>Porta</label>
+            <input type="number" className={inputCls} value={form.smtpPort ?? 587} onChange={e => up('smtpPort', Number(e.target.value))} />
+          </div>
+          <div className="col-span-2">
+            <label className={labelCls}>Usuário SMTP *</label>
+            <input className={inputCls} value={form.smtpUser ?? ''} onChange={e => up('smtpUser', e.target.value)} placeholder="user@dominio.com" required />
+          </div>
+          <div>
+            <label className={labelCls}>TLS/SSL</label>
+            <select className={inputCls} value={form.smtpSecure ? 'true' : 'false'} onChange={e => up('smtpSecure', e.target.value === 'true')}>
+              <option value="false">STARTTLS</option>
+              <option value="true">SSL/TLS</option>
+            </select>
+          </div>
+          <div className="col-span-3">
+            <label className={labelCls}>Senha SMTP {isMaskedPass ? '(configurada)' : '*'}</label>
+            <div className="relative">
+              <input
+                type={reveal && !isMaskedPass ? 'text' : 'password'}
+                className={`${inputCls} pr-9 ${isMaskedPass ? 'bg-gray-50 text-gray-400' : ''}`}
+                value={form.smtpPass ?? ''}
+                onChange={e => up('smtpPass', e.target.value)}
+                placeholder={isMaskedPass ? '(clique para substituir)' : '••••••••'}
+                onFocus={() => isMaskedPass && up('smtpPass', '')}
+                required={!initial?.id}
+              />
+              {!isMaskedPass && (
+                <button type="button" onClick={() => setReveal(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {reveal ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(provider === 'sendgrid' || provider === 'resend') && (
+        <div>
+          <label className={labelCls}>API Key {isMaskedApi ? '(configurada)' : '*'}</label>
+          <div className="relative">
+            <input
+              type={revealApi && !isMaskedApi ? 'text' : 'password'}
+              className={`${inputCls} pr-9 ${isMaskedApi ? 'bg-gray-50 text-gray-400' : ''}`}
+              value={form.apiKey ?? ''}
+              onChange={e => up('apiKey', e.target.value)}
+              placeholder={isMaskedApi ? '(clique para substituir)' : (provider === 'sendgrid' ? 'SG.xxxxxxxxxxxx' : 're_xxxxxxxxxxxx')}
+              onFocus={() => isMaskedApi && up('apiKey', '')}
+              required={!initial?.id}
+            />
+            {!isMaskedApi && (
+              <button type="button" onClick={() => setRevealApi(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {revealApi ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {provider === 'mailgun' && (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Domínio Mailgun *</label>
+            <input className={inputCls} value={form.domain ?? ''} onChange={e => up('domain', e.target.value)} placeholder="mg.suaempresa.com" required />
+          </div>
+          <div>
+            <label className={labelCls}>API Key {isMaskedApi ? '(configurada)' : '*'}</label>
+            <div className="relative">
+              <input
+                type={revealApi && !isMaskedApi ? 'text' : 'password'}
+                className={`${inputCls} pr-9 ${isMaskedApi ? 'bg-gray-50 text-gray-400' : ''}`}
+                value={form.apiKey ?? ''}
+                onChange={e => up('apiKey', e.target.value)}
+                placeholder={isMaskedApi ? '(clique para substituir)' : 'key-xxxxxxxxxxxx'}
+                onFocus={() => isMaskedApi && up('apiKey', '')}
+                required={!initial?.id}
+              />
+              {!isMaskedApi && (
+                <button type="button" onClick={() => setRevealApi(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {revealApi ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {provider === 'ses' && (
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className={labelCls}>Region *</label>
+            <input className={inputCls} value={form.region ?? ''} onChange={e => up('region', e.target.value)} placeholder="us-east-1" required />
+          </div>
+          <div>
+            <label className={labelCls}>Access Key (IAM) *</label>
+            <input className={inputCls} value={form.smtpUser ?? ''} onChange={e => up('smtpUser', e.target.value)} placeholder="AKIA..." required />
+          </div>
+          <div>
+            <label className={labelCls}>Secret Key {isMaskedPass ? '(configurada)' : '*'}</label>
+            <div className="relative">
+              <input
+                type={reveal && !isMaskedPass ? 'text' : 'password'}
+                className={`${inputCls} pr-9 ${isMaskedPass ? 'bg-gray-50 text-gray-400' : ''}`}
+                value={form.smtpPass ?? ''}
+                onChange={e => up('smtpPass', e.target.value)}
+                placeholder={isMaskedPass ? '(clique para substituir)' : '••••••••'}
+                onFocus={() => isMaskedPass && up('smtpPass', '')}
+                required={!initial?.id}
+              />
+              {!isMaskedPass && (
+                <button type="button" onClick={() => setReveal(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {reveal ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className={labelCls}>Nome do remetente *</label>
+          <input className={inputCls} value={form.fromName ?? ''} onChange={e => up('fromName', e.target.value)} placeholder="AutoDrive" required />
+        </div>
+        <div>
+          <label className={labelCls}>E-mail remetente *</label>
+          <input type="email" className={inputCls} value={form.fromEmail ?? ''} onChange={e => up('fromEmail', e.target.value)} placeholder="noreply@autodrive.com.br" required />
+        </div>
+        <div>
+          <label className={labelCls}>Reply-To</label>
+          <input type="email" className={inputCls} value={form.replyTo ?? ''} onChange={e => up('replyTo', e.target.value)} placeholder="suporte@..." />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-4 pt-2">
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
+            checked={form.active ?? true} onChange={e => up('active', e.target.checked)} />
+          Ativo
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
+            checked={form.isDefault ?? false} onChange={e => up('isDefault', e.target.checked)} />
+          Definir como padrão para o propósito
+        </label>
+      </div>
+
+      <div className="border-t border-gray-100 pt-3">
+        <label className={labelCls}>E-mail para teste (opcional)</label>
+        <input type="email" className={inputCls} value={form.testEmail ?? ''} onChange={e => up('testEmail' as never, e.target.value as never)} placeholder="destinatario@exemplo.com — disparado após salvar via 'Testar'" />
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancelar</button>
+        <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+          {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {submitting ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// ── Form: Template de e-mail ─────────────────────────────────────────────────
+
+function VarChips({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [input, setInput] = useState('')
+  function add() {
+    const v = input.trim().replace(/[^a-zA-Z0-9_]/g, '')
+    if (!v || value.includes(v)) return
+    onChange([...value, v])
+    setInput('')
+  }
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {value.map(v => (
+          <span key={v} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-mono text-brand-700">
+            {`{{${v}}}`}
+            <button type="button" onClick={() => onChange(value.filter(x => x !== v))} className="hover:text-brand-900">
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          className={`${inputCls} font-mono text-xs`}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder="nome_da_variavel"
+        />
+        <button type="button" onClick={add} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs hover:bg-gray-50">+ Adicionar</button>
+      </div>
+    </div>
+  )
+}
+
+function EmailTemplateForm({ initial, onSubmit, onCancel, submitting }: {
+  initial?: Partial<EmailTemplateRow>
+  onSubmit: (data: Partial<EmailTemplateRow>) => Promise<void>
+  onCancel: () => void
+  submitting: boolean
+}) {
+  const [form, setForm] = useState<Partial<EmailTemplateRow>>({
+    purpose:     initial?.purpose     ?? 'SYSTEM',
+    key:         initial?.key         ?? '',
+    name:        initial?.name        ?? '',
+    description: initial?.description ?? '',
+    subject:     initial?.subject     ?? '',
+    bodyHtml:    initial?.bodyHtml    ?? '',
+    bodyText:    initial?.bodyText    ?? '',
+    variables:   initial?.variables   ?? [],
+    active:      initial?.active      ?? true,
+  })
+  const [tab, setTab] = useState<'edit' | 'preview'>('edit')
+  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  function up<K extends keyof typeof form>(k: K, v: (typeof form)[K]) { setForm(p => ({ ...p, [k]: v })) }
+
+  async function loadPreview() {
+    if (!initial?.id) {
+      setPreview({
+        subject: form.subject ?? '',
+        html:    `<div style="padding:24px;font-family:Arial">${form.bodyHtml ?? ''}</div>`,
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erro ao salvar.')
-      setFeedback({ type: 'success', msg: 'Configurações salvas com sucesso.' })
-    } catch (err: unknown) {
+      return
+    }
+    setPreviewing(true)
+    const vars = Object.fromEntries((form.variables ?? []).map(v => [v, `[exemplo de ${v}]`]))
+    const res = await fetch(`/api/master/communication/email/templates/${initial.id}/preview`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ vars }),
+    })
+    const data = await res.json()
+    if (data.success) setPreview({ subject: data.data.subject, html: data.data.html })
+    setPreviewing(false)
+  }
+
+  return (
+    <form onSubmit={async e => { e.preventDefault(); await onSubmit(form) }} className="space-y-4">
+      <div className="flex gap-1 border-b border-gray-200">
+        <button type="button" onClick={() => setTab('edit')} className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'edit' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500'}`}>Editar</button>
+        <button type="button" onClick={() => { setTab('preview'); loadPreview() }} className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'preview' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500'}`}>Preview</button>
+      </div>
+
+      {tab === 'edit' && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Propósito *</label>
+              <select className={inputCls} value={form.purpose ?? 'SYSTEM'} onChange={e => up('purpose', e.target.value as EmailPurpose)}>
+                {EMAIL_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Key (identificador) *</label>
+              <input className={`${inputCls} font-mono`} value={form.key ?? ''} onChange={e => up('key', e.target.value)} placeholder="password_reset" required pattern="[a-zA-Z0-9_]+" />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Nome *</label>
+            <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} required />
+          </div>
+          <div>
+            <label className={labelCls}>Descrição</label>
+            <input className={inputCls} value={form.description ?? ''} onChange={e => up('description', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Assunto * <span className="text-gray-400 font-normal">— use {`{{var}}`} para variáveis</span></label>
+            <input className={inputCls} value={form.subject ?? ''} onChange={e => up('subject', e.target.value)} required />
+          </div>
+          <div>
+            <label className={labelCls}>Corpo HTML *</label>
+            <textarea
+              className={`${inputCls} font-mono text-xs`}
+              rows={10}
+              value={form.bodyHtml ?? ''}
+              onChange={e => up('bodyHtml', e.target.value)}
+              placeholder="<h2>Olá, {{userName}}</h2>"
+              required
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Corpo texto (fallback)</label>
+            <textarea className={`${inputCls} font-mono text-xs`} rows={3} value={form.bodyText ?? ''} onChange={e => up('bodyText', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Variáveis</label>
+            <VarChips value={form.variables ?? []} onChange={v => up('variables', v)} />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+            <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
+              checked={form.active ?? true} onChange={e => up('active', e.target.checked)} />
+            Ativo
+          </label>
+        </>
+      )}
+
+      {tab === 'preview' && (
+        <div className="space-y-3">
+          {previewing ? (
+            <div className="flex h-48 items-center justify-center"><Loader2 size={20} className="animate-spin text-gray-400" /></div>
+          ) : preview ? (
+            <>
+              <div className="text-xs text-gray-500">Assunto: <strong className="text-gray-900">{preview.subject}</strong></div>
+              <iframe srcDoc={preview.html} className="w-full h-[480px] rounded-lg border border-gray-200 bg-white" title="Preview" />
+            </>
+          ) : (
+            <p className="text-xs text-gray-400">Salve o template primeiro para gerar o preview com o layout completo.</p>
+          )}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+        <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancelar</button>
+        <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+          {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {submitting ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// ── EmailTab principal ────────────────────────────────────────────────────────
+
+function EmailTab() {
+  const [configs,  setConfigs]  = useState<EmailConfigRow[]>([])
+  const [templates, setTemplates] = useState<EmailTemplateRow[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [feedback, setFeedback] = useState<{ type: 'error' | 'success'; msg: string } | null>(null)
+  const [testingId, setTestingId] = useState<string | null>(null)
+  const [seeding,  setSeeding]  = useState(false)
+
+  const [configDrawer, setConfigDrawer] = useState<{ open: boolean; editing?: EmailConfigRow } | null>(null)
+  const [templateDrawer, setTemplateDrawer] = useState<{ open: boolean; editing?: EmailTemplateRow } | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const loadAll = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [c, t] = await Promise.all([
+        fetch('/api/master/communication/email/configs').then(r => r.json()),
+        fetch('/api/master/communication/email/templates').then(r => r.json()),
+      ])
+      setConfigs(c.data ?? [])
+      setTemplates(t.data ?? [])
+    } catch {
+      setFeedback({ type: 'error', msg: 'Erro ao carregar dados.' })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadAll() }, [loadAll])
+
+  // ── Ações sobre EmailConfig ───────────────────────────────
+  async function saveConfig(data: Partial<EmailConfigRow> & { testEmail?: string }) {
+    setSaving(true)
+    setFeedback(null)
+    try {
+      const editingId = configDrawer?.editing?.id
+      const url    = editingId ? `/api/master/communication/email/configs/${editingId}` : '/api/master/communication/email/configs'
+      const method = editingId ? 'PATCH' : 'POST'
+      const body   = { ...data }
+      delete (body as { testEmail?: string }).testEmail
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const dat = await res.json()
+      if (!res.ok || !dat.success) throw new Error(dat.error ?? 'Erro ao salvar.')
+      setFeedback({ type: 'success', msg: 'Servidor salvo com sucesso.' })
+      setConfigDrawer(null)
+      await loadAll()
+      if (data.testEmail) {
+        const id = editingId ?? dat.data.id
+        await testConfig(id, data.testEmail)
+      }
+    } catch (err) {
       setFeedback({ type: 'error', msg: err instanceof Error ? err.message : 'Erro.' })
     } finally {
       setSaving(false)
     }
   }
 
-  async function runEmailTest(to: string): Promise<TestResult> {
-    const res  = await fetch('/api/master/communication/email/test', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ to }),
+  async function testConfig(id: string, testEmail?: string) {
+    setTestingId(id)
+    try {
+      const res = await fetch(`/api/master/communication/email/configs/${id}/test`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ testEmail }),
+      })
+      const dat = await res.json()
+      if (dat.success) setFeedback({ type: 'success', msg: dat.message ?? 'Teste OK.' })
+      else setFeedback({ type: 'error', msg: dat.error ?? 'Falha no teste.' })
+      await loadAll()
+    } catch (err) {
+      setFeedback({ type: 'error', msg: err instanceof Error ? err.message : 'Erro.' })
+    } finally {
+      setTestingId(null)
+    }
+  }
+
+  async function toggleConfig(id: string) {
+    await fetch(`/api/master/communication/email/configs/${id}/toggle`, { method: 'POST' })
+    await loadAll()
+  }
+  async function setDefaultConfig(c: EmailConfigRow) {
+    await fetch(`/api/master/communication/email/configs/${c.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isDefault: true }),
     })
-    return res.json()
+    await loadAll()
+  }
+  async function deleteConfig(c: EmailConfigRow) {
+    if (!confirm(`Excluir servidor "${c.name}"?`)) return
+    await fetch(`/api/master/communication/email/configs/${c.id}`, { method: 'DELETE' })
+    await loadAll()
+  }
+
+  // ── Ações sobre Templates ────────────────────────────────
+  async function saveTemplate(data: Partial<EmailTemplateRow>) {
+    setSaving(true)
+    setFeedback(null)
+    try {
+      const editingId = templateDrawer?.editing?.id
+      const url    = editingId ? `/api/master/communication/email/templates/${editingId}` : '/api/master/communication/email/templates'
+      const method = editingId ? 'PATCH' : 'POST'
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      const dat = await res.json()
+      if (!res.ok || !dat.success) throw new Error(dat.error ?? 'Erro ao salvar.')
+      setFeedback({ type: 'success', msg: 'Template salvo.' })
+      setTemplateDrawer(null)
+      await loadAll()
+    } catch (err) {
+      setFeedback({ type: 'error', msg: err instanceof Error ? err.message : 'Erro.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+  async function toggleTemplate(id: string) {
+    await fetch(`/api/master/communication/email/templates/${id}/toggle`, { method: 'POST' })
+    await loadAll()
+  }
+  async function deleteTemplate(t: EmailTemplateRow) {
+    if (!confirm(`Excluir template "${t.name}"?`)) return
+    await fetch(`/api/master/communication/email/templates/${t.id}`, { method: 'DELETE' })
+    await loadAll()
+  }
+  async function seedDefaults() {
+    setSeeding(true)
+    try {
+      const res = await fetch('/api/master/communication/email/templates/seed', { method: 'POST' })
+      const dat = await res.json()
+      if (dat.success) {
+        setFeedback({ type: 'success', msg: `${dat.created} criados, ${dat.skipped} já existiam.` })
+        await loadAll()
+      } else {
+        setFeedback({ type: 'error', msg: dat.error ?? 'Erro ao criar templates padrão.' })
+      }
+    } finally { setSeeding(false) }
   }
 
   if (loading) return <div className="flex h-48 items-center justify-center"><Loader2 size={20} className="animate-spin text-gray-400" /></div>
 
-  const isApiProvider = ['sendgrid', 'ses', 'mailgun', 'resend'].includes(config.provider ?? '')
+  // Agrupar por propósito
+  const configsByPurpose = EMAIL_PURPOSES.map(p => ({ p, items: configs.filter(c => c.purpose === p.value) }))
+  const templatesByPurpose = EMAIL_PURPOSES.map(p => ({ p, items: templates.filter(t => t.purpose === p.value) }))
 
   return (
-    <form onSubmit={handleSave} className="space-y-5">
+    <div className="space-y-8">
       {feedback && <Alert type={feedback.type} msg={feedback.msg} />}
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className={labelCls}>Provedor</label>
-          <select className={inputCls} value={config.provider ?? ''} onChange={set('provider')}>
-            <option value="">Selecione...</option>
-            <option value="smtp">SMTP (próprio)</option>
-            <option value="sendgrid">SendGrid</option>
-            <option value="ses">Amazon SES</option>
-            <option value="mailgun">Mailgun</option>
-            <option value="resend">Resend</option>
-          </select>
-        </div>
-        <div className="flex flex-col justify-end">
-          <label className="flex items-center gap-2 cursor-pointer pb-1.5">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300 text-brand-600"
-              checked={config.active === 'true'}
-              onChange={e => setConfig(p => ({ ...p, active: e.target.checked ? 'true' : 'false' }))}
-            />
-            <span className="text-sm text-gray-700">Envio de e-mails habilitado</span>
-          </label>
-        </div>
-      </div>
-
-      {/* SMTP */}
-      {!isApiProvider && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2">
-            <label className={labelCls}>Host SMTP</label>
-            <input className={inputCls} value={config.smtpHost ?? ''} onChange={set('smtpHost')} placeholder="smtp.exemplo.com" />
+      {/* ── SECTION A — SERVIDORES ─────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Server size={16} className="text-brand-600" />
+            <h2 className="text-sm font-semibold text-gray-900">Servidores de E-mail</h2>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{configs.length}</span>
           </div>
-          <div>
-            <label className={labelCls}>Porta</label>
-            <input type="number" className={inputCls} value={config.smtpPort ?? ''} onChange={set('smtpPort')} placeholder="587" />
+          <button
+            onClick={() => setConfigDrawer({ open: true })}
+            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus size={13} /> Novo servidor
+          </button>
+        </div>
+
+        {configs.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
+            <Mail size={28} className="mx-auto text-gray-300 mb-2" />
+            <p className="text-sm text-gray-500">Nenhum servidor cadastrado.</p>
+            <p className="text-xs text-gray-400 mt-1">Crie pelo menos um servidor para o propósito SYSTEM.</p>
           </div>
-          <div>
-            <label className={labelCls}>Usuário SMTP</label>
-            <input className={inputCls} value={config.smtpUser ?? ''} onChange={set('smtpUser')} placeholder="usuario@dominio.com" />
+        ) : (
+          <div className="space-y-5">
+            {configsByPurpose.map(({ p, items }) => items.length === 0 ? null : (
+              <div key={p.value}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.color}`}>{p.label}</span>
+                  <span className="text-xs text-gray-400">{p.desc}</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {items.map(c => (
+                    <div key={c.id} className="rounded-xl border border-gray-200 bg-white p-4 hover:border-brand-300 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="text-sm font-semibold text-gray-900 truncate">{c.name}</h3>
+                            {c.isDefault && <Star size={12} className="text-amber-500 fill-amber-500" />}
+                            {(() => {
+                              const pr = EMAIL_PROVIDERS.find(p => p.value === (c.provider ?? 'smtp')) ?? EMAIL_PROVIDERS[0]
+                              return <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${pr.color}`}>{pr.label}</span>
+                            })()}
+                          </div>
+                          <p className="text-xs text-gray-500 truncate">{c.fromEmail}</p>
+                          <p className="text-xs text-gray-400 truncate">
+                            {c.provider === 'smtp' || !c.provider
+                              ? `${c.smtpHost ?? '—'}:${c.smtpPort}`
+                              : c.provider === 'mailgun'
+                              ? (c.domain ?? '—')
+                              : c.provider === 'ses'
+                              ? `region: ${c.region ?? '—'}`
+                              : 'API'}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                            c.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            <Power size={9} /> {c.active ? 'Ativo' : 'Inativo'}
+                          </span>
+                          {c.lastTestedAt && (
+                            <span className={`text-xs ${c.lastTestOk ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {c.lastTestOk ? '✓' : '✗'} testado
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t border-gray-100">
+                        <button onClick={() => setConfigDrawer({ open: true, editing: c })}
+                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100">
+                          <Pencil size={11} /> Editar
+                        </button>
+                        <button onClick={() => testConfig(c.id)} disabled={testingId === c.id}
+                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-brand-600 hover:bg-brand-50 disabled:opacity-50">
+                          {testingId === c.id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />} Testar
+                        </button>
+                        <button onClick={() => toggleConfig(c.id)}
+                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100">
+                          <Power size={11} /> {c.active ? 'Desativar' : 'Ativar'}
+                        </button>
+                        {!c.isDefault && (
+                          <button onClick={() => setDefaultConfig(c)}
+                            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-amber-600 hover:bg-amber-50">
+                            <Star size={11} /> Padrão
+                          </button>
+                        )}
+                        <button onClick={() => deleteConfig(c)}
+                          className="ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50">
+                          <Trash2 size={11} /> Excluir
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="col-span-2">
-            <label className={labelCls}>Senha SMTP</label>
-            <div className="relative">
-              <input
-                type={showPass ? 'text' : 'password'}
-                className={`${inputCls} pr-9`}
-                value={config.smtpPass ?? ''}
-                onChange={set('smtpPass')}
-                placeholder="••••••••"
-              />
-              <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
+        )}
+      </section>
+
+      {/* ── SECTION B — TEMPLATES ──────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Layers size={16} className="text-brand-600" />
+            <h2 className="text-sm font-semibold text-gray-900">Templates de E-mail</h2>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{templates.length}</span>
           </div>
-          <div>
-            <label className={labelCls}>TLS/SSL</label>
-            <select className={inputCls} value={config.smtpSecure ?? ''} onChange={set('smtpSecure')}>
-              <option value="false">Não (STARTTLS)</option>
-              <option value="true">Sim (SSL/TLS)</option>
-            </select>
+          <div className="flex gap-2">
+            <button onClick={seedDefaults} disabled={seeding}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+              {seeding ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+              Criar padrões
+            </button>
+            <button onClick={() => setTemplateDrawer({ open: true })}
+              className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+              <Plus size={13} /> Novo template
+            </button>
           </div>
         </div>
-      )}
 
-      {/* API Key */}
-      {isApiProvider && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <label className={labelCls}>API Key</label>
-            <div className="relative">
-              <input
-                type={showPass ? 'text' : 'password'}
-                className={`${inputCls} pr-9`}
-                value={config.apiKey ?? ''}
-                onChange={set('apiKey')}
-                placeholder="••••••••"
-              />
-              <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
+        {templates.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
+            <FileText size={28} className="mx-auto text-gray-300 mb-2" />
+            <p className="text-sm text-gray-500">Nenhum template criado.</p>
+            <p className="text-xs text-gray-400 mt-1">Clique em "Criar padrões" para gerar os templates base do AutoDrive.</p>
           </div>
-          {['ses', 'mailgun'].includes(config.provider ?? '') && (
-            <div>
-              <label className={labelCls}>Domínio de envio</label>
-              <input className={inputCls} value={config.domain ?? ''} onChange={set('domain')} placeholder="mg.suaempresa.com.br" />
-            </div>
-          )}
-        </div>
-      )}
+        ) : (
+          <div className="space-y-5">
+            {templatesByPurpose.map(({ p, items }) => items.length === 0 ? null : (
+              <div key={p.value}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.color}`}>{p.label}</span>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-gray-200">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
+                        <th className="px-3 py-2 text-left">Nome</th>
+                        <th className="px-3 py-2 text-left">Key</th>
+                        <th className="px-3 py-2 text-left">Assunto</th>
+                        <th className="px-3 py-2 text-center">Variáveis</th>
+                        <th className="px-3 py-2 text-center">Ativo</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {items.map(t => (
+                        <tr key={t.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium text-gray-900">{t.name}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-gray-500">{t.key}</td>
+                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[260px] truncate" title={t.subject}>{t.subject}</td>
+                          <td className="px-3 py-2 text-center text-xs text-gray-600">{t.variables.length}</td>
+                          <td className="px-3 py-2 text-center">
+                            <button onClick={() => toggleTemplate(t.id)}
+                              className={`inline-flex h-5 w-9 items-center rounded-full transition ${t.active ? 'bg-brand-600' : 'bg-gray-300'}`}>
+                              <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${t.active ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                            </button>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <button onClick={() => setTemplateDrawer({ open: true, editing: t })}
+                                className="rounded p-1 text-gray-500 hover:bg-gray-100" title="Editar">
+                                <Pencil size={12} />
+                              </button>
+                              <button onClick={() => deleteTemplate(t)}
+                                className="rounded p-1 text-red-500 hover:bg-red-50" title="Excluir">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-      {/* Remetente */}
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className={labelCls}>Nome do remetente</label>
-          <input className={inputCls} value={config.fromName ?? ''} onChange={set('fromName')} placeholder="EasyCar" />
+      {/* ── Painel legado para teste rápido global ─────────────────────── */}
+      <details className="rounded-xl border border-dashed border-gray-200 p-4">
+        <summary className="cursor-pointer text-xs font-medium text-gray-500">Teste rápido (config legada via SystemSetting)</summary>
+        <div className="mt-3">
+          <TestPanel
+            channel="email"
+            placeholder="destinatario@exemplo.com"
+            label="Usa a configuração legada (SystemSetting group='email') ou faz fallback automático para o servidor SYSTEM padrão."
+            inputType="email"
+            icon={Mail}
+            onTest={async to => {
+              const res = await fetch('/api/master/communication/email/test', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to }),
+              })
+              return res.json()
+            }}
+          />
         </div>
-        <div>
-          <label className={labelCls}>E-mail remetente</label>
-          <input type="email" className={inputCls} value={config.fromEmail ?? ''} onChange={set('fromEmail')} placeholder="noreply@easycar.com.br" />
-        </div>
-        <div>
-          <label className={labelCls}>Reply-To</label>
-          <input type="email" className={inputCls} value={config.replyTo ?? ''} onChange={set('replyTo')} placeholder="suporte@easycar.com.br" />
-        </div>
-      </div>
+      </details>
 
-      {/* Limite */}
-      <div className="max-w-[220px]">
-        <label className={labelCls}>Limite mensal de envios</label>
-        <input type="number" min={0} className={inputCls} value={config.monthlyLimit ?? ''} onChange={set('monthlyLimit')} placeholder="10000" />
-      </div>
+      {/* ── Drawers ────────────────────────────────────────────────────── */}
+      <Drawer
+        open={!!configDrawer?.open}
+        onClose={() => setConfigDrawer(null)}
+        title={configDrawer?.editing ? 'Editar servidor de e-mail' : 'Novo servidor de e-mail'}
+      >
+        <EmailConfigForm
+          initial={configDrawer?.editing}
+          submitting={saving}
+          onCancel={() => setConfigDrawer(null)}
+          onSubmit={saveConfig}
+        />
+      </Drawer>
 
-      {/* Salvar */}
-      <div className="border-t border-gray-100 pt-4">
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-        >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          {saving ? 'Salvando...' : 'Salvar configurações'}
-        </button>
-      </div>
-
-      {/* Painel de teste */}
-      <TestPanel
-        channel="email"
-        placeholder="destinatario@exemplo.com"
-        label="Será enviado um e-mail de teste usando as configurações acima. Salve antes de testar."
-        inputType="email"
-        icon={Mail}
-        onTest={runEmailTest}
-      />
-    </form>
+      <Drawer
+        open={!!templateDrawer?.open}
+        onClose={() => setTemplateDrawer(null)}
+        title={templateDrawer?.editing ? 'Editar template' : 'Novo template'}
+        width="max-w-2xl"
+      >
+        <EmailTemplateForm
+          initial={templateDrawer?.editing}
+          submitting={saving}
+          onCancel={() => setTemplateDrawer(null)}
+          onSubmit={saveTemplate}
+        />
+      </Drawer>
+    </div>
   )
 }
 
@@ -626,6 +1295,7 @@ function WhatsAppTab() {
   const isMeta = !config.provider || config.provider === 'meta'
 
   return (
+    <div className="space-y-6">
     <form onSubmit={handleSave} className="space-y-5">
       {feedback && <Alert type={feedback.type} msg={feedback.msg} code={feedback.code} />}
 
@@ -946,7 +1616,244 @@ function WhatsAppTab() {
         icon={Phone}
         onTest={runWaTest}
       />
+
     </form>
+    {/* ── SECTION: Templates de WhatsApp (fora do form para evitar form aninhado) ── */}
+    <WhatsappTemplatesSection />
+    </div>
+  )
+}
+
+// ── Section: Templates de WhatsApp ───────────────────────────────────────────
+
+type WhatsappPurpose = 'GENERAL' | 'NOTICES' | 'PROFILE_CHANGED' | 'PASSWORD_RESET' | 'PENDENCY' | 'NEGOTIATION'
+
+const WHATSAPP_PURPOSES: { value: WhatsappPurpose; label: string; color: string }[] = [
+  { value: 'GENERAL',         label: 'Geral',             color: 'bg-slate-100 text-slate-700' },
+  { value: 'NOTICES',         label: 'Avisos',            color: 'bg-blue-100 text-blue-700' },
+  { value: 'PROFILE_CHANGED', label: 'Alteração perfil',  color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'PASSWORD_RESET',  label: 'Recuperar senha',   color: 'bg-amber-100 text-amber-700' },
+  { value: 'PENDENCY',        label: 'Pendência',         color: 'bg-violet-100 text-violet-700' },
+  { value: 'NEGOTIATION',     label: 'Negociação',        color: 'bg-rose-100 text-rose-700' },
+]
+
+interface WhatsappTemplateRow {
+  id:                  string
+  tenantId:            string | null
+  name:                string
+  description:         string | null
+  templateName:        string
+  purpose:             string | null
+  bodyText:            string | null
+  variables:           string[]
+  hasHeaderImage:      boolean
+  headerImageUrl:      string | null
+  expectedParamsCount: number
+  active:              boolean
+}
+
+function WhatsappTemplateForm({ initial, onSubmit, onCancel, submitting }: {
+  initial?: Partial<WhatsappTemplateRow>
+  onSubmit: (data: Partial<WhatsappTemplateRow>) => Promise<void>
+  onCancel: () => void
+  submitting: boolean
+}) {
+  const [form, setForm] = useState<Partial<WhatsappTemplateRow>>({
+    name:           initial?.name           ?? '',
+    description:    initial?.description    ?? '',
+    templateName:   initial?.templateName   ?? '',
+    purpose:        initial?.purpose        ?? 'GENERAL',
+    bodyText:       initial?.bodyText       ?? '',
+    variables:      initial?.variables      ?? [],
+    hasHeaderImage: initial?.hasHeaderImage ?? false,
+    headerImageUrl: initial?.headerImageUrl ?? '',
+    active:         initial?.active         ?? true,
+  })
+  function up<K extends keyof typeof form>(k: K, v: (typeof form)[K]) { setForm(p => ({ ...p, [k]: v })) }
+  return (
+    <form onSubmit={async e => { e.preventDefault(); await onSubmit(form) }} className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Nome (exibição) *</label>
+          <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} required />
+        </div>
+        <div>
+          <label className={labelCls}>Propósito *</label>
+          <select className={inputCls} value={form.purpose ?? 'GENERAL'} onChange={e => up('purpose', e.target.value as WhatsappPurpose)}>
+            {WHATSAPP_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className={labelCls}>Nome técnico (template Meta aprovado) *</label>
+        <input className={`${inputCls} font-mono`} value={form.templateName ?? ''} onChange={e => up('templateName', e.target.value)} placeholder="welcome_message" required />
+      </div>
+      <div>
+        <label className={labelCls}>Descrição</label>
+        <input className={inputCls} value={form.description ?? ''} onChange={e => up('description', e.target.value)} />
+      </div>
+      <div>
+        <label className={labelCls}>Body text (use {`{{1}}`}, {`{{2}}`}...) </label>
+        <textarea className={`${inputCls} font-mono text-xs`} rows={5} value={form.bodyText ?? ''} onChange={e => up('bodyText', e.target.value)} placeholder="Olá {{1}}, seu pedido foi atualizado." />
+      </div>
+      <div>
+        <label className={labelCls}>Variáveis</label>
+        <VarChips value={form.variables ?? []} onChange={v => up('variables', v)} />
+      </div>
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
+            checked={form.hasHeaderImage ?? false} onChange={e => up('hasHeaderImage', e.target.checked)} />
+          <ImageIcon size={12} /> Tem header de imagem
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-600"
+            checked={form.active ?? true} onChange={e => up('active', e.target.checked)} />
+          Ativo
+        </label>
+      </div>
+      {form.hasHeaderImage && (
+        <div>
+          <label className={labelCls}>URL da imagem de header</label>
+          <input className={inputCls} value={form.headerImageUrl ?? ''} onChange={e => up('headerImageUrl', e.target.value)} placeholder="https://..." />
+        </div>
+      )}
+      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+        <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancelar</button>
+        <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+          {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {submitting ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function WhatsappTemplatesSection() {
+  const [rows, setRows] = useState<WhatsappTemplateRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [drawer, setDrawer] = useState<{ open: boolean; editing?: WhatsappTemplateRow } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'error' | 'success'; msg: string } | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/master/communication/whatsapp/templates').then(r => r.json())
+      setRows(r.data ?? [])
+    } finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  async function save(data: Partial<WhatsappTemplateRow>) {
+    setSaving(true); setFeedback(null)
+    try {
+      const editingId = drawer?.editing?.id
+      const url    = editingId ? `/api/master/communication/whatsapp/templates/${editingId}` : '/api/master/communication/whatsapp/templates'
+      const method = editingId ? 'PATCH' : 'POST'
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      const dat = await res.json()
+      if (!res.ok || !dat.success) throw new Error(dat.error ?? 'Erro ao salvar.')
+      setFeedback({ type: 'success', msg: 'Template salvo.' })
+      setDrawer(null)
+      await load()
+    } catch (err) {
+      setFeedback({ type: 'error', msg: err instanceof Error ? err.message : 'Erro.' })
+    } finally { setSaving(false) }
+  }
+  async function toggle(id: string) {
+    await fetch(`/api/master/communication/whatsapp/templates/${id}/toggle`, { method: 'POST' })
+    await load()
+  }
+  async function remove(t: WhatsappTemplateRow) {
+    if (!confirm(`Excluir template "${t.name}"?`)) return
+    await fetch(`/api/master/communication/whatsapp/templates/${t.id}`, { method: 'DELETE' })
+    await load()
+  }
+
+  const byPurpose = WHATSAPP_PURPOSES.map(p => ({ p, items: rows.filter(r => (r.purpose ?? 'GENERAL') === p.value) }))
+
+  return (
+    <div className="rounded-xl border border-gray-200 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Layers size={15} className="text-brand-600" />
+          <p className="text-sm font-semibold text-gray-800">Templates de WhatsApp</p>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{rows.length}</span>
+        </div>
+        <button type="button" onClick={() => setDrawer({ open: true })}
+          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+          <Plus size={12} /> Novo template
+        </button>
+      </div>
+
+      {feedback && <Alert type={feedback.type} msg={feedback.msg} />}
+
+      {loading ? (
+        <div className="flex h-24 items-center justify-center"><Loader2 size={18} className="animate-spin text-gray-400" /></div>
+      ) : rows.length === 0 ? (
+        <p className="text-xs text-gray-400 py-4 text-center">Nenhum template cadastrado.</p>
+      ) : (
+        <div className="space-y-4">
+          {byPurpose.map(({ p, items }) => items.length === 0 ? null : (
+            <div key={p.value}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.color}`}>{p.label}</span>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-gray-200">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-gray-50 text-gray-500">
+                      <th className="px-3 py-2 text-left">Nome</th>
+                      <th className="px-3 py-2 text-left">Template Meta</th>
+                      <th className="px-3 py-2 text-center">Vars</th>
+                      <th className="px-3 py-2 text-center">Img</th>
+                      <th className="px-3 py-2 text-center">Ativo</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {items.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium text-gray-800">{t.name}</td>
+                        <td className="px-3 py-2 font-mono text-gray-600">{t.templateName}</td>
+                        <td className="px-3 py-2 text-center text-gray-600">{t.variables.length}</td>
+                        <td className="px-3 py-2 text-center">{t.hasHeaderImage ? <CheckCircle2 size={12} className="inline text-emerald-500" /> : '—'}</td>
+                        <td className="px-3 py-2 text-center">
+                          <button type="button" onClick={() => toggle(t.id)}
+                            className={`inline-flex h-5 w-9 items-center rounded-full transition ${t.active ? 'bg-brand-600' : 'bg-gray-300'}`}>
+                            <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${t.active ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button type="button" onClick={() => setDrawer({ open: true, editing: t })} className="rounded p-1 text-gray-500 hover:bg-gray-100" title="Editar"><Pencil size={11} /></button>
+                            <button type="button" onClick={() => remove(t)} className="rounded p-1 text-red-500 hover:bg-red-50" title="Excluir"><Trash2 size={11} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Drawer
+        open={!!drawer?.open}
+        onClose={() => setDrawer(null)}
+        title={drawer?.editing ? 'Editar template WhatsApp' : 'Novo template WhatsApp'}
+      >
+        <WhatsappTemplateForm
+          initial={drawer?.editing}
+          submitting={saving}
+          onCancel={() => setDrawer(null)}
+          onSubmit={save}
+        />
+      </Drawer>
+    </div>
   )
 }
 

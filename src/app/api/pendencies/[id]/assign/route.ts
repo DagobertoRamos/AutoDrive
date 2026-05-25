@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { notifyPendency } from '@/services/notification.service'
+import { canActOn } from '@/lib/role-hierarchy'
 
 const schema = z.object({
   assignedUserId: z.string().min(1, 'Usuário obrigatório').nullable(),
@@ -45,6 +46,20 @@ export async function PATCH(
 
     if (!pendency) {
       return NextResponse.json({ success: false, error: 'Pendência não encontrada' }, { status: 404 })
+    }
+
+    // Hierarquia: não pode atribuir a alguém igual ou acima
+    if (assignedUserId) {
+      const targetUser = await prisma.user.findUnique({
+        where:  { id: assignedUserId },
+        select: { role: true },
+      })
+      if (!canActOn(session.user.role, targetUser?.role ?? null)) {
+        return NextResponse.json(
+          { success: false, error: 'Sem permissão para atribuir a um usuário deste nível.' },
+          { status: 403 },
+        )
+      }
     }
 
     const updated = await prisma.pendency.update({

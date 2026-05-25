@@ -7,6 +7,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Settings, RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { maskBRL, parseBRL } from '@/lib/masks'
+
+function brlInputValue(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return ''
+  return maskBRL(String(Math.round(v * 100)))
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,10 +32,21 @@ interface CommissionRule {
   active:         boolean
   unitId:         string | null
   unit?:          { name: string } | null
+  positionId:     string | null
+  position?:      { id: string; name: string; slug: string } | null
+  role:           string | null
   notes:          string | null
 }
 
-const EMPTY_FORM: Omit<CommissionRule, 'id' | 'unit'> = {
+interface PositionLite {
+  id:       string
+  name:     string
+  slug:     string
+  baseRole: string | null
+  active:   boolean
+}
+
+const EMPTY_FORM: Omit<CommissionRule, 'id' | 'unit' | 'position'> = {
   name:           '',
   description:    null,
   ruleType:       'VENDA',
@@ -43,6 +60,8 @@ const EMPTY_FORM: Omit<CommissionRule, 'id' | 'unit'> = {
   priority:       0,
   active:         true,
   unitId:         null,
+  positionId:     null,
+  role:           null,
   notes:          null,
 }
 
@@ -82,15 +101,17 @@ function inputCls(extra?: string) {
 
 function RuleModal({
   initial,
+  positions,
   onClose,
   onSaved,
 }: {
-  initial: CommissionRule | null
-  onClose: () => void
-  onSaved: () => void
+  initial:   CommissionRule | null
+  positions: PositionLite[]
+  onClose:   () => void
+  onSaved:   () => void
 }) {
   const isEdit = !!initial
-  const [form, setForm] = useState<Omit<CommissionRule, 'id' | 'unit'>>(
+  const [form, setForm] = useState<Omit<CommissionRule, 'id' | 'unit' | 'position'>>(
     initial
       ? {
           name:           initial.name,
@@ -106,6 +127,8 @@ function RuleModal({
           priority:       initial.priority,
           active:         initial.active,
           unitId:         initial.unitId,
+          positionId:     initial.positionId,
+          role:           initial.role,
           notes:          initial.notes,
         }
       : { ...EMPTY_FORM },
@@ -169,6 +192,29 @@ function RuleModal({
             />
           </Field>
 
+          {/* Cargo vinculado */}
+          <Field label="Cargo (opcional)">
+            <select
+              className={inputCls()}
+              value={form.positionId ?? ''}
+              onChange={(e) => {
+                const newId = e.target.value || null
+                const pos = positions.find((p) => p.id === newId)
+                setForm((prev) => ({
+                  ...prev,
+                  positionId: newId,
+                  // se role não foi setado ainda, auto-preenche pelo baseRole do cargo
+                  role: prev.role || (pos?.baseRole ?? null),
+                }))
+              }}
+            >
+              <option value="">— Nenhum —</option>
+              {positions.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </Field>
+
           {/* Tipo e Comissão */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Tipo da regra *">
@@ -210,10 +256,10 @@ function RuleModal({
             ) : (
               <Field label="Valor fixo (R$)">
                 <input
-                  type="number" min={0} step={0.01}
+                  inputMode="numeric"
                   className={inputCls()}
-                  value={form.fixedValue ?? ''}
-                  onChange={(e) => set('fixedValue', e.target.value ? Number(e.target.value) : null)}
+                  value={brlInputValue(form.fixedValue)}
+                  onChange={(e) => set('fixedValue', parseBRL(e.target.value))}
                   placeholder="Ex: 500,00"
                 />
               </Field>
@@ -364,6 +410,7 @@ function DeleteModal({
 
 export default function RegrasComissoesPage() {
   const [rules, setRules]         = useState<CommissionRule[]>([])
+  const [positions, setPositions] = useState<PositionLite[]>([])
   const [loading, setLoading]     = useState(true)
   const [editing, setEditing]     = useState<CommissionRule | null | 'new'>(null)
   const [deleting, setDeleting]   = useState<CommissionRule | null>(null)
@@ -384,7 +431,17 @@ export default function RegrasComissoesPage() {
     }
   }, [])
 
-  useEffect(() => { fetchRules() }, [fetchRules])
+  const fetchPositions = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/positions?active=true', { credentials: 'include' })
+      const data = await res.json()
+      if (res.ok) setPositions(data.data ?? [])
+    } catch {
+      /* silencioso — campo é opcional */
+    }
+  }, [])
+
+  useEffect(() => { fetchRules(); fetchPositions() }, [fetchRules, fetchPositions])
 
   return (
     <>
@@ -441,7 +498,7 @@ export default function RegrasComissoesPage() {
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Nome', 'Tipo', 'Comissão', 'Faixa de Qtd.', 'Prioridade', 'Unidade', 'Status', 'Ações'].map((h) => (
+                    {['Nome', 'Tipo', 'Cargo', 'Comissão', 'Faixa de Qtd.', 'Prioridade', 'Unidade', 'Status', 'Ações'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">
                         {h}
                       </th>
@@ -459,6 +516,9 @@ export default function RegrasComissoesPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                         {RULE_TYPE_LABELS[r.ruleType] ?? r.ruleType}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                        {r.position?.name ?? '—'}
                       </td>
                       <td className="px-4 py-3 font-semibold text-brand-700 tabular-nums whitespace-nowrap">
                         {r.commissionType === 'PERCENTUAL'
@@ -513,6 +573,7 @@ export default function RegrasComissoesPage() {
       {editing !== null && (
         <RuleModal
           initial={editing === 'new' ? null : editing}
+          positions={positions}
           onClose={() => setEditing(null)}
           onSaved={fetchRules}
         />

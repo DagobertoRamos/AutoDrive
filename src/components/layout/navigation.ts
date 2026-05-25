@@ -1,0 +1,335 @@
+// =============================================================================
+// Navigation config — AutoDrive
+// Estrutura tipada do menu lateral. A renderização real fica no Sidebar.tsx.
+// =============================================================================
+
+import type { LucideIcon } from 'lucide-react'
+import type { Module } from '@/lib/permissions'
+import {
+  Home,
+  Car,
+  ClipboardCheck,
+  Handshake,
+  DollarSign,
+  ClipboardList,
+  MessageSquare,
+  Database,
+  BarChart3,
+  FileText,
+  Settings,
+  HelpCircle,
+  Instagram,
+  Facebook,
+  Globe,
+  Youtube,
+  Linkedin,
+  MessageCircle,
+  Music2,
+  // Cadastros e sub-itens
+  Users,
+  UserCog,
+  Building2,
+  Briefcase,
+  Wrench,
+  ShieldCheck,
+  UserCircle,
+  // Comissões
+  Calculator,
+  ListChecks,
+  ArrowLeftRight,
+  Shield,
+  // Pendências
+  Inbox,
+  UserSquare,
+  // Comunicação
+  Send,
+  LayoutTemplate,
+  Megaphone,
+  ScrollText,
+  // Documentos
+  FileSignature,
+  Stamp,
+  FileCheck2,
+  Upload,
+  FileType,
+  // Relatórios sub-icons (re-uso de Database, ClipboardList, BarChart3 etc.)
+  TrendingUp,
+  Wallet,
+  Mail,
+  Smartphone,
+  Plug,
+  Palette,
+} from 'lucide-react'
+
+export interface NavItem {
+  label:      string
+  href?:      string
+  icon?:      LucideIcon
+  module?:    Module
+  badge?:     string
+  disabled?:  boolean
+  external?:  boolean
+  children?:  NavItem[]
+  /** Quando true, renderiza como divisor visual (label opcional). */
+  separator?: boolean
+  /** Identificador opcional de URL externa configurada (social). */
+  socialKey?: string
+}
+
+export const NAV_GROUPS: NavItem[] = [
+  // ── DASHBOARD ─────────────────────────────────────────────────────────────
+  { label: 'Dashboard', href: '/dashboard', icon: Home, module: 'dashboard' },
+
+  // ── ESTOQUE ───────────────────────────────────────────────────────────────
+  {
+    label: 'Estoque',
+    icon:  Car,
+    module: 'stock',
+    children: [
+      { label: 'Ver Estoque',     href: '/estoque',           icon: Car,             module: 'stock.view' },
+      { label: 'Fazer Avaliação', href: '/estoque/avaliacoes',icon: ClipboardCheck,  module: 'stock.evaluate' },
+    ],
+  },
+
+  // ── NEGOCIAÇÕES ───────────────────────────────────────────────────────────
+  {
+    label: 'Negociações',
+    icon:  Handshake,
+    module: 'negotiations',
+    children: [
+      { label: 'Todas',              href: '/negociacoes',            icon: ListChecks, module: 'negotiations' },
+      { label: 'Nova Negociação',    href: '/negociacoes/nova',       icon: Handshake,  module: 'negotiations' },
+      { label: 'Pendente Aprovação', href: '/negociacoes/aprovacoes', icon: ShieldCheck,module: 'negotiations.approve' },
+    ],
+  },
+
+  // ── COMISSÕES ─────────────────────────────────────────────────────────────
+  {
+    label: 'Comissões',
+    icon:  DollarSign,
+    module: 'commissions',
+    children: [
+      { label: 'Meu Extrato', href: '/comissoes/extrato',  icon: FileText,        module: 'commissions' },
+      { label: 'Cálculo',     href: '/comissoes/calculo',  icon: Calculator,      module: 'commissions.calculate' },
+      { label: 'Regras',      href: '/comissoes/regras',   icon: ListChecks,      module: 'commissions.rules' },
+      { label: 'Retornos',    href: '/comissoes/retornos', icon: ArrowLeftRight,  module: 'commissions.rules' },
+      { label: 'Garantias',   href: '/comissoes/garantias',icon: Shield,          module: 'commissions.rules' },
+    ],
+  },
+
+  // ── PENDÊNCIAS ────────────────────────────────────────────────────────────
+  {
+    label: 'Pendências',
+    icon:  ClipboardList,
+    module: 'pendencies',
+    children: [
+      { label: 'Central de Pendências', href: '/pendencias/central',        icon: Inbox,         module: 'pendencies.central' },
+      { label: 'Minhas Pendências',     href: '/pendencias/minhas',         icon: ClipboardList, module: 'pendencies' },
+      { label: 'Gerência',              href: '/pendencias/gerencia',       icon: UserCog,       module: 'pendencies.manage' },
+      { label: 'Vendedor',              href: '/pendencias/vendedor',       icon: UserSquare,    module: 'pendencies' },
+      { label: 'Configurações',         href: '/pendencias/configuracoes',  icon: Settings,      module: 'stock.pendencies.configure' },
+    ],
+  },
+
+  // ── COMUNICAÇÕES ──────────────────────────────────────────────────────────
+  {
+    label: 'Comunicações',
+    icon:  MessageSquare,
+    module: 'communication',
+    children: [
+      { label: 'Central de Comunicação', href: '/comunicacao/central',   icon: Inbox,           module: 'communication' },
+      { label: 'Disparo',                href: '/comunicacao/disparo',   icon: Send,            module: 'communication.dispatch' },
+      { label: 'Templates',              href: '/comunicacao/templates', icon: LayoutTemplate,  module: 'communication.templates' },
+      { label: 'Avisos',                 href: '/comunicacao/avisos',    icon: Megaphone,       module: 'communication' },
+      { label: 'Logs',                   href: '/comunicacao/logs',      icon: ScrollText,      module: 'communication' },
+    ],
+  },
+
+  // ── CADASTROS ─────────────────────────────────────────────────────────────
+  {
+    label: 'Cadastros',
+    icon:  Database,
+    module: 'registrations',
+    children: [
+      { label: 'Clientes',   href: '/cadastros/clientes',   icon: Users,        module: 'registrations.customers' },
+      { label: 'Veículos',   href: '/cadastros/veiculos',   icon: Car,          module: 'registrations.vehicles' },
+      { label: 'Unidades',   href: '/cadastros/unidades',   icon: Building2,    module: 'registrations.units' },
+      { label: 'Vendedores', href: '/cadastros/vendedores', icon: UserCircle,   module: 'registrations.sellers' },
+      { label: 'Gerentes',   href: '/cadastros/gerentes',   icon: UserCog,      module: 'registrations.managers' },
+      { label: 'Cargos',     href: '/cadastros/cargos',     icon: Briefcase,    module: 'registrations.positions' },
+      { label: 'Serviços',   href: '/cadastros/servicos',   icon: Wrench,       module: 'registrations.services' },
+      { label: 'Garantias',  href: '/cadastros/garantias',  icon: ShieldCheck,  module: 'registrations.warranties' },
+    ],
+  },
+
+  // ── RELATÓRIOS ────────────────────────────────────────────────────────────
+  {
+    label: 'Relatórios',
+    icon:  BarChart3,
+    module: 'logs',
+    children: [
+      {
+        label: 'Negociações', icon: Handshake, module: 'logs',
+        children: [
+          { label: 'Vendas',      href: '/relatorios/negociacoes/vendas',      module: 'logs' },
+          { label: 'Trocas',      href: '/relatorios/negociacoes/trocas',      module: 'logs' },
+          { label: 'Compras',     href: '/relatorios/negociacoes/compras',     module: 'logs' },
+          { label: 'Consignação', href: '/relatorios/negociacoes/consignacao', module: 'logs' },
+        ],
+      },
+      {
+        label: 'Financeiro', icon: Wallet, module: 'logs',
+        children: [
+          { label: 'Visão Geral',            href: '/relatorios/financeiro/visao-geral',           module: 'logs' },
+          { label: 'DRE',                    href: '/relatorios/financeiro/dre',                   module: 'logs' },
+          { label: 'Contas',                 href: '/relatorios/financeiro/contas',                module: 'logs' },
+          { label: 'Contas a Pagar',         href: '/relatorios/financeiro/contas-a-pagar',        module: 'logs' },
+          { label: 'Contas a Receber',       href: '/relatorios/financeiro/contas-a-receber',      module: 'logs' },
+          { label: 'Fluxo de Caixa',         href: '/relatorios/financeiro/fluxo-de-caixa',        module: 'logs' },
+          { label: 'Receitas',               href: '/relatorios/financeiro/receitas',              module: 'logs' },
+          { label: 'Despesas',               href: '/relatorios/financeiro/despesas',              module: 'logs' },
+          { label: 'Resultado por Unidade',  href: '/relatorios/financeiro/resultado-unidade',     module: 'logs' },
+          { label: 'Resultado por Vendedor', href: '/relatorios/financeiro/resultado-vendedor',    module: 'logs' },
+          { label: 'Resultado por Período',  href: '/relatorios/financeiro/resultado-periodo',     module: 'logs' },
+        ],
+      },
+      {
+        label: 'Estoque', icon: Car, module: 'logs',
+        children: [
+          { label: 'Estoque Atual',       href: '/relatorios/estoque/atual',       module: 'logs' },
+          { label: 'Giro de Estoque',     href: '/relatorios/estoque/giro',        module: 'logs' },
+          { label: 'Veículos Parados',    href: '/relatorios/estoque/parados',     module: 'logs' },
+          { label: 'Margem por Veículo',  href: '/relatorios/estoque/margem',      module: 'logs' },
+          { label: 'Custo de Preparação', href: '/relatorios/estoque/preparacao',  module: 'logs' },
+          { label: 'Avaliações',          href: '/relatorios/estoque/avaliacoes',  module: 'logs' },
+        ],
+      },
+      {
+        label: 'Comissões', icon: DollarSign, module: 'logs',
+        children: [
+          { label: 'Extrato Geral', href: '/relatorios/comissoes/extrato',   module: 'logs' },
+          { label: 'Por Vendedor',  href: '/relatorios/comissoes/vendedor',  module: 'logs' },
+          { label: 'Garantias',     href: '/relatorios/comissoes/garantias', module: 'logs' },
+          { label: 'Retornos',      href: '/relatorios/comissoes/retornos',  module: 'logs' },
+        ],
+      },
+      {
+        label: 'Pendências', icon: ClipboardList, module: 'logs',
+        children: [
+          { label: 'Em Aberto',       href: '/relatorios/pendencias/abertas',       module: 'logs' },
+          { label: 'Resolvidas',      href: '/relatorios/pendencias/resolvidas',    module: 'logs' },
+          { label: 'SLA',             href: '/relatorios/pendencias/sla',           module: 'logs' },
+          { label: 'Por Responsável', href: '/relatorios/pendencias/responsavel',   module: 'logs' },
+          { label: 'Por Unidade',     href: '/relatorios/pendencias/unidade',       module: 'logs' },
+        ],
+      },
+      {
+        label: 'Comunicação', icon: MessageSquare, module: 'logs',
+        children: [
+          { label: 'WhatsApp',         href: '/relatorios/comunicacao/whatsapp', module: 'logs' },
+          { label: 'E-mail',           href: '/relatorios/comunicacao/email',    module: 'logs' },
+          { label: 'Avisos Internos',  href: '/relatorios/comunicacao/avisos',   module: 'logs' },
+          { label: 'Logs',             href: '/relatorios/comunicacao/logs',     module: 'logs' },
+        ],
+      },
+      {
+        label: 'Auditoria', icon: ShieldCheck, module: 'logs',
+        children: [
+          { label: 'Acessos',          href: '/relatorios/auditoria/acessos',     module: 'logs' },
+          { label: 'Alterações',       href: '/relatorios/auditoria/alteracoes',  module: 'logs' },
+          { label: 'Exclusões',        href: '/relatorios/auditoria/exclusoes',   module: 'logs' },
+          { label: 'Eventos Críticos', href: '/relatorios/auditoria/eventos',     module: 'logs' },
+        ],
+      },
+    ],
+  },
+
+  // ── DOCUMENTOS ────────────────────────────────────────────────────────────
+  {
+    label: 'Documentos',
+    icon:  FileText,
+    module: 'documents',
+    children: [
+      { label: 'Contratos',   href: '/documentos/contratos',   icon: FileSignature, module: 'documents.pdf' },
+      { label: 'Procurações', href: '/documentos/procuracoes', icon: Stamp,         module: 'documents.pdf' },
+      { label: 'Termos',      href: '/documentos/termos',      icon: FileCheck2,    module: 'documents.pdf' },
+      { label: 'Declarações', href: '/documentos/declaracoes', icon: ScrollText,    module: 'documents.pdf' },
+      { label: 'Importação',  href: '/documentos/importacao',  icon: Upload,        module: 'documents.import' },
+      { label: 'PDF',         href: '/documentos/pdf',         icon: FileType,      module: 'documents.pdf' },
+    ],
+  },
+
+  // ── SEPARADOR ─────────────────────────────────────────────────────────────
+  { label: '', separator: true },
+
+  // ── REDES SOCIAIS (apenas renderiza itens com URL configurada) ────────────
+  {
+    label: 'Nossas Redes Sociais',
+    icon:  Globe,
+    children: [
+      { label: 'Instagram', icon: Instagram,     external: true, socialKey: 'instagram' },
+      { label: 'Facebook',  icon: Facebook,      external: true, socialKey: 'facebook' },
+      { label: 'WhatsApp',  icon: MessageCircle, external: true, socialKey: 'whatsapp' },
+      { label: 'Site',      icon: Globe,         external: true, socialKey: 'site' },
+      { label: 'YouTube',   icon: Youtube,       external: true, socialKey: 'youtube' },
+      { label: 'TikTok',    icon: Music2,        external: true, socialKey: 'tiktok' },
+      { label: 'LinkedIn',  icon: Linkedin,      external: true, socialKey: 'linkedin' },
+    ],
+  },
+
+  // ── CONFIGURAÇÕES ─────────────────────────────────────────────────────────
+  {
+    label: 'Configurações',
+    icon:  Settings,
+    module: 'settings',
+    children: [
+      { label: 'Identidade', href: '/configuracoes/identidade', icon: Palette,    module: 'settings.identity' },
+      { label: 'Perfil',     href: '/perfil',                   icon: UserCircle, module: 'profile' },
+      { label: 'Sistema',    href: '/configuracoes/sistema',    icon: Settings,   module: 'settings.critical' },
+      { label: 'E-mail',     href: '/configuracoes/email',      icon: Mail,       module: 'settings.email' },
+      { label: 'WhatsApp',   href: '/configuracoes/whatsapp',   icon: Smartphone, module: 'settings.whatsapp' },
+      { label: 'Sheets',     href: '/configuracoes/sheets',     icon: Plug,       module: 'settings.sheets' },
+      { label: 'Comissões',  href: '/configuracoes/comissoes',  icon: DollarSign, module: 'settings.commission' },
+    ],
+  },
+
+  // ── AJUDA ─────────────────────────────────────────────────────────────────
+  { label: 'Ajuda', href: '/ajuda', icon: HelpCircle },
+
+  // ── MASTER (apenas role MASTER) ───────────────────────────────────────────
+  {
+    label: 'Master',
+    icon:  ShieldCheck,
+    module: 'master',
+    children: [
+      { label: 'Visão Geral',       href: '/master',                    module: 'master' },
+      { label: 'Tenants',           href: '/master/tenants',            module: 'master.tenants' },
+      { label: 'Usuários',          href: '/master/users',              module: 'master' },
+      { label: 'Planos',            href: '/master/plans',              module: 'master.plans' },
+      { label: 'Módulos',           href: '/master/modules',            module: 'master.modules' },
+      { label: 'Regras de Avisos',  href: '/master/notification-rules', module: 'master' },
+      { label: 'Comunicação',       href: '/master/communication',      module: 'master' },
+      { label: 'Importador Sheets', href: '/master/sheets',             module: 'master' },
+      { label: 'Integrações',       href: '/master/integrations',       module: 'master' },
+      { label: 'Feature Flags',     href: '/master/feature-flags',      module: 'master' },
+      { label: 'Manutenção',        href: '/master/maintenance',        module: 'master' },
+      { label: 'Identidade',        href: '/master/identity',           module: 'master' },
+      { label: 'Segurança',         href: '/master/security',           module: 'master' },
+      { label: 'Auditoria',         href: '/master/audit',              module: 'master.audit' },
+    ],
+  },
+]
+
+/**
+ * Chaves de SystemSetting (grupo "identity") onde armazenamos URLs sociais.
+ * Mapeamento socialKey -> chave de campo persistido em `settings/identity`.
+ */
+export const SOCIAL_KEY_TO_FIELD: Record<string, string> = {
+  instagram: 'socialInstagram',
+  facebook:  'socialFacebook',
+  whatsapp:  'socialWhatsapp',
+  site:      'socialSite',
+  youtube:   'socialYoutube',
+  tiktok:    'socialTiktok',
+  linkedin:  'socialLinkedin',
+}

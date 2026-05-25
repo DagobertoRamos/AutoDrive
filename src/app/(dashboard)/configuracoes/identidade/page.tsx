@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Palette, Save, Loader2, CheckCircle2, AlertCircle, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { maskPhone } from '@/lib/masks'
 import { injectTheme } from '@/components/layout/ThemeInjector'
 import { useIdentityStore } from '@/store/identityStore'
 
@@ -25,6 +26,14 @@ interface IdentityForm {
   supportPhone:   string
   timezone:       string
   locale:         string
+  // Redes sociais (URLs externas)
+  socialInstagram: string
+  socialFacebook:  string
+  socialWhatsapp:  string
+  socialSite:      string
+  socialYoutube:   string
+  socialTiktok:    string
+  socialLinkedin:  string
 }
 
 const DEFAULTS: IdentityForm = {
@@ -41,6 +50,13 @@ const DEFAULTS: IdentityForm = {
   supportPhone:   '',
   timezone:       'America/Sao_Paulo',
   locale:         'pt-BR',
+  socialInstagram: '',
+  socialFacebook:  '',
+  socialWhatsapp:  '',
+  socialSite:      '',
+  socialYoutube:   '',
+  socialTiktok:    '',
+  socialLinkedin:  '',
 }
 
 const PRESET_COLORS = [
@@ -248,10 +264,11 @@ export default function IdentidadePage() {
             <div>
               <label className="label">Telefone</label>
               <input
-                value={form.companyPhone}
-                onChange={(e) => set('companyPhone', e.target.value)}
+                value={maskPhone(form.companyPhone)}
+                onChange={(e) => set('companyPhone', maskPhone(e.target.value))}
                 placeholder="(11) 99999-0000"
                 className="input"
+                inputMode="numeric"
               />
             </div>
           </div>
@@ -287,10 +304,11 @@ export default function IdentidadePage() {
           <div>
             <label className="label">Telefone de suporte</label>
             <input
-              value={form.supportPhone}
-              onChange={(e) => set('supportPhone', e.target.value)}
+              value={maskPhone(form.supportPhone)}
+              onChange={(e) => set('supportPhone', maskPhone(e.target.value))}
               placeholder="(11) 98888-0000"
               className="input"
+              inputMode="numeric"
             />
           </div>
         </div>
@@ -323,6 +341,39 @@ export default function IdentidadePage() {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* ── Redes Sociais ─────────────────────────────────────────────────── */}
+      <div className="card">
+        <div className="section-header">
+          <Building2 size={15} className="text-brand-700" />
+          <h2 className="text-sm font-semibold text-gray-800">Redes Sociais</h2>
+        </div>
+        <div className="p-4 grid gap-4 sm:grid-cols-2">
+          {[
+            ['socialInstagram','Instagram','https://instagram.com/sua-loja'],
+            ['socialFacebook', 'Facebook', 'https://facebook.com/sua-loja'],
+            ['socialWhatsapp', 'WhatsApp', 'https://wa.me/5511999990000'],
+            ['socialSite',     'Site',     'https://sua-loja.com.br'],
+            ['socialYoutube',  'YouTube',  'https://youtube.com/@sua-loja'],
+            ['socialTiktok',   'TikTok',   'https://tiktok.com/@sua-loja'],
+            ['socialLinkedin', 'LinkedIn', 'https://linkedin.com/company/sua-loja'],
+          ].map(([key, label, ph]) => (
+            <div key={key}>
+              <label className="label">{label}</label>
+              <input
+                value={form[key as keyof IdentityForm] as string}
+                onChange={(e) => set(key as keyof IdentityForm, e.target.value)}
+                placeholder={ph}
+                className="input"
+                type="url"
+              />
+            </div>
+          ))}
+        </div>
+        <p className="px-4 pb-4 text-xs text-gray-400">
+          Os ícones de redes sociais aparecem no menu lateral apenas para os campos preenchidos.
+        </p>
       </div>
 
       {/* ── Salvar ────────────────────────────────────────────────────────── */}

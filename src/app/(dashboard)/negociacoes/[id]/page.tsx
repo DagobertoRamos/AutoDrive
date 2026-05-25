@@ -36,6 +36,7 @@ import {
   Edit,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
+import { maskBRL, parseBRL } from '@/lib/masks'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -466,11 +467,12 @@ function SignalModal({ onConfirm, onCancel, loading }: SignalModalProps) {
         <p className="mb-4 text-sm text-gray-500">Informe o valor recebido como sinal.</p>
         <label className="mb-1 block text-sm font-medium text-gray-700">Valor (R$)</label>
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           placeholder="0,00"
-          value={value}
-          onChange={(e) => setVal(e.target.value)}
+          value={maskBRL(value)}
+          onChange={(e) => setVal(maskBRL(e.target.value))}
         />
         <label className="mb-1 block text-sm font-medium text-gray-700">Observações</label>
         <textarea
@@ -691,10 +693,10 @@ export default function NegociacaoDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name:       newService.name,
-          value:      newService.value      ? parseFloat(newService.value)      : null,
-          cost:       newService.cost       ? parseFloat(newService.cost)       : null,
+          value:      newService.value      ? parseBRL(newService.value)        : null,
+          cost:       newService.cost       ? parseBRL(newService.cost)         : null,
           supplier:   newService.supplier   || null,
-          commission: newService.commission ? parseFloat(newService.commission) : null,
+          commission: newService.commission ? parseBRL(newService.commission)   : null,
           notes:      newService.notes      || null,
         }),
       })
@@ -782,7 +784,7 @@ export default function NegociacaoDetailPage() {
       )}
       {modal === 'signal' && (
         <SignalModal
-          onConfirm={(value, notes) => handleAction('signal', { value: parseFloat(value), notes })}
+          onConfirm={(value, notes) => handleAction('signal', { value: parseBRL(value) ?? 0, notes })}
           onCancel={() => setModal(null)}
           loading={acting}
         />
@@ -1324,11 +1326,11 @@ export default function NegociacaoDetailPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">Valor (R$)</label>
-                      <input type="number" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.value} onChange={(e) => setNewService((p) => ({ ...p, value: e.target.value }))} placeholder="0,00" />
+                      <input type="text" inputMode="numeric" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={maskBRL(newService.value)} onChange={(e) => setNewService((p) => ({ ...p, value: maskBRL(e.target.value) }))} placeholder="0,00" />
                     </div>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">Custo (R$)</label>
-                      <input type="number" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.cost} onChange={(e) => setNewService((p) => ({ ...p, cost: e.target.value }))} placeholder="0,00" />
+                      <input type="text" inputMode="numeric" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={maskBRL(newService.cost)} onChange={(e) => setNewService((p) => ({ ...p, cost: maskBRL(e.target.value) }))} placeholder="0,00" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -1338,7 +1340,7 @@ export default function NegociacaoDetailPage() {
                     </div>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">Comissão (R$)</label>
-                      <input type="number" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.commission} onChange={(e) => setNewService((p) => ({ ...p, commission: e.target.value }))} />
+                      <input type="text" inputMode="numeric" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={maskBRL(newService.commission)} onChange={(e) => setNewService((p) => ({ ...p, commission: maskBRL(e.target.value) }))} placeholder="0,00" />
                     </div>
                   </div>
                   <div>
@@ -1357,6 +1359,13 @@ export default function NegociacaoDetailPage() {
             </div>
           )}
 
+          {/*
+            Comissões automáticas: ao finalizar a negociação, o backend gera
+            CommissionCalculation (status PREVISTO) via /lib/commission-generator.
+            Endpoints úteis (POST):
+              - /api/negotiations/[id]/commissions/preview     (dryRun, qualquer leitor)
+              - /api/negotiations/[id]/commissions/regenerate  (MASTER|ADM|GERENTE_GERAL)
+          */}
           {deal.services.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-300 py-16">
               <Wrench size={28} className="text-gray-400" />

@@ -36,6 +36,14 @@ interface UserRecord {
   createdAt:          string
   tenant:             { id: string; name: string; publicId: string; status: string } | null
   unit:               { id: string; name: string } | null
+  position:           { id: string; name: string; slug: string } | null
+}
+
+interface PositionOption {
+  id:        string
+  name:      string
+  slug:      string
+  sortOrder: number
 }
 
 interface Meta { total: number; page: number; limit: number; pages: number }
@@ -73,8 +81,13 @@ function fmtDate(d: string | null) {
 
 // ── Modal: editar usuário ──────────────────────────────────────────────────────
 
-function EditModal({ user, onClose, onSaved }: { user: UserRecord; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ role: user.role, status: user.status, mustChangePassword: user.mustChangePassword })
+function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; positions: PositionOption[]; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    role:               user.role,
+    status:             user.status,
+    mustChangePassword: user.mustChangePassword,
+    positionId:         user.position?.id ?? '',
+  })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
@@ -83,10 +96,16 @@ function EditModal({ user, onClose, onSaved }: { user: UserRecord; onClose: () =
     setError('')
     setSaving(true)
     try {
+      const payload = {
+        role:               form.role,
+        status:             form.status,
+        mustChangePassword: form.mustChangePassword,
+        positionId:         form.positionId || null,
+      }
       const res  = await fetch(`/api/master/users/${user.id}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(form),
+        body:    JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao salvar.')
@@ -124,6 +143,19 @@ function EditModal({ user, onClose, onSaved }: { user: UserRecord; onClose: () =
             <label className={labelCls}>Status</label>
             <select className={inputCls} value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
               {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Cargo</label>
+            <select
+              className={inputCls}
+              value={form.positionId}
+              onChange={e => setForm(p => ({ ...p, positionId: e.target.value }))}
+            >
+              <option value="">— sem cargo —</option>
+              {positions.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
             </select>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
@@ -232,8 +264,9 @@ export default function MasterUsersPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
 
-  const [users,    setUsers]    = useState<UserRecord[]>([])
-  const [meta,     setMeta]     = useState<Meta>({ total: 0, page: 1, limit: 50, pages: 1 })
+  const [users,     setUsers]     = useState<UserRecord[]>([])
+  const [positions, setPositions] = useState<PositionOption[]>([])
+  const [meta,      setMeta]      = useState<Meta>({ total: 0, page: 1, limit: 50, pages: 1 })
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
   const [success,  setSuccess]  = useState('')
@@ -277,6 +310,19 @@ export default function MasterUsersPage() {
   }, [session, page, search, roleF, statusF])
 
   useEffect(() => { load() }, [load])
+
+  // Carrega cargos uma vez (sistema + tenant)
+  useEffect(() => {
+    if (session?.user?.role !== 'MASTER') return
+    fetch('/api/positions?active=true')
+      .then(r => r.json())
+      .then(d => {
+        const list: PositionOption[] = (d?.data ?? []) as PositionOption[]
+        list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name))
+        setPositions(list)
+      })
+      .catch(() => { /* silent */ })
+  }, [session])
 
   function handleSaved() {
     setEditUser(null)
@@ -356,6 +402,7 @@ export default function MasterUsersPage() {
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Usuário</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Papel</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Cargo</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Tenant</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Último login</th>
@@ -364,9 +411,9 @@ export default function MasterUsersPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400"><Loader2 size={20} className="animate-spin mx-auto" /></td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400"><Loader2 size={20} className="animate-spin mx-auto" /></td></tr>
               ) : users.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">Nenhum usuário encontrado.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">Nenhum usuário encontrado.</td></tr>
               ) : users.map(u => (
                 <tr key={u.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
@@ -382,6 +429,9 @@ export default function MasterUsersPage() {
                     <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${ROLE_COLOR[u.role] ?? 'bg-gray-100 text-gray-700'}`}>
                       {u.role}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600">
+                    {u.position ? u.position.name : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[u.status] ?? ''}`}>
@@ -444,7 +494,7 @@ export default function MasterUsersPage() {
       </div>
 
       {/* Modals */}
-      {editUser  && <EditModal  user={editUser}  onClose={() => setEditUser(null)}  onSaved={handleSaved} />}
+      {editUser  && <EditModal  user={editUser}  positions={positions} onClose={() => setEditUser(null)}  onSaved={handleSaved} />}
       {resetUser && <ResetPasswordModal user={resetUser} onClose={() => setResetUser(null)} onSaved={handleSaved} />}
     </div>
   )

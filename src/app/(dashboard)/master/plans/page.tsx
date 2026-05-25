@@ -21,6 +21,7 @@ import {
   LayoutGrid, ShieldCheck, Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { maskBRL, parseBRL } from '@/lib/masks'
 
 // ── Módulos disponíveis no sistema ────────────────────────────────────────────
 // Chaves mapeadas 1-para-1 com o campo `module` do Sidebar
@@ -108,8 +109,8 @@ function planToForm(p: Plan): FormState {
     code:                p.code,
     name:                p.name,
     description:         p.description    ?? '',
-    priceMonthly:        p.priceMonthly   != null ? String(p.priceMonthly)   : '',
-    priceYearly:         p.priceYearly    != null ? String(p.priceYearly)    : '',
+    priceMonthly:        p.priceMonthly   != null ? maskBRL(String(Math.round(p.priceMonthly * 100))) : '',
+    priceYearly:         p.priceYearly    != null ? maskBRL(String(Math.round(p.priceYearly  * 100))) : '',
     active:              p.active,
     maxUsers:            String(p.maxUsers),
     maxVehicles:         String(p.maxVehicles),
@@ -134,8 +135,8 @@ function formToPayload(f: FormState) {
     code:                f.code.trim().toUpperCase(),
     name:                f.name.trim(),
     description:         f.description.trim()  || null,
-    priceMonthly:        f.priceMonthly  !== '' ? parseFloat(f.priceMonthly)  : null,
-    priceYearly:         f.priceYearly   !== '' ? parseFloat(f.priceYearly)   : null,
+    priceMonthly:        f.priceMonthly  !== '' ? parseBRL(f.priceMonthly)  : null,
+    priceYearly:         f.priceYearly   !== '' ? parseBRL(f.priceYearly)   : null,
     active:              f.active,
     maxUsers:            parseInt(f.maxUsers)        || 10,
     maxVehicles:         parseInt(f.maxVehicles)     || 100,
@@ -704,9 +705,9 @@ export default function MasterPlansPage() {
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Mensalidade (R$)</label>
                       <input
-                        type="number" min={0} step={0.01}
-                        value={form.priceMonthly}
-                        onChange={e => set('priceMonthly', e.target.value)}
+                        inputMode="numeric"
+                        value={maskBRL(form.priceMonthly)}
+                        onChange={e => set('priceMonthly', maskBRL(e.target.value))}
                         placeholder="299,00"
                         className={inputCls}
                       />
@@ -714,9 +715,9 @@ export default function MasterPlansPage() {
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Anualidade (R$)</label>
                       <input
-                        type="number" min={0} step={0.01}
-                        value={form.priceYearly}
-                        onChange={e => set('priceYearly', e.target.value)}
+                        inputMode="numeric"
+                        value={maskBRL(form.priceYearly)}
+                        onChange={e => set('priceYearly', maskBRL(e.target.value))}
                         placeholder="2990,00"
                         className={inputCls}
                       />

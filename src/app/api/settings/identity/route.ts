@@ -17,6 +17,9 @@ const ALLOWED_KEYS = [
   'appName', 'appTagline', 'companyName', 'companyEmail', 'companyPhone',
   'companyAddress', 'primaryColor', 'logoUrl', 'faviconUrl',
   'supportEmail', 'supportPhone', 'timezone', 'locale',
+  // Redes sociais — usadas pela sidebar
+  'socialInstagram', 'socialFacebook', 'socialWhatsapp', 'socialSite',
+  'socialYoutube', 'socialTiktok', 'socialLinkedin',
 ]
 
 /** Prefixo de chave para o tenant — garante unicidade global com @unique */

@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, UserCog, X, Save, CheckCircle, AlertCircle, Bell } from 'lucide-react'
 import { cn, formatCPF, formatPhone } from '@/lib/utils'
+import { maskCPF, maskPhone } from '@/lib/masks'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -15,6 +16,13 @@ import { cn, formatCPF, formatPhone } from '@/lib/utils'
 interface Unit {
   id: string
   name: string
+}
+
+interface Position {
+  id: string
+  name: string
+  slug: string
+  baseRole?: string | null
 }
 
 interface Manager {
@@ -26,11 +34,13 @@ interface Manager {
   unitId: string
   unitName?: string
   accessProfile: 'GERENTE' | 'ADM'
+  positionId: string | null
+  position?: { id: string; name: string; slug: string } | null
   active: boolean
   receivesNotifications: boolean
 }
 
-type ManagerForm = Omit<Manager, 'id' | 'unitName'>
+type ManagerForm = Omit<Manager, 'id' | 'unitName' | 'position'>
 
 const emptyForm: ManagerForm = {
   fullName: '',
@@ -39,6 +49,7 @@ const emptyForm: ManagerForm = {
   email: '',
   unitId: '',
   accessProfile: 'GERENTE',
+  positionId: null,
   active: true,
   receivesNotifications: true,
 }
@@ -79,7 +90,7 @@ function ToggleRow({ checked, onChange, label }: { checked: boolean; onChange: (
 // -----------------------------------------------------------------------------
 
 function Modal({
-  open, onClose, onSave, initial, saving, error, units,
+  open, onClose, onSave, initial, saving, error, units, positions,
 }: {
   open: boolean
   onClose: () => void
@@ -88,19 +99,21 @@ function Modal({
   saving: boolean
   error: string | null
   units: Unit[]
+  positions: Position[]
 }) {
   const [form, setForm] = useState<ManagerForm>(emptyForm)
 
   useEffect(() => {
     if (open) {
       if (initial) {
-        const { id: _id, unitName: _un, ...rest } = initial
-        setForm(rest)
+        const { id: _id, unitName: _un, position: _p, ...rest } = initial
+        setForm({ ...rest, positionId: initial.positionId ?? null })
       } else {
-        setForm({ ...emptyForm })
+        const defaultPos = positions.find((p) => p.slug === 'gerente')
+        setForm({ ...emptyForm, positionId: defaultPos?.id ?? null })
       }
     }
-  }, [open, initial])
+  }, [open, initial, positions])
 
   if (!open) return null
 
@@ -137,11 +150,11 @@ function Modal({
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">CPF</label>
-              <input className={inputClass()} value={form.cpf} onChange={(e) => set('cpf', e.target.value)} placeholder="000.000.000-00" />
+              <input className={inputClass()} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">WhatsApp *</label>
-              <input required type="tel" className={inputClass()} value={form.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="(11) 99999-9999" />
+              <input required type="tel" className={inputClass()} value={maskPhone(form.whatsapp)} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 99999-9999" inputMode="numeric" />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail</label>
@@ -161,6 +174,19 @@ function Modal({
               <select className={inputClass()} value={form.accessProfile} onChange={(e) => set('accessProfile', e.target.value as ManagerForm['accessProfile'])}>
                 <option value="GERENTE">Gerente</option>
                 <option value="ADM">Administrador</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo</label>
+              <select
+                className={inputClass()}
+                value={form.positionId ?? ''}
+                onChange={(e) => set('positionId', e.target.value || null)}
+              >
+                <option value="">— selecione —</option>
+                {positions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -203,6 +229,7 @@ function Modal({
 export default function GerentesPage() {
   const [managers, setManagers] = useState<Manager[]>([])
   const [units, setUnits] = useState<Unit[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Manager | null>(null)
@@ -213,10 +240,15 @@ export default function GerentesPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [mRes, uRes] = await Promise.all([fetch('/api/managers'), fetch('/api/units')])
-      const [mJson, uJson] = await Promise.all([mRes.json(), uRes.json()])
+      const [mRes, uRes, pRes] = await Promise.all([
+        fetch('/api/managers'),
+        fetch('/api/units'),
+        fetch('/api/positions?active=true'),
+      ])
+      const [mJson, uJson, pJson] = await Promise.all([mRes.json(), uRes.json(), pRes.json()])
       setManagers(mJson?.data ?? [])
       setUnits(uJson?.data ?? [])
+      setPositions(pJson?.data ?? [])
     } catch {
       setManagers([])
     } finally {
@@ -282,7 +314,7 @@ export default function GerentesPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                {['Nome', 'WhatsApp', 'Loja', 'Status', 'Notif.', 'Perfil', 'Ações'].map((h) => (
+                {['Nome', 'WhatsApp', 'Loja', 'Cargo', 'Status', 'Notif.', 'Perfil', 'Ações'].map((h) => (
                   <th key={h} className="px-4 py-3 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -291,14 +323,14 @@ export default function GerentesPage() {
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100">
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>
                     ))}
                   </tr>
                 ))
               ) : managers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
+                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
                     Nenhum gerente cadastrado.{' '}
                     <button onClick={openCreate} className="text-brand-600 hover:underline">Adicionar agora</button>
                   </td>
@@ -319,6 +351,11 @@ export default function GerentesPage() {
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">{m.whatsapp ? formatPhone(m.whatsapp) : '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{m.unitName || units.find((u) => u.id === m.unitId)?.name || '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        {m.position?.name ?? '—'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', m.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
                         {m.active ? 'Ativo' : 'Inativo'}
@@ -347,7 +384,7 @@ export default function GerentesPage() {
         </div>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} saving={saving} error={saveError} units={units} />
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} saving={saving} error={saveError} units={units} positions={positions} />
     </div>
   )
 }

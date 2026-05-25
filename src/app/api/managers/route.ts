@@ -8,7 +8,6 @@ import {
   getSessionUser,
   assertTenantId,
   hasRole,
-  tenantWhere,
   MANAGEMENT_ROLES,
   unauthorizedResponse,
   forbiddenResponse,
@@ -29,9 +28,22 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const unitId = searchParams.get('unitId') ?? undefined
 
+    // Manager não tem tenantId direto — isolamento via unit.tenantId (com user.tenantId como fallback).
+    const where: Record<string, unknown> = {}
+    if (user.role !== 'MASTER') {
+      where.OR = [
+        { unit: { tenantId: tenantId! } },
+        { user: { tenantId: tenantId! } },
+      ]
+    }
+    if (unitId) where.unitId = unitId
+
     const managers = await prisma.manager.findMany({
-      where: tenantWhere(user.role, tenantId, unitId ? { unitId } : {}),
-      include: { unit: { select: { id: true, name: true } } },
+      where,
+      include: {
+        unit: { select: { id: true, name: true } },
+        position: { select: { id: true, name: true, slug: true, baseRole: true } },
+      },
       orderBy: { fullName: 'asc' },
     })
 
@@ -55,7 +67,7 @@ export async function POST(req: Request) {
     const tenantId = assertTenantId(user.tenantId, user.role)
 
     const body = await req.json()
-    const { fullName, cpf, whatsapp, email, unitId, accessProfile, active, receivesNotifications } = body
+    const { fullName, cpf, whatsapp, email, unitId, accessProfile, active, receivesNotifications, positionId } = body
 
     if (!fullName || !whatsapp || !unitId) {
       return NextResponse.json(
@@ -66,6 +78,22 @@ export async function POST(req: Request) {
 
     // Valida que a unidade pertence ao tenant do usuário
     await assertUnitBelongsToTenant(String(unitId), tenantId, user.role)
+
+    // Valida cargo (positionId)
+    let validatedPositionId: string | null = null
+    if (positionId) {
+      const pos = await prisma.position.findUnique({
+        where:  { id: String(positionId) },
+        select: { id: true, tenantId: true },
+      })
+      if (!pos || (pos.tenantId !== null && pos.tenantId !== tenantId)) {
+        return NextResponse.json(
+          { success: false, error: 'Cargo inválido para este tenant.' },
+          { status: 400 },
+        )
+      }
+      validatedPositionId = pos.id
+    }
 
     // NOTE: Manager exige userId (relação 1:1 com User). Este endpoint legado
     // não cria o User correspondente — é responsabilidade do consumidor já
@@ -84,6 +112,7 @@ export async function POST(req: Request) {
         accessProfile:         accessProfile  ? String(accessProfile) : 'GERENTE',
         active:                active                !== undefined ? Boolean(active)                : true,
         receivesNotifications: receivesNotifications !== undefined ? Boolean(receivesNotifications) : true,
+        positionId:            validatedPositionId,
       }) as never,
     })
 

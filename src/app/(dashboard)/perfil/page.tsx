@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { User, Lock, Bell, Camera, Save, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { maskPhone } from '@/lib/masks'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -317,9 +318,10 @@ export default function PerfilPage() {
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Telefone / WhatsApp</label>
               <input
                 type="tel"
+                inputMode="numeric"
                 className={inputClass}
-                value={personal.phone}
-                onChange={(e) => setPersonal((p) => ({ ...p, phone: e.target.value }))}
+                value={maskPhone(personal.phone)}
+                onChange={(e) => setPersonal((p) => ({ ...p, phone: maskPhone(e.target.value) }))}
                 placeholder="(11) 99999-9999"
               />
             </div>

@@ -24,6 +24,7 @@ export async function GET(_req: NextRequest) {
         seller:  { select: { user: { select: { name: true } } } },
         service: { select: { name: true } },
         warranty:{ select: { name: true } },
+        position:{ select: { id: true, name: true, slug: true } },
       },
     })
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const {
       name, description, ruleType, commissionType,
-      role, sellerId, managerId, unitId, serviceId, warrantyId, bank,
+      role, positionId, sellerId, managerId, unitId, serviceId, warrantyId, bank,
       fromQuantity, toQuantity, fromValue, toValue,
       fixedValue, percentage, priority, active,
       validFrom, validUntil, notes,
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
         ruleType,
         commissionType: commissionType ?? 'PERCENTUAL',
         role:           role           || null,
+        positionId:     positionId     || null,
         sellerId:       sellerId       || null,
         managerId:      managerId      || null,
         unitId:         unitId         || null,

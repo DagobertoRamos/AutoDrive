@@ -17,6 +17,7 @@ import {
   ArrowLeft, Save, Loader2, AlertCircle, CheckCircle2,
   AlertTriangle, User, MapPin, Search, KeyRound, ShieldCheck,
 } from 'lucide-react'
+import { maskPhone } from '@/lib/masks'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -384,7 +385,7 @@ export default function NovoPartnerPage() {
             </div>
             <div>
               <label className={labelCls}>Celular</label>
-              <input className={inputCls} value={form.celular} onChange={set('celular')} placeholder="(00) 9 0000-0000" />
+              <input className={inputCls} value={maskPhone(form.celular)} onChange={(e) => setForm(p => ({ ...p, celular: maskPhone(e.target.value) }))} placeholder="(11) 99999-9999" inputMode="numeric" />
             </div>
             <div>
               <label className={labelCls}>

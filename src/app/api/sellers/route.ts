@@ -48,7 +48,10 @@ export async function GET(req: Request) {
 
     const sellers = await prisma.seller.findMany({
       where,
-      include: { unit: { select: { id: true, name: true } } },
+      include: {
+        unit: { select: { id: true, name: true } },
+        position: { select: { id: true, name: true, slug: true, baseRole: true } },
+      },
       orderBy: { fullName: 'asc' },
     })
 
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
     const tenantId = assertTenantId(user.tenantId, user.role)
 
     const body = await req.json()
-    const { fullName, shortName, cpf, whatsapp, email, unitId, cargo, active, receivesCharge } = body
+    const { fullName, shortName, cpf, whatsapp, email, unitId, cargo, active, receivesCharge, positionId } = body
 
     // ── Validações básicas ───────────────────────────────────────────────────
     if (!fullName?.trim()) {
@@ -102,6 +105,22 @@ export async function POST(req: Request) {
 
     // ── Valida que a unidade pertence ao tenant ──────────────────────────────
     await assertUnitBelongsToTenant(String(unitId), tenantId, user.role)
+
+    // ── Valida cargo (positionId) — sistema (tenantId null) ou do tenant ─────
+    let validatedPositionId: string | null = null
+    if (positionId) {
+      const pos = await prisma.position.findUnique({
+        where:  { id: String(positionId) },
+        select: { id: true, tenantId: true },
+      })
+      if (!pos || (pos.tenantId !== null && pos.tenantId !== tenantId)) {
+        return NextResponse.json(
+          { success: false, error: 'Cargo inválido para este tenant.' },
+          { status: 400 },
+        )
+      }
+      validatedPositionId = pos.id
+    }
 
     // ── Checa duplicidade de e-mail ──────────────────────────────────────────
     const emailNorm = String(email).toLowerCase().trim()
@@ -163,6 +182,7 @@ export async function POST(req: Request) {
           cargo:          cargo          ? String(cargo) : 'VENDEDOR',
           active:         active         !== undefined ? Boolean(active)         : true,
           receivesCharge: receivesCharge !== undefined ? Boolean(receivesCharge) : true,
+          positionId:     validatedPositionId,
         },
       })
 

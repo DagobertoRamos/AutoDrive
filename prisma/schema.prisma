@@ -506,9 +506,13 @@ model User {
   communicationTestLogs   CommunicationTestLog[]  @relation("CommunicationTestLogs")
   autoSyncJobs            GoogleSheetsAutoSyncJob[] @relation("AutoSyncJobCreator")
 
+  positionId String?
+  position   Position? @relation("UserPosition", fields: [positionId], references: [id])
+
   @@index([tenantId])
   @@index([email])
   @@index([cpf])
+  @@index([positionId])
   @@map("users")
 }
 
@@ -574,6 +578,10 @@ model Seller {
   extracts        CommissionExtract[]
   deals           Deal[]
 
+  positionId String?
+  position   Position? @relation("SellerPosition", fields: [positionId], references: [id])
+
+  @@index([positionId])
   @@map("sellers")
 }
 
@@ -600,6 +608,10 @@ model Manager {
   messageReturns  MessageReturn[]
   commissionRules CommissionRule[] @relation("ManagerCommissionRules")
 
+  positionId String?
+  position   Position? @relation("ManagerPosition", fields: [positionId], references: [id])
+
+  @@index([positionId])
   @@map("managers")
 }
 
@@ -1510,6 +1522,7 @@ model CommissionRule {
   description    String?
   ruleType       CommissionRuleType
   role           UserRole?
+  positionId     String?
   sellerId       String?
   managerId      String?
   unitId         String?
@@ -1537,14 +1550,40 @@ model CommissionRule {
   unit     Unit?     @relation(fields: [unitId], references: [id])
   service  Service?  @relation("ServiceCommissionRules", fields: [serviceId], references: [id])
   warranty Warranty? @relation("WarrantyCommissionRules", fields: [warrantyId], references: [id])
+  position Position? @relation(fields: [positionId], references: [id])
 
   @@index([tenantId])
   @@index([sellerId])
   @@index([managerId])
   @@index([unitId])
+  @@index([positionId])
   @@index([ruleType])
   @@index([active])
   @@map("commission_rules")
+}
+
+model Position {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  name        String
+  slug        String
+  description String?
+  baseRole    UserRole?
+  isSystem    Boolean  @default(false)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  commissionRules CommissionRule[]
+  sellers         Seller[]  @relation("SellerPosition")
+  managers        Manager[] @relation("ManagerPosition")
+  users           User[]    @relation("UserPosition")
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([active])
+  @@map("positions")
 }
 
 model ReturnPercentRule {
@@ -1811,6 +1850,7 @@ model WhatsappTemplate {
   name                String
   description         String?
   templateName        String
+  purpose             String?  @default("GENERAL")
   bodyText            String?
   bodyParams          Json?
   variables           String[]
@@ -1825,6 +1865,7 @@ model WhatsappTemplate {
   pendencies Pendency[]
 
   @@index([tenantId])
+  @@index([purpose])
   @@map("whatsapp_templates")
 }
 
@@ -2074,26 +2115,62 @@ model GoogleSheetsAutoSyncJob {
 // E-MAIL
 // ═════════════════════════════════════════════════════════════════════════════
 
+enum EmailPurpose {
+  SYSTEM           // comunicação geral do sistema (notificações internas, alertas)
+  NOTICES          // sistema de avisos / notícias enviadas a usuários
+  PASSWORD_RESET   // recuperação de senha / esqueci minha senha
+  TRANSACTIONAL    // confirmações, recibos, alterações de cadastro
+}
+
 model EmailConfig {
-  id           String    @id @default(cuid())
+  id           String       @id @default(cuid())
   tenantId     String?
-  name         String    @default("Principal")
-  smtpHost     String
-  smtpPort     Int       @default(587)
-  smtpSecure   Boolean   @default(false)
-  smtpUser     String
-  smtpPass     String
+  name         String       @default("Principal")
+  purpose      EmailPurpose @default(SYSTEM)
+  isDefault    Boolean      @default(false)
+  provider     String       @default("smtp")  // smtp | sendgrid | resend | mailgun | ses
+  smtpHost     String?
+  smtpPort     Int          @default(587)
+  smtpSecure   Boolean      @default(false)
+  smtpUser     String?
+  smtpPass     String?
+  apiKey       String?      // sendgrid / resend / mailgun
+  domain       String?      // mailgun sending domain
+  region       String?      // ses region (ex: us-east-1)
   fromName     String
   fromEmail    String
   replyTo      String?
-  active       Boolean   @default(true)
+  active       Boolean      @default(true)
   lastTestedAt DateTime?
-  lastTestOk   Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  lastTestOk   Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([tenantId])
+  @@index([purpose])
+  @@index([provider])
   @@map("email_configs")
+}
+
+model EmailTemplate {
+  id          String       @id @default(cuid())
+  tenantId    String?
+  purpose     EmailPurpose
+  key         String       // identifier for the template (e.g. "password_reset", "welcome")
+  name        String       // display name
+  description String?
+  subject     String
+  bodyHtml    String       @db.Text
+  bodyText    String?      @db.Text
+  variables   String[]     // list of {{vars}} the template accepts
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([tenantId, purpose, key])
+  @@index([tenantId])
+  @@index([purpose])
+  @@map("email_templates")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
