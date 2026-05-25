@@ -559,7 +559,9 @@ function VehicleInlineSearch({
       // Exibimos qualquer veículo "em estoque" — oculta apenas os que
       // efetivamente saíram (vendidos/cancelados/devolvidos/baixados).
       // Os EM_NEGOCIACAO/RESERVADO aparecem porém ficam com cartão travado.
-      const qs = new URLSearchParams({ limit: '30' })
+      // includeInactive=true também traz veículos recém-cadastrados que ainda
+      // não foram aprovados — eles aparecem com tag mas seleção fica livre.
+      const qs = new URLSearchParams({ limit: '50', includeInactive: 'true' })
       if (q) qs.set('search', q)
       const res  = await fetch(`/api/vehicles?${qs.toString()}`)
       const data = await res.json().catch(() => ({}))
@@ -569,8 +571,10 @@ function VehicleInlineSearch({
         return
       }
       const list: StockVehicle[] = Array.isArray(data?.data) ? data.data : []
-      const HIDDEN_STATUSES = ['VENDIDO', 'CANCELADO', 'DEVOLVIDO', 'BLOQUEADO']
-      const visible = list.filter((v) => !HIDDEN_STATUSES.includes(v.stockStatus))
+      // Só ocultamos o que efetivamente saiu do estoque. Status nulos ou
+      // desconhecidos passam (defesa contra dados antigos sem stockStatus).
+      const HIDDEN_STATUSES = new Set(['VENDIDO', 'CANCELADO', 'DEVOLVIDO', 'BLOQUEADO'])
+      const visible = list.filter((v) => !v.stockStatus || !HIDDEN_STATUSES.has(v.stockStatus))
       visible.sort((a, b) => {
         const aLock = a.hasOpenNegotiation ? 1 : 0
         const bLock = b.hasOpenNegotiation ? 1 : 0

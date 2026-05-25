@@ -171,18 +171,110 @@ export async function PATCH(
   const editableSensitive = canEditSensitiveFields(session.user.role)
   const sensitiveBlocked  = !editableSensitive && !EDITABLE_STATUSES.includes(deal.status)
 
+  // Whitelist explícita de colunas escalares do Deal que aceitamos via PATCH.
+  // Tudo que não estiver aqui é IGNORADO (especialmente nested objects como
+  // `person`, `vehicle`, `debts`, `customer` que o wizard envia mas não são
+  // colunas do Deal — Prisma os rejeitaria com PrismaClientValidationError).
+  const DEAL_PATCHABLE_FIELDS = new Set<string>([
+    // Identificação / relacionamentos
+    'type', 'unitId', 'sellerId', 'managerId', 'personId',
+    // Financeiro
+    'saleAmount', 'purchaseAmount', 'financedAmount', 'documentationFee',
+    'signalAmount', 'payoffAmount', 'discountAmount', 'servicesAmount',
+    'vehicleValue', 'tradeValue', 'totalPayments', 'changeAmount',
+    'marginAmount', 'balance',
+    'paymentBank', 'paymentType',
+    // Troco / dados bancários
+    'changeBeneficiary', 'changeBeneficiaryCpf', 'changeBank',
+    'changeAgency', 'changeAccount', 'changePix',
+    // Consignação
+    'consignMinValue', 'consignCommPct', 'consignDeadline',
+    // Agendamento e observações
+    'deliveryDate', 'notes', 'sellerNameFromSheet',
+  ])
+
+  // Campos numéricos: o wizard às vezes envia como string mascarada
+  // (ex: "1.500,00"). Tratamos com parseBRL no caller, mas garantimos
+  // aqui que strings vazias viram null e números/strings numéricas válidas
+  // viram Number — evita "" em coluna Decimal.
+  const NUMERIC_FIELDS = new Set<string>([
+    'saleAmount', 'purchaseAmount', 'financedAmount', 'documentationFee',
+    'signalAmount', 'payoffAmount', 'discountAmount', 'servicesAmount',
+    'vehicleValue', 'tradeValue', 'totalPayments', 'changeAmount',
+    'marginAmount', 'balance', 'consignMinValue', 'consignCommPct',
+  ])
+
+  function coerceValue(field: string, raw: unknown): unknown {
+    if (raw === '' || raw === undefined) return null
+    if (NUMERIC_FIELDS.has(field) && raw != null) {
+      const n = typeof raw === 'number' ? raw : Number(raw)
+      return Number.isFinite(n) ? n : null
+    }
+    if ((field === 'deliveryDate' || field === 'consignDeadline') && raw != null) {
+      const d = raw instanceof Date ? raw : new Date(String(raw))
+      return Number.isNaN(d.getTime()) ? null : d
+    }
+    return raw
+  }
+
   const allowedFields: Record<string, unknown> = {}
   const auditEntries: Array<{ field: string; oldValue: unknown; newValue: unknown }> = []
 
-  for (const [key, value] of Object.entries(body)) {
+  for (const [key, rawValue] of Object.entries(body)) {
     if (key === 'status') continue // status muda via endpoints específicos
+    if (!DEAL_PATCHABLE_FIELDS.has(key)) continue // dropa nested objects + campos desconhecidos
     if (SENSITIVE_FIELDS.includes(key) && sensitiveBlocked) continue
 
+    const value    = coerceValue(key, rawValue)
     const oldValue = (deal as any)[key]
-    if (oldValue !== value) {
+    // Comparação tolerante: Decimal vira string via Prisma, então comparamos
+    // sempre como string para evitar diffs falsos
+    if (String(oldValue ?? '') !== String(value ?? '')) {
       allowedFields[key] = value
       auditEntries.push({ field: key, oldValue, newValue: value })
     }
+  }
+
+  // ── Person update: o wizard de edição envia `person` aninhado com todos
+  // os campos do cliente (inclusive endereço). Persistimos via update do
+  // Person vinculado, com merge tolerante — campos vazios NÃO sobrescrevem
+  // dados existentes (evita o bug "endereço sumiu").
+  const PERSON_PATCHABLE_FIELDS = [
+    'type', 'cpf', 'cnpj', 'nomeCompleto', 'rg', 'dataNascimento', 'nomeMae',
+    'razaoSocial', 'nomeFantasia', 'inscricaoEstadual',
+    'socioAdmNome', 'socioAdmCpf', 'socioAdmPhone', 'socioAdmNomeMae',
+    'socioAdmEmail', 'socioAdmWhatsapp',
+    'email', 'phone', 'whatsapp',
+    'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado',
+  ] as const
+
+  const personBody = (body as Record<string, unknown>).person as Record<string, unknown> | undefined
+  let personPatch: Record<string, unknown> | null = null
+  if (personBody && typeof personBody === 'object' && deal.personId) {
+    const patch: Record<string, unknown> = {}
+    for (const field of PERSON_PATCHABLE_FIELDS) {
+      if (!(field in personBody)) continue
+      const v = personBody[field]
+      // Boolean fica (true/false). String vazia, null e undefined → não toca
+      // (preserva valor salvo). Datas viram Date.
+      if (typeof v === 'boolean') {
+        patch[field] = v
+      } else if (v === '' || v == null) {
+        continue
+      } else if (field === 'dataNascimento') {
+        const d = new Date(String(v))
+        if (!Number.isNaN(d.getTime())) patch[field] = d
+      } else {
+        patch[field] = v
+      }
+    }
+    if (Object.keys(patch).length > 0) personPatch = patch
+  }
+
+  // Se o usuário não enviou nenhuma mudança válida, devolvemos sucesso vazio
+  // em vez de chamar update com data:{} (que Prisma também rejeita).
+  if (Object.keys(allowedFields).length === 0 && !personPatch) {
+    return NextResponse.json({ data: deal, message: 'Nenhuma alteração detectada.' })
   }
 
   // Recalcular totais se algum campo financeiro mudou
@@ -210,10 +302,22 @@ export async function PATCH(
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      const d = await tx.deal.update({
-        where: { id: params.id },
-        data:  allowedFields as any,
-      })
+      // Atualiza Person primeiro (se houver patch). Falha aqui aborta tudo.
+      if (personPatch && deal.personId) {
+        await tx.person.update({
+          where: { id: deal.personId },
+          data:  personPatch as never,
+        })
+      }
+
+      // Só chama deal.update se houver campos do Deal a atualizar.
+      // Se só o Person mudou, retornamos o deal carregado novamente.
+      const d = Object.keys(allowedFields).length > 0
+        ? await tx.deal.update({
+            where: { id: params.id },
+            data:  allowedFields as any,
+          })
+        : await tx.deal.findUniqueOrThrow({ where: { id: params.id } })
 
       // Auditoria campo a campo — paralela para não bloquear a transação
       await Promise.all(auditEntries.map(entry =>
