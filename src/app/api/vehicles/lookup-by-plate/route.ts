@@ -10,6 +10,9 @@ import { canAccessModule } from '@/lib/permissions'
 import { normalizePlate, isValidPlate } from '@/lib/vehicles/plate'
 import { lookupVehicleByPlate } from '@/lib/vehicle-lookup'
 import { createSafeAuditLog } from '@/lib/auth-guards'
+import { consultPlate, isPlacasConfigured } from '@/lib/integrations/placas/client'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   const user = await getSessionUser()
@@ -37,8 +40,6 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const result = await lookupVehicleByPlate(plate, forceRefresh)
-
     // Audit log assíncrono — não bloqueia a resposta
     const tenantId = user.tenantId ?? 'MASTER'
     createSafeAuditLog({
@@ -50,6 +51,52 @@ export async function GET(req: NextRequest) {
       userName: user.name,
       userRole: user.role,
     }).catch(() => {})
+
+    // ── Caminho preferencial: API Placas (wdapi2) ─────────────────────────
+    // Quando a credencial PLATE_LOOKUP estiver configurada apontando para
+    // wdapi2/apiplacas, usamos o cliente especializado que devolve fipeOptions
+    // + bestFipe já selecionado por score.
+    if (await isPlacasConfigured()) {
+      const r = await consultPlate(plate)
+      if (r.success) {
+        return NextResponse.json({
+          success: true,
+          found:   true,
+          source:  'wdapi2',
+          data: {
+            plate:           r.plate,
+            brand:           r.brand,
+            model:           r.model,
+            version:         r.version,
+            manufactureYear: r.manufactureYear,
+            modelYear:       r.modelYear,
+            color:           r.color,
+            fuel:            r.fuel,
+            chassi:          r.chassi,
+            city:            r.city,
+            state:           r.state,
+            origin:          r.origin,
+            situation:       r.situation,
+            logoUrl:         r.logoUrl,
+            fipeCode:           r.bestFipe?.codigoFipe,
+            fipeValue:          r.bestFipe?.valor,
+            fipeReferenceMonth: r.bestFipe?.mesReferencia,
+            fipeOptions:        r.fipeOptions,
+            bestFipe:           r.bestFipe,
+          },
+        })
+      }
+      // Em erro do wdapi2, propaga a mensagem (placa inválida / sem saldo /
+      // não encontrada / rate limit) em vez de cair silenciosamente no
+      // provider legado — o usuário vê o motivo real.
+      return NextResponse.json(
+        { success: false, found: false, source: 'wdapi2', error: r.errorMessage, httpStatus: r.httpStatus },
+        { status: r.httpStatus === 406 ? 200 : (r.httpStatus || 502) },
+      )
+    }
+
+    // ── Fallback: provider legado (BrasilAPI/PlateLookup/etc.) ──────────────
+    const result = await lookupVehicleByPlate(plate, forceRefresh)
 
     // Remove payload raw da resposta (já removido pelo orquestrador, mas garantia dupla)
     if (result.data?.raw) {
