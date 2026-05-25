@@ -7,8 +7,17 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { canEditDeal, canEditSensitiveFields, SENSITIVE_FIELDS, EDITABLE_STATUSES } from '@/lib/negotiation-permissions'
+import { canEditSensitiveFields, SENSITIVE_FIELDS, EDITABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { computeDealTotals, createDealAudit, createStatusHistory } from '@/lib/negotiation-service'
+import { canEditDeal, isDealLocked } from '@/lib/negotiation-rbac'
+
+export const dynamic = 'force-dynamic'
+
+const MONETARY_FIELDS = new Set([
+  'saleAmount', 'purchaseAmount', 'tradeValue', 'signalAmount',
+  'financedAmount', 'documentationFee', 'servicesAmount',
+  'discountAmount', 'payoffAmount', 'vehicleValue', 'changeAmount',
+])
 
 export async function GET(
   _req: NextRequest,
@@ -28,13 +37,23 @@ export async function GET(
     include: {
       person:   true,
       customer: true,
-      seller:   { include: { user: { select: { name: true, email: true } } } },
+      seller:   {
+        select: {
+          id:       true,
+          fullName: true,
+          shortName: true,
+          user:     { select: { id: true, name: true, email: true } },
+        },
+      },
       manager:  { select: { id: true, name: true, email: true } },
       vehicles: { include: { vehicle: true }, orderBy: { createdAt: 'asc' } },
       debts:    { orderBy: { createdAt: 'asc' } },
       payments: { orderBy: { createdAt: 'asc' } },
       services: { orderBy: { createdAt: 'asc' } },
       history:  { orderBy: { createdAt: 'asc' } },
+      discountRequests: { orderBy: { createdAt: 'desc' } },
+      changes:  { orderBy: { createdAt: 'asc' } },
+      reopenLogs: { orderBy: { createdAt: 'desc' }, take: 10 },
       pendencies: {
         where:  { status: { notIn: ['FINALIZADA', 'CANCELADA'] } },
         select: { id: true, type: true, status: true, priority: true, description: true },
@@ -130,7 +149,15 @@ export async function PATCH(
     return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
   }
 
-  if (!canEditDeal(session.user.role, deal.status)) {
+  if (isDealLocked(deal.status)) {
+    return NextResponse.json(
+      { error: 'Negociação finalizada. Reabra para alterar.' },
+      { status: 423 },
+    )
+  }
+
+  const actor = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId ?? null, sellerId: null }
+  if (!canEditDeal(actor, deal)) {
     return NextResponse.json({ error: 'Sem permissão para editar esta negociação no status atual' }, { status: 403 })
   }
 
@@ -217,6 +244,31 @@ export async function PATCH(
           afterData: allowedFields as never,
         },
       })
+
+      // Auditoria específica de campos monetários (diff before/after)
+      const monetaryDiff = auditEntries.filter(e => MONETARY_FIELDS.has(e.field))
+      if (monetaryDiff.length > 0) {
+        const before: Record<string, unknown> = {}
+        const after:  Record<string, unknown> = {}
+        for (const e of monetaryDiff) {
+          before[e.field] = e.oldValue
+          after[e.field]  = e.newValue
+        }
+        await tx.auditLog.create({
+          data: {
+            userId:     session.user.id,
+            tenantId:   session.user.tenantId ?? null,
+            action:     'UPDATE_MONETARY',
+            entity:     'Deal',
+            entityId:   params.id,
+            userName:   session.user.name,
+            userRole:   session.user.role,
+            status:     'SUCCESS',
+            beforeData: before as never,
+            afterData:  after  as never,
+          },
+        })
+      }
 
       return d
     })

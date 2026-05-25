@@ -1,5 +1,5 @@
 // =============================================================================
-// POST /api/negotiations/[id]/reopen — Reabrir negociação
+// POST /api/negotiations/[id]/reopen — reabrir negociação finalizada
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -7,8 +7,11 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { canReopenDeal } from '@/lib/negotiation-permissions'
+import { canReopen } from '@/lib/negotiation-rbac'
 import { createDealAudit, createStatusHistory } from '@/lib/negotiation-service'
+import { createSafeAuditLog } from '@/lib/auth-guards'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(
   req: NextRequest,
@@ -16,50 +19,50 @@ export async function POST(
 ) {
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+  try { requireModule(session.user.role, 'negotiations') }
+  catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
 
-  try {
-    requireModule(session.user.role, 'negotiations.manage')
-  } catch {
-    return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-  }
-
-  if (!canReopenDeal(session.user.role)) {
-    return NextResponse.json({ error: 'Apenas ADM e MASTER podem reabrir negociações' }, { status: 403 })
-  }
-
-  let body: { notes?: string } = {}
-  try {
-    body = await req.json()
-  } catch { /* ignore */ }
-
-  const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+  const deal = await prisma.deal.findUnique({
+    where: { id: params.id },
+    include: {
+      seller: { include: { user: { select: { role: true } } } },
+    },
+  })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
   if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
     return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
   }
 
-  if (deal.status !== 'CANCELADA' && deal.status !== 'FINALIZADA') {
-    return NextResponse.json({ error: 'Apenas negociações canceladas ou finalizadas podem ser reabertas' }, { status: 409 })
+  const actor = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId }
+  if (!canReopen(actor, deal as any)) {
+    return NextResponse.json({ error: 'Sem permissão para reabrir esta negociação' }, { status: 403 })
   }
 
+  let body: any
+  try { body = await req.json() } catch { body = {} }
+  const reason = String(body?.reason ?? body?.notes ?? '').trim()
+  if (reason.length < 10) {
+    return NextResponse.json({ error: 'O motivo deve ter ao menos 10 caracteres' }, { status: 400 })
+  }
+
+  const previousStatus = deal.status
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      const d = await tx.deal.update({
-        where: { id: params.id },
+      await tx.dealReopenLog.create({
         data: {
-          status:         'RASCUNHO',
-          cancelledAt:    null,
-          cancelledById:  null,
-          cancelledReason: null,
-          finalizedAt:    null,
+          dealId:         params.id,
+          tenantId:       deal.tenantId,
+          reopenedById:   session.user.id!,
+          reason,
+          previousStatus,
         },
       })
-
-      const reason = body.notes ?? `Reaberto por ${session.user.name}`
-      await createStatusHistory(tx as unknown as any, params.id, deal.status, 'RASCUNHO', session.user.id, reason)
-
-      await createDealAudit(tx as unknown as any, {
+      const d = await tx.deal.update({
+        where: { id: params.id },
+        data:  { status: 'REABERTA' as any, finalizedAt: null },
+      })
+      await createStatusHistory(tx as any, params.id, previousStatus, 'REABERTA', session.user.id!, `Reaberta: ${reason}`)
+      await createDealAudit(tx as any, {
         dealId:   params.id,
         tenantId: deal.tenantId,
         unitId:   deal.unitId,
@@ -68,31 +71,19 @@ export async function POST(
         userRole: session.user.role,
         action:   'REABRIR',
         field:    'status',
-        oldValue: deal.status,
-        newValue: 'RASCUNHO',
+        oldValue: previousStatus,
+        newValue: 'REABERTA',
         reason,
       })
-
-      await tx.auditLog.create({
-        data: {
-          userId:        session.user.id,
-          tenantId:      session.user.tenantId ?? null,
-          action:        'REOPEN',
-          entity:        'Deal',
-          entityId:      params.id,
-          userName:      session.user.name,
-          userRole:      session.user.role,
-          status:        'SUCCESS',
-          afterData:     { status: 'RASCUNHO' } as never,
-          beforeData:    { status: deal.status } as never,
-        },
-      })
-
       return d
     })
 
+    await createSafeAuditLog({
+      userId: session.user.id!, tenantId: session.user.tenantId ?? null,
+      action: 'REOPEN', entity: 'Deal', entityId: params.id,
+      userName: session.user.name, userRole: session.user.role,
+    })
+
     return NextResponse.json({ data: updated })
-  } catch (err) {
-    return handlePrismaError(err)
-  }
+  } catch (err) { return handlePrismaError(err) }
 }

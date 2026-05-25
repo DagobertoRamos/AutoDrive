@@ -81,7 +81,8 @@ export async function GET(req: NextRequest) {
           createdAt:           true,
           person:   { select: { nomeCompleto: true } },
           customer: { select: { name: true } },
-          seller:   { select: { user: { select: { name: true } } } },
+          seller:   { select: { fullName: true, user: { select: { name: true } } } },
+          sellerNameFromSheet: true,
           vehicles: {
             take:    1,
             orderBy: { createdAt: 'asc' },

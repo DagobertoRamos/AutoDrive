@@ -2,6 +2,12 @@
 // negotiation-permissions.ts — Permissões de negociações
 // =============================================================================
 
+// Re-export: a checagem "status permite edição?" agora vive em negotiation-rbac.
+// Callers que só conhecem o status devem usar isDealStatusEditable; quem possui
+// actor + deal deve preferir canEditDeal(actor, deal) de negotiation-rbac.
+import { isDealStatusEditable, canEditDeal } from '@/lib/negotiation-rbac'
+export { isDealStatusEditable, canEditDeal }
+
 const SELLER_ROLES   = ['VENDEDOR', 'VENDEDOR_LIDER']
 const MANAGER_ROLES  = ['GERENTE', 'GERENTE_GERAL', 'ADM', 'MASTER']
 const APPROVAL_ROLES = ['GERENTE', 'GERENTE_GERAL', 'ADM', 'MASTER', 'VENDEDOR_LIDER']
@@ -32,13 +38,6 @@ export const SENSITIVE_FIELDS: string[] = [
 
 export function canCreateDeal(role: string): boolean {
   return [...SELLER_ROLES, ...MANAGER_ROLES].includes(role)
-}
-
-export function canEditDeal(role: string, status: string): boolean {
-  if (MANAGER_ROLES.includes(role)) return true
-  if (role === 'VENDEDOR_LIDER') return true
-  if (role === 'VENDEDOR') return EDITABLE_STATUSES.includes(status)
-  return false
 }
 
 export function canEditSensitiveFields(role: string): boolean {
@@ -101,7 +100,11 @@ export function assertDealPermission(role: string, action: DealAction, status?: 
 
   switch (action) {
     case 'edit':
-      allowed = canEditDeal(role, status ?? '')
+      // assertDealPermission só recebe (role, status), então usamos a checagem
+      // pura de status + uma verificação leve de role (sem actor completo).
+      allowed = ([...MANAGER_ROLES, 'VENDEDOR_LIDER'].includes(role)
+        ? isDealStatusEditable(status ?? '')
+        : role === 'VENDEDOR' && EDITABLE_STATUSES.includes(status ?? ''))
       break
     case 'submit':
       allowed = canSubmitForApproval(role)

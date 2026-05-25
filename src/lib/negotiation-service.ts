@@ -136,6 +136,59 @@ export function normalizeCommissionType(dealType: string): string {
   return dealType
 }
 
+// ── Saldo da negociação (Phase 2: payments + discount requests + change) ────
+
+export interface DealBalanceInput {
+  vehicleValue?:    number | null
+  servicesAmount?:  number | null
+  debts?:           Array<{ value: any | number | null }>
+  services?:        Array<{ value: any | number | null }>
+  payments?:        Array<{ value: any | number | null }>
+  discountRequests?: Array<{ status: string; approvedValue?: any | number | null; requestedValue?: any | number | null }>
+  changes?:         Array<{ value: any | number | null }>
+}
+
+export interface DealBalanceResult {
+  totalBruto:   number
+  totalLiquido: number
+  totalPago:    number
+  saldo:        number
+  totalTroco:   number
+  totalDiscountApproved: number
+}
+
+function toNum(v: any | number | null | undefined): number {
+  if (v == null) return 0
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+export function computeDealBalance(input: DealBalanceInput): DealBalanceResult {
+  const vehicle = toNum(input.vehicleValue)
+  const debts   = (input.debts ?? []).reduce((s, d) => s + toNum(d.value), 0)
+  const services = (input.services ?? []).reduce((s, x) => s + toNum(x.value), 0)
+                  || toNum(input.servicesAmount)
+  const payments = (input.payments ?? []).reduce((s, p) => s + toNum(p.value), 0)
+  const discountApproved = (input.discountRequests ?? [])
+    .filter(r => r.status === 'APROVADO')
+    .reduce((s, r) => s + toNum(r.approvedValue ?? r.requestedValue), 0)
+  const troco = (input.changes ?? []).reduce((s, c) => s + toNum(c.value), 0)
+
+  const totalBruto = vehicle + debts + services
+  const totalLiquido = totalBruto - discountApproved
+  const totalPago = payments
+  const saldo = totalLiquido - totalPago
+
+  return {
+    totalBruto,
+    totalLiquido,
+    totalPago,
+    saldo,
+    totalTroco: troco,
+    totalDiscountApproved: discountApproved,
+  }
+}
+
 // ── Atualizar estoque do veículo ──────────────────────────────────────────────
 
 export async function updateVehicleStock(

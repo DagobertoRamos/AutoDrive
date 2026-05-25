@@ -6,10 +6,12 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
+import { sendActivationEmail } from '@/lib/auth-mailer'
 
 export async function GET(req: NextRequest) {
   const { error } = await requireMaster()
@@ -141,6 +143,46 @@ export async function POST(req: NextRequest) {
       afterData: { email: user.email, role: user.role, tenantId: user.tenantId },
       req,
     })
+
+    // ── Envio do e-mail de ativação ─────────────────────────────────────────
+    // Quando o usuário é criado em estado PENDENTE (não acessa imediatamente),
+    // ou explicitamente solicitado via `sendActivationEmail: true` no body,
+    // geramos um token e enviamos o link de ativação. O envio é best-effort:
+    // falhas SMTP NÃO impedem a criação do usuário.
+    const shouldSendActivation =
+      body?.sendActivationEmail === true ||
+      (status ?? 'ATIVO') === 'PENDENTE'
+
+    if (shouldSendActivation) {
+      try {
+        const token       = crypto.randomBytes(32).toString('hex')
+        const EXPIRES_MS  = 7 * 24 * 60 * 60 * 1000 // 7 dias
+        const expiresAt   = new Date(Date.now() + EXPIRES_MS)
+
+        await prisma.passwordReset.create({
+          data: { userId: user.id, token, expiresAt },
+        })
+
+        const result = await sendActivationEmail({
+          user: { id: user.id, name: user.name, email: user.email, tenantId: user.tenantId },
+          token,
+          expiresAtMs: EXPIRES_MS,
+        })
+
+        if (!result.success) {
+          console.error(
+            `[master/users CREATE] FALHA AO ENVIAR ATIVAÇÃO para ${user.email}:`,
+            result.errorCode, result.errorMessage,
+          )
+        } else {
+          console.info(
+            `[master/users CREATE] ativação enviada para ${user.email} (messageId=${result.messageId ?? '-'})`,
+          )
+        }
+      } catch (mailErr) {
+        console.error('[master/users CREATE] erro ao gerar/enviar token de ativação:', mailErr)
+      }
+    }
 
     // Não retornar passwordHash
     const { passwordHash: _ph, ...safeUser } = user as typeof user & { passwordHash: string }

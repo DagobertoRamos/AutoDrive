@@ -38,15 +38,33 @@ export function maskBRL(value: string | number | null | undefined): string {
 
 /**
  * Parser inverso da máscara BRL — retorna número (em reais) ou null.
+ *
+ * Implementação "digitos-como-centavos": extrai apenas os dígitos e divide
+ * por 100. Isso mantém coerência total com maskBRL (round-trip exato) e
+ * evita o bug clássico em que "3,00" é parseado como 3 e re-mascarado como
+ * "0,03" no ciclo seguinte de digitação.
  */
 export function parseBRL(value: string | null | undefined): number | null {
-  if (!value) return null
-  const cleaned = String(value).replace(/[^\d,.-]/g, '')
-  if (!cleaned) return null
-  // Remove separadores de milhar (.) e troca vírgula decimal por ponto
-  const normalized = cleaned.replace(/\./g, '').replace(',', '.')
-  const n = parseFloat(normalized)
-  return Number.isFinite(n) ? n : null
+  if (value == null || value === '') return null
+  const digits = String(value).replace(/\D/g, '')
+  if (!digits) return null
+  const cents = parseInt(digits, 10)
+  if (!Number.isFinite(cents)) return null
+  return cents / 100
+}
+
+/**
+ * Converte um valor numérico em reais para a string mascarada (digitos-como-centavos).
+ * Use SEMPRE que o state for um número (ex: vindo do DB) antes de passar para maskBRL.
+ *
+ * Exemplo: numberToBRLMask(300) → "300,00"
+ *          numberToBRLMask(1500) → "1.500,00"
+ */
+export function numberToBRLMask(value: number | string | null | undefined): string {
+  if (value == null || value === '') return ''
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return ''
+  return maskBRL(String(Math.round(n * 100)))
 }
 
 /**

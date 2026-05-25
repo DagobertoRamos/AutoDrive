@@ -1130,6 +1130,9 @@ model Deal {
   pendencies      Pendency[]           @relation("DealPendencies")
   contracts       Contract[]           @relation("DealContracts")
   sheetImportRows SheetImportRow[]     @relation("DealSheetRows")
+  discountRequests DealDiscountRequest[]
+  changes         DealChange[]
+  reopenLogs      DealReopenLog[]
 
   @@index([tenantId])
   @@index([unitId])
@@ -1240,19 +1243,101 @@ model DealDebt {
 
 /// Forma de pagamento da negociação
 model DealPayment {
-  id          String   @id @default(cuid())
-  dealId      String
-  type        String   // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, BOLETO, TROCA, OUTROS
-  value       Decimal  @db.Decimal(12, 2)
-  bank        String?
-  installments Int?
-  notes       String?
-  createdAt   DateTime @default(now())
+  id            String    @id @default(cuid())
+  dealId        String
+  tenantId      String?
+  type          String    // DINHEIRO, PIX, CARTAO_DEBITO, CARTAO_CREDITO, FINANCIAMENTO, BOLETO, TRANSFERENCIA, SINAL, DUPLICATA, OUTROS
+  value         Decimal   @db.Decimal(12, 2)
+  bank          String?
+  cardBrand     String?   // VISA, MASTER, ELO, AMEX, HIPERCARD, OUTROS
+  installments  Int?
+  firstDueDate  DateTime?
+  dueDate       DateTime?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime? @updatedAt
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([dealId])
+  @@index([tenantId])
   @@map("deal_payments")
+}
+
+// ── Solicitação de desconto ──────────────────────────────────────────────────
+
+enum DiscountRequestStatus {
+  PENDENTE
+  APROVADO
+  RECUSADO
+  CANCELADO
+}
+
+model DealDiscountRequest {
+  id             String                @id @default(cuid())
+  dealId         String
+  tenantId       String?
+  requestedById  String
+  requestedValue Decimal               @db.Decimal(12, 2)
+  approvedValue  Decimal?              @db.Decimal(12, 2)
+  reason         String
+  status         DiscountRequestStatus @default(PENDENTE)
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([tenantId])
+  @@index([status])
+  @@map("deal_discount_requests")
+}
+
+// ── Troco (changeAmount destinatário detalhado) ──────────────────────────────
+
+model DealChange {
+  id          String   @id @default(cuid())
+  dealId      String
+  tenantId    String?
+  value       Decimal  @db.Decimal(12, 2)
+  beneficiary String
+  document    String?
+  bank        String?
+  agency      String?
+  account     String?
+  pixKey      String?
+  reason      String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([tenantId])
+  @@map("deal_changes")
+}
+
+// ── Reabertura de negociação ────────────────────────────────────────────────
+
+model DealReopenLog {
+  id             String   @id @default(cuid())
+  dealId         String
+  tenantId       String?
+  reopenedById   String
+  reason         String
+  previousStatus String
+  createdAt      DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([tenantId])
+  @@map("deal_reopen_logs")
 }
 
 /// Histórico de status da negociação

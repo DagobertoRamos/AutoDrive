@@ -1608,11 +1608,18 @@ function VehicleFormBlock({
   onChange,
   showValuation,
   showCondition,
+  lockValue,
 }: {
   data: VehicleFields
   onChange: (k: keyof VehicleFields, v: string | boolean | null) => void
   showValuation?: boolean
   showCondition?: boolean
+  /**
+   * Quando true (papel VENDEDOR/VENDEDOR_LIDER), o valor do veículo fica
+   * somente-leitura. Para alterar é necessário abrir um pedido de desconto
+   * (workflow da Fase 2). Gerente/MASTER/ADM ignoram a trava.
+   */
+  lockValue?: boolean
 }) {
   return (
     <div className="space-y-4">
@@ -1765,11 +1772,18 @@ function VehicleFormBlock({
       ) : (
         <Field label="Valor do Veículo (R$)">
           <input
-            className={inputCls}
+            className={`${inputCls} ${lockValue ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
             placeholder="0,00"
             value={data.vehicleValue}
-            onChange={(e) => onChange('vehicleValue', maskBRLInput(e.target.value))}
+            readOnly={lockValue}
+            title={lockValue ? 'Solicite desconto para alterar o valor' : undefined}
+            onChange={(e) => { if (lockValue) return; onChange('vehicleValue', maskBRLInput(e.target.value)) }}
           />
+          {lockValue && (
+            <p className="mt-1 text-xs text-gray-500">
+              Valor protegido. Solicite desconto para alterar (workflow disponível em breve).
+            </p>
+          )}
         </Field>
       )}
       <Field label="Observações">
@@ -1789,11 +1803,13 @@ function StepVeiculos({
   setVehicleField,
   setTradeVehicleField,
   setField,
+  lockVehicleValue,
 }: {
   form: DealForm
   setVehicleField: (k: keyof VehicleFields, v: string | boolean | null) => void
   setTradeVehicleField: (k: keyof VehicleFields, v: string | boolean | null) => void
   setField: <K extends keyof DealForm>(k: K, v: DealForm[K]) => void
+  lockVehicleValue?: boolean
 }) {
   // Veículo do estoque selecionado (objeto rico com cautelar etc.)
   const [selectedStock, setSelectedStock]       = useState<StockVehicle | null>(null)
@@ -1977,7 +1993,7 @@ function StepVeiculos({
                   </button>
                 </div>
               )}
-              <VehicleFormBlock data={form.tradeVehicle} onChange={setTradeVehicleField} showValuation />
+              <VehicleFormBlock data={form.tradeVehicle} onChange={setTradeVehicleField} showValuation lockValue={lockVehicleValue} />
             </div>
           </div>
         </div>
@@ -1990,7 +2006,7 @@ function StepVeiculos({
             <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo a Comprar</h2>
             <p className="text-sm text-gray-500">Preencha os dados do veículo que será comprado do cliente.</p>
           </div>
-          <VehicleFormBlock data={form.vehicle} onChange={setVehicleField} showValuation />
+          <VehicleFormBlock data={form.vehicle} onChange={setVehicleField} showValuation lockValue={lockVehicleValue} />
         </div>
       )}
 
@@ -2002,7 +2018,7 @@ function StepVeiculos({
               <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo em Consignação</h2>
               <p className="text-sm text-gray-500">Dados do veículo que será anunciado pela loja.</p>
             </div>
-            <VehicleFormBlock data={form.vehicle} onChange={setVehicleField} showValuation={false} />
+            <VehicleFormBlock data={form.vehicle} onChange={setVehicleField} showValuation={false} lockValue={lockVehicleValue} />
           </div>
           <div className="border-t border-gray-200 pt-6 space-y-4">
             <h3 className="font-semibold text-gray-900">Parâmetros da Consignação</h3>
@@ -2869,6 +2885,11 @@ export default function NovaNegociacaoPage() {
   const searchParams = useSearchParams()
   const dealId       = searchParams.get('dealId') ?? ''
   const mode: 'create' | 'edit' = dealId ? 'edit' : 'create'
+  const { data: sessionTop } = useSession()
+  const userRole = sessionTop?.user?.role ?? ''
+  // Vendedores não podem alterar o valor do veículo diretamente — para isso
+  // existe (ou existirá) o workflow de solicitação de desconto (Fase 2).
+  const lockVehicleValue = userRole === 'VENDEDOR' || userRole === 'VENDEDOR_LIDER'
 
   const [step, setStep]     = useState(0)
   const [form, setForm]     = useState<DealForm>(INITIAL_FORM)
@@ -2963,8 +2984,14 @@ export default function NovaNegociacaoPage() {
           socioAdmEstado:     '',
           celular:    p?.phone ? formatPhone(p.phone) : (c?.phone ? formatPhone(c.phone) : ''),
           email:      p?.email ?? c?.email ?? '',
-          whatsapp:   false,
-          cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
+          whatsapp:   !!p?.whatsapp,
+          cep:         p?.cep         ? formatCEP(p.cep) : '',
+          logradouro:  p?.logradouro  ?? '',
+          numero:      p?.numero      ?? '',
+          complemento: p?.complemento ?? '',
+          bairro:      p?.bairro      ?? '',
+          cidade:      p?.cidade      ?? c?.city  ?? '',
+          estado:      p?.estado      ?? c?.state ?? '',
           vehicle:      mkVehicle(vMain),
           tradeVehicle: vTrade ? mkVehicle(vTrade) : { ...EMPTY_VEHICLE },
           consignMinValue: num(d.consignMinValue),
@@ -3406,6 +3433,7 @@ export default function NovaNegociacaoPage() {
             setVehicleField={setVehicleField}
             setTradeVehicleField={setTradeVehicleField}
             setField={setField}
+            lockVehicleValue={lockVehicleValue}
           />
         )}
         {step === 3 && (

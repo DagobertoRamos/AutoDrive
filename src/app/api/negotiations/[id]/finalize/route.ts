@@ -8,13 +8,14 @@ import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canFinalizeDeal, FINALIZABLE_STATUSES } from '@/lib/negotiation-permissions'
-import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/negotiation-service'
+import { createDealAudit, createStatusHistory, updateVehicleStock, computeDealBalance } from '@/lib/negotiation-service'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
+import { canForceFinalize } from '@/lib/negotiation-rbac'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const session = await getServerAuthSession()
@@ -30,9 +31,20 @@ export async function POST(
     return NextResponse.json({ error: 'Sem permissão para finalizar negociações' }, { status: 403 })
   }
 
+  let body: any = {}
+  try { body = await req.json() } catch { /* sem body */ }
+  const force = body?.force === true && canForceFinalize({ id: session.user.id, role: session.user.role } as any)
+
   const deal = await prisma.deal.findUnique({
     where: { id: params.id },
-    include: { vehicles: { select: { id: true, vehicleId: true, role: true } } },
+    include: {
+      vehicles: { select: { id: true, vehicleId: true, role: true } },
+      debts:    true,
+      services: true,
+      payments: true,
+      discountRequests: true,
+      changes:  true,
+    },
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
@@ -45,6 +57,34 @@ export async function POST(
       { error: `Apenas negociações nos status ${Array.from(FINALIZABLE_STATUSES).join(', ')} podem ser finalizadas` },
       { status: 409 },
     )
+  }
+
+  // Bloqueio de saldo em aberto
+  if (!force) {
+    const balance = computeDealBalance({
+      vehicleValue:     deal.vehicleValue != null ? Number(deal.vehicleValue) : Number(deal.saleAmount ?? 0),
+      debts:            deal.debts,
+      services:         deal.services,
+      payments:         deal.payments,
+      discountRequests: deal.discountRequests,
+      changes:          deal.changes,
+    })
+    if (balance.saldo > 0.009) {
+      return NextResponse.json(
+        { error: 'Saldo da negociação está em aberto. Não é possível finalizar.', balance },
+        { status: 422 },
+      )
+    }
+    // saldo negativo (excedente) precisa ser coberto por troco cadastrado
+    if (balance.saldo < -0.009) {
+      const excedente = -balance.saldo
+      if (balance.totalTroco + 0.009 < excedente) {
+        return NextResponse.json(
+          { error: 'Existe valor excedente sem troco cadastrado. Cadastre o troco antes de finalizar.', balance },
+          { status: 422 },
+        )
+      }
+    }
   }
 
   try {

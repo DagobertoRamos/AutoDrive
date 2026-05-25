@@ -56,7 +56,8 @@ interface Deal {
   isSellerProvisional: boolean
   person:              { nomeCompleto: string } | null
   customer:            { name: string } | null
-  seller:              { user: { name: string } } | null
+  seller:              { fullName: string | null; user: { name: string | null } | null } | null
+  sellerNameFromSheet?: string | null
   vehicles:            DealVehicle[]
 }
 
@@ -593,7 +594,7 @@ export default function NegociacoesPage() {
 
                     {/* Vendedor */}
                     <td className="px-4 py-3 text-gray-600">
-                      {deal.seller?.user?.name ?? '—'}
+                      {deal.seller?.user?.name ?? deal.seller?.fullName ?? deal.sellerNameFromSheet ?? '—'}
                     </td>
 
                     {/* Veículo */}

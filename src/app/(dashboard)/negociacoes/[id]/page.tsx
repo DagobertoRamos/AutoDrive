@@ -37,6 +37,10 @@ import {
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import Phase2Panel from './_components/Phase2Panel'
+import DealSummary from './_components/DealSummary'
+import { useDealActions } from './_hooks/useDealActions'
+import { isDealLocked, canAddPayment, canApproveDiscount, canReopen, canForceFinalize } from '@/lib/negotiation-rbac'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -136,7 +140,12 @@ interface DealDetail {
     phone: string | null
     cpf:   string | null
   } | null
-  seller: { user: { name: string; email: string } } | null
+  seller: {
+    id:        string
+    fullName:  string | null
+    shortName: string | null
+    user:      { id: string; name: string | null; email: string | null } | null
+  } | null
   manager: { id: string; name: string; email: string } | null
   approvedBy:  { id: string; name: string } | null
   cancelledBy: { id: string; name: string } | null
@@ -512,9 +521,11 @@ interface ActionsDropdownProps {
   setTab:      (t: string) => void
   isManager:   boolean
   onEdit:      () => void
+  actions:     ReturnType<typeof useDealActions>
+  onForceFinalize: () => void
 }
 
-function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab, isManager, onEdit }: ActionsDropdownProps) {
+function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab, isManager, onEdit, actions, onForceFinalize }: ActionsDropdownProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -524,14 +535,13 @@ function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab,
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  const isAdm = ['MASTER', 'ADM'].includes(role ?? '')
-
   const canSubmit  = ['RASCUNHO', 'EM_PREENCHIMENTO', 'DEVOLVIDA_PARA_CORRECAO'].includes(deal.status)
   const canApprove = isManager && ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'].includes(deal.status)
   const canReturn  = isManager && ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'].includes(deal.status)
   const canSignal  = ['APROVADA', 'LIBERADA', 'AGUARDANDO_SINAL'].includes(deal.status)
-  const canFinalize = isManager && !['FINALIZADA', 'CANCELADA'].includes(deal.status)
-  const canReopen  = isAdm && ['CANCELADA', 'FINALIZADA'].includes(deal.status)
+  const canFinalize = actions.canFinalizeNow
+  const showForce   = actions.canForceFinalize && !actions.canFinalizeNow && actions.isFinalizable && !actions.isLocked
+  const canReopen   = actions.canReopenNow
   const canCancel  = !['FINALIZADA', 'CANCELADA'].includes(deal.status)
 
   const item = (onClick: () => void, icon: React.ReactNode, label: string, cls = 'text-gray-700 hover:bg-gray-50') => (
@@ -566,7 +576,19 @@ function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab,
               {item(() => onOpenModal('signal'), <DollarSign size={14} className="text-teal-400" />, 'Registrar Sinal', 'text-teal-700 hover:bg-teal-50')}
             </>
           )}
-          {canFinalize && item(() => onAction('finalize'), <CheckCircle2 size={14} className="text-green-400" />, 'Finalizar negociação', 'text-green-700 hover:bg-green-50')}
+          {canFinalize
+            ? item(() => onAction('finalize'), <CheckCircle2 size={14} className="text-green-400" />, 'Finalizar negociação', 'text-green-700 hover:bg-green-50')
+            : actions.isFinalizable && !actions.isLocked && (
+              <div className="px-3 py-2 text-xs text-gray-400" title={actions.finalizeDisabledReason ?? ''}>
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 size={14} className="opacity-40" /> Finalizar (bloqueado)
+                </span>
+                {actions.finalizeDisabledReason && (
+                  <p className="mt-1 text-[10px] text-gray-400">{actions.finalizeDisabledReason}</p>
+                )}
+              </div>
+            )}
+          {showForce && item(() => { onForceFinalize(); setOpen(false) }, <CheckCircle2 size={14} className="text-red-500" />, 'Forçar finalização (MASTER)', 'text-red-700 hover:bg-red-50')}
           {canReopen && item(() => onAction('reopen'), <RotateCcw size={14} className="text-orange-400" />, 'Reabrir negociação', 'text-orange-700 hover:bg-orange-50')}
           <div className="my-1 border-t border-gray-100" />
           {item(() => setTab('timeline'), <Clock size={14} className="text-gray-400" />, 'Ver Timeline')}
@@ -613,6 +635,12 @@ export default function NegociacaoDetailPage() {
 
   const isManager = ['GERENTE', 'MASTER', 'ADM'].includes(role ?? '')
   const isAdm     = ['MASTER', 'ADM'].includes(role ?? '')
+
+  // Estado consolidado de ações (saldo + RBAC)
+  const actor = { id: (session?.user as any)?.id, role: role ?? '', tenantId: (session?.user as any)?.tenantId ?? null, sellerId: null }
+  const actions = useDealActions(deal as any, actor)
+  const [showForceConfirm, setShowForceConfirm] = useState(false)
+  const [forceTyped, setForceTyped]             = useState('')
 
   useEffect(() => {
     if (status === 'authenticated' && !canAccessModule(role, 'negotiations')) {
@@ -672,12 +700,26 @@ export default function NegociacaoDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: payload ? JSON.stringify(payload) : undefined,
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erro')
-      showToast('Ação realizada com sucesso!')
-      if (data.data) setDeal(data.data)
-      else loadDeal()
+      let data: any = null
+      try { data = await res.json() } catch { /* sem body */ }
+      if (!res.ok) {
+        const msg = data?.error ?? `Falha ao executar (${res.status})`
+        throw new Error(msg)
+      }
+      // Mensagens específicas por ação
+      const okMsg =
+        action === 'finalize'
+          ? (data?.commissionResult
+              ? `Negociação finalizada. Comissões geradas: ${data.commissionResult.created}.`
+              : 'Negociação finalizada com sucesso.')
+          : 'Ação realizada com sucesso!'
+      showToast(okMsg)
+      // Sempre recarrega via GET para garantir que todas as relações venham populadas.
+      // Respostas de endpoints de ação devolvem apenas o registro atualizado (sem
+      // customer/seller/vehicles), e setar deal com payload parcial quebra a UI.
+      loadDeal()
     } catch (e: unknown) {
+      console.error('[negotiation action]', action, e)
       showToast(e instanceof Error ? e.message : 'Erro inesperado', false)
     } finally {
       setActing(false)
@@ -790,6 +832,61 @@ export default function NegociacaoDetailPage() {
         />
       )}
 
+      {/* Modal: Forçar finalização (MASTER) */}
+      {showForceConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="border-b border-gray-100 px-5 py-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-red-700">
+                <AlertTriangle size={16} /> Forçar finalização (MASTER)
+              </h3>
+            </div>
+            <div className="space-y-3 p-5 text-sm">
+              <p className="rounded-md border border-red-200 bg-red-50 p-3 text-red-700">
+                Esta ação ignora as travas de saldo. Use apenas em casos excepcionais.
+                {actions.finalizeDisabledReason ? ` ${actions.finalizeDisabledReason}` : ''}
+              </p>
+              <p className="text-gray-700">
+                Para confirmar, digite o número da negociação{' '}
+                <strong className="font-mono">{deal.dealNumber ?? deal.id.slice(0, 8)}</strong>:
+              </p>
+              <input
+                value={forceTyped}
+                onChange={e => setForceTyped(e.target.value)}
+                placeholder={deal.dealNumber ?? deal.id.slice(0, 8)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3">
+              <button onClick={() => setShowForceConfirm(false)} className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if ((forceTyped.trim()) !== (deal.dealNumber ?? deal.id.slice(0, 8)).trim()) return
+                  setShowForceConfirm(false)
+                  handleAction('finalize', { force: true })
+                }}
+                disabled={(forceTyped.trim()) !== (deal.dealNumber ?? deal.id.slice(0, 8)).trim()}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Forçar finalização
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Painel-resumo (Phase 2) */}
+      <DealSummary
+        deal={deal as any}
+        actor={actor}
+        onEdit={() => router.push(`/negociacoes/${id}/editar`)}
+        onFinalize={() => handleAction('finalize')}
+        onForceFinalize={() => handleAction('finalize', { force: true })}
+        onReopen={() => handleAction('reopen')}
+      />
+
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 text-sm text-gray-500">
         <Link href="/negociacoes" className="hover:text-gray-700">Negociações</Link>
@@ -872,6 +969,8 @@ export default function NegociacaoDetailPage() {
             setTab={(t) => setTab(t as Tab)}
             isManager={isManager}
             onEdit={() => router.push(`/negociacoes/${id}/editar`)}
+            actions={actions}
+            onForceFinalize={() => { setForceTyped(''); setShowForceConfirm(true) }}
           />
         </div>
       </div>
@@ -947,7 +1046,7 @@ export default function NegociacaoDetailPage() {
                 <div className="py-1.5 text-sm">
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Vendedor</p>
                   <p className="mt-0.5 font-medium text-gray-800">
-                    {deal.seller?.user?.name ?? '—'}
+                    {deal.seller?.user?.name ?? deal.seller?.fullName ?? deal.sellerNameFromSheet ?? 'Vendedor não informado'}
                     {deal.isSellerProvisional && (
                       <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">Provisório</span>
                     )}
@@ -1060,6 +1159,13 @@ export default function NegociacaoDetailPage() {
               <div className="pt-2">
                 {fmtBRL(deal.servicesAmount) && <ValueRow label="Serviços adicionais" value={fmtBRL(deal.servicesAmount)} />}
                 {fmtBRL(deal.discountAmount) && <ValueRow label="Desconto" value={fmtBRL(deal.discountAmount)} />}
+                {/* TODO Fase 2 — Gap A/B:
+                    - Renderizar lista de pagamentos (deal.payments) com botão "+ Adicionar pagamento"
+                    - Calcular Total Bruto = vehicleValue + débitos + serviços + garantias
+                    - Total Líquido = Total Bruto - descontos APROVADOS
+                    - Saldo = Total Líquido - Total Pagamentos
+                    - Banner colorido: ambar (saldo>0) / azul (saldo<0, cadastrar troco) / verde (=0)
+                    - Bloquear "Finalizar" quando saldo !== 0 (exceto MASTER/ADM com override) */}
                 {fmtBRL(deal.totalPayments) && <ValueRow label="Total Pagamentos" value={fmtBRL(deal.totalPayments)} />}
                 {fmtBRL(deal.balance)       && <ValueRow label="Saldo" value={fmtBRL(deal.balance)} />}
                 {(deal.saleAmount ?? deal.vehicleValue) && (
@@ -1078,6 +1184,30 @@ export default function NegociacaoDetailPage() {
               </p>
             )}
           </SectionCard>
+
+          {/* ── Phase 2: Pagamentos, Descontos, Saldo, Troco, Reabrir ── */}
+          {(() => {
+            const anyDeal = deal as any
+            const actor = { id: (session?.user as any)?.id, role: role ?? '', tenantId: (session?.user as any)?.tenantId, sellerId: null }
+            return (
+              <Phase2Panel
+                dealId={deal.id}
+                isLocked={isDealLocked(deal.status)}
+                canEdit={canAddPayment(actor, deal as any)}
+                canApprove={canApproveDiscount(actor, deal as any)}
+                canReopen={canReopen(actor, deal as any)}
+                canForce={canForceFinalize(actor)}
+                vehicleValue={Number(deal.saleAmount ?? deal.vehicleValue ?? 0)}
+                debtsTotal={(anyDeal.debts ?? []).reduce((s: number, d: any) => s + Number(d.value ?? 0), 0)}
+                servicesTotal={(deal.services ?? []).reduce((s: number, x: any) => s + Number(x.value ?? 0), 0)}
+                payments={anyDeal.payments ?? []}
+                discounts={anyDeal.discountRequests ?? []}
+                changes={anyDeal.changes ?? []}
+                onReload={loadDeal}
+                onToast={(m, k) => showToast(m, k !== 'error')}
+              />
+            )
+          })()}
 
           {/* ── Status, Datas, Agendamento ── */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

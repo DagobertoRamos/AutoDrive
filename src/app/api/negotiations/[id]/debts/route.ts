@@ -7,7 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
-import { canEditDeal }          from '@/lib/negotiation-permissions'
+import { canEditDeal }          from '@/lib/negotiation-rbac'
 
 // ── GET — Listar débitos ──────────────────────────────────────────────────────
 
@@ -57,14 +57,15 @@ export async function POST(
   try {
     const deal = await prisma.deal.findUnique({
       where:  { id: params.id },
-      select: { id: true, tenantId: true, status: true },
+      select: { id: true, tenantId: true, status: true, sellerId: true },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
     if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
-    if (!canEditDeal(session.user.role, deal.status)) {
+    const actor = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId ?? null, sellerId: null }
+    if (!canEditDeal(actor, deal)) {
       return NextResponse.json({ error: 'Negociação não pode ser editada neste status.' }, { status: 409 })
     }
 
