@@ -1200,6 +1200,9 @@ export default function NegociacaoDetailPage() {
                 vehicleValue={Number(deal.saleAmount ?? deal.vehicleValue ?? 0)}
                 debtsTotal={(anyDeal.debts ?? []).reduce((s: number, d: any) => s + Number(d.value ?? 0), 0)}
                 servicesTotal={(deal.services ?? []).reduce((s: number, x: any) => s + Number(x.value ?? 0), 0)}
+                vehicles={deal.vehicles as any}
+                debts={anyDeal.debts ?? []}
+                services={deal.services as any}
                 payments={anyDeal.payments ?? []}
                 discounts={anyDeal.discountRequests ?? []}
                 changes={anyDeal.changes ?? []}

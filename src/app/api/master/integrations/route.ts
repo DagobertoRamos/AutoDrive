@@ -11,6 +11,8 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
 import { getServiceDef } from '@/lib/integrations/catalog'
 import { clearActiveCredentialCache } from '@/lib/integrations/active'
+import { clearPlacasCredentialCache } from '@/lib/integrations/placas/client'
+import { clearPlateProviderCache } from '@/lib/plate-lookup/service'
 
 const MASKED = '••••••••'
 
@@ -134,6 +136,12 @@ export async function POST(req: NextRequest) {
       req,
     })
     clearActiveCredentialCache()
+    // Limpa também os caches específicos para que a nova credencial seja
+    // efetiva imediatamente (sem esperar 5 min do cache do placas client).
+    if (cred.service === 'PLATE_LOOKUP') {
+      clearPlacasCredentialCache()
+      clearPlateProviderCache()
+    }
 
     return NextResponse.json(
       { success: true, data: maskSensitive(cred as unknown as Record<string, unknown>), message: 'Credencial criada com sucesso.' },

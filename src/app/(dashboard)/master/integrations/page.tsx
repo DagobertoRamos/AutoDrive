@@ -10,7 +10,7 @@ import { useRouter }                         from 'next/navigation'
 import {
   Plug, Plus, Trash2, Loader2, AlertCircle, CheckCircle2,
   X, Save, Eye, EyeOff, RefreshCw, TestTube, ToggleRight,
-  ToggleLeft, Star, Info,
+  ToggleLeft, Star, Info, Wallet,
 } from 'lucide-react'
 import {
   SERVICES as SERVICE_CATALOG,
@@ -377,6 +377,13 @@ export default function IntegrationsPage() {
   const [showModal, setShowModal] = useState(false)
   const [editCred,  setEditCred]  = useState<Credential | null>(null)
   const [testing,   setTesting]   = useState<string | null>(null)
+  // ── Saldo (API Placas / PLATE_LOOKUP) ─────────────────────────────────────
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [balanceData, setBalanceData] = useState<{
+    balance: number | null
+    checkedAt: string | null
+    error: string | null
+  }>({ balance: null, checkedAt: null, error: null })
   const [filterSvc, setFilterSvc] = useState('')
 
   useEffect(() => {
@@ -414,6 +421,37 @@ export default function IntegrationsPage() {
     if (!confirm(`Excluir "${cred.name}"?`)) return
     await fetch(`/api/master/integrations/${cred.id}`, { method: 'DELETE' })
     load()
+  }
+
+  async function fetchBalance() {
+    setBalanceLoading(true)
+    setBalanceData((prev) => ({ ...prev, error: null }))
+    try {
+      const res  = await fetch('/api/integrations/plate/balance', { cache: 'no-store' })
+      const data = await res.json()
+      if (!res.ok || data?.ok === false || data?.success === false) {
+        setBalanceData({
+          balance:   null,
+          checkedAt: new Date().toISOString(),
+          error:     data?.errorMessage || data?.error || `Falha ao consultar saldo (HTTP ${res.status})`,
+        })
+        return
+      }
+      const bal = Number(data?.balance ?? data?.saldo ?? data?.data?.balance ?? 0)
+      setBalanceData({
+        balance:   Number.isFinite(bal) ? bal : null,
+        checkedAt: new Date().toISOString(),
+        error:     null,
+      })
+    } catch (e) {
+      setBalanceData({
+        balance:   null,
+        checkedAt: new Date().toISOString(),
+        error:     e instanceof Error ? e.message : 'Erro de rede ao consultar saldo.',
+      })
+    } finally {
+      setBalanceLoading(false)
+    }
   }
 
   async function handleTest(cred: Credential) {
@@ -502,10 +540,49 @@ export default function IntegrationsPage() {
         <div className="space-y-5">
           {Object.entries(groups).map(([svc, list]) => (
             <div key={svc}>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <span className={`inline-flex rounded-full border px-3 py-0.5 text-xs font-semibold ${SERVICE_COLOR[svc] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                   {SERVICE_LABELS[svc] ?? svc}
                 </span>
+                {/* Widget de saldo (apenas para PLATE_LOOKUP / API Placas) */}
+                {svc === 'PLATE_LOOKUP' && list.some((c) => c.active) && (
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs">
+                    <Wallet size={13} className="text-brand-600" />
+                    {balanceLoading ? (
+                      <span className="flex items-center gap-1.5 text-gray-500">
+                        <Loader2 size={11} className="animate-spin" />
+                        Consultando saldo…
+                      </span>
+                    ) : balanceData.error ? (
+                      <span className="text-red-600">{balanceData.error}</span>
+                    ) : balanceData.balance != null ? (
+                      <>
+                        <span className="text-gray-500">Saldo:</span>
+                        <strong className="text-gray-900">{balanceData.balance.toLocaleString('pt-BR')}</strong>
+                        <span className="text-gray-400">consultas</span>
+                        {balanceData.checkedAt && (
+                          <span className="text-gray-400">·</span>
+                        )}
+                        {balanceData.checkedAt && (
+                          <span className="text-gray-400">
+                            atualizado {new Date(balanceData.checkedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-gray-500">Saldo não consultado</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={fetchBalance}
+                      disabled={balanceLoading}
+                      className="ml-1 rounded-md border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      title="Consultar saldo"
+                    >
+                      {balanceData.balance != null || balanceData.error ? 'Atualizar' : 'Consultar'}
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 {list.map(cred => (
