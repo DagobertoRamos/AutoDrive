@@ -26,34 +26,51 @@ export async function POST(
     if (!canEditEvaluation(user, ctx))
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
 
-    // Carrega catalogKeys já existentes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const existing: Array<{ catalogKey: string | null }> = await (prisma as any).evaluationItem.findMany({
-      where: { evaluationId: params.id },
-      select: { catalogKey: true },
-    }).catch(() => [])
-    const have = new Set(existing.map((i) => i.catalogKey).filter(Boolean) as string[])
+    // Tudo em uma transação serializável: evita race condition quando o
+    // frontend dispara 2x simultaneamente (ex: React Strict Mode em dev).
+    // A 2ª chamada vê o estado depois da 1ª e nada cria.
+    const result = await prisma.$transaction(async (tx) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const existing: Array<{ catalogKey: string | null; section: string; name: string }> =
+        await (tx as any).evaluationItem.findMany({
+          where:  { evaluationId: params.id },
+          select: { catalogKey: true, section: true, name: true },
+        })
 
-    const sections: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE']
-    const rows = sections.flatMap((sec) =>
-      ITEMS[sec]
-        .filter((it) => !have.has(it.key))
-        .map((it) => ({
-          tenantId:     ctx.tenantId ?? null,
-          evaluationId: params.id,
-          section:      sec,
-          catalogKey:   it.key,
-          name:         it.name,
-          status:       'PENDING',
-          totalExpenses: 0,
-        })),
-    )
+      // Dedup das chaves já presentes: catalogKey OU section+name normalizado.
+      const have = new Set<string>()
+      for (const e of existing) {
+        if (e.catalogKey) have.add(`k::${e.catalogKey}`)
+        have.add(`n::${e.section}::${e.name.trim().toLowerCase()}`)
+      }
 
-    if (rows.length === 0) return NextResponse.json({ data: { created: 0 } })
+      const sections: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE']
+      const rows = sections.flatMap((sec) =>
+        ITEMS[sec]
+          .filter((it) => {
+            const kKey = `k::${it.key}`
+            const nKey = `n::${sec}::${it.name.trim().toLowerCase()}`
+            return !have.has(kKey) && !have.has(nKey)
+          })
+          .map((it) => ({
+            tenantId:     ctx.tenantId ?? null,
+            evaluationId: params.id,
+            section:      sec,
+            catalogKey:   it.key,
+            name:         it.name,
+            status:       'PENDING' as const,
+            totalExpenses: 0,
+          })),
+      )
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (prisma as any).evaluationItem.createMany({ data: rows }).catch(() => {})
-    return NextResponse.json({ data: { created: rows.length } })
+      if (rows.length === 0) return { created: 0 }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (tx as any).evaluationItem.createMany({ data: rows })
+      return { created: rows.length }
+    }, { isolationLevel: 'Serializable' })
+
+    return NextResponse.json({ data: result })
   } catch (err) {
     return handlePrismaError(err)
   }

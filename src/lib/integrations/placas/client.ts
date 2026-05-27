@@ -50,6 +50,12 @@ export interface PlateResult {
   origin?:       string
   situation?:    string
   logoUrl?:      string
+  // Campos adicionais úteis pra preenchimento automático do formulário
+  transmission?: string
+  bodyType?:     string
+  doors?:        number
+  displacement?: string  // ex: "1000", "1498" — cilindrada em cc
+  power?:        string  // ex: "128 CV"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   extra?:        Record<string, any>
   fipeOptions?:  FipeOption[]
@@ -190,8 +196,41 @@ export async function consultPlate(plateRaw: string): Promise<PlateResult> {
 
     // ── Normalização de campos do veículo ──────────────────────────────────
     const brand = pickStr(d, ['MARCA', 'marca', 'brand'])
-    const model = pickStr(d, ['MODELO', 'modelo', 'model'])
-    const version = pickStr(d, ['SUBMODELO', 'submodelo', 'version'])
+    let   model = pickStr(d, ['MODELO', 'modelo', 'model'])
+    // Versão: VERSAO/VERSÃO costuma trazer a descrição completa
+    // (ex: "T CROSS HL TSI AE"); SUBMODELO frequentemente é só uma sigla
+    // ("T"). Por isso priorizamos VERSAO. Fica como fallback SUBMODELO.
+    let   version = pickStr(d, ['VERSAO', 'versao', 'VERSÃO', 'versão', 'SUBMODELO', 'submodelo', 'version'])
+    if (version && version.length <= 2) version = undefined
+    if (model && version) {
+      const m = model.toUpperCase().trim()
+      const v = version.toUpperCase().trim()
+      if (v.startsWith(m + ' ') && v.length > m.length + 1) {
+        model   = version
+        version = undefined
+      }
+    }
+
+    // ── Detecção de câmbio a partir do texto (modelo/versão) ───────────────
+    // wdapi2 às vezes coloca "AUT", "CVT", "MEC" no SUBMODELO/VERSAO em vez
+    // de extra.caixa_cambio. Detectamos via regex e LIMPAMOS do version
+    // pra não poluir o campo Versão / Trim.
+    let detectedTransmission: string | undefined
+    const fullText = `${model ?? ''} ${version ?? ''}`.toUpperCase()
+    if (/\bCVT\b/.test(fullText))                                      detectedTransmission = 'CVT'
+    else if (/\bAUTOMATIZAD/.test(fullText) || /\bAMT\b/.test(fullText)
+          || /\bDUALOG/.test(fullText) || /\bDCT\b/.test(fullText))   detectedTransmission = 'Automatizado'
+    else if (/\bAUT\b/.test(fullText) || /\bAUTOMAT/.test(fullText)
+          || /\bAUTOMÁT/.test(fullText))                              detectedTransmission = 'Automático'
+    else if (/\bMEC\b/.test(fullText) || /\bMANUAL\b/.test(fullText)) detectedTransmission = 'Manual'
+
+    // Remove os tokens de câmbio do version pra não poluir o campo Versão
+    if (version) {
+      version = version.replace(/\b(CVT|AUT|AUTOMAT[IÁ]TIC[AO]|AUTOMATIZAD[AO]|AMT|DCT|DUALOGIC|MEC|MANUAL)\.?\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (!version) version = undefined
+    }
 
     // ── Normalização de FIPE options ───────────────────────────────────────
     const rawFipe = ((d as { fipe?: { dados?: unknown[] } }).fipe?.dados ?? []) as unknown[]
@@ -212,9 +251,24 @@ export async function consultPlate(plateRaw: string): Promise<PlateResult> {
       }
     }).filter((f) => f.codigoFipe)
 
-    const modelYear = pickNum(d, ['ano', 'anoModelo', 'ano_modelo'])
-    const manufactureYear = pickNum(d, ['anoModelo', 'ano']) ?? modelYear
-    const fuel = pickStr(d, ['combustivel', 'fuel'])
+    // Anos — wdapi2 retorna 'ano' como ano de FABRICAÇÃO e 'anoModelo' como
+    // ano modelo. Corrigimos a leitura errada anterior que invertia ambos.
+    const manufactureYear = pickNum(d, ['ano', 'ano_fabricacao', 'anoFabricacao'])
+    const modelYear       = pickNum(d, ['anoModelo', 'ano_modelo']) ?? manufactureYear
+    const fuel            = pickStr(d, ['combustivel', 'fuel'])
+
+    // Campos extras (vindo de `extra.*` do wdapi2)
+    const extra = (d as { extra?: Record<string, unknown> })?.extra ?? {}
+    // Câmbio: prioriza extra.caixa_cambio > detectado no texto (CVT/AUT)
+    const transmission =
+      pickStr(extra as Record<string, unknown>, ['caixa_cambio', 'cambio', 'transmission'])
+      ?? detectedTransmission
+    const bodyType     = pickStr(extra as Record<string, unknown>, ['tipo_carroceria', 'carroceria', 'body_type', 'segmento', 'sub_segmento'])
+    const doors        = pickNum(extra as Record<string, unknown>, ['portas', 'doors'])
+    // Cilindrada e potência — vêm em extra.cilindradas e extra.potencia
+    const displacement = pickStr(extra as Record<string, unknown>, ['cilindradas', 'cilindrada', 'displacement'])
+    const powerRaw     = pickStr(extra as Record<string, unknown>, ['potencia', 'power'])
+    const power        = powerRaw ? (powerRaw.match(/\d+/) ? `${powerRaw.match(/\d+/)![0]} CV` : powerRaw) : undefined
 
     const bestFipe = pickBestFipe(fipeOptions, { brand, model, modelYear, fuel })
 
@@ -235,6 +289,11 @@ export async function consultPlate(plateRaw: string): Promise<PlateResult> {
       origin:      pickStr(d, ['origem']),
       situation:   pickStr(d, ['situacao']),
       logoUrl:     pickStr(d, ['logo']),
+      transmission,
+      bodyType,
+      doors,
+      displacement,
+      power,
       extra:       d as Record<string, unknown>,
       fipeOptions,
       bestFipe,

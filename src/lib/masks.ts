@@ -80,6 +80,41 @@ export function formatBRL(value: number | null | undefined): string {
   })
 }
 
+// ── Parser/formatter monetários genéricos (valores externos / API) ───────────
+//
+// parseBRL acima trata o input como "dígitos-como-centavos" — correto para
+// inputs mascarados via maskBRL, mas ERRADO para valores que chegam de APIs
+// no formato "R$ 91.320,00" ou como number-em-reais. Para esses casos use os
+// helpers abaixo, que entendem o formato pt-BR real.
+//
+//   parseCurrencyBR("R$ 91.320,00") → 91320
+//   parseCurrencyBR("91.320,00")    → 91320
+//   parseCurrencyBR("91320")        → 91320       (sem decimal = inteiro)
+//   parseCurrencyBR("913,20")       → 913.20
+//   parseCurrencyBR(91320)          → 91320
+//   parseCurrencyBR(null/"")        → null
+
+export function parseCurrencyBR(value: string | number | null | undefined): number | null {
+  if (value == null || value === '') return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const s = String(value).trim().replace(/^R\$\s*/i, '').replace(/\s/g, '')
+  if (!s) return null
+  // Detecta separador decimal: se houver vírgula, ela é o decimal e os pontos
+  // são milhar; se houver apenas pontos, são milhar (sem casas decimais).
+  let normalized: string
+  if (s.includes(',')) {
+    normalized = s.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Sem vírgula: pontos são SEMPRE milhar. "91.320" → "91320".
+    normalized = s.replace(/\./g, '')
+  }
+  const n = Number(normalized)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Alias semântico de formatBRL para uso em código que lida com API/FIPE. */
+export const formatCurrencyBR = formatBRL
+
 // ── Quilometragem (KM) ───────────────────────────────────────────────────────
 
 /**

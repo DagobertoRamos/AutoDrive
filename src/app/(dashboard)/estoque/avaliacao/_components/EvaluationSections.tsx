@@ -8,7 +8,7 @@
 // vazio.
 // =============================================================================
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, ChevronRight } from 'lucide-react'
 import { ITEMS, SECTIONS, ITEM_STATUS, type SectionKey } from '@/lib/evaluation/catalog'
 import { ItemDrawer, type DrawerItem } from './ItemDrawer'
@@ -33,6 +33,29 @@ interface EvaluationSectionsProps {
 
 const TABS: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE']
 
+/**
+ * Remove itens duplicados da lista. Critério:
+ *   - Se tem catalogKey: dedup por (section, catalogKey) — mantém o 1º
+ *   - Se não tem catalogKey: dedup por (section, name normalizado)
+ *
+ * Defende contra duas fontes históricas de duplicata:
+ *   1) Race condition no seed (React Strict Mode + dev) que rodava 2x
+ *   2) Seeds antigos que rodaram antes do guard de catalogKey
+ */
+function dedupeItems(items: EvalItem[]): EvalItem[] {
+  const seen = new Set<string>()
+  const out: EvalItem[] = []
+  for (const it of items) {
+    const key = it.catalogKey
+      ? `${it.section}::${it.catalogKey}`
+      : `${it.section}::name::${it.name.trim().toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(it)
+  }
+  return out
+}
+
 function statusBadge(status: string) {
   const s = ITEM_STATUS.find((x) => x.value === status)
   if (!s) return <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">—</span>
@@ -47,12 +70,16 @@ export function EvaluationSections({
   const [loading, setLoading] = useState(true)
   const [drawer,  setDrawer]  = useState<DrawerItem | null>(null)
   const [err,     setErr]     = useState('')
+  // Lock client-side: evita 2x POST /seed disparado pelo React Strict Mode
+  // (que monta useEffect duas vezes em dev). Sem o lock, a 2ª chamada
+  // criava registros duplicados.
+  const seedInFlight = useRef(false)
+  const seedDone     = useRef<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
     try {
-      // Carrega avaliação completa para extrair items[]
       const r = await fetch(`/api/evaluations/${evaluationId}`, { cache: 'no-store' })
       const d = await r.json()
       if (!r.ok) {
@@ -61,14 +88,31 @@ export function EvaluationSections({
         return
       }
       const incoming: EvalItem[] = Array.isArray(d?.data?.items) ? d.data.items : []
-      // Se não há itens ainda e podemos editar, seed do catálogo
-      if (incoming.length === 0 && !readOnly) {
-        await fetch(`/api/evaluations/${evaluationId}/items/seed`, { method: 'POST' }).catch(() => {})
-        const r2 = await fetch(`/api/evaluations/${evaluationId}`, { cache: 'no-store' })
-        const d2 = await r2.json()
-        setItems(Array.isArray(d2?.data?.items) ? d2.data.items : [])
+
+      // Se não há itens ainda e podemos editar — chama seed UMA vez só
+      const shouldSeed =
+        incoming.length === 0 &&
+        !readOnly &&
+        !seedInFlight.current &&
+        seedDone.current !== evaluationId
+
+      if (shouldSeed) {
+        seedInFlight.current = true
+        try {
+          await fetch(`/api/evaluations/${evaluationId}/items/seed`, { method: 'POST' })
+          seedDone.current = evaluationId
+          const r2 = await fetch(`/api/evaluations/${evaluationId}`, { cache: 'no-store' })
+          const d2 = await r2.json()
+          const seeded = Array.isArray(d2?.data?.items) ? d2.data.items : []
+          setItems(dedupeItems(seeded))
+        } finally {
+          seedInFlight.current = false
+        }
       } else {
-        setItems(incoming)
+        // Dedup defensivo: mesmo que o backend traga duplicatas legadas, o
+        // render fica limpo. Mantém o primeiro registro de cada catalogKey
+        // (ou de cada name dentro da mesma section quando catalogKey é null).
+        setItems(dedupeItems(incoming))
       }
     } catch {
       setErr('Erro de conexão.')

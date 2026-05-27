@@ -34,6 +34,7 @@ import {
   X,
   Trash2,
   Plus,
+  Save,
   AlertTriangle,
   AlertCircle,
   Building2,
@@ -85,6 +86,29 @@ interface VehicleFields {
 
 interface Unit   { id: string; name: string }
 interface Seller { id: string; fullName: string; shortName: string | null; userId: string }
+
+// ── Pagamentos (novo modelo profissional multi-pagamento) ──────────────────
+export type PaymentEntryType =
+  | 'DINHEIRO' | 'PIX' | 'SINAL' | 'ENTRADA' | 'FINANCIAMENTO'
+  | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'BOLETO' | 'DUPLICATA'
+  | 'TRANSFERENCIA' | 'QUITACAO' | 'TROCO' | 'OUTRO'
+
+export type PaymentEntryStatus = 'PENDENTE' | 'CONFIRMADO' | 'CANCELADO'
+
+export interface PaymentEntry {
+  id:           string                  // uuid local
+  type:         PaymentEntryType
+  status:       PaymentEntryStatus
+  amount:       string                  // BRL mascarado
+  dueDate:      string                  // ISO date
+  paidAt:       string                  // ISO date
+  bank:         string
+  cardBrand:    string
+  installments: string
+  firstDueDate: string
+  pixKey:       string
+  notes:        string
+}
 
 interface DealForm {
   // Step 0 - Tipo + Unidade
@@ -165,6 +189,9 @@ interface DealForm {
   changePix:        string
   payoffAmount:     string
   payoffBank:       string
+
+  // Pagamentos profissionais (multi-payment)
+  payments:         PaymentEntry[]
 
   // Step 5 - Agendamento
   deliveryDate:    string
@@ -251,6 +278,7 @@ const INITIAL_FORM: DealForm = {
   tradeValue: '', changeAmount: '', changeBeneficiary: '', changePix: '',
   changeBeneficiaryCpf: '', changeBank: '', changeAgency: '', changeAccount: '',
   payoffAmount: '', payoffBank: '',
+  payments: [],
   deliveryDate: '', receiptDate: '', schedulingNotes: '',
   notes: '', commentType: '',
 }
@@ -2224,6 +2252,321 @@ function StepDebitos({
 
 // ── StepPagamento ─────────────────────────────────────────────────────────────
 
+// ── Labels dos tipos de pagamento (UI) ────────────────────────────────────
+const PAYMENT_ENTRY_LABELS: Record<PaymentEntryType, string> = {
+  DINHEIRO:        'Dinheiro',
+  PIX:             'Pix',
+  SINAL:           'Sinal',
+  ENTRADA:         'Entrada',
+  FINANCIAMENTO:   'Financiamento',
+  CARTAO_CREDITO:  'Cartão de Crédito',
+  CARTAO_DEBITO:   'Cartão de Débito',
+  BOLETO:          'Boleto',
+  DUPLICATA:       'Duplicata',
+  TRANSFERENCIA:   'Transferência',
+  QUITACAO:        'Quitação',
+  TROCO:           'Troco de Troca',
+  OUTRO:           'Outro',
+}
+
+const PAYMENT_STATUS_LABELS: Record<PaymentEntryStatus, string> = {
+  PENDENTE:    'Pendente',
+  CONFIRMADO:  'Confirmado',
+  CANCELADO:   'Cancelado',
+}
+
+const PAYMENT_STATUS_COLOR: Record<PaymentEntryStatus, string> = {
+  PENDENTE:    'bg-amber-100 text-amber-800 border-amber-200',
+  CONFIRMADO:  'bg-emerald-100 text-emerald-800 border-emerald-200',
+  CANCELADO:   'bg-gray-100 text-gray-500 border-gray-200',
+}
+
+const EMPTY_PAYMENT = (): PaymentEntry => ({
+  id:           `tmp_${Math.random().toString(36).slice(2, 11)}`,
+  type:         'DINHEIRO',
+  status:       'PENDENTE',
+  amount:       '',
+  dueDate:      '',
+  paidAt:       '',
+  bank:         '',
+  cardBrand:    '',
+  installments: '',
+  firstDueDate: '',
+  pixKey:       '',
+  notes:        '',
+})
+
+// ── PaymentModal (novo cadastro/edição profissional) ──────────────────────
+function PaymentModal({
+  initial,
+  onSave,
+  onClose,
+}: {
+  initial?: PaymentEntry
+  onSave:   (entry: PaymentEntry) => void
+  onClose:  () => void
+}) {
+  const [entry, setEntry] = useState<PaymentEntry>(initial ?? EMPTY_PAYMENT())
+  const [error, setError] = useState('')
+
+  const update = <K extends keyof PaymentEntry>(k: K, v: PaymentEntry[K]) => {
+    setEntry((prev) => ({ ...prev, [k]: v }))
+  }
+
+  function handleSave() {
+    const amount = parseBRLInput(entry.amount)
+    if (!entry.type)                  return setError('Selecione o tipo de pagamento.')
+    if (amount == null || amount <= 0) return setError('Informe um valor maior que zero.')
+    setError('')
+    onSave(entry)
+  }
+
+  // Campos condicionais por tipo
+  const needsBank        = ['FINANCIAMENTO', 'BOLETO', 'TRANSFERENCIA', 'DUPLICATA', 'QUITACAO'].includes(entry.type)
+  const needsCard        = entry.type === 'CARTAO_CREDITO' || entry.type === 'CARTAO_DEBITO'
+  const needsParcelas    = ['CARTAO_CREDITO', 'FINANCIAMENTO', 'DUPLICATA'].includes(entry.type)
+  const needsFirstDue    = ['FINANCIAMENTO', 'BOLETO', 'DUPLICATA'].includes(entry.type)
+  const needsPix         = entry.type === 'PIX'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+          <h3 className="text-base font-semibold text-gray-900">
+            {initial ? 'Editar Pagamento' : 'Novo Pagamento'}
+          </h3>
+          <button type="button" onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto p-5 space-y-3">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertCircle size={14} />{error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Tipo de pagamento" required>
+              <select className={inputCls} value={entry.type} onChange={(e) => update('type', e.target.value as PaymentEntryType)}>
+                {(Object.keys(PAYMENT_ENTRY_LABELS) as PaymentEntryType[]).map((t) => (
+                  <option key={t} value={t}>{PAYMENT_ENTRY_LABELS[t]}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Status">
+              <select className={inputCls} value={entry.status} onChange={(e) => update('status', e.target.value as PaymentEntryStatus)}>
+                {(Object.keys(PAYMENT_STATUS_LABELS) as PaymentEntryStatus[]).map((s) => (
+                  <option key={s} value={s}>{PAYMENT_STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Valor (R$)" required>
+              <input
+                className={inputCls}
+                inputMode="numeric"
+                placeholder="0,00"
+                value={entry.amount}
+                onChange={(e) => update('amount', maskBRLInput(e.target.value))}
+              />
+            </Field>
+            <Field label="Data prevista">
+              <input
+                className={inputCls}
+                type="date"
+                value={entry.dueDate}
+                onChange={(e) => update('dueDate', e.target.value)}
+              />
+            </Field>
+          </div>
+
+          {entry.status === 'CONFIRMADO' && (
+            <Field label="Data de pagamento">
+              <input
+                className={inputCls}
+                type="date"
+                value={entry.paidAt}
+                onChange={(e) => update('paidAt', e.target.value)}
+              />
+            </Field>
+          )}
+
+          {/* Campos condicionais por tipo */}
+          {needsBank && (
+            <Field label="Banco / Financeira">
+              <BankCombo value={entry.bank} onChange={(v) => update('bank', v)} placeholder="Buscar banco..." />
+            </Field>
+          )}
+
+          {needsCard && (
+            <Field label="Bandeira do cartão">
+              <select className={inputCls} value={entry.cardBrand} onChange={(e) => update('cardBrand', e.target.value)}>
+                <option value="">Selecione</option>
+                <option value="VISA">Visa</option>
+                <option value="MASTER">Mastercard</option>
+                <option value="ELO">Elo</option>
+                <option value="HIPER">Hipercard</option>
+                <option value="AMEX">American Express</option>
+                <option value="OUTRO">Outro</option>
+              </select>
+            </Field>
+          )}
+
+          {needsParcelas && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Nº de parcelas">
+                <input
+                  className={inputCls}
+                  type="number"
+                  min={1}
+                  max={120}
+                  placeholder="12"
+                  value={entry.installments}
+                  onChange={(e) => update('installments', e.target.value.replace(/\D/g, ''))}
+                />
+              </Field>
+              <Field label="Valor da parcela (auto)">
+                <input
+                  className={`${inputCls} bg-gray-50`}
+                  readOnly
+                  value={(() => {
+                    const v = parseBRLInput(entry.amount)
+                    const p = parseInt(entry.installments || '0', 10)
+                    if (!v || !p) return ''
+                    return (v / p).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  })()}
+                />
+              </Field>
+            </div>
+          )}
+
+          {needsFirstDue && (
+            <Field label="Primeiro vencimento">
+              <input
+                className={inputCls}
+                type="date"
+                value={entry.firstDueDate}
+                onChange={(e) => update('firstDueDate', e.target.value)}
+              />
+            </Field>
+          )}
+
+          {needsPix && (
+            <Field label="Chave PIX">
+              <input
+                className={inputCls}
+                placeholder="CPF, e-mail, telefone ou chave aleatória"
+                value={entry.pixKey}
+                onChange={(e) => update('pixKey', e.target.value)}
+              />
+            </Field>
+          )}
+
+          <Field label="Observações">
+            <textarea
+              className={`${inputCls} min-h-16 resize-y`}
+              placeholder="Detalhes adicionais sobre este pagamento..."
+              value={entry.notes}
+              onChange={(e) => update('notes', e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSave} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+            Salvar pagamento
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── ChangeModal (cadastro de troco) ───────────────────────────────────────
+function ChangeModal({
+  form,
+  setField,
+  excedente,
+  onClose,
+}: {
+  form: DealForm
+  setField: <K extends keyof DealForm>(k: K, v: DealForm[K]) => void
+  excedente: number
+  onClose:   () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+          <h3 className="text-base font-semibold text-gray-900">Cadastrar Troco</h3>
+          <button type="button" onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto p-5 space-y-3">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Valor excedente detectado: <strong>{fmtBRL(excedente)}</strong>. Cadastre os dados do beneficiário.
+          </div>
+          <Field label="Valor do Troco (R$)" required>
+            <input
+              className={inputCls}
+              inputMode="numeric"
+              placeholder="0,00"
+              value={form.changeAmount}
+              onChange={(e) => setField('changeAmount', maskBRLInput(e.target.value))}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Beneficiário">
+              <input className={inputCls} placeholder="Nome do titular"
+                value={form.changeBeneficiary}
+                onChange={(e) => setField('changeBeneficiary', e.target.value)} />
+            </Field>
+            <Field label="CPF/CNPJ do Beneficiário">
+              <input className={inputCls} placeholder="CPF ou CNPJ"
+                value={form.changeBeneficiaryCpf}
+                onChange={(e) => setField('changeBeneficiaryCpf', e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Banco">
+              <BankCombo value={form.changeBank} onChange={(v) => setField('changeBank', v)} />
+            </Field>
+            <Field label="Agência">
+              <input className={inputCls} placeholder="0000"
+                value={form.changeAgency}
+                onChange={(e) => setField('changeAgency', e.target.value)} />
+            </Field>
+            <Field label="Conta">
+              <input className={inputCls} placeholder="00000-0"
+                value={form.changeAccount}
+                onChange={(e) => setField('changeAccount', e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Chave PIX (opcional)">
+            <input className={inputCls} placeholder="CPF, e-mail, telefone ou chave aleatória"
+              value={form.changePix}
+              onChange={(e) => setField('changePix', e.target.value)} />
+          </Field>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
+          <button type="button" onClick={onClose} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+            Salvar troco
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── StepPagamento (NOVA — 2 colunas profissional) ─────────────────────────
 function StepPagamento({
   form,
   setField,
@@ -2231,301 +2574,407 @@ function StepPagamento({
   form: DealForm
   setField: <K extends keyof DealForm>(k: K, v: DealForm[K]) => void
 }) {
-  // helper: input monetário com máscara BRL
-  const $ = (k: keyof DealForm, placeholder = '0,00') => ({
-    className:   inputCls,
-    placeholder,
-    value:       form[k] as string,
-    onChange:    (e: React.ChangeEvent<HTMLInputElement>) => setField(k, maskBRLInput(e.target.value)),
-  })
+  const [modalOpen,   setModalOpen]   = useState(false)
+  const [editing,     setEditing]     = useState<PaymentEntry | null>(null)
+  const [trocoOpen,   setTrocoOpen]   = useState(false)
 
-  const fi = (k: keyof DealForm) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => setField(k, e.target.value as DealForm[typeof k])
+  // ── Itens da Negociação ──────────────────────────────────────────────────
+  const sale     = parseBRLInput(form.saleAmount)        ?? 0
+  const purchase = parseBRLInput(form.purchaseAmount)    ?? 0
+  const trade    = parseBRLInput(form.tradeValue)        ?? 0
+  const docFee   = parseBRLInput(form.documentationFee)  ?? 0
+  const discount = parseBRLInput(form.discountAmount)    ?? 0
+  const payoff   = parseBRLInput(form.payoffAmount)      ?? 0
+  const change   = parseBRLInput(form.changeAmount)      ?? 0
+  const consignMin = parseBRLInput(form.consignMinValue) ?? 0
 
-  // ── Painel de conferência: total esperado vs total cadastrado ──────────────
-  const sale       = parseBRLInput(form.saleAmount)       ?? 0
-  const purchase   = parseBRLInput(form.purchaseAmount)   ?? 0
-  const trade      = parseBRLInput(form.tradeValue)       ?? 0
-  const docFee     = parseBRLInput(form.documentationFee) ?? 0
-  const discount   = parseBRLInput(form.discountAmount)   ?? 0
-  const signal     = parseBRLInput(form.signalAmount)     ?? 0
-  const financed   = parseBRLInput(form.financedAmount)   ?? 0
-  const payoff     = parseBRLInput(form.payoffAmount)     ?? 0
-  const change     = parseBRLInput(form.changeAmount)     ?? 0
-  const debtsTotal = form.debts.reduce((s, d) => s + (parseBRLInput(d.value) ?? 0), 0)
+  // Veículos da negociação
+  const veiculoVendido  = form.type === 'VENDA' || form.type === 'TROCA' ? form.vehicle      : null
+  const veiculoCompra   = form.type === 'COMPRA' ? form.vehicle                              : null
+  const veiculoTroca    = form.type === 'TROCA' ? form.tradeVehicle                          : null
+  const veiculoConsig   = form.type === 'CONSIGNACAO' ? form.vehicle                         : null
 
-  // Total esperado por tipo
-  // VENDA:      saleAmount + docFee - discount
-  // COMPRA:     purchaseAmount + debts a cargo da LOJA
-  // TROCA:      (sale - trade) + docFee - discount + payoff
-  // CONSIG.:    consignMinValue (referência)
-  let expected = 0
-  if (form.type === 'VENDA')       expected = sale + docFee - discount
-  else if (form.type === 'COMPRA') expected = purchase
-  else if (form.type === 'TROCA')  expected = (sale - trade) + docFee - discount + payoff
-  else if (form.type === 'CONSIGNACAO') expected = parseBRLInput(form.consignMinValue) ?? 0
+  // Débitos por veículo (agrupados por vehicleRole)
+  const debtsByRole = form.debts.reduce<Record<string, DebtEntry[]>>((acc, d) => {
+    const k = d.vehicleRole || 'GERAL'
+    if (!acc[k]) acc[k] = []
+    acc[k].push(d)
+    return acc
+  }, {})
 
-  // Total cadastrado (entradas confirmadas)
-  const cadastrado = signal + financed
-  const diff       = expected - cadastrado          // > 0 = faltando; < 0 = sobrando
-  const sobrando   = diff < 0 ? Math.abs(diff)      : 0
-  const faltando   = diff > 0 ? diff                : 0
-  // Quando há sobrando, exigir cadastro de troco com valor >= sobrando
-  const trocoOk    = sobrando === 0 || (change >= sobrando - 0.01)
+  // Débitos que entram no total (cliente paga / incluído na negociação)
+  const debtsCliente = form.debts.reduce((s, d) => {
+    const v = parseBRLInput(d.value) ?? 0
+    return ['CLIENTE', 'COMPRADOR'].includes(String(d.responsavel ?? '').toUpperCase())
+      ? s + v
+      : s
+  }, 0)
+
+  // Total da operação
+  let totalOperacao = 0
+  if (form.type === 'VENDA')             totalOperacao = sale + docFee + debtsCliente - discount
+  else if (form.type === 'COMPRA')       totalOperacao = purchase
+  else if (form.type === 'TROCA')        totalOperacao = (sale - trade) + docFee + debtsCliente - discount + payoff
+  else if (form.type === 'CONSIGNACAO')  totalOperacao = consignMin
+
+  // Pagamentos cadastrados (soma valor; descarta CANCELADO)
+  const totalPagamentos = form.payments.reduce((s, p) => {
+    if (p.status === 'CANCELADO') return s
+    return s + (parseBRLInput(p.amount) ?? 0)
+  }, 0)
+
+  const diferenca = totalOperacao - totalPagamentos
+  const emAberto  = diferenca > 0.01  ? diferenca         : 0
+  const excedente = diferenca < -0.01 ? Math.abs(diferenca) : 0
+  const trocoOk   = excedente === 0 || (change >= excedente - 0.01)
+
+  // ── Handlers de pagamento ────────────────────────────────────────────────
+  function handleAddPayment(p: PaymentEntry) {
+    setField('payments', editing
+      ? form.payments.map((x) => x.id === editing.id ? p : x)
+      : [...form.payments, p]
+    )
+    setModalOpen(false)
+    setEditing(null)
+  }
+  function handleRemovePayment(id: string) {
+    if (!confirm('Remover este pagamento?')) return
+    setField('payments', form.payments.filter((p) => p.id !== id))
+  }
+  function handleEditPayment(p: PaymentEntry) {
+    setEditing(p)
+    setModalOpen(true)
+  }
 
   return (
     <div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">Pagamento e Condições Financeiras</h2>
-      <p className="mb-5 text-sm text-gray-500">Preencha os valores conforme o tipo de negociação.</p>
+      <h2 className="mb-1 text-lg font-semibold text-gray-900">Pagamentos</h2>
+      <p className="mb-5 text-sm text-gray-500">
+        Confira os itens à esquerda e cadastre os pagamentos à direita. O sistema calcula automaticamente o saldo.
+      </p>
 
-      {/* ── Painel de conferência financeira ──────────────────────────────── */}
-      <div className={`mb-5 grid grid-cols-1 gap-3 rounded-xl border-2 p-4 sm:grid-cols-3 ${
-        faltando > 0
-          ? 'border-red-200 bg-red-50/40'
-          : sobrando > 0
-            ? (trocoOk ? 'border-green-200 bg-green-50/40' : 'border-amber-300 bg-amber-50/40')
-            : 'border-blue-200 bg-blue-50/30'
-      }`}>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total da Operação</p>
-          <p className="mt-1 text-lg font-bold text-gray-800">{fmtBRL(expected)}</p>
-          <p className="mt-0.5 text-[10px] text-gray-400">
-            Inclui documentação, descontos e ajustes
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Pagamentos Cadastrados</p>
-          <p className="mt-1 text-lg font-bold text-gray-800">{fmtBRL(cadastrado)}</p>
-          <p className="mt-0.5 text-[10px] text-gray-400">
-            Sinal + financiamento + entradas
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            {faltando > 0 ? 'Faltando' : sobrando > 0 ? 'Sobrando (Troco)' : 'Diferença'}
-          </p>
-          <p className={`mt-1 text-lg font-bold ${
-            faltando > 0 ? 'text-red-700' : sobrando > 0 ? 'text-green-700' : 'text-gray-700'
-          }`}>
-            {fmtBRL(faltando > 0 ? faltando : sobrando)}
-          </p>
-          <p className="mt-0.5 text-[10px] text-gray-500">
-            {faltando > 0
-              ? 'Cadastre mais pagamentos para fechar a negociação.'
-              : sobrando > 0
-                ? trocoOk
-                  ? 'Troco devidamente cadastrado.'
-                  : 'Cadastre o troco no campo abaixo para continuar.'
-                : 'Fechamento financeiro OK ✓'}
-          </p>
-        </div>
-        {debtsTotal > 0 && (
-          <div className="sm:col-span-3 border-t border-gray-200 pt-2 text-xs text-gray-500">
-            Débitos vinculados à negociação: <strong className="text-gray-700">{fmtBRL(debtsTotal)}</strong>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+        {/* ─── COLUNA ESQUERDA: ITENS DA NEGOCIAÇÃO ─────────────────────── */}
+        <div className="lg:col-span-7 space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <Car size={14} className="text-brand-600" />
+              Itens da Negociação
+            </h3>
+
+            {/* Veículos vendidos */}
+            {veiculoVendido && (sale > 0 || veiculoVendido.plate) && (
+              <div className="mb-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  {form.type === 'VENDA' ? 'Veículo vendido' : 'Veículo vendido ao cliente'}
+                </p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {[veiculoVendido.brand, veiculoVendido.model, veiculoVendido.year].filter(Boolean).join(' ') || '—'}
+                      </p>
+                      {veiculoVendido.plate && (
+                        <p className="text-xs text-gray-500 font-mono">{veiculoVendido.plate}</p>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{fmtBRL(sale)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Veículo de troca (recebido) */}
+            {veiculoTroca && (trade > 0 || veiculoTroca.plate) && (
+              <div className="mb-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  Veículo recebido na troca
+                </p>
+                <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {[veiculoTroca.brand, veiculoTroca.model, veiculoTroca.year].filter(Boolean).join(' ') || '—'}
+                      </p>
+                      {veiculoTroca.plate && (
+                        <p className="text-xs text-gray-500 font-mono">{veiculoTroca.plate}</p>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-blue-700 whitespace-nowrap">− {fmtBRL(trade)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Veículo de compra */}
+            {veiculoCompra && (purchase > 0 || veiculoCompra.plate) && (
+              <div className="mb-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Veículo comprado</p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {[veiculoCompra.brand, veiculoCompra.model, veiculoCompra.year].filter(Boolean).join(' ') || '—'}
+                      </p>
+                      {veiculoCompra.plate && (
+                        <p className="text-xs text-gray-500 font-mono">{veiculoCompra.plate}</p>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{fmtBRL(purchase)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Veículo consignação */}
+            {veiculoConsig && consignMin > 0 && (
+              <div className="mb-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Veículo consignado</p>
+                <div className="rounded-lg border border-purple-200 bg-purple-50/40 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {[veiculoConsig.brand, veiculoConsig.model, veiculoConsig.year].filter(Boolean).join(' ') || '—'}
+                      </p>
+                      {veiculoConsig.plate && (
+                        <p className="text-xs text-gray-500 font-mono">{veiculoConsig.plate}</p>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-purple-700 whitespace-nowrap">{fmtBRL(consignMin)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Débitos por veículo */}
+            {form.debts.length > 0 && (
+              <div className="mb-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Débitos</p>
+                <div className="space-y-1.5">
+                  {Object.entries(debtsByRole).map(([role, list]) => {
+                    const subtotal = list.reduce((s, d) => s + (parseBRLInput(d.value) ?? 0), 0)
+                    return (
+                      <div key={role} className="rounded-lg border border-amber-200 bg-amber-50/40 p-2.5">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                            {role === 'VENDIDO' ? 'Veículo vendido'
+                              : role === 'TROCA'    ? 'Veículo recebido'
+                              : role === 'COMPRADO' ? 'Veículo comprado'
+                              : 'Geral'}
+                          </p>
+                          <p className="text-xs font-semibold text-amber-900">{fmtBRL(subtotal)}</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          {list.map((d, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs text-gray-700">
+                              <span className="truncate">
+                                {d.type} {d.description ? `· ${d.description}` : ''}
+                                <span className="text-gray-400 ml-1">({d.responsavel || '—'})</span>
+                              </span>
+                              <span className="whitespace-nowrap font-medium">{fmtBRL(parseBRLInput(d.value) ?? 0)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Serviços / Taxa de documentação */}
+            {(docFee > 0 || discount > 0 || payoff > 0) && (
+              <div className="mb-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Outros</p>
+                <div className="space-y-1 rounded-lg border border-gray-200 bg-white p-2.5 text-xs text-gray-700">
+                  {docFee > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span>Taxa de documentação</span>
+                      <span className="font-medium">{fmtBRL(docFee)}</span>
+                    </div>
+                  )}
+                  {payoff > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span>Quitação de financiamento</span>
+                      <span className="font-medium">{fmtBRL(payoff)}</span>
+                    </div>
+                  )}
+                  {discount > 0 && (
+                    <div className="flex items-center justify-between text-emerald-700">
+                      <span>Desconto aprovado</span>
+                      <span className="font-medium">− {fmtBRL(discount)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Total */}
+            <div className="border-t border-gray-200 pt-3 mt-2">
+              <div className="flex items-center justify-between rounded-lg bg-gray-900 px-4 py-3 text-white">
+                <span className="text-sm font-medium">Total da Operação</span>
+                <span className="text-xl font-bold">{fmtBRL(totalOperacao)}</span>
+              </div>
+            </div>
           </div>
-        )}
+        </div>
+
+        {/* ─── COLUNA DIREITA: PAGAMENTOS ─────────────────────────────────── */}
+        <div className="lg:col-span-5 space-y-3">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                <DollarSign size={14} className="text-brand-600" />
+                Pagamentos
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setEditing(null); setModalOpen(true) }}
+                className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+              >
+                <Plus size={13} />Novo Pagamento
+              </button>
+            </div>
+
+            {/* Lista de pagamentos */}
+            {form.payments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
+                <DollarSign size={20} />
+                <p>Nenhum pagamento cadastrado</p>
+                <p>Clique em "+ Novo Pagamento" para adicionar</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {form.payments.map((p) => (
+                  <div key={p.id} className="rounded-lg border border-gray-200 bg-gray-50/40 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                          <span className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
+                            {PAYMENT_ENTRY_LABELS[p.type]}
+                          </span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${PAYMENT_STATUS_COLOR[p.status]}`}>
+                            {PAYMENT_STATUS_LABELS[p.status]}
+                          </span>
+                          {p.installments && (
+                            <span className="text-[10px] text-gray-500">{p.installments}x</span>
+                          )}
+                        </div>
+                        <p className="text-sm font-bold text-gray-900">{fmtBRL(parseBRLInput(p.amount) ?? 0)}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-gray-500">
+                          {p.dueDate && <span>Venc: {new Date(p.dueDate).toLocaleDateString('pt-BR')}</span>}
+                          {p.bank && <span>· {p.bank}</span>}
+                          {p.pixKey && <span>· Pix</span>}
+                        </div>
+                        {p.notes && <p className="mt-1 text-[11px] text-gray-400 italic truncate">{p.notes}</p>}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button type="button" onClick={() => handleEditPayment(p)}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                          title="Editar">
+                          <Save size={12} />
+                        </button>
+                        <button type="button" onClick={() => handleRemovePayment(p.id)}
+                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          title="Excluir">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Resumo financeiro */}
+            <div className="mt-4 space-y-1 border-t border-gray-200 pt-3 text-xs">
+              <div className="flex items-center justify-between text-gray-600">
+                <span>Total pagamentos</span>
+                <span className="font-semibold">{fmtBRL(totalPagamentos)}</span>
+              </div>
+              <div className="flex items-center justify-between text-gray-600">
+                <span>Total da operação</span>
+                <span className="font-semibold">{fmtBRL(totalOperacao)}</span>
+              </div>
+            </div>
+
+            {/* Banner Saldo */}
+            <div className={`mt-3 rounded-lg border-2 p-3 ${
+              emAberto > 0
+                ? 'border-amber-300 bg-amber-50'
+                : excedente > 0
+                  ? (trocoOk ? 'border-emerald-300 bg-emerald-50' : 'border-blue-300 bg-blue-50')
+                  : 'border-emerald-300 bg-emerald-50'
+            }`}>
+              {emAberto > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-amber-900">Existe valor em aberto</p>
+                  <p className="mt-0.5 text-base font-bold text-amber-900">{fmtBRL(emAberto)}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setEditing(null); setModalOpen(true) }}
+                    className="mt-2 inline-flex items-center gap-1 rounded bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-amber-700"
+                  >
+                    <Plus size={11} />Adicionar pagamento
+                  </button>
+                </>
+              )}
+              {excedente > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-blue-900">Valor excedente</p>
+                  <p className="mt-0.5 text-base font-bold text-blue-900">{fmtBRL(excedente)}</p>
+                  {!trocoOk && (
+                    <button
+                      type="button"
+                      onClick={() => setTrocoOpen(true)}
+                      className="mt-2 inline-flex items-center gap-1 rounded bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700"
+                    >
+                      <DollarSign size={11} />Cadastrar troco
+                    </button>
+                  )}
+                  {trocoOk && (
+                    <p className="mt-1 text-[11px] text-emerald-700">✓ Troco cadastrado em {fmtBRL(change)}</p>
+                  )}
+                </>
+              )}
+              {emAberto === 0 && excedente === 0 && (
+                <p className="text-xs font-semibold text-emerald-900">✓ Saldo zerado — pronto para finalizar</p>
+              )}
+            </div>
+
+            {/* Troco já cadastrado (resumo) */}
+            {change > 0 && (
+              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Troco</p>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-700">{form.changeBeneficiary || '—'}</span>
+                  <span className="font-bold text-gray-900">{fmtBRL(change)}</span>
+                </div>
+                <button type="button" onClick={() => setTrocoOpen(true)} className="mt-1 text-[10px] text-brand-600 hover:underline">
+                  Editar troco
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="space-y-4">
-
-        {/* VENDA */}
-        {form.type === 'VENDA' && (
-          <>
-            <Field label="Valor de Venda (R$)" required>
-              <input {...$('saleAmount')} />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Sinal / Entrada (R$)">
-                <input {...$('signalAmount')} />
-              </Field>
-              <Field label="Valor Financiado (R$)">
-                <input {...$('financedAmount')} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Forma de Pagamento">
-                <select className={inputCls} value={form.paymentType} onChange={fi('paymentType')}>
-                  <option value="">Selecione</option>
-                  {PAYMENT_TYPES.map((pt) => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
-                </select>
-              </Field>
-              <Field label="Banco / Financiadora">
-                <BankCombo value={form.paymentBank} onChange={(v) => setField('paymentBank', v)} placeholder="Buscar banco..." />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Taxa de Documentação (R$)">
-                <input {...$('documentationFee')} />
-              </Field>
-              <Field label="Desconto (R$)">
-                <input {...$('discountAmount')} />
-              </Field>
-            </div>
-
-            {/* Painel de Troco — aparece quando há sobra ao cliente */}
-            {sobrando > 0 && (
-              <div className="rounded-xl border-2 border-green-200 bg-green-50/40 p-4 space-y-3">
-                <p className="flex items-center gap-2 text-sm font-semibold text-green-800">
-                  <DollarSign size={14} />
-                  Cadastrar Troco ao Cliente
-                </p>
-                <p className="text-xs text-green-700">
-                  Sobra detectada: <strong>{fmtBRL(sobrando)}</strong>.
-                  Cadastre o troco com dados bancários do beneficiário.
-                </p>
-                <Field label="Valor do Troco (R$)" required>
-                  <input {...$('changeAmount')} />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Beneficiário">
-                    <input className={inputCls} placeholder="Nome do titular"
-                      value={form.changeBeneficiary}
-                      onChange={fi('changeBeneficiary')} />
-                  </Field>
-                  <Field label="CPF/CNPJ do Beneficiário">
-                    <input className={inputCls} placeholder="CPF ou CNPJ"
-                      value={form.changeBeneficiaryCpf}
-                      onChange={fi('changeBeneficiaryCpf')} />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="Banco">
-                    <BankCombo value={form.changeBank} onChange={(v) => setField('changeBank', v)} />
-                  </Field>
-                  <Field label="Agência">
-                    <input className={inputCls} placeholder="0000"
-                      value={form.changeAgency}
-                      onChange={fi('changeAgency')} />
-                  </Field>
-                  <Field label="Conta">
-                    <input className={inputCls} placeholder="00000-0"
-                      value={form.changeAccount}
-                      onChange={fi('changeAccount')} />
-                  </Field>
-                </div>
-                <Field label="Chave PIX (opcional)">
-                  <input className={inputCls} placeholder="CPF, e-mail, telefone ou chave aleatória"
-                    value={form.changePix}
-                    onChange={fi('changePix')} />
-                </Field>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* COMPRA */}
-        {form.type === 'COMPRA' && (
-          <>
-            <Field label="Valor de Compra (R$)" required>
-              <input {...$('purchaseAmount')} />
-            </Field>
-            <Field label="Forma de Pagamento">
-              <select className={inputCls} value={form.paymentType} onChange={fi('paymentType')}>
-                <option value="">Selecione</option>
-                {PAYMENT_TYPES.map((pt) => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
-              </select>
-            </Field>
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
-              <p className="flex items-center gap-2 text-sm font-medium text-blue-800">
-                <Info size={14} />
-                Dados bancários do cliente para recebimento
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Beneficiário">
-                  <input className={inputCls} placeholder="Nome do titular" value={form.changeBeneficiary} onChange={fi('changeBeneficiary')} />
-                </Field>
-                <Field label="PIX">
-                  <input className={inputCls} placeholder="Chave PIX" value={form.changePix} onChange={fi('changePix')} />
-                </Field>
-              </div>
-            </div>
-            {form.vehicle.hasFinancing && (
-              <div className="grid grid-cols-2 gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <Field label="Banco de Quitação">
-                  <BankCombo value={form.payoffBank} onChange={(v) => setField('payoffBank', v)} />
-                </Field>
-                <Field label="Valor de Quitação (R$)">
-                  <input {...$('payoffAmount')} />
-                </Field>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* TROCA */}
-        {form.type === 'TROCA' && (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Valor do Veículo Vendido (R$)" required>
-                <input {...$('saleAmount')} />
-              </Field>
-              <Field label="Valor Aceito na Troca (R$)">
-                <input {...$('tradeValue')} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Sinal (R$)">
-                <input {...$('signalAmount')} />
-              </Field>
-              <Field label="Financiamento (R$)">
-                <input {...$('financedAmount')} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Banco / Financiadora">
-                <BankCombo value={form.paymentBank} onChange={(v) => setField('paymentBank', v)} placeholder="Buscar banco..." />
-              </Field>
-              <Field label="Taxa de Documentação (R$)">
-                <input {...$('documentationFee')} />
-              </Field>
-            </div>
-            {form.tradeVehicle.hasFinancing && (
-              <div className="grid grid-cols-2 gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <Field label="Banco Quitação (Veículo Recebido)">
-                  <BankCombo value={form.payoffBank} onChange={(v) => setField('payoffBank', v)} />
-                </Field>
-                <Field label="Valor de Quitação (R$)">
-                  <input {...$('payoffAmount')} />
-                </Field>
-              </div>
-            )}
-            <Field label="Troco ao Cliente (R$)">
-              <input {...$('changeAmount')} />
-            </Field>
-            {form.changeAmount && parseBRLInput(form.changeAmount) !== null && parseBRLInput(form.changeAmount)! > 0 && (
-              <div className="grid grid-cols-2 gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <Field label="Beneficiário (troco)">
-                  <input className={inputCls} placeholder="Nome do titular" value={form.changeBeneficiary} onChange={fi('changeBeneficiary')} />
-                </Field>
-                <Field label="PIX">
-                  <input className={inputCls} placeholder="Chave PIX" value={form.changePix} onChange={fi('changePix')} />
-                </Field>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* CONSIGNAÇÃO */}
-        {form.type === 'CONSIGNACAO' && (
-          <>
-            <Field label="Valor Mínimo ao Proprietário (R$)" required>
-              <input {...$('consignMinValue')} />
-            </Field>
-            <Field label="Valor de Anúncio (R$)">
-              <input {...$('saleAmount')} />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Comissão da Loja (%)">
-                <input className={inputCls} type="number" min="0" max="100" placeholder="10" value={form.consignCommPct} onChange={fi('consignCommPct')} />
-              </Field>
-              <Field label="Prazo (dias)">
-                <input className={inputCls} type="number" placeholder="30" value={form.consignDeadline} onChange={fi('consignDeadline')} />
-              </Field>
-            </div>
-          </>
-        )}
-      </div>
+      {/* Modais */}
+      {modalOpen && (
+        <PaymentModal
+          initial={editing ?? undefined}
+          onSave={handleAddPayment}
+          onClose={() => { setModalOpen(false); setEditing(null) }}
+        />
+      )}
+      {trocoOpen && (
+        <ChangeModal
+          form={form}
+          setField={setField}
+          excedente={excedente}
+          onClose={() => setTrocoOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -3028,6 +3477,32 @@ export default function NovaNegociacaoPage() {
           changePix:     d.changePix     ?? '',
           payoffAmount:  num(d.payoffAmount),
           payoffBank:    d.payoffBank    ?? '',
+          // Reconstrói o array `payments` a partir dos dados legados pra
+          // que o usuário veja seus pagamentos antigos quando reabrir a edição.
+          payments: (() => {
+            const list: PaymentEntry[] = []
+            const signal = parseBRLInput(num(d.signalAmount))
+            if (signal && signal > 0) {
+              list.push({
+                ...EMPTY_PAYMENT(),
+                type: 'SINAL',
+                status: 'CONFIRMADO',
+                amount: num(d.signalAmount),
+                bank: d.paymentBank ?? '',
+              })
+            }
+            const financed = parseBRLInput(num(d.financedAmount))
+            if (financed && financed > 0) {
+              list.push({
+                ...EMPTY_PAYMENT(),
+                type: 'FINANCIAMENTO',
+                status: 'PENDENTE',
+                amount: num(d.financedAmount),
+                bank: d.paymentBank ?? '',
+              })
+            }
+            return list
+          })(),
           deliveryDate:  d.deliveryDate  ? String(d.deliveryDate).slice(0, 10) : '',
           receiptDate:   '',
           schedulingNotes: '',
@@ -3146,21 +3621,32 @@ export default function NovaNegociacaoPage() {
 
         // ── Fechamento financeiro: faltando = 0; sobrando exige troco ──────
         // Aplicável a VENDA e TROCA (COMPRA/CONSIG têm fluxo diferente).
+        // Usa o novo modelo: total cadastrado = soma dos pagamentos do array
+        // form.payments (descartando CANCELADO).
         if (errs.length === 0 && (form.type === 'VENDA' || form.type === 'TROCA')) {
           const sale     = parseBRLInput(form.saleAmount)       ?? 0
           const trade    = parseBRLInput(form.tradeValue)       ?? 0
           const docFee   = parseBRLInput(form.documentationFee) ?? 0
           const discount = parseBRLInput(form.discountAmount)   ?? 0
-          const signal   = parseBRLInput(form.signalAmount)     ?? 0
-          const financed = parseBRLInput(form.financedAmount)   ?? 0
           const payoff   = parseBRLInput(form.payoffAmount)     ?? 0
           const change   = parseBRLInput(form.changeAmount)     ?? 0
+          // Débitos que o cliente paga / são incluídos na negociação
+          const debtsCliente = form.debts.reduce((s, d) => {
+            const v = parseBRLInput(d.value) ?? 0
+            return ['CLIENTE', 'COMPRADOR'].includes(String(d.responsavel ?? '').toUpperCase())
+              ? s + v
+              : s
+          }, 0)
 
           const expected = form.type === 'VENDA'
-            ? sale + docFee - discount
-            : (sale - trade) + docFee - discount + payoff
-          const cadastrado = signal + financed
-          const diff       = expected - cadastrado
+            ? sale + docFee + debtsCliente - discount
+            : (sale - trade) + docFee + debtsCliente - discount + payoff
+          // Soma do array de pagamentos profissional
+          const cadastrado = form.payments.reduce((s, p) => {
+            if (p.status === 'CANCELADO') return s
+            return s + (parseBRLInput(p.amount) ?? 0)
+          }, 0)
+          const diff = expected - cadastrado
 
           if (diff > 0.01)
             errs.push(`Há valor faltando na negociação: ${diff.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Cadastre os pagamentos.`)
@@ -3284,16 +3770,45 @@ export default function NovaNegociacaoPage() {
       } : undefined,
       saleAmount:       parseBRLInput(form.saleAmount),
       purchaseAmount:   parseBRLInput(form.purchaseAmount),
-      signalAmount:     parseBRLInput(form.signalAmount),
-      financedAmount:   parseBRLInput(form.financedAmount),
+      // Os campos legados signalAmount/financedAmount/paymentType/paymentBank
+      // são DERIVADOS do array form.payments (novo modelo multi-pagamento)
+      // — backend continua aceitando shape antigo sem mudanças.
+      signalAmount:     (() => {
+        const sum = form.payments
+          .filter((p) => p.status !== 'CANCELADO' && (p.type === 'SINAL' || p.type === 'ENTRADA' || p.type === 'DINHEIRO' || p.type === 'PIX'))
+          .reduce((s, p) => s + (parseBRLInput(p.amount) ?? 0), 0)
+        return sum > 0 ? sum : parseBRLInput(form.signalAmount)
+      })(),
+      financedAmount:   (() => {
+        const sum = form.payments
+          .filter((p) => p.status !== 'CANCELADO' && p.type === 'FINANCIAMENTO')
+          .reduce((s, p) => s + (parseBRLInput(p.amount) ?? 0), 0)
+        return sum > 0 ? sum : parseBRLInput(form.financedAmount)
+      })(),
       documentationFee: parseBRLInput(form.documentationFee),
       discountAmount:   parseBRLInput(form.discountAmount),
       tradeValue:       parseBRLInput(form.tradeValue),
       changeAmount:     parseBRLInput(form.changeAmount),
       payoffAmount:     parseBRLInput(form.payoffAmount),
       payoffBank:       form.payoffBank       || null,
-      paymentType:      form.paymentType      || null,
-      paymentBank:      form.paymentBank      || null,
+      paymentType:      (form.payments.find((p) => p.status !== 'CANCELADO')?.type ?? form.paymentType) || null,
+      paymentBank:      (form.payments.find((p) => p.bank)?.bank ?? form.paymentBank) || null,
+      // Novo array completo de pagamentos — backend pode persistir se aceitar
+      payments:         form.payments
+        .filter((p) => p.status !== 'CANCELADO')
+        .map((p) => ({
+          type:         p.type,
+          status:       p.status,
+          amount:       parseBRLInput(p.amount) ?? 0,
+          dueDate:      p.dueDate      || null,
+          paidAt:       p.paidAt       || null,
+          bank:         p.bank         || null,
+          cardBrand:    p.cardBrand    || null,
+          installments: p.installments ? Number(p.installments) : null,
+          firstDueDate: p.firstDueDate || null,
+          pixKey:       p.pixKey       || null,
+          notes:        p.notes        || null,
+        })),
       changeBeneficiary: form.changeBeneficiary || null,
       changePix:        form.changePix        || null,
       consignMinValue:  parseBRLInput(form.consignMinValue),

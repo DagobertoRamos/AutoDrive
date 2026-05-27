@@ -19,15 +19,108 @@ import { PlateInput } from '@/components/estoque/PlateInput'
 import { VehicleComboBox, type VehicleComboSelection } from '@/components/estoque/VehicleComboBox'
 import { FipeWizard, type FipeResult } from '@/components/estoque/FipeWizard'
 import type { VehicleLookupData, VehicleCategory } from '@/lib/vehicle-lookup/types'
-import { maskBRL, parseBRL, maskKM, parseKM } from '@/lib/masks'
+import { maskBRL, parseBRL, maskKM, parseKM, numberToBRLMask } from '@/lib/masks'
 import { StepCliente, type CustomerLite } from './_components/StepCliente'
 import { FipeMiniChart } from './_components/FipeMiniChart'
 import { EvaluationSections } from './_components/EvaluationSections'
 import { CautelarUploader, type AttachmentLite } from './_components/CautelarUploader'
+import { StepDocumentoVeiculo, type ExtractionSource } from './_components/StepDocumentoVeiculo'
+import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface Unit { id: string; name: string }
+
+// ── Normalização de marca para casamento com catálogo FIPE ────────────────────
+// A API Placas pode trazer "VW", "VW - VolksWagen", "M.BENZ", etc. — o catálogo
+// FIPE usa o nome canônico ("Volkswagen", "Mercedes-Benz"). Esta tabela mapeia
+// os apelidos comuns para o canônico antes de comparar.
+const BRAND_ALIAS: Record<string, string> = {
+  'VW':        'VOLKSWAGEN',
+  'VOLKS':     'VOLKSWAGEN',
+  'GM':        'CHEVROLET',
+  'MBENZ':     'MERCEDESBENZ',
+  'M BENZ':    'MERCEDESBENZ',
+  'M.BENZ':    'MERCEDESBENZ',
+  'MERCEDES':  'MERCEDESBENZ',
+  'CITROEN':   'CITROEN',
+  'CITROËN':   'CITROEN',
+  'PEUGEOT':   'PEUGEOT',
+}
+function normalizeBrandName(s: string | undefined | null): string {
+  if (!s) return ''
+  let n = String(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  // Remove sufixos depois de hífen ("VW - VOLKSWAGEN" → "VOLKSWAGEN" via alias da 1ª parte)
+  const parts = n.split(/\s*-\s*/)
+  for (const p of parts) {
+    const compact = p.replace(/[^A-Z0-9]/g, '')
+    if (BRAND_ALIAS[compact] || BRAND_ALIAS[p.trim()]) return BRAND_ALIAS[compact] || BRAND_ALIAS[p.trim()]
+  }
+  // Caso geral: pega a parte mais longa e remove pontuação
+  const best = parts.reduce((a, b) => (b.length > a.length ? b : a), '')
+  const compact = best.replace(/[^A-Z0-9]/g, '')
+  return BRAND_ALIAS[compact] ?? compact
+}
+function normalizeModelName(s: string | undefined | null): string {
+  if (!s) return ''
+  return String(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '')
+}
+
+// Tokeniza um nome de veículo em palavras significativas para matching fuzzy.
+// "FIT LX 1.4 16V FLEX" → ['FIT', 'LX', '14', '16V', 'FLEX']
+// Filtra stop-words e pedaços muito curtos pra evitar match falso.
+const STOP_WORDS = new Set(['DE', 'DA', 'DO', 'COM', 'P', 'V', 'A', 'O', 'E'])
+function tokenizeVehicleName(s: string | undefined | null): string[] {
+  if (!s) return []
+  return String(s)
+    .toUpperCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .split(/[\s\-\/\.\,\(\)]+/)
+    .map((t) => t.replace(/[^A-Z0-9]/g, ''))
+    .filter((t) => t.length >= 2 && !STOP_WORDS.has(t))
+}
+
+/**
+ * Faz o melhor match de um modelo da API contra a lista FIPE.
+ * Estratégia: tokeniza ambos, conta quantos tokens do TARGET aparecem no
+ * candidato. Maior score ganha. Empate é desempatado por menor diferença
+ * no comprimento total (modelo mais "enxuto" tipicamente é o certo).
+ *
+ * Exemplo: target "FIT LX FLEX" (tokens FIT/LX/FLEX) vs candidatos:
+ *   - "FIT LX 1.4 16V FLEX MEC."     → score 3, len 27
+ *   - "FIT EX 1.5 16V FLEX AUT."     → score 2, len 27
+ *   - "FIT TWIST 1.5 16V FLEX AUT."  → score 2, len 28
+ * Vence o primeiro (FIT LX 1.4 16V FLEX MEC.).
+ */
+function bestFipeMatch<T extends { name: string }>(
+  list: T[],
+  target: string | undefined | null,
+  modelYearHint?: number | null,
+): T | undefined {
+  if (!list.length || !target) return undefined
+  const tTokens = new Set(tokenizeVehicleName(target))
+  if (tTokens.size === 0) return undefined
+  let best: { item: T; score: number; len: number; yearMatch: number } | null = null
+  for (const item of list) {
+    const cTokens = tokenizeVehicleName(item.name)
+    let score = 0
+    for (const t of cTokens) if (tTokens.has(t)) score++
+    if (score === 0) continue
+    const len = item.name.length
+    // Bônus se o nome do candidato menciona o ano modelo (alguns retornos da
+    // FIPE incluem ano na descrição)
+    const yearMatch = modelYearHint && item.name.includes(String(modelYearHint)) ? 1 : 0
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && yearMatch > best.yearMatch) ||
+      (score === best.score && yearMatch === best.yearMatch && len < best.len)
+    ) {
+      best = { item, score, len, yearMatch }
+    }
+  }
+  return best?.item
+}
 
 // Steps reformulados: Step 1 agora consolida placa + documentos + dados do veículo.
 // Step 2 (legado "Veículo") foi mergeado em Step 1 e não é mais navegado.
@@ -52,6 +145,98 @@ const ANOS = (() => {
   for (let y = cur; y >= 1950; y--) out.push(y)
   return out
 })()
+
+// ── Normalizadores: APIs/documentos retornam valores em formatos variados ──
+// (ex: "ÁLCOOL/GASOLINA", "ALCOOL", "FLEX") — mapeamos para as opções dos
+// <select> do formulário: Flex | Gasolina | Etanol | Diesel | Híbrido |
+// Elétrico | GNV. Tudo case-insensitive, com normalização de acentos.
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+function normalizeFuel(raw: string): string {
+  const s = stripAccents(raw).toUpperCase().trim()
+  if (!s) return raw
+  if (s.includes('ALCOOL') && s.includes('GASOLINA')) return 'Flex'
+  if (s.includes('FLEX'))                              return 'Flex'
+  if (s.includes('HIBRID'))                            return 'Híbrido'
+  if (s.includes('ELETR'))                             return 'Elétrico'
+  if (s.includes('GNV'))                               return 'GNV'
+  if (s.includes('DIESEL'))                            return 'Diesel'
+  if (s.includes('ETANOL') || s === 'ALCOOL')          return 'Etanol'
+  if (s.includes('GASOLINA'))                          return 'Gasolina'
+  return raw
+}
+
+function normalizeTransmission(raw: string): string {
+  const s = stripAccents(raw).toUpperCase().trim()
+  if (!s) return raw
+  if (s.includes('CVT'))                                                       return 'CVT'
+  if (s.includes('AUTOMATIZ') || s.includes('AMT') || s.includes('DUALOGIC')) return 'Automatizado'
+  if (s.includes('SEMI'))                                                      return 'Semi-automático'
+  if (s.includes('AUTOMAT') || s.includes('AUTO'))                             return 'Automático'
+  if (s.includes('MANUAL') || s.includes('MEC'))                               return 'Manual'
+  return raw
+}
+
+function normalizeBodyType(raw: string): string {
+  const s = stripAccents(raw).toUpperCase().trim()
+  if (!s) return raw
+  if (s.includes('SUV'))                                  return 'SUV'
+  if (s.includes('CROSS'))                                return 'Crossover'
+  if (s.includes('HATCH'))                                return 'Hatch'
+  if (s.includes('SEDAN'))                                return 'Sedan'
+  if (s.includes('PICAPE') || s.includes('PICKUP'))       return 'Picape'
+  if (s.includes('CAMINHON'))                             return 'Caminhonete'
+  if (s.includes('UTILITAR'))                             return 'Utilitário'
+  if (s.includes('ESPORT'))                               return 'Esportivo'
+  if (s.includes('COUPE') || s.includes('COUPÉ'))         return 'Coupé'
+  if (s.includes('CONVERS'))                              return 'Conversível'
+  if (s.includes('VAN')   || s.includes('MINIVAN'))       return 'Van/Minivan'
+  if (s.includes('WAGON') || s.includes('PERUA'))         return 'Wagon/Perua'
+  if (s.includes('BUGGY'))                                return 'Buggy'
+  return raw
+}
+
+// Converte cilindrada em cc (ex "1000", "1498") para o formato dos selects:
+// CARRO usa "1.0"/"1.5"/"2.0" (litros arredondados), MOTO/CAMINHAO usa "Xcc".
+function ccToEngineOption(displacement: string | undefined, tipo: 'CARRO' | 'MOTO' | 'CAMINHAO'): string | undefined {
+  if (!displacement) return undefined
+  const n = parseInt(displacement.replace(/\D/g, ''), 10)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  if (tipo === 'CARRO') {
+    // 999 → 1.0, 1498 → 1.5, 1968 → 2.0, 2997 → 3.0
+    const liters = Math.round(n / 100) / 10
+    if (liters >= 6.0) return '6.0+'
+    // Tenta achar a opção mais próxima do array ENGINE_CARRO
+    const candidate = liters.toFixed(1)
+    return candidate
+  }
+  if (tipo === 'MOTO') {
+    // Arredonda pra dezena mais próxima do catálogo
+    if (n >= 2500) return '2500cc+'
+    return `${n}cc`
+  }
+  if (tipo === 'CAMINHAO') {
+    if (n >= 1000) return '1000cc+'
+    return `${n}cc`
+  }
+  return undefined
+}
+
+// Extrai potência em CV de uma string ("128", "128 CV", "128CV") e devolve
+// a opção mais próxima do select POWER_OPTIONS (50/60/70/80/.../700+).
+function normalizePower(raw: string | undefined): string | undefined {
+  if (!raw) return undefined
+  const m = String(raw).match(/(\d+)/)
+  if (!m) return undefined
+  const n = parseInt(m[1], 10)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  if (n >= 700) return '700 cv+'
+  // Arredonda pra dezena mais próxima
+  const rounded = Math.round(n / 10) * 10
+  return `${rounded} cv`
+}
 
 // ── Listas de motorização por tipo de veículo ──────────────────────────────
 // CARRO: cilindrada em litros (1.0 → 6.0+)
@@ -131,14 +316,21 @@ function Section({ title, icon, children }: {
   )
 }
 
+// Tag (componente "campo extraído") removido — não há mais card de dados
+// extraídos. O preenchimento é silencioso direto nos inputs do formulário.
+
 // ── Step indicator ─────────────────────────────────────────────────────────────
 
 // STEPS atualizado: Step 1 agora cobre Placa + Documentos + Dados do Veículo.
 // "Veículo" (antigo step 2) foi removido da navegação para evitar duplicidade.
+// Etapa "FIPE / Preços" (step 3) foi REMOVIDA do fluxo do avaliador a pedido
+// do operador — precificação é feita pelo gerente após o envio para aprovação.
+// Os campos de valor avaliado / desejado / mínimo / sugerido continuam no
+// state pra compatibilidade com o payload existente, mas não são editáveis
+// pelo vendedor/avaliador.
 const STEPS = [
   { num: 0, label: 'Cliente',      icon: <User className="h-4 w-4" /> },
   { num: 1, label: 'Veículo',      icon: <Car className="h-4 w-4" /> },
-  { num: 3, label: 'FIPE / Preços', icon: <DollarSign className="h-4 w-4" /> },
   { num: 4, label: 'Cautelar',     icon: <ShieldCheck className="h-4 w-4" /> },
   { num: 5, label: 'Avaliação',    icon: <ClipboardCheck className="h-4 w-4" /> },
   { num: 6, label: 'Resultado',    icon: <FileCheck className="h-4 w-4" /> },
@@ -264,6 +456,30 @@ function AvaliacaoForm() {
   // Documentos do veículo (uploads pendentes — gravados após criar avaliação)
   const [pendingDocs, setPendingDocs] = useState<File[]>([])
 
+  // ── Document-first flow (CRLV) ─────────────────────────────────────────────
+  // O passo 1 só libera o restante do formulário depois que o operador subiu o
+  // CRLV (preferencialmente PDF) OU optou por seguir sem documento (que então
+  // libera a consulta por placa, marcada como "complementar").
+  const [documentUploaded, setDocumentUploaded] = useState(false)
+  const [documentSkipped,  setDocumentSkipped]  = useState(false)
+  const [extractedData,    setExtractedData]    = useState<ExtractedVehicle | null>(null)
+  const [extractionSource, setExtractionSource] = useState<ExtractionSource | null>(null)
+  const [extractionConfidence, setExtractionConfidence] = useState<ExtractionConfidence | null>(null)
+  // Para divergência (P1): origem de cada campo (documento / api / manual).
+  const [fieldSource, setFieldSource] = useState<Record<string, 'documento' | 'api' | 'manual'>>({})
+
+  // Opcionais do veículo (chips multi-select). Persistidos em evaluationNotes
+  // prefixados com [Opcionais] enquanto não há coluna dedicada no schema.
+  const [opcionais, setOpcionais] = useState<string[]>([])
+
+  // Pré-preenche unidade com a unidade do usuário logado (default operacional).
+  // Sem isso, o vendedor precisava escolher manualmente mesmo quando só pertence
+  // a uma unidade — UX ruim e bloqueava o avanço da etapa.
+  useEffect(() => {
+    const sessionUnit = (session?.user as { unitId?: string | null } | undefined)?.unitId
+    if (sessionUnit && !unitId) setUnitId(sessionUnit)
+  }, [session, unitId])
+
   // ── Carrega marcas FIPE quando muda o tipo de veículo ──────────────────────
   useEffect(() => {
     let alive = true
@@ -283,6 +499,43 @@ function AvaliacaoForm() {
     return () => { alive = false }
   }, [tipoVeiculo])
 
+  // ── Auto-seleção de marca FIPE a partir do texto da API Placas ─────────────
+  // Quando o catálogo FIPE termina de carregar, tenta encontrar a marca cujo
+  // nome normalizado (sem acento, sem pontuação, com aliases tipo VW→
+  // VOLKSWAGEN) bate com o que veio do lookup. Resolve o bug "marca ficou em
+  // 'Selecione' mesmo a API tendo retornado VOLKSWAGEN".
+  useEffect(() => {
+    if (brandCode) return                              // já selecionado manualmente (ou auto antes)
+    if (!lookupData?.brand) return                     // nada para casar
+    if (!fipeBrands.length) return                     // catálogo ainda não chegou
+    const target = normalizeBrandName(lookupData.brand)
+    if (!target) return
+    // Estratégia em camadas: igualdade exata > prefixo > contém > tokens
+    let hit = fipeBrands.find((b) => normalizeBrandName(b.name) === target)
+    if (!hit) hit = fipeBrands.find((b) => {
+      const cand = normalizeBrandName(b.name)
+      return cand.startsWith(target) || target.startsWith(cand)
+    })
+    if (!hit) hit = fipeBrands.find((b) => normalizeBrandName(b.name).includes(target))
+    // Token scoring como último recurso (cobre "VW - VOLKSWAGEN" vs "Volkswagen")
+    if (!hit) hit = bestFipeMatch(fipeBrands, lookupData.brand) as typeof fipeBrands[number] | undefined
+    if (hit) {
+      setBrandCode(hit.code)
+      setBrandName(hit.name)
+    }
+  }, [fipeBrands, lookupData?.brand, brandCode])
+
+  // Aplica tipo de veículo detectado pela API ao seletor (CARRO/MOTO/CAMINHAO).
+  // Sem isso o catálogo FIPE buscava sempre 'carros' e a marca real (ex: Honda
+  // moto) nunca aparecia na lista.
+  useEffect(() => {
+    const vt = lookupData?.vehicleType
+    if (!vt) return
+    if (vt === 'CAR'        && tipoVeiculo !== 'CARRO')    setTipoVeiculo('CARRO')
+    if (vt === 'MOTORCYCLE' && tipoVeiculo !== 'MOTO')     setTipoVeiculo('MOTO')
+    if (vt === 'TRUCK'      && tipoVeiculo !== 'CAMINHAO') setTipoVeiculo('CAMINHAO')
+  }, [lookupData?.vehicleType])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Carrega modelos FIPE quando muda a marca ───────────────────────────────
   useEffect(() => {
     if (!brandCode) { setFipeModels([]); return }
@@ -301,6 +554,21 @@ function AvaliacaoForm() {
     return () => { alive = false }
   }, [brandCode, tipoVeiculo])
 
+  // ── Auto-seleção de modelo FIPE a partir do texto da API Placas ────────────
+  // Estratégia: token scoring via bestFipeMatch (lida com diferenças entre
+  // o que a API retorna — "FIT LX FLEX" — e o que a FIPE catalogou —
+  // "FIT LX 1.4 16V Flex Mec."). Usa modelYear como tiebreaker.
+  useEffect(() => {
+    if (modelCode) return
+    if (!lookupData?.model) return
+    if (!fipeModels.length) return
+    const hit = bestFipeMatch(fipeModels, lookupData.model, lookupData.modelYear ?? null)
+    if (hit) {
+      setModelCode(hit.code)
+      setModelName(hit.name)
+    }
+  }, [fipeModels, lookupData?.model, lookupData?.modelYear, modelCode])
+
   // ── Etapa 3 — FIPE / Preços ──────────────────────────────────────────────────
   const [fipeCode,       setFipeCode]       = useState('')
   const [fipeValue,      setFipeValue]      = useState('')
@@ -314,7 +582,10 @@ function AvaliacaoForm() {
 
   const handleFipeComplete = (r: FipeResult) => {
     setFipeCode(r.codigoFipe)
-    setFipeValue(r.valorNumber > 0 ? r.valorNumber.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : r.valor)
+    // numberToBRLMask converte número-em-reais (91320) → "91.320,00" — round-trip
+    // exato com parseBRL (digitos-como-centavos). Usar toLocaleString direto, ou
+    // pior, .toString(), gera a string "91320" que parseBRL lê como 913,20.
+    setFipeValue(r.valorNumber > 0 ? numberToBRLMask(r.valorNumber) : r.valor)
     setFipeMonth(r.mesReferencia)
     setFipeLastFetch(new Date().toISOString())
     setFipeWizardOpen(false)
@@ -472,25 +743,50 @@ function AvaliacaoForm() {
     setLookupData(data)
     if (!data || status !== 'found') { setDataSource(''); return }
     setDataSource('auto')
+    // RESET de seleções FIPE — sem isso, uma consulta nova não consegue
+    // sobrescrever marca/modelo de uma consulta anterior (os useEffect
+    // de auto-seleção têm guard `if (brandCode) return` pra não sobrescrever
+    // seleção manual). Limpamos pra forçar a re-resolução.
+    if (data.brand) {
+      setBrandCode('')
+      setBrandName('')
+      setModelCode('')
+      setModelName('')
+      setFipeModels([])
+    }
     // Marca/Modelo — pré-preenche fallback manual (substituído se combo for usado)
     if (data.brand) setManualBrand(data.brand)
     if (data.model) setManualModel(data.model)
     // Veículo
     if (data.version)         setVersion(data.version)
     if (data.manufactureYear) setYear(String(data.manufactureYear))
-    if (data.fuel)            setFuel(data.fuel)
-    if (data.color)           setColor(data.color)
-    if (data.transmission)    setTransmission(data.transmission)
-    if (data.doors)           setDoors(String(data.doors))
-    if (data.engine)          setEngine(data.engine)
-    if (data.displacement)    setDisplacement(data.displacement)
-    if (data.power)           setPower(data.power)
-    if (data.bodyType)        setBodyType(data.bodyType)
-    if (data.chassi)          setChassi(data.chassi)
-    if (data.renavam)         setRenavam(data.renavam)
+    // ── Ano Modelo (bug fix) — API retorna mas wizard não estava aplicando
+    if (data.modelYear != null) setYearModel(String(data.modelYear))
+    // Normalização: combustível/câmbio/carroceria vêm em formatos variados
+    if (data.fuel)         setFuel(normalizeFuel(data.fuel))
+    if (data.color)        setColor(data.color)
+    if (data.transmission) setTransmission(normalizeTransmission(data.transmission))
+    if (data.doors)        setDoors(String(data.doors))
+    // Motorização: converte cilindrada (cc) pra "1.0/1.5/2.0" do select.
+    // Se a API trouxer displacement já formatado, normaliza pelo tipoVeiculo atual.
+    if (data.displacement) {
+      const opt = ccToEngineOption(data.displacement, tipoVeiculo)
+      if (opt) setEngine(opt)
+      else     setDisplacement(data.displacement)
+    } else if (data.engine) {
+      setEngine(data.engine)
+    }
+    // Potência: arredonda pra dezena mais próxima do POWER_OPTIONS.
+    if (data.power) {
+      const p = normalizePower(data.power)
+      if (p) setPower(p)
+    }
+    if (data.bodyType)     setBodyType(normalizeBodyType(data.bodyType))
+    if (data.chassi)       setChassi(data.chassi)
+    if (data.renavam)      setRenavam(data.renavam)
     // FIPE
     if (data.fipeCode)           setFipeCode(data.fipeCode)
-    if (data.fipeValue != null)  setFipeValue(String(data.fipeValue))
+    if (data.fipeValue != null)  setFipeValue(numberToBRLMask(data.fipeValue))
     if (data.fipeReferenceMonth) setFipeMonth(data.fipeReferenceMonth)
     // ComboBox — pré-seleciona tipo se disponível
     const vtype = data.vehicleType
@@ -499,9 +795,67 @@ function AvaliacaoForm() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Recebe dados extraídos do CRLV e pré-preenche o formulário ────────────
+  // Estratégia: usa `??` defensivo para evitar sobrescrever valores não nulos
+  // já preenchidos pelo operador. Origem é marcada como "documento" para o P1
+  // de comparação com a API Placas.
+  const handleExtracted = useCallback((data: ExtractedVehicle, src: ExtractionSource, conf: ExtractionConfidence) => {
+    setExtractedData(data)
+    setExtractionSource(src)
+    setExtractionConfidence(conf)
+    setDocumentUploaded(true)
+
+    const sourceMap: Record<string, 'documento' | 'api' | 'manual'> = {}
+    const mark = (field: string) => { sourceMap[field] = 'documento' }
+
+    // Placa
+    if (data.plate && !plate) {
+      setPlate(data.plate)
+      setPlateDisplay(data.plate)
+      mark('plate')
+    }
+    if (data.renavam && !renavam) { setRenavam(data.renavam); mark('renavam') }
+    if (data.chassis && !chassi)  { setChassi(data.chassis);  mark('chassis') }
+
+    // Marca / modelo
+    if (data.brand) {
+      if (!manualBrand) setManualBrand(data.brand)
+      if (!brandName)   setBrandName(data.brand)
+      mark('brand')
+    }
+    if (data.model) {
+      if (!manualModel) setManualModel(data.model)
+      if (!modelName)   setModelName(data.model)
+      mark('model')
+    }
+    if (data.version && !version) { setVersion(data.version); mark('version') }
+
+    // Anos
+    if (data.manufactureYear && !year)      { setYear(String(data.manufactureYear));      mark('manufactureYear') }
+    if (data.modelYear       && !yearModel) { setYearModel(String(data.modelYear));       mark('modelYear') }
+
+    // Outros campos
+    if (data.predominantColor && !color)       { setColor(data.predominantColor);  mark('color') }
+    if (data.fuel             && !fuel)        { setFuel(data.fuel);                mark('fuel') }
+    if (data.bodyType         && !bodyType)    { setBodyType(data.bodyType);        mark('bodyType') }
+    if (data.power            && !power)       { setPower(data.power);              mark('power') }
+    if (data.displacement     && !displacement){ setDisplacement(data.displacement);mark('displacement') }
+    if (data.vehicleType) {
+      setTipoVeiculo(data.vehicleType)
+      mark('vehicleType')
+    }
+
+    setFieldSource((prev) => ({ ...prev, ...sourceMap }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSkipDocument = useCallback((_reason: string) => {
+    setDocumentSkipped(true)
+  }, [])
+
   // ── Sync FIPE quando ComboBox seleciona versão ────────────────────────────────
   useEffect(() => {
-    if (combo.fipeValue != null) setFipeValue(combo.fipeValue.toString())
+    if (combo.fipeValue != null) setFipeValue(numberToBRLMask(combo.fipeValue))
     if (combo.fipeCode)          setFipeCode(combo.fipeCode)
     if (combo.fipeMonth)         setFipeMonth(combo.fipeMonth)
     if (combo.fuel)              setFuel(combo.fuel)
@@ -553,6 +907,7 @@ function AvaliacaoForm() {
       // futura não cria a coluna.
       const extraNotes: string[] = []
       if (yearModel) extraNotes.push(`[Ano Modelo] ${yearModel}`)
+      if (opcionais.length) extraNotes.push(`[Opcionais] ${opcionais.join(', ')}`)
       const combinedNotes = [evaluationNotes, ...extraNotes].filter(Boolean).join('\n').trim() || null
 
       // PATCH — campos pertencentes ao whitelist do endpoint /api/evaluations/[id].
@@ -798,69 +1153,27 @@ function AvaliacaoForm() {
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
 
           {/* ──────────────────────────────────────────────────────────────────
-              Cabeçalho: card "Documento do veículo" com 2 botões (foto/upload)
+              Document-first: upload do CRLV (preferencialmente PDF). O resto
+              do formulário só libera após upload OU skip explícito.
           ────────────────────────────────────────────────────────────────── */}
-          <div className="flex justify-center">
-            <div className="w-full max-w-md rounded-2xl border-2 border-dashed border-brand-300 bg-brand-50/30 p-5 text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-100">
-                <FileCheck className="h-6 w-6 text-brand-700" />
-              </div>
-              <p className="text-sm font-semibold text-gray-900">Documento do veículo</p>
-              <p className="mt-1 text-[11px] text-gray-500">CRLV, ATPV-e, laudo cautelar, etc. Aceita imagem e PDF.</p>
+          <StepDocumentoVeiculo
+            evaluationId={evaluationId}
+            onExtracted={handleExtracted}
+            onSkip={handleSkipDocument}
+            hasUploaded={documentUploaded}
+            hasSkipped={documentSkipped}
+          />
 
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-400 bg-white px-3 py-2 text-xs font-medium text-brand-700 hover:bg-brand-50">
-                  <Car className="h-3.5 w-3.5" /> Tirar foto
-                  <input
-                    type="file" accept="image/*" capture="environment" className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files ?? [])
-                      if (files.length) setPendingDocs((p) => [...p, ...files])
-                      e.target.value = ''
-                    }}
-                  />
-                </label>
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand-400 bg-white px-3 py-2 text-xs font-medium text-brand-700 hover:bg-brand-50">
-                  <ClipboardCheck className="h-3.5 w-3.5" /> Upload
-                  <input
-                    type="file" accept="image/*,application/pdf" multiple className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files ?? []).filter((f) => /^image\/|application\/pdf/.test(f.type))
-                      if (files.length) setPendingDocs((p) => [...p, ...files])
-                      e.target.value = ''
-                    }}
-                  />
-                </label>
-              </div>
+          {/* Card "Dados extraídos do documento" removido — feedback silencioso.
+              Variáveis `extractedData`, `extractionSource`, `extractionConfidence`
+              continuam sendo populadas pelo handleExtracted e os campos do
+              formulário se preenchem automaticamente. */}
 
-              {/* Lista de arquivos pendentes */}
-              {pendingDocs.length > 0 && (
-                <ul className="mt-3 space-y-1 text-left">
-                  {pendingDocs.map((f, i) => (
-                    <li key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
-                      <FileCheck className="h-3 w-3 text-emerald-600 shrink-0" />
-                      <span className="flex-1 min-w-0 truncate text-gray-700">{f.name}</span>
-                      <span className="text-[10px] text-gray-400">{Math.round(f.size / 1024)} KB</span>
-                      <button type="button"
-                        onClick={() => setPendingDocs((p) => p.filter((_, idx) => idx !== i))}
-                        className="text-gray-400 hover:text-red-600"
-                      >
-                        <XCircle className="h-3 w-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {pendingDocs.length > 0 && (
-                <p className="mt-2 text-[10px] text-gray-500">
-                  Os arquivos serão enviados quando a avaliação for salva.
-                </p>
-              )}
-            </div>
-          </div>
+        {/* === Restante da etapa SEMPRE visível — sem gate de upload === */}
+        <>
 
           {/* ──────────────────────────────────────────────────────────────────
-              Placa do veículo (com máscara e auto-lookup)
+              Placa (silencioso — sem aviso de consumo de API)
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Placa do veículo" icon={<Car className="h-5 w-5" />}>
             <div className="max-w-md">
@@ -1084,6 +1397,86 @@ function AvaliacaoForm() {
           </Section>
 
           {/* ──────────────────────────────────────────────────────────────────
+              Hint quando a marca/modelo da API não está no catálogo FIPE
+          ────────────────────────────────────────────────────────────────── */}
+          {(lookupData?.brand || lookupData?.model) && (!brandCode || !modelCode) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <strong>API retornou:</strong>{' '}
+              {lookupData?.brand && <span>marca <em>"{lookupData.brand}"</em></span>}
+              {lookupData?.brand && lookupData?.model && <span> · </span>}
+              {lookupData?.model && <span>modelo <em>"{lookupData.model}"</em></span>}
+              .{' '}
+              {!brandCode && 'Não encontramos correspondência exata no catálogo FIPE — selecione manualmente ou siga com o texto retornado.'}
+            </div>
+          )}
+
+          {/* ──────────────────────────────────────────────────────────────────
+              FIPE compacta (etapa Veículo) — exibe a FIPE escolhida pelo lookup.
+              O usuário não precisa mais ir para a etapa "FIPE / Preços" só para
+              ver o valor.
+          ────────────────────────────────────────────────────────────────── */}
+          {(fipeCode || fipeValue) && (
+            <Section title="FIPE detectada" icon={<DollarSign className="h-5 w-5" />}>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-emerald-700">Valor FIPE</p>
+                  <p className="text-base font-bold text-emerald-800">{fipeValue ? `R$ ${fipeValue}` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-emerald-700">Código FIPE</p>
+                  <p className="font-mono text-sm text-emerald-900">{fipeCode || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-emerald-700">Mês ref.</p>
+                  <p className="text-sm text-emerald-900">{fipeMonth || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-emerald-700">Status</p>
+                  <p className="text-sm text-emerald-900">{fipeCode ? 'Auto-preenchida' : 'Pendente'}</p>
+                </div>
+              </div>
+              {!fipeCode && (
+                <p className="text-xs text-gray-500 mt-2">
+                  FIPE não detectada automaticamente. Você pode informar manualmente na próxima etapa.
+                </p>
+              )}
+            </Section>
+          )}
+
+          {/* ──────────────────────────────────────────────────────────────────
+              Opcionais do veículo (chips multi-select)
+          ────────────────────────────────────────────────────────────────── */}
+          <Section title="Opcionais">
+            <div className="flex flex-wrap gap-2">
+              {[
+                'Ar Condicionado', 'Air Bag', 'Trio elétrico', 'Direção Hidráulica',
+                'Direção Elétrica', 'Freio ABS', 'Turbo', 'Blindado', '7 Lugares',
+                'Farol de Neblina', 'Teto Solar', 'Sensor de estacionamento',
+                'Câmera de ré', 'Multimídia', 'Banco de couro',
+                'Controle de estabilidade', 'Controle de tração', 'Chave presencial',
+                'Outros',
+              ].map((opt) => {
+                const active = opcionais.includes(opt)
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setOpcionais((arr) => active ? arr.filter((x) => x !== opt) : [...arr, opt])}
+                    className={[
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      active
+                        ? 'border-brand-500 bg-brand-50 text-brand-700 ring-1 ring-brand-200'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-brand-300',
+                    ].join(' ')}
+                  >
+                    {opt}
+                  </button>
+                )
+              })}
+            </div>
+          </Section>
+
+          {/* ──────────────────────────────────────────────────────────────────
               Observações (último)
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Observações">
@@ -1097,6 +1490,11 @@ function AvaliacaoForm() {
             </Field>
           </Section>
 
+        </>
+        {/* Bloco de gate "subir documento ou pular" removido — formulário
+            sempre visível. O documento e a consulta por placa servem apenas
+            como pré-preenchimento opcional. */}
+
           {/* ──────────────────────────────────────────────────────────────────
               Navegação
           ────────────────────────────────────────────────────────────────── */}
@@ -1109,11 +1507,15 @@ function AvaliacaoForm() {
             </Link>
             <button
               type="button"
-              disabled={!plate || !brandName || !modelName || !unitId || !conditionType || autoSavingDraft}
+              disabled={(!documentUploaded && !documentSkipped) || !plate || !(brandName || manualBrand || lookupData?.brand) || !(modelName || manualModel || lookupData?.model) || !unitId || !conditionType || autoSavingDraft}
               onClick={async () => {
-                // Persiste manualBrand/manualModel a partir das combos FIPE selecionadas
-                setManualBrand(brandName)
-                setManualModel(modelName)
+                // Persiste manualBrand/manualModel a partir das combos FIPE
+                // selecionadas. Quando o catálogo FIPE não casou (brandName
+                // vazio), mantemos o que veio do lookup para não perder o dado.
+                if (brandName) setManualBrand(brandName)
+                else if (lookupData?.brand && !manualBrand) setManualBrand(lookupData.brand)
+                if (modelName) setManualModel(modelName)
+                else if (lookupData?.model && !manualModel) setManualModel(lookupData.model)
                 // Mantém o objeto combo sincronizado para uso na etapa FIPE
                 setCombo((c) => ({
                   ...c,
@@ -1123,7 +1525,7 @@ function AvaliacaoForm() {
                 // Cria RASCUNHO no backend para habilitar EvaluationSections / CautelarUploader
                 const id = await ensureDraft()
                 if (!id) return  // erro já exibido
-                setStep(3)
+                setStep(4)  // pula direto pra Cautelar — FIPE/Preços removida do fluxo
               }}
               className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
             >
@@ -1134,161 +1536,30 @@ function AvaliacaoForm() {
         </div>
       )}
 
-      {/* ── Etapa 2 (legado) — removida da navegação. Render mantido como fallback caso algo navegue para 2; redireciona para 3. ── */}
-      {step === 2 && (
+      {/* Etapas 2 e 3 (legado) — removidas da navegação. Step 2 era "Veículo"
+          unificado; Step 3 era "FIPE / Preços" agora suprimido a pedido do
+          operador. Mantemos um fallback que redireciona para a próxima ativa. */}
+      {(step === 2 || step === 3) && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-4">
-          <p className="text-sm text-gray-600">
-            Esta etapa foi unificada à de Veículo. Redirecionando...
-          </p>
+          <p className="text-sm text-gray-600">Redirecionando para a próxima etapa...</p>
           <button
             type="button"
-            onClick={() => setStep(3)}
+            onClick={() => setStep(4)}
             className="self-start flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
-            Ir para FIPE / Preços <ArrowRight className="h-4 w-4" />
+            Continuar <ArrowRight className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      {/* ── Etapa 3 — FIPE / Preços ── */}
-      {step === 3 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
-          <Section title="Tabela FIPE" icon={<DollarSign className="h-5 w-5" />}>
-            {/* Status / atalho para abrir wizard */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="flex items-center gap-2 text-sm">
-                {fipeCode && fipeValue ? (
-                  <>
-                    <CheckCircle className="h-4 w-4 text-emerald-600" />
-                    <span className="text-gray-700">
-                      FIPE consultada: <strong className="font-mono">{fipeCode}</strong>
-                      {' · '}<strong>R$ {fipeValue}</strong>
-                      {fipeMonth && <span className="ml-2 text-gray-500">({fipeMonth})</span>}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Info className="h-4 w-4 text-blue-600" />
-                    <span className="text-gray-700">Use o assistente FIPE para buscar marca, modelo e preço.</span>
-                  </>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setFipeWizardOpen((v) => !v)}
-                className="rounded-lg border border-brand-300 bg-white px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
-              >
-                {fipeWizardOpen ? 'Fechar assistente' : fipeCode ? 'Reconsultar FIPE' : 'Abrir assistente FIPE'}
-              </button>
-            </div>
-
-            {fipeWizardOpen && (
-              <div className="mb-4 rounded-xl border-2 border-brand-200 bg-brand-50/30 p-4">
-                <FipeWizard
-                  onComplete={handleFipeComplete}
-                  onCancel={() => setFipeWizardOpen(false)}
-                />
-              </div>
-            )}
-
-            <Grid>
-              <Field label="Código FIPE">
-                <input value={fipeCode} onChange={(e) => setFipeCode(e.target.value)} className={inputCls + ' font-mono'} placeholder="005415-6" />
-              </Field>
-              <Field label="Valor FIPE (R$)" hint="Preenchido automaticamente pelo assistente FIPE">
-                <input
-                  inputMode="numeric"
-                  value={maskBRL(fipeValue)}
-                  onChange={(e) => setFipeValue(maskBRL(e.target.value))}
-                  className={inputCls}
-                  placeholder="0,00"
-                />
-              </Field>
-              <Field label="Mês de Referência" hint={fipeLastFetch ? `Consultado em ${new Date(fipeLastFetch).toLocaleString('pt-BR')}` : undefined}>
-                <input value={fipeMonth} onChange={(e) => setFipeMonth(e.target.value)} className={inputCls} placeholder="maio/2026" />
-              </Field>
-            </Grid>
-          </Section>
-
-          {/* Mini-chart histórico FIPE (6 meses) — renderiza só com fipeCode válido */}
-          {fipeCode && (
-            <FipeMiniChart
-              fipeCode={fipeCode}
-              vehicleType={TIPO_VEICULO_API[tipoVeiculo]}
-              currentValue={parseBRL(fipeValue) ?? null}
-            />
-          )}
-
-          <div className="border-t border-gray-100 pt-4">
-            <Section title="Precificação da Avaliação">
-              <Grid>
-                <Field label="Valor Avaliado (R$)" hint="Quanto o veículo vale segundo o avaliador">
-                  <input
-                    inputMode="numeric"
-                    value={maskBRL(evaluatedValue)}
-                    onChange={(e) => setEvaluatedValue(maskBRL(e.target.value))}
-                    className={inputCls}
-                    placeholder="0,00"
-                  />
-                </Field>
-                <Field label="Valor Desejado pelo Cliente (R$)">
-                  <input
-                    inputMode="numeric"
-                    value={maskBRL(desiredValue)}
-                    onChange={(e) => setDesiredValue(maskBRL(e.target.value))}
-                    className={inputCls}
-                    placeholder="0,00"
-                  />
-                </Field>
-                <Field label="Valor Mínimo de Compra (R$)">
-                  <input
-                    inputMode="numeric"
-                    value={maskBRL(minimumValue)}
-                    onChange={(e) => setMinimumValue(maskBRL(e.target.value))}
-                    className={inputCls}
-                    placeholder="0,00"
-                  />
-                </Field>
-                <Field label="Preço de Venda Sugerido (R$)">
-                  <input
-                    inputMode="numeric"
-                    value={maskBRL(suggestedSale)}
-                    onChange={(e) => setSuggestedSale(maskBRL(e.target.value))}
-                    className={inputCls}
-                    placeholder="0,00"
-                  />
-                </Field>
-              </Grid>
-
-              {/* Margem estimada */}
-              {evaluatedValue && suggestedSale && (
-                <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm font-medium text-emerald-700">Margem estimada</span>
-                  <span className="text-base font-bold text-emerald-800">
-                    {(() => {
-                      const ev = parseMoney(evaluatedValue)
-                      const sv = parseMoney(suggestedSale)
-                      if (!ev || !sv) return '—'
-                      const margin = sv - ev
-                      const pct = ev > 0 ? ((margin / ev) * 100).toFixed(1) : '—'
-                      return `${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(margin)} (${pct}%)`
-                    })()}
-                  </span>
-                </div>
-              )}
-            </Section>
-          </div>
-
-          <div className="flex justify-between pt-2">
-            <button type="button" onClick={() => setStep(1)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-              <ArrowLeft className="h-4 w-4" /> Anterior
-            </button>
-            <button type="button" onClick={() => setStep(4)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">
-              Próxima <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ── Etapa 3 — FIPE / Preços ── REMOVIDA do fluxo do avaliador.
+          A FIPE continua sendo consultada automaticamente pela API placas
+          (state `fipeCode`/`fipeValue` populado por handleLookupResult e
+          enviado no payload). A precificação (valor avaliado / mínimo /
+          sugerido / desejado) é feita pelo gerente APÓS o envio da
+          avaliação para aprovação — não aparece mais no wizard.
+          Helpers `handleFipeComplete`, `FipeWizard`, mini-chart continuam
+          disponíveis caso queiramos reintroduzir num drawer "Ver FIPE". */}
 
       {/* ── Etapa 4 — Cautelar ── */}
       {step === 4 && (
@@ -1343,7 +1614,7 @@ function AvaliacaoForm() {
           </div>
 
           <div className="flex justify-between pt-2">
-            <button type="button" onClick={() => setStep(3)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+            <button type="button" onClick={() => setStep(1)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
               <ArrowLeft className="h-4 w-4" /> Anterior
             </button>
             <button type="button" onClick={() => setStep(5)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">

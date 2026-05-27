@@ -32,8 +32,15 @@ export function FipeMiniChart({ fipeCode, vehicleType, currentValue }: FipeMiniC
       .then((d) => {
         if (!alive) return
         const months = Array.isArray(d?.months) ? d.months : []
-        // NaN-safe: descarta entradas inválidas
-        setData(months.filter((m) => m && typeof m.month === 'string' && Number.isFinite(Number(m.value))))
+        // NaN-safe: descarta entradas inválidas. ATENÇÃO: Number(null) === 0
+        // (finito), o que deixava meses sem preço entrarem como zero e
+        // achatava a escala — checar null/undefined explicitamente antes.
+        setData(months.filter((m) => {
+          if (!m || typeof m.month !== 'string') return false
+          if (m.value == null) return false
+          const n = Number(m.value)
+          return Number.isFinite(n) && n > 0
+        }))
         if (d?.note) setNote(d.note)
       })
       .catch(() => { if (alive) { setData([]); setNote('Falha ao carregar histórico FIPE.') } })
