@@ -179,8 +179,10 @@ export default function InspecaoPage() {
   }, [data, evalId, load])
 
   const status = data?.status ?? 'DRAFT'
-  const isLocked = ['FINALIZED', 'APPROVED', 'REJECTED', 'CANCELED'].includes(status)
+  const isLocked = ['FINALIZED', 'APPROVED', 'REJECTED', 'CANCELED', 'CANCELADA', 'LIBERADA'].includes(status)
   const total    = data?.totalExpenses != null ? Number(data.totalExpenses) : 0
+  const isManagerPlus = role ? ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role) : false
+  const isAwaitingApproval = status === 'AGUARDANDO_APROVACAO'
 
   // ── Agrupa itens/services por seção ────────────────────────────────────────
   const itemsBySection = useMemo(() => {
@@ -283,8 +285,8 @@ export default function InspecaoPage() {
             {data.km != null && <span> · {Number(data.km).toLocaleString('pt-BR')} km</span>}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {!isLocked && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!isLocked && !isAwaitingApproval && (
             <button
               onClick={handleFinish}
               disabled={saving}
@@ -301,6 +303,32 @@ export default function InspecaoPage() {
               className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60"
             >
               <RefreshCcw size={14} /> Reabrir
+            </button>
+          )}
+          {/* Cancelar avaliação — gerente+ apenas, status não-finais */}
+          {isManagerPlus && !['CANCELADA', 'CANCELED', 'LIBERADA', 'APPROVED', 'REJECTED'].includes(status) && (
+            <button
+              onClick={async () => {
+                const motivo = prompt('Informe o motivo do cancelamento:')
+                if (!motivo || !motivo.trim()) return
+                setSaving(true)
+                try {
+                  const r = await fetch(`/api/evaluations/${evalId}/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: motivo.trim() }),
+                  })
+                  const d = await r.json()
+                  if (!r.ok) { showToast(d?.error ?? 'Falha ao cancelar', false); return }
+                  showToast('Avaliação cancelada.', true)
+                  load()
+                } catch { showToast('Erro de conexão.', false) }
+                finally { setSaving(false) }
+              }}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+            >
+              <AlertTriangle size={14} /> Cancelar avaliação
             </button>
           )}
         </div>
@@ -321,21 +349,43 @@ export default function InspecaoPage() {
         <Stat label="Gastos previstos" value={fmtBRL(total)} highlight />
       </div>
 
-      {/* Tabs de seção */}
+      {/* Painel de precificação — gerente+ quando aguardando aprovação */}
+      {isManagerPlus && isAwaitingApproval && (
+        <PrecificarPanel
+          evalId={evalId}
+          data={data}
+          onReleased={() => { showToast('Avaliação liberada para o vendedor.', true); load() }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* Tabs de seção — só macro-abas. As 6 sub-abas de inspeção (Interior,
+          Frente, Direita, Traseira, Esquerda, Test-drive) ficam DENTRO de
+          <EvaluationSections> pra evitar duplicação do menu. */}
       <div className="flex flex-wrap items-center gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1.5">
-        {SECTIONS.map((s) => {
-          const active = tab === s.key
-          const count  = (itemsBySection[s.key]?.length ?? 0)
+        {(['DADOS', 'DOCUMENTOS', 'INSPECAO', 'SERVICOS', 'RESUMO'] as const).map((macroKey) => {
+          const def = macroKey === 'INSPECAO'
+            ? { key: 'INSPECAO', label: 'Inspeção', icon: 'ClipboardCheck' as const }
+            : SECTIONS.find((s) => s.key === macroKey) ?? { key: macroKey, label: macroKey, icon: 'Car' }
+          // Considera "Inspeção" ativo quando tab está em qualquer uma das 6 sub-seções.
+          const inspectionTabs = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE']
+          const active = macroKey === 'INSPECAO'
+            ? inspectionTabs.includes(tab as string)
+            : tab === macroKey
+          // Conta total agregado para a macro-aba Inspeção
+          const count = macroKey === 'INSPECAO'
+            ? inspectionTabs.reduce((acc, k) => acc + (itemsBySection[k as SectionKey]?.length ?? 0), 0)
+            : (itemsBySection[macroKey as SectionKey]?.length ?? 0)
           return (
             <button
-              key={s.key}
-              onClick={() => setTab(s.key)}
+              key={macroKey}
+              onClick={() => setTab(macroKey === 'INSPECAO' ? 'INTERIOR' : (macroKey as SectionKey))}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                 active ? 'bg-brand-600 text-white' : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <Icon name={s.icon} size={12} />
-              {s.label}
+              <Icon name={def.icon} size={12} />
+              {def.label}
               {count > 0 && (
                 <span className={`rounded-full px-1.5 text-[10px] ${active ? 'bg-white/30' : 'bg-gray-200 text-gray-700'}`}>{count}</span>
               )}
@@ -804,6 +854,104 @@ function AttachmentCard({ a, evalId, onDeleted, canDelete }: { a: EvalAttachment
             <Trash2 size={10} /> Remover
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Componente: Painel Precificar (gerente+) ──────────────────────────────
+
+function PrecificarPanel({
+  evalId, data, onReleased, showToast,
+}: {
+  evalId: string
+  data: Evaluation
+  onReleased: () => void
+  showToast: (msg: string, ok?: boolean) => void
+}) {
+  const initial = (v: number | string | null | undefined) => {
+    if (v == null || v === '') return ''
+    const n = typeof v === 'number' ? v : Number(v)
+    if (!Number.isFinite(n) || n === 0) return ''
+    return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+  const [avaliado,  setAvaliado]  = useState(initial(data.evaluatedValue))
+  const [desejado,  setDesejado]  = useState('')
+  const [minimo,    setMinimo]    = useState('')
+  const [sugerido,  setSugerido]  = useState(initial(data.suggestedSalePrice))
+  const [feedback,  setFeedback]  = useState(data.evaluatorFeedback ?? '')
+  const [busy,      setBusy]      = useState(false)
+
+  async function release() {
+    if (!parseBRL(avaliado)) {
+      showToast('Informe o valor avaliado.', false)
+      return
+    }
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/evaluations/${evalId}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evaluatedValue:     parseBRL(avaliado),
+          desiredValue:       parseBRL(desejado),
+          minimumValue:       parseBRL(minimo),
+          suggestedSalePrice: parseBRL(sugerido),
+          evaluatorFeedback:  feedback || null,
+        }),
+      })
+      const d = await r.json()
+      if (!r.ok) { showToast(d?.error ?? 'Falha ao liberar.', false); return }
+      onReleased()
+    } catch {
+      showToast('Erro de conexão.', false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle size={16} className="text-amber-600" />
+        <p className="text-sm font-bold text-amber-900">Precificar e liberar para o vendedor</p>
+      </div>
+      <p className="text-xs text-amber-800 mb-3">
+        Defina os valores de avaliação. Ao liberar, o vendedor é notificado e pode prosseguir
+        com a negociação.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-700">Valor Avaliado (R$) *</span>
+          <input className={inputCls} placeholder="0,00" value={avaliado} onChange={(e) => setAvaliado(maskBRLInput(e.target.value))} inputMode="numeric" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-700">Valor Desejado pelo Cliente (R$)</span>
+          <input className={inputCls} placeholder="0,00" value={desejado} onChange={(e) => setDesejado(maskBRLInput(e.target.value))} inputMode="numeric" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-700">Valor Mínimo de Compra (R$)</span>
+          <input className={inputCls} placeholder="0,00" value={minimo} onChange={(e) => setMinimo(maskBRLInput(e.target.value))} inputMode="numeric" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-700">Preço de Venda Sugerido (R$)</span>
+          <input className={inputCls} placeholder="0,00" value={sugerido} onChange={(e) => setSugerido(maskBRLInput(e.target.value))} inputMode="numeric" />
+        </label>
+        <label className="flex flex-col gap-1 sm:col-span-2">
+          <span className="text-xs font-medium text-gray-700">Observações para o vendedor</span>
+          <textarea className={inputCls + ' min-h-[72px] resize-y'} placeholder="Justificativa / condições..." value={feedback} onChange={(e) => setFeedback(e.target.value)} />
+        </label>
+      </div>
+      <div className="flex justify-end mt-3">
+        <button
+          type="button"
+          onClick={release}
+          disabled={busy}
+          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+        >
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+          Salvar precificação e liberar
+        </button>
       </div>
     </div>
   )

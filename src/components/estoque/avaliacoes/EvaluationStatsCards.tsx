@@ -103,8 +103,8 @@ export function EvaluationStatsCards({ counts, activeStatus, onSelect, loading }
         value={counts.canceled}
         icon={<XCircle size={18} />}
         accent="red"
-        active={activeStatus === 'CANCELED' || activeStatus === 'REJECTED'}
-        onClick={onSelect ? () => onSelect('CANCELED') : undefined}
+        active={activeStatus === 'CANCELADA' || activeStatus === 'CANCELED' || activeStatus === 'REJECTED'}
+        onClick={onSelect ? () => onSelect('CANCELADA') : undefined}
       />
       <StatCard
         label="Total no período"

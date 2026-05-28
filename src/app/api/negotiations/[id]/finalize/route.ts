@@ -104,6 +104,29 @@ export async function POST(
         }
       }
 
+      // ── COMPRA finalizada → veículo entra no estoque em precificação ─────
+      // Hoje é o momento em que a loja efetivamente "comprou" o carro do
+      // cliente. Marca o Vehicle (criado pela negociação) como
+      // EM_PRECIFICACAO + active=false; gerente define preço de venda em
+      // /estoque/[id] aba Precificação para publicar no estoque.
+      if (deal.type === 'COMPRA') {
+        for (const dv of deal.vehicles) {
+          if (dv.vehicleId && dv.role === 'COMPRADO') {
+            await (tx as any).vehicle.update({
+              where: { id: dv.vehicleId },
+              data:  {
+                stockStatus:        'EM_PRECIFICACAO' as any,
+                active:             false,
+                isAvailableForSale: false,
+                entryDate:          new Date(),
+              },
+            }).catch((e: unknown) => {
+              console.error('[finalize] failed to mark COMPRA vehicle for pricing', e)
+            })
+          }
+        }
+      }
+
       await createStatusHistory(tx as any, params.id, deal.status, 'FINALIZADA', session.user.id, `Finalizado por ${session.user.name}`)
 
       await createDealAudit(tx as any, {

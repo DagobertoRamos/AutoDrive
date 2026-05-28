@@ -5,7 +5,7 @@
 
 const MANAGER_PLUS = new Set(['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'])
 const ADM_PLUS     = new Set(['MASTER', 'ADM'])
-const EDITABLE_STATUS = new Set(['DRAFT', 'IN_PROGRESS', 'PENDING_REVIEW', 'REOPENED'])
+const EDITABLE_STATUS = new Set(['DRAFT', 'IN_PROGRESS', 'PENDING_REVIEW', 'REOPENED', 'AGUARDANDO_APROVACAO'])
 
 export interface EvaluationContext {
   status:           string
@@ -33,8 +33,12 @@ export function canViewEvaluation(user: SessionUser, e: EvaluationContext): bool
 export function canEditEvaluation(user: SessionUser, e: EvaluationContext): boolean {
   if (!canViewEvaluation(user, e)) return false
   if (!EDITABLE_STATUS.has(e.status)) {
-    // Finalizada/aprovada/rejeitada: só ADM+ pode editar
+    // Finalizada/aprovada/rejeitada/liberada/cancelada: só ADM+ pode editar
     return ADM_PLUS.has(user.role)
+  }
+  // Quando aguardando aprovação, somente gerência+ pode editar (precificar).
+  if (e.status === 'AGUARDANDO_APROVACAO') {
+    return MANAGER_PLUS.has(user.role)
   }
   // Em estados editáveis: gerência sempre pode; avaliador (dono) também.
   if (MANAGER_PLUS.has(user.role)) return true
@@ -86,6 +90,16 @@ export function canReopenEvaluation(user: SessionUser, e: EvaluationContext): bo
 /** O usuário pode aprovar/rejeitar serviços? */
 export function canApproveServices(user: SessionUser): boolean {
   return MANAGER_PLUS.has(user.role)
+}
+
+/** O usuário pode cancelar a avaliação? (gerente+) */
+export function canCancelEvaluation(user: SessionUser): boolean {
+  return MANAGER_PLUS.has(user.role)
+}
+
+/** O usuário pode submeter a avaliação para aprovação? (qualquer com edit) */
+export function canSubmitForApproval(user: SessionUser, e: EvaluationContext): boolean {
+  return canEditEvaluation(user, e)
 }
 
 /** Pode editar campos de precificação (FIPE/desejado/mínimo/avaliado/sugerido)? */

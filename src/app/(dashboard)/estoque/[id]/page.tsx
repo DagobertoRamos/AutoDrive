@@ -22,6 +22,7 @@ import {
   StockTypeBadge,
   ConditionBadge,
 } from '@/components/estoque/VehicleStatusBadge'
+import { VehicleSalePricingPanel } from '@/components/estoque/VehicleSalePricingPanel'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -611,34 +612,46 @@ export default function EstoqueDetailPage({ params }: { params: { id: string } }
 
         {/* ── Precificação ── */}
         {activeTab === 'precos' && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-xl bg-gray-50 p-4 text-center">
-              <DollarSign className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-              <p className="text-xs text-gray-500">Preço de Compra</p>
-              <p className="text-xl font-bold text-gray-900 mt-1">{fmt(vehicle.purchasePrice)}</p>
-            </div>
-            <div className="rounded-xl bg-brand-50 p-4 text-center border border-brand-200">
-              <DollarSign className="h-6 w-6 text-brand-500 mx-auto mb-1" />
-              <p className="text-xs text-brand-600">Preço de Venda</p>
-              <p className="text-xl font-bold text-brand-700 mt-1">{fmt(vehicle.salePrice)}</p>
-            </div>
-            <div className="rounded-xl bg-gray-50 p-4 text-center">
-              <History className="h-6 w-6 text-gray-400 mx-auto mb-1" />
-              <p className="text-xs text-gray-500">Tabela FIPE</p>
-              <p className="text-xl font-bold text-gray-900 mt-1">{fmt(vehicle.fipeValue)}</p>
-            </div>
-            {vehicle.purchasePrice != null && vehicle.salePrice != null && (
-              <div className="sm:col-span-3 rounded-lg bg-emerald-50 border border-emerald-200 p-4 flex items-center justify-between">
-                <p className="text-sm font-medium text-emerald-700">Margem estimada</p>
-                <p className="text-lg font-bold text-emerald-800">
-                  {fmt(vehicle.salePrice - vehicle.purchasePrice)}
-                  {' '}
-                  <span className="text-sm font-normal">
-                    ({vehicle.purchasePrice > 0 ? ((vehicle.salePrice - vehicle.purchasePrice) / vehicle.purchasePrice * 100).toFixed(1) : '—'}%)
-                  </span>
-                </p>
+          <div className="flex flex-col gap-6">
+            {/* Resumo numérico (compra/venda/FIPE + margem) */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-xl bg-gray-50 p-4 text-center">
+                <DollarSign className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                <p className="text-xs text-gray-500">Preço de Compra</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">{fmt(vehicle.purchasePrice)}</p>
               </div>
-            )}
+              <div className="rounded-xl bg-brand-50 p-4 text-center border border-brand-200">
+                <DollarSign className="h-6 w-6 text-brand-500 mx-auto mb-1" />
+                <p className="text-xs text-brand-600">Preço de Venda</p>
+                <p className="text-xl font-bold text-brand-700 mt-1">{fmt(vehicle.salePrice)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-4 text-center">
+                <History className="h-6 w-6 text-gray-400 mx-auto mb-1" />
+                <p className="text-xs text-gray-500">Tabela FIPE</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">{fmt(vehicle.fipeValue)}</p>
+              </div>
+              {vehicle.purchasePrice != null && vehicle.salePrice != null && (
+                <div className="sm:col-span-3 rounded-lg bg-emerald-50 border border-emerald-200 p-4 flex items-center justify-between">
+                  <p className="text-sm font-medium text-emerald-700">Margem estimada</p>
+                  <p className="text-lg font-bold text-emerald-800">
+                    {fmt(vehicle.salePrice - vehicle.purchasePrice)}
+                    {' '}
+                    <span className="text-sm font-normal">
+                      ({vehicle.purchasePrice > 0 ? ((vehicle.salePrice - vehicle.purchasePrice) / vehicle.purchasePrice * 100).toFixed(1) : '—'}%)
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Painel completo de precificação de venda + histórico */}
+            <div className="border-t border-gray-200 pt-6">
+              <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-800">
+                <DollarSign className="h-5 w-5 text-brand-600" />
+                Precificação de Venda
+              </h3>
+              <VehicleSalePricingPanel vehicleId={id} canManage={canManage} />
+            </div>
           </div>
         )}
 

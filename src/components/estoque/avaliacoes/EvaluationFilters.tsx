@@ -72,9 +72,22 @@ export function EvaluationFilters({ value, onChange, units = [] }: Props) {
           className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
         >
           <option value="">Todos os status</option>
-          {EVALUATION_STATUS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
+          {/*
+            Dedup por label — existem dois valores canônicos do mesmo status
+            (ex.: PENDING_REVIEW + AGUARDANDO_APROVACAO ambos = "Aguardando
+            aprovação"; CANCELED + CANCELADA = "Cancelada"). Mostramos cada
+            label uma única vez, usando o valor "novo" (pt-BR) como canônico.
+          */}
+          {(() => {
+            const seen = new Set<string>()
+            return EVALUATION_STATUS.filter((s) => {
+              if (seen.has(s.label)) return false
+              seen.add(s.label)
+              return true
+            }).map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))
+          })()}
         </select>
 
         <button

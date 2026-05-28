@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   LayoutGrid, List, Search, Filter, ChevronLeft, ChevronRight,
-  Plus, Car, RotateCcw, X,
+  Plus, Car, RotateCcw, X, Tag,
 } from 'lucide-react'
 import Link from 'next/link'
 import { VehicleCard } from '@/components/estoque/VehicleCard'
@@ -55,6 +55,7 @@ interface Unit { id: string; name: string }
 
 const STOCK_STATUS_OPTIONS = [
   { value: 'DISPONIVEL',            label: 'Disponível' },
+  { value: 'EM_PRECIFICACAO',       label: 'Aguardando precificação' },
   { value: 'EM_PROMOCAO',           label: 'Em Promoção' },
   { value: 'EM_ATACADO',            label: 'Atacado' },
   { value: 'RESERVADO',             label: 'Reservado' },
@@ -349,6 +350,28 @@ export default function EstoquePage() {
             <List className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Quick-filter: aguardando precificação (gerente+) */}
+        {canManage && (
+          <button
+            onClick={() => {
+              const wantOn = stockStatus !== 'EM_PRECIFICACAO'
+              setStockStatus(wantOn ? 'EM_PRECIFICACAO' : '')
+              setIncludeInactive(wantOn)
+              setPage(1)
+            }}
+            className={[
+              'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-colors',
+              stockStatus === 'EM_PRECIFICACAO'
+                ? 'border-amber-400 bg-amber-100 text-amber-900'
+                : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
+            ].join(' ')}
+            title="Mostrar apenas veículos liberados pelo gerente aguardando preço de venda"
+          >
+            <Tag className="h-4 w-4" />
+            Aguardando precificação
+          </button>
+        )}
 
         {/* Atualizar */}
         <button

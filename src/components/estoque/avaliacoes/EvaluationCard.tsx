@@ -1,9 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import {
-  Car, User, Phone, MapPin, Calendar, ChevronRight, Eye, ClipboardCheck,
+  Car, User, Phone, MapPin, Calendar, ChevronRight, Eye, ClipboardCheck, RefreshCw, Loader2,
 } from 'lucide-react'
 import { getStatusDef } from './status'
 
@@ -33,7 +35,12 @@ interface Props {
   item:          EvaluationListItem
   detailsHref?:  string
   evaluateHref?: string
+  /** Chamado após reabertura bem-sucedida pra recarregar a listagem */
+  onReopened?:   () => void
 }
+
+const MANAGER_PLUS = new Set(['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'])
+const CANCELED_STATUSES = new Set(['CANCELADA', 'CANCELED', 'REJECTED'])
 
 const fmtBRL = (v: unknown): string | null => {
   if (v == null || v === '') return null
@@ -63,17 +70,49 @@ const fmtDateTime = (iso: string): string => {
   return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-export function EvaluationCard({ item, detailsHref, evaluateHref }: Props) {
+export function EvaluationCard({ item, detailsHref, evaluateHref, onReopened }: Props) {
   const router  = useRouter()
+  const { data: session } = useSession()
   const status  = getStatusDef(item.status)
   const fipeStr = fmtBRL(item.fipeValue)
   const evalStr = fmtBRL(item.evaluatedValue)
+  const [reopening, setReopening] = useState(false)
 
   const vehicleLine = [item.brand, item.model, item.version].filter(Boolean).join(' ')
   const yearLine    = [item.manufactureYear, item.modelYear].filter(Boolean).join('/')
 
   const evalUrl = evaluateHref ?? `/estoque/avaliacao?id=${item.id}`
   const viewUrl = detailsHref  ?? `/estoque/avaliacao/${item.id}/inspecao`
+
+  // Quando cancelada, mostramos "Reabrir" (gerente+) em vez de "Avaliar"
+  const isCanceled  = CANCELED_STATUSES.has((item.status ?? '').toUpperCase())
+  const canReopen   = isCanceled && MANAGER_PLUS.has(session?.user?.role ?? '')
+
+  async function handleReopen(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const reason = window.prompt('Motivo da reabertura (opcional, máx 200 chars):', 'Cliente retornou para fechar negócio')
+    if (reason === null) return  // usuário clicou Cancel
+    setReopening(true)
+    try {
+      const r = await fetch(`/api/evaluations/${item.id}/reopen`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ reason: reason.slice(0, 200) || null }),
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        alert(d?.error ?? 'Falha ao reabrir avaliação.')
+        return
+      }
+      onReopened?.()
+      router.push(`/estoque/avaliacao/${item.id}/inspecao`)
+    } catch {
+      alert('Erro de conexão ao reabrir.')
+    } finally {
+      setReopening(false)
+    }
+  }
 
   // Card inteiro clicável → leva pra inspeção; botões internos têm stopPropagation
   return (
@@ -155,14 +194,34 @@ export function EvaluationCard({ item, detailsHref, evaluateHref }: Props) {
 
         {/* Ações */}
         <div className="flex items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
-          <Link
-            href={evalUrl}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
-          >
-            <ClipboardCheck size={13} />
-            Avaliar
-          </Link>
+          {canReopen ? (
+            <button
+              type="button"
+              onClick={handleReopen}
+              disabled={reopening}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 disabled:opacity-60"
+            >
+              {reopening ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              {reopening ? 'Reabrindo...' : 'Reabrir'}
+            </button>
+          ) : isCanceled ? (
+            <span
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-500"
+              title="Apenas gerente ou superior pode reabrir avaliações canceladas"
+            >
+              Cancelada
+            </span>
+          ) : (
+            <Link
+              href={evalUrl}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
+            >
+              <ClipboardCheck size={13} />
+              Avaliar
+            </Link>
+          )}
           <Link
             href={viewUrl}
             onClick={(e) => e.stopPropagation()}

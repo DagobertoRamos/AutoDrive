@@ -18,7 +18,7 @@ import { EvaluationStatsCards, type StatsCounts } from '@/components/estoque/ava
 import { EvaluationFilters, EMPTY_FILTERS, type EvaluationFiltersState } from '@/components/estoque/avaliacoes/EvaluationFilters'
 import { EvaluationCard, EvaluationCardSkeleton, type EvaluationListItem } from '@/components/estoque/avaliacoes/EvaluationCard'
 import { EmptyState }            from '@/components/estoque/avaliacoes/EmptyState'
-import { OPEN_STATUSES }         from '@/components/estoque/avaliacoes/status'
+import { OPEN_STATUSES, expandStatusFilter } from '@/components/estoque/avaliacoes/status'
 
 interface UnitOption { id: string; name: string }
 
@@ -70,8 +70,11 @@ export default function AvaliacoesPage() {
       const qs = new URLSearchParams()
       qs.set('page', String(page))
       if (debouncedSearch) qs.set('search', debouncedSearch)
-      if (filters.status)  qs.set('status', filters.status)
       if (filters.unitId)  qs.set('unitId', filters.unitId)
+      // NÃO enviamos `status` ao backend — o filtro é feito client-side via
+      // `expandStatusFilter` (status.ts) para aceitar aliases pt-BR/en
+      // (CANCELADA↔CANCELED, AGUARDANDO_APROVACAO↔PENDING_REVIEW, etc.)
+      // sem precisar reescrever a API.
 
       const res  = await fetch(`/api/evaluations?${qs.toString()}`)
       const json = await res.json()
@@ -92,6 +95,10 @@ export default function AvaliacoesPage() {
       // Enrichment: mapeia unitId → unitName para os cards
       const unitMap = Object.fromEntries(units.map((u) => [u.id, u.name]))
       data = data.map((d) => ({ ...d, unitName: d.unitId ? unitMap[d.unitId] ?? null : null }))
+
+      // Mantemos TUDO no `items` (canceladas inclusive) pra que os contadores
+      // do stats card fiquem corretos. O filtro de "esconder canceladas por
+      // padrão" é aplicado apenas no render (visibleItems abaixo).
 
       // Ordenação padrão: abertas primeiro (mais antigas) → depois finalizadas recentes
       data.sort((a, b) => {
@@ -119,15 +126,16 @@ export default function AvaliacoesPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Stats agregados (em todo o conjunto retornado, não só nessa página visível)
+  // Stats agregados. Aceita status em pt-BR e en (legado) — ver
+  // src/components/estoque/avaliacoes/status.ts para a lista canônica.
   const counts: StatsCounts = useMemo(() => {
     const c: StatsCounts = { pending: 0, inProgress: 0, finalized: 0, canceled: 0, total: items.length }
     for (const i of items) {
-      const s = i.status ?? ''
-      if (s === 'PENDING_REVIEW' || s === 'DRAFT' || s === 'REOPENED') c.pending++
+      const s = (i.status ?? '').toUpperCase()
+      if (s === 'PENDING_REVIEW' || s === 'DRAFT' || s === 'REOPENED' || s === 'AGUARDANDO_APROVACAO') c.pending++
       else if (s === 'IN_PROGRESS') c.inProgress++
-      else if (s === 'FINALIZED' || s === 'APPROVED') c.finalized++
-      else if (s === 'CANCELED' || s === 'REJECTED') c.canceled++
+      else if (s === 'FINALIZED' || s === 'APPROVED' || s === 'LIBERADA') c.finalized++
+      else if (s === 'CANCELED' || s === 'CANCELADA' || s === 'REJECTED') c.canceled++
     }
     return c
   }, [items])
@@ -136,6 +144,18 @@ export default function AvaliacoesPage() {
   const hasActiveFilters =
     !!filters.search || !!filters.status || !!filters.unitId ||
     !!filters.periodFrom || !!filters.periodTo
+
+  // Filtro client-side:
+  //  • Se há filtro de status: aceita TODOS os aliases (pt-BR + legados en).
+  //    Ex: filtro 'CANCELADA' inclui status 'CANCELADA', 'CANCELED', 'REJECTED'.
+  //  • "Todos os status" (filtro vazio): mostra TUDO — inclusive canceladas
+  //    (o status fica visível no badge cinza pra identificar).
+  // Counts continuam contando tudo (não dependem desse filtro).
+  const visibleItems = useMemo(() => {
+    if (!filters.status) return items
+    const allowed = new Set(expandStatusFilter(filters.status))
+    return items.filter((d) => allowed.has((d.status ?? '').toUpperCase()))
+  }, [items, filters.status])
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5">
@@ -168,28 +188,29 @@ export default function AvaliacoesPage() {
         </div>
       )}
 
-      {/* Conteúdo principal */}
+      {/* Conteúdo principal — usa visibleItems pra esconder canceladas no
+          modo "Todos os status", mas mantém contadores corretos. */}
       {loading && items.length === 0 ? (
         <div className="space-y-3">
           <EvaluationCardSkeleton />
           <EvaluationCardSkeleton />
           <EvaluationCardSkeleton />
         </div>
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <EmptyState
-          filtered={hasActiveFilters}
+          filtered={hasActiveFilters || items.length > 0}
           onClear={hasActiveFilters ? () => setFilters(EMPTY_FILTERS) : undefined}
         />
       ) : (
         <div className="space-y-3">
-          {items.map((item) => (
-            <EvaluationCard key={item.id} item={item} />
+          {visibleItems.map((item) => (
+            <EvaluationCard key={item.id} item={item} onReopened={load} />
           ))}
         </div>
       )}
 
       {/* Paginação */}
-      {totalPages > 1 && !loading && items.length > 0 && (
+      {totalPages > 1 && !loading && visibleItems.length > 0 && (
         <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
           <p className="text-sm text-gray-600">
             Página {page} de {totalPages} — {total} avaliações

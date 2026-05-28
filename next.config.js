@@ -4,24 +4,23 @@
 // IMPORTANTE: este arquivo precisa existir na raiz com esse nome exato.
 // O Next NÃO lê next.config2.js nem next.config.js.ts.bak.
 //
-// experimental.serverComponentsExternalPackages: mantém pacotes pesados
-// fora do bundle do webpack — são require()'d em runtime no Node. Sem isso,
-// pdf-parse + pdfjs-dist quebram (workers, polyfills DOM) na rota
+// serverExternalPackages: mantém pacotes pesados fora do bundle do webpack —
+// são require()'d em runtime no Node. Sem isso, pdf-parse + pdfjs-dist
+// quebram (workers, polyfills DOM) na rota
 // /api/evaluations/vehicle-document/extract.
+// (Antes ficava em experimental.serverComponentsExternalPackages; promovido
+//  pra opção estável no Next 15.)
 // =============================================================================
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
 
-  experimental: {
-    // Libs Node-only que não devem ir pro bundle do webpack server
-    serverComponentsExternalPackages: [
-      'pdf-parse',
-      'pdfjs-dist',
-      'canvas',
-    ],
-  },
+  serverExternalPackages: [
+    'pdf-parse',
+    'pdfjs-dist',
+    'canvas',
+  ],
 
   // Webpack: fallback de módulos Node em código client + alias para canvas
   webpack: (config, { isServer }) => {

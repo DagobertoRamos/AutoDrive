@@ -5,10 +5,12 @@
 // Persiste via PATCH /api/evaluations/[id]/items/[itemId] (status, priority,
 // notes) e, se houver custo/tipo de serviço, cria/atualiza um EvaluationService
 // vinculado (POST /api/evaluations/[id]/services).
+// Fotos do item: upload real via POST /api/evaluations/[id]/attachments com
+// itemId+category=FOTO. Aceita câmera (capture=environment) ou arquivo.
 // =============================================================================
 
-import { useEffect, useState } from 'react'
-import { X, Save, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X, Save, Loader2, Camera, Upload, Trash2 } from 'lucide-react'
 import { maskBRL, parseBRL, numberToBRLMask } from '@/lib/masks'
 import { ITEM_STATUS, SERVICE_TYPES, SERVICE_TYPE_LABELS, PRIORITIES } from '@/lib/evaluation/catalog'
 
@@ -21,11 +23,18 @@ export interface DrawerItem {
   notes:        string | null
 }
 
+export interface DrawerPhoto {
+  id:        string
+  fileName:  string
+  publicUrl: string | null
+}
+
 interface ItemDrawerProps {
   item:             DrawerItem
   evaluationStatus: string
   isReopen:         boolean
   readOnly?:        boolean
+  existingPhotos?:  DrawerPhoto[]
   onSave:           () => void
   onClose:          () => void
 }
@@ -33,7 +42,7 @@ interface ItemDrawerProps {
 const inputCls = 'rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full'
 
 export function ItemDrawer({
-  item, isReopen, readOnly, onSave, onClose,
+  item, isReopen, readOnly, existingPhotos = [], onSave, onClose,
 }: ItemDrawerProps) {
   const firstTime = !item.status || item.status === 'PENDING' || item.status === 'NAO_AVALIADO'
   const headerChip = isReopen ? 'Reavaliar' : (firstTime ? 'Avaliar item' : 'Editar item')
@@ -45,10 +54,13 @@ export function ItemDrawer({
   const [serviceType, setServiceType] = useState<string>('OUTRO')
   const [costMask,    setCostMask]    = useState<string>('')
   const [description, setDescription] = useState<string>('')
-  const [photos,      setPhotos]      = useState<string[]>([])
-  const [photoUrl,    setPhotoUrl]    = useState('')
+  const [photos,      setPhotos]      = useState<DrawerPhoto[]>(existingPhotos)
+  const [photoBusy,   setPhotoBusy]   = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState('')
+
+  const fileRef   = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setStatus(item.status || 'PENDING')
@@ -56,16 +68,57 @@ export function ItemDrawer({
     setNotes(item.notes ?? '')
     setCostMask('')
     setDescription('')
-    setPhotos([])
+    setPhotos(existingPhotos)
     setErr('')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, item.status, item.priority, item.notes])
+
+  async function uploadPhotos(files: FileList | null) {
+    if (!files || files.length === 0 || readOnly) return
+    setPhotoBusy(true); setErr('')
+    try {
+      const added: DrawerPhoto[] = []
+      for (let i = 0; i < files.length; i++) {
+        const f  = files[i]
+        const fd = new FormData()
+        fd.append('file', f)
+        fd.append('itemId',   item.id)
+        fd.append('category', 'FOTO')
+        const r = await fetch(`/api/evaluations/${item.evaluationId}/attachments`, { method: 'POST', body: fd })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) {
+          setErr(d?.error ?? 'Falha ao enviar foto.')
+          break
+        }
+        const att = d?.data
+        if (att?.id) {
+          added.push({ id: att.id, fileName: att.fileName, publicUrl: att.publicUrl })
+        }
+      }
+      if (added.length > 0) setPhotos((p) => [...p, ...added])
+    } catch {
+      setErr('Erro de conexão ao enviar foto.')
+    } finally {
+      setPhotoBusy(false)
+      if (fileRef.current)   fileRef.current.value   = ''
+      if (cameraRef.current) cameraRef.current.value = ''
+    }
+  }
+
+  async function removePhoto(id: string) {
+    if (readOnly) return
+    if (!confirm('Remover esta foto?')) return
+    try {
+      const r = await fetch(`/api/evaluations/${item.evaluationId}/attachments/${id}`, { method: 'DELETE' })
+      if (r.ok) setPhotos((p) => p.filter((x) => x.id !== id))
+    } catch { /* silent */ }
+  }
 
   async function handleSave() {
     if (readOnly) { onClose(); return }
     setSaving(true)
     setErr('')
     try {
-      // PATCH item
       const r1 = await fetch(`/api/evaluations/${item.evaluationId}/items/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -82,7 +135,6 @@ export function ItemDrawer({
         return
       }
 
-      // Se preencheu custo OU descrição, cria service vinculado
       const cost = parseBRL(costMask)
       if ((cost != null && cost > 0) || description.trim()) {
         await fetch(`/api/evaluations/${item.evaluationId}/services`, {
@@ -105,13 +157,6 @@ export function ItemDrawer({
     } finally {
       setSaving(false)
     }
-  }
-
-  function addPhoto() {
-    const url = photoUrl.trim()
-    if (!url) return
-    setPhotos((p) => [...p, url])
-    setPhotoUrl('')
   }
 
   return (
@@ -206,48 +251,72 @@ export function ItemDrawer({
             />
           </label>
 
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-gray-600">Fotos (URLs)</span>
-            <div className="flex items-center gap-2">
-              <input
-                className={inputCls}
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPhoto() } }}
-                placeholder="Cole a URL da foto e pressione Enter"
-                disabled={readOnly}
-              />
-              <button
-                type="button"
-                onClick={addPhoto}
-                className="rounded-lg border border-brand-400 bg-white px-3 py-2 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-                disabled={readOnly || !photoUrl.trim()}
-              >
-                Adicionar
-              </button>
+          {/* ── Fotos do item (câmera ou arquivo) ─────────────────────────── */}
+          <div className="flex flex-col gap-2 border-t border-gray-100 pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-gray-600">Fotos do item</span>
+              {!readOnly && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => uploadPhotos(e.target.files)}
+                  />
+                  <input
+                    ref={cameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => uploadPhotos(e.target.files)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => cameraRef.current?.click()}
+                    disabled={photoBusy}
+                    className="flex items-center gap-1 rounded-lg border border-brand-400 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-60"
+                  >
+                    {photoBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />} Câmera
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={photoBusy}
+                    className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    <Upload className="h-3 w-3" /> Arquivo
+                  </button>
+                </div>
+              )}
             </div>
-            {photos.length > 0 && (
-              <ul className="grid grid-cols-3 gap-2 mt-1">
-                {photos.map((url, i) => (
-                  <li key={i} className="relative group rounded-lg border border-gray-200 overflow-hidden aspect-square bg-gray-50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt={`foto ${i + 1}`} className="w-full h-full object-cover" />
+            {photos.length === 0 ? (
+              <p className="text-[11px] text-gray-400 italic">Nenhuma foto. Use câmera ou arquivo.</p>
+            ) : (
+              <ul className="grid grid-cols-3 gap-2">
+                {photos.map((p) => (
+                  <li key={p.id} className="group relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                    {p.publicUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.publicUrl} alt={p.fileName} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center text-[10px] text-gray-400">{p.fileName}</div>
+                    )}
                     {!readOnly && (
                       <button
                         type="button"
-                        onClick={() => setPhotos((p) => p.filter((_, idx) => idx !== i))}
+                        onClick={() => removePhoto(p.id)}
                         className="absolute top-1 right-1 rounded-full bg-white/90 p-1 text-red-600 opacity-0 group-hover:opacity-100"
                       >
-                        <X className="h-3 w-3" />
+                        <Trash2 className="h-3 w-3" />
                       </button>
                     )}
                   </li>
                 ))}
               </ul>
             )}
-            <p className="text-[10px] text-gray-400">
-              Para fotos com upload de arquivo, use a tela de Inspeção do veículo.
-            </p>
           </div>
 
           {err && <p className="text-xs text-red-600">{err}</p>}
@@ -255,7 +324,7 @@ export function ItemDrawer({
 
         <footer className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
-            Cancelar
+            Fechar
           </button>
           {!readOnly && (
             <button

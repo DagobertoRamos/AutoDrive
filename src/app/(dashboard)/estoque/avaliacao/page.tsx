@@ -603,10 +603,9 @@ function AvaliacaoForm() {
   const [ownerEmail, setOwnerEmail] = useState('')
 
   // ── Etapa 6 — Resultado ──────────────────────────────────────────────────────
-  const [intention,       setIntention]       = useState('APENAS_AVALIACAO')
-  const [result,          setResult]          = useState('PENDENTE')
+  // Nota: intention/result/stockType foram removidos do wizard. A intenção
+  // e o resultado agora são definidos pelo gerente após "Enviar para aprovação".
   const [evaluationNotes, setEvaluationNotes] = useState('')
-  const [stockType,       setStockType]       = useState('PROPRIO')
 
   // ── Carga inicial ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -990,18 +989,9 @@ function AvaliacaoForm() {
       }
 
       setSavedId(id)
-
-      // Se APROVADO + canApprove, promove a Vehicle no estoque via endpoint legacy
-      // (que cria a linha em vehicles a partir desta evaluation). NÃO é duplicação:
-      // approve atualiza a MESMA evaluation e cria um Vehicle vinculado.
-      if (result === 'APROVADO' && canApprove) {
-        await handleApprove(id)
-      } else {
-        setSuccess('saved')
-        // Redireciona para a inspeção da MESMA avaliação (mesmo id usado ao longo
-        // de todo o wizard) — não há mais id "novo" sendo gerado.
-        setTimeout(() => router.push(`/estoque/avaliacao/${id}/inspecao`), 1500)
-      }
+      setSuccess('saved')
+      // Redireciona para a inspeção da MESMA avaliação.
+      setTimeout(() => router.push(`/estoque/avaliacao/${id}/inspecao`), 1500)
     } catch (_) {
       setError('Erro de conexão.')
     } finally {
@@ -1019,7 +1009,7 @@ function AvaliacaoForm() {
       const res  = await fetch(`/api/vehicles/evaluations/${id}/approve`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ stockType, stockStatus: 'COMPRADO' }),
+        body:    JSON.stringify({ stockType: 'PROPRIO', stockStatus: 'COMPRADO' }),
       })
       const data = await res.json()
       if (data.success) {
@@ -1652,59 +1642,26 @@ function AvaliacaoForm() {
         </div>
       )}
 
-      {/* ── Etapa 6 — Resultado ── */}
+      {/* ── Etapa 6 — Resultado / Enviar para aprovação ── */}
       {step === 6 && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
-          <Section title="Resultado da Avaliação" icon={<FileCheck className="h-5 w-5" />}>
-            <Grid cols={2}>
-              <Field label="Intenção" required>
-                <select value={intention} onChange={(e) => setIntention(e.target.value)} className={selectCls}>
-                  <option value="APENAS_AVALIACAO">Apenas Avaliação</option>
-                  <option value="COMPRA">Compra</option>
-                  <option value="TROCA">Troca</option>
-                  <option value="CONSIGNACAO">Consignação</option>
-                </select>
-              </Field>
-              <Field label="Tipo de Estoque (pós-aprovação)">
-                <select value={stockType} onChange={(e) => setStockType(e.target.value)} className={selectCls}>
-                  <option value="PROPRIO">Próprio</option>
-                  <option value="CONSIGNADO">Consignado</option>
-                </select>
-              </Field>
-            </Grid>
+          <Section title="Enviar para aprovação" icon={<FileCheck className="h-5 w-5" />}>
+            <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
+              Revise os dados e envie a avaliação para o gerente. O gerente fará a precificação
+              (valor avaliado, mínimo, sugerido) e liberará o resultado de volta para você.
+            </div>
 
-            <Field label="Resultado" required>
-              <div className="flex gap-3">
-                {[
-                  { v: 'PENDENTE',  l: 'Pendente',  cls: 'border-amber-400 bg-amber-50 text-amber-800' },
-                  { v: 'APROVADO',  l: 'Aprovado',  cls: 'border-emerald-400 bg-emerald-50 text-emerald-800' },
-                  { v: 'RECUSADO',  l: 'Recusado',  cls: 'border-red-400 bg-red-50 text-red-800' },
-                ].map(({ v, l, cls }) => (
-                  <button
-                    key={v} type="button"
-                    onClick={() => setResult(v)}
-                    className={[
-                      'flex-1 rounded-xl border-2 py-3 text-sm font-bold transition-all',
-                      result === v ? cls + ' scale-105 shadow-sm' : 'border-gray-200 text-gray-500 hover:border-gray-300',
-                    ].join(' ')}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
-            <Field label="Observações finais">
+            <Field label="Observações finais (opcional)">
               <textarea
                 value={evaluationNotes}
                 onChange={(e) => setEvaluationNotes(e.target.value)}
                 rows={4}
                 className={inputCls + ' resize-none'}
-                placeholder="Registre aqui os detalhes, pendências, condições da avaliação..."
+                placeholder="Registre detalhes, pendências, condições da avaliação..."
               />
             </Field>
 
-            {/* Resumo antes de salvar */}
+            {/* Resumo antes de enviar */}
             <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Resumo da avaliação</p>
               <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
@@ -1713,40 +1670,84 @@ function AvaliacaoForm() {
                 <div><span className="text-xs text-gray-400">Ano</span><p className="font-medium">{year || '—'}</p></div>
                 <div><span className="text-xs text-gray-400">KM</span><p className="font-medium">{km ? Number(km).toLocaleString('pt-BR') + ' km' : '—'}</p></div>
                 <div><span className="text-xs text-gray-400">FIPE</span><p className="font-medium">{fipeValue ? `R$ ${Number(fipeValue).toLocaleString('pt-BR')}` : '—'}</p></div>
-                <div><span className="text-xs text-gray-400">Avaliado</span><p className="font-medium">{evaluatedValue ? `R$ ${Number(evaluatedValue).toLocaleString('pt-BR')}` : '—'}</p></div>
+                <div><span className="text-xs text-gray-400">Cliente</span><p className="font-medium">{customer?.name ?? ownerName ?? '—'}</p></div>
               </div>
             </div>
           </Section>
 
-          <div className="flex items-center justify-between gap-3 pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <button type="button" onClick={() => setStep(5)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
               <ArrowLeft className="h-4 w-4" /> Anterior
             </button>
 
-            <div className="flex gap-3">
-              {/* Salvar apenas */}
-              <button
-                type="button"
-                disabled={saving || approving}
-                onClick={handleSave}
-                className="flex items-center gap-2 rounded-lg border border-brand-500 bg-white px-5 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 disabled:opacity-60 transition-colors"
-              >
-                <ClipboardCheck className="h-4 w-4" />
-                {saving ? 'Salvando...' : 'Salvar avaliação'}
-              </button>
-
-              {/* Salvar e aprovar (apenas se canApprove e resultado = APROVADO) */}
-              {canApprove && result === 'APROVADO' && (
+            <div className="flex flex-wrap gap-3">
+              {/* Cancelar avaliação — gerente+ apenas */}
+              {canApprove && evaluationId && (
                 <button
                   type="button"
                   disabled={saving || approving}
-                  onClick={async () => { await handleSave() }}
-                  className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors"
+                  onClick={async () => {
+                    const motivo = prompt('Informe o motivo do cancelamento:')
+                    if (!motivo || !motivo.trim()) return
+                    try {
+                      const r = await fetch(`/api/evaluations/${evaluationId}/cancel`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: motivo.trim() }),
+                      })
+                      const d = await r.json()
+                      if (!r.ok) { setError(d?.error ?? 'Falha ao cancelar.'); return }
+                      router.push('/estoque')
+                    } catch { setError('Erro de conexão ao cancelar.') }
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-5 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 transition-colors"
                 >
-                  <FileCheck className="h-4 w-4" />
-                  {saving || approving ? 'Processando...' : 'Aprovar e cadastrar no estoque'}
+                  <XCircle className="h-4 w-4" /> Cancelar avaliação
                 </button>
               )}
+
+              {/* Botão único — enviar para aprovação */}
+              <button
+                type="button"
+                disabled={saving || approving}
+                onClick={async () => {
+                  setSaving(true)
+                  setError('')
+                  try {
+                    // garantir rascunho e PATCH atualizado primeiro
+                    let id = evaluationId
+                    if (!id) {
+                      id = await ensureDraft()
+                      if (!id) { setSaving(false); return }
+                    }
+                    // PATCH dos dados editáveis (mesmo handleSave faz isto, mas
+                    // aqui só precisamos garantir observações + status)
+                    await fetch(`/api/evaluations/${id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ evaluationNotes }),
+                    }).catch(() => {})
+
+                    const r = await fetch(`/api/evaluations/${id}/submit-for-approval`, { method: 'POST' })
+                    const d = await r.json()
+                    if (!r.ok) {
+                      setError(d?.error ?? 'Falha ao enviar para aprovação.')
+                      setSaving(false)
+                      return
+                    }
+                    setSuccess('saved')
+                    setTimeout(() => router.push(`/estoque/avaliacao/${id}/inspecao`), 1200)
+                  } catch {
+                    setError('Erro de conexão.')
+                  } finally {
+                    setSaving(false)
+                  }
+                }}
+                className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60 transition-colors"
+              >
+                <FileCheck className="h-4 w-4" />
+                {saving ? 'Enviando...' : 'Enviar para aprovação'}
+              </button>
             </div>
           </div>
         </div>

@@ -63,9 +63,16 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       setState({ kind: 'failure', message: 'Arquivo maior que 8MB. Reduza ou envie outro.' })
       return
     }
+    // Validação adicional: apenas PDF/imagem de documento (CRLV/ATPV-e)
+    const acceptedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if (!acceptedTypes.includes(file.type) && !/\.(pdf|jpe?g|png|webp)$/i.test(file.name)) {
+      setState({ kind: 'failure', message: 'Apenas CRLV / CRLV-e / ATPV-e em PDF ou imagem são aceitos.' })
+      return
+    }
     setState({ kind: 'uploading' })
     const form = new FormData()
     form.append('file', file)
+    if (props.evaluationId) form.append('evaluationId', props.evaluationId)
 
     setState({ kind: 'reading' })
     try {
@@ -94,6 +101,18 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
 
       // Propaga para o wizard
       onExtracted(vehicle, src, conf)
+
+      // Anexa também como CRLV oficial se houver evaluationId — assim o
+      // documento já fica salvo na aba Documentos com kind=CRLV.
+      if (props.evaluationId) {
+        try {
+          const att = new FormData()
+          att.append('file', file)
+          att.append('kind', 'CRLV')
+          att.append('category', 'CRLV')
+          await fetch(`/api/evaluations/${props.evaluationId}/attachments`, { method: 'POST', body: att })
+        } catch { /* silent — o extract já capturou os dados, anexo é bônus */ }
+      }
 
       if (missing.length > 0) {
         setState({ kind: 'partial', file, confidence: conf, missing, message })
@@ -149,9 +168,9 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       <div className="flex items-start gap-2">
         <FileText className="h-5 w-5 text-brand-600 mt-0.5" />
         <div>
-          <h3 className="font-semibold text-gray-800">Documento do veículo</h3>
+          <h3 className="font-semibold text-gray-800">CRLV do veículo</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Envie o <strong>CRLV/CRLV-e em PDF</strong> para preenchimento automático dos dados do veículo.
+            Envie o <strong>CRLV / CRLV-e / ATPV-e</strong> em PDF ou imagem. Aceitamos apenas documentos oficiais do veículo (PDF, JPG, PNG, WEBP — máx 8MB).
           </p>
         </div>
       </div>

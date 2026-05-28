@@ -23,6 +23,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   PENDENTE_DOCUMENTACAO:    { label: 'Pend. Documentação',   className: 'bg-rose-100 text-rose-700 border-rose-200' },
   PENDENTE_AVALIACAO:       { label: 'Pend. Avaliação',      className: 'bg-amber-100 text-amber-700 border-amber-200' },
   PENDENTE_PREPARACAO:      { label: 'Pend. Preparação',     className: 'bg-sky-100 text-sky-700 border-sky-200' },
+  EM_PRECIFICACAO:          { label: 'Aguardando precificação', className: 'bg-amber-100 text-amber-800 border-amber-300' },
 }
 
 interface VehicleStatusBadgeProps {

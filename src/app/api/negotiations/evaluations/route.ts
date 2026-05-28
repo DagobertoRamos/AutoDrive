@@ -27,16 +27,32 @@ export async function GET(req: NextRequest) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
-      result: 'APROVADO', // somente aprovadas pelo gerente
-      // Precificação obrigatória: avaliação só está pronta para troca
-      // quando o gerente já definiu o preço de compra (evaluatedValue)
-      // E o preço de venda sugerido (suggestedSalePrice).
-      evaluatedValue:     { not: null, gt: 0 },
-      suggestedSalePrice: { not: null, gt: 0 },
+      // Aceita AMBOS os fluxos: legado (result=APROVADO) e novo (status=LIBERADA).
+      // Avaliação só está pronta para uso em negociação quando o gerente já
+      // precificou (evaluatedValue presente).
+      AND: [
+        {
+          OR: [
+            { result: 'APROVADO' },
+            { status: 'LIBERADA' },
+          ],
+        },
+        { evaluatedValue: { not: null, gt: 0 } },
+      ],
     }
 
-    // Isolamento por tenant
-    if (session.user.tenantId) where.tenantId = session.user.tenantId
+    // Isolamento por tenant:
+    //  - MASTER (sem tenantId) vê tudo
+    //  - Usuário com tenantId vê do próprio tenant E avaliações legacy com
+    //    tenantId=null (criadas antes do multi-tenant ou pelo MASTER)
+    if (session.user.tenantId) {
+      where.AND.push({
+        OR: [
+          { tenantId: session.user.tenantId },
+          { tenantId: null },
+        ],
+      })
+    }
 
     // Filtro de unidade
     if (unitId) where.unitId = unitId
@@ -44,34 +60,24 @@ export async function GET(req: NextRequest) {
       where.unitId = session.user.unitId
     }
 
-    // Exclui avaliações que já estão vinculadas a uma negociação ativa
-    // (via Vehicle.dealVehicles com status aberto)
-    where.OR = [
-      { vehicleId: null },
-      {
-        vehicle: {
-          dealVehicles: {
-            none: {
-              deal: {
-                status: {
-                  in: ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'AGUARDANDO_APROVACAO', 'LIBERADA', 'APROVADA', 'EM_ANDAMENTO', 'REABERTA'],
-                },
-              },
-            },
-          },
-        },
-      },
-    ]
+    // (Filtro de "não vinculado a deal ativo" removido — o relacionamento
+    // vehicle.dealVehicles depende de o Vehicle já existir, o que NÃO
+    // acontece mais antes da COMPRA ser finalizada. Avaliações LIBERADAS
+    // e ainda não compradas ficam visíveis. Uma proteção adicional será
+    // feita no momento de criar o DealVehicle, recusando avaliação que
+    // já vire deal ativo.)
 
     if (search) {
-      where.OR = [
-        { plate:      { contains: search, mode: 'insensitive' } },
-        { brand:      { contains: search, mode: 'insensitive' } },
-        { model:      { contains: search, mode: 'insensitive' } },
-        { ownerName:  { contains: search, mode: 'insensitive' } },
-        { ownerCpf:   { contains: search, mode: 'insensitive' } },
-        { ownerPhone: { contains: search, mode: 'insensitive' } },
-      ]
+      where.AND.push({
+        OR: [
+          { plate:      { contains: search, mode: 'insensitive' } },
+          { brand:      { contains: search, mode: 'insensitive' } },
+          { model:      { contains: search, mode: 'insensitive' } },
+          { ownerName:  { contains: search, mode: 'insensitive' } },
+          { ownerCpf:   { contains: search, mode: 'insensitive' } },
+          { ownerPhone: { contains: search, mode: 'insensitive' } },
+        ],
+      })
     }
 
     const [data, total] = await Promise.all([

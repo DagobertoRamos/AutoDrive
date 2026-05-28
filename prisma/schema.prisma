@@ -309,6 +309,7 @@ enum VehicleStockStatus {
   PENDENTE_DOCUMENTACAO
   PENDENTE_AVALIACAO
   PENDENTE_PREPARACAO
+  EM_PRECIFICACAO
 }
 
 enum CautelarStatus {
@@ -754,6 +755,16 @@ model Vehicle {
   fipeCode         String?   // código FIPE ex: "005415-6"
   fipeReferenceMonth String? // ex: "maio/2026"
 
+  // ── Precificação de venda (gerente+ define APÓS aprovação da avaliação) ──
+  promoPrice           Decimal?  @db.Decimal(12, 2)
+  isPromo              Boolean   @default(false)
+  promoStartsAt        DateTime?
+  promoEndsAt          DateTime?
+  isAvailableForSale   Boolean   @default(false)
+  pricingNotes         String?
+  pricedById           String?
+  pricedAt             DateTime?
+
   // Cautelar/perícia
   cautelarStatus  CautelarStatus?  @default(SEM_CAUTELAR)
   cautelarNumber  String?
@@ -784,6 +795,7 @@ model Vehicle {
   photos       VehiclePhoto[]
   evaluations  VehicleEvaluation[]
   stockPendencies VehicleStockPendency[]  // pendências de estoque configuráveis
+  pricingHistory VehiclePricingHistory[]
 
   @@index([tenantId])
   @@index([unitId])
@@ -792,6 +804,32 @@ model Vehicle {
   @@index([stockLocation])
   @@index([brand, model])
   @@map("vehicles")
+}
+
+// ── Histórico de precificação de venda ────────────────────────────────────────
+
+model VehiclePricingHistory {
+  id              String    @id @default(cuid())
+  vehicleId       String
+  tenantId        String?
+  changedById     String
+  action          String    // SET_PRICE | UPDATE_PRICE | PROMO_START | PROMO_END | AVAILABILITY_ON | AVAILABILITY_OFF | NOTES_UPDATE
+  oldSalePrice    Decimal?  @db.Decimal(12, 2)
+  newSalePrice    Decimal?  @db.Decimal(12, 2)
+  oldPromoPrice   Decimal?  @db.Decimal(12, 2)
+  newPromoPrice   Decimal?  @db.Decimal(12, 2)
+  oldIsAvailable  Boolean?
+  newIsAvailable  Boolean?
+  oldIsPromo      Boolean?
+  newIsPromo      Boolean?
+  reason          String?
+  createdAt       DateTime  @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([tenantId])
+  @@map("vehicle_pricing_history")
 }
 
 // ── Fotos do veículo ──────────────────────────────────────────────────────────
@@ -883,9 +921,22 @@ model VehicleEvaluation {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // ── Submissão para aprovação / Cancelamento / Liberação ──────────────────
+  // Marca o momento em que o avaliador envia a avaliação para o gerente
+  // (status passa a AGUARDANDO_APROVACAO). O gerente então precifica e libera
+  // — `releasedAt` indica liberação, `cancelledAt` indica cancelamento.
+  approvalRequestedAt   DateTime?
+  approvalRequestedById String?
+  releasedAt            DateTime?
+  releasedByUserId      String?
+  cancelledAt           DateTime?
+  cancelledById         String?
+  cancelReason          String?
+
   // ── Reformulação Avaliação completa (etapas, gastos, integração) ─────────
   // Status de workflow paralelo ao `result`: DRAFT | IN_PROGRESS |
-  // PENDING_REVIEW | FINALIZED | APPROVED | REJECTED | REOPENED | CANCELED
+  // AGUARDANDO_APROVACAO | LIBERADA | PENDING_REVIEW | FINALIZED |
+  // APPROVED | REJECTED | REOPENED | CANCELADA
   status            String?   @default("DRAFT")
   /// Soma de todos os EvaluationService.estimatedCost (cache calculado no save)
   totalExpenses     Decimal?  @default(0) @db.Decimal(12, 2)
@@ -1133,6 +1184,8 @@ model Deal {
   discountRequests DealDiscountRequest[]
   changes         DealChange[]
   reopenLogs      DealReopenLog[]
+  attachments     DealAttachment[]
+  documents       DealDocument[]
 
   @@index([tenantId])
   @@index([unitId])
@@ -1338,6 +1391,125 @@ model DealReopenLog {
   @@index([dealId])
   @@index([tenantId])
   @@map("deal_reopen_logs")
+}
+
+/// Categoria de anexo da negociação (comprovantes, NFe, contrato assinado, etc).
+enum DealAttachmentCategory {
+  COMPROVANTE_PAGAMENTO
+  COMPROVANTE_QUITACAO
+  COMPROVANTE_DEBITO
+  COMPROVANTE_TROCO
+  CONTRATO_ASSINADO
+  PROCURACAO_ASSINADA
+  NFE
+  RECIBO
+  OUTRO
+}
+
+/// Anexo de negociação — financeiro/back-office sobe comprovantes, contratos, NFe.
+/// Pode ser vinculado a um item específico (payment/debt/payoff/change).
+model DealAttachment {
+  id           String                 @id @default(cuid())
+  dealId       String
+  tenantId     String?
+  category     DealAttachmentCategory
+  fileName     String
+  fileType     String                 // image | pdf | other
+  mimeType     String
+  fileSize     Int?
+  storageKey   String
+  publicUrl    String?
+  notes        String?
+
+  // Vínculos opcionais com itens financeiros da negociação
+  paymentId    String?
+  debtId       String?
+  vehicleId    String?                // para comprovante de quitação por veículo
+  changeId     String?
+
+  uploadedById   String?
+  uploadedByName String?
+  uploadedAt     DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([tenantId])
+  @@index([category])
+  @@index([paymentId])
+  @@index([debtId])
+  @@map("deal_attachments")
+}
+
+/// Categoria de template de documento.
+enum DocumentTemplateType {
+  CONTRATO_COMPRA
+  CONTRATO_VENDA
+  CONTRATO_TROCA
+  CONTRATO_CONSIGNACAO
+  PROCURACAO
+  RECIBO
+  TERMO_ENTREGA
+  TERMO_RESPONSABILIDADE
+  OUTRO
+}
+
+/// Template de documento cadastrado pelo MASTER (global, tenantId=null) ou pelo
+/// lojista (tenantId setado). Corpo HTML com merge fields tipo `{{cliente.nome}}`.
+model DocumentTemplate {
+  id          String               @id @default(cuid())
+  tenantId    String?              // null = padrão global (MASTER)
+  type        DocumentTemplateType
+  name        String
+  description String?
+  bodyHtml    String               @db.Text
+  variables   Json?                // lista de variáveis disponíveis (para UI de preview)
+  active      Boolean              @default(true)
+  isDefault   Boolean              @default(false)
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  documents DealDocument[]
+
+  @@index([tenantId])
+  @@index([type])
+  @@index([active])
+  @@map("document_templates")
+}
+
+/// Documento gerado/anexado por negociação a partir de um template (ou avulso).
+model DealDocument {
+  id         String               @id @default(cuid())
+  dealId     String
+  tenantId   String?
+  templateId String?
+  type       DocumentTemplateType
+  name       String
+  bodyHtml   String?              @db.Text   // HTML renderizado (snapshot do template + merge)
+  pdfUrl     String?              // PDF gerado (se houver)
+  storageKey String?
+
+  // Versão assinada anexada manualmente (upload pelo financeiro/cliente)
+  signedFileUrl String?
+  signedAt      DateTime?
+  signedBy      String?
+
+  status      String               @default("RASCUNHO") // RASCUNHO | GERADO | ASSINADO | ARQUIVADO
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deal     Deal              @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  template DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([dealId])
+  @@index([tenantId])
+  @@index([type])
+  @@index([status])
+  @@map("deal_documents")
 }
 
 /// Histórico de status da negociação

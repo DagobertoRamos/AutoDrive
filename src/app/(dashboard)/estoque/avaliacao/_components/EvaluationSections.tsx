@@ -2,14 +2,16 @@
 
 // =============================================================================
 // EvaluationSections — exibe abas de seções (Interior, Frente, Direita, Traseira,
-// Esquerda, Test-drive). Para cada seção lista itens com status + ação de
-// avaliar/editar/reavaliar, abrindo ItemDrawer.
+// Esquerda, Test-drive). Para cada seção:
+//   • Renderiza um widget "Foto geral da seção" no TOPO (obrigatório p/ enviar).
+//     Aceita upload por arquivo OU câmera (input capture="environment").
+//   • Lista itens com status + ação de avaliar/editar/reavaliar, abrindo ItemDrawer.
 // Auto-seeda os itens canônicos via POST /api/evaluations/[id]/items/seed se
 // vazio.
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, ChevronRight } from 'lucide-react'
+import { Loader2, ChevronRight, Camera, Upload, Trash2, ImageIcon } from 'lucide-react'
 import { ITEMS, SECTIONS, ITEM_STATUS, type SectionKey } from '@/lib/evaluation/catalog'
 import { ItemDrawer, type DrawerItem } from './ItemDrawer'
 
@@ -21,6 +23,16 @@ interface EvalItem {
   status:     string
   priority:   string | null
   notes:      string | null
+}
+
+interface EvalAttachment {
+  id:        string
+  section:   string | null
+  category:  string | null
+  fileName:  string
+  fileType:  string
+  publicUrl: string | null
+  itemId:    string | null
 }
 
 interface EvaluationSectionsProps {
@@ -37,10 +49,6 @@ const TABS: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUER
  * Remove itens duplicados da lista. Critério:
  *   - Se tem catalogKey: dedup por (section, catalogKey) — mantém o 1º
  *   - Se não tem catalogKey: dedup por (section, name normalizado)
- *
- * Defende contra duas fontes históricas de duplicata:
- *   1) Race condition no seed (React Strict Mode + dev) que rodava 2x
- *   2) Seeds antigos que rodaram antes do guard de catalogKey
  */
 function dedupeItems(items: EvalItem[]): EvalItem[] {
   const seen = new Set<string>()
@@ -62,17 +70,153 @@ function statusBadge(status: string) {
   return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${s.color}`}>{s.label}</span>
 }
 
+// ── Widget de foto geral da seção (obrigatório) ──────────────────────────────
+
+function SectionPhotoWidget({
+  evaluationId, section, photos, readOnly, onChanged,
+}: {
+  evaluationId: string
+  section:      SectionKey
+  photos:       EvalAttachment[]
+  readOnly?:    boolean
+  onChanged:    () => void
+}) {
+  const fileRef   = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [err,  setErr]  = useState('')
+
+  async function upload(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setBusy(true); setErr('')
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f  = files[i]
+        const fd = new FormData()
+        fd.append('file', f)
+        fd.append('section',  section)
+        fd.append('category', 'FOTO_SECAO')
+        const r = await fetch(`/api/evaluations/${evaluationId}/attachments`, { method: 'POST', body: fd })
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}))
+          setErr(d?.error ?? 'Falha ao enviar foto.')
+          break
+        }
+      }
+      onChanged()
+    } catch {
+      setErr('Erro de conexão ao enviar foto.')
+    } finally {
+      setBusy(false)
+      if (fileRef.current)   fileRef.current.value   = ''
+      if (cameraRef.current) cameraRef.current.value = ''
+    }
+  }
+
+  async function remove(id: string) {
+    if (!confirm('Remover esta foto?')) return
+    try {
+      const r = await fetch(`/api/evaluations/${evaluationId}/attachments/${id}`, { method: 'DELETE' })
+      if (r.ok) onChanged()
+    } catch { /* silent */ }
+  }
+
+  const hasPhotos = photos.length > 0
+
+  return (
+    <div className={[
+      'rounded-xl border p-3 sm:p-4',
+      hasPhotos ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-300 bg-amber-50',
+    ].join(' ')}>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div>
+          <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+            <ImageIcon className="h-4 w-4" /> Foto geral da seção
+            <span className="text-red-500">*</span>
+          </p>
+          <p className="text-[11px] text-gray-500">
+            {hasPhotos
+              ? `${photos.length} foto(s) enviada(s)`
+              : 'Mínimo 1 foto obrigatória antes de enviar para aprovação.'}
+          </p>
+        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => upload(e.target.files)}
+            />
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => upload(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => cameraRef.current?.click()}
+              disabled={busy}
+              className="flex items-center gap-1 rounded-lg border border-brand-400 bg-white px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />} Câmera
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              <Upload className="h-3 w-3" /> Enviar arquivo
+            </button>
+          </div>
+        )}
+      </div>
+
+      {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
+
+      {hasPhotos && (
+        <ul className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+          {photos.map((a) => (
+            <li key={a.id} className="group relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
+              {a.publicUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={a.publicUrl} alt={a.fileName} className="h-full w-full object-cover" />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center text-gray-400 text-[10px]">{a.fileName}</div>
+              )}
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => remove(a.id)}
+                  className="absolute top-1 right-1 rounded-full bg-white/90 p-1 text-red-600 opacity-0 group-hover:opacity-100"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function EvaluationSections({
   evaluationId, evaluationStatus, reopenCount = 0, readOnly,
 }: EvaluationSectionsProps) {
-  const [tab,     setTab]     = useState<SectionKey>('INTERIOR')
-  const [items,   setItems]   = useState<EvalItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [drawer,  setDrawer]  = useState<DrawerItem | null>(null)
-  const [err,     setErr]     = useState('')
+  const [tab,         setTab]         = useState<SectionKey>('INTERIOR')
+  const [items,       setItems]       = useState<EvalItem[]>([])
+  const [attachments, setAttachments] = useState<EvalAttachment[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [drawer,      setDrawer]      = useState<DrawerItem | null>(null)
+  const [err,         setErr]         = useState('')
   // Lock client-side: evita 2x POST /seed disparado pelo React Strict Mode
-  // (que monta useEffect duas vezes em dev). Sem o lock, a 2ª chamada
-  // criava registros duplicados.
   const seedInFlight = useRef(false)
   const seedDone     = useRef<string | null>(null)
 
@@ -88,8 +232,9 @@ export function EvaluationSections({
         return
       }
       const incoming: EvalItem[] = Array.isArray(d?.data?.items) ? d.data.items : []
+      const incAttachments: EvalAttachment[] = Array.isArray(d?.data?.attachments) ? d.data.attachments : []
+      setAttachments(incAttachments)
 
-      // Se não há itens ainda e podemos editar — chama seed UMA vez só
       const shouldSeed =
         incoming.length === 0 &&
         !readOnly &&
@@ -105,13 +250,12 @@ export function EvaluationSections({
           const d2 = await r2.json()
           const seeded = Array.isArray(d2?.data?.items) ? d2.data.items : []
           setItems(dedupeItems(seeded))
+          const seededAtts = Array.isArray(d2?.data?.attachments) ? d2.data.attachments : []
+          setAttachments(seededAtts)
         } finally {
           seedInFlight.current = false
         }
       } else {
-        // Dedup defensivo: mesmo que o backend traga duplicatas legadas, o
-        // render fica limpo. Mantém o primeiro registro de cada catalogKey
-        // (ou de cada name dentro da mesma section quando catalogKey é null).
         setItems(dedupeItems(incoming))
       }
     } catch {
@@ -122,8 +266,18 @@ export function EvaluationSections({
   }, [evaluationId, readOnly])
 
   useEffect(() => { void load() }, [load])
+  // evaluationStatus não usado por enquanto (mantido na assinatura para
+  // compatibilidade com o InspecaoPage que passa o status). Suprime warning.
+  void evaluationStatus
 
   const currentItems = items.filter((i) => i.section === tab)
+  // Fotos da seção atual: pega tudo que é image E section=tab (qualquer category,
+  // mas prioritariamente FOTO_SECAO). Fotos de item ficam dentro do item.
+  const sectionPhotos = attachments.filter((a) =>
+    a.section === tab &&
+    a.fileType === 'image' &&
+    !a.itemId,
+  )
   const catalog = ITEMS[tab] ?? []
 
   function buttonLabel(status: string): string {
@@ -140,6 +294,7 @@ export function EvaluationSections({
           const def = SECTIONS.find((s) => s.key === t)!
           const count = items.filter((i) => i.section === t).length
           const done  = items.filter((i) => i.section === t && i.status && i.status !== 'PENDING').length
+          const photoCount = attachments.filter((a) => a.section === t && a.fileType === 'image' && !a.itemId).length
           const active = tab === t
           return (
             <button
@@ -157,6 +312,12 @@ export function EvaluationSections({
               {count > 0 && (
                 <span className="ml-1.5 text-[10px] text-gray-400">({done}/{count})</span>
               )}
+              <span className={[
+                'ml-1.5 inline-flex items-center gap-0.5 rounded-full px-1.5 text-[9px] font-bold',
+                photoCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700',
+              ].join(' ')}>
+                <Camera className="h-2.5 w-2.5" />{photoCount}
+              </span>
             </button>
           )
         })}
@@ -171,34 +332,53 @@ export function EvaluationSections({
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
       ) : (
-        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {(currentItems.length > 0 ? currentItems : catalog.map((c, i) => ({
-            id: `__ph_${i}`, section: tab, catalogKey: c.key, name: c.name, status: 'PENDING', priority: null, notes: null,
-          } as EvalItem))).map((it) => {
-            const isPlaceholder = it.id.startsWith('__ph_')
-            return (
-              <li key={it.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{it.name}</p>
-                  <div className="mt-1">{statusBadge(it.status || 'PENDING')}</div>
-                </div>
-                <button
-                  type="button"
-                  disabled={isPlaceholder || readOnly}
-                  onClick={() => setDrawer({
-                    id: it.id, evaluationId, name: it.name, status: it.status,
-                    priority: it.priority, notes: it.notes,
-                  })}
-                  className="inline-flex items-center gap-1 rounded-lg border border-brand-300 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={isPlaceholder ? 'Itens ainda não inicializados. Salve a avaliação antes.' : ''}
-                >
-                  {buttonLabel(it.status)}
-                  <ChevronRight className="h-3 w-3" />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+        <>
+          {/* Foto geral da seção (obrigatória) */}
+          <SectionPhotoWidget
+            evaluationId={evaluationId}
+            section={tab}
+            photos={sectionPhotos}
+            readOnly={readOnly}
+            onChanged={load}
+          />
+
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {(currentItems.length > 0 ? currentItems : catalog.map((c, i) => ({
+              id: `__ph_${i}`, section: tab, catalogKey: c.key, name: c.name, status: 'PENDING', priority: null, notes: null,
+            } as EvalItem))).map((it) => {
+              const isPlaceholder = it.id.startsWith('__ph_')
+              const itemPhotoCount = attachments.filter((a) => a.itemId === it.id && a.fileType === 'image').length
+              return (
+                <li key={it.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{it.name}</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      {statusBadge(it.status || 'PENDING')}
+                      {itemPhotoCount > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                          <Camera className="h-2.5 w-2.5" /> {itemPhotoCount}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isPlaceholder || readOnly}
+                    onClick={() => setDrawer({
+                      id: it.id, evaluationId, name: it.name, status: it.status,
+                      priority: it.priority, notes: it.notes,
+                    })}
+                    className="inline-flex items-center gap-1 rounded-lg border border-brand-300 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={isPlaceholder ? 'Itens ainda não inicializados. Salve a avaliação antes.' : ''}
+                  >
+                    {buttonLabel(it.status)}
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </>
       )}
 
       {drawer && (
@@ -207,6 +387,7 @@ export function EvaluationSections({
           evaluationStatus={evaluationStatus}
           isReopen={reopenCount > 0}
           readOnly={readOnly}
+          existingPhotos={attachments.filter((a) => a.itemId === drawer.id && a.fileType === 'image')}
           onClose={() => setDrawer(null)}
           onSave={() => { setDrawer(null); void load() }}
         />

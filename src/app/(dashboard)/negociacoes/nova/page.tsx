@@ -240,6 +240,8 @@ interface EvaluationItem {
   model:          string | null
   year:           number | null
   km:             number | null
+  color:          string | null
+  fuel:           string | null
   evaluatedValue: number | null
   fipeValue:      number | null
   result:         string
@@ -387,9 +389,19 @@ const BR_STATES = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// fmtBRL — formata moeda em BRL aceitando vários formatos de entrada.
+//
+// BUG anterior: usava parseFloat("4.200,00".replace(',', '.')) →
+// parseFloat("4.200.00") → 4.2 (parseFloat para no 2º ponto). Daí
+// R$ 4.200,00 virava R$ 4,20. Solução: remover TODOS os pontos (milhar)
+// antes de trocar a vírgula decimal. Mesmo padrão usado em parseBRLInput.
 const fmtBRL = (s: string | number | null | undefined) => {
-  const raw = typeof s === 'number' ? s : parseFloat(String(s ?? '').replace(',', '.'))
-  return isNaN(raw) ? '—' : raw.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  if (s == null || s === '') return '—'
+  const n = typeof s === 'number'
+    ? s
+    : parseFloat(String(s).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'))
+  if (!Number.isFinite(n)) return '—'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 const fmtDate = (s: string) => {
@@ -714,8 +726,14 @@ function EvaluationSearchModal({
     setLoading(true)
     setSearched(true)
     try {
-      const qs = q ? `&search=${encodeURIComponent(q)}` : ''
-      const res = await fetch(`/api/negotiations/evaluations${qs}`)
+      // URL precisa começar com '?' — quando havia só `&search=X`, o Next
+      // ignora o param (URL malformada) e a API recebe vazio → 0 resultados.
+      const params = new URLSearchParams()
+      if (q.trim()) params.set('search', q.trim())
+      const url = params.toString()
+        ? `/api/negotiations/evaluations?${params.toString()}`
+        : `/api/negotiations/evaluations`
+      const res = await fetch(url)
       const data = await res.json()
       setResults(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [])
     } catch {
@@ -725,11 +743,16 @@ function EvaluationSearchModal({
     }
   }, [])
 
+  // Busca instantânea ao digitar — debounce curto (250ms) para feedback
+  // rápido sem inundar a API.
   const handleChange = (val: string) => {
     setQuery(val)
     clearTimeout((handleChange as { _t?: ReturnType<typeof setTimeout> })._t)
-    ;(handleChange as { _t?: ReturnType<typeof setTimeout> })._t = setTimeout(() => doSearch(val), 400)
+    ;(handleChange as { _t?: ReturnType<typeof setTimeout> })._t = setTimeout(() => doSearch(val), 250)
   }
+
+  // Carrega lista inicial assim que o modal abre (sem precisar clicar Buscar)
+  useEffect(() => { doSearch('') }, [doSearch])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1783,11 +1806,10 @@ function VehicleFormBlock({
           {data.hasFinancing && (
             <div className="grid grid-cols-2 gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
               <Field label="Banco / Financiadora">
-                <input
-                  className={inputCls}
-                  placeholder="Banco do Brasil"
+                <BankCombo
                   value={data.payoffBank}
-                  onChange={(e) => onChange('payoffBank', e.target.value)}
+                  onChange={(v) => onChange('payoffBank', v)}
+                  placeholder="Buscar banco..."
                 />
               </Field>
               <Field label="Valor de Quitação (R$)">
@@ -1878,6 +1900,32 @@ function StepVeiculos({
   }
 
   const [showEvalModal, setShowEvalModal] = useState(false)
+  // Modal separado pro fluxo COMPRA — preenche `form.vehicle` (não tradeVehicle)
+  const [showEvalModalCompra, setShowEvalModalCompra] = useState(false)
+
+  // Avaliação aprovada selecionada para COMPRA
+  const handleSelectEvaluationCompra = (ev: EvaluationItem) => {
+    setVehicleField('evaluationId', ev.id)
+    setVehicleField('plate', ev.plate ?? '')
+    setVehicleField('brand', ev.brand ?? '')
+    setVehicleField('model', ev.model ?? '')
+    setVehicleField('year', ev.year != null ? String(ev.year) : '')
+    setVehicleField('km',   ev.km   != null ? String(ev.km)   : '')
+    setVehicleField('color', ev.color ?? '')
+    setVehicleField('fuel',  ev.fuel  ?? '')
+    if (ev.evaluatedValue != null) {
+      const masked = maskBRLInput(String(Math.round(Number(ev.evaluatedValue) * 100)))
+      setVehicleField('evaluatedValue', masked)
+      // Preço de compra que será pago ao cliente = valor aprovado pelo gerente
+      setVehicleField('vehicleValue', masked)
+      // form.purchaseAmount é o que o backend persiste E o cálculo de
+      // totalOperacao lê — precisa estar sincronizado com vehicleValue.
+      setField('purchaseAmount', masked)
+    }
+    if (ev.fipeValue != null) {
+      setVehicleField('fipeValue', maskBRLInput(String(Math.round(Number(ev.fipeValue) * 100))))
+    }
+  }
 
   const fi = (k: keyof DealForm) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -2034,11 +2082,140 @@ function StepVeiculos({
       {/* ── COMPRA ── */}
       {form.type === 'COMPRA' && (
         <div className="space-y-4">
+          {showEvalModalCompra && (
+            <EvaluationSearchModal
+              onSelect={(ev) => { handleSelectEvaluationCompra(ev); setShowEvalModalCompra(false) }}
+              onClose={() => setShowEvalModalCompra(false)}
+            />
+          )}
+
           <div>
             <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo a Comprar</h2>
-            <p className="text-sm text-gray-500">Preencha os dados do veículo que será comprado do cliente.</p>
+            <p className="text-sm text-gray-500">
+              Compras só podem ser feitas a partir de avaliações <strong>finalizadas e liberadas pelo gerente</strong>.
+              Se o veículo ainda não foi avaliado, faça uma nova avaliação antes.
+            </p>
           </div>
-          <VehicleFormBlock data={form.vehicle} onChange={setVehicleField} showValuation lockValue={lockVehicleValue} />
+
+          {/* Avaliação já selecionada: card resumo + ações de trocar/remover */}
+          {form.vehicle.evaluationId && (
+            <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50/40 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 mb-1">Avaliação selecionada</p>
+                  <p className="text-sm font-bold text-gray-900">
+                    {[form.vehicle.brand, form.vehicle.model, form.vehicle.year].filter(Boolean).join(' ')}
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-600">
+                    {form.vehicle.plate && <span className="font-mono">Placa: {form.vehicle.plate}</span>}
+                    {form.vehicle.km    && <span>{form.vehicle.km} km</span>}
+                    {form.vehicle.color && <span>{form.vehicle.color}</span>}
+                  </div>
+                  {form.vehicle.evaluatedValue && (
+                    <p className="mt-1 text-xs font-medium text-emerald-700">
+                      Valor aprovado de compra: R$ {form.vehicle.evaluatedValue}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirm('Trocar avaliação selecionada?')) return
+                    setVehicleField('evaluationId', '')
+                    setVehicleField('plate', '')
+                    setVehicleField('brand', '')
+                    setVehicleField('model', '')
+                    setVehicleField('year', '')
+                    setVehicleField('km', '')
+                    setVehicleField('color', '')
+                    setVehicleField('fuel', '')
+                    setVehicleField('vehicleValue', '')
+                    setVehicleField('evaluatedValue', '')
+                    setVehicleField('fipeValue', '')
+                  }}
+                  className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                >
+                  Trocar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Seleção: busca avaliação OU faz nova */}
+          {!form.vehicle.evaluationId && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowEvalModalCompra(true)}
+                className="flex items-center justify-center gap-2 rounded-xl border-2 border-brand-300 bg-brand-50/40 px-4 py-6 text-sm font-semibold text-brand-700 hover:bg-brand-50 transition-colors"
+              >
+                <Search size={16} />
+                Selecionar avaliação liberada
+              </button>
+              <Link
+                href="/estoque/avaliacao"
+                target="_blank"
+                className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-6 text-sm font-semibold text-gray-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"
+              >
+                <Plus size={16} />
+                Fazer nova avaliação
+              </Link>
+            </div>
+          )}
+
+          {/* Quando avaliação está selecionada, mostramos APENAS o toggle de
+              financiamento — os dados do veículo já estão no card acima.
+              Mantemos o VehicleFormBlock só pra reusar a lógica do quitação. */}
+          {form.vehicle.evaluationId && (
+            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!form.vehicle.hasFinancing}
+                  onChange={(e) => setVehicleField('hasFinancing', e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="font-medium text-gray-700">Veículo possui financiamento / quitação pendente</span>
+              </label>
+              {form.vehicle.hasFinancing && (
+                <div className="grid grid-cols-2 gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <Field label="Banco / Financiadora">
+                    <BankCombo
+                      value={form.vehicle.payoffBank}
+                      onChange={(v) => setVehicleField('payoffBank', v)}
+                      placeholder="Buscar banco..."
+                    />
+                  </Field>
+                  <Field label="Valor de Quitação (R$)">
+                    <input
+                      className={inputCls}
+                      placeholder="0,00"
+                      value={form.vehicle.payoffValue}
+                      onChange={(e) => setVehicleField('payoffValue', maskBRLInput(e.target.value))}
+                    />
+                  </Field>
+                </div>
+              )}
+              <Field label="Observações">
+                <textarea
+                  className={`${inputCls} min-h-16 resize-y`}
+                  placeholder="Observações sobre este veículo..."
+                  value={form.vehicle.notes}
+                  onChange={(e) => setVehicleField('notes', e.target.value)}
+                />
+              </Field>
+            </div>
+          )}
+
+          {/* Bloco mantido pra TS — não renderiza, evita refatorar imports */}
+          {false && form.vehicle.evaluationId && (
+            <VehicleFormBlock
+              data={form.vehicle}
+              onChange={setVehicleField}
+              showValuation
+              lockValue={true /* vendedor não altera valor de compra; é o que o gerente aprovou */}
+            />
+          )}
         </div>
       )}
 
@@ -2301,12 +2478,35 @@ function PaymentModal({
   initial,
   onSave,
   onClose,
+  dealType,
+  suggestedAmount,
 }: {
   initial?: PaymentEntry
   onSave:   (entry: PaymentEntry) => void
   onClose:  () => void
+  /** Filtra os tipos de pagamento conforme o contexto da negociação. */
+  dealType?: DealType
+  /** Valor sugerido (saldo em aberto) — pré-preenche o campo Valor. */
+  suggestedAmount?: number
 }) {
-  const [entry, setEntry] = useState<PaymentEntry>(initial ?? EMPTY_PAYMENT())
+  // Tipos válidos pra COMPRA — loja paga o cliente, então só formas de
+  // transferência reais. Quitação NÃO é forma de pagamento — é débito do
+  // veículo (cadastra na etapa "Veículo" via "possui financiamento") e
+  // entra automaticamente como dedução do valor pago ao cliente.
+  const COMPRA_TYPES: PaymentEntryType[] = ['DINHEIRO', 'PIX', 'TRANSFERENCIA']
+
+  const isCompra = dealType === 'COMPRA'
+
+  const buildEmpty = (): PaymentEntry => {
+    const e = EMPTY_PAYMENT()
+    if (isCompra) e.type = 'PIX' // default mais comum
+    if (suggestedAmount && suggestedAmount > 0) {
+      e.amount = maskBRLInput(String(Math.round(suggestedAmount * 100)))
+    }
+    return e
+  }
+
+  const [entry, setEntry] = useState<PaymentEntry>(initial ?? buildEmpty())
   const [error, setError] = useState('')
 
   const update = <K extends keyof PaymentEntry>(k: K, v: PaymentEntry[K]) => {
@@ -2327,6 +2527,8 @@ function PaymentModal({
   const needsParcelas    = ['CARTAO_CREDITO', 'FINANCIAMENTO', 'DUPLICATA'].includes(entry.type)
   const needsFirstDue    = ['FINANCIAMENTO', 'BOLETO', 'DUPLICATA'].includes(entry.type)
   const needsPix         = entry.type === 'PIX'
+  // TRANSFERENCIA pra COMPRA precisa de Agência e Conta também
+  const needsAgConta     = entry.type === 'TRANSFERENCIA'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -2347,21 +2549,27 @@ function PaymentModal({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={isCompra ? '' : 'grid grid-cols-2 gap-3'}>
             <Field label="Tipo de pagamento" required>
               <select className={inputCls} value={entry.type} onChange={(e) => update('type', e.target.value as PaymentEntryType)}>
-                {(Object.keys(PAYMENT_ENTRY_LABELS) as PaymentEntryType[]).map((t) => (
-                  <option key={t} value={t}>{PAYMENT_ENTRY_LABELS[t]}</option>
+                {(isCompra ? COMPRA_TYPES : Object.keys(PAYMENT_ENTRY_LABELS) as PaymentEntryType[]).map((t) => (
+                  <option key={t} value={t}>
+                    {t === 'TRANSFERENCIA' && isCompra ? 'DOC / TED / TEF' : PAYMENT_ENTRY_LABELS[t]}
+                  </option>
                 ))}
               </select>
             </Field>
-            <Field label="Status">
-              <select className={inputCls} value={entry.status} onChange={(e) => update('status', e.target.value as PaymentEntryStatus)}>
-                {(Object.keys(PAYMENT_STATUS_LABELS) as PaymentEntryStatus[]).map((s) => (
-                  <option key={s} value={s}>{PAYMENT_STATUS_LABELS[s]}</option>
-                ))}
-              </select>
-            </Field>
+            {/* Status removido pra COMPRA — loja-paga-cliente é evento direto.
+                Em VENDA/TROCA o Status continua útil para rastrear pendências. */}
+            {!isCompra && (
+              <Field label="Status">
+                <select className={inputCls} value={entry.status} onChange={(e) => update('status', e.target.value as PaymentEntryStatus)}>
+                  {(Object.keys(PAYMENT_STATUS_LABELS) as PaymentEntryStatus[]).map((s) => (
+                    <option key={s} value={s}>{PAYMENT_STATUS_LABELS[s]}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -2400,6 +2608,28 @@ function PaymentModal({
             <Field label="Banco / Financeira">
               <BankCombo value={entry.bank} onChange={(v) => update('bank', v)} placeholder="Buscar banco..." />
             </Field>
+          )}
+
+          {/* DOC/TED/TEF: precisa Agência e Conta (e CPF/CNPJ do favorecido) */}
+          {needsAgConta && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Agência">
+                <input
+                  className={inputCls}
+                  placeholder="0000"
+                  value={entry.cardBrand /* reusa o campo como Agência pra evitar nova coluna no DealPayment */}
+                  onChange={(e) => update('cardBrand', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                />
+              </Field>
+              <Field label="Conta">
+                <input
+                  className={inputCls}
+                  placeholder="00000-0"
+                  value={entry.pixKey /* reusa o campo como Conta */}
+                  onChange={(e) => update('pixKey', e.target.value)}
+                />
+              </Field>
+            </div>
           )}
 
           {needsCard && (
@@ -2611,9 +2841,41 @@ function StepPagamento({
   }, 0)
 
   // Total da operação
+  //
+  // COMPRA: a loja paga ao cliente pelo carro. O valor financeiro real que
+  // a loja desembolsa é:
+  //   purchase  (valor aprovado pelo gerente)
+  // - débitosVendedor (débitos que o CLIENTE-vendedor paga → abate do valor)
+  // + débitosComprador (débitos que a LOJA assume → soma ao custo)
+  //
+  // Por exemplo:
+  //   purchase                 = R$ 110.000 (gerente aprovou)
+  //   IPVA (cliente paga)      = R$ 4.520   → cliente recebe 105.480
+  //   transferência (loja paga)= R$ 600     → loja desembolsa 110.600
+  //
+  // O `totalOperacao` mostra QUANTO a loja precisa cobrir em pagamentos.
+  // Os pagamentos cadastrados (cash/Pix/transferência ao cliente) devem
+  // somar exatamente esse valor — saldo zero permite finalizar.
+  const debtsVendedor = form.debts.reduce((s, d) => {
+    const v = parseBRLInput(d.value) ?? 0
+    return ['VENDEDOR'].includes(String(d.responsavel ?? '').toUpperCase()) ? s + v : s
+  }, 0)
   let totalOperacao = 0
   if (form.type === 'VENDA')             totalOperacao = sale + docFee + debtsCliente - discount
-  else if (form.type === 'COMPRA')       totalOperacao = purchase
+  // COMPRA: a loja paga ao CLIENTE a parte líquida do valor de compra.
+  //   purchase           = valor aprovado pelo gerente (110.000)
+  // - debtsVendedor      = débitos do cliente que ele abate (multa, IPVA dele)
+  // - payoffCompra       = quitação do financiamento do veículo (loja paga
+  //                        direto ao banco, sai do valor do cliente)
+  // + debtsCliente       = débitos que a loja ASSUME por fora (ex: doc, taxas)
+  //
+  // Exemplo:
+  //   purchase=110.000 - debtVend=132,90 - payoff=80.000 + debtLoja=4.520
+  //   = 34.387,10 (total a desembolsar em pagamentos)
+  else if (form.type === 'COMPRA') {
+    const payoffCompra = parseBRLInput(form.vehicle?.payoffValue ?? '') ?? 0
+    totalOperacao = Math.max(0, purchase - debtsVendedor - payoffCompra + debtsCliente)
+  }
   else if (form.type === 'TROCA')        totalOperacao = (sale - trade) + docFee + debtsCliente - discount + payoff
   else if (form.type === 'CONSIGNACAO')  totalOperacao = consignMin
 
@@ -2710,7 +2972,7 @@ function StepPagamento({
             {veiculoCompra && (purchase > 0 || veiculoCompra.plate) && (
               <div className="mb-3">
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Veículo comprado</p>
-                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-1.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">
@@ -2722,6 +2984,18 @@ function StepPagamento({
                     </div>
                     <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{fmtBRL(purchase)}</p>
                   </div>
+                  {/* Quitação de financiamento — abate do valor pago ao cliente */}
+                  {form.type === 'COMPRA' && veiculoCompra.hasFinancing && parseBRLInput(veiculoCompra.payoffValue ?? '') && (
+                    <div className="flex items-center justify-between border-t border-gray-200 pt-1.5 text-xs">
+                      <span className="text-amber-700">
+                        − Quitação financiamento
+                        {veiculoCompra.payoffBank && <span className="ml-1 text-gray-500">({veiculoCompra.payoffBank})</span>}
+                      </span>
+                      <span className="font-semibold text-amber-700 whitespace-nowrap">
+                        − {fmtBRL(parseBRLInput(veiculoCompra.payoffValue ?? '') ?? 0)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -2965,6 +3239,10 @@ function StepPagamento({
           initial={editing ?? undefined}
           onSave={handleAddPayment}
           onClose={() => { setModalOpen(false); setEditing(null) }}
+          dealType={form.type}
+          /* Pré-preenche com o que ainda falta cobrir (saldo em aberto).
+             Só quando NÃO está editando — edição preserva o valor original. */
+          suggestedAmount={!editing && emAberto > 0 ? emAberto : undefined}
         />
       )}
       {trocoOpen && (

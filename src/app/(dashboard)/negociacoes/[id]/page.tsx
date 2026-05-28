@@ -39,6 +39,9 @@ import { canAccessModule } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import Phase2Panel from './_components/Phase2Panel'
 import DealSummary from './_components/DealSummary'
+import AttachmentUploader, { type Attachment } from './_components/AttachmentUploader'
+import ContractsTab from './_components/ContractsTab'
+import NfeTab from './_components/NfeTab'
 import { useDealActions } from './_hooks/useDealActions'
 import { isDealLocked, canAddPayment, canApproveDiscount, canReopen, canForceFinalize } from '@/lib/negotiation-rbac'
 
@@ -418,6 +421,262 @@ function SheetDataAccordion({ rows }: { rows: DealDetail['sheetImportRows'] }) {
   )
 }
 
+// ── Resumo Financeiro (read-only, top-down) ──────────────────────────────────
+
+const PAYMENT_TYPE_LABEL: Record<string, string> = {
+  DINHEIRO:        'Dinheiro',
+  PIX:             'PIX',
+  TRANSFERENCIA:   'Transferência',
+  CARTAO_DEBITO:   'Cartão de Débito',
+  CARTAO_CREDITO:  'Cartão de Crédito',
+  FINANCIAMENTO:   'Financiamento',
+  BOLETO:          'Boleto',
+  CHEQUE:          'Cheque',
+  QUITACAO:        'Quitação',
+}
+
+interface FinancialReviewProps {
+  deal:        DealDetail
+  attachments: Attachment[]
+  onReload:    () => void
+  onToast:     (msg: string, ok?: boolean) => void
+}
+
+function FinancialReview({ deal, attachments, onReload, onToast }: FinancialReviewProps) {
+  const anyDeal = deal as any
+  const debts: Array<{ id: string; type?: string; description?: string | null; value: number | string; responsavel?: string | null }> = anyDeal.debts ?? []
+  const payments: Array<{ id?: string; type: string; value: number | string; bank?: string | null; agency?: string | null; account?: string | null; pixKey?: string | null; installments?: number | null }> = anyDeal.payments ?? []
+  const changes: Array<{ id: string; value: number | string; beneficiary: string; bank?: string | null; agency?: string | null; account?: string | null; pixKey?: string | null }> = anyDeal.changes ?? []
+
+  const byPayment = (id?: string) => attachments.filter((a) => a.paymentId === id && a.category === 'COMPROVANTE_PAGAMENTO')
+  const byDebt    = (id: string)  => attachments.filter((a) => a.debtId    === id && a.category === 'COMPROVANTE_DEBITO')
+  const byPayoff  = (vehId: string) => attachments.filter((a) => a.vehicleId === vehId && a.category === 'COMPROVANTE_QUITACAO')
+  const byChange  = (id: string)  => attachments.filter((a) => a.changeId  === id && a.category === 'COMPROVANTE_TROCO')
+
+  const isCompra = deal.type === 'COMPRA'
+  const vehicleLabel = isCompra ? 'Veículo Comprado' : deal.type === 'TROCA' ? 'Veículo Vendido' : deal.type === 'CONSIGNACAO' ? 'Valor de Anúncio' : 'Veículo Vendido'
+
+  const compraVehicle = deal.vehicles.find((v) => v.role === 'COMPRADO' || v.role === 'TROCA')
+  const baseValue = Number(
+    (isCompra ? deal.purchaseAmount : deal.saleAmount) ?? deal.vehicleValue ?? compraVehicle?.agreedValue ?? 0,
+  )
+
+  const debtsTotal = debts.reduce((s, d) => s + Number(d.value ?? 0), 0)
+
+  // Quitação: tratada como débito (subtrai)
+  const payoffFromVehicle = deal.vehicles.reduce((s, v) => s + (v.hasFinancing ? Number(v.payoffValue ?? 0) : 0), 0)
+  const payoffFromDeal    = Number(deal.payoffAmount ?? 0)
+  const payoffTotal       = payoffFromVehicle || payoffFromDeal
+
+  const subtotal = Math.max(0, baseValue - debtsTotal - payoffTotal)
+
+  const paymentsTotal = payments.reduce((s, p) => s + Number(p.value ?? 0), 0)
+  const changesTotal  = changes.reduce((s, c) => s + Number(c.value ?? 0), 0)
+
+  // Valor a ser pago ao cliente (COMPRA): subtotal coberto via pagamentos cadastrados.
+  // Se não há pagamentos ainda, o "a pagar" é o próprio subtotal.
+  const valorAPagar = isCompra ? (paymentsTotal > 0 ? paymentsTotal : subtotal) : subtotal
+
+  return (
+    <SectionCard title="Resumo Financeiro" icon={<DollarSign size={15} />}>
+      <div className="space-y-4">
+        {/* 1) Veículo */}
+        <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{vehicleLabel}</p>
+              {compraVehicle && (
+                <p className="mt-0.5 text-sm font-medium text-gray-800">
+                  {[compraVehicle.brand, compraVehicle.model, compraVehicle.year].filter(Boolean).join(' ')}
+                  {compraVehicle.plate && <span className="ml-2 font-mono text-xs text-gray-500">{compraVehicle.plate}</span>}
+                </p>
+              )}
+            </div>
+            <span className="text-lg font-semibold text-gray-900">{fmtBRL(baseValue) ?? '—'}</span>
+          </div>
+        </div>
+
+        {/* 2) Débitos */}
+        {(debts.length > 0 || payoffTotal > 0) && (
+          <div className="rounded-lg border border-gray-100 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Débitos</p>
+              <span className="text-sm font-semibold text-red-600">− {fmtBRL(debtsTotal + payoffTotal)}</span>
+            </div>
+            <ul className="divide-y divide-gray-50">
+              {debts.map((d) => (
+                <li key={d.id} className="py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700">
+                      {(d.type ?? 'Débito').replace(/_/g, ' ')}
+                      {d.description && <span className="text-gray-400"> · {d.description}</span>}
+                    </span>
+                    <span className="text-gray-800">− {fmtBRL(d.value)}</span>
+                  </div>
+                  <div className="mt-1.5">
+                    <AttachmentUploader
+                      dealId={deal.id}
+                      category="COMPROVANTE_DEBITO"
+                      linkKey="debtId"
+                      linkValue={d.id}
+                      attachments={byDebt(d.id)}
+                      compact
+                      onChange={onReload}
+                      onToast={onToast}
+                    />
+                  </div>
+                </li>
+              ))}
+              {deal.vehicles.filter((v) => v.hasFinancing && Number(v.payoffValue ?? 0) > 0).map((v) => (
+                <li key={`payoff-${v.id}`} className="py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700">
+                      Quitação de financiamento
+                      {v.payoffBank && <span className="text-gray-400"> · {v.payoffBank}</span>}
+                      {v.plate     && <span className="text-gray-400"> · {v.plate}</span>}
+                    </span>
+                    <span className="text-gray-800">− {fmtBRL(v.payoffValue)}</span>
+                  </div>
+                  <div className="mt-1.5">
+                    <AttachmentUploader
+                      dealId={deal.id}
+                      category="COMPROVANTE_QUITACAO"
+                      linkKey="vehicleId"
+                      linkValue={v.id}
+                      attachments={byPayoff(v.id)}
+                      compact
+                      onChange={onReload}
+                      onToast={onToast}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* 3) Subtotal */}
+        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
+          <span className="text-sm font-semibold text-gray-700">Subtotal</span>
+          <span className="text-base font-semibold text-gray-900">{fmtBRL(subtotal) ?? '—'}</span>
+        </div>
+
+        {/* 4) Dados de pagamento do cliente */}
+        {payments.length > 0 && (
+          <div className="rounded-lg border border-gray-100 px-4 py-3">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+              {isCompra ? 'Dados de pagamento do cliente' : 'Pagamentos recebidos'}
+            </p>
+            <ul className="divide-y divide-gray-50">
+              {payments.map((p, i) => {
+                const dest = [p.bank, p.agency && `Ag ${p.agency}`, p.account && `Cc ${p.account}`].filter(Boolean).join(' · ')
+                return (
+                  <li key={p.id ?? i} className="py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-800">{PAYMENT_TYPE_LABEL[p.type] ?? p.type}</span>
+                      <span className="text-gray-900">{fmtBRL(p.value) ?? '—'}</span>
+                    </div>
+                    {(dest || p.pixKey) && (
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {dest}
+                        {p.pixKey && <>{dest ? ' · ' : ''}PIX: <span className="font-mono">{p.pixKey}</span></>}
+                      </p>
+                    )}
+                    {p.id && (
+                      <div className="mt-1.5">
+                        <AttachmentUploader
+                          dealId={deal.id}
+                          category="COMPROVANTE_PAGAMENTO"
+                          linkKey="paymentId"
+                          linkValue={p.id}
+                          attachments={byPayment(p.id)}
+                          compact
+                          onChange={onReload}
+                          onToast={onToast}
+                        />
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* Troco ao cliente (excedente) */}
+        {changesTotal > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Troco ao cliente</p>
+              <span className="text-sm font-semibold text-amber-800">{fmtBRL(changesTotal)}</span>
+            </div>
+            <ul className="divide-y divide-amber-100">
+              {changes.map((c) => (
+                <li key={c.id} className="py-1.5 text-xs text-amber-800">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{c.beneficiary}</span>
+                    <span>{fmtBRL(c.value)}</span>
+                  </div>
+                  {(c.bank || c.pixKey) && (
+                    <p className="mt-0.5 text-[11px] text-amber-700">
+                      {[c.bank, c.agency && `Ag ${c.agency}`, c.account && `Cc ${c.account}`].filter(Boolean).join(' · ')}
+                      {c.pixKey && <> · PIX <span className="font-mono">{c.pixKey}</span></>}
+                    </p>
+                  )}
+                  <div className="mt-1.5">
+                    <AttachmentUploader
+                      dealId={deal.id}
+                      category="COMPROVANTE_TROCO"
+                      linkKey="changeId"
+                      linkValue={c.id}
+                      attachments={byChange(c.id)}
+                      compact
+                      onChange={onReload}
+                      onToast={onToast}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* 5) Valor a ser pago ao cliente */}
+        {isCompra && (
+          <div className="flex items-center justify-between rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
+            <span className="text-sm font-semibold text-brand-800">Valor a ser pago ao cliente</span>
+            <span className="text-lg font-bold text-brand-700">{fmtBRL(valorAPagar) ?? '—'}</span>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  )
+}
+
+function TotalOperationCard({ deal }: { deal: DealDetail }) {
+  const anyDeal = deal as any
+  const debts: Array<{ value: number | string }> = anyDeal.debts ?? []
+  const isCompra = deal.type === 'COMPRA'
+  const baseValue = Number((isCompra ? deal.purchaseAmount : deal.saleAmount) ?? deal.vehicleValue ?? 0)
+  const debtsTotal = debts.reduce((s, d) => s + Number(d.value ?? 0), 0)
+  const payoffTotal = deal.vehicles.reduce((s, v) => s + (v.hasFinancing ? Number(v.payoffValue ?? 0) : 0), 0) || Number(deal.payoffAmount ?? 0)
+  const total = isCompra
+    ? Math.max(0, baseValue - debtsTotal - payoffTotal)
+    : baseValue
+
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-brand-300 bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-4 text-white shadow-sm">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-brand-100">Total da Operação</p>
+        <p className="mt-0.5 text-xs text-brand-100/80">
+          {isCompra ? 'Valor líquido após débitos e quitação' : 'Valor consolidado da negociação'}
+        </p>
+      </div>
+      <span className="text-2xl font-bold">{fmtBRL(total) ?? '—'}</span>
+    </div>
+  )
+}
+
 // ── Modal de motivo ───────────────────────────────────────────────────────────
 
 interface MotiveModalProps {
@@ -607,7 +866,18 @@ function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab,
 
 // ── Página ────────────────────────────────────────────────────────────────────
 
-type Tab = 'resumo' | 'veiculos' | 'valores' | 'servicos' | 'timeline' | 'auditoria'
+type Tab = 'resumo' | 'veiculos' | 'valores' | 'servicos' | 'contratos' | 'nfe' | 'timeline' | 'auditoria'
+
+// Status em que abas Contratos/NFe ficam visíveis (após aprovação)
+const POST_APPROVAL_STATUSES = new Set([
+  'APROVADA', 'LIBERADA', 'SINAL_RECEBIDO', 'RESERVADA',
+  'AGUARDANDO_FINANCEIRO', 'FINANCEIRO_APROVADO',
+  'AGUARDANDO_DOCUMENTACAO', 'DOCUMENTACAO_CONCLUIDA',
+  'AGUARDANDO_CONTRATO', 'CONTRATO_GERADO',
+  'AGUARDANDO_ASSINATURA', 'ASSINADA',
+  'AGUARDANDO_ENTREGA', 'ENTREGUE',
+  'EM_ANDAMENTO', 'FINALIZADA',
+])
 
 export default function NegociacaoDetailPage() {
   const { data: session, status } = useSession()
@@ -627,6 +897,17 @@ export default function NegociacaoDetailPage() {
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [audit, setAudit]       = useState<AuditEntry[]>([])
   const [auditLoading, setAuditLoading]       = useState(false)
+
+  // Anexos (comprovantes, contratos, NFe)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const loadAttachments = useCallback(() => {
+    if (!id) return
+    fetch(`/api/negotiations/${id}/attachments`)
+      .then((r) => r.json())
+      .then((d) => setAttachments(d.data ?? []))
+      .catch(() => {})
+  }, [id])
+  useEffect(() => { loadAttachments() }, [loadAttachments])
 
   // Add service modal
   const [showAddService, setShowAddService] = useState(false)
@@ -778,11 +1059,16 @@ export default function NegociacaoDetailPage() {
     )
   }
 
+  const showPostApproval = POST_APPROVAL_STATUSES.has(deal.status)
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'resumo' as Tab, label: 'Resumo',  icon: <Handshake size={14} /> },
     { id: 'veiculos',    label: 'Veículos',      icon: <Car size={14} /> },
     { id: 'valores',     label: 'Valores',       icon: <DollarSign size={14} /> },
     { id: 'servicos',    label: 'Serviços',      icon: <Wrench size={14} /> },
+    ...(showPostApproval ? [
+      { id: 'contratos' as Tab, label: 'Contratos & Termos', icon: <FileText size={14} /> },
+      { id: 'nfe'       as Tab, label: 'NFe',                 icon: <FileText size={14} /> },
+    ] : []),
     { id: 'timeline',    label: 'Timeline',      icon: <Clock size={14} /> },
     ...(isManager ? [{ id: 'auditoria' as Tab, label: 'Auditoria', icon: <Shield size={14} /> }] : []),
   ]
@@ -1121,71 +1407,18 @@ export default function NegociacaoDetailPage() {
             </SectionCard>
           )}
 
-          {/* ── Financeiro ── */}
-          <SectionCard title="Resumo Financeiro" icon={<DollarSign size={15} />}>
-            <div className="divide-y divide-gray-100">
-              {deal.type === 'VENDA' && (
-                <>
-                  <ValueRow label="Valor de Venda"      value={fmtBRL(deal.saleAmount ?? deal.vehicleValue)} />
-                  <ValueRow label="Valor Financiado"     value={fmtBRL(deal.financedAmount)} />
-                  {deal.paymentBank && <ValueRow label="Banco / Financiadora" value={deal.paymentBank} />}
-                  <ValueRow label="Valor Documentação"   value={fmtBRL(deal.documentationFee) ?? (deal.source === 'PLANILHA' ? 'R$ 0,00 (Cortesia)' : null)} />
-                </>
-              )}
-              {deal.type === 'TROCA' && (
-                <>
-                  <ValueRow label="Veículo Vendido"           value={fmtBRL(deal.saleAmount ?? deal.vehicleValue)} />
-                  <ValueRow label="Veículo Recebido (aceite)"  value={fmtBRL(deal.tradeValue)} />
-                  <ValueRow label="Valor Financiado"           value={fmtBRL(deal.financedAmount)} />
-                  {deal.paymentBank && <ValueRow label="Banco" value={deal.paymentBank} />}
-                  <ValueRow label="Documentação"               value={fmtBRL(deal.documentationFee)} />
-                </>
-              )}
-              {deal.type === 'COMPRA' && (
-                <>
-                  <ValueRow label="Valor de Compra" value={fmtBRL(deal.purchaseAmount ?? deal.vehicleValue)} />
-                  {deal.paymentBank && <ValueRow label="Banco" value={deal.paymentBank} />}
-                </>
-              )}
-              {deal.type === 'CONSIGNACAO' && (
-                <>
-                  <ValueRow label="Valor Mínimo"   value={fmtBRL(deal.consignMinValue)} />
-                  <ValueRow label="Valor de Anúncio" value={fmtBRL(deal.saleAmount ?? deal.vehicleValue)} />
-                </>
-              )}
-              {deal.source === 'PLANILHA' && !deal.saleAmount && !deal.purchaseAmount && deal.vehicleValue && (
-                <ValueRow label="Valor (importado da planilha)" value={fmtBRL(deal.vehicleValue)} />
-              )}
-              <div className="pt-2">
-                {fmtBRL(deal.servicesAmount) && <ValueRow label="Serviços adicionais" value={fmtBRL(deal.servicesAmount)} />}
-                {fmtBRL(deal.discountAmount) && <ValueRow label="Desconto" value={fmtBRL(deal.discountAmount)} />}
-                {/* TODO Fase 2 — Gap A/B:
-                    - Renderizar lista de pagamentos (deal.payments) com botão "+ Adicionar pagamento"
-                    - Calcular Total Bruto = vehicleValue + débitos + serviços + garantias
-                    - Total Líquido = Total Bruto - descontos APROVADOS
-                    - Saldo = Total Líquido - Total Pagamentos
-                    - Banner colorido: ambar (saldo>0) / azul (saldo<0, cadastrar troco) / verde (=0)
-                    - Bloquear "Finalizar" quando saldo !== 0 (exceto MASTER/ADM com override) */}
-                {fmtBRL(deal.totalPayments) && <ValueRow label="Total Pagamentos" value={fmtBRL(deal.totalPayments)} />}
-                {fmtBRL(deal.balance)       && <ValueRow label="Saldo" value={fmtBRL(deal.balance)} />}
-                {(deal.saleAmount ?? deal.vehicleValue) && (
-                  <div className="mt-2 flex justify-between rounded-lg bg-brand-50 px-3 py-2">
-                    <span className="font-semibold text-brand-800">Total Negociação</span>
-                    <span className="text-lg font-bold text-brand-700">
-                      {fmtBRL(deal.totalPayments ?? deal.saleAmount ?? deal.vehicleValue)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-            {deal.source === 'PLANILHA' && !deal.totalPayments && (
-              <p className="mt-3 text-xs text-gray-400 italic">
-                Informações financeiras importadas — valores sujeitos a revisão.
-              </p>
-            )}
-          </SectionCard>
+          {/* ── Resumo Financeiro (estrutura limpa, top-down) ── */}
+          <FinancialReview
+            deal={deal}
+            attachments={attachments}
+            onReload={loadAttachments}
+            onToast={showToast}
+          />
 
-          {/* ── Phase 2: Pagamentos, Descontos, Saldo, Troco, Reabrir ── */}
+          {/* ── Total da Operação (destaque) ── */}
+          <TotalOperationCard deal={deal} />
+
+          {/* ── Phase 2: Pagamentos, Descontos, Saldo, Troco (edição inline) ── */}
           {(() => {
             const anyDeal = deal as any
             const actor = { id: (session?.user as any)?.id, role: role ?? '', tenantId: (session?.user as any)?.tenantId, sellerId: null }
@@ -1212,40 +1445,31 @@ export default function NegociacaoDetailPage() {
             )
           })()}
 
-          {/* ── Status, Datas, Agendamento ── */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <SectionCard title="Status e Datas" icon={<Calendar size={15} />}>
-              <dl>
-                <div className="py-1.5 text-sm">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Status Atual</p>
-                  <span className={`mt-1 inline-block rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[deal.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                    {STATUS_LABEL[deal.status] ?? deal.status}
-                  </span>
-                </div>
-                <InfoRow label="Criada em"        value={fmtDateTime(deal.createdAt)} />
-                <InfoRow label="Data da Venda"    value={fmtDate(deal.saleDate)} />
-                <InfoRow label="Entrega Prevista" value={fmtDate(deal.deliveryDate)} />
-                <InfoRow label="Finalizada em"    value={fmtDateTime(deal.finalizedAt)} />
-                {deal.cancelledAt && (
-                  <>
-                    <InfoRow label="Cancelada em"  value={fmtDateTime(deal.cancelledAt)} />
-                    <InfoRow label="Cancelada por" value={deal.cancelledBy?.name} />
-                    <InfoRow label="Motivo"        value={deal.cancelledReason} />
-                  </>
-                )}
-              </dl>
-            </SectionCard>
+          {/* ── Status ── */}
+          <SectionCard title="Status" icon={<Calendar size={15} />}>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[deal.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                {STATUS_LABEL[deal.status] ?? deal.status}
+              </span>
+              <span className="text-xs text-gray-400">Criada em {fmtDateTime(deal.createdAt)}</span>
+              {deal.finalizedAt && <span className="text-xs text-green-700">· Finalizada em {fmtDateTime(deal.finalizedAt)}</span>}
+              {deal.cancelledAt && <span className="text-xs text-red-700">· Cancelada em {fmtDateTime(deal.cancelledAt)}</span>}
+            </div>
+            {deal.cancelledReason && (
+              <p className="mt-2 text-xs text-red-600">Motivo: {deal.cancelledReason}</p>
+            )}
+          </SectionCard>
 
-            <SectionCard title="Agendamento" icon={<Calendar size={15} />}>
-              {deal.deliveryDate ? (
-                <dl>
-                  <InfoRow label="Data de Entrega" value={fmtDate(deal.deliveryDate)} />
-                </dl>
-              ) : (
-                <p className="text-sm text-gray-400 italic">Nenhum agendamento cadastrado</p>
-              )}
-            </SectionCard>
-          </div>
+          {/* ── Agendamento ── */}
+          <SectionCard title="Agendamento" icon={<Calendar size={15} />}>
+            <dl className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
+              <InfoRow label="Data da Venda"    value={fmtDate(deal.saleDate)} />
+              <InfoRow label="Entrega prevista" value={fmtDate(deal.deliveryDate)} />
+            </dl>
+            {!deal.saleDate && !deal.deliveryDate && (
+              <p className="text-sm text-gray-400 italic">Nenhum agendamento cadastrado</p>
+            )}
+          </SectionCard>
 
           {/* ── Pendências ── */}
           {(deal.pendencies ?? []).length > 0 && (
@@ -1282,11 +1506,11 @@ export default function NegociacaoDetailPage() {
             <SheetDataAccordion rows={deal.sheetImportRows ?? []} />
           )}
 
-          {/* ── Histórico resumido ── */}
+          {/* ── Histórico ── */}
           {deal.statusHistory.length > 0 && (
-            <SectionCard title="Histórico de Status" icon={<Clock size={15} />}>
+            <SectionCard title="Histórico" icon={<Clock size={15} />}>
               <ol className="space-y-2 border-l-2 border-gray-100 pl-4">
-                {deal.statusHistory.slice(-5).reverse().map((h) => (
+                {[...deal.statusHistory].reverse().map((h) => (
                   <li key={h.id} className="relative text-sm">
                     <div className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full bg-brand-200 ring-2 ring-white" />
                     <div className="flex flex-wrap items-baseline gap-2">
@@ -1294,14 +1518,36 @@ export default function NegociacaoDetailPage() {
                       {h.previousStatus && (
                         <span className="text-xs text-gray-400">← {STATUS_LABEL[h.previousStatus] ?? h.previousStatus}</span>
                       )}
-                      <span className="ml-auto text-xs text-gray-400">{fmtDate(h.createdAt)}</span>
+                      <span className="ml-auto text-xs text-gray-400">{fmtDateTime(h.createdAt)}</span>
                     </div>
-                    {h.reason && <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{h.reason}</p>}
+                    {(h.reason || h.changedByUser) && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {h.changedByUser?.name && <>{h.changedByUser.name}{h.reason ? ' · ' : ''}</>}
+                        {h.reason}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ol>
             </SectionCard>
           )}
+
+          {/* ── Botão Ações (rodapé) ── */}
+          <div className="flex items-center justify-end gap-2 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <span className="mr-auto text-xs text-gray-500">Operações da negociação</span>
+            <ActionsDropdown
+              deal={deal}
+              role={role}
+              onAction={handleAction}
+              onOpenModal={setModal}
+              activeTab={tab}
+              setTab={(t) => setTab(t as Tab)}
+              isManager={isManager}
+              onEdit={() => router.push(`/negociacoes/${id}/editar`)}
+              actions={actions}
+              onForceFinalize={() => { setForceTyped(''); setShowForceConfirm(true) }}
+            />
+          </div>
         </div>
       )}
 
@@ -1539,6 +1785,27 @@ export default function NegociacaoDetailPage() {
             </>
           )}
         </div>
+      )}
+
+      {/* ── ABA: CONTRATOS & TERMOS ── */}
+      {tab === 'contratos' && showPostApproval && (
+        <ContractsTab
+          dealId={deal.id}
+          dealType={deal.type}
+          attachments={attachments}
+          onReloadAttachments={loadAttachments}
+          onToast={showToast}
+        />
+      )}
+
+      {/* ── ABA: NFe ── */}
+      {tab === 'nfe' && showPostApproval && (
+        <NfeTab
+          dealId={deal.id}
+          attachments={attachments}
+          onReload={loadAttachments}
+          onToast={showToast}
+        />
       )}
 
       {/* ── ABA: TIMELINE ── */}

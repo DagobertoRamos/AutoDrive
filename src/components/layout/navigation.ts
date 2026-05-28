@@ -86,8 +86,9 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  Car,
     module: 'stock',
     children: [
-      { label: 'Ver Estoque',     href: '/estoque',           icon: Car,             module: 'stock.view' },
-      { label: 'Fazer Avaliação', href: '/estoque/avaliacoes',icon: ClipboardCheck,  module: 'stock.evaluate' },
+      { label: 'Ver Estoque',           href: '/estoque',                    icon: Car,             module: 'stock.view' },
+      { label: 'Fazer Avaliação',       href: '/estoque/avaliacao',          icon: ClipboardCheck,  module: 'stock.evaluate' },
+      { label: 'Avaliações pendentes',  href: '/estoque/avaliacoes',         icon: ClipboardCheck,  module: 'stock.evaluate' },
     ],
   },
 
@@ -315,6 +316,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Manutenção',        href: '/master/maintenance',        module: 'master' },
       { label: 'Identidade',        href: '/master/identity',           module: 'master' },
       { label: 'Segurança',         href: '/master/security',           module: 'master' },
+      { label: 'Documentos',        href: '/master/documentos',         module: 'master' },
       { label: 'Auditoria',         href: '/master/audit',              module: 'master.audit' },
     ],
   },
