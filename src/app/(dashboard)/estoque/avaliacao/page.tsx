@@ -49,7 +49,7 @@ const BRAND_ALIAS: Record<string, string> = {
 }
 function normalizeBrandName(s: string | undefined | null): string {
   if (!s) return ''
-  let n = String(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const n = String(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   // Remove sufixos depois de hífen ("VW - VOLKSWAGEN" → "VOLKSWAGEN" via alias da 1ª parte)
   const parts = n.split(/\s*-\s*/)
   for (const p of parts) {

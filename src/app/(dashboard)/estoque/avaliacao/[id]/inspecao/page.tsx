@@ -972,8 +972,6 @@ void ImageIcon
 // ── CustomerDecisionCard — gate pra veículo aparecer em troca/compra/consignação
 function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
   const { data: session } = useSession()
-  const router = (require('next/navigation') as typeof import('next/navigation')).useRouter()
-  void router  // evita warning quando não usar abaixo
   const role = (session?.user as { role?: string })?.role ?? ''
   const isManagerPlus = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role)
 

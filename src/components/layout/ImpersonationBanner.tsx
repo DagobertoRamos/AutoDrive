@@ -9,7 +9,7 @@
 // Persiste via sessionStorage (limpa ao fechar o browser/tab).
 // =============================================================================
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ShieldAlert, Loader2, LogOut, Crown } from 'lucide-react'
 import { useImpersonationStore } from '@/store/impersonationStore'
@@ -18,6 +18,16 @@ export function ImpersonationBanner() {
   const { active, endImpersonation } = useImpersonationStore()
   const router  = useRouter()
   const [ending, setEnding] = useState(false)
+  // `now` começa null (render puro, sem mismatch de hidratação) e passa a
+  // avançar a cada minuto via efeito — o contador de tempo decorrido atualiza
+  // sozinho em vez de só no próximo re-render.
+  const [now, setNow] = useState<number | null>(null)
+
+  useEffect(() => {
+    setNow(Date.now())
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   if (!active) return null
 
@@ -44,7 +54,7 @@ export function ImpersonationBanner() {
     router.push('/master/tenants/' + active!.tenant.id)
   }
 
-  const elapsed = Math.floor((Date.now() - new Date(active.startedAt).getTime()) / 60000)
+  const elapsed = now ? Math.floor((now - new Date(active.startedAt).getTime()) / 60000) : 0
 
   return (
     <div className="z-[100] flex items-center gap-3 bg-amber-500 px-4 py-2 text-sm text-white shadow-md">

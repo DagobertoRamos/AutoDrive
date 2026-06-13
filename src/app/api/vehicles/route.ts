@@ -207,7 +207,7 @@ export async function GET(req: NextRequest) {
     //    que ainda não passaram pelo marketing. Top 6 imagens.
     const vehicleIds = vehiclesAny.map((v) => v.id)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let evalPhotosByVehicle: Record<string, string[]> = {}
+    const evalPhotosByVehicle: Record<string, string[]> = {}
     if (vehicleIds.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const evals: any[] = await prisma.vehicleEvaluation.findMany({

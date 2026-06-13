@@ -3610,6 +3610,17 @@ function StepAgendamento({
 
 // ── StepResumo ────────────────────────────────────────────────────────────────
 
+// Linha rótulo/valor do resumo. Componente estático (só usa props) — definido em
+// escopo de módulo para não ser recriado a cada render de StepResumo.
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="font-medium text-gray-800">{value}</dd>
+    </div>
+  )
+}
+
 function StepResumo({
   form,
   setField,
@@ -3670,13 +3681,6 @@ function StepResumo({
   else if (form.type === 'CONSIGNACAO')  totalOperacao = parseBRLInput(form.consignMinValue) ?? 0
 
   const saldo = totalOperacao - totalPagamentos
-
-  const Row = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex justify-between">
-      <dt className="text-gray-500">{label}</dt>
-      <dd className="font-medium text-gray-800">{value}</dd>
-    </div>
-  )
 
   return (
     <div>

@@ -16,19 +16,16 @@
 // =============================================================================
 
 import { PrismaClient } from '@prisma/client'
+import { neonConfig } from '@neondatabase/serverless'
+import { PrismaNeon } from '@prisma/adapter-neon'
+import ws from 'ws'
 
 function makeClient(): PrismaClient {
   const url = process.env.DATABASE_URL ?? ''
-  // Tentamos carregar o adapter Neon. Falhas (módulo ausente, env vazio etc.)
-  // caem pro driver nativo.
+  // Tentamos configurar o adapter Neon. Falhas (env vazio, inicialização do
+  // adapter etc.) caem pro driver nativo.
   try {
     if (!url) throw new Error('DATABASE_URL ausente')
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { neonConfig } = require('@neondatabase/serverless') as typeof import('@neondatabase/serverless')
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { PrismaNeon } = require('@prisma/adapter-neon') as typeof import('@prisma/adapter-neon')
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ws = require('ws')
     neonConfig.webSocketConstructor = ws
 
     // @prisma/adapter-neon 7.x: PrismaNeon recebe PoolConfig direto e

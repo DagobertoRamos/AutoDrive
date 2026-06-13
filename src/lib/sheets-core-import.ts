@@ -61,7 +61,7 @@ export async function runCoreImport(opts: CoreImportOptions): Promise<CoreImport
 
   let totalRows      = 0
   let newRecords     = 0
-  let updatedRecords = 0
+  const updatedRecords = 0
   let errorRows      = 0
   const errors:         string[] = []
   const sheetsRead:     string[] = []

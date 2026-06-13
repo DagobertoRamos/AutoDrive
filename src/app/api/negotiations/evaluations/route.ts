@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
     // mesmas placas/vehicleId em deals abertos (1 query batch).
     const evalIds = rawData.map((e: any) => e.id) // eslint-disable-line @typescript-eslint/no-explicit-any
     const plates  = rawData.map((e: any) => e.plate).filter(Boolean) as string[] // eslint-disable-line @typescript-eslint/no-explicit-any
-    let dealVehiclesByEval: Record<string, Array<{ deal?: { status?: string | null } | null }>> = {}
+    const dealVehiclesByEval: Record<string, Array<{ deal?: { status?: string | null } | null }>> = {}
     if (plates.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dvs: any[] = await (prisma as any).dealVehicle.findMany({

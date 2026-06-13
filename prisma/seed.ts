@@ -195,11 +195,11 @@ async function seedDemoData(masterUserId: string) {
     'dashboard', 'pendencies', 'negotiations', 'commissions', 'communication',
     'documents', 'registrations', 'settings', 'logs',
   ]
-  for (const module of modulesToActivate) {
+  for (const moduleName of modulesToActivate) {
     await prisma.tenantModule.upsert({
-      where:  { tenantId_module: { tenantId: tenant.id, module } },
+      where:  { tenantId_module: { tenantId: tenant.id, module: moduleName } },
       update: { active: true },
-      create: { tenantId: tenant.id, module, active: true },
+      create: { tenantId: tenant.id, module: moduleName, active: true },
     })
   }
   console.log(`   ✓ ${modulesToActivate.length} módulos ativados`)

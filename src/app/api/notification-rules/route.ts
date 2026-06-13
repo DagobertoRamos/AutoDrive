@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url)
-    const module   = searchParams.get('module') || undefined
+    const moduleFilter = searchParams.get('module') || undefined
     const isActive = searchParams.get('isActive')
 
     const where: Record<string, unknown> = {}
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       ]
     }
 
-    if (module) where.module = module
+    if (moduleFilter) where.module = moduleFilter
     if (isActive !== null) where.isActive = isActive === 'true'
 
     const rules = await prisma.notificationRule.findMany({

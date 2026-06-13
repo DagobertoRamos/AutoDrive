@@ -253,7 +253,7 @@ export function normalizePlacaResponse(plate: string, raw: Record<string, unknow
     : ''
   const extraModelRaw = typeof extra.modelo === 'string' ? extra.modelo : ''
   const extraModelClean = brand && extraModelRaw ? stripBrandFromModel(extraModelRaw, brand) : extraModelRaw
-  let model = (
+  const model = (
     (typeof r.modelo === 'string' && r.modelo) ||
     (typeof r.MODELO === 'string' && r.MODELO) ||
     (typeof r.SUBMODELO === 'string' && r.SUBMODELO) ||
