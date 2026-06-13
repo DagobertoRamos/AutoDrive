@@ -7,9 +7,9 @@
 // no service layer; isolamento por tenant/unidade sempre aplicado.
 // =============================================================================
 
-import type { GoalPeriod, RankingRule, UserRole } from '@prisma/client'
+import type { GoalPeriod, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { MANAGEMENT_ROLES, type SessionUser } from '@/lib/auth-guards'
+import { MANAGEMENT_ROLES } from '@/lib/auth-guards'
 import { aggregateAchieved, type AggregationWindow } from '@/lib/goals/aggregators'
 
 // ── Defaults (espelham a especificação) ───────────────────────────────────────
