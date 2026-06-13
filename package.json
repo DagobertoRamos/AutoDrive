@@ -1,7 +1,7 @@
 {
-  "name": "sistema-easycar",
+  "name": "autodrive",
   "version": "1.0.0",
-  "description": "Sistema de avisos e gestão EasyCar - Plataforma profissional de notificações e gerenciamento",
+  "description": "AutoDrive - Plataforma SaaS multi-tenant de gestão comercial para lojas de veículos",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",

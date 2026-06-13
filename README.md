@@ -1,10 +1,10 @@
-# Sistema de Informações EasyCar
+# AutoDrive
 
-Sistema profissional de gestão de pendências, comissões e notificações para a EasyCar Veículos.
+Plataforma SaaS multi-tenant de gestão comercial para lojas de veículos: estoque, avaliações, negociações, comissões, metas, ranking, pendências e comunicação.
 
 ## Stack Tecnológica
 
-- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS
+- **Frontend:** Next.js 16 (App Router), TypeScript, Tailwind CSS
 - **Backend:** Next.js API Routes
 - **Banco de dados:** PostgreSQL + Prisma ORM
 - **Autenticação:** NextAuth.js v4
