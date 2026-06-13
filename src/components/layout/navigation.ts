@@ -60,6 +60,7 @@ import {
   Plug,
   Palette,
   Target,
+  Trophy,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -126,6 +127,16 @@ export const NAV_GROUPS: NavItem[] = [
     module: 'goals.manage',
     children: [
       { label: 'Gerenciar Metas', href: '/metas', icon: Target, module: 'goals.manage' },
+    ],
+  },
+
+  // ── RANKING ─────────────────────────────────────────────────────────────────
+  {
+    label: 'Ranking',
+    icon:  Trophy,
+    module: 'ranking',
+    children: [
+      { label: 'Desempenho', href: '/desempenho', icon: Trophy, module: 'ranking' },
     ],
   },
 
