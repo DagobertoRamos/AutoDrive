@@ -25,6 +25,8 @@ import {
 import { cn } from '@/lib/utils'
 import { canAccessModule } from '@/lib/permissions'
 import type { UserRole } from '@/lib/permissions'
+import { GoalsPanel } from '@/components/goals/GoalsPanel'
+import { RankingPositionCard } from '@/components/ranking/RankingPositionCard'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -305,6 +307,10 @@ export default function DashboardPage() {
           Atualizar
         </button>
       </div>
+
+      {/* ── Metas + posição no ranking ───────────────────────────────────── */}
+      <GoalsPanel />
+      <RankingPositionCard />
 
       {/* ── KPI Cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
