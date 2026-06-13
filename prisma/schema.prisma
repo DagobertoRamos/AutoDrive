@@ -392,6 +392,9 @@ model Tenant {
   deals        Deal[]
   partners     TenantPartner[]
   featureFlags TenantFeatureFlag[]
+  goals        Goal[]
+  rankingRules RankingRule[]
+  rankingScores RankingScore[]
 
   @@index([status])
   @@index([publicId])
@@ -512,6 +515,9 @@ model User {
   positionId String?
   position   Position? @relation("UserPosition", fields: [positionId], references: [id])
 
+  goals         Goal[]         @relation("UserGoals")
+  rankingScores RankingScore[] @relation("UserRankingScores")
+
   @@index([tenantId])
   @@index([email])
   @@index([cpf])
@@ -547,6 +553,8 @@ model Unit {
   commissionExtracts CommissionExtract[]
   stockVehicles      Vehicle[]           @relation("UnitStockVehicles")
   evaluations        VehicleEvaluation[] @relation("UnitEvaluations")
+  goals              Goal[]              @relation("UnitGoals")
+  rankingScores      RankingScore[]      @relation("UnitRankingScores")
 
   @@index([tenantId])
   @@map("units")
@@ -3098,4 +3106,207 @@ model CommunicationTestLog {
   @@index([triggeredBy])
   @@index([success])
   @@map("communication_test_logs")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// METAS COMERCIAIS & RANKING
+// Regra de negócio: toda meta tem um ESCOPO (USER/UNIT/TENANT/GLOBAL). Nunca
+// misturar escopos numa mesma query — sempre filtrar por tenantId e, conforme
+// o escopo, por unitId/userId. Cálculo centralizado no service layer.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Tipo de meta comercial (cada um agrega de uma fonte diferente)
+enum GoalType {
+  SALES_EXCHANGE    // vendas e trocas concluídas
+  PURCHASE          // compras concluídas
+  RETURN            // retornos concluídos
+  DOCUMENTATION     // despachante / documentação concluída
+  EXTENDED_WARRANTY // garantia estendida vendida
+  SERVICE           // serviços vendidos/vinculados
+}
+
+/// Escopo da meta — define o nível de agregação e os filtros obrigatórios
+enum GoalScope {
+  USER   // meta individual de um vendedor (filtra tenantId + userId)
+  UNIT   // meta de uma unidade/filial (filtra tenantId + unitId)
+  TENANT // meta da loja/empresa inteira (filtra tenantId)
+  GLOBAL // meta da plataforma (apenas MASTER; tenantId nulo)
+}
+
+/// Período de apuração da meta
+enum GoalPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+/// Estado de uma meta
+enum GoalStatus {
+  ATIVA
+  INATIVA
+  ARQUIVADA
+}
+
+/// Definição de uma meta. O alvo base fica em `targetValue`; quando
+/// `progressive = true`, os degraus ficam em GoalLevel (sem hardcode).
+model Goal {
+  id          String     @id @default(cuid())
+  tenantId    String?    // null = meta GLOBAL (plataforma)
+  unitId      String?    // preenchido quando scope = UNIT
+  userId      String?    // preenchido quando scope = USER
+  type        GoalType
+  scope       GoalScope
+  period      GoalPeriod
+  title       String?
+  startDate   DateTime
+  endDate     DateTime
+  targetValue Decimal    @db.Decimal(14, 2) // alvo base (quantidade ou R$)
+  measureUnit String     @default("QTD")    // QTD | BRL | PERCENT
+  progressive Boolean    @default(false)    // usa degraus em GoalLevel
+  active      Boolean    @default(true)
+  status      GoalStatus @default(ATIVA)
+  notes       String?
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant   Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit     Unit?          @relation("UnitGoals", fields: [unitId], references: [id])
+  user     User?          @relation("UserGoals", fields: [userId], references: [id])
+  levels   GoalLevel[]
+  progress GoalProgress[]
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([userId])
+  @@index([type, scope, period])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("goals")
+}
+
+/// Degrau de progressão de uma meta (Meta 1, Meta 2, ...). Configurável pelo
+/// administrador — sem valores fixos no código.
+model GoalLevel {
+  id          String   @id @default(cuid())
+  goalId      String
+  level       Int      // 1, 2, 3, ...
+  targetValue Decimal  @db.Decimal(14, 2)
+  label       String?  // ex: "Bronze", "Meta 1"
+  reward      String?  // descrição opcional de bônus/premiação
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, level])
+  @@index([goalId])
+  @@map("goal_levels")
+}
+
+/// Snapshot de progresso de uma meta num período. Mantido pelo service layer
+/// (não calcular no front-end). Uma linha por meta por janela de período.
+model GoalProgress {
+  id            String    @id @default(cuid())
+  goalId        String
+  tenantId      String?
+  unitId        String?
+  userId        String?
+  periodStart   DateTime
+  periodEnd     DateTime
+  achievedValue Decimal   @default(0) @db.Decimal(14, 2)
+  percent       Decimal   @default(0) @db.Decimal(7, 2) // % atingido (0–100+)
+  currentLevel  Int       @default(0)                   // maior nível alcançado
+  reachedAt     DateTime?                                // quando bateu o alvo base
+  computedAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, periodStart])
+  @@index([goalId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([unitId])
+  @@map("goal_progress")
+}
+
+/// Pesos e critérios de desempate do ranking, configuráveis por tenant.
+/// Defaults seguem a sugestão de pontuação da especificação.
+model RankingRule {
+  id                    String   @id @default(cuid())
+  tenantId              String?  // null = regra padrão da plataforma
+  name                  String   @default("Padrão")
+  active                Boolean  @default(true)
+  // Pesos (pontos por evento concluído)
+  weightSale            Int      @default(100) // venda/troca concluída
+  weightPurchase        Int      @default(40)  // compra concluída
+  weightReturn          Int      @default(25)  // retorno concluído
+  weightDocumentation   Int      @default(20)  // documento/despachante concluído
+  weightWarranty        Int      @default(30)  // garantia estendida vendida
+  weightService         Int      @default(20)  // serviço vendido
+  weightOverduePendency Int      @default(-15) // pendência vencida
+  weightCanceledSale    Int      @default(-50) // venda cancelada
+  weightLateDocument    Int      @default(-10) // documento atrasado
+  // Ordem de critérios de desempate (lista de chaves). Default no service layer.
+  tiebreakers           Json?
+  notes                 String?
+  createdBy             String?
+  updatedBy             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scores RankingScore[]
+
+  @@index([tenantId])
+  @@map("ranking_rules")
+}
+
+/// Pontuação calculada de um vendedor num período (cache do ranking).
+/// Recalculada pelo service layer; o front consome pronto.
+model RankingScore {
+  id                String     @id @default(cuid())
+  ruleId            String?
+  tenantId          String?
+  unitId            String?
+  userId            String     // vendedor pontuado
+  period            GoalPeriod
+  periodStart       DateTime
+  periodEnd         DateTime
+  // Métricas agregadas (snapshot da janela)
+  sales             Int        @default(0)
+  purchases         Int        @default(0)
+  returns           Int        @default(0)
+  documentations    Int        @default(0)
+  warranties        Int        @default(0)
+  services          Int        @default(0)
+  overduePendencies Int        @default(0)
+  canceledSales     Int        @default(0)
+  lateDocuments     Int        @default(0)
+  // Resultado
+  totalPoints       Int        @default(0)
+  qualityScore      Decimal    @default(0) @db.Decimal(7, 2) // índice de qualidade da venda
+  rankGeneral       Int?       // posição no ranking geral do tenant
+  rankUnit          Int?       // posição no ranking da unidade
+  computedAt        DateTime   @default(now())
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  rule   RankingRule? @relation(fields: [ruleId], references: [id])
+  tenant Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit   Unit?        @relation("UnitRankingScores", fields: [unitId], references: [id])
+  user   User         @relation("UserRankingScores", fields: [userId], references: [id])
+
+  @@unique([tenantId, userId, periodStart, periodEnd])
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([userId])
+  @@index([periodStart, periodEnd])
+  @@map("ranking_scores")
 }
