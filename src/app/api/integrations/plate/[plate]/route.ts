@@ -20,8 +20,8 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(
   _req: Request,
-  { params }: { params: { plate: string } },
-) {
+  ctxArg: { params: { plate: string } | Promise<{ plate: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ ok: false, error: 'Não autenticado.' }, { status: 401 })
 

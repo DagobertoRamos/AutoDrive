@@ -210,9 +210,18 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         </div>
       )}
 
-      {/* ── Sucesso / parcial — silencioso, só mostra o chip do arquivo ── */}
+      {/* ── Sucesso / parcial — chip do arquivo + hint de persistência ── */}
       {(state.kind === 'success' || state.kind === 'partial') && currentFile && (
-        <FileChip file={currentFile} onRemove={onReset} onRetry={() => void handleFile(currentFile)} />
+        <>
+          <FileChip file={currentFile} onRemove={onReset} onRetry={() => void handleFile(currentFile)} />
+          {props.evaluationId && (
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+              <strong>CRLV salvo com sucesso.</strong> Este documento ficará disponível na
+              aba <em>Documentação</em> do veículo para consultas futuras — não precisa reenviar
+              em novas negociações.
+            </p>
+          )}
+        </>
       )}
 
       {/* ── Falha real (token inválido, arquivo corrompido, etc.) — preserva ── */}

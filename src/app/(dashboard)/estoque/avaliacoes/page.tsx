@@ -10,7 +10,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import Link from 'next/link'
+import { AlertCircle, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon, Loader2 } from 'lucide-react'
 
 import { canAccessModule } from '@/lib/permissions'
 import { EvaluationHeader }     from '@/components/estoque/avaliacoes/EvaluationHeader'
@@ -18,7 +19,7 @@ import { EvaluationStatsCards, type StatsCounts } from '@/components/estoque/ava
 import { EvaluationFilters, EMPTY_FILTERS, type EvaluationFiltersState } from '@/components/estoque/avaliacoes/EvaluationFilters'
 import { EvaluationCard, EvaluationCardSkeleton, type EvaluationListItem } from '@/components/estoque/avaliacoes/EvaluationCard'
 import { EmptyState }            from '@/components/estoque/avaliacoes/EmptyState'
-import { OPEN_STATUSES, expandStatusFilter } from '@/components/estoque/avaliacoes/status'
+import { OPEN_STATUSES, expandStatusFilter, getStatusDef } from '@/components/estoque/avaliacoes/status'
 
 interface UnitOption { id: string; name: string }
 
@@ -35,6 +36,17 @@ export default function AvaliacoesPage() {
   const [page,     setPage]     = useState(1)
   const [filters,  setFilters]  = useState<EvaluationFiltersState>(EMPTY_FILTERS)
   const [units,    setUnits]    = useState<UnitOption[]>([])
+
+  // viewMode persistido em localStorage — sobrevive a refresh/navegação
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'cards'
+    const saved = localStorage.getItem('avaliacoes:view')
+    return saved === 'list' || saved === 'cards' ? saved : 'cards'
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem('avaliacoes:view', viewMode)
+  }, [viewMode])
 
   // Carrega unidades para o filtro (não bloqueia a listagem)
   useEffect(() => {
@@ -178,6 +190,39 @@ export default function AvaliacoesPage() {
         units={units}
       />
 
+      {/* Toggle Lista ↔ Cards — alinhado à direita, padrão do app */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">
+          {visibleItems.length} de {total} avaliação{total === 1 ? '' : 'ões'}
+        </p>
+        <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            title="Exibir em lista"
+            aria-pressed={viewMode === 'list'}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              viewMode === 'list' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <ListIcon size={13} />
+            <span className="hidden sm:inline">Lista</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('cards')}
+            title="Exibir em cards"
+            aria-pressed={viewMode === 'cards'}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              viewMode === 'cards' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <LayoutGrid size={13} />
+            <span className="hidden sm:inline">Cards</span>
+          </button>
+        </div>
+      </div>
+
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           <AlertCircle size={15} className="shrink-0" />
@@ -201,11 +246,20 @@ export default function AvaliacoesPage() {
           filtered={hasActiveFilters || items.length > 0}
           onClear={hasActiveFilters ? () => setFilters(EMPTY_FILTERS) : undefined}
         />
+      ) : viewMode === 'list' ? (
+        <EvaluationListTable items={visibleItems} />
       ) : (
         <div className="space-y-3">
           {visibleItems.map((item) => (
             <EvaluationCard key={item.id} item={item} onReopened={load} />
           ))}
+        </div>
+      )}
+
+      {loading && items.length > 0 && (
+        <div className="flex items-center justify-center py-2 text-xs text-gray-400">
+          <Loader2 size={14} className="mr-1.5 animate-spin" />
+          Atualizando...
         </div>
       )}
 
@@ -233,6 +287,86 @@ export default function AvaliacoesPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── EvaluationListTable ─────────────────────────────────────────────────────
+// Render tabular compacto pra modo lista. Reusa os mesmos dados dos cards.
+
+function EvaluationListTable({ items }: { items: EvaluationListItem[] }) {
+  const fmtBRL = (v: unknown): string => {
+    if (v == null || v === '') return '—'
+    const n = typeof v === 'number' ? v : parseFloat(String(v))
+    if (isNaN(n) || n === 0) return '—'
+    return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+  const fmtDate = (iso: string): string => {
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b border-gray-100 bg-gray-50">
+            <tr>
+              {['Placa', 'Veículo', 'Cliente', 'Unidade', 'Avaliado', 'Status', 'Criada em', ''].map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {items.map((item) => {
+              const status = getStatusDef(item.status)
+              const veh = [item.brand, item.model, item.version].filter(Boolean).join(' ')
+              const year = [item.manufactureYear, item.modelYear].filter(Boolean).join('/')
+              return (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5">
+                    <Link
+                      href={`/estoque/avaliacao/${item.id}/inspecao`}
+                      className="rounded bg-gray-900 px-2 py-0.5 font-mono text-xs font-bold tracking-wider text-white hover:bg-gray-700"
+                    >
+                      {item.plate ?? '—'}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium text-gray-900 line-clamp-1">{veh || '—'}</p>
+                    <p className="text-[11px] text-gray-500">
+                      {year && <span>{year}</span>}
+                      {item.color && <span className="ml-2">{item.color}</span>}
+                      {item.km != null && <span className="ml-2">{Number(item.km).toLocaleString('pt-BR')} km</span>}
+                    </p>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <p className="text-sm text-gray-800 line-clamp-1">{item.ownerName ?? '—'}</p>
+                    {item.ownerPhone && <p className="text-[11px] text-gray-400">{item.ownerPhone}</p>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-600">{item.unitName ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-sm font-medium text-emerald-700">{fmtBRL(item.evaluatedValue)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${status.badge}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                      {status.label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-500">{fmtDate(item.createdAt)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <Link
+                      href={`/estoque/avaliacao/${item.id}/inspecao`}
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Ver <ChevronRight size={11} />
+                    </Link>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

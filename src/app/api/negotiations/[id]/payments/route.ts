@@ -31,8 +31,8 @@ async function getActor(session: any) {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
@@ -56,8 +56,8 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
@@ -95,20 +95,47 @@ export async function POST(
   }
 
   try {
+    // Sanitiza retorno % pra 0..6 com 2 casas
+    let returnPct: number | null = null
+    if (body?.returnPct != null && body.returnPct !== '') {
+      const n = Number(body.returnPct)
+      if (Number.isFinite(n)) returnPct = Math.min(6, Math.max(0, Math.round(n * 100) / 100))
+    }
+    // Vendedor não pode setar status diferente de PENDENTE
+    const isVendedor = ['VENDEDOR', 'VENDEDOR_LIDER'].includes(session.user.role)
+    const rawStatus  = typeof body?.status === 'string' ? body.status.toUpperCase() : null
+    const status     = isVendedor
+      ? 'PENDENTE'
+      : (['PENDENTE', 'CONFIRMADO', 'CANCELADO'].includes(rawStatus ?? '') ? rawStatus : 'PENDENTE')
+
+    // Cast `as any` no data inteiro porque alguns campos novos (status,
+    // pixKey, agency, account, installmentValue, installmentIntervalDays,
+    // returnPct, vehiclePlate, paidAt) podem ainda não estar no client TS
+    // gerado se o dev server estiver segurando a DLL durante o desenvolvimento.
+    // As colunas já existem no banco (ALTER TABLE deal_payments aplicado).
     const created = await prisma.dealPayment.create({
       data: {
         dealId:       params.id,
         tenantId:     deal.tenantId,
         type:         method,
+        status,
         value:        amount as any,
         bank:         body?.bank ?? null,
         cardBrand:    body?.cardBrand ?? null,
+        pixKey:       body?.pixKey ?? null,
+        agency:       body?.agency ?? null,
+        account:      body?.account ?? null,
         installments: body?.installments != null ? Number(body.installments) : null,
+        installmentValue:        body?.installmentValue != null ? (Number(body.installmentValue) as any) : null,
+        installmentIntervalDays: body?.installmentIntervalDays != null ? Number(body.installmentIntervalDays) : null,
+        returnPct:    returnPct as any,
+        vehiclePlate: body?.vehiclePlate ?? null,
         firstDueDate: body?.firstDueDate ? new Date(body.firstDueDate) : null,
         dueDate:      body?.dueDate ? new Date(body.dueDate) : null,
+        paidAt:       body?.paidAt ? new Date(body.paidAt) : null,
         notes:        body?.notes ?? null,
         createdById:  session.user.id,
-      },
+      } as any,
     })
 
     await createSafeAuditLog({

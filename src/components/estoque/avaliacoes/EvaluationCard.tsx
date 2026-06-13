@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import {
   Car, User, Phone, MapPin, Calendar, ChevronRight, Eye, ClipboardCheck, RefreshCw, Loader2,
+  Image as ImageIcon, Camera,
 } from 'lucide-react'
 import { getStatusDef } from './status'
+import { PhotoGalleryModal, type GalleryPhoto } from './PhotoGalleryModal'
 
 export interface EvaluationListItem {
   id:                 string
@@ -29,6 +31,16 @@ export interface EvaluationListItem {
   evaluatedById?:     string | null
   evaluatorName?:     string | null
   createdAt:          string
+  // Fotos tiradas durante a avaliação (vem do GET /api/evaluations)
+  coverPhotoUrl?:     string | null
+  photoCount?:        number
+  photos?: Array<{
+    id:        string
+    url:       string | null
+    fileName?: string
+    section?:  string | null
+    category?: string | null
+  }>
 }
 
 interface Props {
@@ -77,6 +89,13 @@ export function EvaluationCard({ item, detailsHref, evaluateHref, onReopened }: 
   const fipeStr = fmtBRL(item.fipeValue)
   const evalStr = fmtBRL(item.evaluatedValue)
   const [reopening, setReopening] = useState(false)
+  const [galleryOpen, setGalleryOpen]   = useState(false)
+  const [galleryStart, setGalleryStart] = useState(0)
+
+  // Fotos da avaliação. Se a API ainda não popular `photos`, degrada vazio.
+  const photos: GalleryPhoto[] = (item.photos ?? []).filter((p) => !!p.url) as GalleryPhoto[]
+  const cover    = item.coverPhotoUrl ?? photos[0]?.url ?? null
+  const photoCnt = item.photoCount ?? photos.length
 
   const vehicleLine = [item.brand, item.model, item.version].filter(Boolean).join(' ')
   const yearLine    = [item.manufactureYear, item.modelYear].filter(Boolean).join('/')
@@ -126,9 +145,31 @@ export function EvaluationCard({ item, detailsHref, evaluateHref, onReopened }: 
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-6 sm:p-5 sm:pl-6">
         {/* Bloco principal: placa + veículo */}
         <div className="flex flex-1 items-start gap-4 min-w-0">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-            <Car size={20} />
-          </div>
+          {/* Capa do veículo (foto da avaliação se houver, ícone fallback). */}
+          {cover ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setGalleryStart(0); setGalleryOpen(true) }}
+              className="group/cover relative h-16 w-20 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-100 sm:h-20 sm:w-28"
+              title={photoCnt > 1 ? `Ver ${photoCnt} fotos` : 'Ver foto'}
+              aria-label={photoCnt > 1 ? `Ver ${photoCnt} fotos` : 'Ver foto'}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cover} alt="" className="h-full w-full object-cover transition-transform group-hover/cover:scale-105" />
+              {photoCnt > 1 && (
+                <span className="absolute bottom-1 right-1 flex items-center gap-0.5 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                  <ImageIcon size={9} /> {photoCnt}
+                </span>
+              )}
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/cover:bg-black/30">
+                <Camera size={18} className="text-white opacity-0 transition-opacity group-hover/cover:opacity-100" />
+              </span>
+            </button>
+          ) : (
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+              <Car size={20} />
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-lg bg-gray-900 px-2 py-0.5 font-mono text-sm font-bold tracking-wider text-white">
@@ -241,7 +282,25 @@ export function EvaluationCard({ item, detailsHref, evaluateHref, onReopened }: 
           Criada {fmtRelative(item.createdAt)}
           <span className="ml-1 text-gray-400">• {fmtDateTime(item.createdAt)}</span>
         </span>
+        {photoCnt > 0 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setGalleryStart(0); setGalleryOpen(true) }}
+            className="ml-auto flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <ImageIcon size={10} /> {photoCnt} foto{photoCnt > 1 ? 's' : ''}
+          </button>
+        )}
       </div>
+
+      {galleryOpen && (
+        <PhotoGalleryModal
+          photos={photos}
+          initialIndex={galleryStart}
+          title={`${vehicleLine || 'Veículo'}${item.plate ? ` · ${item.plate}` : ''}`}
+          onClose={() => setGalleryOpen(false)}
+        />
+      )}
     </div>
   )
 }

@@ -13,7 +13,8 @@ import { requireModule }        from '@/lib/permissions'
 
 const VALID_STATUS = new Set(['RASCUNHO', 'GERADO', 'ASSINADO', 'ARQUIVADO'])
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string; documentId: string } }) {
+export async function GET(_req: NextRequest, ctxArg: { params: { id: string; documentId: string } | Promise<{ id: string; documentId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
@@ -27,7 +28,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string;
   return NextResponse.json({ data: doc })
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; documentId: string } }) {
+export async function PATCH(req: NextRequest, ctxArg: { params: { id: string; documentId: string } | Promise<{ id: string; documentId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations.manage') }
@@ -61,7 +63,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   } catch (err) { return handlePrismaError(err) }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string; documentId: string } }) {
+export async function DELETE(_req: NextRequest, ctxArg: { params: { id: string; documentId: string } | Promise<{ id: string; documentId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations.manage') }

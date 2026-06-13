@@ -21,7 +21,7 @@ const MONETARY_FIELDS = new Set([
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  ctxArg: { params: { id: string } | Promise<{ id: string }> },
 ) {
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
@@ -32,8 +32,12 @@ export async function GET(
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
+  const params = await Promise.resolve(ctxArg.params)
+  const dealId = params?.id
+  if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
+
   const deal = await prisma.deal.findUnique({
-    where:   { id: params.id },
+    where:   { id: dealId },
     include: {
       person:   true,
       customer: true,
@@ -131,7 +135,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  ctxArg: { params: { id: string } | Promise<{ id: string }> },
 ) {
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
@@ -142,7 +146,11 @@ export async function PATCH(
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
-  const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+  const params = await Promise.resolve(ctxArg.params)
+  const dealId = params?.id
+  if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
+
+  const deal = await prisma.deal.findUnique({ where: { id: dealId } })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
   if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
@@ -314,15 +322,15 @@ export async function PATCH(
       // Se só o Person mudou, retornamos o deal carregado novamente.
       const d = Object.keys(allowedFields).length > 0
         ? await tx.deal.update({
-            where: { id: params.id },
+            where: { id: dealId },
             data:  allowedFields as any,
           })
-        : await tx.deal.findUniqueOrThrow({ where: { id: params.id } })
+        : await tx.deal.findUniqueOrThrow({ where: { id: dealId } })
 
       // Auditoria campo a campo — paralela para não bloquear a transação
       await Promise.all(auditEntries.map(entry =>
         createDealAudit(tx as any, {
-          dealId:   params.id,
+          dealId:   dealId,
           tenantId: deal.tenantId,
           unitId:   deal.unitId,
           userId:   session.user.id,
@@ -341,7 +349,7 @@ export async function PATCH(
           tenantId: session.user.tenantId ?? null,
           action:   'UPDATE',
           entity:   'Deal',
-          entityId: params.id,
+          entityId: dealId,
           userName: session.user.name,
           userRole: session.user.role,
           status:   'SUCCESS',
@@ -364,7 +372,7 @@ export async function PATCH(
             tenantId:   session.user.tenantId ?? null,
             action:     'UPDATE_MONETARY',
             entity:     'Deal',
-            entityId:   params.id,
+            entityId:   dealId,
             userName:   session.user.name,
             userRole:   session.user.role,
             status:     'SUCCESS',

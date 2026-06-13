@@ -9,7 +9,8 @@ import { prisma } from '@/lib/prisma'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { session, error } = await requireMaster()
   if (error) return error
   try {

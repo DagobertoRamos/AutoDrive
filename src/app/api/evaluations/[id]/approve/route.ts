@@ -12,8 +12,8 @@ import { recordHistory }        from '@/lib/evaluation/history'
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try {

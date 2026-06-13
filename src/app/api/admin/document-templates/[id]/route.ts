@@ -24,7 +24,8 @@ async function loadAccessible(id: string, tenantId: string | null, role: string)
   return tpl
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try {
@@ -34,7 +35,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   } catch (err) { return handlePrismaError(err) }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   if (!canManage(session.user.role)) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
@@ -63,7 +65,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   } catch (err) { return handlePrismaError(err) }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   if (!canManage(session.user.role)) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })

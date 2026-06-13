@@ -10,6 +10,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
+import { canEvaluationVehicleBeUsed, type Operation } from '@/lib/evaluation/availability'
 
 export async function GET(req: NextRequest) {
   const session = await getServerAuthSession()
@@ -23,7 +24,13 @@ export async function GET(req: NextRequest) {
     const search  = searchParams.get('search')?.trim() ?? ''
     const unitId  = searchParams.get('unitId')  ?? ''
     const page    = Math.max(1, Number(searchParams.get('page') ?? 1))
-    const take    = 20
+    // Limit configurável (default 20). Pra abrir modal "vazio" o cliente
+    // passa ?limit=3 e mostra os 3 mais recentes.
+    const take    = Math.max(1, Math.min(50, Number(searchParams.get('limit') ?? 20)))
+    // Operação alvo (TROCA / COMPRA / CONSIGNACAO) — filtra availableFor
+    const opRaw   = (searchParams.get('operation') ?? '').toUpperCase()
+    const operation: Operation | null =
+      opRaw === 'TROCA' || opRaw === 'COMPRA' || opRaw === 'CONSIGNACAO' ? opRaw : null
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
@@ -80,7 +87,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const [data, total] = await Promise.all([
+    const [rawData, total] = await Promise.all([
       prisma.vehicleEvaluation.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -103,6 +110,7 @@ export async function GET(req: NextRequest) {
           suggestedSalePrice: true,
           minimumValue:   true,
           result:         true,
+          status:         true,
           intention:      true,
           ownerName:      true,
           ownerCpf:       true,
@@ -112,12 +120,58 @@ export async function GET(req: NextRequest) {
           cautelarStatus: true,
           createdAt:      true,
           evaluatedAt:    true,
+          // Decisão do cliente + availableFor (regra centralizada)
+          customerDecision:    true,
+          customerDecisionAt:  true,
+          customerDecisionNote:true,
+          availableFor:        true,
+          proposalValidUntil:  true,
+          vehicleId:           true,
+          cancelledAt:         true,
           evaluatedBy:    { select: { id: true, name: true } },
           unit:           { select: { id: true, name: true } },
-        },
+        } as never,
       }),
       prisma.vehicleEvaluation.count({ where }),
     ])
+
+    // Pra checagem de "vinculada a deal ativo", busca DealVehicles ligados às
+    // mesmas placas/vehicleId em deals abertos (1 query batch).
+    const evalIds = rawData.map((e: any) => e.id) // eslint-disable-line @typescript-eslint/no-explicit-any
+    const plates  = rawData.map((e: any) => e.plate).filter(Boolean) as string[] // eslint-disable-line @typescript-eslint/no-explicit-any
+    let dealVehiclesByEval: Record<string, Array<{ deal?: { status?: string | null } | null }>> = {}
+    if (plates.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const dvs: any[] = await (prisma as any).dealVehicle.findMany({
+        where:  { plate: { in: plates } },
+        select: { plate: true, deal: { select: { status: true } } },
+      })
+      // Mapeia plate → evalId (mesmas placas podem ter várias avaliações)
+      const plateToEvalIds = new Map<string, string[]>()
+      for (const e of rawData as any[]) { // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (!e.plate) continue
+        const arr = plateToEvalIds.get(e.plate) ?? []
+        arr.push(e.id); plateToEvalIds.set(e.plate, arr)
+      }
+      for (const dv of dvs) {
+        const ids = plateToEvalIds.get(dv.plate) ?? []
+        for (const id of ids) {
+          if (!dealVehiclesByEval[id]) dealVehiclesByEval[id] = []
+          dealVehiclesByEval[id].push(dv)
+        }
+      }
+    }
+
+    // Filtra usando a regra centralizada
+    const data = (rawData as any[]).filter((e) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      const check = canEvaluationVehicleBeUsed(
+        { ...e, dealVehicles: dealVehiclesByEval[e.id] ?? [] },
+        operation ?? 'COMPRA',
+      )
+      return check.canUse
+    })
+
+    void evalIds
 
     return NextResponse.json({
       data,

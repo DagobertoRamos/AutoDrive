@@ -35,7 +35,8 @@ const schema = z.object({
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { error } = await requireMaster()
   if (error) return error
 
@@ -83,7 +84,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 // ── PUT ───────────────────────────────────────────────────────────────────────
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { error } = await requireMaster()
   if (error) return error
 

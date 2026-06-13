@@ -21,7 +21,8 @@ const updateTabSchema = z.object({
   headerRow:      z.number().int().min(1).optional(),
 })
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; tabId: string } }) {
+export async function PATCH(req: NextRequest, ctxArg: { params: { id: string; tabId: string } | Promise<{ id: string; tabId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { error } = await requireMaster()
   if (error) return error
 
@@ -43,7 +44,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string; tabId: string } }) {
+export async function DELETE(_req: NextRequest, ctxArg: { params: { id: string; tabId: string } | Promise<{ id: string; tabId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { error } = await requireMaster()
   if (error) return error
 

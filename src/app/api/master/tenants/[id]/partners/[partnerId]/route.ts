@@ -24,8 +24,8 @@ import bcrypt from 'bcryptjs'
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; partnerId: string } },
-) {
+  ctxArg: { params: { id: string; partnerId: string } | Promise<{ id: string; partnerId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session || session.user.role !== 'MASTER') {
     return NextResponse.json({ success: false, error: 'Acesso negado.' }, { status: 403 })
@@ -211,8 +211,8 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; partnerId: string } },
-) {
+  ctxArg: { params: { id: string; partnerId: string } | Promise<{ id: string; partnerId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session || session.user.role !== 'MASTER') {
     return NextResponse.json({ success: false, error: 'Acesso negado.' }, { status: 403 })

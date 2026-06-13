@@ -4,9 +4,10 @@
 // VehicleCard — Card de veículo para a listagem do estoque
 // =============================================================================
 
+import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { MapPin, Gauge, Calendar, AlertTriangle, Tag, Car } from 'lucide-react'
+import { MapPin, Gauge, Calendar, AlertTriangle, Tag, Car, ChevronLeft, ChevronRight } from 'lucide-react'
 import { VehicleStatusBadge, CautelarBadge, StockTypeBadge, ConditionBadge } from './VehicleStatusBadge'
 import { cn } from '@/lib/utils'
 
@@ -36,8 +37,14 @@ interface VehicleCardProps {
     cautelarStatus: string
     unit:          { id: string; name: string } | null
     stockPendencies: VehiclePendency[]
-    hasOpenNegotiation: boolean
-    openNegotiationId:  string | null
+    hasOpenNegotiation:    boolean
+    openNegotiationId:     string | null
+    openNegotiationNumber?: string | null
+    openNegotiationStatus?: string | null
+    openNegotiationSeller?: string | null
+    openNegotiationUnit?:   string | null
+    /** URLs ordenadas: marketing primeiro, fallback fotos da avaliação. */
+    displayPhotos?:        string[]
     _count: { photos: number; stockPendencies: number }
   }
   className?: string
@@ -70,21 +77,12 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
         className,
       )}
     >
-      {/* Foto */}
+      {/* Foto / carrossel */}
       <div className="relative h-44 w-full overflow-hidden bg-gray-100">
-        {vehicle.mainPhotoUrl ? (
-          <Image
-            src={vehicle.mainPhotoUrl}
-            alt={`${vehicle.brand} ${vehicle.model}`}
-            fill
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <Car className="h-16 w-16 text-gray-300" />
-          </div>
-        )}
+        <VehicleCardCarousel
+          photos={vehicle.displayPhotos ?? (vehicle.mainPhotoUrl ? [vehicle.mainPhotoUrl] : [])}
+          alt={`${vehicle.brand} ${vehicle.model}`}
+        />
 
         {/* Badges sobrepostas */}
         <div className="absolute left-2 top-2 flex flex-wrap gap-1">
@@ -92,10 +90,10 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
           {vehicle.stockType && <StockTypeBadge type={vehicle.stockType} />}
         </div>
 
-        {/* Em negociação */}
+        {/* Em negociação — chip pequeno sobre a foto (detalhe vai no card abaixo) */}
         {vehicle.hasOpenNegotiation && (
-          <div className="absolute inset-0 flex items-end justify-center pb-2">
-            <span className="flex items-center gap-1 rounded-full bg-indigo-600/90 px-3 py-1 text-xs font-semibold text-white shadow">
+          <div className="absolute right-2 top-2">
+            <span className="flex items-center gap-1 rounded-full bg-amber-500/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow">
               <AlertTriangle className="h-3 w-3" />
               Em negociação
             </span>
@@ -112,6 +110,33 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
 
       {/* Conteúdo */}
       <div className="flex flex-1 flex-col gap-2 p-3">
+        {/* ── Aviso de negociação em aberto ─────────────────────────────── */}
+        {vehicle.hasOpenNegotiation && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs">
+            <div className="flex items-start gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-amber-900">Veículo em negociação</p>
+                {vehicle.openNegotiationSeller && (
+                  <p className="mt-0.5 text-amber-800 truncate">
+                    Vendedor: <span className="font-medium">{vehicle.openNegotiationSeller}</span>
+                  </p>
+                )}
+                {vehicle.openNegotiationNumber && (
+                  <p className="text-amber-800">
+                    Negociação: <span className="font-mono font-medium">{vehicle.openNegotiationNumber}</span>
+                  </p>
+                )}
+                {vehicle.openNegotiationStatus && (
+                  <p className="text-amber-700/90 text-[10px] uppercase tracking-wide">
+                    {vehicle.openNegotiationStatus.replace(/_/g, ' ')}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Placa + condição */}
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-sm font-bold tracking-widest text-gray-800">
@@ -178,5 +203,91 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
         </div>
       </div>
     </Link>
+  )
+}
+
+// ── Carrossel das fotos do card (auto-rotate + setas no hover) ──────────────
+function VehicleCardCarousel({ photos, alt }: { photos: string[]; alt: string }) {
+  const [idx, setIdx] = useState(0)
+  const [hovering, setHovering] = useState(false)
+  const total = photos.length
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Auto-rotate quando não está hover (4s)
+  useEffect(() => {
+    if (total <= 1) return
+    if (hovering) {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+      return
+    }
+    intervalRef.current = setInterval(() => setIdx((i) => (i + 1) % total), 4000)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [total, hovering])
+
+  // Reset índice se a lista muda
+  useEffect(() => { setIdx((i) => (i >= total ? 0 : i)) }, [total])
+
+  if (total === 0) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Car className="h-16 w-16 text-gray-300" />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="relative h-full w-full"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      <Image
+        key={photos[idx]}
+        src={photos[idx]}
+        alt={alt}
+        fill
+        className="object-cover transition-opacity duration-300"
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        unoptimized
+      />
+
+      {total > 1 && (
+        <>
+          {/* Setas (visíveis no hover) */}
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIdx((i) => (i - 1 + total) % total) }}
+            className="absolute left-1 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+            aria-label="Foto anterior"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIdx((i) => (i + 1) % total) }}
+            className="absolute right-1 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+            aria-label="Próxima foto"
+          >
+            <ChevronRight size={14} />
+          </button>
+
+          {/* Dots indicators */}
+          <div className="absolute bottom-1.5 left-1/2 z-10 flex -translate-x-1/2 gap-1">
+            {photos.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIdx(i) }}
+                className={cn(
+                  'h-1.5 rounded-full transition-all',
+                  i === idx ? 'w-4 bg-white' : 'w-1.5 bg-white/50',
+                )}
+                aria-label={`Foto ${i + 1}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   )
 }

@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
+import { notifyDealSubmittedForApproval } from '@/services/notification.service'
 
 const SUBMITTABLE_STATUSES = new Set([
   'RASCUNHO',
@@ -17,8 +18,8 @@ const SUBMITTABLE_STATUSES = new Set([
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
@@ -26,7 +27,13 @@ export async function POST(
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
 
   try {
-    const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+    const deal = await prisma.deal.findUnique({
+      where:   { id: params.id },
+      include: {
+        vehicles: { take: 1, orderBy: { createdAt: 'asc' } },
+        seller:   { select: { fullName: true, shortName: true } },
+      },
+    })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
     // Isolamento de tenant
@@ -69,6 +76,23 @@ export async function POST(
       })
       return d
     })
+
+    // ── Notifica gerente(s) responsável(eis) — best-effort ───────────────────
+    try {
+      const v = deal.vehicles?.[0]
+      const vehicleLabel = [v?.brand, v?.model, v?.year ? `(${v.year})` : null, v?.plate ? `· placa ${v.plate}` : null]
+        .filter(Boolean).join(' ').trim() || 'veículo'
+      await notifyDealSubmittedForApproval({
+        dealId:       params.id,
+        dealNumber:   deal.dealNumber,
+        tenantId:     deal.tenantId,
+        vehicleLabel,
+        sellerName:   deal.seller?.shortName ?? deal.seller?.fullName ?? session.user.name ?? 'Vendedor',
+        managerId:    deal.managerId,
+      })
+    } catch (e) {
+      console.error('[submit] notifyDealSubmittedForApproval failed:', e instanceof Error ? e.message : e)
+    }
 
     return NextResponse.json({ data: updated })
   } catch (err) {

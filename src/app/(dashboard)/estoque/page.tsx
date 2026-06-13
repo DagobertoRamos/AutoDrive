@@ -164,7 +164,16 @@ export default function EstoquePage() {
   const [pagination, setPagination]   = useState<Pagination | null>(null)
   const [units, setUnits]             = useState<Unit[]>([])
   const [loading, setLoading]         = useState(true)
-  const [viewMode, setViewMode]       = useState<'cards' | 'list'>('cards')
+  // viewMode persistido em localStorage — sobrevive a refresh/navegação
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'cards'
+    const saved = localStorage.getItem('estoque:view')
+    return saved === 'list' || saved === 'cards' ? saved : 'cards'
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem('estoque:view', viewMode)
+  }, [viewMode])
   const [showFilters, setShowFilters] = useState(false)
 
   // Filtros

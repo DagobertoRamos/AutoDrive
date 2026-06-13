@@ -17,7 +17,8 @@ const bodySchema = z.object({
   testEmail: z.string().email('E-mail de teste inválido.').optional(),
 })
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { session, error } = await requireMaster()
   if (error) return error
 

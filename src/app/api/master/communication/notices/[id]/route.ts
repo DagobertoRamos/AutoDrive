@@ -10,7 +10,8 @@ import { prisma }                         from '@/lib/prisma'
 
 // ── PATCH ─────────────────────────────────────────────────────────────────────
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { session, error } = await requireMaster()
   if (error) return error
 
@@ -88,7 +89,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 // ── DELETE (soft) ─────────────────────────────────────────────────────────────
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { session, error } = await requireMaster()
   if (error) return error
 

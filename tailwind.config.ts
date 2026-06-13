@@ -1,4 +1,6 @@
 import type { Config } from 'tailwindcss'
+import typography from '@tailwindcss/typography'
+import forms      from '@tailwindcss/forms'
 
 // =============================================================================
 // AutoDrive — Tailwind CSS Configuration
@@ -188,8 +190,8 @@ const config: Config = {
     },
   },
   plugins: [
-    require('@tailwindcss/typography'),
-    require('@tailwindcss/forms')({ strategy: 'class' }),
+    typography,
+    forms({ strategy: 'class' }),
   ],
 } satisfies Config
 

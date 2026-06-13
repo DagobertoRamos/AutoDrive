@@ -18,8 +18,8 @@ async function loadService(serviceId: string) {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; serviceId: string } },
-) {
+  ctxArg: { params: { id: string; serviceId: string } | Promise<{ id: string; serviceId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
@@ -73,8 +73,8 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; serviceId: string } },
-) {
+  ctxArg: { params: { id: string; serviceId: string } | Promise<{ id: string; serviceId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 

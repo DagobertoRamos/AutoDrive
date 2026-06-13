@@ -11,7 +11,7 @@
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, ChevronRight, Camera, Upload, Trash2, ImageIcon } from 'lucide-react'
+import { Loader2, ChevronRight, ChevronLeft, Camera, Upload, Trash2, ImageIcon, CheckCircle2 } from 'lucide-react'
 import { ITEMS, SECTIONS, ITEM_STATUS, type SectionKey } from '@/lib/evaluation/catalog'
 import { ItemDrawer, type DrawerItem } from './ItemDrawer'
 
@@ -41,6 +41,10 @@ interface EvaluationSectionsProps {
   /** reopenCount > 0 → label do botão muda para "Reavaliar". */
   reopenCount?:       number
   readOnly?:          boolean
+  /** Callback opcional ao clicar "Anterior seção" estando na 1ª aba — leva ao step anterior do wizard. */
+  onBack?:            () => void
+  /** Callback opcional ao clicar "Concluir avaliação" estando na última aba — avança o wizard. */
+  onComplete?:        () => void
 }
 
 const TABS: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE']
@@ -208,7 +212,7 @@ function SectionPhotoWidget({
 }
 
 export function EvaluationSections({
-  evaluationId, evaluationStatus, reopenCount = 0, readOnly,
+  evaluationId, evaluationStatus, reopenCount = 0, readOnly, onBack, onComplete,
 }: EvaluationSectionsProps) {
   const [tab,         setTab]         = useState<SectionKey>('INTERIOR')
   const [items,       setItems]       = useState<EvalItem[]>([])
@@ -378,6 +382,44 @@ export function EvaluationSections({
               )
             })}
           </ul>
+
+          {/* ── Navegação entre seções ───────────────────────────────────── */}
+          {(onBack || onComplete) && (
+            <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = TABS.indexOf(tab)
+                  if (idx > 0) setTab(TABS[idx - 1])
+                  else onBack?.()
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                {TABS.indexOf(tab) > 0 ? `Seção anterior (${SECTIONS.find((s) => s.key === TABS[TABS.indexOf(tab) - 1])?.label})` : 'Voltar ao veículo'}
+              </button>
+
+              {TABS.indexOf(tab) < TABS.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setTab(TABS[TABS.indexOf(tab) + 1])}
+                  className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                >
+                  Próxima seção ({SECTIONS.find((s) => s.key === TABS[TABS.indexOf(tab) + 1])?.label})
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onComplete?.()}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Concluir avaliação — ir para Cautelar
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
 

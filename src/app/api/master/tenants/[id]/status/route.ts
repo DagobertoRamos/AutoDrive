@@ -26,8 +26,8 @@ const REASON_REQUIRED: StatusAction[] = ['BANIR', 'SUSPENDER', 'CANCELAR']
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session || session.user.role !== 'MASTER') {
     return NextResponse.json({ success: false, error: 'Acesso negado.' }, { status: 403 })

@@ -8,8 +8,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -33,6 +34,7 @@ enum UserStatus {
   INATIVO
   PENDENTE
   BLOQUEADO
+  SUSPENSO    // suspensão temporária (ex.: férias, investigação) — diferente de BLOQUEADO (segurança) e INATIVO (encerrado)
 }
 
 enum TenantPlan {
@@ -949,6 +951,21 @@ model VehicleEvaluation {
   /// Para test-drive: usuário realizou? Observações opcionais
   testDriveDone     Boolean?  @default(false)
 
+  // ── Decisão do cliente sobre a proposta ───────────────────────────────────
+  /// PENDENTE (default) | ACEITA | RECUSADA | ANALISANDO | EXPIRADA | CANCELADA
+  customerDecision      String?   @default("PENDENTE")
+  customerDecisionAt    DateTime?
+  customerDecisionById  String?
+  /// Motivo/observação da decisão (especialmente quando RECUSADA)
+  customerDecisionNote  String?
+
+  // ── Disponibilidade operacional (definida pelo gerente+) ──────────────────
+  /// Lista CSV das operações em que o veículo pode entrar: "COMPRA,TROCA,CONSIGNACAO"
+  /// Default null = nenhuma. O gerente define no momento da liberação.
+  availableFor          String?
+  /// Validade da proposta — se vencer, customerDecision vira EXPIRADA na próxima leitura.
+  proposalValidUntil    DateTime?
+
   // Relations
   vehicle     Vehicle? @relation(fields: [vehicleId], references: [id])
   unit        Unit?    @relation("UnitEvaluations", fields: [unitId], references: [id])
@@ -1300,16 +1317,29 @@ model DealPayment {
   dealId        String
   tenantId      String?
   type          String    // DINHEIRO, PIX, CARTAO_DEBITO, CARTAO_CREDITO, FINANCIAMENTO, BOLETO, TRANSFERENCIA, SINAL, DUPLICATA, OUTROS
+  status        String?   // PENDENTE | CONFIRMADO | CANCELADO (default PENDENTE)
   value         Decimal   @db.Decimal(12, 2)
   bank          String?
   cardBrand     String?   // VISA, MASTER, ELO, AMEX, HIPERCARD, OUTROS
+  pixKey        String?
+  agency        String?
+  account       String?
   installments  Int?
-  firstDueDate  DateTime?
-  dueDate       DateTime?
-  notes         String?
-  createdById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime? @updatedAt
+  /** Valor da parcela cadastrado manualmente (vindo da financeira). */
+  installmentValue        Decimal? @db.Decimal(12, 2)
+  /** Prazo entre parcelas em dias (30, 60...). */
+  installmentIntervalDays Int?
+  /** Retorno da financeira em % (0,10–6,00). Cadastra-se F&I/gerente/financeiro. */
+  returnPct      Decimal?  @db.Decimal(4, 2)
+  /** Placa do veículo identificadora — útil pra negociações em lote multi-veículo. */
+  vehiclePlate   String?
+  firstDueDate   DateTime?
+  dueDate        DateTime?
+  paidAt         DateTime?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime? @updatedAt
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 

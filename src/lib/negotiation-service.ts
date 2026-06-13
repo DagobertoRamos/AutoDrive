@@ -164,28 +164,171 @@ function toNum(v: any | number | null | undefined): number {
 }
 
 export function computeDealBalance(input: DealBalanceInput): DealBalanceResult {
-  const vehicle = toNum(input.vehicleValue)
-  const debts   = (input.debts ?? []).reduce((s, d) => s + toNum(d.value), 0)
-  const services = (input.services ?? []).reduce((s, x) => s + toNum(x.value), 0)
-                  || toNum(input.servicesAmount)
-  const payments = (input.payments ?? []).reduce((s, p) => s + toNum(p.value), 0)
-  const discountApproved = (input.discountRequests ?? [])
+  // Mantido por compat — delega ao novo `calculateNegotiationFinancialSummary`.
+  const s = calculateNegotiationFinancialSummary({
+    vehicleValue:     input.vehicleValue,
+    debts:            input.debts,
+    services:         input.services,
+    servicesAmount:   input.servicesAmount,
+    payments:         input.payments as any,
+    discountRequests: input.discountRequests,
+    changes:          input.changes,
+  })
+  return {
+    totalBruto:            s.grossTotal,
+    totalLiquido:          s.netTotal,
+    totalPago:             s.paidTotal,
+    saldo:                 s.openBalance,
+    totalTroco:            s.changeTotal,
+    totalDiscountApproved: s.discountApprovedTotal,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fonte ÚNICA de verdade do cálculo financeiro da negociação.
+// Usada por backend (saved totals, validação de finalize) e por todos os
+// componentes do frontend que mostram resumo financeiro — evita divergência
+// entre Phase2Panel, DealSummary, DealValuesCard etc.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FinancialPayment {
+  value:  any | number | null
+  /** PENDENTE | CONFIRMADO | CANCELADO — CANCELADO sempre ignorado no totalPago. */
+  status?: string | null
+  type?:   string | null
+}
+
+export interface FinancialSummaryInput {
+  vehicleValue?:     number | null
+  servicesAmount?:   number | null
+  /** Taxas/documentação (deal.documentationFee). */
+  fees?:             number | null
+  /** Garantias contratadas (DealWarranty[]). */
+  warranties?:       Array<{ value: any | number | null; status?: string | null }>
+  debts?:            Array<{ value: any | number | null }>
+  services?:         Array<{ value: any | number | null }>
+  payments?:         FinancialPayment[]
+  discountRequests?: Array<{ status: string; approvedValue?: any | number | null; requestedValue?: any | number | null }>
+  /** Desconto cru no deal (deal.discountAmount) — somado aos approvedRequests. */
+  flatDiscount?:     number | null
+  changes?:          Array<{ value: any | number | null }>
+}
+
+export type FinancialPaymentStatus = 'QUITADO' | 'PARCIAL' | 'ABERTO' | 'EXCEDENTE' | 'SEM_OPERACAO'
+
+export interface FinancialSummary {
+  vehicleAmount:          number
+  debtAmount:             number
+  serviceAmount:          number
+  warrantyAmount:         number
+  feeAmount:              number
+  discountApprovedTotal:  number
+  grossTotal:             number
+  netTotal:               number
+  paidConfirmed:          number
+  paidPending:            number
+  paidTotal:              number      // confirmed + pending (display)
+  openBalance:            number      // netTotal − paidTotal
+  changeTotal:            number
+  paymentStatus:          FinancialPaymentStatus
+  warnings:               string[]
+}
+
+const PAID_STATUSES = new Set(['CONFIRMADO', 'PAGO'])
+const PENDING_STATUSES = new Set(['PENDENTE', null, undefined, ''])
+// CANCELADO/ESTORNADO/RECUSADO → ignorados
+
+export function calculateNegotiationFinancialSummary(
+  input: FinancialSummaryInput,
+): FinancialSummary {
+  const warnings: string[] = []
+
+  const vehicleAmount  = toNum(input.vehicleValue)
+  const debtAmount     = (input.debts ?? []).reduce((s, d) => s + toNum(d.value), 0)
+  const serviceAmount  = (input.services ?? []).reduce((s, x) => s + toNum(x.value), 0)
+                          || toNum(input.servicesAmount)
+  const warrantyAmount = (input.warranties ?? [])
+    .filter(w => !w.status || w.status !== 'CANCELADA')
+    .reduce((s, w) => s + toNum(w.value), 0)
+  const feeAmount      = toNum(input.fees)
+
+  // Pagamentos — divide por status (CONFIRMADO/PENDENTE), ignora CANCELADO
+  let paidConfirmed = 0
+  let paidPending   = 0
+  for (const p of input.payments ?? []) {
+    const v = toNum(p.value)
+    const s = (p.status ?? '').toUpperCase()
+    if (s === 'CANCELADO' || s === 'ESTORNADO' || s === 'RECUSADO') continue
+    if (PAID_STATUSES.has(s)) paidConfirmed += v
+    else if (PENDING_STATUSES.has(s as any) || s === 'PENDENTE') paidPending += v
+    else paidPending += v   // status desconhecido vira "pendente" por segurança
+  }
+  const paidTotal = paidConfirmed + paidPending
+
+  // Descontos: pedidos aprovados + desconto flat do deal
+  const discountFromRequests = (input.discountRequests ?? [])
     .filter(r => r.status === 'APROVADO')
     .reduce((s, r) => s + toNum(r.approvedValue ?? r.requestedValue), 0)
-  const troco = (input.changes ?? []).reduce((s, c) => s + toNum(c.value), 0)
+  const discountApprovedTotal = discountFromRequests + toNum(input.flatDiscount)
 
-  const totalBruto = vehicle + debts + services
-  const totalLiquido = totalBruto - discountApproved
-  const totalPago = payments
-  const saldo = totalLiquido - totalPago
+  const changeTotal = (input.changes ?? []).reduce((s, c) => s + toNum(c.value), 0)
+
+  // grossTotal = veículo + débitos + serviços + garantias + taxas
+  const grossTotal = vehicleAmount + debtAmount + serviceAmount + warrantyAmount + feeAmount
+  const netTotal   = grossTotal - discountApprovedTotal
+  const openBalance = netTotal - paidTotal
+
+  // Status financeiro
+  let paymentStatus: FinancialPaymentStatus = 'SEM_OPERACAO'
+  if (netTotal > 0) {
+    if (Math.abs(openBalance) < 0.01) paymentStatus = 'QUITADO'
+    else if (openBalance > 0)         paymentStatus = paidTotal > 0 ? 'PARCIAL' : 'ABERTO'
+    else                              paymentStatus = 'EXCEDENTE'
+  }
+
+  // Warnings
+  if (vehicleAmount <= 0 && netTotal <= 0) warnings.push('Operação sem valor do veículo.')
+  if (paidPending > 0 && paidConfirmed === 0 && paymentStatus === 'QUITADO') {
+    warnings.push('Saldo zerado, mas pagamentos ainda estão pendentes de confirmação.')
+  }
+  if (paymentStatus === 'EXCEDENTE' && changeTotal + 0.01 < Math.abs(openBalance)) {
+    warnings.push('Há valor excedente sem troco cadastrado.')
+  }
 
   return {
-    totalBruto,
-    totalLiquido,
-    totalPago,
-    saldo,
-    totalTroco: troco,
-    totalDiscountApproved: discountApproved,
+    vehicleAmount,
+    debtAmount,
+    serviceAmount,
+    warrantyAmount,
+    feeAmount,
+    discountApprovedTotal,
+    grossTotal,
+    netTotal,
+    paidConfirmed,
+    paidPending,
+    paidTotal,
+    openBalance,
+    changeTotal,
+    paymentStatus,
+    warnings,
+  }
+}
+
+/** Helper: dado um Deal carregado do Prisma, retorna o input já adaptado. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function dealToFinancialInput(deal: any): FinancialSummaryInput {
+  const firstVehAgreed = (deal?.vehicles ?? []).find((v: any) => toNum(v.agreedValue) > 0)?.agreedValue
+  const vehicleValue = toNum(deal?.saleAmount ?? deal?.purchaseAmount ?? deal?.vehicleValue ?? firstVehAgreed)
+  return {
+    vehicleValue,
+    fees:             toNum(deal?.documentationFee),
+    flatDiscount:     toNum(deal?.discountAmount),
+    debts:            deal?.debts ?? [],
+    services:         deal?.services ?? [],
+    warranties:       deal?.warranties ?? [],
+    payments:         deal?.payments ?? [],
+    discountRequests: deal?.discountRequests ?? [],
+    changes:          deal?.changes ?? [],
   }
 }
 

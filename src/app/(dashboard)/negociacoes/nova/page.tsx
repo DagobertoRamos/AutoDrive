@@ -44,6 +44,7 @@ import {
   ShieldX,
   Shield,
   ClipboardList,
+  Paperclip,
 } from 'lucide-react'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -100,12 +101,20 @@ export interface PaymentEntry {
   type:         PaymentEntryType
   status:       PaymentEntryStatus
   amount:       string                  // BRL mascarado
-  dueDate:      string                  // ISO date
-  paidAt:       string                  // ISO date
+  dueDate:      string                  // ISO date — data prevista de pagamento
+  paidAt:       string                  // ISO date — data efetiva
   bank:         string
   cardBrand:    string
-  installments: string
-  firstDueDate: string
+  installments: string                  // nº de parcelas
+  /** Valor da parcela MANUAL (não auto-calculado) — vem da financeira. */
+  installmentValue:        string       // BRL mascarado
+  /** Prazo entre parcelas (dias). Ex.: 30, 60. */
+  installmentIntervalDays: string
+  firstDueDate: string                  // ISO date — primeiro vencimento
+  /** Retorno da financeira em % (0,1 a 6,0). Só F&I/gerente/financeiro edita. */
+  returnPct:    string                  // ex.: "1,4" (0–6)
+  /** Placa do veículo deste pagamento (negociações em lote). */
+  vehiclePlate: string
   pixKey:       string
   notes:        string
 }
@@ -579,11 +588,14 @@ function VehicleInlineSearch({
   onSelect,
   onClear,
   label,
+  requireSalePrice,
 }: {
   selected: StockVehicle | null
   onSelect: (v: StockVehicle) => void
   onClear: () => void
   label: string
+  /** Quando true, oculta veículos sem preço de venda definido (não-liberados). */
+  requireSalePrice?: boolean
 }) {
   const [query,    setQuery]    = useState('')
   const [loading,  setLoading]  = useState(false)
@@ -601,7 +613,13 @@ function VehicleInlineSearch({
       // Os EM_NEGOCIACAO/RESERVADO aparecem porém ficam com cartão travado.
       // includeInactive=true também traz veículos recém-cadastrados que ainda
       // não foram aprovados — eles aparecem com tag mas seleção fica livre.
-      const qs = new URLSearchParams({ limit: '50', includeInactive: 'true' })
+      // Vazio: busca limitada (20) e depois slice(3) após filtros — garante
+      // ter material mesmo se o filtro derrubar muitos. Com query: até 50.
+      const isInitial = !q.trim()
+      const qs = new URLSearchParams({
+        limit: isInitial ? '20' : '50',
+        includeInactive: 'true',
+      })
       if (q) qs.set('search', q)
       const res  = await fetch(`/api/vehicles?${qs.toString()}`)
       const data = await res.json().catch(() => ({}))
@@ -613,14 +631,24 @@ function VehicleInlineSearch({
       const list: StockVehicle[] = Array.isArray(data?.data) ? data.data : []
       // Só ocultamos o que efetivamente saiu do estoque. Status nulos ou
       // desconhecidos passam (defesa contra dados antigos sem stockStatus).
-      const HIDDEN_STATUSES = new Set(['VENDIDO', 'CANCELADO', 'DEVOLVIDO', 'BLOQUEADO'])
-      const visible = list.filter((v) => !v.stockStatus || !HIDDEN_STATUSES.has(v.stockStatus))
+      const HIDDEN_STATUSES = new Set(['VENDIDO', 'CANCELADO', 'DEVOLVIDO', 'BLOQUEADO', 'EM_PRECIFICACAO'])
+      const visible = list
+        .filter((v) => !v.stockStatus || !HIDDEN_STATUSES.has(v.stockStatus))
+        // Pra VENDA: só veículos liberados (com preço de venda definido pelo gerente).
+        .filter((v) => !requireSalePrice || (v.salePrice != null && Number(v.salePrice) > 0))
+        // Pra VENDA: oculta veículos já vinculados a outra negociação ATIVA
+        // (AGUARDANDO_APROVACAO, APROVADA, AGUARDANDO_FINANCEIRO, FINALIZADA etc).
+        // Sem isso, o mesmo Gol aparece pra vender 2x. Selecionado atual continua
+        // visível (não some quando o user já escolheu).
+        .filter((v) => !requireSalePrice || !v.hasOpenNegotiation || v.id === selected?.id)
       visible.sort((a, b) => {
         const aLock = a.hasOpenNegotiation ? 1 : 0
         const bLock = b.hasOpenNegotiation ? 1 : 0
         return aLock - bLock
       })
-      setResults(visible)
+      // Top-3 mais recentes quando vazio (search inicial)
+      const final = isInitial ? visible.slice(0, 3) : visible
+      setResults(final)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro de rede ao buscar veículos.')
       setResults([])
@@ -713,9 +741,16 @@ function VehicleInlineSearch({
 function EvaluationSearchModal({
   onSelect,
   onClose,
+  operation,
+  title,
+  emptyHint,
 }: {
   onSelect: (e: EvaluationItem) => void
   onClose: () => void
+  /** TROCA | COMPRA | CONSIGNACAO — filtra availableFor + decisão do cliente. */
+  operation?: 'TROCA' | 'COMPRA' | 'CONSIGNACAO'
+  title?: string
+  emptyHint?: string
 }) {
   const [query, setQuery]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -726,13 +761,13 @@ function EvaluationSearchModal({
     setLoading(true)
     setSearched(true)
     try {
-      // URL precisa começar com '?' — quando havia só `&search=X`, o Next
-      // ignora o param (URL malformada) e a API recebe vazio → 0 resultados.
       const params = new URLSearchParams()
-      if (q.trim()) params.set('search', q.trim())
-      const url = params.toString()
-        ? `/api/negotiations/evaluations?${params.toString()}`
-        : `/api/negotiations/evaluations`
+      const query = q.trim()
+      if (query) params.set('search', query)
+      if (operation) params.set('operation', operation)
+      // Vazio: limita aos 3 mais recentes (busca enxuta). Com query: até 20.
+      params.set('limit', query ? '20' : '3')
+      const url = `/api/negotiations/evaluations?${params.toString()}`
       const res = await fetch(url)
       const data = await res.json()
       setResults(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [])
@@ -741,7 +776,8 @@ function EvaluationSearchModal({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [operation])
+  void title; void emptyHint  // reservados para uso futuro de header customizado
 
   // Busca instantânea ao digitar — debounce curto (250ms) para feedback
   // rápido sem inundar a API.
@@ -792,9 +828,27 @@ function EvaluationSearchModal({
               </div>
             )}
             {!loading && searched && results.length === 0 && (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <AlertTriangle size={14} className="shrink-0" />
-                Não há avaliações aprovadas disponíveis. Preencha os dados manualmente.
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-semibold">
+                      Nenhum veículo avaliado disponível{operation ? ` para ${operation.toLowerCase()}` : ''}.
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700/90">
+                      Para aparecer aqui, o veículo precisa estar: <strong>avaliado</strong> ·
+                      {' '}<strong>precificado</strong> ·
+                      {' '}<strong>liberado pelo gerente</strong> ·
+                      {' '}e <strong>aceito pelo cliente</strong>.
+                    </p>
+                    <Link
+                      href="/estoque/avaliacao"
+                      className="mt-2 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50"
+                    >
+                      + Fazer nova avaliação
+                    </Link>
+                  </div>
+                </div>
               </div>
             )}
             {!loading && results.map((ev) => (
@@ -1869,7 +1923,11 @@ function StepVeiculos({
   const [selectedStock, setSelectedStock]       = useState<StockVehicle | null>(null)
   const [selectedTradeStock, setSelectedTradeStock] = useState<StockVehicle | null>(null)
 
-  // Seleciona veículo principal (VENDA / TROCA saída)
+  // Seleciona veículo principal (VENDA / TROCA saída).
+  // O preço de venda cadastrado pelo gerente (salePrice) vai pra DOIS campos:
+  //   • form.vehicle.vehicleValue → exibido no card resumo do veículo
+  //   • form.saleAmount           → usado no payload final e como base do saldo
+  // Sem o segundo, o saleAmount fica vazio e a venda vai "zerada" pro backend.
   const handleSelectStock = (v: StockVehicle) => {
     setSelectedStock(v)
     setVehicleField('vehicleId', v.id)
@@ -1881,8 +1939,12 @@ function StepVeiculos({
     setVehicleField('km',    v.km    != null ? String(v.km)    : '')
     setVehicleField('color', v.color ?? '')
     setVehicleField('fuel',  v.fuel  ?? '')
-    if (v.salePrice != null)
-      setVehicleField('vehicleValue', maskBRLInput(String(Math.round(Number(v.salePrice) * 100))))
+    if (v.salePrice != null) {
+      const masked = maskBRLInput(String(Math.round(Number(v.salePrice) * 100)))
+      setVehicleField('vehicleValue', masked)
+      // Espelha pro saleAmount global (valor da operação de venda).
+      setField('saleAmount', masked)
+    }
   }
 
   // Seleciona avaliação para o veículo recebido na troca
@@ -1952,20 +2014,25 @@ function StepVeiculos({
   return (
     <div className="space-y-6">
       {showEvalModal && (
-        <EvaluationSearchModal onSelect={(ev) => { handleSelectEvaluation(ev); setShowEvalModal(false) }} onClose={() => setShowEvalModal(false)} />
+        <EvaluationSearchModal
+          operation="TROCA"
+          onSelect={(ev) => { handleSelectEvaluation(ev); setShowEvalModal(false) }}
+          onClose={() => setShowEvalModal(false)}
+        />
       )}
 
-      {/* ── VENDA: somente busca no estoque ── */}
+      {/* ── VENDA: somente busca no estoque (veículos LIBERADOS) ── */}
       {form.type === 'VENDA' && (
         <div className="space-y-4">
           <div>
             <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo a Vender</h2>
-            <p className="text-sm text-gray-500">Somente veículos disponíveis no estoque podem ser vendidos.</p>
+            <p className="text-sm text-gray-500">Somente veículos liberados no estoque (precificados pelo gerente) podem ser vendidos.</p>
           </div>
           <VehicleInlineSearch
             label="Estoque disponível"
             selected={selectedStock}
             onSelect={handleSelectStock}
+            requireSalePrice
             onClear={() => {
               setSelectedStock(null)
               setVehicleField('vehicleId', null)
@@ -1973,33 +2040,37 @@ function StepVeiculos({
               setVehicleField('brand', '')
               setVehicleField('model', '')
               setVehicleField('year', '')
+              setField('saleAmount', '')
             }}
           />
-          {/* Valor de venda confirmado */}
+          {/* Veículo selecionado — dados já cadastrados, sem solicitar novamente */}
           {selectedStock && (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Confirmar valores</p>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Valor de Venda (R$)">
-                  {moneyInput('vehicleValue')}
-                </Field>
-                <Field label="KM atual">
-                  <input
-                    className={inputCls}
-                    placeholder="0"
-                    value={form.vehicle.km}
-                    onChange={(e) => setVehicleField('km', e.target.value.replace(/\D/g, ''))}
-                  />
-                </Field>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Veículo selecionado</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900">
+                    {[selectedStock.brand, selectedStock.model, selectedStock.year ?? selectedStock.modelYear].filter(Boolean).join(' ')}
+                    {selectedStock.plate && <span className="ml-2 font-mono text-sm text-gray-500">{selectedStock.plate}</span>}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-600">
+                    {[selectedStock.km != null && `${Number(selectedStock.km).toLocaleString('pt-BR')} km`, selectedStock.color, selectedStock.fuel].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Preço de venda</p>
+                  <p className="text-xl font-bold text-emerald-700">
+                    {selectedStock.salePrice != null
+                      ? fmtBRL(selectedStock.salePrice)
+                      : <span className="text-amber-700 text-sm">Sem precificação</span>}
+                  </p>
+                </div>
               </div>
-              <Field label="Observações">
-                <textarea
-                  className={`${inputCls} min-h-16 resize-y`}
-                  placeholder="Observações sobre este veículo..."
-                  value={form.vehicle.notes}
-                  onChange={(e) => setVehicleField('notes', e.target.value)}
-                />
-              </Field>
+              {selectedStock.salePrice == null && (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Veículo ainda sem preço de venda. Peça ao gerente para precificar no módulo Estoque antes de iniciar a venda.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -2008,73 +2079,165 @@ function StepVeiculos({
       {/* ── TROCA ── */}
       {form.type === 'TROCA' && (
         <div className="space-y-6">
-          {/* Veículo que sai (estoque) */}
+          {/* Veículo que sai (estoque) — mesmo padrão da VENDA */}
           <div className="space-y-4">
             <div>
               <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo que Sai da Loja</h2>
-              <p className="text-sm text-gray-500">Selecione um veículo disponível no estoque.</p>
+              <p className="text-sm text-gray-500">
+                Somente veículos liberados no estoque (precificados pelo gerente)
+                e fora de outra negociação ativa podem ser trocados.
+              </p>
             </div>
             <VehicleInlineSearch
               label="Estoque disponível"
               selected={selectedStock}
               onSelect={handleSelectStock}
+              requireSalePrice
               onClear={() => {
                 setSelectedStock(null)
                 setVehicleField('vehicleId', null)
                 setVehicleField('plate', '')
                 setVehicleField('brand', '')
                 setVehicleField('model', '')
+                setField('saleAmount', '')
               }}
             />
             {selectedStock && (
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Valores do veículo que sai</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Valor de Saída (R$)">
-                    {moneyInput('vehicleValue')}
-                  </Field>
-                  <Field label="KM atual">
-                    <input
-                      className={inputCls}
-                      placeholder="0"
-                      value={form.vehicle.km}
-                      onChange={(e) => setVehicleField('km', e.target.value.replace(/\D/g, ''))}
-                    />
-                  </Field>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Veículo que sai</p>
+                    <p className="mt-1 text-base font-semibold text-gray-900">
+                      {[selectedStock.brand, selectedStock.model, selectedStock.year ?? selectedStock.modelYear].filter(Boolean).join(' ')}
+                      {selectedStock.plate && <span className="ml-2 font-mono text-sm text-gray-500">{selectedStock.plate}</span>}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-600">
+                      {[selectedStock.km != null && `${Number(selectedStock.km).toLocaleString('pt-BR')} km`, selectedStock.color, selectedStock.fuel].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Preço de venda</p>
+                    <p className="text-xl font-bold text-emerald-700">
+                      {selectedStock.salePrice != null
+                        ? fmtBRL(selectedStock.salePrice)
+                        : <span className="text-amber-700 text-sm">Sem precificação</span>}
+                    </p>
+                  </div>
                 </div>
+                {selectedStock.salePrice == null && (
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Veículo ainda sem preço de venda. Peça ao gerente para precificar no módulo Estoque antes de iniciar a troca.
+                  </p>
+                )}
               </div>
             )}
           </div>
 
-          {/* Veículo recebido na troca */}
+          {/* Veículo recebido na troca — sempre via avaliação liberada e aceita */}
           <div className="border-t border-gray-200 pt-6 space-y-4">
             <div className="flex items-center gap-2">
               <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
               <h3 className="font-semibold text-purple-900">Veículo Recebido na Troca</h3>
             </div>
-            <div className="rounded-xl border-2 border-purple-200 bg-purple-50/40 p-4 space-y-4">
-              <button
-                type="button"
-                onClick={() => setShowEvalModal(true)}
-                className="flex items-center gap-2 rounded-lg border border-purple-300 bg-white px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition-colors"
-              >
-                <Search size={14} />
-                Buscar Avaliação Aprovada
-              </button>
-              {form.tradeVehicle.evaluationId && (
-                <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm">
-                  <CheckCircle2 size={14} className="text-purple-600 shrink-0" />
-                  <span className="text-purple-800 font-medium">
-                    {[form.tradeVehicle.brand, form.tradeVehicle.model, form.tradeVehicle.year].filter(Boolean).join(' ')}
-                    {form.tradeVehicle.plate && ` · ${form.tradeVehicle.plate}`}
-                  </span>
-                  <button type="button" onClick={() => setTradeVehicleField('evaluationId', null)} className="ml-auto text-purple-400 hover:text-red-500">
-                    <X size={13} />
+
+            {!form.tradeVehicle.evaluationId ? (
+              <div className="rounded-xl border-2 border-dashed border-purple-300 bg-purple-50/40 p-6 text-center space-y-3">
+                <p className="text-sm text-purple-900 font-medium">Nenhum veículo da troca adicionado.</p>
+                <p className="text-xs text-purple-700/80">
+                  Apenas veículos com proposta liberada pelo gerente e <strong>aceita pelo cliente</strong> podem entrar
+                  na troca. Cadastre uma avaliação se ainda não existir.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowEvalModal(true)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 transition-colors"
+                >
+                  <Search size={14} />
+                  Adicionar veículo avaliado
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl border-2 border-purple-200 bg-purple-50/40 p-4 space-y-3">
+                {/* Card resumo do veículo selecionado (read-only, dados travados) */}
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-purple-200 bg-white px-3 py-2.5">
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {[form.tradeVehicle.brand, form.tradeVehicle.model, form.tradeVehicle.year].filter(Boolean).join(' ')}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-600">
+                        {form.tradeVehicle.plate && <span className="font-mono">{form.tradeVehicle.plate}</span>}
+                        {form.tradeVehicle.km && <span className="ml-2">{Number(form.tradeVehicle.km).toLocaleString('pt-BR')} km</span>}
+                        {form.tradeVehicle.color && <span className="ml-2">{form.tradeVehicle.color}</span>}
+                      </p>
+                      {form.tradeVehicle.agreedValue && (
+                        <p className="mt-1 text-sm font-bold text-purple-700">
+                          Valor aceito: {fmtBRL(form.tradeVehicle.agreedValue)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!confirm('Remover este veículo da troca?')) return
+                      setTradeVehicleField('evaluationId', null)
+                      setTradeVehicleField('plate', '')
+                      setTradeVehicleField('brand', '')
+                      setTradeVehicleField('model', '')
+                      setTradeVehicleField('year', '')
+                      setTradeVehicleField('km', '')
+                      setTradeVehicleField('color', '')
+                      setTradeVehicleField('agreedValue', '')
+                      setTradeVehicleField('evaluatedValue', '')
+                      setTradeVehicleField('fipeValue', '')
+                      setField('tradeValue', '')
+                    }}
+                    className="rounded-md p-1 text-purple-400 hover:bg-red-50 hover:text-red-600"
+                    title="Remover veículo da troca"
+                  >
+                    <X size={14} />
                   </button>
                 </div>
-              )}
-              <VehicleFormBlock data={form.tradeVehicle} onChange={setTradeVehicleField} showValuation lockValue={lockVehicleValue} />
-            </div>
+
+                {/* Apenas campos OPERACIONAIS livres (financiamento/quitação) — resto trava */}
+                <div className="rounded-lg border border-purple-200 bg-white p-3 space-y-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-purple-700">
+                    Campos operacionais (editáveis)
+                  </p>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-purple-600"
+                      checked={form.tradeVehicle.hasFinancing}
+                      onChange={(e) => setTradeVehicleField('hasFinancing', e.target.checked)}
+                    />
+                    <span className="text-gray-700">Possui financiamento ativo (quitação)</span>
+                  </label>
+                  {form.tradeVehicle.hasFinancing && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Valor da quitação">
+                        <input
+                          className={inputCls}
+                          inputMode="numeric"
+                          placeholder="0,00"
+                          value={form.tradeVehicle.payoffValue}
+                          onChange={(e) => setTradeVehicleField('payoffValue', maskBRLInput(e.target.value))}
+                        />
+                      </Field>
+                      <Field label="Banco">
+                        <BankCombo
+                          value={form.tradeVehicle.payoffBank}
+                          onChange={(v) => setTradeVehicleField('payoffBank', v)}
+                          placeholder="Buscar banco..."
+                        />
+                      </Field>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2084,6 +2247,7 @@ function StepVeiculos({
         <div className="space-y-4">
           {showEvalModalCompra && (
             <EvaluationSearchModal
+              operation="COMPRA"
               onSelect={(ev) => { handleSelectEvaluationCompra(ev); setShowEvalModalCompra(false) }}
               onClose={() => setShowEvalModalCompra(false)}
             />
@@ -2468,7 +2632,11 @@ const EMPTY_PAYMENT = (): PaymentEntry => ({
   bank:         '',
   cardBrand:    '',
   installments: '',
-  firstDueDate: '',
+  installmentValue:        '',
+  installmentIntervalDays: '30',
+  firstDueDate:            '',
+  returnPct:               '',
+  vehiclePlate:            '',
   pixKey:       '',
   notes:        '',
 })
@@ -2480,6 +2648,8 @@ function PaymentModal({
   onClose,
   dealType,
   suggestedAmount,
+  userRole,
+  vehiclePlates,
 }: {
   initial?: PaymentEntry
   onSave:   (entry: PaymentEntry) => void
@@ -2488,7 +2658,17 @@ function PaymentModal({
   dealType?: DealType
   /** Valor sugerido (saldo em aberto) — pré-preenche o campo Valor. */
   suggestedAmount?: number
+  /** Papel do usuário logado — controla Status e Retorno (%). */
+  userRole?: string
+  /** Placas dos veículos da negociação (para identificar lote multi-veículo). */
+  vehiclePlates?: string[]
 }) {
+  // Vendedor vê Status sempre "Pendente" e travado. Quem PODE editar status +
+  // cadastrar retorno (% da financeira) é F&I / gerente / financeiro / master.
+  // Política simples até ter módulo de permissões granular pra "ficha":
+  const isVendedorOnly =
+    !userRole || ['VENDEDOR', 'VENDEDOR_LIDER'].includes(userRole)
+  const canEditFichaFields = !isVendedorOnly
   // Tipos válidos pra COMPRA — loja paga o cliente, então só formas de
   // transferência reais. Quitação NÃO é forma de pagamento — é débito do
   // veículo (cadastra na etapa "Veículo" via "possui financiamento") e
@@ -2562,8 +2742,13 @@ function PaymentModal({
             {/* Status removido pra COMPRA — loja-paga-cliente é evento direto.
                 Em VENDA/TROCA o Status continua útil para rastrear pendências. */}
             {!isCompra && (
-              <Field label="Status">
-                <select className={inputCls} value={entry.status} onChange={(e) => update('status', e.target.value as PaymentEntryStatus)}>
+              <Field label={isVendedorOnly ? 'Status (gerente/F&I altera)' : 'Status'}>
+                <select
+                  className={`${inputCls} ${isVendedorOnly ? 'cursor-not-allowed bg-gray-100 text-gray-500' : ''}`}
+                  value={isVendedorOnly ? 'PENDENTE' : entry.status}
+                  disabled={isVendedorOnly}
+                  onChange={(e) => update('status', e.target.value as PaymentEntryStatus)}
+                >
                   {(Object.keys(PAYMENT_STATUS_LABELS) as PaymentEntryStatus[]).map((s) => (
                     <option key={s} value={s}>{PAYMENT_STATUS_LABELS[s]}</option>
                   ))}
@@ -2571,6 +2756,22 @@ function PaymentModal({
               </Field>
             )}
           </div>
+
+          {/* Placa do veículo — só aparece se houver mais de 1 veículo no negócio (lote) */}
+          {vehiclePlates && vehiclePlates.length > 1 && (
+            <Field label="Placa do veículo">
+              <select
+                className={inputCls}
+                value={entry.vehiclePlate}
+                onChange={(e) => update('vehiclePlate', e.target.value)}
+              >
+                <option value="">— selecione a placa —</option>
+                {vehiclePlates.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Valor (R$)" required>
@@ -2582,7 +2783,7 @@ function PaymentModal({
                 onChange={(e) => update('amount', maskBRLInput(e.target.value))}
               />
             </Field>
-            <Field label="Data prevista">
+            <Field label="Data prevista de pagamento">
               <input
                 className={inputCls}
                 type="date"
@@ -2647,31 +2848,44 @@ function PaymentModal({
           )}
 
           {needsParcelas && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Nº de parcelas">
-                <input
-                  className={inputCls}
-                  type="number"
-                  min={1}
-                  max={120}
-                  placeholder="12"
-                  value={entry.installments}
-                  onChange={(e) => update('installments', e.target.value.replace(/\D/g, ''))}
-                />
-              </Field>
-              <Field label="Valor da parcela (auto)">
-                <input
-                  className={`${inputCls} bg-gray-50`}
-                  readOnly
-                  value={(() => {
-                    const v = parseBRLInput(entry.amount)
-                    const p = parseInt(entry.installments || '0', 10)
-                    if (!v || !p) return ''
-                    return (v / p).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                  })()}
-                />
-              </Field>
-            </div>
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Nº de parcelas">
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min={1}
+                    max={120}
+                    placeholder="48"
+                    value={entry.installments}
+                    onChange={(e) => update('installments', e.target.value.replace(/\D/g, ''))}
+                  />
+                </Field>
+                <Field label="Valor da parcela (R$)">
+                  <input
+                    className={inputCls}
+                    inputMode="numeric"
+                    placeholder="Conforme a financeira"
+                    value={entry.installmentValue}
+                    onChange={(e) => update('installmentValue', maskBRLInput(e.target.value))}
+                  />
+                </Field>
+                <Field label="Prazo entre parcelas (dias)">
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min={1}
+                    max={365}
+                    placeholder="30"
+                    value={entry.installmentIntervalDays}
+                    onChange={(e) => update('installmentIntervalDays', e.target.value.replace(/\D/g, ''))}
+                  />
+                </Field>
+              </div>
+              <p className="text-[11px] text-gray-500 -mt-1">
+                Valor e prazo devem ser cadastrados conforme retornar da financeira (sem cálculo automático).
+              </p>
+            </>
           )}
 
           {needsFirstDue && (
@@ -2682,6 +2896,33 @@ function PaymentModal({
                 value={entry.firstDueDate}
                 onChange={(e) => update('firstDueDate', e.target.value)}
               />
+            </Field>
+          )}
+
+          {/* Retorno (%) da financeira — só F&I/gerente/financeiro/master */}
+          {needsBank && canEditFichaFields && (
+            <Field label="Retorno da financeira (%)">
+              <input
+                className={inputCls}
+                inputMode="decimal"
+                placeholder="ex.: 1,4"
+                value={entry.returnPct}
+                onChange={(e) => {
+                  // aceita 0–6 com até 1 decimal (vírgula ou ponto)
+                  const cleaned = e.target.value.replace(/[^\d.,]/g, '').replace('.', ',')
+                  const [int, dec] = cleaned.split(',')
+                  const safeInt = (int ?? '').slice(0, 1)  // 0..9 -> validamos depois
+                  const safeDec = (dec ?? '').slice(0, 1)
+                  const composed = safeDec !== undefined && cleaned.includes(',')
+                    ? `${safeInt},${safeDec}`
+                    : safeInt
+                  // limite 0,1 a 6,0
+                  const n = parseFloat(composed.replace(',', '.'))
+                  if (!Number.isNaN(n) && n > 6) return update('returnPct', '6,0')
+                  update('returnPct', composed)
+                }}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Intervalo aceito: 0,1% a 6,0%.</p>
             </Field>
           )}
 
@@ -2704,6 +2945,15 @@ function PaymentModal({
               onChange={(e) => update('notes', e.target.value)}
             />
           </Field>
+
+          <div className="flex items-start gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+            <Paperclip size={13} className="mt-0.5 shrink-0" />
+            <span>
+              <strong>Comprovante (foto/PDF):</strong> após salvar a negociação,
+              anexe o comprovante deste pagamento direto no <em>Resumo Financeiro</em> do
+              detalhe — cada linha tem botão <em>Anexar</em>. Aceita JPG, PNG, WEBP, PDF e XML.
+            </span>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
@@ -2804,9 +3054,17 @@ function StepPagamento({
   form: DealForm
   setField: <K extends keyof DealForm>(k: K, v: DealForm[K]) => void
 }) {
+  const { data: session } = useSession()
+  const userRole = (session?.user as { role?: string })?.role
   const [modalOpen,   setModalOpen]   = useState(false)
   const [editing,     setEditing]     = useState<PaymentEntry | null>(null)
   const [trocoOpen,   setTrocoOpen]   = useState(false)
+
+  // Placas de todos os veículos da negociação (lote multi-veículo)
+  const vehiclePlates = [
+    form.vehicle?.plate,
+    form.tradeVehicle?.plate,
+  ].filter((p): p is string => !!p && p.trim().length > 0)
 
   // ── Itens da Negociação ──────────────────────────────────────────────────
   const sale     = parseBRLInput(form.saleAmount)        ?? 0
@@ -3243,6 +3501,8 @@ function StepPagamento({
           /* Pré-preenche com o que ainda falta cobrir (saldo em aberto).
              Só quando NÃO está editando — edição preserva o valor original. */
           suggestedAmount={!editing && emAberto > 0 ? emAberto : undefined}
+          userRole={userRole}
+          vehiclePlates={vehiclePlates}
         />
       )}
       {trocoOpen && (
@@ -3381,6 +3641,36 @@ function StepResumo({
   const selectedType = DEAL_TYPES.find((d) => d.value === form.type)
   const totalDebts   = form.debts.reduce((s, d) => s + (parseBRLInput(d.value) ?? 0), 0)
 
+  // Pagamentos cadastrados (descarta cancelados)
+  const activePayments  = form.payments.filter((p) => p.status !== 'CANCELADO')
+  const totalPagamentos = activePayments.reduce((s, p) => s + (parseBRLInput(p.amount) ?? 0), 0)
+
+  // Total da operação espelhando StepPagamento
+  const sale     = parseBRLInput(form.saleAmount)        ?? 0
+  const purchase = parseBRLInput(form.purchaseAmount)    ?? 0
+  const trade    = parseBRLInput(form.tradeValue)        ?? 0
+  const docFee   = parseBRLInput(form.documentationFee)  ?? 0
+  const discount = parseBRLInput(form.discountAmount)    ?? 0
+  const payoff   = parseBRLInput(form.payoffAmount)      ?? 0
+  const debtsCliente  = form.debts.reduce((s, d) => {
+    const v = parseBRLInput(d.value) ?? 0
+    return ['CLIENTE', 'COMPRADOR'].includes(String(d.responsavel ?? '').toUpperCase()) ? s + v : s
+  }, 0)
+  const debtsVendedor = form.debts.reduce((s, d) => {
+    const v = parseBRLInput(d.value) ?? 0
+    return String(d.responsavel ?? '').toUpperCase() === 'VENDEDOR' ? s + v : s
+  }, 0)
+  let totalOperacao = 0
+  if (form.type === 'VENDA')             totalOperacao = sale + docFee + debtsCliente - discount
+  else if (form.type === 'COMPRA') {
+    const payoffCompra = parseBRLInput(form.vehicle?.payoffValue ?? '') ?? 0
+    totalOperacao = Math.max(0, purchase - debtsVendedor - payoffCompra + debtsCliente)
+  }
+  else if (form.type === 'TROCA')        totalOperacao = (sale - trade) + docFee + debtsCliente - discount + payoff
+  else if (form.type === 'CONSIGNACAO')  totalOperacao = parseBRLInput(form.consignMinValue) ?? 0
+
+  const saldo = totalOperacao - totalPagamentos
+
   const Row = ({ label, value }: { label: string; value: string }) => (
     <div className="flex justify-between">
       <dt className="text-gray-500">{label}</dt>
@@ -3491,6 +3781,140 @@ function StepResumo({
             {form.changeAmount    && <Row label="Troco ao cliente"    value={fmtBRL(form.changeAmount)} />}
           </dl>
         </div>
+
+        {/* Pagamentos detalhados — só aparece se houver pagamentos cadastrados */}
+        {activePayments.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Pagamentos ({activePayments.length})
+            </p>
+            <ul className="divide-y divide-gray-200">
+              {activePayments.map((p) => {
+                const installments = p.installments ? Number(p.installments) : 0
+                const installmentValue = parseBRLInput(p.installmentValue) ?? 0
+                return (
+                  <li key={p.id} className="py-2.5 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-800">
+                          {PAYMENT_ENTRY_LABELS[p.type] ?? p.type}
+                          {p.vehiclePlate && (
+                            <span className="ml-2 rounded-full bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-700">
+                              {p.vehiclePlate}
+                            </span>
+                          )}
+                          {p.status && p.status !== 'PENDENTE' && (
+                            <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${PAYMENT_STATUS_COLOR[p.status]}`}>
+                              {PAYMENT_STATUS_LABELS[p.status]}
+                            </span>
+                          )}
+                        </p>
+                        <div className="mt-1 space-y-0.5 text-xs text-gray-600">
+                          {p.bank && <div>Banco: <span className="text-gray-800">{p.bank}</span></div>}
+                          {installments > 0 && (
+                            <div>
+                              Parcelas: <span className="text-gray-800">{installments}x</span>
+                              {installmentValue > 0 && <> · {fmtBRL(installmentValue)} cada</>}
+                              {p.installmentIntervalDays && <> · a cada {p.installmentIntervalDays} dias</>}
+                            </div>
+                          )}
+                          {p.firstDueDate && <div>1º vencimento: <span className="text-gray-800">{fmtDate(p.firstDueDate)}</span></div>}
+                          {p.dueDate      && !p.firstDueDate && <div>Previsto p/: <span className="text-gray-800">{fmtDate(p.dueDate)}</span></div>}
+                          {p.paidAt       && <div>Pago em: <span className="text-gray-800">{fmtDate(p.paidAt)}</span></div>}
+                          {p.returnPct    && <div>Retorno financeira: <span className="font-medium text-emerald-700">{p.returnPct}%</span></div>}
+                          {p.pixKey       && <div>PIX: <span className="font-mono text-gray-800">{p.pixKey}</span></div>}
+                          {p.cardBrand    && <div>Bandeira: <span className="text-gray-800">{p.cardBrand}</span></div>}
+                          {p.notes        && <div className="text-gray-500 italic">{p.notes}</div>}
+                        </div>
+                      </div>
+                      <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
+                        {fmtBRL(p.amount)}
+                      </span>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* Troco — bloco destacado pro financeiro ver valor + dados bancários */}
+        {(form.changeAmount || form.changeBeneficiary || form.changePix || form.changeBank) && (
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  Troco a pagar ao cliente
+                </p>
+                <p className="mt-0.5 text-[11px] text-amber-700/80">
+                  Financeiro: use estes dados para efetuar o pagamento.
+                </p>
+              </div>
+              {form.changeAmount && (
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-wide text-amber-700">Valor</p>
+                  <p className="text-xl font-bold text-amber-900">{fmtBRL(form.changeAmount)}</p>
+                </div>
+              )}
+            </div>
+
+            <dl className="space-y-1.5 text-sm text-amber-900">
+              {form.changeBeneficiary    && <Row label="Beneficiário"        value={form.changeBeneficiary} />}
+              {form.changeBeneficiaryCpf && <Row label="CPF/CNPJ"            value={form.changeBeneficiaryCpf} />}
+            </dl>
+
+            {/* Dados bancários (só aparece se algum estiver preenchido) */}
+            {(form.changeBank || form.changeAgency || form.changeAccount) && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-white/60 p-3">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  Conta para depósito / transferência
+                </p>
+                <dl className="space-y-1 text-sm text-amber-900">
+                  {form.changeBank    && <Row label="Banco"   value={form.changeBank} />}
+                  {form.changeAgency  && <Row label="Agência" value={form.changeAgency} />}
+                  {form.changeAccount && <Row label="Conta"   value={form.changeAccount} />}
+                </dl>
+              </div>
+            )}
+
+            {form.changePix && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-white/60 p-3">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  Chave PIX
+                </p>
+                <p className="break-all font-mono text-sm text-amber-900">{form.changePix}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Totais consolidados — sempre aparece quando há totalOperacao calculável */}
+        {totalOperacao > 0 && (
+          <div className={`rounded-xl border-2 p-4 ${
+            Math.abs(saldo) < 0.01
+              ? 'border-emerald-300 bg-emerald-50'
+              : saldo > 0
+                ? 'border-amber-300 bg-amber-50'
+                : 'border-blue-300 bg-blue-50'
+          }`}>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Totais</p>
+            <dl className="space-y-1.5 text-sm">
+              <Row label="Total da operação" value={fmtBRL(totalOperacao)} />
+              <Row label="Total pagamentos"  value={fmtBRL(totalPagamentos)} />
+              <div className="flex justify-between border-t border-current/20 pt-2 text-base font-bold">
+                <dt className="text-gray-700">
+                  {Math.abs(saldo) < 0.01 ? 'Saldo' : saldo > 0 ? 'Em aberto' : 'Excedente (troco)'}
+                </dt>
+                <dd className={
+                  Math.abs(saldo) < 0.01 ? 'text-emerald-700'
+                    : saldo > 0 ? 'text-amber-800' : 'text-blue-800'
+                }>
+                  {fmtBRL(Math.abs(saldo))}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        )}
 
         {/* Agendamento */}
         {(form.deliveryDate || form.receiptDate) && (
@@ -4083,7 +4507,11 @@ export default function NovaNegociacaoPage() {
           bank:         p.bank         || null,
           cardBrand:    p.cardBrand    || null,
           installments: p.installments ? Number(p.installments) : null,
+          installmentValue:        parseBRLInput(p.installmentValue) ?? null,
+          installmentIntervalDays: p.installmentIntervalDays ? Number(p.installmentIntervalDays) : null,
           firstDueDate: p.firstDueDate || null,
+          returnPct:    p.returnPct ? parseFloat(p.returnPct.replace(',', '.')) : null,
+          vehiclePlate: p.vehiclePlate || null,
           pixKey:       p.pixKey       || null,
           notes:        p.notes        || null,
         })),

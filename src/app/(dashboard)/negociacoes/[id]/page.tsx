@@ -34,14 +34,18 @@ import {
   RotateCcw,
   Ban,
   Edit,
+  MessageSquare,
+  Pin,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { calculateNegotiationFinancialSummary, dealToFinancialInput } from '@/lib/negotiation-service'
 import Phase2Panel from './_components/Phase2Panel'
 import DealSummary from './_components/DealSummary'
 import AttachmentUploader, { type Attachment } from './_components/AttachmentUploader'
 import ContractsTab from './_components/ContractsTab'
 import NfeTab from './_components/NfeTab'
+import NotesPanel from './_components/NotesPanel'
 import { useDealActions } from './_hooks/useDealActions'
 import { isDealLocked, canAddPayment, canApproveDiscount, canReopen, canForceFinalize } from '@/lib/negotiation-rbac'
 
@@ -677,6 +681,169 @@ function TotalOperationCard({ deal }: { deal: DealDetail }) {
   )
 }
 
+// ── DealValuesCard (resumo financeiro CLEAN, read-only) ─────────────────────
+
+const PAYMENT_TYPE_LABEL_DV: Record<string, string> = {
+  DINHEIRO:        'Dinheiro',
+  PIX:             'PIX',
+  TRANSFERENCIA:   'Transferência',
+  CARTAO_DEBITO:   'Cartão de Débito',
+  CARTAO_CREDITO:  'Cartão de Crédito',
+  FINANCIAMENTO:   'Financiamento',
+  BOLETO:          'Boleto',
+  CHEQUE:          'Cheque',
+  DUPLICATA:       'Duplicata',
+  SINAL:           'Sinal',
+  QUITACAO:        'Quitação',
+  OUTRO:           'Outro',
+}
+
+function DealValuesCard({ deal }: { deal: DealDetail }) {
+  const anyDeal = deal as any
+
+  // Fonte ÚNICA de verdade — mesma usada pelo backend e por Phase2Panel.
+  // Garante que paidTotal NUNCA fica zerado se há payments confirmados/pendentes,
+  // e que CANCELADO/ESTORNADO nunca conta como pago.
+  const f = calculateNegotiationFinancialSummary(dealToFinancialInput(deal))
+
+  const baseValue        = f.vehicleAmount
+  const totalDebts       = f.debtAmount
+  const discount         = f.discountApprovedTotal
+  const docFee           = f.feeAmount
+  const totalOperacao    = f.netTotal
+  const totalPayments    = f.paidTotal
+  const saldo            = f.openBalance
+  const ok               = f.paymentStatus === 'QUITADO'
+
+  const payments: Array<{ id?: string; type: string; status?: string; value: number | string; bank?: string | null; agency?: string | null; account?: string | null; pixKey?: string | null; installments?: number | null; installmentValue?: number | string | null; installmentIntervalDays?: number | null; firstDueDate?: string | null; vehiclePlate?: string | null; returnPct?: number | string | null }> = anyDeal.payments ?? []
+  const changes: Array<{ id: string; value: number | string; beneficiary: string; bank?: string | null; agency?: string | null; account?: string | null; pixKey?: string | null }> = anyDeal.changes ?? []
+  const debts: Array<{ id: string; type?: string; description?: string | null; value: number | string; responsavel?: string | null }> = anyDeal.debts ?? []
+  const isCompra = deal.type === 'COMPRA'
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <DollarSign size={15} className="text-brand-600" />
+          <h3 className="font-semibold text-gray-800">Valores Detalhados</h3>
+        </div>
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+          ok ? 'bg-emerald-100 text-emerald-700'
+             : saldo > 0 ? 'bg-amber-100 text-amber-700'
+                        : 'bg-blue-100 text-blue-700'
+        }`}>
+          {ok ? '✓ Saldo zerado' : saldo > 0 ? `Em aberto: ${fmtBRL(saldo)}` : `Excedente: ${fmtBRL(Math.abs(saldo))}`}
+        </span>
+      </div>
+
+      <div className="p-4">
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-gray-100">
+            <tr>
+              <td className="py-2 text-gray-700">{isCompra ? 'Valor de compra do veículo' : 'Valor do veículo'}</td>
+              <td className="py-2 text-right font-medium text-gray-900">{fmtBRL(baseValue) ?? '—'}</td>
+            </tr>
+            {docFee > 0 && (
+              <tr>
+                <td className="py-2 text-gray-700">+ Taxa de documentação</td>
+                <td className="py-2 text-right font-medium text-gray-900">{fmtBRL(docFee)}</td>
+              </tr>
+            )}
+            {debts.length > 0 && (
+              <>
+                <tr>
+                  <td className="py-2 font-medium text-gray-700">{isCompra ? '− Débitos' : '+ Débitos'}</td>
+                  <td className="py-2 text-right font-medium text-gray-900">{fmtBRL(totalDebts)}</td>
+                </tr>
+                {debts.map((d) => (
+                  <tr key={d.id} className="text-xs text-gray-500">
+                    <td className="py-1 pl-4">· {(d.type ?? '').replace(/_/g, ' ')}{d.description ? ` — ${d.description}` : ''}{d.responsavel ? ` (${d.responsavel.toLowerCase()})` : ''}</td>
+                    <td className="py-1 text-right">{fmtBRL(d.value)}</td>
+                  </tr>
+                ))}
+              </>
+            )}
+            {discount > 0 && (
+              <tr>
+                <td className="py-2 text-red-600">− Desconto</td>
+                <td className="py-2 text-right font-medium text-red-600">- {fmtBRL(discount)}</td>
+              </tr>
+            )}
+            <tr className="bg-gray-50">
+              <td className="py-2 text-sm font-semibold text-gray-800">Total da operação</td>
+              <td className="py-2 text-right text-base font-bold text-gray-900">{fmtBRL(totalOperacao)}</td>
+            </tr>
+
+            {payments.length > 0 && (
+              <>
+                <tr>
+                  <td colSpan={2} className="pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Pagamentos ({payments.length})
+                  </td>
+                </tr>
+                {payments.map((p, i) => (
+                  <tr key={p.id ?? i} className={p.status === 'CANCELADO' ? 'text-gray-400 line-through' : 'text-gray-700'}>
+                    <td className="py-1.5">
+                      <span>{PAYMENT_TYPE_LABEL_DV[p.type] ?? p.type}</span>
+                      {p.bank && <span className="ml-1 text-xs text-gray-500">· {p.bank}</span>}
+                      {p.installments && Number(p.installments) > 0 && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          · {p.installments}x{p.installmentValue ? ` ${fmtBRL(p.installmentValue)}` : ''}
+                          {p.installmentIntervalDays ? ` / ${p.installmentIntervalDays}d` : ''}
+                        </span>
+                      )}
+                      {p.vehiclePlate && (
+                        <span className="ml-1 rounded bg-gray-100 px-1 font-mono text-[10px]">{p.vehiclePlate}</span>
+                      )}
+                      {p.status && p.status !== 'PENDENTE' && p.status !== 'CANCELADO' && (
+                        <span className="ml-1 rounded bg-green-100 px-1 text-[10px] text-green-700">{p.status}</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 text-right font-medium">{fmtBRL(p.value)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td className="py-1.5 text-sm font-medium text-gray-700">Total pago</td>
+                  <td className="py-1.5 text-right font-semibold text-gray-900">{fmtBRL(totalPayments)}</td>
+                </tr>
+              </>
+            )}
+
+            {changes.length > 0 && (
+              <>
+                <tr>
+                  <td colSpan={2} className="pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Troco ao cliente
+                  </td>
+                </tr>
+                {changes.map((c) => (
+                  <tr key={c.id} className="text-amber-800">
+                    <td className="py-1.5">
+                      {c.beneficiary}
+                      {c.bank && <span className="ml-1 text-xs">· {c.bank}{c.agency ? ` ag ${c.agency}` : ''}{c.account ? ` cc ${c.account}` : ''}</span>}
+                      {c.pixKey && <span className="ml-1 text-xs">· PIX <span className="font-mono">{c.pixKey}</span></span>}
+                    </td>
+                    <td className="py-1.5 text-right font-medium">{fmtBRL(c.value)}</td>
+                  </tr>
+                ))}
+              </>
+            )}
+
+            <tr className={`${ok ? 'bg-emerald-50' : saldo > 0 ? 'bg-amber-50' : 'bg-blue-50'}`}>
+              <td className={`py-2.5 text-sm font-bold ${ok ? 'text-emerald-800' : saldo > 0 ? 'text-amber-800' : 'text-blue-800'}`}>
+                {ok ? 'Saldo' : saldo > 0 ? 'Em aberto' : 'Excedente (troco)'}
+              </td>
+              <td className={`py-2.5 text-right text-base font-bold ${ok ? 'text-emerald-700' : saldo > 0 ? 'text-amber-800' : 'text-blue-700'}`}>
+                {fmtBRL(Math.abs(saldo))}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal de motivo ───────────────────────────────────────────────────────────
 
 interface MotiveModalProps {
@@ -866,7 +1033,7 @@ function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab,
 
 // ── Página ────────────────────────────────────────────────────────────────────
 
-type Tab = 'resumo' | 'veiculos' | 'valores' | 'servicos' | 'contratos' | 'nfe' | 'timeline' | 'auditoria'
+type Tab = 'resumo' | 'veiculos' | 'valores' | 'servicos' | 'contratos' | 'nfe' | 'renave' | 'garantias' | 'anotacoes' | 'timeline' | 'auditoria'
 
 // Status em que abas Contratos/NFe ficam visíveis (após aprovação)
 const POST_APPROVAL_STATUSES = new Set([
@@ -1060,14 +1227,24 @@ export default function NegociacaoDetailPage() {
   }
 
   const showPostApproval = POST_APPROVAL_STATUSES.has(deal.status)
+  // Aba "Garantias" só aparece se o deal tem garantia contratada OU se a
+  // política permite cadastrar pós-aprovação (sempre permitido pra MASTER/ADM).
+  const hasWarranties = ((deal as any).warranties?.length ?? 0) > 0
+  const showGarantias = showPostApproval && (hasWarranties || isManager)
+
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'resumo' as Tab, label: 'Resumo',  icon: <Handshake size={14} /> },
     { id: 'veiculos',    label: 'Veículos',      icon: <Car size={14} /> },
     { id: 'valores',     label: 'Valores',       icon: <DollarSign size={14} /> },
     { id: 'servicos',    label: 'Serviços',      icon: <Wrench size={14} /> },
     ...(showPostApproval ? [
-      { id: 'contratos' as Tab, label: 'Contratos & Termos', icon: <FileText size={14} /> },
-      { id: 'nfe'       as Tab, label: 'NFe',                 icon: <FileText size={14} /> },
+      { id: 'contratos' as Tab, label: 'Contratos',  icon: <FileText size={14} /> },
+      { id: 'nfe'       as Tab, label: 'NF-e',       icon: <FileText size={14} /> },
+      { id: 'renave'    as Tab, label: 'RENAVE',     icon: <Shield size={14} /> },
+      ...(showGarantias
+        ? [{ id: 'garantias' as Tab, label: 'Garantias', icon: <Shield size={14} /> }]
+        : []),
+      { id: 'anotacoes' as Tab, label: 'Anotações',  icon: <MessageSquare size={14} /> },
     ] : []),
     { id: 'timeline',    label: 'Timeline',      icon: <Clock size={14} /> },
     ...(isManager ? [{ id: 'auditoria' as Tab, label: 'Auditoria', icon: <Shield size={14} /> }] : []),
@@ -1163,7 +1340,10 @@ export default function NegociacaoDetailPage() {
         </div>
       )}
 
-      {/* Painel-resumo (Phase 2) */}
+      {/* Painel-resumo (Phase 2) — único cabeçalho com ações primárias.
+          Aprovar + Editar + Cancelar + Finalizar + Reabrir + Forçar (MASTER)
+          ficam todos aqui. O footer mantém o dropdown Ações com secundários
+          (Devolver, Sinal, Timeline, Auditoria, etc). */}
       <DealSummary
         deal={deal as any}
         actor={actor}
@@ -1171,95 +1351,28 @@ export default function NegociacaoDetailPage() {
         onFinalize={() => handleAction('finalize')}
         onForceFinalize={() => handleAction('finalize', { force: true })}
         onReopen={() => handleAction('reopen')}
+        onApprove={() => handleAction('approve')}
+        onCancelDeal={() => setModal('cancel')}
       />
 
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm text-gray-500">
-        <Link href="/negociacoes" className="hover:text-gray-700">Negociações</Link>
-        <span>/</span>
-        <span className="font-mono text-gray-700">{deal.dealNumber ?? deal.id.slice(0, 8)}</span>
-        <span>/</span>
-        <span className="text-gray-400">Resumo</span>
+      {/* Breadcrumb compacto + loading inline */}
+      <nav className="flex items-center justify-between gap-1 text-sm text-gray-500">
+        <div className="flex items-center gap-1">
+          <Link href="/negociacoes" className="hover:text-gray-700">Negociações</Link>
+          <span>/</span>
+          <span className="font-mono text-gray-700">{deal.dealNumber ?? deal.id.slice(0, 8)}</span>
+        </div>
+        {acting && (
+          <span className="flex items-center gap-1.5 text-xs text-brand-600">
+            <Loader2 size={12} className="animate-spin" /> Executando...
+          </span>
+        )}
       </nav>
 
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/negociacoes"
-            className="flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2 text-gray-500 shadow-sm hover:bg-gray-50 transition-colors"
-          >
-            <ArrowLeft size={16} />
-          </Link>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100">
-            <Handshake size={20} className="text-brand-700" />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-bold text-gray-900">
-                {TYPE_LABEL[deal.type] ?? deal.type}
-                {deal.dealNumber && <span className="ml-1 font-mono text-sm text-gray-500">#{deal.dealNumber}</span>}
-              </h1>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${TYPE_COLOR[deal.type] ?? 'bg-gray-100 text-gray-700'}`}>
-                {TYPE_LABEL[deal.type] ?? deal.type}
-              </span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLOR[deal.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                {STATUS_LABEL[deal.status] ?? deal.status}
-              </span>
-              {deal.source === 'PLANILHA' && (
-                <span className="flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
-                  <Sheet size={10} /> Importada
-                </span>
-              )}
-              {deal.isSellerProvisional && (
-                <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-800">
-                  Vendedor Provisório
-                </span>
-              )}
-              {(deal.pendencies ?? []).length > 0 && (
-                <span className="flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
-                  <AlertTriangle size={10} /> Com Pendência
-                </span>
-              )}
-            </div>
-            {deal.isSellerProvisional && (
-              <p className="mt-1 text-xs text-orange-600 flex items-center gap-1">
-                <AlertTriangle size={11} /> Vendedor vinculado provisoriamente. Revisar responsável da negociação.
-              </p>
-            )}
-            <p className="mt-0.5 text-xs text-gray-400">
-              Criada em {fmtDateTime(deal.createdAt)}
-              {deal.saleDate && ` · Venda: ${fmtDate(deal.saleDate)}`}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {acting && <Loader2 size={16} className="animate-spin text-brand-600" />}
-          {['RASCUNHO', 'EM_PREENCHIMENTO', 'DEVOLVIDA_PARA_CORRECAO'].includes(deal.status) && (
-            <button
-              onClick={() => handleAction('submit')}
-              disabled={acting}
-              className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60 transition-colors"
-            >
-              <Send size={13} />
-              Enviar para aprovação
-            </button>
-          )}
-          <ActionsDropdown
-            deal={deal}
-            role={role}
-            onAction={handleAction}
-            onOpenModal={setModal}
-            activeTab={tab}
-            setTab={(t) => setTab(t as Tab)}
-            isManager={isManager}
-            onEdit={() => router.push(`/negociacoes/${id}/editar`)}
-            actions={actions}
-            onForceFinalize={() => { setForceTyped(''); setShowForceConfirm(true) }}
-          />
-        </div>
-      </div>
+      {/* Header e barra primária de ações REMOVIDOS — todas as ações
+          (Aprovar/Editar/Cancelar/Finalizar/Reabrir/Forçar) ficam concentradas
+          no header do DealSummary acima. Ações secundárias (Devolver, Sinal,
+          Timeline, Auditoria) ficam no dropdown Ações do rodapé. */}
 
       {/* Abas */}
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
@@ -1407,43 +1520,28 @@ export default function NegociacaoDetailPage() {
             </SectionCard>
           )}
 
-          {/* ── Resumo Financeiro (estrutura limpa, top-down) ── */}
-          <FinancialReview
-            deal={deal}
-            attachments={attachments}
-            onReload={loadAttachments}
-            onToast={showToast}
-          />
+          {/* FinancialReview + TotalOperationCard removidos: redundavam com o
+              Phase2Panel logo abaixo. Para enxugar o resumo do gerente,
+              mantemos APENAS o Phase2Panel (mais completo, com botões de
+              ação inline e a sessão de itens/pagamentos/saldo lado a lado).
+              Se precisar reativar, descomente os blocos antigos. */}
 
-          {/* ── Total da Operação (destaque) ── */}
-          <TotalOperationCard deal={deal} />
+          {/* ── Valores Detalhados (clean, read-only) ── */}
+          <DealValuesCard deal={deal} />
 
-          {/* ── Phase 2: Pagamentos, Descontos, Saldo, Troco (edição inline) ── */}
-          {(() => {
-            const anyDeal = deal as any
-            const actor = { id: (session?.user as any)?.id, role: role ?? '', tenantId: (session?.user as any)?.tenantId, sellerId: null }
-            return (
-              <Phase2Panel
-                dealId={deal.id}
-                isLocked={isDealLocked(deal.status)}
-                canEdit={canAddPayment(actor, deal as any)}
-                canApprove={canApproveDiscount(actor, deal as any)}
-                canReopen={canReopen(actor, deal as any)}
-                canForce={canForceFinalize(actor)}
-                vehicleValue={Number(deal.saleAmount ?? deal.vehicleValue ?? 0)}
-                debtsTotal={(anyDeal.debts ?? []).reduce((s: number, d: any) => s + Number(d.value ?? 0), 0)}
-                servicesTotal={(deal.services ?? []).reduce((s: number, x: any) => s + Number(x.value ?? 0), 0)}
-                vehicles={deal.vehicles as any}
-                debts={anyDeal.debts ?? []}
-                services={deal.services as any}
-                payments={anyDeal.payments ?? []}
-                discounts={anyDeal.discountRequests ?? []}
-                changes={anyDeal.changes ?? []}
-                onReload={loadDeal}
-                onToast={(m, k) => showToast(m, k !== 'error')}
-              />
-            )
-          })()}
+          {/* Editor de pagamentos / débitos / troco / descontos — movido pra
+              aba "Valores". Mantém o resumo limpo. Pra adicionar, use os
+              botões abaixo OU vá direto à aba. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-600">
+            <span>Precisa adicionar pagamentos, débitos ou troco?</span>
+            <button
+              type="button"
+              onClick={() => setTab('valores')}
+              className="rounded-md bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-700"
+            >
+              Editar valores e pagamentos
+            </button>
+          </div>
 
           {/* ── Status ── */}
           <SectionCard title="Status" icon={<Calendar size={15} />}>
@@ -1616,7 +1714,35 @@ export default function NegociacaoDetailPage() {
 
       {/* ── ABA: VALORES ── */}
       {tab === 'valores' && (
-        <SectionCard title="Resumo Financeiro" icon={<DollarSign size={15} />}>
+        <div className="space-y-4">
+          {/* Editor inline de pagamentos / débitos / descontos / troco */}
+          {(() => {
+            const anyDeal = deal as any
+            const actorV = { id: (session?.user as any)?.id, role: role ?? '', tenantId: (session?.user as any)?.tenantId, sellerId: null }
+            return (
+              <Phase2Panel
+                dealId={deal.id}
+                isLocked={isDealLocked(deal.status)}
+                canEdit={canAddPayment(actorV, deal as any)}
+                canApprove={canApproveDiscount(actorV, deal as any)}
+                canReopen={canReopen(actorV, deal as any)}
+                canForce={canForceFinalize(actorV)}
+                vehicleValue={Number(deal.saleAmount ?? deal.vehicleValue ?? deal.vehicles.find((v) => Number(v.agreedValue ?? 0) > 0)?.agreedValue ?? 0)}
+                debtsTotal={(anyDeal.debts ?? []).reduce((s: number, d: any) => s + Number(d.value ?? 0), 0)}
+                servicesTotal={(deal.services ?? []).reduce((s: number, x: any) => s + Number(x.value ?? 0), 0)}
+                vehicles={deal.vehicles as any}
+                debts={anyDeal.debts ?? []}
+                services={deal.services as any}
+                payments={anyDeal.payments ?? []}
+                discounts={anyDeal.discountRequests ?? []}
+                changes={anyDeal.changes ?? []}
+                onReload={loadDeal}
+                onToast={(m, k) => showToast(m, k !== 'error')}
+              />
+            )
+          })()}
+
+        <SectionCard title="Resumo Financeiro (legado)" icon={<DollarSign size={15} />}>
           <div className="divide-y divide-gray-100">
             {/* VENDA */}
             {deal.type === 'VENDA' && (
@@ -1675,6 +1801,7 @@ export default function NegociacaoDetailPage() {
             </div>
           </div>
         </SectionCard>
+        </div>
       )}
 
       {/* ── ABA: SERVIÇOS ── */}
@@ -1801,6 +1928,76 @@ export default function NegociacaoDetailPage() {
       {/* ── ABA: NFe ── */}
       {tab === 'nfe' && showPostApproval && (
         <NfeTab
+          dealId={deal.id}
+          attachments={attachments}
+          onReload={loadAttachments}
+          onToast={showToast}
+        />
+      )}
+
+      {/* ── ABA: RENAVE (shell + estado vazio) ── */}
+      {tab === 'renave' && showPostApproval && (
+        <SectionCard title="RENAVE" icon={<Shield size={15} />}>
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <Shield size={28} className="text-gray-300" />
+            <div>
+              <p className="font-medium text-gray-700">Nenhum registro RENAVE</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Quando a integração RENAVE for cadastrada, entrada/saída, protocolo e pendências aparecerão aqui.
+              </p>
+            </div>
+            {isManager && (
+              <button
+                onClick={() => showToast('Integração RENAVE em desenvolvimento.', true)}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                + Registrar manualmente
+              </button>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── ABA: GARANTIAS (condicional) ── */}
+      {tab === 'garantias' && showPostApproval && showGarantias && (
+        <SectionCard title="Garantias" icon={<Shield size={15} />}>
+          {hasWarranties ? (
+            <ul className="divide-y divide-gray-100">
+              {((deal as any).warranties ?? []).map((w: any) => (
+                <li key={w.id} className="flex items-start justify-between gap-3 py-2.5 text-sm">
+                  <div>
+                    <p className="font-medium text-gray-800">{w.type ?? w.name ?? 'Garantia'}</p>
+                    <p className="text-xs text-gray-500">
+                      {w.supplier && `${w.supplier} · `}
+                      {w.startsAt && `de ${fmtDate(w.startsAt)} `}
+                      {w.endsAt && `até ${fmtDate(w.endsAt)}`}
+                    </p>
+                  </div>
+                  <span className="font-semibold text-gray-900">{fmtBRL(w.value)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <Shield size={28} className="text-gray-300" />
+              <div>
+                <p className="font-medium text-gray-700">Nenhuma garantia contratada</p>
+                <p className="mt-1 text-xs text-gray-500">Adicione garantias contratadas pelo cliente nesta negociação.</p>
+              </div>
+              <Link
+                href="/garantias"
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                + Adicionar garantia
+              </Link>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
+      {/* ── ABA: ANOTAÇÕES ── */}
+      {tab === 'anotacoes' && showPostApproval && (
+        <NotesPanel
           dealId={deal.id}
           attachments={attachments}
           onReload={loadAttachments}

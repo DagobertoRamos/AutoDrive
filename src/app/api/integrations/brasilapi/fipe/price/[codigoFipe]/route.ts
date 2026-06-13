@@ -10,8 +10,8 @@ import { logIntegrationCall } from '@/lib/brasilapi/audit'
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { codigoFipe: string } },
-) {
+  ctxArg: { params: { codigoFipe: string } | Promise<{ codigoFipe: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ ok: false, error: 'Não autenticado.' }, { status: 401 })
 

@@ -202,6 +202,43 @@ export async function GET(req: NextRequest) {
       : []
     const unitNameMap = Object.fromEntries(dealUnits.map((u) => [u.id, u.name]))
 
+    // ── displayPhotos: fotos do marketing PRIMEIRO; fallback fotos das
+    //    avaliações vinculadas (FOTO_SECAO) pra cobrir veículos recém-liberados
+    //    que ainda não passaram pelo marketing. Top 6 imagens.
+    const vehicleIds = vehiclesAny.map((v) => v.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let evalPhotosByVehicle: Record<string, string[]> = {}
+    if (vehicleIds.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const evals: any[] = await prisma.vehicleEvaluation.findMany({
+        where:  { vehicleId: { in: vehicleIds } },
+        select: { id: true, vehicleId: true },
+      })
+      const evalIdToVeh = new Map<string, string>(
+        evals.filter((e) => e.vehicleId).map((e) => [e.id, e.vehicleId as string]),
+      )
+      const evalIds = Array.from(evalIdToVeh.keys())
+      if (evalIds.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const atts: any[] = await (prisma as any).evaluationAttachment.findMany({
+          where:   { evaluationId: { in: evalIds }, fileType: 'image' },
+          orderBy: { createdAt: 'asc' },
+          select:  { evaluationId: true, publicUrl: true, itemId: true, category: true },
+        })
+        for (const a of atts) {
+          if (!a.publicUrl) continue
+          // Prefere fotos sem itemId (foto geral da seção) sobre fotos de itens
+          const vehId = evalIdToVeh.get(a.evaluationId)
+          if (!vehId) continue
+          if (!evalPhotosByVehicle[vehId]) evalPhotosByVehicle[vehId] = []
+          // Ordena: FOTO_SECAO sem itemId primeiro
+          const isSection = !a.itemId
+          if (isSection) evalPhotosByVehicle[vehId].unshift(a.publicUrl)
+          else evalPhotosByVehicle[vehId].push(a.publicUrl)
+        }
+      }
+    }
+
     // Computa hasOpenNegotiation com info de vendedor e unidade da negociação
     const data = vehiclesAny.map((v) => {
       const openDealRow = v.dealVehicles?.[0]
@@ -210,11 +247,25 @@ export async function GET(req: NextRequest) {
                         ?? openDeal?.seller?.user?.name
                         ?? null
       const unitName    = openDeal?.unitId ? (unitNameMap[openDeal.unitId] ?? null) : null
+
+      // displayPhotos: prioriza VehiclePhoto (marketing) → fallback fotos da avaliação
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const marketingPhotos: string[] = (v.photos ?? [])
+        .sort((a: any, b: any) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0)) // main primeiro
+        .map((p: any) => p.url)
+        .filter((u: string | null): u is string => !!u)
+      const fallbackPhotos = marketingPhotos.length === 0
+        ? (evalPhotosByVehicle[v.id] ?? [])
+        : []
+      const displayPhotos = [...marketingPhotos, ...fallbackPhotos].slice(0, 6)
+
       return {
         ...v,
-        hasOpenNegotiation:  !!openDeal,
-        openNegotiationId:   openDeal?.id          ?? null,
+        displayPhotos,
+        hasOpenNegotiation:    !!openDeal,
+        openNegotiationId:     openDeal?.id          ?? null,
         openNegotiationNumber: openDeal?.dealNumber ?? null,
+        openNegotiationStatus: openDeal?.status      ?? null,
         openNegotiationSeller: sellerName,
         openNegotiationUnit:   unitName,
       }

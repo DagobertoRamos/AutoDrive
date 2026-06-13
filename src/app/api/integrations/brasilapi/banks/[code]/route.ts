@@ -9,8 +9,8 @@ import { getBankByCode } from '@/lib/brasilapi/service'
 
 export async function GET(
   _req: Request,
-  { params }: { params: { code: string } },
-) {
+  ctxArg: { params: { code: string } | Promise<{ code: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ ok: false, error: 'Não autenticado.' }, { status: 401 })
 

@@ -5,13 +5,20 @@
 // Aceita body opcional com:
 //   - evaluatedValue, desiredValue, minimumValue, suggestedSalePrice (R$)
 //   - evaluatorFeedback (texto)
-// Define status='LIBERADA' + releasedAt + releasedByUserId. Notifica o
-// vendedor (approvalRequestedById ou evaluatedById) via in-app/email/whatsapp.
+//   - availableFor (CSV/array — COMPRA/TROCA/CONSIGNACAO)
+//   - proposalValidUntil (Date)
 //
-// IMPORTANTE: NÃO cria Vehicle aqui. A entrada no estoque acontece apenas
-// quando uma negociação do tipo COMPRA for finalizada/aprovada — esse é o
-// momento real em que a loja "comprou" o veículo. Até lá a avaliação fica
-// disponível para seleção no fluxo COMPRA via /api/negotiations/evaluations.
+// Define status='LIBERADA' + releasedAt + releasedByUserId.
+// Cria (ou atualiza) Vehicle no estoque com:
+//   • stockStatus = EM_PRECIFICACAO (gerente liberou, aguardando compra/aceite)
+//   • active = true (visível na listagem)
+//   • isAvailableForSale = false (não vai pra prateleira de venda ainda)
+//   • salePrice = suggestedSalePrice
+// Quando uma COMPRA referenciando essa avaliação for finalizada, o vehicle
+// muda pra DISPONIVEL via updateVehicleStock no /finalize.
+//
+// Notifica o vendedor (approvalRequestedById ou evaluatedById) via
+// in-app/email/whatsapp.
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -31,8 +38,8 @@ function safeNumber(v: unknown): number | null {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try {
@@ -62,10 +69,108 @@ export async function POST(
     if (suggestedPrice   != null) data.suggestedSalePrice = suggestedPrice
     if (typeof body?.evaluatorFeedback === 'string') data.evaluatorFeedback = body.evaluatorFeedback
 
+    // availableFor: gerente+ define em quais operações o veículo poderá entrar.
+    // Aceita array (['COMPRA','TROCA']) ou CSV ('COMPRA,TROCA'). Default null =
+    // todas (compat com avaliações antigas).
+    if (body?.availableFor) {
+      const raw = Array.isArray(body.availableFor)
+        ? body.availableFor
+        : String(body.availableFor).split(',')
+      const filtered = raw
+        .map((s: unknown) => String(s).trim().toUpperCase())
+        .filter((s: string) => ['COMPRA', 'TROCA', 'CONSIGNACAO'].includes(s))
+      if (filtered.length > 0) data.availableFor = filtered.join(',')
+    }
+
+    // Validade da proposta (opcional). Aceita ISO ou Date.
+    if (body?.proposalValidUntil) {
+      const d = new Date(body.proposalValidUntil)
+      if (!Number.isNaN(d.getTime())) data.proposalValidUntil = d
+    }
+
     const updated = await prisma.vehicleEvaluation.update({
       where: { id: params.id },
       data,
     })
+
+    // ── Cria / atualiza Vehicle no estoque (status EM_PRECIFICACAO) ──────────
+    // Idempotente: se já existe vehicleId, só atualiza dados+preço.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ev: any = await prisma.vehicleEvaluation.findUnique({
+        where:  { id: params.id },
+        select: {
+          id: true, vehicleId: true, tenantId: true, unitId: true,
+          plate: true, brand: true, model: true, version: true,
+          modelYear: true, manufactureYear: true, color: true, km: true,
+          fuel: true, transmission: true, chassi: true, renavam: true,
+          vehicleType: true, conditionType: true,
+          evaluatedValue: true, suggestedSalePrice: true, fipeValue: true, fipeCode: true,
+        },
+      })
+
+      // Payload SEM tenantId/unitId direto (Prisma exige connect na relação)
+      const baseData = {
+        plate:              ev.plate?.toUpperCase() ?? null,
+        brand:              ev.brand ?? null,
+        model:              ev.model ?? null,
+        version:            ev.version ?? null,
+        modelYear:          ev.modelYear ?? null,
+        year:               ev.manufactureYear ?? ev.modelYear ?? null,
+        color:              ev.color ?? null,
+        km:                 ev.km ?? null,
+        fuel:               ev.fuel ?? null,
+        transmission:       ev.transmission ?? null,
+        chassi:             ev.chassi ?? null,
+        renavam:            ev.renavam ?? null,
+        vehicleType:        ev.vehicleType ?? null,
+        conditionType:      ev.conditionType ?? null,
+        fipeCode:           ev.fipeCode ?? null,
+        fipeValue:          ev.fipeValue ?? null,
+        purchasePrice:      ev.evaluatedValue ?? null,
+        salePrice:          ev.suggestedSalePrice ?? ev.evaluatedValue ?? null,
+        stockStatus:        'EM_PRECIFICACAO' as never,
+        active:             true,
+        isAvailableForSale: false,
+        entryDate:          new Date(),
+        pricedById:         session.user.id,
+        pricedAt:           new Date(),
+      } as never
+
+      let vehicleId = ev.vehicleId
+      if (vehicleId) {
+        await prisma.vehicle.update({ where: { id: vehicleId }, data: baseData })
+      } else {
+        // Tenta achar por placa+tenant (evita duplicação)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing: any = ev.plate
+          ? await prisma.vehicle.findFirst({
+              where:  { tenantId: ev.tenantId ?? undefined, plate: ev.plate.toUpperCase() },
+              select: { id: true },
+            })
+          : null
+        if (existing) {
+          await prisma.vehicle.update({ where: { id: existing.id }, data: baseData })
+          vehicleId = existing.id
+        } else {
+          // Connect explícito pra tenant/unit (Prisma 6 não aceita FK direto em create)
+          const createData = {
+            ...(baseData as object),
+            ...(ev.tenantId ? { tenant: { connect: { id: ev.tenantId } } } : {}),
+            ...(ev.unitId   ? { unit:   { connect: { id: ev.unitId } } }   : {}),
+          } as never
+          const created = await prisma.vehicle.create({ data: createData })
+          vehicleId = created.id
+        }
+        await prisma.vehicleEvaluation.update({
+          where: { id: params.id },
+          data:  { vehicleId },
+        })
+      }
+    } catch (e) {
+      console.error('[release] failed to upsert Vehicle in stock:', e instanceof Error ? e.message : e)
+      // Não bloqueia o release — avaliação fica LIBERADA mesmo se o estoque falhar.
+    }
 
     await recordHistory({
       tenantId: ctx.tenantId ?? '',

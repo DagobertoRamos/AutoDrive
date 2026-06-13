@@ -109,6 +109,11 @@ export function mapPrismaError(err: unknown): { body: ApiError; status: number }
       'Unidade inválida',
       'Campo obrigatório',
       "Campo '",          // errors from requireCurrency
+      'Este veículo já está em negociação',
+      'Este veículo não está mais disponível',
+      'Este veículo avaliado não está disponível para troca',
+      'Este veículo avaliado já está vinculado',
+      'Avaliação informada não foi encontrada',
     ]
     const isKnown = knownPrefixes.some(p => err.message.startsWith(p))
     if (isKnown) {

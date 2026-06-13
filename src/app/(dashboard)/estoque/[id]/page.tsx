@@ -4,7 +4,7 @@
 // /estoque/[id] — Detalhes do veículo em estoque
 // =============================================================================
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -121,8 +121,12 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ── Página ────────────────────────────────────────────────────────────────────
 
-export default function EstoqueDetailPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function EstoqueDetailPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+  // Next 16: params virou Promise nos client components também — desempacota com use()
+  const resolvedParams = (params as { id?: string })?.id != null
+    ? (params as { id: string })
+    : use(params as Promise<{ id: string }>)
+  const { id } = resolvedParams
   const { data: session } = useSession()
   const router = useRouter()
   const role = (session?.user as { role?: string })?.role ?? ''
@@ -204,13 +208,14 @@ export default function EstoqueDetailPage({ params }: { params: { id: string } }
       : []
 
   const TABS = [
-    { id: 'resumo',    label: 'Resumo',        count: null },
-    { id: 'ficha',     label: 'Ficha Técnica', count: null },
-    { id: 'fotos',     label: 'Fotos',         count: vehicle._count.photos },
-    { id: 'avaliacoes', label: 'Avaliações',   count: vehicle._count.evaluations },
-    { id: 'cautelar',  label: 'Cautelar',      count: null },
-    { id: 'precos',    label: 'Precificação',  count: null },
-    { id: 'pendencias', label: 'Pendências',   count: vehicle._count.stockPendencies > 0 ? vehicle._count.stockPendencies : null },
+    { id: 'resumo',        label: 'Resumo',        count: null },
+    { id: 'ficha',         label: 'Ficha Técnica', count: null },
+    { id: 'fotos',         label: 'Fotos',         count: vehicle._count.photos },
+    { id: 'documentacao',  label: 'Documentação',  count: null },
+    { id: 'avaliacoes',    label: 'Avaliações',    count: vehicle._count.evaluations },
+    { id: 'cautelar',      label: 'Cautelar',      count: null },
+    { id: 'precos',        label: 'Precificação',  count: null },
+    { id: 'pendencias',    label: 'Pendências',    count: vehicle._count.stockPendencies > 0 ? vehicle._count.stockPendencies : null },
   ]
 
   return (
@@ -536,6 +541,11 @@ export default function EstoqueDetailPage({ params }: { params: { id: string } }
           </div>
         )}
 
+        {/* ── Documentação (CRLV + cautelar + contratos + NFe + etc) ── */}
+        {activeTab === 'documentacao' && (
+          <VehicleDocumentsTab vehicleId={vehicle.id} />
+        )}
+
         {/* ── Avaliações ── */}
         {activeTab === 'avaliacoes' && (
           <div>
@@ -709,6 +719,133 @@ export default function EstoqueDetailPage({ params }: { params: { id: string } }
       <p className="text-center text-xs text-gray-400">
         Cadastrado em {fmtDate(vehicle.createdAt)} · Última atualização {fmtDate(vehicle.updatedAt)}
       </p>
+    </div>
+  )
+}
+
+// ── VehicleDocumentsTab ─────────────────────────────────────────────────────
+// Agrega CRLV (vindo da avaliação) + cautelar + NFe + contratos + comprovantes
+// vinculados a esse veículo. Lê de /api/vehicles/[id]/documents.
+
+interface UnifiedDoc {
+  id: string
+  source: 'EVALUATION' | 'DEAL'
+  sourceLabel: string
+  category: string
+  categoryLabel: string
+  group: 'VEHICLE' | 'LAUDO' | 'NEGOTIATION' | 'OUTRO'
+  groupLabel: string
+  title: string
+  fileName: string
+  fileType: string
+  mimeType: string
+  fileSize: number | null
+  publicUrl: string | null
+  uploadedByName: string | null
+  createdAt: string
+}
+
+function VehicleDocumentsTab({ vehicleId }: { vehicleId: string }) {
+  const [groups, setGroups] = useState<Record<string, UnifiedDoc[]>>({
+    VEHICLE: [], LAUDO: [], NEGOTIATION: [], OUTRO: [],
+  })
+  const [loading, setLoading] = useState(true)
+  const [err,     setErr]     = useState('')
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    fetch(`/api/vehicles/${vehicleId}/documents`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!active) return
+        if (d?.groups) setGroups(d.groups)
+        else if (d?.error) setErr(d.error)
+      })
+      .catch(() => active && setErr('Falha ao carregar documentos.'))
+      .finally(() => active && setLoading(false))
+    return () => { active = false }
+  }, [vehicleId])
+
+  const groupOrder: Array<['VEHICLE' | 'LAUDO' | 'NEGOTIATION' | 'OUTRO', string, string]> = [
+    ['VEHICLE',     'Documentos do veículo', 'border-emerald-200 bg-emerald-50/30'],
+    ['LAUDO',       'Laudos',                'border-blue-200 bg-blue-50/30'],
+    ['NEGOTIATION', 'Negociação',            'border-violet-200 bg-violet-50/30'],
+    ['OUTRO',       'Outros',                'border-gray-200 bg-gray-50/30'],
+  ]
+
+  if (loading) {
+    return <div className="flex justify-center py-12 text-gray-400">Carregando documentos...</div>
+  }
+  if (err) {
+    return <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
+  }
+
+  const totalDocs = Object.values(groups).reduce((s, arr) => s + arr.length, 0)
+  if (totalDocs === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400">
+        <p className="text-sm">Nenhum documento vinculado a este veículo.</p>
+        <p className="text-xs text-gray-500">
+          O CRLV enviado na avaliação aparece aqui automaticamente.
+          Contratos, NFe e comprovantes aparecem quando vinculados a negociações.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {groupOrder.map(([key, label, cls]) => {
+        const items = groups[key] ?? []
+        if (items.length === 0) return null
+        return (
+          <div key={key} className={`overflow-hidden rounded-xl border ${cls}`}>
+            <div className="flex items-center justify-between border-b border-current/10 bg-white/60 px-4 py-2.5">
+              <h4 className="text-sm font-semibold text-gray-800">{label}</h4>
+              <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-medium text-gray-600">
+                {items.length}
+              </span>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {items.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-900">{d.title}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                        d.source === 'EVALUATION' ? 'bg-emerald-100 text-emerald-700' : 'bg-violet-100 text-violet-700'
+                      }`}>{d.sourceLabel}</span>
+                      <span className="ml-1.5">{d.categoryLabel}</span>
+                      {d.uploadedByName && <span className="ml-1.5">· {d.uploadedByName}</span>}
+                      <span className="ml-1.5">· {new Date(d.createdAt).toLocaleString('pt-BR')}</span>
+                    </p>
+                  </div>
+                  {d.publicUrl && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <a
+                        href={d.publicUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Visualizar
+                      </a>
+                      <a
+                        href={d.publicUrl}
+                        download={d.fileName}
+                        className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Baixar
+                      </a>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      })}
     </div>
   )
 }

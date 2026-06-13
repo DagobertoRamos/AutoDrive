@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       ]
     }
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       prisma.vehicleEvaluation.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -60,6 +60,37 @@ export async function GET(req: NextRequest) {
       }),
       prisma.vehicleEvaluation.count({ where }),
     ])
+
+    // Carrega fotos em paralelo (só imagens, primeira como capa + count)
+    // Usa raw findMany na tabela de attachments (relação 1-N sem back-ref no
+    // schema do VehicleEvaluation).
+    const evalIds = rows.map((r) => r.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const photos: any[] = evalIds.length
+      ? await (prisma as any).evaluationAttachment.findMany({
+          where:   { evaluationId: { in: evalIds }, fileType: 'image' },
+          orderBy: { createdAt: 'asc' },
+          select:  { id: true, evaluationId: true, publicUrl: true, fileName: true, section: true, category: true },
+        })
+      : []
+
+    const photosByEval = new Map<string, typeof photos>()
+    for (const p of photos) {
+      if (!photosByEval.has(p.evaluationId)) photosByEval.set(p.evaluationId, [])
+      photosByEval.get(p.evaluationId)!.push(p)
+    }
+
+    const data = rows.map((r) => {
+      const all = photosByEval.get(r.id) ?? []
+      return {
+        ...r,
+        coverPhotoUrl: all[0]?.publicUrl ?? null,
+        photoCount:    all.length,
+        photos:        all.map((p) => ({
+          id: p.id, url: p.publicUrl, fileName: p.fileName, section: p.section, category: p.category,
+        })),
+      }
+    })
 
     return NextResponse.json({
       data,

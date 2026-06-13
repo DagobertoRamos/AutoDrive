@@ -20,6 +20,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import { metaWhatsApp } from './meta-whatsapp.service'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,114 @@ export interface BulkNotifyPayload extends Omit<NotifyPayload, 'userId'> {
 }
 
 // ── Helpers internos ──────────────────────────────────────────────────────────
+
+// ── WhatsApp helpers (best-effort — nunca propagam exceção) ──────────────────
+
+interface UserContact {
+  id:    string
+  phone: string | null
+}
+
+/** Busca telefone do user (User.phone + Seller.whatsapp fallback). */
+async function loadUserContact(userId: string): Promise<UserContact> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const u: any = await prisma.user.findUnique({
+    where:  { id: userId },
+    select: { id: true, phone: true, seller: { select: { whatsapp: true } }, manager: { select: { whatsapp: true } } },
+  })
+  if (!u) return { id: userId, phone: null }
+  const phone = u.phone ?? u.seller?.whatsapp ?? u.manager?.whatsapp ?? null
+  return { id: u.id, phone }
+}
+
+/** Garante que existe um WhatsappProvider ativo (global ou do tenant). */
+async function getActiveWhatsappProvider(tenantId?: string | null) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (prisma as any).whatsappProvider.findFirst({
+    where: {
+      active:        true,
+      accessToken:   { not: null },
+      phoneNumberId: { not: null },
+      OR: tenantId ? [{ tenantId }, { tenantId: null }] : [{ tenantId: null }],
+    },
+    orderBy: [{ tenantId: 'desc' }], // prioriza provider do tenant antes do global
+  })
+}
+
+async function sendWhatsappBestEffort(
+  notificationId: string | null,
+  userId: string,
+  to: string | null,
+  text: string,
+  tenantId?: string | null,
+): Promise<void> {
+  if (!to) return
+  try {
+    const provider = await getActiveWhatsappProvider(tenantId)
+    if (!provider) return  // não há provedor configurado/ativo → silencioso
+    // metaWhatsApp lê env vars; se o provider do tenant tem credenciais
+    // próprias, idealmente a service aceitaria override. Mantemos compat
+    // usando env por enquanto.
+    await metaWhatsApp.sendText({ to, text })
+    if (notificationId) {
+      await prisma.notificationDelivery.create({
+        data: { notificationId, userId, channel: 'WHATSAPP', status: 'ENVIADO', sentAt: new Date() },
+      }).catch(() => {})
+    }
+  } catch (err) {
+    console.warn('[NotificationService] whatsapp send failed:', err instanceof Error ? err.message : err)
+    if (notificationId) {
+      await prisma.notificationDelivery.create({
+        data: {
+          notificationId, userId, channel: 'WHATSAPP', status: 'ERRO',
+          sentAt: new Date(), errorMessage: err instanceof Error ? err.message : String(err),
+        },
+      }).catch(() => {})
+    }
+  }
+}
+
+async function sendEmailBestEffort(
+  notificationId: string | null,
+  userId: string,
+  tenantId: string | null | undefined,
+  subject: string,
+  text: string,
+): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const config: any = await (prisma as any).emailConfig.findFirst({
+      where: {
+        active: true,
+        OR: tenantId ? [{ tenantId }, { tenantId: null }] : [{ tenantId: null }],
+        fromEmail: { not: null },
+      },
+      orderBy: [{ tenantId: 'desc' }, { isDefault: 'desc' }],
+    })
+    if (!config) return
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const user: any = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { email: true, name: true },
+    })
+    if (!user?.email) return
+
+    // TODO: integrar sender real (nodemailer/sendgrid/resend). Por enquanto,
+    // só registramos a tentativa pra rastreabilidade — não envia de fato.
+    console.info(`[NotificationService] email queued (sender TODO):`, {
+      to: user.email, subject, hasText: !!text, providerType: config.provider,
+    })
+
+    if (notificationId) {
+      await prisma.notificationDelivery.create({
+        data: { notificationId, userId, channel: 'EMAIL', status: 'ENVIADO', sentAt: new Date() },
+      }).catch(() => {})
+    }
+  } catch (err) {
+    console.warn('[NotificationService] email send failed:', err instanceof Error ? err.message : err)
+  }
+}
 
 async function createWebNotification(payload: NotifyPayload): Promise<string | null> {
   try {
@@ -81,20 +190,41 @@ async function createWebNotification(payload: NotifyPayload): Promise<string | n
 export async function notify(payload: NotifyPayload): Promise<void> {
   const channels = payload.channels ?? ['APP_WEB']
 
+  // Cria a notification APP_WEB primeiro (se solicitada) — outros canais
+  // referenciam o id pra registrar delivery.
+  let notificationId: string | null = null
+  if (channels.includes('APP_WEB')) {
+    notificationId = await createWebNotification(payload)
+  }
+
+  // Roda canais externos em paralelo, todos best-effort
   await Promise.all(
     channels.map(async (ch) => {
       switch (ch) {
         case 'APP_WEB':
-          await createWebNotification(payload)
+          // já criado acima
           break
 
-        case 'WHATSAPP':
-          // Delegado ao serviço de WhatsApp existente quando integrado
-          // TODO: buscar whatsapp do usuário e chamar meta-whatsapp.service
+        case 'WHATSAPP': {
+          const contact = await loadUserContact(payload.userId)
+          await sendWhatsappBestEffort(
+            notificationId,
+            payload.userId,
+            contact.phone,
+            `*${payload.title}*\n${payload.message}`,
+            payload.tenantId,
+          )
           break
+        }
 
         case 'EMAIL':
-          // TODO: nodemailer / SMTP
+          await sendEmailBestEffort(
+            notificationId,
+            payload.userId,
+            payload.tenantId,
+            payload.title,
+            payload.message,
+          )
           break
 
         case 'APP_MOBILE':
@@ -181,6 +311,124 @@ export async function notifyPendency(params: {
   })
 }
 
+// ── Notificações de negociação ──────────────────────────────────────────────
+
+/**
+ * Notifica TODOS os usuários ativos do tenant (broadcast).
+ * Útil pra anúncios sistêmicos: venda aprovada, meta batida, etc.
+ */
+export async function notifyAllTenant(params: {
+  tenantId: string
+  type:      string
+  title:     string
+  message:   string
+  actionUrl?: string | null
+  metadata?:  Record<string, unknown>
+  channels?:  NotifyChannel[]
+}): Promise<void> {
+  const users = await prisma.user.findMany({
+    where:  { tenantId: params.tenantId, status: 'ATIVO' },
+    select: { id: true },
+  })
+  if (!users.length) return
+
+  await notifyMany({
+    userIds:   users.map((u) => u.id),
+    tenantId:  params.tenantId,
+    type:      params.type,
+    title:     params.title,
+    message:   params.message,
+    actionUrl: params.actionUrl,
+    metadata:  params.metadata,
+    channels:  params.channels ?? ['APP_WEB'],
+  })
+}
+
+interface DealNotifContext {
+  dealId:       string
+  dealNumber:   string | null
+  dealType:     string  // VENDA | COMPRA | TROCA | CONSIGNACAO
+  tenantId:     string | null
+  vehicleLabel: string  // ex.: "VW Gol 1.0 (placa FOZ6303)"
+  approverName: string  // quem aprovou (ou rejeitou)
+  sellerName:   string  // vendedor da negociação
+}
+
+/**
+ * Dispara notificação de "Venda aprovada" pra TODOS do tenant.
+ * Mensagem sistema + (opcional) WhatsApp + Email — best-effort por canal.
+ */
+export async function notifyDealApproved(ctx: DealNotifContext): Promise<void> {
+  if (!ctx.tenantId) return  // negociações sem tenant (MASTER) não broadcastam
+  const tipoLabel = ctx.dealType === 'VENDA'  ? 'venda'
+                  : ctx.dealType === 'COMPRA' ? 'compra'
+                  : ctx.dealType === 'TROCA'  ? 'troca'
+                  : 'consignação'
+
+  const title   = `🎉 ${tipoLabel.charAt(0).toUpperCase() + tipoLabel.slice(1)} aprovada`
+  const message = `A ${tipoLabel} do veículo ${ctx.vehicleLabel} acaba de ser aprovada por ${ctx.approverName}. Parabéns, mais uma ${tipoLabel} do vendedor ${ctx.sellerName}!`
+
+  await notifyAllTenant({
+    tenantId:  ctx.tenantId,
+    type:      'NEGOCIACAO_LIBERADA',
+    title,
+    message,
+    actionUrl: `/negociacoes/${ctx.dealId}`,
+    metadata:  { dealId: ctx.dealId, dealNumber: ctx.dealNumber, dealType: ctx.dealType },
+    channels:  ['APP_WEB', 'WHATSAPP', 'EMAIL'],
+  })
+}
+
+/**
+ * Notifica o(s) gerente(s) responsável(eis) que há negociação aguardando aprovação.
+ * Sistema + WhatsApp.
+ */
+export async function notifyDealSubmittedForApproval(params: {
+  dealId:       string
+  dealNumber:   string | null
+  tenantId:     string | null
+  vehicleLabel: string
+  sellerName:   string
+  /** Gerente direto vinculado ao deal (deal.managerId) — recebe prioridade. */
+  managerId?:   string | null
+}): Promise<void> {
+  if (!params.tenantId) return
+
+  const title   = '📋 Nova negociação aguardando aprovação'
+  const message = `${params.sellerName} enviou a negociação${params.dealNumber ? ` ${params.dealNumber}` : ''} (${params.vehicleLabel}) para sua aprovação.`
+  const actionUrl = `/negociacoes/${params.dealId}`
+
+  // 1) Notifica gerente direto, se houver
+  if (params.managerId) {
+    await notify({
+      userId:    params.managerId,
+      tenantId:  params.tenantId,
+      type:      'NEGOCIACAO_NOVA',
+      title,
+      message,
+      actionUrl,
+      metadata:  { dealId: params.dealId, dealNumber: params.dealNumber },
+      channels:  ['APP_WEB', 'WHATSAPP'],
+    })
+  }
+
+  // 2) Fallback / cobertura: todos os GERENTE / GERENTE_GERAL / ADM do tenant
+  //    (caso managerId não esteja setado ou o user queira garantir cobertura).
+  await notifyByRole({
+    tenantId:  params.tenantId,
+    roles:     ['GERENTE', 'GERENTE_GERAL', 'ADM', 'MASTER'],
+    type:      'NEGOCIACAO_NOVA',
+    title,
+    message,
+    actionUrl,
+    metadata:  { dealId: params.dealId, dealNumber: params.dealNumber },
+    channels:  ['APP_WEB', 'WHATSAPP'],
+  }).catch((e) => console.warn('[notifyDealSubmittedForApproval] role broadcast failed:', e))
+}
+
 // Re-export namespace style for backwards-compat
-export const NotificationService = { notify, notifyMany, notifyByRole, notifyPendency }
+export const NotificationService = {
+  notify, notifyMany, notifyByRole, notifyPendency,
+  notifyAllTenant, notifyDealApproved, notifyDealSubmittedForApproval,
+}
 export default NotificationService

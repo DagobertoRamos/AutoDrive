@@ -16,10 +16,22 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Esconde o botão flutuante "N" do Next no canto inferior esquerdo durante o dev.
+  devIndicators: false,
+
+  // Origens extras permitidas no dev server (HMR / static via IP externo)
+  allowedDevOrigins: ['54.232.189.113'],
+
   serverExternalPackages: [
     'pdf-parse',
     'pdfjs-dist',
     'canvas',
+    // Neon serverless adapter + ws (transporte WebSocket).
+    // Sem isso, o webpack do Next bundla `ws` e quebra o require opcional
+    // do `bufferutil`/`utf-8-validate` → erro "bufferUtil.mask is not a function".
+    '@neondatabase/serverless',
+    '@prisma/adapter-neon',
+    'ws',
   ],
 
   // Webpack: fallback de módulos Node em código client + alias para canvas

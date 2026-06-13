@@ -17,8 +17,8 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
 

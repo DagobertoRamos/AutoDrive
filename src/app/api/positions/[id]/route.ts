@@ -36,7 +36,8 @@ function canMutate(user: { role: string; tenantId: string | null }, position: { 
 
 // ── GET ──────────────────────────────────────────────────────────────────────
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'registrations.positions')) return forbiddenResponse()
@@ -58,7 +59,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 // ── PATCH ────────────────────────────────────────────────────────────────────
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canPerformAction(user.role, 'registrations.positions', 'update')) return forbiddenResponse()
@@ -115,7 +117,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 // ── DELETE ───────────────────────────────────────────────────────────────────
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canPerformAction(user.role, 'registrations.positions', 'delete')) return forbiddenResponse()

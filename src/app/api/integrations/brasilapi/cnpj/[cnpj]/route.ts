@@ -14,8 +14,8 @@ const MANAGER_PLUS = new Set(['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'])
 
 export async function GET(
   _req: Request,
-  { params }: { params: { cnpj: string } },
-) {
+  ctxArg: { params: { cnpj: string } | Promise<{ cnpj: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ ok: false, error: 'Não autenticado.' }, { status: 401 })
 

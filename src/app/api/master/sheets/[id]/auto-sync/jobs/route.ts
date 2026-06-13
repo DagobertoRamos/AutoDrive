@@ -9,7 +9,8 @@ import { requireMaster }   from '@/lib/master-guards'
 import { prisma }          from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { error } = await requireMaster()
   if (error) return error
 

@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import {
   User, Car, Users, DollarSign, Wallet, ArrowDownCircle, ArrowUpCircle,
-  TrendingDown, History, Edit, CheckCircle2, RotateCcw, AlertTriangle, ShieldAlert,
+  TrendingDown, History, Edit, CheckCircle2, RotateCcw, AlertTriangle, ShieldAlert, Ban,
 } from 'lucide-react'
 import { formatBRL, maskCPF, maskCNPJ, maskPhone, maskCEP } from '@/lib/masks'
 import { useDealActions, type DealActionsActor, type DealActionsDeal } from '../_hooks/useDealActions'
@@ -133,10 +133,14 @@ export interface DealSummaryProps {
   onFinalize:     () => void
   onForceFinalize: () => void
   onReopen:       () => void
+  /** Aprovação (gerente+) — aparece só em status AGUARDANDO_APROVACAO/LIBERACAO. */
+  onApprove?:      () => void
+  /** Cancelamento — abre o modal de motivo no parent. */
+  onCancelDeal?:   () => void
 }
 
 export default function DealSummary({
-  deal, actor, onEdit, onFinalize, onForceFinalize, onReopen,
+  deal, actor, onEdit, onFinalize, onForceFinalize, onReopen, onApprove, onCancelDeal,
 }: DealSummaryProps) {
   const a = useDealActions(deal, actor)
   const [timeline, setTimeline]   = useState<TimelineEvt[]>([])
@@ -198,12 +202,32 @@ export default function DealSummary({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Aprovar (gerente+, status aguardando) */}
+          {onApprove && ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'].includes(deal.status) && (
+            <button
+              onClick={onApprove}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700"
+            >
+              <CheckCircle2 size={14} /> Aprovar
+            </button>
+          )}
+
           {a.canEditNow && (
             <button
               onClick={onEdit}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               <Edit size={14} /> Editar
+            </button>
+          )}
+
+          {/* Cancelar */}
+          {onCancelDeal && !['FINALIZADA', 'CANCELADA'].includes(deal.status) && (
+            <button
+              onClick={onCancelDeal}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              <Ban size={14} /> Cancelar
             </button>
           )}
 

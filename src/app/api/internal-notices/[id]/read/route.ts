@@ -14,8 +14,8 @@ const schema = z.object({
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+  ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   try {
     const session = await getServerAuthSession()
     if (!session?.user) {

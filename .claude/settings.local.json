@@ -53,7 +53,8 @@
       "Bash(mkdir -p \"D:\\\\Sistema de avisos\\\\Robo\\\\.claude\\\\worktrees\\\\distracted-dhawan-fd8ce5\\\\src\\\\app\\\\api\\\\master\\\\communication\\\\notices\\\\[id]\\\\resume\")",
       "Bash(mkdir -p \"D:\\\\Sistema de avisos\\\\Robo\\\\.claude\\\\worktrees\\\\distracted-dhawan-fd8ce5\\\\src\\\\app\\\\api\\\\master\\\\communication\\\\notices\\\\[id]\\\\cancel\")",
       "Bash(mkdir -p \"D:\\\\Sistema de avisos\\\\Robo\\\\.claude\\\\worktrees\\\\distracted-dhawan-fd8ce5\\\\src\\\\app\\\\api\\\\master\\\\communication\\\\notices\\\\[id]\\\\archive\")",
-      "Bash(mkdir -p \"D:\\\\Sistema de avisos\\\\Robo\\\\.claude\\\\worktrees\\\\distracted-dhawan-fd8ce5\\\\src\\\\app\\\\api\\\\master\\\\communication\\\\notices\\\\[id]\\\\duplicate\")"
+      "Bash(mkdir -p \"D:\\\\Sistema de avisos\\\\Robo\\\\.claude\\\\worktrees\\\\distracted-dhawan-fd8ce5\\\\src\\\\app\\\\api\\\\master\\\\communication\\\\notices\\\\[id]\\\\duplicate\")",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

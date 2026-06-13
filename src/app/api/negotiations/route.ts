@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
       ]
     }
 
-    const [deals, total, typeCounts] = await Promise.all([
+    const [deals, total, typeCounts, statusCounts] = await Promise.all([
       prisma.deal.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -96,6 +96,11 @@ export async function GET(req: NextRequest) {
         where,
         _count: { _all: true },
       }),
+      prisma.deal.groupBy({
+        by:    ['status'],
+        where,
+        _count: { _all: true },
+      }),
     ])
 
     // Converte groupBy em mapa { VENDA: N, COMPRA: N, ... }
@@ -104,10 +109,16 @@ export async function GET(req: NextRequest) {
       return acc
     }, {})
 
+    const byStatus = statusCounts.reduce<Record<string, number>>((acc, row) => {
+      acc[row.status] = row._count._all
+      return acc
+    }, {})
+
     return NextResponse.json({
       data:       deals,
       pagination: { page, total, totalPages: Math.ceil(total / take), limit: take },
       byType,
+      byStatus,
     })
   } catch (err) {
     return handlePrismaError(err)
@@ -141,6 +152,8 @@ export async function POST(req: NextRequest) {
       deliveryDate,
       // Débitos do wizard (array criado de uma vez com a negociação)
       debts,
+      // Pagamentos cadastrados no wizard
+      payments,
       // Geral
       notes, submit,
     } = body
@@ -407,6 +420,45 @@ export async function POST(req: NextRequest) {
           vehicleId = vehicleRecord.id
         }
 
+        // ── Guard: impede duplicidade de venda do mesmo veículo ───────────
+        // Pra VENDA/TROCA, recusa se o veículo já está em outra negociação
+        // ativa (qualquer status que não seja terminal). Mensagem clara
+        // pro vendedor saber quem está com o carro.
+        if (vehicleId && (type === 'VENDA' || type === 'TROCA')) {
+          const OPEN = ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO',
+            'APROVADA', 'LIBERADA', 'SINAL_RECEBIDO', 'RESERVADA',
+            'AGUARDANDO_FINANCEIRO', 'FINANCEIRO_APROVADO',
+            'AGUARDANDO_DOCUMENTACAO', 'DOCUMENTACAO_CONCLUIDA',
+            'AGUARDANDO_CONTRATO', 'CONTRATO_GERADO',
+            'AGUARDANDO_ASSINATURA', 'ASSINADA',
+            'AGUARDANDO_ENTREGA', 'ENTREGUE', 'EM_ANDAMENTO', 'FINALIZADA']
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const conflict: any = await tx.dealVehicle.findFirst({
+            where: {
+              vehicleId,
+              role:  { in: ['VENDIDO', 'CONSIGNADO'] },
+              deal:  { status: { in: OPEN as never[] } },
+            },
+            select: {
+              deal: {
+                select: {
+                  id: true, dealNumber: true, status: true,
+                  seller: { select: { fullName: true, shortName: true } },
+                },
+              },
+            },
+          })
+          if (conflict?.deal) {
+            const APPROVED = new Set(OPEN.filter((s) => s !== 'AGUARDANDO_APROVACAO' && s !== 'AGUARDANDO_LIBERACAO'))
+            const sellerLbl = conflict.deal.seller?.shortName ?? conflict.deal.seller?.fullName ?? 'outro vendedor'
+            const negLbl    = conflict.deal.dealNumber ?? conflict.deal.id.slice(0, 8)
+            const msg = APPROVED.has(conflict.deal.status)
+              ? `Este veículo não está mais disponível. Venda já liberada pelo gerente na negociação ${negLbl}.`
+              : `Este veículo já está em negociação pelo vendedor ${sellerLbl} (negociação ${negLbl}).`
+            throw new Error(msg)
+          }
+        }
+
         await tx.dealVehicle.create({
           data: {
             dealId:    deal.id,
@@ -434,6 +486,58 @@ export async function POST(req: NextRequest) {
 
       // 5. Veículo de troca (TROCA)
       if (type === 'TROCA' && tradeInVehicle?.plate) {
+        // ── Guard duplicidade: avaliação não pode entrar em 2 trocas ativas
+        if (tradeInVehicle.evaluationId) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ev: any = await (tx as any).vehicleEvaluation.findUnique({
+            where:  { id: tradeInVehicle.evaluationId },
+            select: {
+              id: true, status: true, result: true,
+              customerDecision: true, availableFor: true,
+              cancelledAt: true, proposalValidUntil: true,
+            },
+          })
+          if (!ev) {
+            throw new Error('Avaliação informada não foi encontrada.')
+          }
+          // Reusa o helper canEvaluationVehicleBeUsed pra mensagem consistente
+          // (não importa aqui pra evitar ciclo — duplica a checagem mínima).
+          if (ev.cancelledAt)
+            throw new Error('Este veículo avaliado não está disponível para troca. Avaliação cancelada.')
+          const releasedOk = ['LIBERADA', 'APROVADO', 'APPROVED', 'FINALIZED'].includes(
+            (ev.status ?? ev.result ?? '').toUpperCase(),
+          ) || (ev.result ?? '').toUpperCase() === 'APROVADO'
+          if (!releasedOk)
+            throw new Error('Este veículo avaliado não está disponível para troca. Proposta ainda não liberada pelo gerente.')
+          const decision = (ev.customerDecision ?? 'PENDENTE').toUpperCase()
+          if (decision !== 'ACEITA')
+            throw new Error('Este veículo avaliado não está disponível para troca. Cliente ainda não aceitou a proposta.')
+          const af = (ev.availableFor ?? '').toUpperCase()
+          if (af && !af.split(',').map((s: string) => s.trim()).includes('TROCA'))
+            throw new Error('Este veículo avaliado não está disponível para troca. Liberação do gerente é para outra operação.')
+          // Já vinculada a deal ativo?
+          const OPEN = ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO',
+            'APROVADA', 'LIBERADA', 'SINAL_RECEBIDO', 'RESERVADA',
+            'AGUARDANDO_FINANCEIRO', 'FINANCEIRO_APROVADO',
+            'AGUARDANDO_DOCUMENTACAO', 'DOCUMENTACAO_CONCLUIDA',
+            'AGUARDANDO_CONTRATO', 'CONTRATO_GERADO',
+            'AGUARDANDO_ASSINATURA', 'ASSINADA',
+            'AGUARDANDO_ENTREGA', 'ENTREGUE', 'EM_ANDAMENTO', 'FINALIZADA']
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const conflict: any = await tx.dealVehicle.findFirst({
+            where: {
+              role:  'TROCA',
+              plate: tradeInVehicle.plate.toUpperCase(),
+              deal:  { status: { in: OPEN as never[] } },
+            },
+            select: { deal: { select: { id: true, dealNumber: true } } },
+          })
+          if (conflict?.deal) {
+            const neg = conflict.deal.dealNumber ?? conflict.deal.id.slice(0, 8)
+            throw new Error(`Este veículo avaliado já está vinculado à negociação ${neg}.`)
+          }
+        }
+
         await tx.dealVehicle.create({
           data: {
             dealId:        deal.id,
@@ -475,6 +579,67 @@ export async function POST(req: NextRequest) {
             responsavel: d.responsavel ?? 'LOJA',
             notes:       d.notes       ?? null,
           })),
+        })
+      }
+
+      // 6.5. Pagamentos do wizard (array opcional)
+      if (Array.isArray(payments) && payments.length > 0) {
+        const isVendedor = ['VENDEDOR', 'VENDEDOR_LIDER'].includes(session.user.role)
+        await (tx.dealPayment as any).createMany({
+          data: payments.map((p: any) => {
+            // Sanitiza retorno % pra 0..6 com 2 casas
+            let returnPct: number | null = null
+            if (p.returnPct != null && p.returnPct !== '') {
+              const n = Number(p.returnPct)
+              if (Number.isFinite(n)) returnPct = Math.min(6, Math.max(0, Math.round(n * 100) / 100))
+            }
+            // Vendedor só pode mandar PENDENTE
+            const rawStatus = typeof p.status === 'string' ? p.status.toUpperCase() : null
+            const status    = isVendedor
+              ? 'PENDENTE'
+              : (['PENDENTE', 'CONFIRMADO', 'CANCELADO'].includes(rawStatus ?? '') ? rawStatus : 'PENDENTE')
+
+            return {
+              dealId:                  deal.id,
+              tenantId:                session.user.tenantId ?? null,
+              type:                    String(p.type ?? 'OUTROS').toUpperCase(),
+              status,
+              value:                   Number(p.amount ?? p.value ?? 0),
+              bank:                    p.bank      || null,
+              cardBrand:               p.cardBrand || null,
+              pixKey:                  p.pixKey    || null,
+              agency:                  p.agency    || null,
+              account:                 p.account   || null,
+              installments:            p.installments ? Number(p.installments) : null,
+              installmentValue:        p.installmentValue != null && p.installmentValue !== '' ? Number(p.installmentValue) : null,
+              installmentIntervalDays: p.installmentIntervalDays ? Number(p.installmentIntervalDays) : null,
+              returnPct,
+              vehiclePlate:            p.vehiclePlate || null,
+              firstDueDate:            p.firstDueDate ? new Date(p.firstDueDate) : null,
+              dueDate:                 p.dueDate      ? new Date(p.dueDate)      : null,
+              paidAt:                  p.paidAt       ? new Date(p.paidAt)       : null,
+              notes:                   p.notes || null,
+              createdById:             session.user.id,
+            }
+          }),
+        })
+      }
+
+      // 6.6. Troco (se cadastrado no wizard com beneficiário)
+      if (changeAmount && Number(changeAmount) > 0 && (changeBeneficiary || changePix || changeBank)) {
+        await (tx.dealChange as any).create({
+          data: {
+            dealId:      deal.id,
+            tenantId:    session.user.tenantId ?? null,
+            value:       Number(changeAmount),
+            beneficiary: changeBeneficiary || 'Cliente',
+            document:    changeBeneficiaryCpf || null,
+            bank:        changeBank    || null,
+            agency:      changeAgency  || null,
+            account:     changeAccount || null,
+            pixKey:      changePix     || null,
+            createdById: session.user.id,
+          },
         })
       }
 

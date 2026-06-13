@@ -12,7 +12,8 @@ const schema = z.object({
   reason: z.string().min(1, 'Informe o motivo'),
 })
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   try {
     const session = await getServerAuthSession()
     if (!session?.user) {

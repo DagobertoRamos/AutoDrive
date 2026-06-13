@@ -14,8 +14,8 @@ export const dynamic = 'force-dynamic'
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; requestId: string } },
-) {
+  ctxArg: { params: { id: string; requestId: string } | Promise<{ id: string; requestId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }

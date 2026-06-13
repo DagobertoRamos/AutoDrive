@@ -8,8 +8,8 @@ import { prisma }                 from '@/lib/prisma'
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string; tabId: string } },
-) {
+  ctxArg: { params: { id: string; tabId: string } | Promise<{ id: string; tabId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { error } = await requireMaster()
   if (error) return error
 
@@ -26,8 +26,8 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string; tabId: string } },
-) {
+  ctxArg: { params: { id: string; tabId: string } | Promise<{ id: string; tabId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const { error } = await requireMaster()
   if (error) return error
 

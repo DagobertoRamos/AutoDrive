@@ -11,8 +11,8 @@ import { createDealAudit } from '@/lib/negotiation-service'
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; serviceId: string } },
-) {
+  ctxArg: { params: { id: string; serviceId: string } | Promise<{ id: string; serviceId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 

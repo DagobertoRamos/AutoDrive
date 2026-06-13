@@ -29,8 +29,8 @@ async function getDealAndCheck(dealId: string, session: { user: { tenantId?: str
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; debtId: string } },
-) {
+  ctxArg: { params: { id: string; debtId: string } | Promise<{ id: string; debtId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
@@ -69,8 +69,8 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; debtId: string } },
-) {
+  ctxArg: { params: { id: string; debtId: string } | Promise<{ id: string; debtId: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 

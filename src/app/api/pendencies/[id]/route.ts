@@ -37,7 +37,8 @@ async function loadPendencyAndTargetRole(id: string) {
   return { pendency, targetRole: u?.role ?? null }
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   try {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
@@ -55,7 +56,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   try {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
@@ -84,7 +86,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   try {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })

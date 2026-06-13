@@ -85,6 +85,12 @@ interface Evaluation {
   items?:       EvalItem[]
   services?:    EvalService[]
   attachments?: EvalAttachment[]
+  // Decisão do cliente + disponibilidade pra operações
+  customerDecision?:     string | null
+  customerDecisionAt?:   string | null
+  customerDecisionNote?: string | null
+  availableFor?:         string | null   // CSV: "COMPRA,TROCA,CONSIGNACAO"
+  proposalValidUntil?:   string | null
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -686,6 +692,9 @@ function ResumoTab({ data }: { data: Evaluation }) {
         <Info label="Avaliado" value={data.evaluatedValue != null ? fmtBRL(data.evaluatedValue) : '—'} />
       </div>
 
+      {/* Decisão do Cliente — gate pra veículo aparecer em troca/compra/consignação */}
+      <CustomerDecisionCard evaluation={data} />
+
       {Object.entries(grouped).map(([sec, rows]) => {
         const secTotal = rows.reduce((a, b) => a + b.cost, 0)
         return (
@@ -959,3 +968,192 @@ function PrecificarPanel({
 
 // Helpers de tipos não usados por enquanto, evitar warning
 void ImageIcon
+
+// ── CustomerDecisionCard — gate pra veículo aparecer em troca/compra/consignação
+function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
+  const { data: session } = useSession()
+  const router = (require('next/navigation') as typeof import('next/navigation')).useRouter()
+  void router  // evita warning quando não usar abaixo
+  const role = (session?.user as { role?: string })?.role ?? ''
+  const isManagerPlus = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role)
+
+  const decision = (evaluation.customerDecision ?? 'PENDENTE').toUpperCase()
+  const availableFor = (evaluation.availableFor ?? '').toUpperCase().split(',').filter(Boolean)
+  const released = !!evaluation.releasedAt
+
+  const [busy, setBusy]   = useState<string | null>(null)
+  const [note, setNote]   = useState('')
+  const [err, setErr]     = useState('')
+  const [showAvail, setShowAvail] = useState(false)
+  const [picks, setPicks] = useState<string[]>(availableFor.length ? availableFor : ['COMPRA', 'TROCA', 'CONSIGNACAO'])
+
+  async function setDecision(value: string, extraData?: Record<string, unknown>) {
+    setBusy(value); setErr('')
+    try {
+      const res = await fetch(`/api/evaluations/${evaluation.id}/customer-decision`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ decision: value, note: note.trim() || undefined, ...extraData }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error ?? 'Falha ao registrar decisão.')
+      window.location.reload()  // re-fetch da página (mais simples que SWR mutate)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erro inesperado.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Status visual baseado na decisão
+  const statusInfo: Record<string, { label: string; color: string; emoji: string }> = {
+    PENDENTE:   { label: 'Cliente não aceitou a proposta', color: 'border-amber-300 bg-amber-50 text-amber-900',     emoji: '⏳' },
+    ACEITA:     { label: 'Cliente aceitou a proposta',     color: 'border-emerald-300 bg-emerald-50 text-emerald-900', emoji: '✅' },
+    RECUSADA:   { label: 'Cliente recusou a proposta',     color: 'border-red-300 bg-red-50 text-red-900',           emoji: '❌' },
+    ANALISANDO: { label: 'Cliente está analisando',         color: 'border-blue-300 bg-blue-50 text-blue-900',        emoji: '🤔' },
+    EXPIRADA:   { label: 'Proposta vencida',                color: 'border-gray-300 bg-gray-50 text-gray-700',        emoji: '⏰' },
+    CANCELADA:  { label: 'Proposta cancelada',              color: 'border-gray-300 bg-gray-50 text-gray-700',        emoji: '🚫' },
+  }
+  const status = statusInfo[decision] ?? statusInfo.PENDENTE
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="border-b border-gray-100 bg-gray-50 px-4 py-2.5">
+        <h3 className="text-sm font-semibold text-gray-800">Decisão do Cliente</h3>
+      </div>
+
+      <div className="space-y-3 p-4">
+        {!released && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            ⚠️ Avaliação ainda não foi liberada pelo gerente. A decisão do cliente só vale após liberação.
+          </p>
+        )}
+
+        {/* Status atual */}
+        <div className={`rounded-lg border-2 ${status.color} px-4 py-3`}>
+          <p className="text-base font-semibold">
+            <span className="mr-2">{status.emoji}</span>
+            {status.label}
+          </p>
+          {evaluation.customerDecisionAt && (
+            <p className="mt-1 text-xs opacity-80">
+              em {new Date(evaluation.customerDecisionAt).toLocaleString('pt-BR')}
+            </p>
+          )}
+          {evaluation.customerDecisionNote && (
+            <p className="mt-1 text-xs italic opacity-80">"{evaluation.customerDecisionNote}"</p>
+          )}
+          {decision === 'ACEITA' && availableFor.length > 0 && (
+            <p className="mt-2 text-xs">
+              <strong>Disponível para:</strong> {availableFor.join(' · ').replace(/CONSIGNACAO/g, 'Consignação').toLowerCase()
+                .replace(/(^|\s)\S/g, c => c.toUpperCase())}
+            </p>
+          )}
+        </div>
+
+        {/* Botões de ação */}
+        {released && (
+          <div className="space-y-3">
+            <textarea
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Observação / motivo (opcional)"
+            />
+
+            {/* Modal mini: escolher availableFor antes de marcar ACEITA */}
+            {showAvail ? (
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-medium text-emerald-900">
+                  Quais operações o veículo pode entrar? (gerente+ define)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(['COMPRA', 'TROCA', 'CONSIGNACAO'] as const).map((op) => {
+                    const active = picks.includes(op)
+                    return (
+                      <button
+                        key={op}
+                        type="button"
+                        onClick={() => setPicks(p => active ? p.filter(x => x !== op) : [...p, op])}
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                          active ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-700 border border-emerald-300'
+                        }`}
+                      >
+                        {op === 'CONSIGNACAO' ? 'Consignação' : op.charAt(0) + op.slice(1).toLowerCase()}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={busy != null || picks.length === 0}
+                    onClick={() => setDecision('ACEITA', { availableFor: picks })}
+                    className="flex-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Confirmar aceite
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAvail(false)}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {decision !== 'ACEITA' && (
+                  <button
+                    type="button"
+                    disabled={busy != null}
+                    onClick={() => isManagerPlus ? setShowAvail(true) : setDecision('ACEITA')}
+                    className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    ✅ Cliente aceitou
+                  </button>
+                )}
+                {decision !== 'RECUSADA' && (
+                  <button
+                    type="button"
+                    disabled={busy != null}
+                    onClick={() => setDecision('RECUSADA')}
+                    className="flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    ❌ Cliente recusou
+                  </button>
+                )}
+                {decision !== 'ANALISANDO' && (
+                  <button
+                    type="button"
+                    disabled={busy != null}
+                    onClick={() => setDecision('ANALISANDO')}
+                    className="flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    🤔 Está analisando
+                  </button>
+                )}
+                {isManagerPlus && decision !== 'EXPIRADA' && decision !== 'CANCELADA' && (
+                  <button
+                    type="button"
+                    disabled={busy != null}
+                    onClick={() => setDecision('CANCELADA')}
+                    className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    🚫 Cancelar proposta
+                  </button>
+                )}
+              </div>
+            )}
+
+            {err && (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

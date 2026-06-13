@@ -30,7 +30,8 @@ async function getSeller(id: string, tenantId: string | null, role: string) {
 
 // ── PATCH — Atualizar vendedor ───────────────────────────────────────────────
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!hasRole(user.role, MANAGEMENT_ROLES)) return forbiddenResponse()
@@ -106,7 +107,8 @@ export { PATCH as PUT }
 
 // ── DELETE — Excluir vendedor ────────────────────────────────────────────────
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
+  /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!hasRole(user.role, MANAGEMENT_ROLES)) return forbiddenResponse()

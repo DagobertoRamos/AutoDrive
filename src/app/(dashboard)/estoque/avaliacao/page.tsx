@@ -1497,7 +1497,8 @@ function AvaliacaoForm() {
             </Link>
             <button
               type="button"
-              disabled={(!documentUploaded && !documentSkipped) || !plate || !(brandName || manualBrand || lookupData?.brand) || !(modelName || manualModel || lookupData?.model) || !unitId || !conditionType || autoSavingDraft}
+              disabled={!documentUploaded || !plate || !(brandName || manualBrand || lookupData?.brand) || !(modelName || manualModel || lookupData?.model) || !unitId || !conditionType || autoSavingDraft}
+              title={!documentUploaded ? 'CRLV obrigatório — envie o documento do veículo antes de prosseguir.' : ''}
               onClick={async () => {
                 // Persiste manualBrand/manualModel a partir das combos FIPE
                 // selecionadas. Quando o catálogo FIPE não casou (brandName
@@ -1515,7 +1516,8 @@ function AvaliacaoForm() {
                 // Cria RASCUNHO no backend para habilitar EvaluationSections / CautelarUploader
                 const id = await ensureDraft()
                 if (!id) return  // erro já exibido
-                setStep(4)  // pula direto pra Cautelar — FIPE/Preços removida do fluxo
+                // Fluxo novo: Veículo → Avaliação → Cautelar → Resumo
+                setStep(5)
               }}
               className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
             >
@@ -1558,24 +1560,26 @@ function AvaliacaoForm() {
             <Field label="Status da Cautelar" required>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { v: 'SEM_CAUTELAR',    l: 'Sem Cautelar',      cls: 'border-gray-300 text-gray-600' },
-                  { v: 'PENDENTE',        l: 'Pendente',           cls: 'border-amber-400 text-amber-700' },
-                  { v: 'APROVADA',        l: 'Aprovada',           cls: 'border-emerald-400 text-emerald-700' },
-                  { v: 'REPROVADA',       l: 'Reprovada',          cls: 'border-red-400 text-red-700' },
-                  { v: 'COM_APONTAMENTO', l: 'Com Apontamento',    cls: 'border-orange-400 text-orange-700' },
-                ].map(({ v, l, cls }) => (
-                  <button
-                    key={v} type="button"
-                    onClick={() => setCautelarStatus(v)}
-                    className={[
-                      'rounded-lg border-2 px-4 py-2 text-sm font-medium transition-colors',
-                      cautelarStatus === v ? `${cls} bg-opacity-10 bg-current` : 'border-gray-200 text-gray-500 hover:border-gray-300',
-                      cautelarStatus === v ? 'ring-2 ring-offset-1 ring-current' : '',
-                    ].join(' ')}
-                  >
-                    {l}
-                  </button>
-                ))}
+                  { v: 'SEM_CAUTELAR',    l: 'Sem Cautelar',    active: 'border-gray-400 bg-gray-100 text-gray-800 ring-gray-300' },
+                  { v: 'PENDENTE',        l: 'Pendente',        active: 'border-amber-400 bg-amber-50 text-amber-800 ring-amber-300' },
+                  { v: 'APROVADA',        l: 'Aprovada',        active: 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-emerald-300' },
+                  { v: 'REPROVADA',       l: 'Reprovada',       active: 'border-red-500 bg-red-50 text-red-800 ring-red-300' },
+                  { v: 'COM_APONTAMENTO', l: 'Com Apontamento', active: 'border-orange-500 bg-orange-50 text-orange-800 ring-orange-300' },
+                ].map(({ v, l, active }) => {
+                  const selected = cautelarStatus === v
+                  return (
+                    <button
+                      key={v} type="button"
+                      onClick={() => setCautelarStatus(v)}
+                      className={[
+                        'rounded-lg border-2 px-4 py-2 text-sm font-medium transition-colors',
+                        selected ? `${active} ring-2 ring-offset-1` : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50',
+                      ].join(' ')}
+                    >
+                      {l}
+                    </button>
+                  )
+                })}
               </div>
             </Field>
             <Grid cols={2}>
@@ -1603,12 +1607,13 @@ function AvaliacaoForm() {
             )}
           </div>
 
+          {/* Cautelar é PÓS avaliação no novo fluxo: anterior = Avaliação (5), próxima = Resumo (6) */}
           <div className="flex justify-between pt-2">
-            <button type="button" onClick={() => setStep(1)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-              <ArrowLeft className="h-4 w-4" /> Anterior
+            <button type="button" onClick={() => setStep(5)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              <ArrowLeft className="h-4 w-4" /> Voltar à avaliação
             </button>
-            <button type="button" onClick={() => setStep(5)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">
-              Próxima <ArrowRight className="h-4 w-4" />
+            <button type="button" onClick={() => setStep(6)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">
+              Ir para resumo <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -1623,6 +1628,8 @@ function AvaliacaoForm() {
                 evaluationId={evaluationId}
                 evaluationStatus={evalStatus}
                 reopenCount={evalReopenCount}
+                onBack={() => setStep(1)}
+                onComplete={() => setStep(4)}
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -1630,15 +1637,7 @@ function AvaliacaoForm() {
               </div>
             )}
           </Section>
-
-          <div className="flex justify-between pt-2">
-            <button type="button" onClick={() => setStep(4)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-              <ArrowLeft className="h-4 w-4" /> Anterior
-            </button>
-            <button type="button" onClick={() => setStep(6)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">
-              Próxima <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
+          {/* Navegação fica DENTRO de EvaluationSections (Anterior seção / Próxima seção / Concluir avaliação) */}
         </div>
       )}
 
@@ -1676,8 +1675,8 @@ function AvaliacaoForm() {
           </Section>
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <button type="button" onClick={() => setStep(5)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-              <ArrowLeft className="h-4 w-4" /> Anterior
+            <button type="button" onClick={() => setStep(4)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              <ArrowLeft className="h-4 w-4" /> Voltar à cautelar
             </button>
 
             <div className="flex flex-wrap gap-3">

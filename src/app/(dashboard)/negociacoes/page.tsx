@@ -30,6 +30,8 @@ import {
   Ban,
   Sheet,
   AlertTriangle,
+  LayoutGrid,
+  List as ListIcon,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 
@@ -296,6 +298,7 @@ export default function NegociacoesPage() {
   const [deals, setDeals]           = useState<Deal[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
   const [byType, setByType]         = useState<Record<string, number>>({})
+  const [byStatus, setByStatus]     = useState<Record<string, number>>({})
   const [loading, setLoading]       = useState(false)
   const [fetchError, setFetchError] = useState('')
   const [search, setSearch]         = useState('')
@@ -303,6 +306,16 @@ export default function NegociacoesPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage]             = useState(1)
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null)
+
+  // Modo de exibição (lista | cards) — persiste em localStorage
+  const [viewMode, setViewMode] = useState<'list' | 'cards'>(() => {
+    if (typeof window === 'undefined') return 'list'
+    return (localStorage.getItem('negociacoes:view') as 'list' | 'cards') ?? 'list'
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem('negociacoes:view', viewMode)
+  }, [viewMode])
 
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -340,6 +353,7 @@ export default function NegociacoesPage() {
       setDeals(list)
       setPagination(json.pagination ?? null)
       setByType(json.byType ?? {})
+      setByStatus(json.byStatus ?? {})
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Erro ao carregar negociações'
       console.error('[Motor de Negociações] Falha ao buscar negociações:', msg)
@@ -376,11 +390,12 @@ export default function NegociacoesPage() {
   }
 
   const summaryCards = [
-    { label: 'Total',        count: pagination?.total  ?? 0, icon: Handshake,     color: 'bg-brand-50 text-brand-700 border-brand-100' },
-    { label: 'Vendas',       count: byType.VENDA       ?? 0, icon: TrendingUp,    color: 'bg-green-50  text-green-700  border-green-100'  },
-    { label: 'Compras',      count: byType.COMPRA      ?? 0, icon: ShoppingCart,  color: 'bg-blue-50   text-blue-700   border-blue-100'   },
-    { label: 'Trocas',       count: byType.TROCA       ?? 0, icon: ArrowLeftRight, color: 'bg-purple-50 text-purple-700 border-purple-100' },
-    { label: 'Consignações', count: byType.CONSIGNACAO ?? 0, icon: Package,       color: 'bg-amber-50  text-amber-700  border-amber-100'  },
+    { label: 'Total',        count: pagination?.total      ?? 0, icon: Handshake,      color: 'bg-brand-50 text-brand-700 border-brand-100' },
+    { label: 'Vendas',       count: byType.VENDA           ?? 0, icon: TrendingUp,     color: 'bg-green-50  text-green-700  border-green-100'  },
+    { label: 'Compras',      count: byType.COMPRA          ?? 0, icon: ShoppingCart,   color: 'bg-blue-50   text-blue-700   border-blue-100'   },
+    { label: 'Trocas',       count: byType.TROCA           ?? 0, icon: ArrowLeftRight, color: 'bg-purple-50 text-purple-700 border-purple-100' },
+    { label: 'Consignações', count: byType.CONSIGNACAO     ?? 0, icon: Package,        color: 'bg-amber-50  text-amber-700  border-amber-100'  },
+    { label: 'Canceladas',   count: byStatus.CANCELADA     ?? 0, icon: XCircle,        color: 'bg-red-50    text-red-700    border-red-100'    },
   ]
 
   return (
@@ -442,7 +457,7 @@ export default function NegociacoesPage() {
       )}
 
       {/* Cards de resumo */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {summaryCards.map((card) => {
           const Icon = card.icon
           return (
@@ -504,6 +519,38 @@ export default function NegociacoesPage() {
             <X size={13} /> Limpar
           </button>
         )}
+
+        {/* Toggle de visualização (lista | cards) — compacto, profissional */}
+        <div className="ml-auto inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            title="Exibir em lista"
+            aria-pressed={viewMode === 'list'}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              viewMode === 'list'
+                ? 'bg-white text-brand-700 shadow-sm'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <ListIcon size={13} />
+            <span className="hidden sm:inline">Lista</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('cards')}
+            title="Exibir em cards"
+            aria-pressed={viewMode === 'cards'}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              viewMode === 'cards'
+                ? 'bg-white text-brand-700 shadow-sm'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <LayoutGrid size={13} />
+            <span className="hidden sm:inline">Cards</span>
+          </button>
+        </div>
       </div>
 
       {/* Tabela */}
@@ -540,6 +587,72 @@ export default function NegociacoesPage() {
             >
               <Plus size={14} /> Nova Negociação
             </Link>
+          </div>
+        ) : viewMode === 'cards' ? (
+          <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+            {deals.map((deal) => {
+              const clientName = deal.person?.nomeCompleto ?? deal.customer?.name ?? '—'
+              const mainVehicle = deal.vehicles?.find((v) => v.role === 'VENDIDO' || v.role === 'COMPRADO' || v.role === 'CONSIGNADO') ?? deal.vehicles?.[0]
+              const amount = deal.totalPayments ?? deal.saleAmount ?? deal.vehicleValue
+              return (
+                <button
+                  key={deal.id}
+                  type="button"
+                  onClick={() => router.push('/negociacoes/' + deal.id)}
+                  className="group flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-shadow hover:border-brand-300 hover:shadow-md"
+                >
+                  {/* Header: número + tipo + status */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <FileText size={11} />
+                        <span className="font-mono">{deal.dealNumber ?? deal.id.slice(0, 8)}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <TypeBadge type={deal.type} />
+                        {deal.source === 'PLANILHA' && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                            <Sheet size={9} /> Importada
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <StatusBadge status={deal.status} />
+                  </div>
+
+                  {/* Cliente */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Cliente</p>
+                    <p className="font-medium text-gray-900 line-clamp-1">{clientName}</p>
+                  </div>
+
+                  {/* Veículo */}
+                  {mainVehicle && (
+                    <div className="flex items-center gap-1.5 text-sm text-gray-700">
+                      <Car size={13} className="text-gray-400 shrink-0" />
+                      <span className="line-clamp-1">
+                        {[mainVehicle.brand, mainVehicle.model].filter(Boolean).join(' ')}
+                        {mainVehicle.plate && <span className="ml-1 font-mono text-xs text-gray-400">· {mainVehicle.plate}</span>}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Footer: valor + vendedor + data + ações */}
+                  <div className="mt-auto flex items-end justify-between gap-2 border-t border-gray-100 pt-3">
+                    <div className="min-w-0">
+                      <p className="text-lg font-bold text-gray-900">{amount ? fmtBRL(amount) : '—'}</p>
+                      <p className="truncate text-[11px] text-gray-500">
+                        {deal.seller?.user?.name ?? deal.seller?.fullName ?? deal.sellerNameFromSheet ?? 'sem vendedor'}
+                      </p>
+                      <p className="text-[10px] text-gray-400">{fmtDate(deal.createdAt)}</p>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                      <ActionsMenu deal={deal} role={role} onAction={handleAction} />
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         ) : (
           <table className="w-full text-sm">

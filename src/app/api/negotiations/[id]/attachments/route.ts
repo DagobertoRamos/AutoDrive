@@ -41,14 +41,28 @@ async function loadDeal(id: string) {
   })
 }
 
+// Next 16: params virou Promise. Helper local.
+async function resolveDealId(
+  ctxArg: { params: { id: string } | Promise<{ id: string }> },
+): Promise<string | null> {
+  const params = await Promise.resolve(ctxArg.params)
+  return params?.id ?? null
+}
+
 // ── GET ──────────────────────────────────────────────────────────────────────
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  req: NextRequest,
+  ctxArg: { params: { id: string } | Promise<{ id: string }> },
+) {
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
 
-  const deal = await loadDeal(params.id)
+  const dealId = await resolveDealId(ctxArg)
+  if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
+
+  const deal = await loadDeal(dealId)
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
   if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
     return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
@@ -59,7 +73,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const data = await prisma.dealAttachment.findMany({
       where: {
-        dealId:   params.id,
+        dealId,
         ...(category && VALID_CATEGORIES.has(category) ? { category: category as any } : {}),
       },
       orderBy: { uploadedAt: 'desc' },
@@ -71,13 +85,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 // ── POST ─────────────────────────────────────────────────────────────────────
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  req: NextRequest,
+  ctxArg: { params: { id: string } | Promise<{ id: string }> },
+) {
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
 
-  const deal = await loadDeal(params.id)
+  const dealId = await resolveDealId(ctxArg)
+  if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
+
+  const deal = await loadDeal(dealId)
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
   if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
     return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
@@ -99,11 +119,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   try {
     const bytes = Buffer.from(await file.arrayBuffer())
-    const saved = await saveDealAttachment(params.id, file.name, file.type, bytes)
+    const saved = await saveDealAttachment(dealId, file.name, file.type, bytes)
 
     const att = await prisma.dealAttachment.create({
       data: {
-        dealId:         params.id,
+        dealId,
         tenantId:       deal.tenantId,
         category:       category as any,
         fileName:       saved.fileName,
