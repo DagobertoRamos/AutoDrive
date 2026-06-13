@@ -59,6 +59,7 @@ import {
   Smartphone,
   Plug,
   Palette,
+  Target,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -115,6 +116,16 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Regras',      href: '/comissoes/regras',   icon: ListChecks,      module: 'commissions.rules' },
       { label: 'Retornos',    href: '/comissoes/retornos', icon: ArrowLeftRight,  module: 'commissions.rules' },
       { label: 'Garantias',   href: '/comissoes/garantias',icon: Shield,          module: 'commissions.rules' },
+    ],
+  },
+
+  // ── METAS ───────────────────────────────────────────────────────────────────
+  {
+    label: 'Metas',
+    icon:  Target,
+    module: 'goals.manage',
+    children: [
+      { label: 'Gerenciar Metas', href: '/metas', icon: Target, module: 'goals.manage' },
     ],
   },
 

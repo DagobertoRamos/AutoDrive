@@ -85,6 +85,10 @@ export type Module =
   | 'master.billing'
   | 'master.integrations'
   | 'master.audit'
+  | 'goals'                       // ver metas
+  | 'goals.manage'                // criar/configurar metas e níveis
+  | 'ranking'                     // ver ranking
+  | 'ranking.configure'           // configurar pesos do ranking
 
 // ── Hierarquia numérica de roles ─────────────────────────────────────────────
 // Quanto maior, mais alto na hierarquia
@@ -326,6 +330,22 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'master.audit': {
     roles: ['MASTER'],
     actions: ['read', 'export'],
+  },
+  goals: {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'goals.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
+    actions: ['read', 'create', 'update', 'delete', 'configure'],
+  },
+  ranking: {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read'],
+  },
+  'ranking.configure': {
+    roles: ['MASTER', 'ADM'],
+    actions: ['read', 'configure'],
   },
 }
 
