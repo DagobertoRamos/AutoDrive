@@ -198,7 +198,7 @@ async function computeSellerMetrics(
   }
 }
 
-function pointsFor(m: RankingMetrics, weights: RuleWeights): number {
+export function pointsFor(m: RankingMetrics, weights: RuleWeights): number {
   return (
     m.sales * weights.weightSale +
     m.purchases * weights.weightPurchase +
@@ -213,7 +213,7 @@ function pointsFor(m: RankingMetrics, weights: RuleWeights): number {
 }
 
 /** Índice de qualidade da venda: aproveitamento agregado por venda. */
-function qualityFor(m: RankingMetrics): number {
+export function qualityFor(m: RankingMetrics): number {
   if (m.sales <= 0) return 0
   const complementary = m.documentations + m.warranties + m.services + m.returns
   return Math.round((complementary / m.sales) * 10000) / 100
@@ -226,7 +226,7 @@ function metricValue(e: RankingEntry, key: string): number {
   return (e.metrics as unknown as Record<string, number>)[key] ?? 0
 }
 
-function sortRanking(entries: RankingEntry[], tiebreakers: string[]): RankingEntry[] {
+export function sortRanking(entries: RankingEntry[], tiebreakers: string[]): RankingEntry[] {
   return [...entries].sort((a, b) => {
     if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints
     for (const key of tiebreakers) {

@@ -91,6 +91,22 @@
 - **Validações:** `tsc` limpo; `npm run lint` (novos) 0 problemas; `npm run build` OK (rota registrada).
 - **Observações p/ próxima IA:** avisos aparecem na central de notificações existente (NotificationCenter) — não criei UI nova. Disparo é manual via rota; pode ser agendado por cron depois. Thresholds em constantes no topo do scanner (MIN_ELAPSED, PACE_MARGIN). Não verificado visualmente.
 
+### LOG 0007 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Fase 9 — Testes automatizados (unitários da lógica de negócio).
+- **Infra:** instalado **vitest** (devDep); `vitest.config.ts` (alias `@`→src, env node); scripts `test`/`test:watch` no package.json.
+- **Testes criados (34, todos passando):**
+  - `src/lib/finance/return-calc.test.ts`: retorno (bruto/ILA/IOF/líquido, clamp 0–6, comissão sobre líquido, negativos).
+  - `src/lib/warranty/warranty-calc.test.ts`: vendas V1/V2/V3 da spec (preço + comissão).
+  - `src/lib/permissions.test.ts`: RBAC por módulo (master, goals.manage, ranking.configure, negotiations.financing, garantias).
+  - `src/lib/auth-guards.test.ts`: isolamento multi-tenant (tenantWhere/assertTenantId/hasRole).
+  - `src/lib/goals/progression.test.ts`: progressão de níveis (currentLevel/nextLevelTarget).
+  - `src/lib/ranking/ranking.test.ts`: pontuação, qualidade, desempate e janela de período.
+- **Mudança de apoio:** exportados `pointsFor`/`qualityFor`/`sortRanking` em `lib/ranking/service.ts` (eram privados) p/ testar o desempate.
+- **Validações:** `npm run test` 34/34; `tsc` limpo; `npm run build` OK.
+- **ACHADO (decisão p/ usuário):** `GERENTE_ADMINISTRATIVO` está em MANAGEMENT_ROLES mas NÃO em `goals.manage` (módulo criado antes do perfil). Ver pendência. NÃO alterei permissões (fora do escopo).
+- **Observações p/ próxima IA:** testes cobrem LÓGICA PURA. Faltam testes de integração de rotas/DB (precisam de banco de teste/mocks) — ver pendência Fase 9 (resto).
+
 ---
 
 ## TAREFAS PENDENTES
@@ -106,7 +122,9 @@
 - [x] Tela de **configuração de pesos do ranking** — CONCLUÍDO no LOG 0003 (`/ranking/configuracao`).
 - [ ] **Páginas de Ranking** dedicadas (geral/unidade) além do `/desempenho`.
 - [x] **Fase 5 — Avisos de meta** — CONCLUÍDO no LOG 0006 (goalAlertScanner + /api/goals/scan-alerts/run, via NotificationService).
-- [ ] **Fase 9 — Testes automatizados** (permissões, isolamento tenant, progressão de meta, desempate, retorno/garantia) e docs.
+- [x] **Fase 9 — Testes unitários** — CONCLUÍDO no LOG 0007 (vitest; 34 testes de lógica pura). 
+- [ ] **Fase 9 — Testes de integração** (rotas/API, login, não-vazamento de tenant em queries reais) — precisa de banco de teste/mocks.
+- [ ] **DECISÃO:** `GERENTE_ADMINISTRATIVO` deve poder gerir metas (`goals.manage`)? Hoje não está no módulo, mas está em MANAGEMENT_ROLES. Se sim, adicionar o perfil em `goals.manage` (e revisar outros módulos de gestão criados antes do perfil). Teste documenta o estado atual.
 
 ### Agregadores (Metas/Ranking) — CONCLUÍDO (LOG 0003)
 - [x] `EXTENDED_WARRANTY` conta `WarrantySale` ATIVA; `RETURN` conta deals com `returnNetValue > 0`. Não são mais provisórios.
