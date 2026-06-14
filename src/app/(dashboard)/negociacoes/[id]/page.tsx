@@ -41,6 +41,8 @@ import { canAccessModule } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { calculateNegotiationFinancialSummary, dealToFinancialInput } from '@/lib/negotiation-service'
 import Phase2Panel from './_components/Phase2Panel'
+import ReturnPanel from './_components/ReturnPanel'
+import WarrantySalesPanel from './_components/WarrantySalesPanel'
 import DealSummary from './_components/DealSummary'
 import AttachmentUploader, { type Attachment } from './_components/AttachmentUploader'
 import ContractsTab from './_components/ContractsTab'
@@ -1741,6 +1743,20 @@ export default function NegociacaoDetailPage() {
               />
             )
           })()}
+
+          {/* Retorno financeiro + Garantia (módulo Retorno/Garantia) */}
+          <ReturnPanel
+            dealId={deal.id}
+            canEdit={!isDealLocked(deal.status)}
+            onReload={loadDeal}
+            onToast={(m, kind) => showToast(m, kind !== 'error')}
+          />
+          <WarrantySalesPanel
+            dealId={deal.id}
+            canEdit={!isDealLocked(deal.status)}
+            onReload={loadDeal}
+            onToast={(m, kind) => showToast(m, kind !== 'error')}
+          />
 
         <SectionCard title="Resumo Financeiro (legado)" icon={<DollarSign size={15} />}>
           <div className="divide-y divide-gray-100">
