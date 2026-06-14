@@ -23,6 +23,7 @@ import {
   computeCommissionValue,
   type EmployeeKind,
 } from '@/lib/commission-matcher'
+import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import type { CommissionRuleType, Prisma, UserRole } from '@prisma/client'
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
@@ -113,6 +114,7 @@ export async function generateCommissionsForDeal(
     include: {
       vehicles: true,
       services: true,
+      warrantySales: { include: { warranty: true } },
       seller:   { select: { id: true, fullName: true, unitId: true, positionId: true, userId: true, user: { select: { role: true } } } },
       manager:  { select: { id: true, name: true, positionId: true, role: true } },
     },
@@ -185,13 +187,12 @@ export async function generateCommissionsForDeal(
   }
 
   function addForService(ds: typeof d.services[number]) {
-    // Heurística: serviço cujo nome contenha "garantia" → GARANTIA; senão SERVICO.
-    const nm = (ds.name ?? '').toLowerCase()
-    const isWarranty = nm.includes('garantia')
-    const ruleType: CommissionRuleType = isWarranty ? 'GARANTIA' : 'SERVICO'
+    // Garantias agora são registradas em WarrantySale (preço/comissão do cadastro).
+    // DealService cobre apenas serviços comuns → sempre SERVICO.
+    const ruleType: CommissionRuleType = 'SERVICO'
     const baseValue = toNum(ds.value)
     if (baseValue <= 0) return
-    const refKind = isWarranty ? { warrantyId: ds.id } : { serviceId: ds.id }
+    const refKind = { serviceId: ds.id }
     const baseDesc = `${ruleType} ${ds.name}`
 
     if (sellerEarner) {
@@ -258,8 +259,34 @@ export async function generateCommissionsForDeal(
     }
   }
 
-  // RETORNO — não há DealReturn no schema atual; pulado.
-  // (Pode ser adicionado quando o módulo de retornos bancários for modelado.)
+  // RETORNO — comissão sobre o retorno LÍQUIDO (returnNetValue), nunca o bruto.
+  // O percentual vem de uma CommissionRule(RETORNO) do vendedor/gerente/cargo —
+  // não fixo no código.
+  const returnNet = toNum(d.returnNetValue)
+  if (returnNet > 0) {
+    if (sellerEarner) {
+      items.push({
+        ruleType:      'RETORNO',
+        employeeKind:  sellerEarner.kind,
+        employeeId:    sellerEarner.id,
+        employeeLabel: sellerEarner.label,
+        baseValue:     returnNet,
+        description:   `RETORNO financeiro — vendedor ${sellerEarner.label}`,
+        reference:     { dealId: d.id, bank: d.paymentBank ?? null },
+      })
+    }
+    if (managerEarner) {
+      items.push({
+        ruleType:      'RETORNO',
+        employeeKind:  managerEarner.kind,
+        employeeId:    managerEarner.id,
+        employeeLabel: managerEarner.label,
+        baseValue:     returnNet,
+        description:   `RETORNO financeiro — gerente ${managerEarner.label}`,
+        reference:     { dealId: d.id, bank: d.paymentBank ?? null },
+      })
+    }
+  }
 
   // 3. Para cada item: resolver a regra (em paralelo) + calcular o valor
   const resolved = await Promise.all(items.map(async (it) => {
@@ -404,6 +431,69 @@ export async function generateCommissionsForDeal(
     })
   }
 
+  // ── GARANTIA — comissão por venda de garantia (valores FIXOS do cadastro) ──
+  // Não usa o matcher de regras: a comissão vem do cadastro da garantia
+  // (reduced/full + adicional prêmio). Atribuída ao vendedor. Idempotente por
+  // warrantySaleId gravado em ruleDetails.
+  if (sellerEarner && d.warrantySales.length > 0) {
+    const existingWarranty = await prisma.commissionCalculation.findMany({
+      where: {
+        tenantId,
+        ruleType: 'GARANTIA',
+        ruleDetails: { path: ['dealId'], equals: d.id } as never,
+      },
+      select: { ruleDetails: true },
+    }).catch(() => [] as Array<{ ruleDetails: unknown }>)
+
+    const doneSaleIds = new Set(
+      existingWarranty
+        .map((e) => (e.ruleDetails as { warrantySaleId?: string } | null)?.warrantySaleId)
+        .filter(Boolean) as string[],
+    )
+
+    const warrantyToCreate = d.warrantySales
+      .filter((ws) => ws.status === 'ATIVA' && !doneSaleIds.has(ws.id))
+      .map((ws) => ({ ws, comm: calculateWarrantyCommission(ws.warranty, ws.saleType, ws.hasPremiumAddon) }))
+      .filter(({ comm }) => comm.totalCommissionValue > 0)
+
+    matchedCount += warrantyToCreate.length
+
+    if (!dryRun && warrantyToCreate.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const { ws, comm } of warrantyToCreate) {
+          const label = `${ws.warranty.name} (${ws.saleType === 'FULL' ? 'cheio' : 'reduzido'}${ws.hasPremiumAddon ? ' + prêmio' : ''})`
+          await tx.commissionCalculation.create({
+            data: {
+              tenantId,
+              sellerId:        sellerEarner.id,
+              unitId,
+              period,
+              ruleType:        'GARANTIA',
+              description:     `GARANTIA ${label} — ${sellerEarner.label}`,
+              baseValue:       toNum(ws.finalPrice),
+              commissionValue: comm.totalCommissionValue,
+              ruleDetails: {
+                dealId:           d.id,
+                warrantySaleId:   ws.id,
+                warrantyId:       ws.warrantyId,
+                saleType:         ws.saleType,
+                hasPremiumAddon:  ws.hasPremiumAddon,
+                baseCommission:   comm.baseCommissionValue,
+                premiumCommission: comm.premiumCommissionValue,
+                employeeKind:     'SELLER',
+                employeeId:       sellerEarner.id,
+                employeeLabel:    sellerEarner.label,
+                triggeredBy:      opts.triggeredBy,
+              } as Prisma.JsonObject,
+              status: 'PREVISTO',
+            },
+          })
+          created++
+        }
+      })
+    }
+  }
+
   return {
     dealId:    d.id,
     created,
@@ -411,6 +501,29 @@ export async function generateCommissionsForDeal(
     unmatched: unmatchedCount,
     items:     resultItems,
   }
+}
+
+// ── Recálculo de comissões da negociação ──────────────────────────────────────
+
+/**
+ * Recalcula as comissões PREVISTAS de uma negociação: remove as PREVISTO
+ * existentes (preserva APROVADO/PAGO/AJUSTADO) e regenera a partir do estado
+ * atual do deal (venda, retorno líquido, garantias). Chamar quando mudar valor
+ * financiado, % de retorno, ILA/IOF, vendedor/gerente ou garantias.
+ */
+export async function recalculateNegotiationCommissions(
+  opts: GenerateOptions,
+): Promise<GenerationResult> {
+  if (!opts.dryRun) {
+    await prisma.commissionCalculation.deleteMany({
+      where: {
+        tenantId: opts.tenantId,
+        status:   'PREVISTO',
+        ruleDetails: { path: ['dealId'], equals: opts.dealId } as never,
+      },
+    }).catch(() => { /* sem registros ou JSON path indisponível — segue */ })
+  }
+  return generateCommissionsForDeal(opts)
 }
 
 // ── Helpers para enriquecimento (positionId/role do employee) ────────────────
