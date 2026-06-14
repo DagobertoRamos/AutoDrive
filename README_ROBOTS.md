@@ -62,13 +62,23 @@
 - **Validações:** `tsc` limpo; `npm run lint` (novos) sem erros (1 warning advisory); `npm run build` OK (/ranking/configuracao registrada).
 - **Observações p/ próxima IA:** não mexi em schema/permissões/cálculo. Pesos podem ser negativos (penalizações). Não verificado visualmente.
 
+### LOG 0004 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree). Verificação visual — sem alteração de código.
+- **Tarefa:** Verificação visual no navegador (Chrome MCP, login real do usuário).
+- **Verificado (renderiza correto):**
+  - `/cadastros/garantias`: tabela (Nome/Cobertura/Cheio/Reduzido/Prêmio/Status) + modal rico; toggle "Possui adicional prêmio/luxo?" revela nome/valor/comissão do adicional.
+  - Negociação → aba Valores: painel **Retorno financeiro** (valor financiado, % 0–6 com máscara, ILA/IOF editáveis p/ MASTER, retorno bruto/líquido, salvar) e painel **Garantia** (select garantia + tipo de venda); Phase2Panel e Resumo legado intactos.
+  - `/ranking/configuracao`: pesos com defaults da spec (100/40/25/20/30/20/−15…), menu "Configurar Pesos" ativo.
+- **Observações p/ próxima IA:** catálogo de garantias estava vazio (garantia de teste foi removida em LOG 0001) — por isso o select de garantia na negociação aparece vazio; cadastre uma garantia para testar a venda ponta a ponta. Sessão do navegador expira (~horas) — pode precisar relogar.
+
 ---
 
 ## TAREFAS PENDENTES
 > **Não alterar sem autorização do usuário.** Marcar `[em andamento]` ao iniciar e mover para LOG ao concluir.
 
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
-- [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (componentes ReturnPanel + WarrantySalesPanel montados na aba "valores"). Falta verificação visual no navegador.
+- [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").
+- [x] **Verificação visual** das telas novas — CONCLUÍDO no LOG 0004 (garantias, negociação Valores, configuração de pesos).
 - [ ] **Views de comissão** (`/comissoes/retornos`, `/comissoes/garantias`, extrato): exibir comissões de RETORNO e GARANTIA (já categorizadas pelo motor).
 - [ ] **Verificação visual** do cadastro de garantias e do painel no navegador.
 
