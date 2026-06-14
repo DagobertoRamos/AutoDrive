@@ -82,6 +82,15 @@
 - **Validações:** `tsc` limpo; `npm run lint` (novos) sem erros (1 warning advisory); `npm run build` OK (rotas registradas).
 - **Observações p/ próxima IA:** não mexi em /comissoes/extrato nem nas tabelas. CommissionExtract continua sendo o extrato consolidado por período (fluxo separado). Não verificado visualmente.
 
+### LOG 0006 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Fase 5 — Avisos de meta (meta abaixo do esperado), integrado a Notificações.
+- **Arquivos criados:**
+  - `src/services/goalAlertScanner.ts`: varre metas ATIVAS no período, calcula progresso (computeGoalProgress), e quando o realizado está atrás do ritmo esperado (decorrido ≥25% e %realizado < ritmo*0.8, não atingida) dispara aviso reusando `notify`/`notifyByRole` (NotificationService). USER → notifica o vendedor; UNIT/TENANT → notifica gestores (da unidade quando UNIT). Idempotente: 1 aviso por meta/período (dedupe via metadata.goalId desde startDate). Tipo de notificação SISTEMA.
+  - `src/app/api/goals/scan-alerts/run/route.ts`: POST dispara a varredura (MASTER/ADM/GERENTE_GERAL; MASTER sem tenantId varre todos). Espelha /api/pendency-scan/run.
+- **Validações:** `tsc` limpo; `npm run lint` (novos) 0 problemas; `npm run build` OK (rota registrada).
+- **Observações p/ próxima IA:** avisos aparecem na central de notificações existente (NotificationCenter) — não criei UI nova. Disparo é manual via rota; pode ser agendado por cron depois. Thresholds em constantes no topo do scanner (MIN_ELAPSED, PACE_MARGIN). Não verificado visualmente.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -96,7 +105,7 @@
 ### Metas + Ranking — PENDENTE
 - [x] Tela de **configuração de pesos do ranking** — CONCLUÍDO no LOG 0003 (`/ranking/configuracao`).
 - [ ] **Páginas de Ranking** dedicadas (geral/unidade) além do `/desempenho`.
-- [ ] **Fase 5 — Avisos de meta** (meta abaixo do esperado → integrar a Pendências/Notificações).
+- [x] **Fase 5 — Avisos de meta** — CONCLUÍDO no LOG 0006 (goalAlertScanner + /api/goals/scan-alerts/run, via NotificationService).
 - [ ] **Fase 9 — Testes automatizados** (permissões, isolamento tenant, progressão de meta, desempate, retorno/garantia) e docs.
 
 ### Agregadores (Metas/Ranking) — CONCLUÍDO (LOG 0003)
