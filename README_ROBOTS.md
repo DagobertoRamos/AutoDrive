@@ -52,6 +52,16 @@
 - **Validações:** `tsc --noEmit` limpo; `npm run lint` (arquivos novos) sem erros (2 warnings advisory set-state-in-effect); `npm run build` OK.
 - **Observações p/ próxima IA:** componentes autocontidos (consomem `/api/negotiations/[id]/return` e `.../warranty-sales`). Backend já validado no LOG 0001. Não verificado visualmente no navegador ainda. Não mexi em schema/permissões/cálculo.
 
+### LOG 0003 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Config de pesos do ranking (UI) + refino dos agregadores.
+- **Arquivos alterados/criados:**
+  - `src/lib/goals/aggregators.ts`: `EXTENDED_WARRANTY` agora conta `WarrantySale` ATIVA em deals concluídos (antes era heurística por nome de serviço); `RETURN` conta deals concluídos com `returnNetValue > 0` (antes retornava 0). Removidas as notas "provisório". Afeta Metas E Ranking (o ranking reusa estes agregadores).
+  - `src/app/(dashboard)/ranking/configuracao/page.tsx` (novo): UI dos 9 pesos + nome + restaurar padrões + desempate (read-only), sobre `/api/ranking/rules` (GET/PUT).
+  - `src/components/layout/navigation.ts`: item "Ranking → Configurar Pesos" (módulo `ranking.configure`, MASTER/ADM).
+- **Validações:** `tsc` limpo; `npm run lint` (novos) sem erros (1 warning advisory); `npm run build` OK (/ranking/configuracao registrada).
+- **Observações p/ próxima IA:** não mexi em schema/permissões/cálculo. Pesos podem ser negativos (penalizações). Não verificado visualmente.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -63,13 +73,13 @@
 - [ ] **Verificação visual** do cadastro de garantias e do painel no navegador.
 
 ### Metas + Ranking — PENDENTE
-- [ ] Tela de **configuração de pesos do ranking** (UI sobre `/api/ranking/rules`, backend pronto).
+- [x] Tela de **configuração de pesos do ranking** — CONCLUÍDO no LOG 0003 (`/ranking/configuracao`).
 - [ ] **Páginas de Ranking** dedicadas (geral/unidade) além do `/desempenho`.
 - [ ] **Fase 5 — Avisos de meta** (meta abaixo do esperado → integrar a Pendências/Notificações).
 - [ ] **Fase 9 — Testes automatizados** (permissões, isolamento tenant, progressão de meta, desempate, retorno/garantia) e docs.
 
-### Agregadores (Metas/Ranking) — PROVISÓRIO
-- [ ] Refinar `src/lib/goals/aggregators.ts`: `EXTENDED_WARRANTY` deve contar `WarrantySale` (status ATIVA) em vez do nome do serviço; `RETURN` pode usar `deal.returnNetValue`/comissões de retorno. Hoje são provisórios.
+### Agregadores (Metas/Ranking) — CONCLUÍDO (LOG 0003)
+- [x] `EXTENDED_WARRANTY` conta `WarrantySale` ATIVA; `RETURN` conta deals com `returnNetValue > 0`. Não são mais provisórios.
 
 ### Base — DÍVIDA TÉCNICA
 - [ ] Limpeza do **lint legado** (~33 erros + ~473 warnings pré-existentes; não mascarar regras de correção react-hooks).

@@ -96,29 +96,28 @@ async function aggDocumentation(scope: AggregationScope, w: AggregationWindow): 
 }
 
 async function aggExtendedWarranty(scope: AggregationScope, w: AggregationWindow): Promise<AggregatorResult> {
-  // AMBÍGUO no modelo atual: não há registro explícito de "garantia vendida".
-  // Interpretação provisória: itens de serviço cujo nome contém "garantia"
-  // em negociações concluídas. Confirmar regra de negócio definitiva.
-  const value = await prisma.dealService.count({
+  // Garantias estendidas vendidas = WarrantySale ATIVA em negociações concluídas
+  // no período (modelo dedicado, criado no módulo de Retorno/Garantia).
+  const value = await prisma.warrantySale.count({
     where: {
-      name: { contains: 'garantia', mode: 'insensitive' },
+      status: 'ATIVA',
       deal: { ...dealScopeWhere(scope), ...dealCompletedInWindow(w) },
     },
   })
-  return {
-    value,
-    note: 'Regra provisória: serviços com "garantia" no nome. Confirmar como registrar garantia estendida vendida.',
-  }
+  return { value }
 }
 
-async function aggReturn(_scope: AggregationScope, _w: AggregationWindow): Promise<AggregatorResult> {
-  // AMBÍGUO: não existe registro comercial de "retorno" no schema atual
-  // (MessageReturn é retorno de mensagens de WhatsApp, domínio diferente).
-  // Retornamos 0 até a regra de negócio ser definida — sem inventar dados.
-  return {
-    value: 0,
-    note: 'Tipo RETURN ainda não mapeado: definir o que conta como retorno concluído.',
-  }
+async function aggReturn(scope: AggregationScope, w: AggregationWindow): Promise<AggregatorResult> {
+  // Retornos concluídos = negociações concluídas no período (no escopo) que
+  // tiveram retorno financeiro registrado (returnNetValue > 0).
+  const value = await prisma.deal.count({
+    where: {
+      ...dealScopeWhere(scope),
+      returnNetValue: { gt: 0 },
+      ...dealCompletedInWindow(w),
+    },
+  })
+  return { value }
 }
 
 // ── Dispatch ────────────────────────────────────────────────────────────────────

@@ -136,7 +136,8 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  Trophy,
     module: 'ranking',
     children: [
-      { label: 'Desempenho', href: '/desempenho', icon: Trophy, module: 'ranking' },
+      { label: 'Desempenho',      href: '/desempenho',           icon: Trophy,   module: 'ranking' },
+      { label: 'Configurar Pesos', href: '/ranking/configuracao', icon: Settings, module: 'ranking.configure' },
     ],
   },
 
