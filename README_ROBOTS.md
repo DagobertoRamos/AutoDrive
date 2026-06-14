@@ -116,6 +116,18 @@
 - **Validações:** `npm test` 34/34; `tsc` limpo; `npm run build` OK.
 - **Observações:** módulos de gestão criados em Fase A (negotiations, etc.) já incluíam GERENTE_ADMINISTRATIVO; só os de Metas/Ranking (criados antes do perfil) estavam defasados — agora alinhados.
 
+### LOG 0009 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Páginas de Ranking dedicadas (geral/unidade).
+- **Arquivos criados/alterados:**
+  - `src/components/ranking/RankingTable.tsx` (novo): tabela de ranking reutilizável (busca /api/ranking por período+unidade; props period/unitId/highlightUserId/reloadKey).
+  - `src/app/(dashboard)/ranking/geral/page.tsx` (novo): Ranking Geral (período + RankingTable).
+  - `src/app/(dashboard)/ranking/unidade/page.tsx` (novo): Ranking da Unidade (gestor escolhe unidade; vendedor restrito pelo backend).
+  - `src/app/(dashboard)/desempenho/page.tsx`: refatorado para REUSAR RankingTable (removida a tabela inline duplicada; mantidas metas agregadas + filtros). Sem perda de função.
+  - `src/components/layout/navigation.ts`: itens "Ranking Geral" e "Ranking da Unidade" (módulo `ranking`).
+- **Validações:** `tsc` limpo; lint (novos) sem erros; `npm test` 34/34; `npm run build` OK (rotas registradas).
+- **Observações p/ próxima IA:** escopo (geral×unidade) é decidido no backend (/api/ranking): vendedor sempre restrito à própria unidade. Não verificado visualmente.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -129,7 +141,7 @@
 
 ### Metas + Ranking — PENDENTE
 - [x] Tela de **configuração de pesos do ranking** — CONCLUÍDO no LOG 0003 (`/ranking/configuracao`).
-- [ ] **Páginas de Ranking** dedicadas (geral/unidade) além do `/desempenho`.
+- [x] **Páginas de Ranking** dedicadas (geral/unidade) — CONCLUÍDO no LOG 0009 (RankingTable reutilizável + /ranking/geral + /ranking/unidade; /desempenho refatorado).
 - [x] **Fase 5 — Avisos de meta** — CONCLUÍDO no LOG 0006 (goalAlertScanner + /api/goals/scan-alerts/run, via NotificationService).
 - [x] **Fase 9 — Testes unitários** — CONCLUÍDO no LOG 0007 (vitest; 34 testes de lógica pura). 
 - [ ] **Fase 9 — Testes de integração** (rotas/API, login, não-vazamento de tenant em queries reais) — precisa de banco de teste/mocks.
