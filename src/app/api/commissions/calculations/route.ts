@@ -1,0 +1,106 @@
+// =============================================================================
+// /api/commissions/calculations — Lançamentos de comissão (CommissionCalculation)
+// View read-only das comissões geradas pelo motor (VENDA/RETORNO/GARANTIA/...),
+// com totais por tipo. Multi-tenant; VENDEDOR vê apenas as próprias.
+// =============================================================================
+
+import { NextResponse } from 'next/server'
+import {
+  getSessionUser,
+  assertTenantId,
+  tenantWhere,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/auth-guards'
+import { canAccessModule } from '@/lib/permissions'
+import { prisma } from '@/lib/prisma'
+import { handlePrismaError } from '@/lib/prisma-errors'
+
+const num = (v: unknown): number => {
+  if (v == null) return 0
+  if (typeof v === 'number') return v
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function') return (v as { toNumber: () => number }).toNumber()
+  return Number(v) || 0
+}
+
+export async function GET(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!canAccessModule(user.role, 'commissions')) {
+    return forbiddenResponse('Sem acesso a comissões.')
+  }
+
+  try {
+    const tenantId = assertTenantId(user.tenantId, user.role)
+    const { searchParams } = new URL(req.url)
+
+    const extra: Record<string, unknown> = {}
+    const ruleType = searchParams.get('ruleType')
+    const period   = searchParams.get('period')
+    const status   = searchParams.get('status')
+    const sellerId = searchParams.get('sellerId')
+    if (ruleType) extra.ruleType = ruleType
+    if (period)   extra.period = period
+    if (status)   extra.status = status
+    if (sellerId) extra.sellerId = sellerId
+
+    // VENDEDOR / usuário comum: apenas as próprias comissões.
+    if (['VENDEDOR', 'VENDEDOR_LIDER', 'USUARIO_LIDER', 'USUARIO', 'FINANCEIRO'].includes(user.role)) {
+      const seller = await prisma.seller.findFirst({ where: { userId: user.id }, select: { id: true } })
+      extra.sellerId = seller?.id ?? '__none__'
+    }
+
+    const where = tenantWhere(user.role, tenantId, extra)
+
+    const [rows, byType] = await Promise.all([
+      prisma.commissionCalculation.findMany({
+        where,
+        orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
+        take: 500,
+        select: {
+          id: true, ruleType: true, description: true, baseValue: true, commissionValue: true,
+          status: true, period: true, sellerId: true, managerId: true, createdAt: true,
+        },
+      }),
+      prisma.commissionCalculation.groupBy({
+        by: ['ruleType'],
+        where: where as never,
+        _sum: { commissionValue: true },
+        _count: { _all: true },
+      }),
+    ])
+
+    // Resolve nomes (sellerId → Seller.fullName; managerId → User.name).
+    const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter(Boolean))] as string[]
+    const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[]
+    const [sellers, managers] = await Promise.all([
+      sellerIds.length ? prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, fullName: true, shortName: true } }) : [],
+      managerIds.length ? prisma.user.findMany({ where: { id: { in: managerIds } }, select: { id: true, name: true } }) : [],
+    ])
+    const sellerMap = Object.fromEntries(sellers.map((s) => [s.id, s.shortName || s.fullName]))
+    const userMap = Object.fromEntries(managers.map((m) => [m.id, m.name]))
+
+    const data = rows.map((r) => ({
+      id: r.id,
+      ruleType: r.ruleType,
+      description: r.description,
+      baseValue: num(r.baseValue),
+      commissionValue: num(r.commissionValue),
+      status: r.status,
+      period: r.period,
+      createdAt: r.createdAt,
+      responsavel: r.sellerId ? (sellerMap[r.sellerId] ?? '—') : r.managerId ? (userMap[r.managerId] ?? '—') : '—',
+    }))
+
+    const totalsByType = byType.map((g) => ({
+      ruleType: g.ruleType,
+      total: num(g._sum.commissionValue),
+      count: g._count._all,
+    }))
+    const grandTotal = totalsByType.reduce((s, t) => s + t.total, 0)
+
+    return NextResponse.json({ success: true, data, totalsByType, grandTotal })
+  } catch (err) {
+    return handlePrismaError(err)
+  }
+}

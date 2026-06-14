@@ -71,6 +71,17 @@
   - `/ranking/configuracao`: pesos com defaults da spec (100/40/25/20/30/20/−15…), menu "Configurar Pesos" ativo.
 - **Observações p/ próxima IA:** catálogo de garantias estava vazio (garantia de teste foi removida em LOG 0001) — por isso o select de garantia na negociação aparece vazio; cadastre uma garantia para testar a venda ponta a ponta. Sessão do navegador expira (~horas) — pode precisar relogar.
 
+### LOG 0005 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Views de comissão — exibir RETORNO e GARANTIA.
+- **Contexto:** o motor grava em `CommissionCalculation` (ruleType VENDA/RETORNO/GARANTIA/...), mas `/comissoes/extrato` lê `CommissionExtract` (tabela diferente) e `/comissoes/retornos`+`/garantias` são telas de CONFIG de regras. Por isso as comissões de retorno/garantia não apareciam. Criada view dedicada (não mexi nas telas/tabelas existentes).
+- **Arquivos criados/alterados:**
+  - `src/app/api/commissions/calculations/route.ts` (novo): GET read-only de CommissionCalculation, tenant-scoped, filtros ruleType/period/status, totais por tipo (groupBy) + total geral, resolve nomes (seller/manager). VENDEDOR/FINANCEIRO/usuário vê só as próprias.
+  - `src/app/(dashboard)/comissoes/lancamentos/page.tsx` (novo): cards de total por tipo (Venda/Retorno/Garantia/Serviço + total geral), filtros (período/tipo/status), tabela (responsável/tipo/descrição/base/comissão/status/período). Status com rótulos prevista/liberada/paga/estornada.
+  - `src/components/layout/navigation.ts`: item "Comissões → Lançamentos" (módulo `commissions`).
+- **Validações:** `tsc` limpo; `npm run lint` (novos) sem erros (1 warning advisory); `npm run build` OK (rotas registradas).
+- **Observações p/ próxima IA:** não mexi em /comissoes/extrato nem nas tabelas. CommissionExtract continua sendo o extrato consolidado por período (fluxo separado). Não verificado visualmente.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -79,7 +90,7 @@
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
 - [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").
 - [x] **Verificação visual** das telas novas — CONCLUÍDO no LOG 0004 (garantias, negociação Valores, configuração de pesos).
-- [ ] **Views de comissão** (`/comissoes/retornos`, `/comissoes/garantias`, extrato): exibir comissões de RETORNO e GARANTIA (já categorizadas pelo motor).
+- [x] **Views de comissão** — CONCLUÍDO no LOG 0005 (`/comissoes/lancamentos` + API `/api/commissions/calculations`).
 - [ ] **Verificação visual** do cadastro de garantias e do painel no navegador.
 
 ### Metas + Ranking — PENDENTE
