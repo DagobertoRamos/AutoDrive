@@ -15,6 +15,7 @@ export const MANAGEMENT_ROLES: UserRole[] = [
   'MASTER',
   'ADM',
   'GERENTE_GERAL',
+  'GERENTE_ADMINISTRATIVO',
   'GERENTE',
 ]
 

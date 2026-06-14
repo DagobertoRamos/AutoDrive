@@ -9,9 +9,11 @@ export type UserRole =
   | 'MASTER'
   | 'ADM'
   | 'GERENTE_GERAL'
+  | 'GERENTE_ADMINISTRATIVO'
   | 'GERENTE'
   | 'VENDEDOR_LIDER'
   | 'VENDEDOR'
+  | 'FINANCEIRO'
   | 'USUARIO_LIDER'
   | 'USUARIO'
 

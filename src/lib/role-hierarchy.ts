@@ -9,9 +9,11 @@ import type { UserRole } from '@prisma/client'
 const ORDER: UserRole[] = [
   'USUARIO',
   'USUARIO_LIDER',
+  'FINANCEIRO',
   'VENDEDOR',
   'VENDEDOR_LIDER',
   'GERENTE',
+  'GERENTE_ADMINISTRATIVO',
   'GERENTE_GERAL',
   'ADM',
   'MASTER',

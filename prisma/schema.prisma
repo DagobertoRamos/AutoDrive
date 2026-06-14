@@ -19,14 +19,16 @@ datasource db {
 
 /// Hierarquia de perfis do sistema (pirâmide de acesso)
 enum UserRole {
-  MASTER          // Acesso total — controle da plataforma SaaS
-  ADM             // Administrador do tenant — quase total
-  GERENTE_GERAL   // Gerencia unidades, gerentes, relatórios
-  GERENTE         // Gerencia equipe e pendências da unidade
-  VENDEDOR_LIDER  // Líder de equipe com permissões ampliadas
-  VENDEDOR        // Vê suas próprias pendências e comissões
-  USUARIO_LIDER   // Módulos específicos com permissão ampliada
-  USUARIO         // Acesso básico conforme permissões
+  MASTER                 // Acesso total — controle da plataforma SaaS
+  ADM                    // Administrador do tenant — quase total
+  GERENTE_GERAL          // Gerencia unidades, gerentes, relatórios
+  GERENTE_ADMINISTRATIVO // Gerente administrativo/financeiro do tenant (ILA/IOF, garantias)
+  GERENTE                // Gerencia equipe e pendências da unidade
+  VENDEDOR_LIDER         // Líder de equipe com permissões ampliadas
+  VENDEDOR               // Vê suas próprias pendências e comissões
+  FINANCEIRO             // Setor financeiro — ILA/IOF, conferência, garantias
+  USUARIO_LIDER          // Módulos específicos com permissão ampliada
+  USUARIO                // Acesso básico conforme permissões
 }
 
 enum UserStatus {
@@ -1135,6 +1137,17 @@ model Deal {
   paymentBank       String?  // banco/financeira
   paymentType       String?  // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, MISTO
 
+  // ── Retorno financeiro (etapa de financiamento) ──────────────────────────
+  // financedAmount (acima) = valor financiado / base do retorno.
+  returnRatePercent      Decimal?         @db.Decimal(5, 2)  // % informado pelo vendedor (0–6)
+  returnGrossValue       Decimal?         @db.Decimal(12, 2) // financedAmount * returnRatePercent/100
+  ilaPercent             Decimal?         @db.Decimal(7, 4)  // restrito a perfis autorizados
+  ilaValue               Decimal?         @db.Decimal(12, 2) // returnGrossValue * ilaPercent/100
+  iofPercent             Decimal?         @db.Decimal(7, 4)  // restrito a perfis autorizados
+  iofValue               Decimal?         @db.Decimal(12, 2) // returnGrossValue * iofPercent/100
+  returnNetValue         Decimal?         @db.Decimal(12, 2) // bruto - ILA - IOF (base da comissão)
+  returnCommissionStatus CommissionStatus @default(PREVISTO)
+
   // ── Consignação ──────────────────────────────────────────────────────────
   consignMinValue   Decimal?  @db.Decimal(12, 2) // valor mínimo aceito
   consignCommPct    Decimal?  @db.Decimal(6, 4)  // comissão da loja (%)
@@ -1199,6 +1212,7 @@ model Deal {
   debts           DealDebt[]
   payments        DealPayment[]
   services        DealService[]
+  warrantySales   WarrantySale[]
   history         DealStatusHistory[]
   auditLogs       DealAuditLog[]
   releaseRequests DealReleaseRequest[]
@@ -1645,21 +1659,78 @@ model Warranty {
   tenantId          String?
   name              String
   provider          String?
+  // ── Campos legados (mantidos p/ compatibilidade com WarrantyRule/CommissionRule)
   defaultValue      Decimal  @default(0) @db.Decimal(10, 2)
   minValue          Decimal  @default(0) @db.Decimal(10, 2)
   defaultCommission Decimal  @default(0) @db.Decimal(10, 2)
   commissionType    String   @default("PERCENTUAL")
+  // ── Precificação rica (valor cheio/reduzido + adicional prêmio/luxo) ───────
+  coverageType      String?  // ex: "150 itens"
+  fullPrice         Decimal  @default(0) @db.Decimal(12, 2)
+  reducedPrice      Decimal  @default(0) @db.Decimal(12, 2)
+  hasPremiumAddon   Boolean  @default(false)
+  premiumAddonName  String?
+  premiumAddonValue Decimal  @default(0) @db.Decimal(12, 2)
+  // ── Comissões fixas por tipo de venda (configuráveis no cadastro) ──────────
+  reducedSaleCommissionValue  Decimal @default(0) @db.Decimal(12, 2)
+  fullSaleCommissionValue     Decimal @default(0) @db.Decimal(12, 2)
+  premiumAddonCommissionValue Decimal @default(0) @db.Decimal(12, 2)
   active            Boolean  @default(true)
   notes             String?
+  createdById       String?
+  updatedById       String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   // Relations
   commissionRules CommissionRule[] @relation("WarrantyCommissionRules")
   warrantyRules   WarrantyRule[]
+  warrantySales   WarrantySale[]
 
   @@index([tenantId])
   @@map("warranties")
+}
+
+/// Tipo de venda da garantia
+enum WarrantySaleType {
+  FULL     // valor cheio
+  REDUCED  // valor reduzido
+}
+
+/// Estado da venda da garantia
+enum WarrantySaleStatus {
+  ATIVA
+  CANCELADA
+  ESTORNADA
+}
+
+/// Registro de uma garantia vendida dentro de uma negociação.
+/// O preço final e a comissão são calculados pelo service layer a partir do
+/// cadastro da garantia (cheio/reduzido + adicional prêmio/luxo).
+model WarrantySale {
+  id                String             @id @default(cuid())
+  tenantId          String?
+  dealId            String
+  warrantyId        String
+  sellerId          String?
+  saleType          WarrantySaleType
+  basePrice         Decimal            @db.Decimal(12, 2)  // fullPrice ou reducedPrice no momento da venda
+  hasPremiumAddon   Boolean            @default(false)
+  premiumAddonValue Decimal            @default(0) @db.Decimal(12, 2)
+  finalPrice        Decimal            @db.Decimal(12, 2)  // basePrice + (premium? premiumAddonValue : 0)
+  status            WarrantySaleStatus @default(ATIVA)
+  createdBy         String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  deal     Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  warranty Warranty @relation(fields: [warrantyId], references: [id])
+
+  @@index([tenantId])
+  @@index([dealId])
+  @@index([warrantyId])
+  @@index([sellerId])
+  @@map("warranty_sales")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -9,9 +9,11 @@ export type UserRole =
   | 'MASTER'
   | 'ADM'
   | 'GERENTE_GERAL'
+  | 'GERENTE_ADMINISTRATIVO'
   | 'GERENTE'
   | 'VENDEDOR_LIDER'
   | 'VENDEDOR'
+  | 'FINANCEIRO'
   | 'USUARIO_LIDER'
   | 'USUARIO'
 
@@ -43,6 +45,7 @@ export type Module =
   | 'negotiations'              // módulo negociações
   | 'negotiations.approve'      // liberar negociações
   | 'negotiations.manage'       // gerenciar todas negociações
+  | 'negotiations.financing'    // editar ILA/IOF do retorno (financeiro/admin)
   | 'commissions'
   | 'commissions.rules'
   | 'commissions.calculate'
@@ -94,14 +97,16 @@ export type Module =
 // Quanto maior, mais alto na hierarquia
 
 const ROLE_LEVEL: Record<UserRole, number> = {
-  MASTER:         700,
-  ADM:            600,
-  GERENTE_GERAL:  500,
-  GERENTE:        400,
-  VENDEDOR_LIDER: 350,
-  VENDEDOR:       300,
-  USUARIO_LIDER:  200,
-  USUARIO:        100,
+  MASTER:                 700,
+  ADM:                    600,
+  GERENTE_GERAL:          500,
+  GERENTE_ADMINISTRATIVO: 450,
+  GERENTE:                400,
+  VENDEDOR_LIDER:         350,
+  VENDEDOR:               300,
+  FINANCEIRO:             250,
+  USUARIO_LIDER:          200,
+  USUARIO:                100,
 }
 
 // ── Permissões de módulo por role ─────────────────────────────────────────────
@@ -134,7 +139,7 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'create', 'update', 'delete', 'configure'],
   },
   dashboard: {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read'],
   },
   pendencies: {
@@ -150,7 +155,7 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'create', 'update', 'finalize', 'reactivate', 'delete', 'export'],
   },
   commissions: {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR', 'USUARIO_LIDER'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER'],
     actions: ['read'],
   },
   'commissions.rules': {
@@ -222,8 +227,9 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'create', 'update', 'delete'],
   },
   'registrations.warranties': {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
-    actions: ['read', 'create', 'update'],
+    // Cadastro de garantias — admin/financeiro (vendedor NÃO cadastra).
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
+    actions: ['read', 'create', 'update', 'delete'],
   },
   'registrations.positions': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
@@ -262,12 +268,12 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'export'],
   },
   profile: {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read', 'update'],
   },
   // Módulo negociações
   negotiations: {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'],
     actions: ['read', 'create'],
   },
   'negotiations.approve': {
@@ -275,8 +281,13 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['approve', 'read'],
   },
   'negotiations.manage': {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
     actions: ['read', 'create', 'update', 'delete', 'approve'],
+  },
+  'negotiations.financing': {
+    // Edição de ILA/IOF do retorno — financeiro/administrativo.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'FINANCEIRO'],
+    actions: ['read', 'update', 'configure'],
   },
   // Painel Master da plataforma
   master: {
@@ -404,28 +415,32 @@ export function getRoleLevel(role: string | undefined): number {
  * Label de exibição do role
  */
 export const ROLE_LABELS: Record<UserRole, string> = {
-  MASTER:         'Master',
-  ADM:            'Administrador',
-  GERENTE_GERAL:  'Gerente Geral',
-  GERENTE:        'Gerente',
-  VENDEDOR_LIDER: 'Vendedor Líder',
-  VENDEDOR:       'Vendedor',
-  USUARIO_LIDER:  'Usuário Líder',
-  USUARIO:        'Usuário',
+  MASTER:                 'Master',
+  ADM:                    'Administrador',
+  GERENTE_GERAL:          'Gerente Geral',
+  GERENTE_ADMINISTRATIVO: 'Gerente Administrativo',
+  GERENTE:                'Gerente',
+  VENDEDOR_LIDER:         'Vendedor Líder',
+  VENDEDOR:               'Vendedor',
+  FINANCEIRO:             'Financeiro',
+  USUARIO_LIDER:          'Usuário Líder',
+  USUARIO:                'Usuário',
 }
 
 /**
  * Badge color por role (classes Tailwind)
  */
 export const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
-  MASTER:         'bg-purple-100 text-purple-800',
-  ADM:            'bg-blue-100 text-blue-800',
-  GERENTE_GERAL:  'bg-brand-100 text-brand-800',
-  GERENTE:        'bg-emerald-100 text-emerald-700',
-  VENDEDOR_LIDER: 'bg-indigo-100 text-indigo-700',
-  VENDEDOR:       'bg-gray-100 text-gray-700',
-  USUARIO_LIDER:  'bg-amber-100 text-amber-700',
-  USUARIO:        'bg-slate-100 text-slate-600',
+  MASTER:                 'bg-purple-100 text-purple-800',
+  ADM:                    'bg-blue-100 text-blue-800',
+  GERENTE_GERAL:          'bg-brand-100 text-brand-800',
+  GERENTE_ADMINISTRATIVO: 'bg-teal-100 text-teal-800',
+  GERENTE:                'bg-emerald-100 text-emerald-700',
+  VENDEDOR_LIDER:         'bg-indigo-100 text-indigo-700',
+  VENDEDOR:               'bg-gray-100 text-gray-700',
+  FINANCEIRO:             'bg-cyan-100 text-cyan-700',
+  USUARIO_LIDER:          'bg-amber-100 text-amber-700',
+  USUARIO:                'bg-slate-100 text-slate-600',
 }
 
 /**
