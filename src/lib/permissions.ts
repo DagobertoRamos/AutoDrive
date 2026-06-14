@@ -343,19 +343,19 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'export'],
   },
   goals: {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read'],
   },
   'goals.manage': {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
     actions: ['read', 'create', 'update', 'delete', 'configure'],
   },
   ranking: {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
     actions: ['read'],
   },
   'ranking.configure': {
-    roles: ['MASTER', 'ADM'],
+    roles: ['MASTER', 'ADM', 'GERENTE_ADMINISTRATIVO'],
     actions: ['read', 'configure'],
   },
 }

@@ -107,6 +107,15 @@
 - **ACHADO (decisão p/ usuário):** `GERENTE_ADMINISTRATIVO` está em MANAGEMENT_ROLES mas NÃO em `goals.manage` (módulo criado antes do perfil). Ver pendência. NÃO alterei permissões (fora do escopo).
 - **Observações p/ próxima IA:** testes cobrem LÓGICA PURA. Faltam testes de integração de rotas/DB (precisam de banco de teste/mocks) — ver pendência Fase 9 (resto).
 
+### LOG 0008 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Decisão do usuário — GERENTE_ADMINISTRATIVO tem acesso à administração da empresa → deve gerir metas e configurar ranking.
+- **Arquivos alterados:**
+  - `src/lib/permissions.ts`: adicionado `GERENTE_ADMINISTRATIVO` aos módulos `goals` (read), `goals.manage`, `ranking` (read) e `ranking.configure`. (FINANCEIRO também adicionado a `goals` read.)
+  - `src/lib/permissions.test.ts`: testes ajustados para a regra correta (goals.manage e ranking.configure incluem GERENTE_ADMINISTRATIVO).
+- **Validações:** `npm test` 34/34; `tsc` limpo; `npm run build` OK.
+- **Observações:** módulos de gestão criados em Fase A (negotiations, etc.) já incluíam GERENTE_ADMINISTRATIVO; só os de Metas/Ranking (criados antes do perfil) estavam defasados — agora alinhados.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -124,7 +133,7 @@
 - [x] **Fase 5 — Avisos de meta** — CONCLUÍDO no LOG 0006 (goalAlertScanner + /api/goals/scan-alerts/run, via NotificationService).
 - [x] **Fase 9 — Testes unitários** — CONCLUÍDO no LOG 0007 (vitest; 34 testes de lógica pura). 
 - [ ] **Fase 9 — Testes de integração** (rotas/API, login, não-vazamento de tenant em queries reais) — precisa de banco de teste/mocks.
-- [ ] **DECISÃO:** `GERENTE_ADMINISTRATIVO` deve poder gerir metas (`goals.manage`)? Hoje não está no módulo, mas está em MANAGEMENT_ROLES. Se sim, adicionar o perfil em `goals.manage` (e revisar outros módulos de gestão criados antes do perfil). Teste documenta o estado atual.
+- [x] **DECISÃO RESOLVIDA (LOG 0008):** GERENTE_ADMINISTRATIVO tem acesso à administração da empresa → adicionado a goals/goals.manage/ranking/ranking.configure.
 
 ### Agregadores (Metas/Ranking) — CONCLUÍDO (LOG 0003)
 - [x] `EXTENDED_WARRANTY` conta `WarrantySale` ATIVA; `RETURN` conta deals com `returnNetValue > 0`. Não são mais provisórios.

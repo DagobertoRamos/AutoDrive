@@ -12,17 +12,15 @@ describe('permissions (RBAC por módulo)', () => {
     expect(canAccessModule('VENDEDOR', 'registrations.warranties')).toBe(false)
   })
 
-  it('gestão de metas restrita a gestores', () => {
+  it('gestão de metas restrita a gestores (inclui GERENTE_ADMINISTRATIVO)', () => {
     expect(canAccessModule('GERENTE', 'goals.manage')).toBe(true)
+    expect(canAccessModule('GERENTE_ADMINISTRATIVO', 'goals.manage')).toBe(true)
     expect(canAccessModule('VENDEDOR', 'goals.manage')).toBe(false)
-    // NOTA: GERENTE_ADMINISTRATIVO hoje NÃO está em goals.manage (módulo criado
-    // antes desse perfil). Está em MANAGEMENT_ROLES — possível inconsistência a
-    // decidir (ver pendência no README_ROBOTS). Teste documenta o estado atual:
-    expect(canAccessModule('GERENTE_ADMINISTRATIVO', 'goals.manage')).toBe(false)
   })
 
-  it('ranking.configure apenas MASTER/ADM', () => {
+  it('ranking.configure: MASTER/ADM/GERENTE_ADMINISTRATIVO, não GERENTE comum', () => {
     expect(canAccessModule('ADM', 'ranking.configure')).toBe(true)
+    expect(canAccessModule('GERENTE_ADMINISTRATIVO', 'ranking.configure')).toBe(true)
     expect(canAccessModule('GERENTE', 'ranking.configure')).toBe(false)
   })
 
