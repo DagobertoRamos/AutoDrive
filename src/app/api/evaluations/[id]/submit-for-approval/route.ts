@@ -35,7 +35,7 @@ export async function POST(
     }
 
     // Valida que cada seção obrigatória tenha ao menos 1 foto.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const atts: Array<{ section: string | null; category: string | null; fileType: string }> =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (prisma as any).evaluationAttachment.findMany({

@@ -303,7 +303,7 @@ export async function getBanks(): Promise<BrasilApiResult<BankData[]>> {
 
 async function readBanksFromDb(): Promise<BankData[] | null> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const rows: Array<{ ispb: string; name: string; code: number | null; fullName: string | null }> =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (prisma as any).bank.findMany({

@@ -125,7 +125,7 @@ export async function GET(
     ])
 
     // 5) Unifica em shape único
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     type UnifiedDoc = {
       id: string; source: 'EVALUATION' | 'DEAL';
       sourceId: string; sourceLabel: string;

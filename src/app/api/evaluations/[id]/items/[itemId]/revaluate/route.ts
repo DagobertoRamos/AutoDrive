@@ -129,7 +129,7 @@ export async function POST(
     // Marca a avaliação como IN_PROGRESS se ainda estava DRAFT
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((ev as any)?.status === 'DRAFT') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       await prisma.vehicleEvaluation.update({
         where: { id: params.id },
         data:  { status: 'IN_PROGRESS' as never },

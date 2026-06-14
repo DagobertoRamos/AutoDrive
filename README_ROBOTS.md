@@ -128,6 +128,17 @@
 - **Validações:** `tsc` limpo; lint (novos) sem erros; `npm test` 34/34; `npm run build` OK (rotas registradas).
 - **Observações p/ próxima IA:** escopo (geral×unidade) é decidido no backend (/api/ranking): vendedor sempre restrito à própria unidade. Não verificado visualmente.
 
+### LOG 0010 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Limpeza do lint legado.
+- **Estado encontrado:** os ~33 ERROS já não existiam (resolvidos por commits paralelos do usuário) — `npm run lint` já saía 0. Restavam ~476 warnings legados.
+- **Feito (seguro, proporcional):**
+  - Removido `eslint-report.json` (3,2 MB, artefato commitado por engano) + adicionado ao `.gitignore`.
+  - `eslint . --fix`: removeu diretivas `eslint-disable` inúteis (10 arquivos, ±2 linhas cada). 476 → 464 warnings.
+  - NÃO mascarei nenhuma regra de correção (react-hooks "during render" seguem como warnings visíveis, não silenciadas).
+- **Validações:** `npm run lint` exit 0; `tsc` limpo; `npm test` 34/34; `npm run build` OK.
+- **PENDENTE (incremental, NÃO fazer em sweep único):** ~464 warnings legados = 124 `no-explicit-any` + 92 `no-unused-vars` + 88 react-hooks "Cannot create components/call impure during render" (correção real — hoistar componentes internos, por arquivo) + 39 `react/no-unescaped-entities` + misc. Tratar por área, com cuidado de regressão. As 88 de react-hooks são as mais relevantes (potenciais bugs) — priorizar quando mexer nos arquivos afetados.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -151,4 +162,5 @@
 - [x] `EXTENDED_WARRANTY` conta `WarrantySale` ATIVA; `RETURN` conta deals com `returnNetValue > 0`. Não são mais provisórios.
 
 ### Base — DÍVIDA TÉCNICA
-- [ ] Limpeza do **lint legado** (~33 erros + ~473 warnings pré-existentes; não mascarar regras de correção react-hooks).
+- [x] Lint: 0 ERROS (`npm run lint` passa); artefato eslint-report.json removido; auto-fixes aplicados (LOG 0010).
+- [ ] ~464 WARNINGS legados (any/unused-vars/react-hooks during-render/entidades) — limpar incrementalmente por área (não em sweep único). Ver LOG 0010.

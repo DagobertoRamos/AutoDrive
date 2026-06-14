@@ -60,7 +60,7 @@ export async function GET(
 
     const vehicle = await prisma.vehicle.findFirst({
       where: { id: params.id, ...tenantWhere(user.role, tenantId) },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       select: {
         id:                 true,
         salePrice:          true,

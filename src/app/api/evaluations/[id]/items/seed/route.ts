@@ -30,7 +30,7 @@ export async function POST(
     // frontend dispara 2x simultaneamente (ex: React Strict Mode em dev).
     // A 2ª chamada vê o estado depois da 1ª e nada cria.
     const result = await prisma.$transaction(async (tx) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const existing: Array<{ catalogKey: string | null; section: string; name: string }> =
         await (tx as any).evaluationItem.findMany({
           where:  { evaluationId: params.id },

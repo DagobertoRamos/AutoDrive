@@ -206,7 +206,7 @@ export async function GET(req: NextRequest) {
     //    avaliações vinculadas (FOTO_SECAO) pra cobrir veículos recém-liberados
     //    que ainda não passaram pelo marketing. Top 6 imagens.
     const vehicleIds = vehiclesAny.map((v) => v.id)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const evalPhotosByVehicle: Record<string, string[]> = {}
     if (vehicleIds.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -249,7 +249,7 @@ export async function GET(req: NextRequest) {
       const unitName    = openDeal?.unitId ? (unitNameMap[openDeal.unitId] ?? null) : null
 
       // displayPhotos: prioriza VehiclePhoto (marketing) → fallback fotos da avaliação
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const marketingPhotos: string[] = (v.photos ?? [])
         .sort((a: any, b: any) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0)) // main primeiro
         .map((p: any) => p.url)

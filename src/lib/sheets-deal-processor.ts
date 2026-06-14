@@ -562,7 +562,7 @@ export async function runDealProcessor(opts: DealProcessorOptions): Promise<Deal
         ? { tenantId, externalId }
         : null
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const existingDeal = dedupeWhere
         ? await (prisma.deal as any).findFirst({ where: dedupeWhere })
         : null

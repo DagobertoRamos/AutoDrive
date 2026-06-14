@@ -43,7 +43,7 @@ export async function loadEvaluationContext(id: string): Promise<LoadedEvaluatio
  */
 export async function recalcTotals(evaluationId: string): Promise<number> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const services: Array<{ estimatedCost: { toNumber(): number } | null }> =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (prisma as any).evaluationService.findMany({
@@ -70,7 +70,7 @@ export async function recalcTotals(evaluationId: string): Promise<number> {
  */
 export async function recalcItemTotal(itemId: string): Promise<number> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const services: Array<{ estimatedCost: { toNumber(): number } | null }> =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (prisma as any).evaluationService.findMany({

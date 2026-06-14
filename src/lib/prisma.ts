@@ -31,7 +31,7 @@ function makeClient(): PrismaClient {
     // @prisma/adapter-neon 7.x: PrismaNeon recebe PoolConfig direto e
     // gerencia o pool internamente. PrismaClient aceita o adapter como factory.
     const adapter = new PrismaNeon({ connectionString: url })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     return new PrismaClient({
       adapter: adapter as any,
       log: [
