@@ -388,6 +388,13 @@
 - **Validações:** `tsc` limpo; `npm test` 45/45; `npm run build` OK. (Obs.: rodar build com o dev server ligado dá EPERM no query_engine.dll do Prisma — parar o dev antes.)
 - **APRENDIZADO p/ próxima IA:** página fina que repassa um componente (ex. ícone lucide) como prop a um client component PRECISA de `'use client'`. Não confie só em tsc/build — fazer smoke visual.
 
+### LOG 0032 — 2026-06-15 — Claude (Opus 4.8) — Testes de integração (Relatórios + Financeiro)
+- **Branch:** main (worktree).
+- **Arquivo criado:** `src/app/api/reports-finance-integration.test.ts` (37 testes; mesmo padrão do routes-integration.test.ts — mocka `@/lib/prisma` e `@/lib/auth`, chama handlers reais).
+- **Cobertura:** APIs de relatórios (negotiations, commissions, pendencies, communication, audit, finance) — 401 sem sessão, 403 sem `'logs'` (VENDEDOR), 200 ADM, isolamento de tenant no `where`, filtros (type/view/action), escopo por relação (communication whatsapp → `{ pendency: { tenantId } }`), MASTER sem filtro de tenant. APIs financeiras CRUD (accounts/categories/entries) — gating `finance`/`finance.manage`, 201 grava tenantId/source=MANUAL, 400 inválido, 403/404 no PATCH de outro tenant/inexistente. `/api/finance/sync` — 403 sem permissão, 200 escopa deal/commission por tenant.
+- **Total de testes: 45 → 82 (todos verdes).** `tsc` limpo.
+- **Observação:** são testes de unidade de rota (prisma/sessão mockados) — validam auth/RBAC/tenant/validação, NÃO o banco real. A validação contra o banco real foi a verificação visual (LOG 0031).
+
 ---
 
 ## TAREFAS PENDENTES
