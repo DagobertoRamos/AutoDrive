@@ -153,6 +153,12 @@
 - **Validações:** `tsc` limpo (nenhum import removido indevidamente); `npm test` 34/34; `npm run build` OK; `npm run lint` exit 0.
 - **Observações p/ próxima IA:** o plugin agora remove imports mortos no --fix automaticamente (melhoria permanente). Restam ~373 warnings: ~124 `no-explicit-any`, ~75 `unused-imports/no-unused-vars` (vars locais, NÃO imports — exigem julgar caso a caso), 88 react-hooks "during render", misc.
 
+### LOG 0013 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree). Verificação end-to-end — sem alteração de código.
+- **Tarefa:** Verificação visual do fluxo Retorno/Garantia no navegador (Chrome MCP, login real).
+- **Verificado (funcionando):** cadastro de garantia "Garantia Excelente" (cheio 3.350 / reduzido 2.250 / prêmio 300) listado; venda na negociação com preview ao vivo **Preço R$ 3.650,00 / comissão R$ 750,00** (cheio + prêmio); registro com auditoria (VENDER_GARANTIA); `/comissoes/lancamentos` exibindo a comissão **GARANTIA R$ 750,00 (Prevista)** por vendedor, com totais por tipo.
+- **Observações p/ próxima IA:** ficaram no banco demo 1 garantia "Garantia Excelente" + 1 venda + 1 comissão GARANTIA de teste (deal cmpsv91fb, tenantId null). Limpar se desejar. Vendas de veículo mostram comissão 0 por falta de CommissionRule(VENDA) — esperado.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -162,7 +168,7 @@
 - [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").
 - [x] **Verificação visual** das telas novas — CONCLUÍDO no LOG 0004 (garantias, negociação Valores, configuração de pesos).
 - [x] **Views de comissão** — CONCLUÍDO no LOG 0005 (`/comissoes/lancamentos` + API `/api/commissions/calculations`).
-- [ ] **Verificação visual** do cadastro de garantias e do painel no navegador.
+- [x] **Verificação visual end-to-end** — CONCLUÍDO no LOG 0013 (criar garantia → vender cheio+prêmio → preço R$3.650/comissão R$750 → lançamento de comissão GARANTIA visível).
 
 ### Metas + Ranking — PENDENTE
 - [x] Tela de **configuração de pesos do ranking** — CONCLUÍDO no LOG 0003 (`/ranking/configuracao`).
