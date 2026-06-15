@@ -194,10 +194,10 @@ export const NAV_GROUPS: NavItem[] = [
       {
         label: 'Negociações', icon: Handshake, module: 'logs',
         children: [
-          { label: 'Vendas',      href: '/relatorios/negociacoes/vendas', badge: 'em breve',      module: 'logs' },
-          { label: 'Trocas',      href: '/relatorios/negociacoes/trocas', badge: 'em breve',      module: 'logs' },
-          { label: 'Compras',     href: '/relatorios/negociacoes/compras', badge: 'em breve',     module: 'logs' },
-          { label: 'Consignação', href: '/relatorios/negociacoes/consignacao', badge: 'em breve', module: 'logs' },
+          { label: 'Vendas',      href: '/relatorios/negociacoes/vendas',      module: 'logs' },
+          { label: 'Trocas',      href: '/relatorios/negociacoes/trocas',      module: 'logs' },
+          { label: 'Compras',     href: '/relatorios/negociacoes/compras',     module: 'logs' },
+          { label: 'Consignação', href: '/relatorios/negociacoes/consignacao', module: 'logs' },
         ],
       },
       {

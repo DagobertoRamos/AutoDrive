@@ -30,7 +30,7 @@
 ## 🤖 PROMPT PARA O CODEX — Onde paramos e próximos passos
 > Atualizado a cada sessão. Leia ANTES de começar. Branch: `main` (worktree em `.claude/worktrees/distracted-dhawan-fd8ce5`). Sempre: rodar `npm run lint` / `npx tsc --noEmit` / `npm test` / `npm run build` a cada etapa, e **GRAVAR UM LOG aqui ao final de QUALQUER mexida em código**.
 
-**Onde paramos (último estado):** núcleo completo (Metas, Ranking, Retorno/Garantia, Comissões, Avisos), testes 45/45, build OK, lint 0 erros. Menu enxugado (Configurações = Loja/Identidade/Perfil; placeholders com badge "em breve"). Fronteira MASTER(global)×ADM(tenant) aplicada. **Fase 4 (Relatórios de Estoque) CONCLUÍDA**: os 6 relatórios de estoque implementados (atual, parados, margem, giro, preparacao, avaliacoes). Próximo: relatórios de Negociações.
+**Onde paramos (último estado):** núcleo completo (Metas, Ranking, Retorno/Garantia, Comissões, Avisos), testes 45/45, build OK, lint 0 erros. Menu enxugado (Configurações = Loja/Identidade/Perfil; placeholders com badge "em breve"). Fronteira MASTER(global)×ADM(tenant) aplicada. **Relatórios de Estoque (6/6) e Negociações (4/4) CONCLUÍDOS**: estoque (atual, parados, margem, giro, preparacao, avaliacoes) + negociações (vendas, trocas, compras, consignacao). Próximo: relatórios de **Comissões**.
 
 **PADRÃO de relatório (siga-o):**
 1. API `src/app/api/reports/<área>/<nome>/route.ts`: `getSessionUser` → `canAccessModule(role,'logs')` → `assertTenantId` → `tenantWhere(role, tenantId, {...})` → agregação (`aggregate`/`groupBy`/`findMany take:≤1000`) → `handlePrismaError`. Decimais via helper `num()`.
@@ -40,7 +40,8 @@
 
 **Próximos passos seguros (em ordem):**
 1. ✅ **Relatórios de Estoque CONCLUÍDOS** (LOG 0019-0021): atual, parados, margem, giro, preparacao, avaliacoes.
-2. **Relatórios de Negociações:** `vendas`/`trocas`/`compras`/`consignacao` sobre `Deal` (type+status FINALIZADA; já há `/comissoes/lancamentos` como referência de agregação).
+2. ✅ **Relatórios de Negociações CONCLUÍDOS** (LOG 0022): vendas, trocas, compras, consignacao (1 API parametrizada + componente reutilizável).
+3. **Próximo — Relatórios de Negociações (legado abaixo, já feito):** `vendas`/`trocas`/`compras`/`consignacao` sobre `Deal` (type+status FINALIZADA; já há `/comissoes/lancamentos` como referência de agregação).
 3. **Relatórios de Comissões:** `extrato`/`vendedor`/`garantias`/`retornos` sobre `CommissionCalculation` (reusar `/api/commissions/calculations`).
 4. **Relatórios de Pendências:** sobre `Pendency` (status/SLA/responsável).
 5. **Fase 3 (resíduo):** separar de `/configuracoes/sistema` os campos GLOBAIS (mode/environment) que ainda moram lá — já está MASTER-only no PUT, mas a página mistura conteúdo; idealmente uma página Master limpa só com toggles globais.
@@ -268,6 +269,17 @@
   - `navigation.ts`: removidos os 3 badges "em breve".
 - **Validações:** `tsc` limpo; lint (novos) sem erro (4 warnings advisory); `npm test` 45/45; `npm run build` OK (rotas turnover/preparation/evaluations registradas).
 - **Observações p/ próxima IA:** Estoque 6/6 concluído. Seguir com Relatórios de Negociações (`Deal`) e Comissões (reusar /api/commissions/calculations). Padrão idêntico — ver "PROMPT PARA O CODEX".
+
+### LOG 0022 — 2026-06-15 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Relatórios de **Negociações** (Vendas, Trocas, Compras, Consignação) sobre `Deal`.
+- **Arquivos criados/alterados:**
+  - `src/app/api/reports/negotiations/route.ts` (novo): **1 API parametrizada** `?type=VENDA|TROCA|COMPRA|CONSIGNACAO`. Summary (count, finalizadas, valorRealizado, valorTotal) + byStatus (groupBy) + lista (take 500). Valor = saleAmount, exceto COMPRA = purchaseAmount. Tenant-scoped via `tenantWhere`, gated `canAccessModule('logs')`.
+  - `src/components/reports/NegotiationsReport.tsx` (novo): **componente reutilizável** (props type/title/valueLabel/Icon) — cards + chips por status + tabela.
+  - 4 páginas `relatorios/negociacoes/{vendas,trocas,compras,consignacao}`: PlaceholderPage → `<NegotiationsReport type=... />` (finas, 5 linhas cada).
+  - `navigation.ts`: removidos os 4 badges "em breve".
+- **Validações:** `tsc` limpo; lint sem erro (1 warning advisory); `npm test` 45/45; `npm run build` OK (rota + 4 páginas registradas).
+- **Observações p/ próxima IA:** Padrão DRY (1 API + 1 componente) economiza muito vs. 4 rotas. Próximo: **Comissões** (`relatorios/comissoes/*`) — reusar `CommissionCalculation`/`/api/commissions/calculations`. Depois Pendências (`Pendency`). Ver "PROMPT PARA O CODEX".
 
 ---
 

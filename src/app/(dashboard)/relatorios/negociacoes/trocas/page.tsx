@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Relatório de Trocas" description="Trocas realizadas no período." />
+import { RefreshCw } from 'lucide-react'
+import NegotiationsReport from '@/components/reports/NegotiationsReport'
+
+export default function TrocasReportPage() {
+  return <NegotiationsReport type="TROCA" title="Trocas" valueLabel="Valor (finalizado)" Icon={RefreshCw} />
 }

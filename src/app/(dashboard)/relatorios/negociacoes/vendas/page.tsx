@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Relatório de Vendas" description="Vendas concluídas no período." />
+import { ShoppingCart } from 'lucide-react'
+import NegotiationsReport from '@/components/reports/NegotiationsReport'
+
+export default function VendasReportPage() {
+  return <NegotiationsReport type="VENDA" title="Vendas" valueLabel="Vendido (finalizado)" Icon={ShoppingCart} />
 }

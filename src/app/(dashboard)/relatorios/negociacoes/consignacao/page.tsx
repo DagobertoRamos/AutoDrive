@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Relatório de Consignação" description="Veículos em consignação." />
+import { PackageCheck } from 'lucide-react'
+import NegotiationsReport from '@/components/reports/NegotiationsReport'
+
+export default function ConsignacaoReportPage() {
+  return <NegotiationsReport type="CONSIGNACAO" title="Consignação" valueLabel="Valor (finalizado)" Icon={PackageCheck} />
 }
