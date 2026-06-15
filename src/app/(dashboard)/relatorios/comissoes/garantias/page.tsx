@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Comissões — Garantias" description="Descontos aplicados por garantias." />
+import { Shield } from 'lucide-react'
+import CommissionLedgerReport from '@/components/reports/CommissionLedgerReport'
+
+export default function ComissoesGarantiasReportPage() {
+  return <CommissionLedgerReport view="garantias" title="Comissões — Garantias" Icon={Shield} />
 }

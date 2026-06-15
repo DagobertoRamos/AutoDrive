@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Extrato Geral de Comissões" description="Histórico de comissões pagas." />
+import { DollarSign } from 'lucide-react'
+import CommissionLedgerReport from '@/components/reports/CommissionLedgerReport'
+
+export default function ExtratoGeralReportPage() {
+  return <CommissionLedgerReport view="geral" title="Extrato Geral de Comissões" Icon={DollarSign} />
 }

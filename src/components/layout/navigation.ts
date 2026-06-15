@@ -230,10 +230,10 @@ export const NAV_GROUPS: NavItem[] = [
       {
         label: 'Comissões', icon: DollarSign, module: 'logs',
         children: [
-          { label: 'Extrato Geral', href: '/relatorios/comissoes/extrato', badge: 'em breve',   module: 'logs' },
-          { label: 'Por Vendedor',  href: '/relatorios/comissoes/vendedor', badge: 'em breve',  module: 'logs' },
-          { label: 'Garantias',     href: '/relatorios/comissoes/garantias', badge: 'em breve', module: 'logs' },
-          { label: 'Retornos',      href: '/relatorios/comissoes/retornos', badge: 'em breve',  module: 'logs' },
+          { label: 'Extrato Geral', href: '/relatorios/comissoes/extrato',   module: 'logs' },
+          { label: 'Por Vendedor',  href: '/relatorios/comissoes/vendedor',  module: 'logs' },
+          { label: 'Garantias',     href: '/relatorios/comissoes/garantias', module: 'logs' },
+          { label: 'Retornos',      href: '/relatorios/comissoes/retornos',  module: 'logs' },
         ],
       },
       {

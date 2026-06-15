@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Comissões — Retornos" description="Descontos aplicados por retornos." />
+import { ArrowLeftRight } from 'lucide-react'
+import CommissionLedgerReport from '@/components/reports/CommissionLedgerReport'
+
+export default function ComissoesRetornosReportPage() {
+  return <CommissionLedgerReport view="retornos" title="Comissões — Retornos" Icon={ArrowLeftRight} />
 }
