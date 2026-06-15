@@ -73,6 +73,8 @@ export type Module =
   | 'settings.whatsapp'
   | 'settings.commission'
   | 'settings.critical'         // apenas MASTER
+  | 'finance'                     // módulo financeiro (ver lançamentos/relatórios)
+  | 'finance.manage'              // criar/editar/excluir lançamentos, contas, categorias
   | 'logs'
   | 'profile'
   | 'master'                    // painel master da plataforma
@@ -266,6 +268,15 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   logs: {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
     actions: ['read', 'export'],
+  },
+  // Módulo Financeiro — administrativo/financeiro (ADM só vê o próprio tenant via tenantWhere).
+  finance: {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
+    actions: ['read', 'export'],
+  },
+  'finance.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
+    actions: ['read', 'create', 'update', 'delete'],
   },
   profile: {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],

@@ -30,7 +30,7 @@
 ## 🤖 PROMPT PARA O CODEX — Onde paramos e próximos passos
 > Atualizado a cada sessão. Leia ANTES de começar. Branch: `main` (worktree em `.claude/worktrees/distracted-dhawan-fd8ce5`). Sempre: rodar `npm run lint` / `npx tsc --noEmit` / `npm test` / `npm run build` a cada etapa, e **GRAVAR UM LOG aqui ao final de QUALQUER mexida em código**.
 
-**Onde paramos (último estado):** núcleo completo (Metas, Ranking, Retorno/Garantia, Comissões, Avisos), testes 45/45, build OK, lint 0 erros. Menu enxugado (Configurações = Loja/Identidade/Perfil; placeholders com badge "em breve"). Fronteira MASTER(global)×ADM(tenant) aplicada. **Relatórios sobre dados existentes CONCLUÍDOS = 27 telas** — Estoque (6), Negociações (4), Comissões (4), Pendências (5), Comunicação (4), Auditoria (4). Resta só **Financeiro** (11 telas) que **exige novos models** (projeto à parte — alinhar com usuário).
+**Onde paramos (último estado):** núcleo completo (Metas, Ranking, Retorno/Garantia, Comissões, Avisos), testes 45/45, build OK, lint 0 erros. Menu enxugado (Configurações = Loja/Identidade/Perfil; placeholders com badge "em breve"). Fronteira MASTER(global)×ADM(tenant) aplicada. **Relatórios sobre dados existentes CONCLUÍDOS = 27 telas** — Estoque (6), Negociações (4), Comissões (4), Pendências (5), Comunicação (4), Auditoria (4). **Financeiro EM ANDAMENTO** (autorizado a modelar do zero): F1 (schema+migration+permissões) CONCLUÍDA; falta F2 (CRUD), F3 (integração vendas/comissões), F4 (UI), F5 (11 relatórios). Ver LOG 0026 para o plano completo. **Migration `20260615000000_add_financeiro` PENDENTE de aplicar no banco.**
 
 **PADRÃO de relatório (siga-o):**
 1. API `src/app/api/reports/<área>/<nome>/route.ts`: `getSessionUser` → `canAccessModule(role,'logs')` → `assertTenantId` → `tenantWhere(role, tenantId, {...})` → agregação (`aggregate`/`groupBy`/`findMany take:≤1000`) → `handlePrismaError`. Decimais via helper `num()`.
@@ -318,6 +318,27 @@
   - `navigation.ts`: removidos os 8 badges "em breve".
 - **Validações:** `tsc` limpo; lint sem erro (4 warnings advisory); `npm test` 45/45; `npm run build` OK (2 rotas + 8 páginas registradas).
 - **Observações p/ próxima IA:** Relatórios sobre dados existentes = **27 telas** concluídas (Estoque 6, Negociações 4, Comissões 4, Pendências 5, Comunicação 4, Auditoria 4). Resta apenas **Financeiro** (11 telas) que **exige novos models** (fluxo de caixa/DRE/contas) — projeto à parte, alinhar com o usuário antes. Ver "PROMPT PARA O CODEX".
+
+### LOG 0026 — 2026-06-15 — Claude (Opus 4.8) — MÓDULO FINANCEIRO (PLANO + Fase F1)
+- **Branch:** main (worktree). **Autorizado pelo usuário** a modelar o Financeiro do zero (migration + lançamentos manuais + integração com vendas/comissões).
+
+#### PLANO EM FASES (Financeiro) — para qualquer IA continuar
+- **F1 — Fundação de dados (CONCLUÍDA neste log):** schema + migration + permissões + client.
+- **F2 — Service + APIs CRUD (PENDENTE):** `validators/finance.ts` (zod), `lib/finance/finance-service.ts` (tenant-safe, usa `tenantWhere`/`assertTenantId`, audit via `createSafeAuditLog`), rotas:
+  - `/api/finance/accounts` (GET/POST) + `/[id]` (PATCH/DELETE)
+  - `/api/finance/categories` (GET/POST) + `/[id]` (PATCH/DELETE)
+  - `/api/finance/entries` (GET com filtros type/status/period/unit/category + POST) + `/[id]` (GET/PATCH/DELETE). Liquidar = PATCH status PAGO/RECEBIDO + paidDate.
+  - Gating: `canAccessModule(role,'finance')` leitura; `'finance.manage'` escrita.
+- **F3 — Integração vendas/comissões (PENDENTE):** `lib/finance/finance-sync.ts` — gera `FinancialEntry` idempotente: Deal FINALIZADA → RECEITA (source=VENDA, unique [dealId,source]); cada `CommissionCalculation` → DESPESA (source=COMISSAO/RETORNO/GARANTIA, unique [commissionCalculationId]). Endpoint `/api/finance/sync` (recalc) OU hook no finalize/commission-generator. NÃO duplicar: respeitar os @@unique.
+- **F4 — UI lançamentos (PENDENTE):** páginas em `/(dashboard)/financeiro/*` (lançamentos CRUD, contas, categorias). Adicionar grupo "Financeiro" operacional no navigation.ts (módulo `finance`).
+- **F5 — Relatórios (11 telas, PENDENTE):** `/api/reports/finance?view=...` + páginas `relatorios/financeiro/*`, remover badges. Telas: visao-geral, dre, contas, contas-a-pagar, contas-a-receber, fluxo-de-caixa, receitas, despesas, resultado-unidade, resultado-vendedor, resultado-periodo. Reusar padrão DRY (1 API parametrizada + componentes). DRE = agregação por categoria/kind no período (regime de competência via competenceDate). Fluxo = paidDate. Contas a pagar/receber = status PREVISTO por dueDate (aging).
+
+#### Fase F1 — FEITO neste log
+- `prisma/schema.prisma`: enums `FinancialEntryType`(RECEITA/DESPESA), `FinancialEntryStatus`(PREVISTO/PAGO/RECEBIDO/CANCELADO), `FinancialAccountType`(CAIXA/BANCO/CARTAO/OUTRO); models `FinancialAccount`, `FinancialCategory`, `FinancialEntry`. **Aditivo** — não altera tabelas existentes; `dealId/sellerId/unitId/commissionCalculationId` são String (resolvidos na app, como AuditLog/Pendency), só `account`/`category` têm FK (entre tabelas novas). Idempotência: `@@unique([commissionCalculationId])` e `@@unique([dealId, source])`. `amount`/`openingBalance` = Decimal(14,2).
+- `prisma/migrations/20260615000000_add_financeiro/migration.sql` (criado, **PENDENTE de aplicar** — rodar `npx prisma migrate deploy` ou `migrate dev`; banco Neon é aplicado pelo usuário).
+- `src/lib/permissions.ts`: módulos `finance` (read/export) e `finance.manage` (CRUD) → MASTER/ADM/GERENTE_GERAL/GERENTE_ADMINISTRATIVO/FINANCEIRO.
+- `npx prisma generate` OK; `tsc` limpo; `npm test` 45/45; `npm run build` OK.
+- **Observações:** migration ainda NÃO aplicada ao banco — qualquer chamada Prisma a finance falhará até `migrate deploy`. F2+ pode ser desenvolvida (build valida tipos pelo client gerado).
 
 ---
 

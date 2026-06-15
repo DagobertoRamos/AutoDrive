@@ -3381,3 +3381,105 @@ model RankingScore {
   @@index([periodStart, periodEnd])
   @@map("ranking_scores")
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FINANCEIRO (lançamentos manuais + integração com vendas/comissões)
+// Aditivo: tabelas novas, sem FK para models existentes (dealId/sellerId/unitId
+// guardados como String e resolvidos na aplicação, como em AuditLog/Pendency).
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum FinancialEntryType {
+  RECEITA
+  DESPESA
+}
+
+enum FinancialEntryStatus {
+  PREVISTO   // a pagar / a receber (ainda não liquidado)
+  PAGO       // despesa quitada
+  RECEBIDO   // receita recebida
+  CANCELADO
+}
+
+enum FinancialAccountType {
+  CAIXA
+  BANCO
+  CARTAO
+  OUTRO
+}
+
+model FinancialAccount {
+  id             String               @id @default(cuid())
+  tenantId       String?
+  name           String
+  type           FinancialAccountType @default(CAIXA)
+  openingBalance Decimal              @default(0) @db.Decimal(14, 2)
+  active         Boolean              @default(true)
+  createdById    String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  entries FinancialEntry[]
+
+  @@index([tenantId])
+  @@map("financial_accounts")
+}
+
+model FinancialCategory {
+  id        String             @id @default(cuid())
+  tenantId  String?
+  name      String
+  kind      FinancialEntryType // RECEITA ou DESPESA
+  color     String?
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  entries FinancialEntry[]
+
+  @@index([tenantId])
+  @@index([kind])
+  @@map("financial_categories")
+}
+
+model FinancialEntry {
+  id                      String               @id @default(cuid())
+  tenantId                String?
+  unitId                  String?
+  accountId               String?
+  categoryId              String?
+  type                    FinancialEntryType
+  status                  FinancialEntryStatus @default(PREVISTO)
+  description             String
+  amount                  Decimal              @db.Decimal(14, 2)
+  dueDate                 DateTime?
+  paidDate                DateTime?
+  competenceDate          DateTime? // data de competência (DRE)
+  // Integração com vendas/comissões (idempotência por origem)
+  dealId                  String?
+  commissionCalculationId String?
+  sellerId                String?
+  source                  String?   @default("MANUAL") // MANUAL | VENDA | COMISSAO | RETORNO | GARANTIA
+  // Auxiliares
+  counterparty            String?   // fornecedor / cliente
+  documentNumber          String?
+  paymentMethod           String?
+  notes                   String?
+  createdById             String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  account  FinancialAccount?  @relation(fields: [accountId], references: [id])
+  category FinancialCategory? @relation(fields: [categoryId], references: [id])
+
+  @@unique([commissionCalculationId])
+  @@unique([dealId, source])
+  @@index([tenantId])
+  @@index([type])
+  @@index([status])
+  @@index([dueDate])
+  @@index([paidDate])
+  @@index([competenceDate])
+  @@index([sellerId])
+  @@index([unitId])
+  @@map("financial_entries")
+}
