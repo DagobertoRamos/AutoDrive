@@ -324,7 +324,7 @@
 
 #### PLANO EM FASES (Financeiro) — para qualquer IA continuar
 - **F1 — Fundação de dados (CONCLUÍDA neste log):** schema + migration + permissões + client.
-- **F2 — Service + APIs CRUD (PENDENTE):** `validators/finance.ts` (zod), `lib/finance/finance-service.ts` (tenant-safe, usa `tenantWhere`/`assertTenantId`, audit via `createSafeAuditLog`), rotas:
+- **F2 — Service + APIs CRUD (CONCLUÍDA — LOG 0027):** `validators/finance.ts` (zod), `lib/finance/finance-service.ts` (tenant-safe, usa `tenantWhere`/`assertTenantId`, audit via `createSafeAuditLog`), rotas:
   - `/api/finance/accounts` (GET/POST) + `/[id]` (PATCH/DELETE)
   - `/api/finance/categories` (GET/POST) + `/[id]` (PATCH/DELETE)
   - `/api/finance/entries` (GET com filtros type/status/period/unit/category + POST) + `/[id]` (GET/PATCH/DELETE). Liquidar = PATCH status PAGO/RECEBIDO + paidDate.
@@ -339,6 +339,18 @@
 - `src/lib/permissions.ts`: módulos `finance` (read/export) e `finance.manage` (CRUD) → MASTER/ADM/GERENTE_GERAL/GERENTE_ADMINISTRATIVO/FINANCEIRO.
 - `npx prisma generate` OK; `tsc` limpo; `npm test` 45/45; `npm run build` OK.
 - **Observações:** migration ainda NÃO aplicada ao banco — qualquer chamada Prisma a finance falhará até `migrate deploy`. F2+ pode ser desenvolvida (build valida tipos pelo client gerado).
+
+### LOG 0027 — 2026-06-15 — Claude (Opus 4.8) — Financeiro Fase F2 (Service + APIs CRUD)
+- **Branch:** main (worktree).
+- **Arquivos criados:**
+  - `src/lib/validators/finance.ts`: zod (create/update Account, Category, Entry; settle).
+  - `src/lib/finance/finance-service.ts`: helpers `zodErrorResponse`, `ownsTenant`, `num`.
+  - `src/app/api/finance/accounts/route.ts` (GET/POST) + `[id]/route.ts` (PATCH/DELETE soft).
+  - `src/app/api/finance/categories/route.ts` (GET ?kind=/POST) + `[id]/route.ts` (PATCH/DELETE soft).
+  - `src/app/api/finance/entries/route.ts` (GET filtros type/status/unitId/categoryId/from-to + totals por tipo; POST source=MANUAL) + `[id]/route.ts` (GET/PATCH com liquidação PAGO|RECEBIDO→paidDate/DELETE: MANUAL apaga, integrado vira CANCELADO).
+  - Todas tenant-scoped (`tenantWhere`/`ownsTenant`), gating `finance` (read) e `finance.manage` (escrita), auditoria via `createSafeAuditLog`.
+- **Validações:** `tsc` limpo; lint 0; `npm test` 45/45; `npm run build` OK (6 rotas registradas).
+- **Observações:** ainda depende da migration F1 aplicada no banco p/ funcionar em runtime. Próximo: **F3** (integração) — `lib/finance/finance-sync.ts` + `/api/finance/sync`.
 
 ---
 
