@@ -159,6 +159,14 @@
 - **Verificado (funcionando):** cadastro de garantia "Garantia Excelente" (cheio 3.350 / reduzido 2.250 / prêmio 300) listado; venda na negociação com preview ao vivo **Preço R$ 3.650,00 / comissão R$ 750,00** (cheio + prêmio); registro com auditoria (VENDER_GARANTIA); `/comissoes/lancamentos` exibindo a comissão **GARANTIA R$ 750,00 (Prevista)** por vendedor, com totais por tipo.
 - **Observações p/ próxima IA:** ficaram no banco demo 1 garantia "Garantia Excelente" + 1 venda + 1 comissão GARANTIA de teste (deal cmpsv91fb, tenantId null). Limpar se desejar. Vendas de veículo mostram comissão 0 por falta de CommissionRule(VENDA) — esperado.
 
+### LOG 0014 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Fase 9 — Testes de integração das rotas.
+- **Abordagem:** handlers REAIS com `@/lib/prisma` e `@/lib/auth` mockados (vi.hoisted). auth-guards/permissions/validators rodam de verdade → valida RBAC + isolamento de tenant sem banco.
+- **Criado:** `src/app/api/routes-integration.test.ts` (11 testes): /api/goals (401 sem auth; GET filtra tenantId; POST 403 p/ VENDEDOR; POST ADM cria com tenantId; 400 inválido), /api/warranties (GET tenant; POST 403 VENDEDOR; POST FINANCEIRO cria), /api/ranking (VENDEDOR restrito à própria unidade+tenant, ignora unitId da query; MASTER sem tenant→400), /api/commissions/calculations (VENDEDOR vê só as próprias, no seu tenant).
+- **Validações:** suíte completa 45/45 (34 unit + 11 integração); `tsc` limpo; `npm run build` OK.
+- **Observações p/ próxima IA:** são testes de unidade-de-rota com mocks (não tocam DB). Teste com banco real (e2e) ainda não feito — opcional.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -175,7 +183,7 @@
 - [x] **Páginas de Ranking** dedicadas (geral/unidade) — CONCLUÍDO no LOG 0009 (RankingTable reutilizável + /ranking/geral + /ranking/unidade; /desempenho refatorado).
 - [x] **Fase 5 — Avisos de meta** — CONCLUÍDO no LOG 0006 (goalAlertScanner + /api/goals/scan-alerts/run, via NotificationService).
 - [x] **Fase 9 — Testes unitários** — CONCLUÍDO no LOG 0007 (vitest; 34 testes de lógica pura). 
-- [ ] **Fase 9 — Testes de integração** (rotas/API, login, não-vazamento de tenant em queries reais) — precisa de banco de teste/mocks.
+- [x] **Fase 9 — Testes de integração de rotas** — CONCLUÍDO no LOG 0014 (11 testes com prisma/auth mockados; RBAC + isolamento de tenant). Opcional: e2e com banco real.
 - [x] **DECISÃO RESOLVIDA (LOG 0008):** GERENTE_ADMINISTRATIVO tem acesso à administração da empresa → adicionado a goals/goals.manage/ranking/ranking.configure.
 
 ### Agregadores (Metas/Ranking) — CONCLUÍDO (LOG 0003)
