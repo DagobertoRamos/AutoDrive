@@ -166,6 +166,11 @@ function NavLeaf({ item, depth, collapsed, pathname, onNavigate }: Omit<RenderIt
         />
       )}
       {(!collapsed || depth > 0) && <span className="truncate">{item.label}</span>}
+      {item.badge && (!collapsed || depth > 0) && (
+        <span className="ml-auto shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-white/40">
+          {item.badge}
+        </span>
+      )}
     </Link>
   )
 }

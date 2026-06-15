@@ -189,6 +189,17 @@
   - 0 links de menu quebrados.
 - **Observações p/ próxima IA:** o MAPA MESTRE completo (10 seções) foi entregue ao usuário no chat. Ordem segura sugerida: Fase 2 enxugar menu Configurações → Fase 3 base administrativa/Loja → relatórios incrementais. NÃO refatorar os arquivos gigantes sem necessidade.
 
+### LOG 0017 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Fase 2 — Limpeza do menu (Configurações enxuto, "em breve" nos placeholders, distinção MASTER×ADM).
+- **Arquivos alterados (somente menu/UI):**
+  - `src/components/layout/navigation.ts`: **Configurações → 3 itens** (Loja → /configuracoes/sistema; Identidade; Perfil). Removidos do grupo: E-mail/WhatsApp/Sheets (domínio MASTER — já existem em Master › Comunicação / Importador Sheets) e Comissões (realocada para grupo **Comissões › Configurações**). **45 itens placeholder** marcados com `badge: 'em breve'` (todo Relatórios + comunicacao avisos/central/logs + documentos procuracoes/termos/declaracoes + pendencias configuracoes). Removidos imports de ícone órfãos (Mail/Smartphone/Plug).
+  - `src/components/layout/Sidebar.tsx`: NavLeaf passa a renderizar `item.badge` (pílula "em breve").
+- **MASTER × ADM:** o grupo **Master** já é MASTER-only (`module: 'master'` → roles ['MASTER']) — ADM não vê. Confirmado, não alterado. MASTER mexe no sistema todo (tenants, bloqueio, preço, teste/cortesia via master/tenants, master/plans, master/maintenance); ADM só o próprio tenant.
+- **NÃO alterado:** schema, permissões (permissions.ts), rotas/páginas, cálculo. Páginas /configuracoes/{email,whatsapp,sheets} continuam existindo (apenas desvinculadas deste menu).
+- **CAVEAT p/ Fase 3:** `/configuracoes/sistema` ("Loja") ainda mistura dados da loja com toggles GLOBAIS (modo manutenção, ambiente TESTE) e sua API libera ADM. Fase 3 deve SEPARAR os controles globais para MASTER-only (master/maintenance já existe) e deixar em "Loja" só os dados do tenant.
+- **Validações:** `tsc` limpo; `npm test` 45/45; `npm run build` OK; `npm run lint` exit 0.
+
 ---
 
 ## TAREFAS PENDENTES
