@@ -1,3 +1,5 @@
+'use client'
+
 import { MessageCircle } from 'lucide-react'
 import CommunicationReport from '@/components/reports/CommunicationReport'
 

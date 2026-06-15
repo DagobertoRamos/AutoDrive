@@ -1,3 +1,5 @@
+'use client'
+
 import { Inbox } from 'lucide-react'
 import PendencyListReport from '@/components/reports/PendencyListReport'
 

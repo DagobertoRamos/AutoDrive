@@ -1,3 +1,5 @@
+'use client'
+
 import { AlertTriangle } from 'lucide-react'
 import AuditReport from '@/components/reports/AuditReport'
 

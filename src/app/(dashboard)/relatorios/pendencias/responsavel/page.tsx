@@ -1,3 +1,5 @@
+'use client'
+
 import { UserCog } from 'lucide-react'
 import PendencyGroupedReport from '@/components/reports/PendencyGroupedReport'
 

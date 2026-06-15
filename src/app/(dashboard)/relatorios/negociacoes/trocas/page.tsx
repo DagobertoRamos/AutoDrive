@@ -1,3 +1,5 @@
+'use client'
+
 import { RefreshCw } from 'lucide-react'
 import NegotiationsReport from '@/components/reports/NegotiationsReport'
 

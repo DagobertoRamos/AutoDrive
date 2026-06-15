@@ -1,3 +1,5 @@
+'use client'
+
 import { UserSquare } from 'lucide-react'
 import FinanceResultReport from '@/components/reports/FinanceResultReport'
 

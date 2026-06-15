@@ -1,3 +1,5 @@
+'use client'
+
 import { CalendarRange } from 'lucide-react'
 import FinanceResultReport from '@/components/reports/FinanceResultReport'
 

@@ -1,3 +1,5 @@
+'use client'
+
 import { ArrowUpCircle } from 'lucide-react'
 import FinanceEntryListReport from '@/components/reports/FinanceEntryListReport'
 

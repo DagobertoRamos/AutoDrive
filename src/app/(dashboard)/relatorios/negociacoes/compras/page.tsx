@@ -1,3 +1,5 @@
+'use client'
+
 import { Truck } from 'lucide-react'
 import NegotiationsReport from '@/components/reports/NegotiationsReport'
 

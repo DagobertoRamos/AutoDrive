@@ -380,6 +380,14 @@
 - **Validações:** `tsc` limpo; lint sem erro (3 warnings advisory); `npm test` 45/45; `npm run build` OK (3 páginas registradas).
 - **MÓDULO FINANCEIRO COMPLETO (F1-F5).** ÚNICO pendente operacional: **aplicar a migration `20260615000000_add_financeiro` no banco** (`npx prisma migrate deploy`) — sem isso as telas/APIs financeiras falham em runtime. Após aplicar, usar o botão "Sincronizar" em /financeiro/lancamentos para popular a partir de vendas/comissões.
 
+### LOG 0031 — 2026-06-15 — Claude (Opus 4.8) — FIX (verificação visual): 'use client' nas páginas de relatório
+- **Branch:** main (worktree).
+- **Bug encontrado na verificação visual (Chrome MCP, login real Master):** as páginas finas de relatório eram Server Components passando `Icon={Componente}` para um Client Component → runtime error "Only plain objects can be passed to Client Components from Server Components". **`tsc`/`build` NÃO pegam** (erro só em runtime). Afetava ~27 páginas.
+- **Correção:** prepend `'use client'` em todas as páginas finas que passam `Icon=` a componente client: relatorios/{negociacoes(4), comissoes extrato|garantias|retornos(3), pendencias(5), comunicacao(4), auditoria(4), financeiro receitas|despesas|contas-a-pagar|contas-a-receber|resultado-*(7)}. Páginas já `'use client'` (estoque, comissoes/vendedor, financeiro visao-geral/dre/contas/fluxo) não foram tocadas.
+- **Validação visual confirmada:** Vendas, Contas a Pagar, Comissões/Extrato, Pendências/Abertas, Auditoria/Acessos, Visão Geral, DRE renderizam OK. **Integração validada end-to-end:** botão Sincronizar gerou 1 RECEITA (venda R$45.900) + 3 DESPESAS (comissões/garantia R$750); relatórios financeiros leem corretamente (realizado×previsto).
+- **Validações:** `tsc` limpo; `npm test` 45/45; `npm run build` OK. (Obs.: rodar build com o dev server ligado dá EPERM no query_engine.dll do Prisma — parar o dev antes.)
+- **APRENDIZADO p/ próxima IA:** página fina que repassa um componente (ex. ícone lucide) como prop a um client component PRECISA de `'use client'`. Não confie só em tsc/build — fazer smoke visual.
+
 ---
 
 ## TAREFAS PENDENTES

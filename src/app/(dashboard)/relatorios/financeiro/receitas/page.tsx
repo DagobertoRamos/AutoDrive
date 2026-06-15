@@ -1,3 +1,5 @@
+'use client'
+
 import { TrendingUp } from 'lucide-react'
 import FinanceEntryListReport from '@/components/reports/FinanceEntryListReport'
 
