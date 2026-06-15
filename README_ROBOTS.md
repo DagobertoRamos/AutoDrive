@@ -329,7 +329,7 @@
   - `/api/finance/categories` (GET/POST) + `/[id]` (PATCH/DELETE)
   - `/api/finance/entries` (GET com filtros type/status/period/unit/category + POST) + `/[id]` (GET/PATCH/DELETE). Liquidar = PATCH status PAGO/RECEBIDO + paidDate.
   - Gating: `canAccessModule(role,'finance')` leitura; `'finance.manage'` escrita.
-- **F3 — Integração vendas/comissões (PENDENTE):** `lib/finance/finance-sync.ts` — gera `FinancialEntry` idempotente: Deal FINALIZADA → RECEITA (source=VENDA, unique [dealId,source]); cada `CommissionCalculation` → DESPESA (source=COMISSAO/RETORNO/GARANTIA, unique [commissionCalculationId]). Endpoint `/api/finance/sync` (recalc) OU hook no finalize/commission-generator. NÃO duplicar: respeitar os @@unique.
+- **F3 — Integração vendas/comissões (CONCLUÍDA — LOG 0028):** `lib/finance/finance-sync.ts` — gera `FinancialEntry` idempotente: Deal FINALIZADA → RECEITA (source=VENDA, unique [dealId,source]); cada `CommissionCalculation` → DESPESA (source=COMISSAO/RETORNO/GARANTIA, unique [commissionCalculationId]). Endpoint `/api/finance/sync` (POST, finance.manage). createMany skipDuplicates. Cada entry herda tenantId da origem.
 - **F4 — UI lançamentos (PENDENTE):** páginas em `/(dashboard)/financeiro/*` (lançamentos CRUD, contas, categorias). Adicionar grupo "Financeiro" operacional no navigation.ts (módulo `finance`).
 - **F5 — Relatórios (11 telas, PENDENTE):** `/api/reports/finance?view=...` + páginas `relatorios/financeiro/*`, remover badges. Telas: visao-geral, dre, contas, contas-a-pagar, contas-a-receber, fluxo-de-caixa, receitas, despesas, resultado-unidade, resultado-vendedor, resultado-periodo. Reusar padrão DRY (1 API parametrizada + componentes). DRE = agregação por categoria/kind no período (regime de competência via competenceDate). Fluxo = paidDate. Contas a pagar/receber = status PREVISTO por dueDate (aging).
 
@@ -351,6 +351,13 @@
   - Todas tenant-scoped (`tenantWhere`/`ownsTenant`), gating `finance` (read) e `finance.manage` (escrita), auditoria via `createSafeAuditLog`.
 - **Validações:** `tsc` limpo; lint 0; `npm test` 45/45; `npm run build` OK (6 rotas registradas).
 - **Observações:** ainda depende da migration F1 aplicada no banco p/ funcionar em runtime. Próximo: **F3** (integração) — `lib/finance/finance-sync.ts` + `/api/finance/sync`.
+
+### LOG 0028 — 2026-06-15 — Claude (Opus 4.8) — Financeiro Fase F3 (Integração)
+- **Branch:** main (worktree).
+- **Arquivos criados:** `src/lib/finance/finance-sync.ts` (`syncFinanceFromBusiness(role, tenantId)` → {vendas, comissoes}; idempotente via existência + skipDuplicates), `src/app/api/finance/sync/route.ts` (POST, finance.manage).
+- **Regras:** Deal type VENDA + status FINALIZADA + saleAmount>0 → RECEITA RECEBIDO (source VENDA). CommissionCalculation → DESPESA (PAGO se comissão PAGO senão PREVISTO; source RETORNO/GARANTIA/COMISSAO por ruleType). `CommissionCalculation` NÃO tem dealId — vínculo é por commissionCalculationId.
+- **Validações:** `tsc` limpo; lint 0; `npm test` 45/45; `npm run build` OK.
+- **Observações:** Falta **F4** (UI /financeiro/*) e **F5** (11 relatórios). Tudo depende da migration F1 aplicada no banco.
 
 ---
 
