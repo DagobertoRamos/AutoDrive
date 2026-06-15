@@ -27,6 +27,29 @@
 
 ---
 
+## 🤖 PROMPT PARA O CODEX — Onde paramos e próximos passos
+> Atualizado a cada sessão. Leia ANTES de começar. Branch: `main` (worktree em `.claude/worktrees/distracted-dhawan-fd8ce5`). Sempre: rodar `npm run lint` / `npx tsc --noEmit` / `npm test` / `npm run build` a cada etapa, e **GRAVAR UM LOG aqui ao final de QUALQUER mexida em código**.
+
+**Onde paramos (último estado):** núcleo completo (Metas, Ranking, Retorno/Garantia, Comissões, Avisos), testes 45/45, build OK, lint 0 erros. Menu enxugado (Configurações = Loja/Identidade/Perfil; placeholders com badge "em breve"). Fronteira MASTER(global)×ADM(tenant) aplicada. **Fase 4 em andamento**: relatórios de Estoque — JÁ FEITOS: Estoque Atual, Veículos Parados, Margem.
+
+**PADRÃO de relatório (siga-o):**
+1. API `src/app/api/reports/<área>/<nome>/route.ts`: `getSessionUser` → `canAccessModule(role,'logs')` → `assertTenantId` → `tenantWhere(role, tenantId, {...})` → agregação (`aggregate`/`groupBy`/`findMany take:≤1000`) → `handlePrismaError`. Decimais via helper `num()`.
+2. Página: substituir o `PlaceholderPage` por cards + tabela (ver `relatorios/estoque/atual`).
+3. `navigation.ts`: **remover o `badge: 'em breve'`** do item implementado.
+4. Validar (tsc/lint/test/build) e **gravar LOG**.
+
+**Próximos passos seguros (em ordem):**
+1. **Relatórios de Estoque restantes:** `giro` (entryDate→exitDate, tempo médio de venda), `preparacao` (custo de preparo — ver `DealService`/serviços), `avaliacoes` (model `VehicleEvaluation`).
+2. **Relatórios de Negociações:** `vendas`/`trocas`/`compras`/`consignacao` sobre `Deal` (type+status FINALIZADA; já há `/comissoes/lancamentos` como referência de agregação).
+3. **Relatórios de Comissões:** `extrato`/`vendedor`/`garantias`/`retornos` sobre `CommissionCalculation` (reusar `/api/commissions/calculations`).
+4. **Relatórios de Pendências:** sobre `Pendency` (status/SLA/responsável).
+5. **Fase 3 (resíduo):** separar de `/configuracoes/sistema` os campos GLOBAIS (mode/environment) que ainda moram lá — já está MASTER-only no PUT, mas a página mistura conteúdo; idealmente uma página Master limpa só com toggles globais.
+6. **Dívida de lint (oportunística):** tipar `no-explicit-any` (186) por arquivo ao mexer nele; NÃO em sweep único.
+
+**NÃO FAZER sem autorização:** refatorar arquivos gigantes (`negociacoes/nova` 4780l, `negociacoes/[id]`, `master/communication`, `master/sheets`, `estoque/avaliacao`); mexer em schema/permissions/cálculo de comissão fora do escopo; apagar páginas; criar módulos novos (Leads/CRM, Pós-vendas, Financeiro com models) sem pedido explícito.
+
+---
+
 ## LOGS
 
 ### LOG 0001 — 2026-06-14 — Claude (Opus 4.8)
@@ -221,6 +244,18 @@
   - `src/components/layout/navigation.ts`: removido badge "em breve" de Estoque Atual (agora implementado).
 - **Validações:** `tsc` limpo; lint (novos) sem erro (1 warning advisory); `npm test` 45/45; `npm run build` OK (rota /api/reports/stock/current registrada).
 - **Observações p/ próxima IA:** PADRÃO de relatório = `/api/reports/<área>/<nome>` (agregação tenant-scoped via tenantWhere + canAccessModule('logs')) consumido por página com cards+tabela. Replicar para os outros relatórios de Estoque (giro, parados, margem, preparacao, avaliacoes) e demais áreas. Lembrar de remover o badge "em breve" do item no menu ao implementar cada um. Dados já existem em `Vehicle`/`VehicleEvaluation`/`Deal`/`CommissionCalculation`.
+
+### LOG 0020 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Fase 4 — relatórios **Veículos Parados** e **Margem por Veículo** (+ seção "PROMPT PARA O CODEX").
+- **Arquivos criados/alterados:**
+  - `src/app/api/reports/stock/stale/route.ts` (novo): veículos parados — faixas (0–30/31–60/61–90/90+) + lista filtrada por `?minDays=` (dias em estoque via entryDate). Tenant-scoped.
+  - `src/app/api/reports/stock/margin/route.ts` (novo): margem = salePrice − purchasePrice por veículo + summary (margem total, % média). Tenant-scoped.
+  - `src/app/(dashboard)/relatorios/estoque/parados/page.tsx` e `…/margem/page.tsx`: PlaceholderPage → relatórios reais (cards/faixas/tabela).
+  - `src/components/layout/navigation.ts`: removidos badges "em breve" de Parados e Margem.
+  - `README_ROBOTS.md`: adicionada seção **PROMPT PARA O CODEX** (onde paramos + próximos passos + padrão de relatório).
+- **Validações:** `tsc` limpo; lint (novos) sem erro (2 warnings advisory); `npm test` 45/45; `npm run build` OK (rotas stale/margin registradas).
+- **Observações p/ próxima IA:** relatórios de Estoque restantes: giro, preparacao, avaliacoes (mesmo padrão). Ver "PROMPT PARA O CODEX" no topo.
 
 ---
 

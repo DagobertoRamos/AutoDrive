@@ -221,8 +221,8 @@ export const NAV_GROUPS: NavItem[] = [
         children: [
           { label: 'Estoque Atual',       href: '/relatorios/estoque/atual',       module: 'logs' },
           { label: 'Giro de Estoque',     href: '/relatorios/estoque/giro', badge: 'em breve',        module: 'logs' },
-          { label: 'Veículos Parados',    href: '/relatorios/estoque/parados', badge: 'em breve',     module: 'logs' },
-          { label: 'Margem por Veículo',  href: '/relatorios/estoque/margem', badge: 'em breve',      module: 'logs' },
+          { label: 'Veículos Parados',    href: '/relatorios/estoque/parados',     module: 'logs' },
+          { label: 'Margem por Veículo',  href: '/relatorios/estoque/margem',      module: 'logs' },
           { label: 'Custo de Preparação', href: '/relatorios/estoque/preparacao', badge: 'em breve',  module: 'logs' },
           { label: 'Avaliações',          href: '/relatorios/estoque/avaliacoes', badge: 'em breve',  module: 'logs' },
         ],
