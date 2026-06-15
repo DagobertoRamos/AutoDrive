@@ -9,7 +9,7 @@ import coreWebVitals from 'eslint-config-next/core-web-vitals'
 import typescript from 'eslint-config-next/typescript'
 import unusedImports from 'eslint-plugin-unused-imports'
 
-export default [
+const config = [
   {
     ignores: [
       '.next/**',
@@ -47,3 +47,5 @@ export default [
     },
   },
 ]
+
+export default config

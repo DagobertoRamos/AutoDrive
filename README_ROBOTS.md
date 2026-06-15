@@ -167,6 +167,13 @@
 - **Validações:** suíte completa 45/45 (34 unit + 11 integração); `tsc` limpo; `npm run build` OK.
 - **Observações p/ próxima IA:** são testes de unidade-de-rota com mocks (não tocam DB). Teste com banco real (e2e) ainda não feito — opcional.
 
+### LOG 0015 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Limpeza de warnings — fim das correções mecânicas seguras.
+- **Feito:** corrigido o único `import/no-anonymous-default-export` (nomeado o export em eslint.config.mjs). Warnings 373 → 372.
+- **DIAGNÓSTICO dos 372 restantes (recomendação):** não há mais sweep mecânico seguro. Composição: **186 `no-explicit-any`** (dívida de tipagem — fazer por arquivo, manual), **105 `react-hooks/set-state-in-effect`** (INTENCIONAL — padrão fetch-on-mount usado em todo o app; advisory, não bug), **75 `unused-imports/no-unused-vars`** (params/caught → prefixar `_`; "assigned but unused" → remover; tem destructures → codemod inseguro, requer julgamento), **6 `react-hooks/exhaustive-deps`** (arriscado: pode causar loop), **0 demais**. RECOMENDAÇÃO: tratar `any` e unused-vars **oportunisticamente ao editar cada arquivo**, não em passe único. set-state-in-effect pode ficar como está (ou virar regra desligada se incomodar).
+- **Validações:** `npm run lint` exit 0; `npm test` 45/45.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -191,4 +198,4 @@
 
 ### Base — DÍVIDA TÉCNICA
 - [x] Lint: 0 ERROS (`npm run lint` passa); artefato eslint-report.json removido; auto-fixes aplicados (LOG 0010).
-- [ ] WARNINGS legados — limpeza incremental. Progresso: entidades JSX=0 (LOG 0011); imports mortos removidos + plugin unused-imports (LOG 0012). Restam ~373: ~124 `no-explicit-any`, ~75 unused-vars locais, 88 react-hooks "during render", misc.
+- [~] WARNINGS legados — sweeps mecânicos seguros CONCLUÍDOS (entidades=0 LOG 0011; imports mortos+plugin LOG 0012; anonymous-export LOG 0015). Restam 372 sem sweep seguro: 186 `no-explicit-any` (tipagem manual por arquivo), 105 `set-state-in-effect` (intencional/advisory), 75 unused-vars (julgamento), 6 exhaustive-deps (arriscado). Tratar oportunisticamente — ver LOG 0015.
