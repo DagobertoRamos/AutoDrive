@@ -212,6 +212,16 @@
 - **Validações:** `tsc` limpo; lint (novos) sem erro (1 warning advisory); `npm test` 45/45; `npm run build` OK (rotas /configuracoes/loja e /api/settings/store registradas).
 - **Observações p/ próxima IA:** NÃO mexi no schema (Tenant já tinha os campos) nem em permissions.ts. /configuracoes/sistema ainda contém campos operacionais (agenda/pendências/whatsapp/import) além dos globais — se algum precisar voltar ao nível do tenant, é decisão futura. Não verificado visualmente.
 
+### LOG 0019 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Fase 4 — Estoque/Avaliação: relatório-piloto **Estoque Atual** (estabelece o PADRÃO de relatório read-only).
+- **Arquivos criados/alterados:**
+  - `src/app/api/reports/stock/current/route.ts` (novo): GET agregado tenant-scoped sobre `Vehicle` (em estoque = ativo & stockStatus ∉ VENDIDO/CANCELADO/DEVOLVIDO). Retorna summary (count, total venda/compra/FIPE), quebra por status (groupBy) e lista (até 500, com diasEmEstoque). Permissão `logs`.
+  - `src/app/(dashboard)/relatorios/estoque/atual/page.tsx`: substituído PlaceholderPage por relatório real (cards + chips por status + tabela). PADRÃO reutilizável p/ os demais relatórios.
+  - `src/components/layout/navigation.ts`: removido badge "em breve" de Estoque Atual (agora implementado).
+- **Validações:** `tsc` limpo; lint (novos) sem erro (1 warning advisory); `npm test` 45/45; `npm run build` OK (rota /api/reports/stock/current registrada).
+- **Observações p/ próxima IA:** PADRÃO de relatório = `/api/reports/<área>/<nome>` (agregação tenant-scoped via tenantWhere + canAccessModule('logs')) consumido por página com cards+tabela. Replicar para os outros relatórios de Estoque (giro, parados, margem, preparacao, avaliacoes) e demais áreas. Lembrar de remover o badge "em breve" do item no menu ao implementar cada um. Dados já existem em `Vehicle`/`VehicleEvaluation`/`Deal`/`CommissionCalculation`.
+
 ---
 
 ## TAREFAS PENDENTES
