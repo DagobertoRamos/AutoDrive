@@ -53,6 +53,8 @@ import {
   Upload,
   FileType,
   Wallet,
+  Landmark,
+  Tags,
   Palette,
   Target,
   Trophy,
@@ -114,6 +116,18 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Retornos',    href: '/comissoes/retornos', icon: ArrowLeftRight,  module: 'commissions.rules' },
       { label: 'Garantias',   href: '/comissoes/garantias',icon: Shield,          module: 'commissions.rules' },
       { label: 'Configurações', href: '/configuracoes/comissoes', icon: Settings, module: 'settings.commission' },
+    ],
+  },
+
+  // ── FINANCEIRO ──────────────────────────────────────────────────────────────
+  {
+    label: 'Financeiro',
+    icon:  Wallet,
+    module: 'finance',
+    children: [
+      { label: 'Lançamentos', href: '/financeiro/lancamentos', icon: Wallet,    module: 'finance' },
+      { label: 'Contas',      href: '/financeiro/contas',      icon: Landmark,  module: 'finance' },
+      { label: 'Categorias',  href: '/financeiro/categorias',  icon: Tags,      module: 'finance' },
     ],
   },
 
