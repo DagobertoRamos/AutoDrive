@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Auditoria — Acessos" description="Logins e acessos por usuário." />
+import { LogIn } from 'lucide-react'
+import AuditReport from '@/components/reports/AuditReport'
+
+export default function AuditoriaAcessosReportPage() {
+  return <AuditReport view="acessos" title="Auditoria — Acessos" Icon={LogIn} />
 }

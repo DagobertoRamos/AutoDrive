@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Auditoria — Exclusões" description="Registros excluídos." />
+import { Trash2 } from 'lucide-react'
+import AuditReport from '@/components/reports/AuditReport'
+
+export default function AuditoriaExclusoesReportPage() {
+  return <AuditReport view="exclusoes" title="Auditoria — Exclusões" Icon={Trash2} />
 }

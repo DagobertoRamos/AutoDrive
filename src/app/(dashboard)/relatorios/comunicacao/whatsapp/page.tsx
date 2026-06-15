@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Relatório de WhatsApp" description="Mensagens enviadas e recebidas via WhatsApp." />
+import { MessageCircle } from 'lucide-react'
+import CommunicationReport from '@/components/reports/CommunicationReport'
+
+export default function ComunicacaoWhatsappReportPage() {
+  return <CommunicationReport view="whatsapp" title="Comunicação — WhatsApp" Icon={MessageCircle} />
 }

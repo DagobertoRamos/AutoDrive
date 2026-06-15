@@ -249,19 +249,19 @@ export const NAV_GROUPS: NavItem[] = [
       {
         label: 'Comunicação', icon: MessageSquare, module: 'logs',
         children: [
-          { label: 'WhatsApp',         href: '/relatorios/comunicacao/whatsapp', badge: 'em breve', module: 'logs' },
-          { label: 'E-mail',           href: '/relatorios/comunicacao/email', badge: 'em breve',    module: 'logs' },
-          { label: 'Avisos Internos',  href: '/relatorios/comunicacao/avisos', badge: 'em breve',   module: 'logs' },
-          { label: 'Logs',             href: '/relatorios/comunicacao/logs', badge: 'em breve',     module: 'logs' },
+          { label: 'WhatsApp',         href: '/relatorios/comunicacao/whatsapp', module: 'logs' },
+          { label: 'E-mail',           href: '/relatorios/comunicacao/email',    module: 'logs' },
+          { label: 'Avisos Internos',  href: '/relatorios/comunicacao/avisos',   module: 'logs' },
+          { label: 'Logs',             href: '/relatorios/comunicacao/logs',     module: 'logs' },
         ],
       },
       {
         label: 'Auditoria', icon: ShieldCheck, module: 'logs',
         children: [
-          { label: 'Acessos',          href: '/relatorios/auditoria/acessos', badge: 'em breve',     module: 'logs' },
-          { label: 'Alterações',       href: '/relatorios/auditoria/alteracoes', badge: 'em breve',  module: 'logs' },
-          { label: 'Exclusões',        href: '/relatorios/auditoria/exclusoes', badge: 'em breve',   module: 'logs' },
-          { label: 'Eventos Críticos', href: '/relatorios/auditoria/eventos', badge: 'em breve',     module: 'logs' },
+          { label: 'Acessos',          href: '/relatorios/auditoria/acessos',     module: 'logs' },
+          { label: 'Alterações',       href: '/relatorios/auditoria/alteracoes',  module: 'logs' },
+          { label: 'Exclusões',        href: '/relatorios/auditoria/exclusoes',   module: 'logs' },
+          { label: 'Eventos Críticos', href: '/relatorios/auditoria/eventos',     module: 'logs' },
         ],
       },
     ],

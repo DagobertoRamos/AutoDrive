@@ -30,7 +30,7 @@
 ## 🤖 PROMPT PARA O CODEX — Onde paramos e próximos passos
 > Atualizado a cada sessão. Leia ANTES de começar. Branch: `main` (worktree em `.claude/worktrees/distracted-dhawan-fd8ce5`). Sempre: rodar `npm run lint` / `npx tsc --noEmit` / `npm test` / `npm run build` a cada etapa, e **GRAVAR UM LOG aqui ao final de QUALQUER mexida em código**.
 
-**Onde paramos (último estado):** núcleo completo (Metas, Ranking, Retorno/Garantia, Comissões, Avisos), testes 45/45, build OK, lint 0 erros. Menu enxugado (Configurações = Loja/Identidade/Perfil; placeholders com badge "em breve"). Fronteira MASTER(global)×ADM(tenant) aplicada. **Relatórios CONCLUÍDOS — Estoque (6/6), Negociações (4/4), Comissões (4/4), Pendências (5/5) = 19 telas**. Próximo: **Comunicação** (mensagens/WhatsApp) e **Auditoria** (AuditLog). Financeiro exige novos models (projeto à parte).
+**Onde paramos (último estado):** núcleo completo (Metas, Ranking, Retorno/Garantia, Comissões, Avisos), testes 45/45, build OK, lint 0 erros. Menu enxugado (Configurações = Loja/Identidade/Perfil; placeholders com badge "em breve"). Fronteira MASTER(global)×ADM(tenant) aplicada. **Relatórios sobre dados existentes CONCLUÍDOS = 27 telas** — Estoque (6), Negociações (4), Comissões (4), Pendências (5), Comunicação (4), Auditoria (4). Resta só **Financeiro** (11 telas) que **exige novos models** (projeto à parte — alinhar com usuário).
 
 **PADRÃO de relatório (siga-o):**
 1. API `src/app/api/reports/<área>/<nome>/route.ts`: `getSessionUser` → `canAccessModule(role,'logs')` → `assertTenantId` → `tenantWhere(role, tenantId, {...})` → agregação (`aggregate`/`groupBy`/`findMany take:≤1000`) → `handlePrismaError`. Decimais via helper `num()`.
@@ -42,8 +42,9 @@
 1. ✅ **Relatórios de Estoque CONCLUÍDOS** (LOG 0019-0021): atual, parados, margem, giro, preparacao, avaliacoes.
 2. ✅ **Relatórios de Negociações CONCLUÍDOS** (LOG 0022): vendas, trocas, compras, consignacao (1 API parametrizada + componente reutilizável).
 3. ✅ **Relatórios de Comissões CONCLUÍDOS** (LOG 0023): extrato, vendedor, garantias, retornos (1 API `?view=` + CommissionLedgerReport).
-4. ✅ **Relatórios de Pendências CONCLUÍDOS** (LOG 0024): abertas, resolvidas, sla, responsavel, unidade (1 API `?view=` + PendencyListReport/PendencyGroupedReport).
-5. **Próximo — Comunicação** (mensagens/WhatsApp: MessageReturn/PendencyMessage/WhatsappTemplate) e **Auditoria** (AuditLog). Financeiro exige novos models (projeto maior). Legado abaixo: `vendas`/`trocas`/`compras`/`consignacao` sobre `Deal` (type+status FINALIZADA; já há `/comissoes/lancamentos` como referência de agregação).
+4. ✅ **Relatórios de Pendências CONCLUÍDOS** (LOG 0024): abertas, resolvidas, sla, responsavel, unidade.
+5. ✅ **Relatórios de Comunicação e Auditoria CONCLUÍDOS** (LOG 0025): comunicacao (whatsapp/email/avisos/logs) + auditoria (acessos/alteracoes/exclusoes/eventos).
+6. **Resta só Financeiro** (11 telas: caixa/DRE/contas a pagar-receber/fluxo) — **exige novos models** no schema.prisma. NÃO criar sem alinhar regras com o usuário. Legado abaixo: `vendas`/`trocas`/`compras`/`consignacao` sobre `Deal` (type+status FINALIZADA; já há `/comissoes/lancamentos` como referência de agregação).
 3. **Relatórios de Comissões:** `extrato`/`vendedor`/`garantias`/`retornos` sobre `CommissionCalculation` (reusar `/api/commissions/calculations`).
 4. **Relatórios de Pendências:** sobre `Pendency` (status/SLA/responsável).
 5. **Fase 3 (resíduo):** separar de `/configuracoes/sistema` os campos GLOBAIS (mode/environment) que ainda moram lá — já está MASTER-only no PUT, mas a página mistura conteúdo; idealmente uma página Master limpa só com toggles globais.
@@ -305,6 +306,18 @@
   - `navigation.ts`: removidos os 5 badges "em breve".
 - **Validações:** `tsc` limpo; lint sem erro (2 warnings advisory); `npm test` 45/45; `npm run build` OK (rota + 5 páginas registradas).
 - **Observações p/ próxima IA:** Relatórios principais (Estoque/Negociações/Comissões/Pendências = 19 telas) concluídos. Próximas áreas de relatório: **Comunicação** (WhatsApp/mensagens — ver MessageReturn/PendencyMessage/WhatsappTemplate) e **Auditoria** (AuditLog). **Financeiro** exige novos models (projeto à parte). Ver "PROMPT PARA O CODEX".
+
+### LOG 0025 — 2026-06-15 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Relatórios de **Comunicação** (WhatsApp, E-mail, Avisos Internos, Logs) e **Auditoria** (Acessos, Alterações, Exclusões, Eventos Críticos).
+- **Arquivos criados/alterados:**
+  - `src/app/api/reports/communication/route.ts` (novo): `?view=whatsapp|email|avisos|logs`. WhatsApp=PendencyMessage(+MessageReturn recebidas); E-mail=NotificationDelivery channel EMAIL; Avisos=Notification (lidas/não lidas/byType); Logs=NotificationDelivery todos canais (byChannel/byStatus). **Models sem tenantId escopados via relação** (`{ pendency: { tenantId } }` / `{ notification: { tenantId } }`); MASTER vê tudo. Gated `canAccessModule('logs')`.
+  - `src/app/api/reports/audit/route.ts` (novo): `?view=acessos|alteracoes|exclusoes|eventos` sobre AuditLog. Classificação por `action` (LOGIN/LOGOUT; UPDATE/CREATE/APPROVE…; DELETE/REMOVE/CANCEL…; status≠SUCCESS ou ações sensíveis). byAction/byEntity + erros + usuários distintos. Tenant-scoped via `tenantWhere`.
+  - `src/components/reports/CommunicationReport.tsx` (adapta colunas/cards por view) e `AuditReport.tsx`.
+  - 8 páginas `relatorios/{comunicacao,auditoria}/*` → componentes.
+  - `navigation.ts`: removidos os 8 badges "em breve".
+- **Validações:** `tsc` limpo; lint sem erro (4 warnings advisory); `npm test` 45/45; `npm run build` OK (2 rotas + 8 páginas registradas).
+- **Observações p/ próxima IA:** Relatórios sobre dados existentes = **27 telas** concluídas (Estoque 6, Negociações 4, Comissões 4, Pendências 5, Comunicação 4, Auditoria 4). Resta apenas **Financeiro** (11 telas) que **exige novos models** (fluxo de caixa/DRE/contas) — projeto à parte, alinhar com o usuário antes. Ver "PROMPT PARA O CODEX".
 
 ---
 

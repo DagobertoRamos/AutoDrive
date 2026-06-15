@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Relatório de Avisos Internos" description="Avisos exibidos e lidos." />
+import { Bell } from 'lucide-react'
+import CommunicationReport from '@/components/reports/CommunicationReport'
+
+export default function ComunicacaoAvisosReportPage() {
+  return <CommunicationReport view="avisos" title="Comunicação — Avisos Internos" Icon={Bell} />
 }
