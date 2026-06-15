@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Pendências em Aberto" description="Pendências ainda não resolvidas." />
+import { Inbox } from 'lucide-react'
+import PendencyListReport from '@/components/reports/PendencyListReport'
+
+export default function PendenciasAbertasReportPage() {
+  return <PendencyListReport view="abertas" title="Pendências em Aberto" Icon={Inbox} />
 }

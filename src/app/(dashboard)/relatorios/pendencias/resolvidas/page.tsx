@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Pendências Resolvidas" description="Pendências concluídas no período." />
+import { CheckCircle2 } from 'lucide-react'
+import PendencyListReport from '@/components/reports/PendencyListReport'
+
+export default function PendenciasResolvidasReportPage() {
+  return <PendencyListReport view="resolvidas" title="Pendências Resolvidas" Icon={CheckCircle2} />
 }

@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Pendências por Responsável" description="Pendências agrupadas por responsável." />
+import { UserCog } from 'lucide-react'
+import PendencyGroupedReport from '@/components/reports/PendencyGroupedReport'
+
+export default function PendenciasResponsavelReportPage() {
+  return <PendencyGroupedReport view="responsavel" title="Pendências por Responsável" groupLabel="Responsável" Icon={UserCog} />
 }

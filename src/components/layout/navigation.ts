@@ -239,11 +239,11 @@ export const NAV_GROUPS: NavItem[] = [
       {
         label: 'Pendências', icon: ClipboardList, module: 'logs',
         children: [
-          { label: 'Em Aberto',       href: '/relatorios/pendencias/abertas', badge: 'em breve',       module: 'logs' },
-          { label: 'Resolvidas',      href: '/relatorios/pendencias/resolvidas', badge: 'em breve',    module: 'logs' },
-          { label: 'SLA',             href: '/relatorios/pendencias/sla', badge: 'em breve',           module: 'logs' },
-          { label: 'Por Responsável', href: '/relatorios/pendencias/responsavel', badge: 'em breve',   module: 'logs' },
-          { label: 'Por Unidade',     href: '/relatorios/pendencias/unidade', badge: 'em breve',       module: 'logs' },
+          { label: 'Em Aberto',       href: '/relatorios/pendencias/abertas',       module: 'logs' },
+          { label: 'Resolvidas',      href: '/relatorios/pendencias/resolvidas',    module: 'logs' },
+          { label: 'SLA',             href: '/relatorios/pendencias/sla',           module: 'logs' },
+          { label: 'Por Responsável', href: '/relatorios/pendencias/responsavel',   module: 'logs' },
+          { label: 'Por Unidade',     href: '/relatorios/pendencias/unidade',       module: 'logs' },
         ],
       },
       {

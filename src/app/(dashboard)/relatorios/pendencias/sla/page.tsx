@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="SLA de Pendências" description="Cumprimento do SLA." />
+import { Timer } from 'lucide-react'
+import PendencyListReport from '@/components/reports/PendencyListReport'
+
+export default function PendenciasSlaReportPage() {
+  return <PendencyListReport view="sla" title="SLA de Pendências" Icon={Timer} />
 }

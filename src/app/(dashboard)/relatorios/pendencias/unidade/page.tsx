@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Pendências por Unidade" description="Pendências agrupadas por unidade." />
+import { Building2 } from 'lucide-react'
+import PendencyGroupedReport from '@/components/reports/PendencyGroupedReport'
+
+export default function PendenciasUnidadeReportPage() {
+  return <PendencyGroupedReport view="unidade" title="Pendências por Unidade" groupLabel="Unidade" Icon={Building2} />
 }
