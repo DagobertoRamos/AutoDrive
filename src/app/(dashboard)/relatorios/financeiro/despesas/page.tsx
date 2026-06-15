@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Despesas" description="Despesas registradas." />
+import { TrendingDown } from 'lucide-react'
+import FinanceEntryListReport from '@/components/reports/FinanceEntryListReport'
+
+export default function DespesasReportPage() {
+  return <FinanceEntryListReport view="despesas" title="Despesas" Icon={TrendingDown} />
 }

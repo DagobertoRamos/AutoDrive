@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Receitas" description="Receitas registradas." />
+import { TrendingUp } from 'lucide-react'
+import FinanceEntryListReport from '@/components/reports/FinanceEntryListReport'
+
+export default function ReceitasReportPage() {
+  return <FinanceEntryListReport view="receitas" title="Receitas" Icon={TrendingUp} />
 }

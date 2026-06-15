@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Resultado por Vendedor" description="Resultado financeiro segmentado por vendedor." />
+import { UserSquare } from 'lucide-react'
+import FinanceResultReport from '@/components/reports/FinanceResultReport'
+
+export default function ResultadoVendedorReportPage() {
+  return <FinanceResultReport view="resultado-vendedor" title="Resultado por Vendedor" groupLabel="Vendedor" Icon={UserSquare} />
 }

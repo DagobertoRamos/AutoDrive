@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Contas a Pagar" description="Obrigações em aberto." />
+import { ArrowDownCircle } from 'lucide-react'
+import FinanceEntryListReport from '@/components/reports/FinanceEntryListReport'
+
+export default function ContasAPagarReportPage() {
+  return <FinanceEntryListReport view="contas-a-pagar" title="Contas a Pagar" aging Icon={ArrowDownCircle} />
 }

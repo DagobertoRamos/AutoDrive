@@ -1,5 +1,6 @@
-'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Contas a Receber" description="Recebíveis em aberto." />
+import { ArrowUpCircle } from 'lucide-react'
+import FinanceEntryListReport from '@/components/reports/FinanceEntryListReport'
+
+export default function ContasAReceberReportPage() {
+  return <FinanceEntryListReport view="contas-a-receber" title="Contas a Receber" aging Icon={ArrowUpCircle} />
 }
