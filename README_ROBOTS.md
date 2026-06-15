@@ -395,6 +395,13 @@
 - **Total de testes: 45 → 82 (todos verdes).** `tsc` limpo.
 - **Observação:** são testes de unidade de rota (prisma/sessão mockados) — validam auth/RBAC/tenant/validação, NÃO o banco real. A validação contra o banco real foi a verificação visual (LOG 0031).
 
+### LOG 0033 — 2026-06-15 — Claude (Opus 4.8) — Lint (slice seguro) + Fase 3 resíduo (segurança)
+- **Branch:** main (worktree).
+- **(A) Limpeza de lint — slice SEGURO (397 → 384 warnings, 0 erros):** só mudanças mecânicas/sem risco — meu `TYPE_LABEL` morto em relatorios/comissoes/vendedor; `req` posicional não usado → `_req`/`GET()` em reports/stock/preparation + 6 rotas (commissions return/warranty-rules, communication/templates, settings/sheets, whatsapp connect-test/webhook-validate); `catch (err)` não usado → `catch {` em notifications e pendencies/[id]. **NÃO mexi** nos `any` (186), `set-state-in-effect` (128, padrão de loading já aceito como WARN no projeto) nem em vars mortas dentro de páginas legadas gigantes (risco de regressão / protocolo "não refatorar arquivo inteiro").
+- **(B) Fase 3 RESOLVIDA (resíduo de segurança):** `GET /api/settings/system` estava **aberto a qualquer autenticado** → vazava segredos globais (Access Token WhatsApp/Meta, webhook token) para ADM. Agora **GET é MASTER-only** (igual ao PUT). Página `/configuracoes/sistema` ganhou **guard de papel** (useSession → não-MASTER vê "Configuração global da plataforma", sem fetch dos dados). Comentário NOTA(Fase 3) na navigation atualizado para "RESOLVIDA".
+- **Validações:** `tsc` limpo; lint 384 (0 erros); `npm test` 82/82; `npm run build` OK.
+- **Pendências menores restantes:** lint legado (`any`/`set-state`/vars mortas em arquivos grandes) — fazer per-arquivo quando aquele código for tocado, com cuidado; não vale refatoração em massa cega.
+
 ---
 
 ## TAREFAS PENDENTES

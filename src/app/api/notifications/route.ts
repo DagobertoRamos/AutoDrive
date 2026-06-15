@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     ])
 
     return NextResponse.json({ success: true, data: notifications, unreadCount })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }
 }
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     const notification = await prisma.notification.create({ data: body })
 
     return NextResponse.json({ success: true, data: notification }, { status: 201 })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }
 }

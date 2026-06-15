@@ -14,7 +14,6 @@ interface SellerRow { seller: string; total: number; count: number; byType: Reco
 interface Summary { sellers: number; total: number; count: number }
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const TYPE_LABEL: Record<string, string> = { VENDA: 'Venda', RETORNO: 'Retorno', GARANTIA: 'Garantia', SERVICO: 'Serviço', DOCUMENTACAO: 'Documentação', ACESSORIO: 'Acessório' }
 
 export default function ComissoesVendedorReportPage() {
   const [summary, setSummary] = useState<Summary | null>(null)

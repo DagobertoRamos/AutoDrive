@@ -8,6 +8,13 @@ export async function GET() {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
 
+    // Configuração GLOBAL/plataforma (inclui segredos: tokens WhatsApp/Meta,
+    // webhook token). Leitura exclusiva do MASTER — ADM gerencia a própria loja
+    // em /configuracoes/loja.
+    if (session.user.role !== 'MASTER') {
+      return NextResponse.json({ success: false, error: 'Apenas MASTER acessa configurações globais.' }, { status: 403 })
+    }
+
     const settings = await prisma.systemSetting.findMany()
 
     // Converter para objeto chave-valor

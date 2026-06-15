@@ -51,7 +51,7 @@ export async function GET(req: Request, ctxArg: { params: { id: string } | Promi
     if (!pendency) return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
 
     return NextResponse.json({ success: true, data: pendency })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }
 }
@@ -81,7 +81,7 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
     }).catch(() => {})
 
     return NextResponse.json({ success: true, data: pendency })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }
 }
@@ -110,7 +110,7 @@ export async function DELETE(req: Request, ctxArg: { params: { id: string } | Pr
     })
 
     return NextResponse.json({ success: true, message: 'Pendência cancelada.' })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }
 }

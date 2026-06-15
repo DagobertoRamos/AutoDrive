@@ -11,7 +11,7 @@ import { requireMaster } from '@/lib/master-guards'
 import { prisma }        from '@/lib/prisma'
 import { getWhatsAppConfig } from '../route'
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   const { session, error } = await requireMaster()
   if (error) return error
 

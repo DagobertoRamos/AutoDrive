@@ -17,7 +17,7 @@ const num = (v: unknown): number => {
   return Number(v) || 0
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'logs')) return forbiddenResponse('Sem acesso a relatórios.')

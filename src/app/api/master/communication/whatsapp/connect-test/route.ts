@@ -21,7 +21,7 @@ interface MetaPhoneInfo {
   error?:              { message: string; code: number; type?: string; fbtrace_id?: string }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   const { session, error } = await requireMaster()
   if (error) return error
 

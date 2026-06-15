@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerAuthSession()
     if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })

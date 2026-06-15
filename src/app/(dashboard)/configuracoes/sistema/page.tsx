@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSession } from 'next-auth/react'
 import {
   Settings,
   Clock,
@@ -16,6 +17,7 @@ import {
   Save,
   CheckCircle,
   AlertCircle,
+  Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -209,6 +211,8 @@ function AccordionSection({
 // -----------------------------------------------------------------------------
 
 export default function ConfiguracoesSistemaPage() {
+  const { data: session } = useSession()
+  const isMaster = (session?.user as { role?: string })?.role === 'MASTER'
   const [settings, setSettings] = useState<SystemSettings>(defaultSettings)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -244,6 +248,25 @@ export default function ConfiguracoesSistemaPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Página de configuração GLOBAL da plataforma — exclusiva do MASTER.
+  // ADM/gerência gerenciam a própria loja em /configuracoes/loja.
+  if (session && !isMaster) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+          <Lock size={24} />
+        </div>
+        <div>
+          <p className="text-lg font-semibold text-gray-800">Configuração global da plataforma</p>
+          <p className="mt-1 max-w-md text-sm text-gray-500">
+            Estes parâmetros são globais e gerenciados pelo administrador da plataforma (MASTER).
+            Para ajustes da sua loja, use <span className="font-medium">Configurações › Loja</span>.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {

@@ -318,9 +318,9 @@ export const NAV_GROUPS: NavItem[] = [
   // Apenas Loja, Identidade e Perfil. E-mail/WhatsApp/Sheets são domínio MASTER
   // (ver painel Master › Comunicação / Importador Sheets). Config de comissão
   // foi realocada para o grupo Comissões.
-  // NOTA (Fase 3): /configuracoes/sistema ainda mistura dados da loja com
-  // toggles GLOBAIS (modo manutenção, ambiente TESTE) — esses controles devem
-  // migrar para MASTER-only (master/maintenance). ADM não deve tocar no global.
+  // Fase 3 RESOLVIDA: /configuracoes/sistema é GLOBAL (MASTER-only) — só aparece
+  // no menu Master "Sistema (global)"; API GET/PUT e a própria página são
+  // MASTER-only. A loja do ADM fica em /configuracoes/loja.
   {
     label: 'Configurações',
     icon:  Settings,

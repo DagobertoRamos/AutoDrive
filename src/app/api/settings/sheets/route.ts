@@ -17,7 +17,7 @@ const createSchema = z.object({
 })
 
 // ── GET — lista todas as configs com abas ────────────────────────────────────
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerAuthSession()
     if (!session?.user) {
