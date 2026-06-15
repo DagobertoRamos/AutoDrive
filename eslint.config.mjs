@@ -7,6 +7,7 @@
 
 import coreWebVitals from 'eslint-config-next/core-web-vitals'
 import typescript from 'eslint-config-next/typescript'
+import unusedImports from 'eslint-plugin-unused-imports'
 
 export default [
   {
@@ -24,11 +25,16 @@ export default [
   ...coreWebVitals,
   ...typescript,
   {
+    plugins: { 'unused-imports': unusedImports },
     rules: {
-      // Permite parâmetros/variáveis intencionalmente não usados com prefixo "_".
-      '@typescript-eslint/no-unused-vars': [
+      // Imports não usados: removidos automaticamente no --fix (fixer testado).
+      'unused-imports/no-unused-imports': 'warn',
+      // Variáveis não usadas (não-import): via unused-imports, ignorando prefixo "_".
+      // Desligamos a regra base para evitar relatório duplicado.
+      '@typescript-eslint/no-unused-vars': 'off',
+      'unused-imports/no-unused-vars': [
         'warn',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+        { vars: 'all', varsIgnorePattern: '^_', args: 'after-used', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
       // Padrão fetch-on-mount (useEffect → load → setState) é usado em todo o
       // app; regra advisory mantida como aviso, não erro.

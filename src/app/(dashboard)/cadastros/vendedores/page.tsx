@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, User, X, Save, CheckCircle, AlertCircle, KeyRound } from 'lucide-react'
-import { cn, formatCPF, formatPhone } from '@/lib/utils'
+import { cn, formatPhone } from '@/lib/utils'
 import { maskCPF, maskPhone } from '@/lib/masks'
 
 // -----------------------------------------------------------------------------

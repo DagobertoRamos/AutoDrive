@@ -15,7 +15,7 @@ import { useSession }                        from 'next-auth/react'
 import { useRouter }                         from 'next/navigation'
 import Link                                  from 'next/link'
 import {
-  Users, Search, Filter, RefreshCw, Loader2, AlertCircle,
+  Users, Search, RefreshCw, Loader2, AlertCircle,
   CheckCircle2, Shield, Edit2, Key, UserX, UserCheck,
   ChevronLeft, ChevronRight, X, Save, Plus, Eye, EyeOff,
   ExternalLink, Trash2,

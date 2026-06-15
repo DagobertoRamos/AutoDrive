@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Settings, RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle } from 'lucide-react'
+import { RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 

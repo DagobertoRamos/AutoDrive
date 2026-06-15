@@ -16,8 +16,7 @@
 import { useState, useCallback } from 'react'
 import {
   X, Save, Loader2, CheckCircle2, AlertCircle, RefreshCw, Search,
-  Plus, Trash2, ChevronDown, ChevronRight, Eye, Zap,
-  Play, Settings2, Table2, GitMerge, Bot, Info,
+  Plus, Trash2, ChevronDown, ChevronRight, Eye, Settings2, Table2, GitMerge, Bot, Info,
   ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'

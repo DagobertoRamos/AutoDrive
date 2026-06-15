@@ -10,7 +10,7 @@ import {
   Search, Send, Phone, User, Car, MessageSquare,
   CheckCircle2, AlertCircle, X, Loader2,
 } from 'lucide-react'
-import { cn, formatDate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import type { PendencyWithRelations } from '@/types'
 
 interface SendResult {

@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { useState, useRef } from 'react'
-import { FileText, Upload, X, CheckCircle2, AlertCircle, Loader2, Download } from 'lucide-react'
+import { FileText, Upload, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ParseResult {

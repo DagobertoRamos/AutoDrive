@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react'
-import { X, CheckCircle2, XCircle, Clock, User, Car, FileText, Calendar, AlertTriangle } from 'lucide-react'
+import { X, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from './PendencyStatusBadge'
 import { cn, formatDate, formatRelativeTime } from '@/lib/utils'
 import type { PendencyWithRelations } from '@/types'

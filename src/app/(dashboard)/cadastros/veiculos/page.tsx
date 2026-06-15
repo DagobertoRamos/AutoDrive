@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Car, Search, RefreshCw, Plus, Eye } from 'lucide-react'
-import { cn, formatDate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 interface Vehicle {
   id:           string

@@ -10,8 +10,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   RefreshCw, Search, Eye, Filter, AlertTriangle, Activity,
-  BarChart2, UserCheck, Clock, Zap, PlayCircle, ChevronDown,
-  MessageSquare, ArrowUpCircle, UserCog, ShieldAlert,
+  BarChart2, UserCheck, Clock, Zap, PlayCircle, ArrowUpCircle, UserCog, ShieldAlert,
   CheckCircle2, XCircle, Timer, Inbox,
 } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from '@/components/pendencies/PendencyStatusBadge'

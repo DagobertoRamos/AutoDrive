@@ -52,8 +52,6 @@ import {
   FileCheck2,
   Upload,
   FileType,
-  // Relatórios sub-icons (re-uso de Database, ClipboardList, BarChart3 etc.)
-  TrendingUp,
   Wallet,
   Mail,
   Smartphone,

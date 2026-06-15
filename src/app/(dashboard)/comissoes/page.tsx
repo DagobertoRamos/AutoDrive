@@ -18,7 +18,6 @@ import {
   Wrench,
   Shield,
   RotateCcw,
-  DollarSign,
 } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
 

@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { useState } from 'react'
-import { Paperclip, Trash2, Loader2, FileText, Image as ImageIcon, X } from 'lucide-react'
+import { Paperclip, Loader2, FileText, Image as ImageIcon, X } from 'lucide-react'
 
 export interface Attachment {
   id:         string

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { RefreshCw, Search, Filter, Plus, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, Search, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { PendencyCard } from '@/components/pendencies/PendencyCard'
 import { cn } from '@/lib/utils'
 import type { PendencyWithRelations } from '@/types'

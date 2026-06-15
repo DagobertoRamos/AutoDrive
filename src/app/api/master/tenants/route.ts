@@ -8,7 +8,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { normalizeCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { normalizeCPF, isValidCPF } from '@/lib/br-docs/cpf'

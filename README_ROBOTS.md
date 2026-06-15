@@ -146,6 +146,13 @@
 - **Validações:** `tsc` limpo; `npm test` 34/34; `npm run build` OK; `npm run lint` exit 0.
 - **Observações p/ próxima IA:** próximas áreas de warning (incrementais): 124 `no-explicit-any` (tipar), 92 `no-unused-vars` (remover dead code/imports), 88 react-hooks "during render" (hoistar componentes — correção, por arquivo). Fazer por área, validando a cada passo.
 
+### LOG 0012 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Limpeza incremental de warnings — imports não usados.
+- **Feito:** instalado `eslint-plugin-unused-imports` (devDep) + configurado no eslint.config.mjs (`unused-imports/no-unused-imports` fixável; `unused-imports/no-unused-vars` com ignore `^_`; desligada a base `@typescript-eslint/no-unused-vars` para não duplicar). `eslint --fix` removeu 47 imports mortos (27 arquivos). Warnings 420 → 373.
+- **Validações:** `tsc` limpo (nenhum import removido indevidamente); `npm test` 34/34; `npm run build` OK; `npm run lint` exit 0.
+- **Observações p/ próxima IA:** o plugin agora remove imports mortos no --fix automaticamente (melhoria permanente). Restam ~373 warnings: ~124 `no-explicit-any`, ~75 `unused-imports/no-unused-vars` (vars locais, NÃO imports — exigem julgar caso a caso), 88 react-hooks "during render", misc.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -170,4 +177,4 @@
 
 ### Base — DÍVIDA TÉCNICA
 - [x] Lint: 0 ERROS (`npm run lint` passa); artefato eslint-report.json removido; auto-fixes aplicados (LOG 0010).
-- [ ] WARNINGS legados — limpeza incremental por área. Progresso: entidades JSX = 0 (LOG 0011). Restam ~420: 124 `no-explicit-any`, 92 `no-unused-vars`, 88 react-hooks "during render", misc.
+- [ ] WARNINGS legados — limpeza incremental. Progresso: entidades JSX=0 (LOG 0011); imports mortos removidos + plugin unused-imports (LOG 0012). Restam ~373: ~124 `no-explicit-any`, ~75 unused-vars locais, 88 react-hooks "during render", misc.

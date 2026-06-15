@@ -9,7 +9,6 @@ import { useSession } from 'next-auth/react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ArrowLeft,
   Handshake,
   User,
   Car,
@@ -20,7 +19,6 @@ import {
   AlertCircle,
   Send,
   MoreVertical,
-  Sheet,
   Settings2,
   FileText,
   Shield,
@@ -35,7 +33,6 @@ import {
   Ban,
   Edit,
   MessageSquare,
-  Pin,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'

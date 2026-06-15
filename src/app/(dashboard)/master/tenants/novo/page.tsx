@@ -6,7 +6,7 @@
 // Fluxo: CNPJ → Empresa → Endereço → Sócios → Plano → Revisão → Criar
 // =============================================================================
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { normalizeCNPJ, formatCNPJ, isValidCNPJ, isCNPJComplete } from '@/lib/br-docs/cnpj'
 import { normalizeCPF, formatCPF, isValidCPF, isCPFComplete } from '@/lib/br-docs/cpf'
-import { normalizeCEP, formatCEP, isValidCEP, isCEPComplete } from '@/lib/br-docs/cep'
+import { normalizeCEP, formatCEP, isValidCEP } from '@/lib/br-docs/cep'
 import { formatPhone, normalizePhone } from '@/lib/br-docs/phone'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────

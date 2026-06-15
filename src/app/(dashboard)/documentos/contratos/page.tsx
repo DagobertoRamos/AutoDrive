@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, Search, RefreshCw, Eye, Download } from 'lucide-react'
+import { FileText, Search, RefreshCw, Eye } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 
 interface Contract {

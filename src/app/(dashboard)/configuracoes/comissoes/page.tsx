@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Save, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react'
+import { Plus, Trash2, Save, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 

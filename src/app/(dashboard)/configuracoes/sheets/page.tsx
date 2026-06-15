@@ -10,18 +10,13 @@ import { useSession } from 'next-auth/react'
 import {
   Plus,
   RefreshCw,
-  Trash2,
   Edit3,
   CheckCircle2,
   XCircle,
-  Play,
-  Eye,
   ChevronDown,
   ChevronRight,
   TableProperties,
   Link as LinkIcon,
-  ToggleLeft,
-  ToggleRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canAccessModule } from '@/lib/permissions'

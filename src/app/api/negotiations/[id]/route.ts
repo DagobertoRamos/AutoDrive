@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canEditSensitiveFields, SENSITIVE_FIELDS, EDITABLE_STATUSES } from '@/lib/negotiation-permissions'
-import { computeDealTotals, createDealAudit, createStatusHistory } from '@/lib/negotiation-service'
+import { computeDealTotals, createDealAudit } from '@/lib/negotiation-service'
 import { canEditDeal, isDealLocked } from '@/lib/negotiation-rbac'
 
 export const dynamic = 'force-dynamic'
