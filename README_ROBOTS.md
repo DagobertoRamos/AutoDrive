@@ -200,6 +200,18 @@
 - **CAVEAT p/ Fase 3:** `/configuracoes/sistema` ("Loja") ainda mistura dados da loja com toggles GLOBAIS (modo manutenção, ambiente TESTE) e sua API libera ADM. Fase 3 deve SEPARAR os controles globais para MASTER-only (master/maintenance já existe) e deixar em "Loja" só os dados do tenant.
 - **Validações:** `tsc` limpo; `npm test` 45/45; `npm run build` OK; `npm run lint` exit 0.
 
+### LOG 0018 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Fase 3 — Base administrativa: "Configuração da Loja" (tenant) + separar Sistema global para MASTER.
+- **Arquivos criados/alterados:**
+  - `src/app/api/settings/store/route.ts` (novo): GET/PUT do PRÓPRIO tenant do ADM (whitelist de campos cadastrais: nomeFantasia/razaoSocial/cnpj/IE/endereço/telefone/email/responsável/slogan). NÃO permite editar contrato (plano/status/trial/limites/slug) — isso é MASTER. MASTER sem tenant → 400 (usa Master › Tenants). Permissão `settings` (MASTER+ADM), auditoria.
+  - `src/app/(dashboard)/configuracoes/loja/page.tsx` (novo): form de dados da loja (dados/endereço/responsável) + faixa read-only do contrato (ID/plano/status, "gerenciado pelo MASTER").
+  - `src/components/layout/navigation.ts`: "Loja" agora → `/configuracoes/loja` (era /configuracoes/sistema). Adicionado **Master › "Sistema (global)"** → /configuracoes/sistema (module `master`).
+  - `src/app/api/settings/system/route.ts`: PUT agora **MASTER-only** (era MASTER+ADM) — config global (manutenção/ambiente) é do MASTER.
+- **Resultado da fronteira MASTER×ADM:** ADM edita só os dados cadastrais da própria loja; toggles globais (manutenção/ambiente/SystemSetting) ficaram MASTER-only e fora do menu do ADM. Caveat do LOG 0017 RESOLVIDO.
+- **Validações:** `tsc` limpo; lint (novos) sem erro (1 warning advisory); `npm test` 45/45; `npm run build` OK (rotas /configuracoes/loja e /api/settings/store registradas).
+- **Observações p/ próxima IA:** NÃO mexi no schema (Tenant já tinha os campos) nem em permissions.ts. /configuracoes/sistema ainda contém campos operacionais (agenda/pendências/whatsapp/import) além dos globais — se algum precisar voltar ao nível do tenant, é decisão futura. Não verificado visualmente.
+
 ---
 
 ## TAREFAS PENDENTES

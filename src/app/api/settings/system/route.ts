@@ -27,8 +27,10 @@ export async function PUT(req: Request) {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
 
-    if (!['MASTER', 'ADM'].includes(session.user.role)) {
-      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    // Configuração GLOBAL/plataforma → exclusiva do MASTER (modo manutenção,
+    // ambiente TESTE etc.). ADM gerencia a própria loja em /configuracoes/loja.
+    if (session.user.role !== 'MASTER') {
+      return NextResponse.json({ success: false, error: 'Apenas MASTER altera configurações globais.' }, { status: 403 })
     }
 
     const body: Record<string, string> = await req.json()

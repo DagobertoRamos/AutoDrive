@@ -312,7 +312,7 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  Settings,
     module: 'settings',
     children: [
-      { label: 'Loja',       href: '/configuracoes/sistema',    icon: Building2,  module: 'settings' },
+      { label: 'Loja',       href: '/configuracoes/loja',       icon: Building2,  module: 'settings' },
       { label: 'Identidade', href: '/configuracoes/identidade', icon: Palette,    module: 'settings.identity' },
       { label: 'Perfil',     href: '/perfil',                   icon: UserCircle, module: 'profile' },
     ],
@@ -328,6 +328,7 @@ export const NAV_GROUPS: NavItem[] = [
     module: 'master',
     children: [
       { label: 'Visão Geral',       href: '/master',                    module: 'master' },
+      { label: 'Sistema (global)',  href: '/configuracoes/sistema',     module: 'master' },
       { label: 'Tenants',           href: '/master/tenants',            module: 'master.tenants' },
       { label: 'Usuários',          href: '/master/users',              module: 'master' },
       { label: 'Planos',            href: '/master/plans',              module: 'master.plans' },
