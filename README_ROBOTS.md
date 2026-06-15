@@ -174,6 +174,21 @@
 - **DIAGNÓSTICO dos 372 restantes (recomendação):** não há mais sweep mecânico seguro. Composição: **186 `no-explicit-any`** (dívida de tipagem — fazer por arquivo, manual), **105 `react-hooks/set-state-in-effect`** (INTENCIONAL — padrão fetch-on-mount usado em todo o app; advisory, não bug), **75 `unused-imports/no-unused-vars`** (params/caught → prefixar `_`; "assigned but unused" → remover; tem destructures → codemod inseguro, requer julgamento), **6 `react-hooks/exhaustive-deps`** (arriscado: pode causar loop), **0 demais**. RECOMENDAÇÃO: tratar `any` e unused-vars **oportunisticamente ao editar cada arquivo**, não em passe único. set-state-in-effect pode ficar como está (ou virar regra desligada se incomodar).
 - **Validações:** `npm run lint` exit 0; `npm test` 45/45.
 
+### LOG 0016 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** AUDITORIA READ-ONLY + MAPA MESTRE DE MONTAGEM do AutoDrive (a pedido do usuário).
+- **Nenhum código alterado** — apenas este log gravado.
+- **Números:** 118 páginas (45 placeholders), 237 API routes, 92 models Prisma, 6 services, 45 testes verdes, lint 0 erros/372 warnings.
+- **Achados-chave:**
+  - **Relatórios: 38/40 páginas são placeholder** (módulo inteiro a implementar — dados já existem). Documentos: 3 placeholders (procuracoes/termos/declaracoes). Comunicações: 3 placeholders (avisos/central/logs). Pendências: 1 (configuracoes).
+  - **Menu Configurações tem 7 itens; deveria ter 3** (Loja, Identidade, Perfil). Realocar E-mail/WhatsApp/Sheets/Comissões.
+  - **Módulos AUSENTES:** Leads/CRM e Pós-vendas (não existem páginas/models).
+  - **Financeiro:** só placeholders (sem models de transação financeira).
+  - **Arquivos gigantes (risco):** negociacoes/nova 4780l, negociacoes/[id] 2133l, master/communication 2130l, master/sheets 1893l, estoque/avaliacao 1766l.
+  - **Stubs:** /negociacoes/[id]/editar (23l), /pendencias (27l), /estoque/novo (32l). **Órfãs notáveis:** /inicio, /relatorios/logs.
+  - 0 links de menu quebrados.
+- **Observações p/ próxima IA:** o MAPA MESTRE completo (10 seções) foi entregue ao usuário no chat. Ordem segura sugerida: Fase 2 enxugar menu Configurações → Fase 3 base administrativa/Loja → relatórios incrementais. NÃO refatorar os arquivos gigantes sem necessidade.
+
 ---
 
 ## TAREFAS PENDENTES
