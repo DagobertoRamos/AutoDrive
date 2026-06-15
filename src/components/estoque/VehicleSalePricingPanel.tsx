@@ -458,7 +458,7 @@ function HistoryTimeline({ history }: { history: PricingHistoryRow[] }) {
                   </p>
                 ) : null}
                 {h.reason && (
-                  <p className="mt-1 text-xs italic text-gray-600">"{h.reason}"</p>
+                  <p className="mt-1 text-xs italic text-gray-600">&quot;{h.reason}&quot;</p>
                 )}
               </li>
             )

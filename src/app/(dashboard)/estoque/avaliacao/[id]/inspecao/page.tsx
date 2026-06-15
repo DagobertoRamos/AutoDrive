@@ -1039,7 +1039,7 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
             </p>
           )}
           {evaluation.customerDecisionNote && (
-            <p className="mt-1 text-xs italic opacity-80">"{evaluation.customerDecisionNote}"</p>
+            <p className="mt-1 text-xs italic opacity-80">&quot;{evaluation.customerDecisionNote}&quot;</p>
           )}
           {decision === 'ACEITA' && availableFor.length > 0 && (
             <p className="mt-2 text-xs">

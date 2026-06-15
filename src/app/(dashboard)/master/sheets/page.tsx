@@ -1378,7 +1378,7 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
             </div>
 
             {tabs.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">Nenhuma aba cadastrada. Clique em "+ Adicionar aba".</p>
+              <p className="text-sm text-gray-400 italic">Nenhuma aba cadastrada. Clique em &quot;+ Adicionar aba&quot;.</p>
             ) : (
               <div className="overflow-hidden rounded-lg border border-gray-200">
                 <table className="w-full text-xs">

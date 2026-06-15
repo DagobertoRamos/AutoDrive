@@ -1014,7 +1014,7 @@ function EmailTab() {
           <div className="rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
             <FileText size={28} className="mx-auto text-gray-300 mb-2" />
             <p className="text-sm text-gray-500">Nenhum template criado.</p>
-            <p className="text-xs text-gray-400 mt-1">Clique em "Criar padrões" para gerar os templates base do AutoDrive.</p>
+            <p className="text-xs text-gray-400 mt-1">Clique em &quot;Criar padrões&quot; para gerar os templates base do AutoDrive.</p>
           </div>
         ) : (
           <div className="space-y-5">
@@ -1347,7 +1347,7 @@ function WhatsAppTab() {
             )}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">Clique em "Testar conexão Meta" para validar token e Phone Number ID sem enviar mensagem.</p>
+          <p className="text-xs text-gray-400">Clique em &quot;Testar conexão Meta&quot; para validar token e Phone Number ID sem enviar mensagem.</p>
         )}
       </div>
 

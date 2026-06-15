@@ -280,8 +280,8 @@ export default function WhatsAppConfigPage() {
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
         <p className="font-semibold mb-1">Passos para configurar a integração</p>
         <ol className="space-y-1 text-xs list-decimal list-inside text-amber-600">
-          <li>Acesse <span className="font-mono">developers.facebook.com</span> e crie um aplicativo tipo "Business".</li>
-          <li>Adicione o produto "WhatsApp" ao aplicativo.</li>
+          <li>Acesse <span className="font-mono">developers.facebook.com</span> e crie um aplicativo tipo &quot;Business&quot;.</li>
+          <li>Adicione o produto &quot;WhatsApp&quot; ao aplicativo.</li>
           <li>Copie o Phone Number ID e o Business Account ID.</li>
           <li>Gere um token permanente com um System User de nível Admin.</li>
           <li>Configure o webhook com a URL acima e o token de verificação.</li>

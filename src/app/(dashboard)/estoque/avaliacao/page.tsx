@@ -1392,9 +1392,9 @@ function AvaliacaoForm() {
           {(lookupData?.brand || lookupData?.model) && (!brandCode || !modelCode) && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               <strong>API retornou:</strong>{' '}
-              {lookupData?.brand && <span>marca <em>"{lookupData.brand}"</em></span>}
+              {lookupData?.brand && <span>marca <em>&quot;{lookupData.brand}&quot;</em></span>}
               {lookupData?.brand && lookupData?.model && <span> · </span>}
-              {lookupData?.model && <span>modelo <em>"{lookupData.model}"</em></span>}
+              {lookupData?.model && <span>modelo <em>&quot;{lookupData.model}&quot;</em></span>}
               .{' '}
               {!brandCode && 'Não encontramos correspondência exata no catálogo FIPE — selecione manualmente ou siga com o texto retornado.'}
             </div>
@@ -1633,7 +1633,7 @@ function AvaliacaoForm() {
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Conclua a etapa "Veículo" para iniciar a avaliação por seções.
+                Conclua a etapa &quot;Veículo&quot; para iniciar a avaliação por seções.
               </div>
             )}
           </Section>

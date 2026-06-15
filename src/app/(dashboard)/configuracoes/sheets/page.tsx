@@ -298,7 +298,7 @@ export default function SheetsConfigPage() {
         <div className="card flex flex-col items-center justify-center py-16 text-center">
           <TableProperties size={40} className="text-gray-200 mb-3" />
           <p className="text-sm font-medium text-gray-500">Nenhuma planilha configurada</p>
-          <p className="text-xs text-gray-400 mt-1">Clique em "Adicionar planilha" para começar.</p>
+          <p className="text-xs text-gray-400 mt-1">Clique em &quot;Adicionar planilha&quot; para começar.</p>
         </div>
       ) : (
         <div className="space-y-3">

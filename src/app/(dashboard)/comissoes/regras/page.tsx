@@ -383,7 +383,7 @@ function DeleteModal({
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
         <h3 className="text-base font-semibold text-gray-900">Excluir regra</h3>
         <p className="mt-2 text-sm text-gray-600">
-          Tem certeza que deseja excluir a regra <strong>"{rule.name}"</strong>? Esta ação não pode ser desfeita.
+          Tem certeza que deseja excluir a regra <strong>&quot;{rule.name}&quot;</strong>? Esta ação não pode ser desfeita.
         </p>
         {error && (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

@@ -616,7 +616,7 @@ export default function PlanilhaConfigModal({
         <div className="shrink-0 border-t px-6 py-4 flex items-center justify-between gap-3 bg-gray-50 rounded-b-2xl">
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <Info size={13} />
-            <span>Todas as seções são salvas juntas ao clicar em "Salvar tudo".</span>
+            <span>Todas as seções são salvas juntas ao clicar em &quot;Salvar tudo&quot;.</span>
           </div>
           <div className="flex items-center gap-3">
             <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">
@@ -855,7 +855,7 @@ function AbasSection({
       <div className="space-y-2">
         {tabs.length === 0 && (
           <div className="flex h-24 items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm">
-            Nenhuma aba configurada. Use "Descobrir abas" ou adicione manualmente.
+            Nenhuma aba configurada. Use &quot;Descobrir abas&quot; ou adicione manualmente.
           </div>
         )}
 
@@ -1040,7 +1040,7 @@ function MapeamentoSection({
     return (
       <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
         <GitMerge size={24} strokeWidth={1} />
-        <p className="text-sm">Ative pelo menos uma aba na seção "Abas" para configurar o mapeamento.</p>
+        <p className="text-sm">Ative pelo menos uma aba na seção &quot;Abas&quot; para configurar o mapeamento.</p>
       </div>
     )
   }
@@ -1111,7 +1111,7 @@ function MapeamentoSection({
 
             {currentTab.columnMaps.length === 0 ? (
               <div className="flex h-24 items-center justify-center text-xs text-gray-400">
-                Clique em "Carregar colunas" para auto-detectar ou em "Adicionar linha" para mapear manualmente.
+                Clique em &quot;Carregar colunas&quot; para auto-detectar ou em &quot;Adicionar linha&quot; para mapear manualmente.
               </div>
             ) : (
               <table className="w-full text-xs">

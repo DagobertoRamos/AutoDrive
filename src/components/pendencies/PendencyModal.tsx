@@ -161,7 +161,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                         {' → '}
                         <span className="font-medium text-brand-700">{h.newStatus}</span>
                       </p>
-                      {h.reason && <p className="text-xs text-gray-500 mt-0.5 italic">"{h.reason}"</p>}
+                      {h.reason && <p className="text-xs text-gray-500 mt-0.5 italic">&quot;{h.reason}&quot;</p>}
                     </div>
                   </div>
                 ))

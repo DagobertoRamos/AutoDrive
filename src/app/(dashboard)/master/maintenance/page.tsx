@@ -355,7 +355,7 @@ export default function MaintenancePage() {
                   {m.active ? 'Ativada' : 'Desativada'}
                 </span>
                 <span className="text-gray-500">{m.scope}</span>
-                {m.message && <span className="flex-1 truncate text-gray-400 italic">"{m.message}"</span>}
+                {m.message && <span className="flex-1 truncate text-gray-400 italic">&quot;{m.message}&quot;</span>}
                 <span className="ml-auto text-gray-400 flex-shrink-0">
                   {new Date(m.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                 </span>

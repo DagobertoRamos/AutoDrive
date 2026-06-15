@@ -126,7 +126,7 @@ export function StepCliente({ selected, onSelect }: StepClienteProps) {
       )}
       {!loading && q.trim().length >= 2 && results.length === 0 && (
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-500 text-center">
-          Nenhum cliente encontrado. Use "Cadastrar cliente rápido" para criar um novo.
+          Nenhum cliente encontrado. Use &quot;Cadastrar cliente rápido&quot; para criar um novo.
         </div>
       )}
       {!loading && q.trim().length < 2 && results.length === 0 && (

@@ -139,6 +139,13 @@
 - **Validações:** `npm run lint` exit 0; `tsc` limpo; `npm test` 34/34; `npm run build` OK.
 - **PENDENTE (incremental, NÃO fazer em sweep único):** ~464 warnings legados = 124 `no-explicit-any` + 92 `no-unused-vars` + 88 react-hooks "Cannot create components/call impure during render" (correção real — hoistar componentes internos, por arquivo) + 39 `react/no-unescaped-entities` + misc. Tratar por área, com cuidado de regressão. As 88 de react-hooks são as mais relevantes (potenciais bugs) — priorizar quando mexer nos arquivos afetados.
 
+### LOG 0011 — 2026-06-14 — Claude (Opus 4.8)
+- **Branch:** main (worktree).
+- **Tarefa:** Limpeza incremental de warnings legados — área `react/no-unescaped-entities`.
+- **Feito:** escapadas 44 aspas `"`→`&quot;` em texto JSX (14 arquivos), via codemod dirigido pelas posições exatas do ESLint (só onde ele apontou; cosmético, zero lógica). Warnings 464 → 420; `no-unescaped-entities` agora = 0.
+- **Validações:** `tsc` limpo; `npm test` 34/34; `npm run build` OK; `npm run lint` exit 0.
+- **Observações p/ próxima IA:** próximas áreas de warning (incrementais): 124 `no-explicit-any` (tipar), 92 `no-unused-vars` (remover dead code/imports), 88 react-hooks "during render" (hoistar componentes — correção, por arquivo). Fazer por área, validando a cada passo.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -163,4 +170,4 @@
 
 ### Base — DÍVIDA TÉCNICA
 - [x] Lint: 0 ERROS (`npm run lint` passa); artefato eslint-report.json removido; auto-fixes aplicados (LOG 0010).
-- [ ] ~464 WARNINGS legados (any/unused-vars/react-hooks during-render/entidades) — limpar incrementalmente por área (não em sweep único). Ver LOG 0010.
+- [ ] WARNINGS legados — limpeza incremental por área. Progresso: entidades JSX = 0 (LOG 0011). Restam ~420: 124 `no-explicit-any`, 92 `no-unused-vars`, 88 react-hooks "during render", misc.

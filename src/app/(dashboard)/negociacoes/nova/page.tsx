@@ -3373,7 +3373,7 @@ function StepPagamento({
               <div className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
                 <DollarSign size={20} />
                 <p>Nenhum pagamento cadastrado</p>
-                <p>Clique em "+ Novo Pagamento" para adicionar</p>
+                <p>Clique em &quot;+ Novo Pagamento&quot; para adicionar</p>
               </div>
             ) : (
               <div className="space-y-2">

@@ -170,7 +170,7 @@ export default function DisparoManualPage() {
           )}
 
           {!searching && query.length >= 2 && results.length === 0 && (
-            <p className="text-center py-6 text-sm text-gray-400">Nenhuma pendência encontrada para "{query}"</p>
+            <p className="text-center py-6 text-sm text-gray-400">Nenhuma pendência encontrada para &quot;{query}&quot;</p>
           )}
         </div>
       </div>
