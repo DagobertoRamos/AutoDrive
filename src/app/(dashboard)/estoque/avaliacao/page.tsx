@@ -1485,6 +1485,32 @@ function AvaliacaoForm() {
             como pré-preenchimento opcional. */}
 
           {/* ──────────────────────────────────────────────────────────────────
+              Resumo de campos obrigatórios (estilo "sistema grande")
+          ────────────────────────────────────────────────────────────────── */}
+          {(() => {
+            const missing = [
+              !plate && 'Placa',
+              !(brandName || manualBrand || lookupData?.brand) && 'Marca',
+              !(modelName || manualModel || lookupData?.model) && 'Modelo',
+              !unitId && 'Unidade',
+              !conditionType && 'Condição',
+            ].filter(Boolean) as string[]
+            return missing.length ? (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  <strong>Campos obrigatórios para avançar:</strong> {missing.join(', ')}.
+                  <span className="ml-1 text-amber-700">O documento/CRLV é opcional — quando enviado, a IA preenche estes campos automaticamente.</span>
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+                <CheckCircle className="h-4 w-4" /> Tudo certo — você já pode avançar para a próxima etapa.
+              </div>
+            )
+          })()}
+
+          {/* ──────────────────────────────────────────────────────────────────
               Navegação
           ────────────────────────────────────────────────────────────────── */}
           <div className="flex justify-between border-t border-gray-100 pt-4">

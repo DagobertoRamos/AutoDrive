@@ -434,6 +434,13 @@
 - **Falso-positivo investigado (NÃO é bug de prod):** `/login` e `/cadastro` davam 500 no MEU `next start` local porque `process.env.NEXTAUTH_URL` chegava VAZIO no runtime (provável pelas aspas no .env: `NEXTAUTH_URL="..."`), e o next-auth faz `new URL('')` quando a var é string vazia (undefined cairia no default OK). Subindo com `NEXTAUTH_URL` explícito → 200. **Na Vercel é env var real → funciona** (usuário loga online). Para testar localmente: remover as aspas do NEXTAUTH_URL no .env ou exportar a var.
 - **Validações:** `tsc` limpo; `npm test` 82/82; `npm run build` OK; varredura 55 rotas 0 crash.
 
+### LOG 0038 — 2026-06-16 — Claude (Opus 4.8) — Sessão autônoma Fase D: campos obrigatórios visíveis na avaliação
+- **Branch:** main (worktree).
+- **Avaliação — campos obrigatórios "como sistema grande":** adicionado banner visível acima do botão "Próxima etapa" (etapa Veículo) que lista dinamicamente os campos obrigatórios faltantes (Placa, Marca, Modelo, Unidade, Condição) em amber, ou um "tudo certo, pode avançar" em verde. Reforça o que o tooltip já dizia. Documento/CRLV reforçado como OPCIONAL (IA preenche quando enviado).
+- **Verificação:** página `/estoque/avaliacao` carrega 200 (autenticado Master), sem erros no log; step bar e step 0 renderizam. (Screenshot da etapa Veículo travou na automação — página pesada de FIPE — mas é só a captura; a rota responde 200.)
+- **Validações:** `tsc` limpo; `npm test` 82/82; `npm run build` OK.
+- **RESUMO DA SESSÃO AUTÔNOMA (LOGs 0036-0038):** 404 raiz, leitura IA Gemini (graceful), wizard destravado, campos obrigatórios visíveis, FURO de segurança /cadastros/* corrigido, RBAC /master, varredura 55 rotas 0 crash. **AÇÃO DO USUÁRIO: definir `GEMINI_API_KEY` na Vercel p/ ligar leitura de PDF+imagem por IA.**
+
 ---
 
 ## TAREFAS PENDENTES
