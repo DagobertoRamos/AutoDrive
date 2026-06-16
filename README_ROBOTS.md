@@ -454,6 +454,13 @@
 - **Validações:** `tsc` limpo; `npm test` 87/87; `npm run build` OK (rotas /financiamento/* registradas).
 - **PRÓXIMAS FASES:** FN-2 form profissional de proponente (condicional por ocupação, CEP/CNPJ auto, campos obrigatórios) + CRUD; FN-3 bancos CRUD; FN-4 fichas/simulações + status; FN-5 relatórios. **AÇÃO USUÁRIO: aplicar a migration no banco.**
 
+### LOG 0041 — 2026-06-16 — Claude (Opus 4.8) — Financiamento FN-2: cadastro de proponentes
+- **Branch:** main (worktree).
+- **Arquivos:** `validators/financing.ts` (zod com superRefine condicional por ocupação), `/api/financing/proponents` (GET busca ?q= nome/cpf/email/celular + POST) e `/[id]` (GET/PATCH/DELETE), e a página `/(dashboard)/financiamento/proponentes` (substituiu o stub).
+- **Formulário profissional:** seções Dados pessoais / Endereço / Ocupação+Renda / Empresa (condicional) / Outras rendas (dinâmicas) / Observações. Obrigatórios com asterisco; **CEP automático** (residencial e empresa via `/api/address/lookup-by-cep`), **CNPJ automático** (empresário via `/api/companies/lookup` → preenche nome+endereço). Máscaras CPF/CNPJ/telefone/CEP/BRL. Validação condicional: AUTONOMO→cargo, CLT→empresa, EMPRESARIO→CNPJ+nome, APOSENTADO→benefício; renda sempre obrigatória. Busca na lista. Gating financing/financing.manage, tenant-scoped, auditoria.
+- **Validações:** `tsc` limpo; lint 1 warning advisory; `npm test` 87/87; `npm run build` OK.
+- **PRÓXIMO:** FN-3 bancos CRUD; FN-4 fichas/simulações; FN-5 relatórios. Migration FN-1 ainda PENDENTE de aplicar (o cadastro só funciona após `migrate deploy`).
+
 ---
 
 ## TAREFAS PENDENTES
