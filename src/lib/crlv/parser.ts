@@ -498,7 +498,18 @@ export async function extractFromCRLV(
   buffer: Buffer,
   mimeType: string,
 ): Promise<ExtractionResult> {
-  // Imagens: hoje sem OCR — devolve resposta clara para o frontend.
+  // ── 1) IA de visão (Gemini), se configurada (GEMINI_API_KEY) ──────────────
+  // Cobre PDF E imagem (foto do CRLV) de forma robusta em serverless. Só é
+  // usada quando a chave existe; senão cai no parser por regex abaixo.
+  try {
+    const { extractWithAI } = await import('./ai-extract')
+    const ai = await extractWithAI(buffer, mimeType)
+    if (ai && ai.extracted) return ai
+  } catch (e) {
+    console.warn('[CRLV parser] IA indisponível/falhou, usando fallback:', (e as Error)?.message)
+  }
+
+  // ── 2) Imagem sem IA configurada — resposta clara para o frontend ─────────
   if (mimeType !== 'application/pdf') {
     return {
       success:       true,
@@ -507,8 +518,8 @@ export async function extractFromCRLV(
       source:        'ocr',
       vehicle:       {},
       missingFields: [],
-      warnings:      ['OCR de imagem não disponível neste ambiente.'],
-      message:       'Leitura automática de imagens ainda não suportada — envie o PDF do CRLV ou preencha manualmente.',
+      warnings:      ['Leitura de imagem requer IA (GEMINI_API_KEY) — não configurada.'],
+      message:       'Leitura automática de imagens requer a chave de IA (GEMINI_API_KEY). Envie o PDF do CRLV, use a consulta por placa, ou preencha manualmente.',
     }
   }
 

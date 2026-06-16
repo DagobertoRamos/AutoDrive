@@ -7,6 +7,10 @@
 
 import { redirect } from 'next/navigation'
 
+// Não pré-renderizar no build (o layout raiz toca next-auth, que quebra na
+// geração estática). Em runtime apenas redireciona.
+export const dynamic = 'force-dynamic'
+
 export default function RootPage() {
   redirect('/dashboard')
 }

@@ -1496,8 +1496,24 @@ function AvaliacaoForm() {
             </Link>
             <button
               type="button"
-              disabled={!documentUploaded || !plate || !(brandName || manualBrand || lookupData?.brand) || !(modelName || manualModel || lookupData?.model) || !unitId || !conditionType || autoSavingDraft}
-              title={!documentUploaded ? 'CRLV obrigatório — envie o documento do veículo antes de prosseguir.' : ''}
+              disabled={!plate || !(brandName || manualBrand || lookupData?.brand) || !(modelName || manualModel || lookupData?.model) || !unitId || !conditionType || autoSavingDraft}
+              title={
+                [
+                  !plate && 'placa',
+                  !(brandName || manualBrand || lookupData?.brand) && 'marca',
+                  !(modelName || manualModel || lookupData?.model) && 'modelo',
+                  !unitId && 'unidade',
+                  !conditionType && 'condição',
+                ].filter(Boolean).length
+                  ? `Preencha os campos obrigatórios: ${[
+                      !plate && 'placa',
+                      !(brandName || manualBrand || lookupData?.brand) && 'marca',
+                      !(modelName || manualModel || lookupData?.model) && 'modelo',
+                      !unitId && 'unidade',
+                      !conditionType && 'condição',
+                    ].filter(Boolean).join(', ')}. (O documento/CRLV é opcional — a IA o preenche automaticamente quando enviado.)`
+                  : ''
+              }
               onClick={async () => {
                 // Persiste manualBrand/manualModel a partir das combos FIPE
                 // selecionadas. Quando o catálogo FIPE não casou (brandName

@@ -417,6 +417,15 @@
 - **Busca textual (#3 do pedido):** novo `entryTextSearch()` em finance-service (OR contains insensitive em description/counterparty/documentNumber + match de `amount` se numérico → cobre placa, negociação, nome, fornecedor, valor). Param `q` em `/api/finance/entries` e `/api/reports/finance` (views de lista). Componente `components/reports/SearchBox.tsx` (debounce 350ms) ligado em /financeiro/lancamentos e no FinanceEntryListReport (receitas/despesas/contas-a-pagar/contas-a-receber). **Verificado no navegador:** buscar placa "JKE2G14" filtrou 5→1.
 - **Validações:** `tsc` limpo; lint 0 erros; `npm test` 82/82; `npm run build` OK; verificação visual prod (middleware) + dev (busca).
 
+### LOG 0036 — 2026-06-16 — Claude (Opus 4.8) — SESSÃO AUTÔNOMA (usuário dormindo): avaliação + 404 + segurança
+- **Branch:** main (worktree). Usuário autorizou trabalho autônomo noturno; escolheu **Google Gemini** como motor de leitura de documento.
+- **404 da raiz (FIX):** criado `src/app/page.tsx` → redirect `/dashboard` (domínio puro caía em not-found). **ATENÇÃO:** precisa de `export const dynamic = 'force-dynamic'` senão o build estático quebra com `Invalid URL` (layout raiz toca next-auth no prerender). O 1º push (88ca755) NÃO tinha isso → build Vercel falharia; corrigido neste log.
+- **Leitura de documento por IA (Gemini) — Fase A:** `src/lib/crlv/ai-extract.ts` (`extractWithAI`) chama `generativelanguage.googleapis.com` (modelo `GEMINI_MODEL` default gemini-2.0-flash) com o PDF/imagem inline + responseSchema → JSON estruturado dos campos do CRLV. **Degradação graciosa:** só ativa se `GEMINI_API_KEY` (ou `GOOGLE_API_KEY`) estiver no ambiente; senão cai no parser regex de PDF (imagem → mensagem). `extractFromCRLV` agora tenta IA primeiro (PDF E imagem), fallback regex. **AÇÃO DO USUÁRIO: definir `GEMINI_API_KEY` no .env e na Vercel para ligar a leitura por IA (PDF+imagem).**
+- **Wizard "não avança" (FIX):** o botão "Próxima etapa" exigia `documentUploaded` (contradizendo o comentário "documento é opcional") — travava sem leitura. Removido; agora exige só os campos reais (placa, marca, modelo, unidade, condição) com tooltip dinâmico dos que faltam. Permite preenchimento manual e avança.
+- **Segurança (auditoria):** 257 rotas de API — TODAS com guard (getServerAuthSession/getSessionUser/requireMaster/requireModule/CRON_SECRET); só `auth/*` e `webhook` públicas. Nenhum vazamento de API. Middleware (LOG 0035) bloqueia páginas sem login. **Falta (próxima fase):** guards de papel por página (RBAC defense-in-depth contra abrir tela de outro perfil via URL).
+- **Validações:** `tsc` limpo; lint 0 erros; `npm test` 82/82; `npm run build` OK.
+- **PRÓXIMAS FASES desta sessão:** (B) RBAC por página; (C) varredura geral de bugs via build de produção + smoke; (D) campos obrigatórios com indicadores visuais.
+
 ---
 
 ## TAREFAS PENDENTES
