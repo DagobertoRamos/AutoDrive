@@ -492,6 +492,15 @@
 - **Observações:** **migration `20260616000000_add_financiamento` AINDA PENDENTE** (`prisma migrate status` = not applied) — Fase 4 (models) e uso real das telas dependem de `npx prisma migrate deploy`. Fase 1 não depende do banco.
 - **Próximo passo seguro (Fase 2):** criar **Configurações da Loja > F&I** tenant-scoped (Bancos da loja, Credenciais/Integrações **criptografadas e mascaradas**, Prioridades de envio, Retornos por banco, Documentos obrigatórios, Permissões F&I). Antes da Fase 4 (models novos), aplicar a migration pendente. NÃO criar RPA oculto de banco. Outra IA: ler LOGs 0040–0045 + este bloco antes de tocar em `financing`/`financiamento`.
 
+### LOG 0046 — 2026-06-16 — Claude — F&I Fase 2 (estrutura): Configurações da Loja > F&I
+- **Branch:** main (worktree).
+- **Tarefa:** criar a área **Configurações da Loja > F&I** (estrutura/navegação + RBAC + placeholders). **Sem banco** — a persistência real (credenciais criptografadas, prioridades, retornos, documentos) é a **Fase 2b**, que depende dos models da Fase 4 e da migration `20260616000000` ainda PENDENTE. Decisão consciente para não empilhar migration não-aplicada nem expor credenciais sem criptografia.
+- **Arquivos criados/alterados:** `src/lib/permissions.ts` (novo módulo **`financing.config`** — MASTER/ADM/GERENTE_GERAL/GERENTE_ADMINISTRATIVO/FINANCEIRO; **vendedor NÃO**); `src/components/layout/navigation.ts` (item "F&I" em Configurações, gated `financing.config`); `src/app/(dashboard)/configuracoes/fi/page.tsx` (hub com 7 cards + guard de papel client) + 7 stubs `/configuracoes/fi/{bancos,integracoes,prioridades,retornos,produtos,documentos,permissoes}`.
+- **Regras aplicadas:** RBAC `financing.config` (separação ADM×vendedor); guard de papel no hub (não-autorizado vê "Configuração restrita"); nenhuma credencial/segredo manipulado ainda (placeholders); nada fora do escopo; sem mudança de schema.
+- **Validações:** `tsc` limpo; `eslint` 0 problemas; `npm test` 87/87; `npm run build` OK (rotas /configuracoes/fi/* registradas).
+- **Observações:** migration `20260616000000_add_financiamento` **continua PENDENTE** (`migrate deploy`). Fase 2b (funcional, com criptografia de credenciais) e Fase 4 (models) exigem aplicá-la antes.
+- **Próximo passo seguro:** OU **Fase 3 (Master F&I estrutura)** — `/master/financing/*` placeholders + permissão `master.financing.*` (sem banco, seguro), OU aplicar a migration e ir para **Fase 4 (models aditivos)** que destrava as Fases 2b/5/6/7. Recomendo Fase 3 (estrutura, sem dependência de banco) e, em paralelo, usuário aplica a migration. Segurança de credenciais (Fase 2b): precisará de var de ambiente `FINANCE_ENCRYPTION_KEY` (criar helper isolado; API falha com erro claro se a var não existir). NÃO criar RPA oculto de banco.
+
 ---
 
 ## TAREFAS PENDENTES

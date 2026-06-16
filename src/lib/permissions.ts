@@ -77,6 +77,7 @@ export type Module =
   | 'finance.manage'              // criar/editar/excluir lançamentos, contas, categorias
   | 'financing'                   // módulo financiamento (FN): proponentes, fichas, simulações
   | 'financing.manage'            // criar/editar proponentes, bancos, fichas
+  | 'financing.config'            // configurar F&I da loja (bancos, credenciais, prioridades, retornos) — ADM/gestão/financeiro
   | 'logs'
   | 'profile'
   | 'master'                    // painel master da plataforma
@@ -287,6 +288,11 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   },
   'financing.manage': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'],
+    actions: ['read', 'create', 'update', 'delete'],
+  },
+  // Configuração do F&I da loja — gestão/financeiro (vendedor NÃO configura).
+  'financing.config': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
     actions: ['read', 'create', 'update', 'delete'],
   },
   profile: {

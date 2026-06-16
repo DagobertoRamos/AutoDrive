@@ -348,6 +348,7 @@ export const NAV_GROUPS: NavItem[] = [
     children: [
       { label: 'Loja',       href: '/configuracoes/loja',       icon: Building2,  module: 'settings' },
       { label: 'Identidade', href: '/configuracoes/identidade', icon: Palette,    module: 'settings.identity' },
+      { label: 'F&I',        href: '/configuracoes/fi',         icon: Banknote,   module: 'financing.config' },
       { label: 'Perfil',     href: '/perfil',                   icon: UserCircle, module: 'profile' },
     ],
   },
