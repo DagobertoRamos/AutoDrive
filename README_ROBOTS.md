@@ -483,6 +483,15 @@
 - **MÓDULO FINANCIAMENTO COMPLETO (FN-1..FN-5).** Claim do topo removido. **ÚNICO pendente: `npx prisma migrate deploy`** (migration 20260616000000_add_financiamento) — sem isso as telas do módulo dão erro em runtime.
 - **NÃO incluído (decisão de design/segurança):** envio automático oculto às telas dos bancos (RPA com evasão de detecção). Quando for tratar o envio, usar API oficial, assistente Gemini visível/supervisionado, ou registro manual.
 
+### LOG 0045 — 2026-06-16 — Claude — F&I Fase 1: rename visual + organização do menu
+- **Branch:** main (worktree).
+- **Tarefa:** evoluir visualmente o módulo "Financiamento" para **F&I**, sem quebrar nada. Renomeado o grupo do menu para "F&I", reordenado conforme arquitetura (Dashboard F&I, Proponentes, Simulações, Fichas, Aprovadas, Recusadas, Contratos, Documentos, Bancos, Relatórios) e criados placeholders seguros das novas áreas. **Rotas `/financiamento/*` mantidas** (compatibilidade total).
+- **Arquivos criados/alterados:** `src/components/layout/navigation.ts` (label F&I + reordenação + import LayoutDashboard); novos stubs `src/app/(dashboard)/financiamento/{dashboard,contratos,documentos}/page.tsx` (PlaceholderPage — não tocam o banco).
+- **Regras aplicadas:** sem mudança de schema/permissão; módulo interno segue `financing`; nada fora do escopo. Bancos mantido no menu (será realocado p/ Configurações > F&I na Fase 2).
+- **Validações:** `tsc` limpo; `eslint` 0 problemas nos arquivos tocados; `npm test` 87/87; `npm run build` OK (rotas dashboard/contratos/documentos registradas).
+- **Observações:** **migration `20260616000000_add_financiamento` AINDA PENDENTE** (`prisma migrate status` = not applied) — Fase 4 (models) e uso real das telas dependem de `npx prisma migrate deploy`. Fase 1 não depende do banco.
+- **Próximo passo seguro (Fase 2):** criar **Configurações da Loja > F&I** tenant-scoped (Bancos da loja, Credenciais/Integrações **criptografadas e mascaradas**, Prioridades de envio, Retornos por banco, Documentos obrigatórios, Permissões F&I). Antes da Fase 4 (models novos), aplicar a migration pendente. NÃO criar RPA oculto de banco. Outra IA: ler LOGs 0040–0045 + este bloco antes de tocar em `financing`/`financiamento`.
+
 ---
 
 ## TAREFAS PENDENTES
