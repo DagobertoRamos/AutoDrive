@@ -539,10 +539,35 @@
 - **Observações:** sem ação do usuário. Prioridades/Retornos ainda não são CONSUMIDOS no fluxo de envio (isso entra na Fase 6/7 — simulação/fichas profissionais); por ora são configuração persistida e auditada. Sem RPA oculto de banco.
 - **Próximo passo seguro:** Fase 2b.3 — Documentos obrigatórios (por perfil de proponente) + Permissões F&I (quem envia ficha/aprova/altera retorno). Depois Fase 5 (adapters) ou Fase 6 (simulação comparativa). Outra IA: ler LOGs 0040–0050.
 
+### LOG 0051 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 2b.3: Documentos Obrigatórios + Permissões F&I
+- **Branch:** main (worktree).
+- **Tarefa:** completar Configurações da Loja > F&I com (1) **Documentos Obrigatórios** por perfil de proponente (TODOS/Autônomo/CLT/Empresário/Aposentado-Pensionista) e (2) **Permissões F&I** (quais papéis podem enviar ficha / aprovar / alterar retorno). Como não havia store genérico de config, foi criado 1 model aditivo de config por loja.
+- **Model novo (aditivo):** `FinanceTenantSetting { id, tenantId, key, value Json, updatedById, timestamps, @@unique([tenantId,key]) }` (mapeia `finance_tenant_settings`). Migration hand-written `prisma/migrations/20260616140000_add_fi_tenant_settings/migration.sql` — só cria a nova tabela + índices; não altera nada existente.
+- **Arquivos criados:** `src/lib/finance/settings.ts` (chaves whitelisted `required_documents`/`permissions` + schemas Zod + defaults + `DOC_PROFILES`/`FI_ROLES`); `src/app/api/settings/financing/settings/[key]/route.ts` (GET retorna config ou default; PUT valida por chave e faz upsert; auditado); páginas funcionais `src/app/(dashboard)/configuracoes/fi/documentos/page.tsx` (tag-editor por perfil) e `.../fi/permissoes/page.tsx` (matriz papel×capacidade).
+- **Regras aplicadas:** tenant-scoped; RBAC `financing.config`; **MASTER bloqueado** (config da loja); chave validada por whitelist + Zod; auditoria UPDATE; aditivo — nada existente alterado. **Não-enforcement ainda:** as permissões/documentos são configuração persistida e auditada; o bloqueio automático no fluxo entra nas fichas profissionais (Fase 7). Hoje alterar retorno/credenciais já é restrito por `financing.config`.
+- **Validações:** `prisma validate` OK; `prisma generate` OK; `tsc` limpo; `eslint` 0 erros (warnings setState-in-effect pré-existentes); `npm test` 87/87; `npm run build` OK (rota `/api/settings/financing/settings/[key]` registrada).
+- **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260616140000_add_fi_tenant_settings`** (`npx prisma migrate deploy`). Sem isso, salvar/ler documentos e permissões falha em runtime (telas seguem ok; GET cai no default só se a tabela existir — sem a tabela retorna erro tratado). Sem RPA oculto de banco.
+- **Próximo passo seguro:** Fase 5 (camada de adapters — só estrutura, sem chamadas reais sem doc/credencial oficial) OU Fase 6 (simulação comparativa, consumindo prioridades/retornos/bancos). Recomendo Fase 5 para destravar 6/7. Outra IA: ler LOGs 0040–0051.
+
 ---
 
 ## TAREFAS PENDENTES
 > **Não alterar sem autorização do usuário.** Marcar `[em andamento]` ao iniciar e mover para LOG ao concluir.
+
+### F&I (Financiamento profissional) — EM ANDAMENTO
+> Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.
+- [x] **Fase 1** — rename visual Financiamento→F&I + organização do menu (LOG 0045).
+- [x] **Fase 2 (estrutura)** — Configurações da Loja > F&I (hub + stubs) (LOG 0046).
+- [x] **Fase 3 (estrutura)** — Master > F&I (hub + stubs, MASTER-only) (LOG 0047).
+- [x] **Fase 4** — 17 models aditivos + migration `20260616120000_add_fi_phase4` (LOG 0048, aplicada pelo usuário).
+- [x] **Fase 2b.1** — credenciais cifradas da loja (AES-256-GCM) + teste + auditoria (LOG 0049). **AÇÃO USUÁRIO: definir `FINANCE_ENCRYPTION_KEY`.**
+- [x] **Fase 2b.2** — Prioridades de Envio + Retornos por Banco + atalho Bancos da Loja (LOG 0050).
+- [x] **Fase 2b.3** — Documentos obrigatórios (por perfil) + Permissões F&I (LOG 0051). **AÇÃO USUÁRIO: aplicar migration `20260616140000_add_fi_tenant_settings`.**
+- [ ] **Fase 5** — camada de adapters (FinancingProviderAdapter, ManualAdapter, CredereAdapter preparado, GenericBankAdapter) — só estrutura, sem chamadas reais sem doc/credencial oficial.
+- [ ] **Fase 6** — simulação comparativa (consome prioridades/retornos/bancos).
+- [ ] **Fase 7** — fichas profissionais (validação, envio multi-banco, status via webhook).
+- [ ] **Fase 8** — integrar F&I na Negociação.
+- [ ] **Fase 9** — relatórios/BI avançados de F&I.
 
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
 - [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").

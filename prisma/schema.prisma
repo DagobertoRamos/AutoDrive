@@ -3919,3 +3919,18 @@ model FinanceIntegrationLog {
   @@index([createdAt])
   @@map("finance_integration_logs")
 }
+
+// Configurações genéricas do F&I por loja (chave/JSON). Ex.: documentos
+// obrigatórios por perfil, permissões operacionais do F&I. Tenant-scoped.
+model FinanceTenantSetting {
+  id          String   @id @default(cuid())
+  tenantId    String
+  key         String   // ex.: 'required_documents' | 'permissions'
+  value       Json     // conteúdo da configuração
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("finance_tenant_settings")
+}
