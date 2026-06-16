@@ -50,8 +50,6 @@ import {
   FileSignature,
   Stamp,
   FileCheck2,
-  Upload,
-  FileType,
   Wallet,
   Landmark,
   Tags,
@@ -115,7 +113,6 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Regras',      href: '/comissoes/regras',   icon: ListChecks,      module: 'commissions.rules' },
       { label: 'Retornos',    href: '/comissoes/retornos', icon: ArrowLeftRight,  module: 'commissions.rules' },
       { label: 'Garantias',   href: '/comissoes/garantias',icon: Shield,          module: 'commissions.rules' },
-      { label: 'Configurações', href: '/configuracoes/comissoes', icon: Settings, module: 'settings.commission' },
     ],
   },
 
@@ -291,8 +288,6 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Procurações', href: '/documentos/procuracoes', badge: 'em breve', icon: Stamp,         module: 'documents.pdf' },
       { label: 'Termos',      href: '/documentos/termos', badge: 'em breve',      icon: FileCheck2,    module: 'documents.pdf' },
       { label: 'Declarações', href: '/documentos/declaracoes', badge: 'em breve', icon: ScrollText,    module: 'documents.pdf' },
-      { label: 'Importação',  href: '/documentos/importacao',  icon: Upload,        module: 'documents.import' },
-      { label: 'PDF',         href: '/documentos/pdf',         icon: FileType,      module: 'documents.pdf' },
     ],
   },
 
