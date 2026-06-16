@@ -549,6 +549,15 @@
 - **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260616140000_add_fi_tenant_settings`** (`npx prisma migrate deploy`). Sem isso, salvar/ler documentos e permissões falha em runtime (telas seguem ok; GET cai no default só se a tabela existir — sem a tabela retorna erro tratado). Sem RPA oculto de banco.
 - **Próximo passo seguro:** Fase 5 (camada de adapters — só estrutura, sem chamadas reais sem doc/credencial oficial) OU Fase 6 (simulação comparativa, consumindo prioridades/retornos/bancos). Recomendo Fase 5 para destravar 6/7. Outra IA: ler LOGs 0040–0051.
 
+### LOG 0052 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 5: camada de adapters de provedores (só estrutura)
+- **Branch:** main (worktree). **Sem banco, sem migration, sem ação do usuário** — é lib pura.
+- **Tarefa:** criar a camada de adapters que isola o domínio F&I dos provedores de financiamento. Contrato único (`FinancingProviderAdapter`) com `simulate/submit/getStatus/parseWebhook` + `capabilities` + `isReady`; registry por `FinanceProvider.kind`. 3 implementações de ESTRUTURA: **ManualAdapter** (único operante — registro manual supervisionado, sem chamada externa), **CredereAdapter** (preparado; toda operação lança `AdapterNotConfiguredError` até doc/credenciais oficiais), **GenericBankAdapter** (molde de API oficial p/ BANCO_DIRETO/INTEGRADOR; recusa operar sem endpoint+credenciais+mapeamento).
+- **Arquivos criados:** `src/lib/finance/adapters/{types,base,manual,credere,generic-bank,registry,index}.ts` + `adapters.test.ts` (10 testes). Tipos de I/O alinhados aos models (SimulationOption/ProposalSubmission/Event/Webhook). Erros: `AdapterError`, `AdapterNotConfiguredError`, `AdapterNotSupportedError`.
+- **Regras aplicadas (SEGURANÇA):** **NENHUMA chamada real a banco sem doc/credencial oficial**; **PROIBIDO RPA/raspagem de tela** — comentado explicitamente em credere/generic; lib PURA (sem Prisma/efeitos colaterais) — orquestração/persistência ficam nas Fases 6/7; segredos vêm já decifrados no contexto e nunca são logados; default seguro do registry = ManualAdapter; operações não suportadas falham explícito (NotSupported) e não-configuradas falham com mensagem clara (NotConfigured).
+- **Validações:** `tsc` limpo; `eslint` 0 erros; `npm test` **97/97** (+10 dos adapters); `npm run build` OK.
+- **Observações:** nada a aplicar. A integração real de cada provedor só entra quando houver documentação + credenciais homologadas (e jamais por automação oculta).
+- **Próximo passo seguro:** Fase 6 — simulação comparativa: serviço que, por loja, monta `FinanceSimulation` + `FinanceSimulationOption` consumindo Bancos/Prioridades/Retornos e o `ManualAdapter.simulate` (ou opções inseridas pelo operador), com UI em /financiamento/simulacoes. Outra IA: ler LOGs 0040–0052.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -563,7 +572,7 @@
 - [x] **Fase 2b.1** — credenciais cifradas da loja (AES-256-GCM) + teste + auditoria (LOG 0049). **AÇÃO USUÁRIO: definir `FINANCE_ENCRYPTION_KEY`.**
 - [x] **Fase 2b.2** — Prioridades de Envio + Retornos por Banco + atalho Bancos da Loja (LOG 0050).
 - [x] **Fase 2b.3** — Documentos obrigatórios (por perfil) + Permissões F&I (LOG 0051). **AÇÃO USUÁRIO: aplicar migration `20260616140000_add_fi_tenant_settings`.**
-- [ ] **Fase 5** — camada de adapters (FinancingProviderAdapter, ManualAdapter, CredereAdapter preparado, GenericBankAdapter) — só estrutura, sem chamadas reais sem doc/credencial oficial.
+- [x] **Fase 5** — camada de adapters (interface + registry + Manual/Credere/Generic) — só estrutura, lib pura (LOG 0052). Sem migration/sem ação do usuário.
 - [ ] **Fase 6** — simulação comparativa (consome prioridades/retornos/bancos).
 - [ ] **Fase 7** — fichas profissionais (validação, envio multi-banco, status via webhook).
 - [ ] **Fase 8** — integrar F&I na Negociação.
