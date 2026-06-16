@@ -3483,3 +3483,125 @@ model FinancialEntry {
   @@index([unitId])
   @@map("financial_entries")
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FINANCIAMENTO (FN) — proponentes, bancos, fichas/simulações
+// Aditivo: tabelas novas; sellerId/createdById guardados como String (resolvidos
+// na app). FK apenas entre as tabelas novas (proposal → proponent/bank).
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum ProponentOccupation {
+  AUTONOMO
+  CLT
+  EMPRESARIO
+  APOSENTADO_PENSIONISTA
+}
+
+enum FinanceProposalStatus {
+  SIMULACAO   // simulação (ainda não enviada ao banco)
+  ENVIADA     // ficha passada/enviada ao banco
+  APROVADA
+  RECUSADA
+  CANCELADA
+}
+
+model FinanceProponent {
+  id             String               @id @default(cuid())
+  tenantId       String?
+  // ── Dados pessoais (obrigatórios, exceto telefoneFixo) ──────────────────
+  nomeCompleto   String
+  dataNascimento DateTime?
+  cpf            String?
+  rg             String?
+  nomeMae        String?
+  nomePai        String?
+  email          String?
+  celular        String?
+  telefoneFixo   String?
+  // ── Endereço residencial ────────────────────────────────────────────────
+  cep            String?
+  logradouro     String?
+  bairro         String?
+  cidade         String?
+  estado         String?
+  numero         String?
+  complemento    String?
+  // ── Ocupação / renda ─────────────────────────────────────────────────────
+  occupation     ProponentOccupation?
+  cargo          String?              // autônomo: cargo
+  renda          Decimal?             @db.Decimal(14, 2)
+  outrasRendas   Json?                // [{ descricao, valor }]
+  numeroBeneficio String?             // aposentado/pensionista
+  // ── Dados da empresa (CLT/empresário/autônomo opcional) ──────────────────
+  empresaNome        String?
+  empresaCnpj        String?
+  empresaTelefone    String?
+  empresaCep         String?
+  empresaLogradouro  String?
+  empresaBairro      String?
+  empresaCidade      String?
+  empresaEstado      String?
+  empresaNumero      String?
+  empresaComplemento String?
+  // ── Meta ─────────────────────────────────────────────────────────────────
+  notes        String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  proposals FinanceProposal[]
+
+  @@index([tenantId])
+  @@index([cpf])
+  @@index([nomeCompleto])
+  @@map("finance_proponents")
+}
+
+model FinanceBank {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  name      String
+  code      String?  // código/identificador do banco
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposals FinanceProposal[]
+
+  @@index([tenantId])
+  @@map("finance_banks")
+}
+
+model FinanceProposal {
+  id              String                @id @default(cuid())
+  tenantId        String?
+  proponentId     String
+  bankId          String?
+  sellerId        String?
+  // ── Dados da operação ────────────────────────────────────────────────────
+  vehicle         String?
+  amountRequested Decimal?              @db.Decimal(14, 2)
+  downPayment     Decimal?             @db.Decimal(14, 2)
+  installments    Int?
+  status          FinanceProposalStatus @default(SIMULACAO)
+  // ── Resultado / simulação ────────────────────────────────────────────────
+  simulationResult Json?
+  approvedValue    Decimal?            @db.Decimal(14, 2)
+  monthlyPayment   Decimal?            @db.Decimal(14, 2)
+  rejectionReason  String?
+  notes            String?
+  createdById      String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  proponent FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
+  bank      FinanceBank?     @relation(fields: [bankId], references: [id])
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([proponentId])
+  @@index([bankId])
+  @@index([sellerId])
+  @@map("finance_proposals")
+}

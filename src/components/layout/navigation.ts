@@ -53,6 +53,9 @@ import {
   Wallet,
   Landmark,
   Tags,
+  Banknote,
+  CheckCircle2,
+  XCircle,
   Palette,
   Target,
   Trophy,
@@ -125,6 +128,22 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Lançamentos', href: '/financeiro/lancamentos', icon: Wallet,    module: 'finance' },
       { label: 'Contas',      href: '/financeiro/contas',      icon: Landmark,  module: 'finance' },
       { label: 'Categorias',  href: '/financeiro/categorias',  icon: Tags,      module: 'finance' },
+    ],
+  },
+
+  // ── FINANCIAMENTO (FN) ────────────────────────────────────────────────────────
+  {
+    label: 'Financiamento',
+    icon:  Banknote,
+    module: 'financing',
+    children: [
+      { label: 'Proponentes', href: '/financiamento/proponentes', icon: UserSquare,    module: 'financing' },
+      { label: 'Bancos',      href: '/financiamento/bancos',      icon: Landmark,      module: 'financing' },
+      { label: 'Fichas',      href: '/financiamento/fichas',      icon: FileText,      module: 'financing' },
+      { label: 'Simulações',  href: '/financiamento/simulacoes',  icon: Calculator,    module: 'financing' },
+      { label: 'Aprovadas',   href: '/financiamento/aprovadas',   icon: CheckCircle2,  module: 'financing' },
+      { label: 'Recusadas',   href: '/financiamento/recusadas',   icon: XCircle,       module: 'financing' },
+      { label: 'Relatórios',  href: '/financiamento/relatorios',  icon: BarChart3,     module: 'financing' },
     ],
   },
 

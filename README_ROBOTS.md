@@ -447,6 +447,13 @@
 - **NÃO mexido (proposital, sistema no ar):** `no-explicit-any` (~186) e `set-state-in-effect` (~128, padrão de loading já aceito como WARN) e `exhaustive-deps` (~13) — trocar em massa gera regressão; fazer per-feature quando tocar o código. Também pulei `unused-vars` em arquivos gigantes (negociacoes/nova 4575 linhas, avaliacao) e casos de risco (`session` de auth, props destructuradas).
 - **Validações:** `tsc` limpo; `npm test` 87/87; `npm run build` OK.
 
+### LOG 0040 — 2026-06-16 — Claude (Opus 4.8) — MÓDULO FINANCIAMENTO (FN) Fase FN-1: fundação
+- **Branch:** main (worktree). Pedido do usuário: módulo de Financiamento (cadastro de proponentes + bancos + fichas/simulações/aprovadas/recusadas/relatórios). Decisão do usuário: **"Cadastro + relatórios primeiro"** — o ENVIO ao banco fica para depois. **NÃO construir** a automação oculta que lê a tela do banco imitando humano p/ não ser detectada (burla os bancos, risco de bloqueio/legal) — alternativas legítimas: API oficial, assistente Gemini VISÍVEL/supervisionado, ou registro manual + resultado.
+- **FN-1 (esta entrega):** schema aditivo `prisma/schema.prisma` — enums `ProponentOccupation`(AUTONOMO/CLT/EMPRESARIO/APOSENTADO_PENSIONISTA), `FinanceProposalStatus`(SIMULACAO/ENVIADA/APROVADA/RECUSADA/CANCELADA); models `FinanceProponent` (dados pessoais+endereço+ocupação/renda+empresa+outrasRendas Json), `FinanceBank`, `FinanceProposal` (FK proponent/bank). Migration `20260616000000_add_financiamento` (**PENDENTE aplicar: `prisma migrate deploy`**). Permissões `financing`/`financing.manage` (vendas+gestão). Menu "Financiamento" (Proponentes/Bancos/Fichas/Simulações/Aprovadas/Recusadas/Relatórios) + 7 stubs PlaceholderPage (não tocam DB → funcionam sem migration).
+- **Reuso:** CEP via `/api/address/lookup-by-cep`, CNPJ via `/api/companies/lookup` (já existem) — usar no form FN-2.
+- **Validações:** `tsc` limpo; `npm test` 87/87; `npm run build` OK (rotas /financiamento/* registradas).
+- **PRÓXIMAS FASES:** FN-2 form profissional de proponente (condicional por ocupação, CEP/CNPJ auto, campos obrigatórios) + CRUD; FN-3 bancos CRUD; FN-4 fichas/simulações + status; FN-5 relatórios. **AÇÃO USUÁRIO: aplicar a migration no banco.**
+
 ---
 
 ## TAREFAS PENDENTES

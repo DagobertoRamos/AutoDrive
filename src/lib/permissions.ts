@@ -75,6 +75,8 @@ export type Module =
   | 'settings.critical'         // apenas MASTER
   | 'finance'                     // módulo financeiro (ver lançamentos/relatórios)
   | 'finance.manage'              // criar/editar/excluir lançamentos, contas, categorias
+  | 'financing'                   // módulo financiamento (FN): proponentes, fichas, simulações
+  | 'financing.manage'            // criar/editar proponentes, bancos, fichas
   | 'logs'
   | 'profile'
   | 'master'                    // painel master da plataforma
@@ -276,6 +278,15 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   },
   'finance.manage': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
+    actions: ['read', 'create', 'update', 'delete'],
+  },
+  // Módulo Financiamento (FN) — vendas + administração tratam de fichas/proponentes.
+  financing: {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'],
+    actions: ['read', 'export'],
+  },
+  'financing.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'],
     actions: ['read', 'create', 'update', 'delete'],
   },
   profile: {
