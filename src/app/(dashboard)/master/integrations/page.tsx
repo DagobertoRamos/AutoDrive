@@ -44,8 +44,6 @@ interface Credential {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const MASKED = '••••••••'
-
 // Labels e cores derivam do catálogo central (src/lib/integrations/catalog.ts)
 const SERVICE_LABELS: Record<string, string> = Object.fromEntries(
   SERVICE_CATALOG.map((s) => [s.key, s.label]),

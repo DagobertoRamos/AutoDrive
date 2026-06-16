@@ -124,7 +124,6 @@ const STATUS_TABS = [
 export default function CentralAvisosPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role ?? ''
-  const isMaster = role === 'MASTER'
   const isManager= ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role)
 
   const [pendencies,   setPendencies]   = useState<PendencyWithRelations[]>([])

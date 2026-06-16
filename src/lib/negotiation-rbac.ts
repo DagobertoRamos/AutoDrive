@@ -47,7 +47,6 @@ type DealLike = {
 } | null | undefined
 
 const MANAGER_ROLES   = new Set(['GERENTE', 'GERENTE_GERAL', 'ADM', 'MASTER'])
-const SELLER_ROLES    = new Set(['VENDEDOR', 'VENDEDOR_LIDER'])
 
 function isManagerPlus(role: string | undefined): boolean {
   return !!role && MANAGER_ROLES.has(role)

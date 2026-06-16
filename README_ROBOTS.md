@@ -441,6 +441,12 @@
 - **Validações:** `tsc` limpo; `npm test` 82/82; `npm run build` OK.
 - **RESUMO DA SESSÃO AUTÔNOMA (LOGs 0036-0038):** 404 raiz, leitura IA Gemini (graceful), wizard destravado, campos obrigatórios visíveis, FURO de segurança /cadastros/* corrigido, RBAC /master, varredura 55 rotas 0 crash. **AÇÃO DO USUÁRIO: definir `GEMINI_API_KEY` na Vercel p/ ligar leitura de PDF+imagem por IA.**
 
+### LOG 0039 — 2026-06-16 — Claude (Opus 4.8) — Limpeza de lint (código morto seguro)
+- **Branch:** main (worktree).
+- Removidos 9 `unused-vars` claramente mortos e isolados (sem efeito colateral, fora de fluxos sensíveis): `inferVehicleType`/`normalizePlate` (crlv/parser, órfãos pós-IA), `SELLER_ROLES` (negotiation-rbac), `MANAGER_ROLES` (api/pendencies), `SecretKey`/`SECRET_FULL_KEYS` (master/whatsapp), `MASKED` (master/integrations), `IdentityField` (master/system-identity), `isMaster` (pendencias/central). Lint **385→376** (0 erros).
+- **NÃO mexido (proposital, sistema no ar):** `no-explicit-any` (~186) e `set-state-in-effect` (~128, padrão de loading já aceito como WARN) e `exhaustive-deps` (~13) — trocar em massa gera regressão; fazer per-feature quando tocar o código. Também pulei `unused-vars` em arquivos gigantes (negociacoes/nova 4575 linhas, avaliacao) e casos de risco (`session` de auth, props destructuradas).
+- **Validações:** `tsc` limpo; `npm test` 87/87; `npm run build` OK.
+
 ---
 
 ## TAREFAS PENDENTES

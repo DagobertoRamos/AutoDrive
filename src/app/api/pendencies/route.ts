@@ -9,7 +9,6 @@ import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { z } from 'zod'
 
-const MANAGER_ROLES  = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE']
 const SELLER_ROLES   = ['VENDEDOR', 'USUARIO_LIDER', 'USUARIO']
 
 const PENDENCY_INCLUDE = {

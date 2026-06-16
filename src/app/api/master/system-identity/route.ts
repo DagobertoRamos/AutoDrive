@@ -21,8 +21,6 @@ const ALLOWED_FIELDS = [
   'timezone', 'locale', 'currency',
 ] as const
 
-type IdentityField = typeof ALLOWED_FIELDS[number]
-
 // ── GET ───────────────────────────────────────────────────────────────────────
 
 export async function GET() {

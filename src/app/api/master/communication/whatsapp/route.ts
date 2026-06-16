@@ -13,7 +13,6 @@ const GROUP = 'whatsapp'
 
 // Chaves sensíveis — armazenadas criptografadas, retornadas mascaradas
 const SECRET_KEYS = ['token', 'appSecret', 'webhookVerifyToken'] as const
-type SecretKey = typeof SECRET_KEYS[number]
 
 // Todas as chaves gerenciadas neste endpoint
 const PLAIN_KEYS = [
@@ -38,8 +37,6 @@ const PLAIN_KEYS = [
   'whatsapp.lastConnectAt',
   'whatsapp.lastConnectStatus',
 ]
-
-const SECRET_FULL_KEYS = SECRET_KEYS.map(k => `whatsapp.${k}`)
 
 // ── Validação de URL base da API ──────────────────────────────────────────────
 

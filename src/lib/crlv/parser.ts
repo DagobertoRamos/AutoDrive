@@ -110,27 +110,11 @@ function mapBrand(raw: string | undefined): string | undefined {
   return BRAND_ALIAS[up] ?? raw.trim()
 }
 
-function inferVehicleType(species?: string): ExtractedVehicle['vehicleType'] | undefined {
-  if (!species) return undefined
-  const s = species.toUpperCase()
-  if (s.includes('MOTOCICLETA') || s.includes('CICLOMOTOR') || s.includes('MOTONETA')) return 'MOTO'
-  if (s.includes('CARGA') || s.includes('CAMINHAO') || s.includes('CAMINHÃO') || s.includes('TRATOR')) return 'CAMINHAO'
-  if (s.includes('PASSAGEIRO') || s.includes('AUTOMOVEL') || s.includes('AUTOMÓVEL') || s.includes('UTILITARIO') || s.includes('UTILITÁRIO') || s.includes('MISTO')) return 'CARRO'
-  return undefined
-}
-
 // Helper: aplica regex e devolve o primeiro grupo capturado (trim) ou undefined.
 function match(text: string, re: RegExp, group = 1): string | undefined {
   const m = re.exec(text)
   if (!m || !m[group]) return undefined
   return m[group].trim()
-}
-
-function normalizePlate(p?: string): string | undefined {
-  if (!p) return undefined
-  const cleaned = p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
-  if (cleaned.length < 7) return undefined
-  return cleaned.slice(0, 7)
 }
 
 function parseRegexes(rawText: string): ExtractedVehicle {
