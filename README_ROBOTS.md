@@ -3,11 +3,8 @@
 > Arquivo de coordenação para IAs (Claude, Codex, etc.) que trabalham neste
 > repositório. **Leia este arquivo inteiro antes de qualquer alteração.**
 
-## 🚧 TRABALHO EM ANDAMENTO — NÃO MEXER (claim ativo)
-> **Claude (Opus 4.8) está construindo o MÓDULO FINANCIAMENTO (FN).** Outra IA (Codex etc.): **NÃO trabalhe em FN-4 nem FN-5** abaixo — eles estão sendo feitos agora, em sequência, para evitar conflito de merge.
-> - ✅ FN-1 (schema/migration/menu), FN-2 (proponentes), FN-3 (bancos), **FN-4 (fichas/propostas)** — CONCLUÍDOS (ver LOGs 0040–0043).
-> - 🔒 **FN-5 (EM ANDAMENTO por Claude, NÃO MEXER):** relatórios em `/financiamento/relatorios` + API de agregação `/api/reports/financing` (totais por status/banco/vendedor, valores aprovados, taxa de aprovação, lista). Começando agora.
-> Se precisar mexer em OUTRA área do sistema, tudo bem — só não toque nas rotas/arquivos de `financiamento`/`financing` e nos models FinanceProponent/FinanceBank/FinanceProposal enquanto este claim estiver aqui. Quando concluir, removo este bloco.
+## ✅ MÓDULO FINANCIAMENTO (FN) — CONCLUÍDO (FN-1 a FN-5)
+> Claim removido — Claude terminou o módulo. Proponentes, Bancos, Fichas/Simulações/Aprovadas/Recusadas e Relatórios prontos (LOGs 0040–0044). **Pendente do usuário:** `npx prisma migrate deploy` (migration `20260616000000_add_financiamento`). Outra IA pode mexer normalmente agora (respeitando o protocolo abaixo).
 
 ## Protocolo obrigatório (toda IA)
 
@@ -478,6 +475,13 @@
 - **Arquivos:** `/api/financing/proposals` (GET filtros status/proponentId/bankId/q + POST) e `/[id]` (GET/PATCH com mudança de status/aprovar/recusar/DELETE). Componente reutilizável `src/components/financing/ProposalsManager.tsx` (lista + busca + filtro de status + criar/editar com selects de proponente/banco, campos da operação, e campos condicionais de aprovado/recusado). 4 páginas: `fichas` (todas + criar + filtro de status), `simulacoes` (fixedStatus SIMULACAO), `aprovadas` (APROVADA, sem criar), `recusadas` (RECUSADA, sem criar).
 - **Validações:** `tsc` limpo; lint 1 warning advisory; `npm test` 87/87; `npm run build` OK (rotas registradas).
 - **PRÓXIMO (FN-5, iniciando agora):** relatórios. Migration FN-1 ainda PENDENTE (`migrate deploy`).
+
+### LOG 0044 — 2026-06-16 — Claude (Opus 4.8) — Financiamento FN-5: relatórios (MÓDULO COMPLETO)
+- **Branch:** main (worktree).
+- **Arquivos:** `/api/reports/financing` (agregação sobre FinanceProposal: byStatus com count/solicitado/aprovado, byBank, summary com total/simulações/aprovadas/recusadas/taxaAprovacao/valorAprovado; filtro de período from/to por createdAt; gated 'financing', tenant-scoped). Página `/financiamento/relatorios` (substituiu stub): KPIs + PeriodFilter + tabela por status + tabela por banco.
+- **Validações:** `tsc` limpo; lint 1 warning advisory; `npm test` 87/87; `npm run build` OK.
+- **MÓDULO FINANCIAMENTO COMPLETO (FN-1..FN-5).** Claim do topo removido. **ÚNICO pendente: `npx prisma migrate deploy`** (migration 20260616000000_add_financiamento) — sem isso as telas do módulo dão erro em runtime.
+- **NÃO incluído (decisão de design/segurança):** envio automático oculto às telas dos bancos (RPA com evasão de detecção). Quando for tratar o envio, usar API oficial, assistente Gemini visível/supervisionado, ou registro manual.
 
 ---
 
