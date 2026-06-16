@@ -109,4 +109,40 @@ export const createCredentialSchema = z.object({
 })
 export const updateCredentialSchema = createCredentialSchema.partial()
 
+// ── Prioridades de envio (F&I) — salva a lista inteira (upsert por banco) ──────
+export const savePrioritiesSchema = z.object({
+  items: z.array(z.object({
+    bankId:   z.string().cuid('Banco inválido.'),
+    priority: z.number().int().min(0, 'Prioridade inválida.'),
+    active:   z.boolean().default(true),
+  })).max(200),
+})
+
+// ── Retornos por banco (F&I) — % ou valor fixo, por faixa de parcelas ─────────
+export const createReturnRuleSchema = z.object({
+  bankId:          z.string().cuid('Banco inválido.').nullish(),
+  percent:         z.number({ invalid_type_error: 'Percentual inválido.' }).min(0).max(100).nullish(),
+  fixedValue:      z.number({ invalid_type_error: 'Valor inválido.' }).nonnegative().nullish(),
+  minInstallments: z.number().int().positive().nullish(),
+  maxInstallments: z.number().int().positive().nullish(),
+  notes:           optStr,
+  active:          z.boolean().default(true),
+}).superRefine((d, ctx) => {
+  if ((d.percent == null || d.percent === 0) && (d.fixedValue == null || d.fixedValue === 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['percent'], message: 'Informe o percentual ou o valor fixo.' })
+  }
+  if (d.minInstallments != null && d.maxInstallments != null && d.minInstallments > d.maxInstallments) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['maxInstallments'], message: 'Parcela máxima deve ser ≥ mínima.' })
+  }
+})
+export const updateReturnRuleSchema = z.object({
+  bankId:          z.string().cuid('Banco inválido.').nullish(),
+  percent:         z.number().min(0).max(100).nullish(),
+  fixedValue:      z.number().nonnegative().nullish(),
+  minInstallments: z.number().int().positive().nullish(),
+  maxInstallments: z.number().int().positive().nullish(),
+  notes:           optStr,
+  active:          z.boolean().optional(),
+})
+
 export type CreateProponentInput = z.infer<typeof createProponentSchema>

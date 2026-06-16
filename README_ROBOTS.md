@@ -529,6 +529,16 @@
 - **Observações:** **AÇÃO USUÁRIO: definir `FINANCE_ENCRYPTION_KEY` (≥16 caracteres) no `.env` local e na Vercel** — sem ela o cadastro de credenciais responde 503 (por segurança). Trocar a chave depois invalida o que já foi cifrado.
 - **Próximo passo seguro:** Fase 2b.2 — Bancos da Loja + Prioridades de Envio (FinanceBankPriority) + Retornos por Banco (FinanceReturnRule), todos tenant-scoped/RBAC. Depois 2b.3 (Documentos obrigatórios + Permissões F&I). Outra IA: ler LOGs 0040–0049.
 
+### LOG 0050 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 2b.2: Prioridades de Envio + Retornos por Banco + Bancos da Loja
+- **Branch:** main (worktree). Models da Fase 4 já aplicados.
+- **Tarefa:** tornar funcionais 3 áreas de Configurações da Loja > F&I usando os models existentes. (1) **Prioridades de Envio** (ordem de envio das fichas aos bancos); (2) **Retornos por Banco** (% / valor fixo por faixa de parcelas); (3) **Bancos da Loja** (atalho para o CRUD já existente, sem duplicar código).
+- **Arquivos criados:** `src/app/api/settings/financing/priorities/route.ts` (GET bancos ativos + prioridade; PUT upsert da lista inteira por tenant+banco, em transação, valida que os bancos são do tenant); `src/app/api/settings/financing/returns/route.ts` (GET com nome do banco; POST cria) + `.../returns/[id]/route.ts` (PATCH/DELETE).
+- **Arquivos alterados:** `src/lib/validators/financing.ts` (`savePrioritiesSchema`, `createReturnRuleSchema` com superRefine [exige % ou valor fixo; min≤max], `updateReturnRuleSchema`); `src/app/(dashboard)/configuracoes/fi/prioridades/page.tsx` (editor de ordem ↑/↓ + ativo + salvar); `.../fi/retornos/page.tsx` (CRUD + modal: banco/percent/valor fixo/faixa de parcelas/obs/ativo); `.../fi/bancos/page.tsx` (atalho para /financiamento/bancos + cards relacionados).
+- **Regras aplicadas:** tenant-scoped; RBAC `financing.config`; **MASTER bloqueado** em todas as rotas (config pertence à loja); **vendedor não altera retorno** (gate financing.config, reforçado no texto); validação de propriedade dos bancos (só bancos do tenant entram nas regras/prioridades); Decimal p/ percent/valor; auditoria CREATE/UPDATE/DELETE. Aditivo — `/financiamento/bancos` (FN-3) intacto; nada de schema novo.
+- **Validações:** `tsc` limpo; `eslint` 0 erros (2 warnings pré-existentes do padrão setState-in-effect); `npm test` 87/87; `npm run build` OK (rotas `/api/settings/financing/{priorities,returns,returns/[id]}` registradas).
+- **Observações:** sem ação do usuário. Prioridades/Retornos ainda não são CONSUMIDOS no fluxo de envio (isso entra na Fase 6/7 — simulação/fichas profissionais); por ora são configuração persistida e auditada. Sem RPA oculto de banco.
+- **Próximo passo seguro:** Fase 2b.3 — Documentos obrigatórios (por perfil de proponente) + Permissões F&I (quem envia ficha/aprova/altera retorno). Depois Fase 5 (adapters) ou Fase 6 (simulação comparativa). Outra IA: ler LOGs 0040–0050.
+
 ---
 
 ## TAREFAS PENDENTES
