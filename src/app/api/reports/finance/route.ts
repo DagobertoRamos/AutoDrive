@@ -11,7 +11,7 @@ import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forb
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { num } from '@/lib/finance/finance-service'
+import { num, entryTextSearch } from '@/lib/finance/finance-service'
 
 const VIEWS = ['visao-geral', 'dre', 'contas', 'contas-a-pagar', 'contas-a-receber', 'fluxo-de-caixa', 'receitas', 'despesas', 'resultado-unidade', 'resultado-vendedor', 'resultado-periodo'] as const
 type View = (typeof VIEWS)[number]
@@ -151,6 +151,8 @@ export async function GET(req: Request) {
     if (view === 'despesas') extra.type = 'DESPESA'
     if (view === 'contas-a-pagar') { extra.type = 'DESPESA'; extra.status = 'PREVISTO' }
     if (view === 'contas-a-receber') { extra.type = 'RECEITA'; extra.status = 'PREVISTO' }
+    const searchOr = entryTextSearch(searchParams.get('q'))
+    if (searchOr) extra.OR = searchOr
     const where = base(extra)
     const isAging = view === 'contas-a-pagar' || view === 'contas-a-receber'
 

@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Wallet, X, Save, RefreshCw, CheckCircle2, DownloadCloud } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import SearchBox from '@/components/reports/SearchBox'
 
 interface Entry {
   id: string; type: 'RECEITA' | 'DESPESA'; status: string; description: string; amount: number
@@ -33,7 +34,7 @@ export default function FinanceEntriesPage() {
   const [items, setItems] = useState<Entry[]>([])
   const [totals, setTotals] = useState<Record<string, { total: number; count: number }>>({})
   const [loading, setLoading] = useState(true)
-  const [fType, setFType] = useState(''); const [fStatus, setFStatus] = useState('')
+  const [fType, setFType] = useState(''); const [fStatus, setFStatus] = useState(''); const [q, setQ] = useState('')
   const [categories, setCategories] = useState<Ref[]>([]); const [accounts, setAccounts] = useState<Ref[]>([])
   const [modal, setModal] = useState(false); const [editing, setEditing] = useState<Entry | null>(null)
   const [form, setForm] = useState<Form>(emptyForm); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null)
@@ -43,11 +44,11 @@ export default function FinanceEntriesPage() {
     setLoading(true)
     try {
       const qs = new URLSearchParams()
-      if (fType) qs.set('type', fType); if (fStatus) qs.set('status', fStatus)
+      if (fType) qs.set('type', fType); if (fStatus) qs.set('status', fStatus); if (q) qs.set('q', q)
       const res = await fetch(`/api/finance/entries?${qs}`, { credentials: 'include' })
       const json = await res.json(); setItems(json?.data ?? []); setTotals(json?.totals ?? {})
     } catch { setItems([]); setTotals({}) } finally { setLoading(false) }
-  }, [fType, fStatus])
+  }, [fType, fStatus, q])
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
@@ -131,9 +132,10 @@ export default function FinanceEntriesPage() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-red-700">Despesas (filtro atual)</p><p className="mt-1 text-xl font-bold tabular-nums text-red-700">{loading ? '—' : fmt(totals.DESPESA?.total ?? 0)}</p></div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select className={cn(inputClass, 'w-auto')} value={fType} onChange={(e) => setFType(e.target.value)}><option value="">Todos os tipos</option><option value="RECEITA">Receitas</option><option value="DESPESA">Despesas</option></select>
         <select className={cn(inputClass, 'w-auto')} value={fStatus} onChange={(e) => setFStatus(e.target.value)}><option value="">Todos os status</option><option value="PREVISTO">Previsto</option><option value="PAGO">Pago</option><option value="RECEBIDO">Recebido</option><option value="CANCELADO">Cancelado</option></select>
+        <SearchBox value={q} onChange={setQ} placeholder="Buscar: placa, negociação, nome, fornecedor, valor..." className="min-w-[280px] flex-1" />
         <button onClick={load} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
 

@@ -11,7 +11,7 @@ import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forb
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createEntrySchema } from '@/lib/validators/finance'
-import { zodErrorResponse, num } from '@/lib/finance/finance-service'
+import { zodErrorResponse, num, entryTextSearch } from '@/lib/finance/finance-service'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -35,6 +35,8 @@ export async function GET(req: Request) {
     if (from || to) {
       extra.dueDate = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) }
     }
+    const searchOr = entryTextSearch(searchParams.get('q'))
+    if (searchOr) extra.OR = searchOr
 
     const where = tenantWhere(user.role, tenantId, extra)
     const [rows, byType] = await Promise.all([

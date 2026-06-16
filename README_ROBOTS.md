@@ -410,6 +410,13 @@
 - **Validações:** `tsc` limpo; `npm test` 82/82 (mock ganhou deleteMany/updateMany/findFirst); `npm run build` OK. **Verificado no navegador (login Master):** backfill categorizou os lançamentos (Vendas/Comissões/Garantias); filtro de período confere via API (from=2026-06-01 → 0; ano 2026 → 1).
 - **Observação p/ próxima IA:** sync é idempotente (@@unique + skipDuplicates) e reconcilia comissões PREVISTO. Manual entries (source=MANUAL) nunca são tocados pelo sync.
 
+### LOG 0035 — 2026-06-15 — Claude (Opus 4.8) — FIX CRÍTICO middleware (prod) + busca textual no Financeiro
+- **Branch:** main (worktree).
+- **BUG CRÍTICO de PRODUÇÃO (o "This page couldn't load" do online):** `src/proxy.ts` (middleware do Next 16 — renomeado de middleware.ts) usava `withAuth` do next-auth v4, que **quebra no edge runtime de PRODUÇÃO** com `TypeError: Invalid URL` (`new URL('')` → ERR_INVALID_URL) em TODA rota protegida. Funcionava em `next dev` mas falhava em `next start`/Vercel (por isso só dava erro no online). **Reproduzido localmente com `npm run build && npm start`** (a chave p/ achar — dev esconde). **Corrigido:** reescrito sem `withAuth`, usando `getToken()` + `req.nextUrl.clone()` (sempre URL válida). Verificado em produção local: redireciona p/ login corretamente, sem crash.
+  - **APRENDIZADO p/ próxima IA:** bug que só aparece no online → reproduzir com BUILD DE PRODUÇÃO local (`npm run build && npm start`), não só `npm run dev`. `next dev` é tolerante; prod é estrito.
+- **Busca textual (#3 do pedido):** novo `entryTextSearch()` em finance-service (OR contains insensitive em description/counterparty/documentNumber + match de `amount` se numérico → cobre placa, negociação, nome, fornecedor, valor). Param `q` em `/api/finance/entries` e `/api/reports/finance` (views de lista). Componente `components/reports/SearchBox.tsx` (debounce 350ms) ligado em /financeiro/lancamentos e no FinanceEntryListReport (receitas/despesas/contas-a-pagar/contas-a-receber). **Verificado no navegador:** buscar placa "JKE2G14" filtrou 5→1.
+- **Validações:** `tsc` limpo; lint 0 erros; `npm test` 82/82; `npm run build` OK; verificação visual prod (middleware) + dev (busca).
+
 ---
 
 ## TAREFAS PENDENTES

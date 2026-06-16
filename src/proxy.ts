@@ -1,56 +1,59 @@
 // =============================================================================
-// Next.js Edge Middleware — AutoDrive
+// Next.js Middleware — AutoDrive
 //
 // Responsabilidades:
 //   1. Redirecionar usuários não autenticados para /login em rotas protegidas
 //   2. Redirecionar usuários com mustChangePassword=true para /auth/change-password
-//      (exceto na própria página de troca e nas rotas de API de autenticação)
+//      (exceto na própria página de troca)
 //   3. Impedir acesso à /auth/change-password para quem NÃO precisa trocar senha
+//
+// NOTA: usa `getToken` + `req.nextUrl.clone()` em vez de `withAuth` do
+// next-auth. O wrapper `withAuth` quebra no edge runtime de PRODUÇÃO do
+// Next 16 (constrói `new URL('')` → ERR_INVALID_URL), embora funcione em dev.
+// Esta versão constrói as URLs sempre a partir de `req.nextUrl` (já válida).
 // =============================================================================
 
-import { withAuth, NextRequestWithAuth } from 'next-auth/middleware'
-import { NextResponse }                  from 'next/server'
+import { getToken } from 'next-auth/jwt'
+import { NextResponse, type NextRequest } from 'next/server'
 
-export default withAuth(
-  function middleware(req: NextRequestWithAuth) {
-    const { pathname } = req.nextUrl
-    const token        = req.nextauth.token
+export default async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
 
-    // ── Rota de troca de senha ────────────────────────────────────────────────
-    if (pathname.startsWith('/auth/change-password')) {
-      // Usuário autenticado mas SEM flag → não deveria estar aqui → redireciona
-      if (token && !token.mustChangePassword) {
-        return NextResponse.redirect(new URL('/', req.url))
-      }
-      // Usuário autenticado COM flag → deixa passar
-      return NextResponse.next()
+  // ── Não autenticado → login (preservando o destino em callbackUrl) ─────────
+  if (!token) {
+    const url = req.nextUrl.clone()
+    url.pathname = '/login'
+    url.search = ''
+    url.searchParams.set('callbackUrl', pathname)
+    return NextResponse.redirect(url)
+  }
+
+  // ── Rota de troca de senha ─────────────────────────────────────────────────
+  if (pathname.startsWith('/auth/change-password')) {
+    // Autenticado SEM flag → não deveria estar aqui → manda para a home
+    if (!token.mustChangePassword) {
+      const url = req.nextUrl.clone()
+      url.pathname = '/'
+      url.search = ''
+      return NextResponse.redirect(url)
     }
-
-    // ── Qualquer outra rota protegida ─────────────────────────────────────────
-    // Se mustChangePassword === true, força a troca antes de qualquer outra coisa
-    if (token?.mustChangePassword) {
-      return NextResponse.redirect(new URL('/auth/change-password', req.url))
-    }
-
     return NextResponse.next()
-  },
-  {
-    callbacks: {
-      // withAuth só executa o middleware acima quando authorized() retorna true.
-      // Retornando sempre true aqui, deixamos a lógica de redirecionamento
-      // acima tratar os casos — o withAuth já garante que, se não há token,
-      // o usuário é enviado para a página de login definida em pages.signIn.
-      authorized: ({ token }) => !!token,
-    },
-    pages: {
-      signIn: '/login',
-    },
-  },
-)
+  }
+
+  // ── Qualquer outra rota protegida: força troca de senha quando exigido ──────
+  if (token.mustChangePassword) {
+    const url = req.nextUrl.clone()
+    url.pathname = '/auth/change-password'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
+
+  return NextResponse.next()
+}
 
 // ── Matcher ───────────────────────────────────────────────────────────────────
 // Protege todas as rotas EXCETO páginas públicas de auth e arquivos estáticos.
-// Páginas públicas: login, cadastro, ativar-cadastro, recuperar-senha
 export const config = {
   matcher: [
     '/((?!login|cadastro|ativar-cadastro|recuperar-senha|api/auth|api/webhook|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
