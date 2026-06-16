@@ -19,9 +19,9 @@ const { prismaMock, authMock } = vi.hoisted(() => {
       messageReturn: { count: fn() },
       notificationDelivery: { findMany: fn(), groupBy: fn() },
       auditLog: { findMany: fn(), groupBy: fn(), create: fn() },
-      financialEntry: { findMany: fn(), groupBy: fn(), aggregate: fn(), create: fn(), createMany: fn(), findUnique: fn(), update: fn(), delete: fn() },
+      financialEntry: { findMany: fn(), groupBy: fn(), aggregate: fn(), create: fn(), createMany: fn(), findUnique: fn(), update: fn(), updateMany: fn(), delete: fn(), deleteMany: fn() },
       financialAccount: { findMany: fn(), create: fn(), findUnique: fn(), update: fn() },
-      financialCategory: { findMany: fn(), create: fn(), findUnique: fn(), update: fn() },
+      financialCategory: { findMany: fn(), findFirst: fn(), create: fn(), findUnique: fn(), update: fn() },
       seller: { findMany: fn(), findFirst: fn() },
       unit: { findMany: fn(), findFirst: fn() },
       user: { findMany: fn() },
@@ -65,6 +65,9 @@ beforeEach(() => {
   prismaMock.financialEntry.aggregate.mockResolvedValue({ _sum: { amount: null } })
   prismaMock.financialEntry.create.mockResolvedValue({ id: 'e1', amount: 100 })
   prismaMock.financialEntry.createMany.mockResolvedValue({ count: 0 })
+  prismaMock.financialEntry.deleteMany.mockResolvedValue({ count: 0 })
+  prismaMock.financialEntry.updateMany.mockResolvedValue({ count: 0 })
+  prismaMock.financialCategory.findFirst.mockResolvedValue({ id: 'cat1' })
   prismaMock.financialEntry.findUnique.mockResolvedValue({ id: 'e1', tenantId: 't1', source: 'MANUAL', amount: 100 })
   prismaMock.financialEntry.update.mockResolvedValue({ id: 'e1', amount: 100 })
   prismaMock.financialAccount.create.mockResolvedValue({ id: 'a1' })

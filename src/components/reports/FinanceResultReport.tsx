@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { BarChart3, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import PeriodFilter from './PeriodFilter'
 
 interface GroupRow { name: string; receitas: number; despesas: number; resultado: number }
 
@@ -22,15 +23,17 @@ export default function FinanceResultReport({
   const [summary, setSummary] = useState<{ grupos: number; receitas: number; despesas: number } | null>(null)
   const [rows, setRows] = useState<GroupRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/reports/finance?view=${view}`, { credentials: 'include' })
+      const qs = new URLSearchParams({ view }); if (from) qs.set('from', from); if (to) qs.set('to', to)
+      const res = await fetch(`/api/reports/finance?${qs}`, { credentials: 'include' })
       const json = await res.json()
       setSummary(json?.summary ?? null); setRows(json?.grouped ?? [])
     } catch { setSummary(null); setRows([]) } finally { setLoading(false) }
-  }, [view])
+  }, [view, from, to])
 
   useEffect(() => { load() }, [load])
 
@@ -45,6 +48,8 @@ export default function FinanceResultReport({
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
+
+      <PeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
 
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-green-700">Receitas</p><p className="mt-1 text-xl font-bold tabular-nums text-green-700">{loading ? '—' : fmt(summary?.receitas ?? 0)}</p></div>

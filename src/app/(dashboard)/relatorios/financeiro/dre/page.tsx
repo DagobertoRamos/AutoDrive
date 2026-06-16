@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import PeriodFilter from '@/components/reports/PeriodFilter'
 
 interface CatRow { categoria: string; total: number }
 interface Summary { totalReceitas: number; totalDespesas: number; resultado: number }
@@ -40,14 +41,16 @@ export default function DreReportPage() {
   const [despesas, setDespesas] = useState<CatRow[]>([])
   const [s, setS] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/reports/finance?view=dre', { credentials: 'include' })
+      const qs = new URLSearchParams({ view: 'dre' }); if (from) qs.set('from', from); if (to) qs.set('to', to)
+      const res = await fetch(`/api/reports/finance?${qs}`, { credentials: 'include' })
       const json = await res.json(); setReceitas(json?.receitas ?? []); setDespesas(json?.despesas ?? []); setS(json?.summary ?? null)
     } catch { setReceitas([]); setDespesas([]); setS(null) } finally { setLoading(false) }
-  }, [])
+  }, [from, to])
   useEffect(() => { load() }, [load])
 
   const resultado = s?.resultado ?? 0
@@ -61,6 +64,8 @@ export default function DreReportPage() {
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
+
+      <PeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Block title="Receitas" rows={receitas} total={s?.totalReceitas ?? 0} tone="green" />

@@ -13,6 +13,7 @@ import { requireModule, canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
+import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { calculateReturn } from '@/lib/finance/return-calc'
 import { returnRateSchema, returnFinancingSchema } from '@/lib/validators/return'
 
@@ -126,6 +127,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       tenantId:    deal.tenantId,
       triggeredBy: session.user.id,
     }).catch(() => {})
+    await syncTenantFinance(deal.tenantId ?? null).catch(() => {})
 
     return NextResponse.json({ success: true, data: { returnRatePercent, ...calc } })
   } catch (err) {

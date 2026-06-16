@@ -10,6 +10,7 @@ import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
+import { syncTenantFinance } from '@/lib/finance/finance-sync'
 
 type Ctx = { params: Promise<{ id: string; saleId: string }> }
 
@@ -57,6 +58,7 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
       tenantId:    sale.tenantId,
       triggeredBy: session.user.id,
     }).catch(() => {})
+    await syncTenantFinance(sale.tenantId ?? null).catch(() => {})
 
     return NextResponse.json({ success: true })
   } catch (err) {

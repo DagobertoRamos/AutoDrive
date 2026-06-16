@@ -402,6 +402,14 @@
 - **Validações:** `tsc` limpo; lint 384 (0 erros); `npm test` 82/82; `npm run build` OK.
 - **Pendências menores restantes:** lint legado (`any`/`set-state`/vars mortas em arquivos grandes) — fazer per-arquivo quando aquele código for tocado, com cuidado; não vale refatoração em massa cega.
 
+### LOG 0034 — 2026-06-15 — Claude (Opus 4.8) — Financeiro: filtro de período + sync automático + categorias
+- **Branch:** main (worktree).
+- **(#4) Categorias automáticas:** `finance-sync.ts` agora cria/atribui categoria padrão por origem (Vendas/Comissões/Comissões — Garantias/Comissões — Retornos), criada sob demanda por tenant. Inclui **backfill**: lançamentos antigos sem categoria mas com origem conhecida são categorizados no próximo sync. + **reconciliação**: remove DESPESA PREVISTO de comissão órfã (comissão recalculada/excluída).
+- **(#3) Sync automático:** novo `syncTenantFinance(tenantId)` (estrito ao tenant). Engatado em: `negotiations/[id]/finalize` (após gerar comissões), `.../return`, `.../warranty-sales`, `.../warranty-sales/[saleId]` (após recálculo). Não bloqueia o fluxo (try/catch). `syncFinanceFromBusiness(role,tenantId)` (endpoint manual) mantido.
+- **(#2) Filtro de período:** `/api/reports/finance` aceita `from`/`to`; campo de data por view (fluxo=paidDate, contas a pagar/receber=dueDate, demais=competenceDate, "contas"=sem filtro). Novo componente `components/reports/PeriodFilter.tsx`; ligado em FinanceEntryListReport, FinanceResultReport e nas páginas inline visão-geral/dre/fluxo.
+- **Validações:** `tsc` limpo; `npm test` 82/82 (mock ganhou deleteMany/updateMany/findFirst); `npm run build` OK. **Verificado no navegador (login Master):** backfill categorizou os lançamentos (Vendas/Comissões/Garantias); filtro de período confere via API (from=2026-06-01 → 0; ano 2026 → 1).
+- **Observação p/ próxima IA:** sync é idempotente (@@unique + skipDuplicates) e reconcilia comissões PREVISTO. Manual entries (source=MANUAL) nunca são tocados pelo sync.
+
 ---
 
 ## TAREFAS PENDENTES

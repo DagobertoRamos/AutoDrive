@@ -10,6 +10,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canFinalizeDeal, FINALIZABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory, updateVehicleStock, computeDealBalance } from '@/lib/negotiation-service'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
+import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { canForceFinalize } from '@/lib/negotiation-rbac'
 
 export const dynamic = 'force-dynamic'
@@ -170,6 +171,14 @@ export async function POST(
       })
     } catch (err) {
       console.error('[finalize] commission generation failed', err)
+    }
+
+    // Sincroniza o Financeiro (RECEITA da venda + DESPESA das comissões geradas).
+    // Idempotente; não bloqueia a finalização em caso de falha.
+    try {
+      await syncTenantFinance(deal.tenantId ?? null)
+    } catch (err) {
+      console.error('[finalize] finance sync failed', err)
     }
 
     return NextResponse.json({

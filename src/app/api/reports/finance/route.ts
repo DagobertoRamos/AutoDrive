@@ -29,7 +29,22 @@ export async function GET(req: Request) {
     const viewParam = (searchParams.get('view') ?? 'visao-geral') as View
     const view: View = VIEWS.includes(viewParam) ? viewParam : 'visao-geral'
     const now = new Date()
-    const base = (extra: Record<string, unknown> = {}) => tenantWhere(user.role, tenantId, extra)
+
+    // Filtro de período (de/até). Campo de data por view: fluxo=paidDate,
+    // contas a pagar/receber=dueDate, demais=competenceDate. "contas" (saldo
+    // acumulado) ignora período.
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    const dateRange = from || to
+      ? { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}) }
+      : null
+    const dateField =
+      view === 'fluxo-de-caixa' ? 'paidDate'
+      : view === 'contas-a-pagar' || view === 'contas-a-receber' ? 'dueDate'
+      : view === 'contas' ? null
+      : 'competenceDate'
+    const base = (extra: Record<string, unknown> = {}) =>
+      tenantWhere(user.role, tenantId, dateRange && dateField ? { ...extra, [dateField]: dateRange } : extra)
 
     // ---- Visão geral -----------------------------------------------------
     if (view === 'visao-geral') {

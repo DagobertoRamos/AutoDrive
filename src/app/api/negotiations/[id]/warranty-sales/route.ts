@@ -13,6 +13,7 @@ import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
+import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { calculateWarrantySale } from '@/lib/warranty/warranty-calc'
 import { warrantySaleSchema } from '@/lib/validators/warranty'
 
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       tenantId:    deal.tenantId,
       triggeredBy: session.user.id,
     }).catch(() => { /* recálculo não bloqueia a venda */ })
+    await syncTenantFinance(deal.tenantId ?? null).catch(() => {})
 
     return NextResponse.json({ success: true, data: sale }, { status: 201 })
   } catch (err) {

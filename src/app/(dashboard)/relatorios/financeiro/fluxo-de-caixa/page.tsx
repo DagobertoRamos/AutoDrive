@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Activity, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import PeriodFilter from '@/components/reports/PeriodFilter'
 
 interface MesRow { mes: string; entradas: number; saidas: number; saldo: number }
 interface Summary { entradas: number; saidas: number; saldo: number }
@@ -19,14 +20,16 @@ export default function FluxoDeCaixaReportPage() {
   const [meses, setMeses] = useState<MesRow[]>([])
   const [s, setS] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/reports/finance?view=fluxo-de-caixa', { credentials: 'include' })
+      const qs = new URLSearchParams({ view: 'fluxo-de-caixa' }); if (from) qs.set('from', from); if (to) qs.set('to', to)
+      const res = await fetch(`/api/reports/finance?${qs}`, { credentials: 'include' })
       const json = await res.json(); setMeses(json?.meses ?? []); setS(json?.summary ?? null)
     } catch { setMeses([]); setS(null) } finally { setLoading(false) }
-  }, [])
+  }, [from, to])
   useEffect(() => { load() }, [load])
 
   let acumulado = 0
@@ -40,6 +43,8 @@ export default function FluxoDeCaixaReportPage() {
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
+
+      <PeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
 
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-green-700">Entradas</p><p className="mt-1 text-xl font-bold tabular-nums text-green-700">{loading ? '—' : fmt(s?.entradas ?? 0)}</p></div>

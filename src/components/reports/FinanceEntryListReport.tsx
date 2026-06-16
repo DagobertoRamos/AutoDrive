@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Wallet, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import PeriodFilter from './PeriodFilter'
 
 interface Row {
   id: string; type: string; status: string; description: string; amount: number
@@ -31,15 +32,17 @@ export default function FinanceEntryListReport({
   const [byCategory, setByCategory] = useState<Cat[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/reports/finance?view=${view}`, { credentials: 'include' })
+      const qs = new URLSearchParams({ view }); if (from) qs.set('from', from); if (to) qs.set('to', to)
+      const res = await fetch(`/api/reports/finance?${qs}`, { credentials: 'include' })
       const json = await res.json()
       setSummary(json?.summary ?? null); setByCategory(json?.byCategory ?? []); setRows(json?.data ?? [])
     } catch { setSummary(null); setByCategory([]); setRows([]) } finally { setLoading(false) }
-  }, [view])
+  }, [view, from, to])
 
   useEffect(() => { load() }, [load])
 
@@ -52,6 +55,8 @@ export default function FinanceEntryListReport({
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
+
+      <PeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div className="rounded-xl border border-brand-200 bg-brand-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-brand-700">Total</p><p className="mt-1 text-xl font-bold tabular-nums text-brand-800">{loading ? '—' : fmt(summary?.total ?? 0)}</p></div>
