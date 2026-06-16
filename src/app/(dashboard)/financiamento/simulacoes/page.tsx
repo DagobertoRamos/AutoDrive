@@ -1,6 +1,6 @@
 'use client'
-import ProposalsManager from '@/components/financing/ProposalsManager'
+import SimulationManager from '@/components/financing/SimulationManager'
 
 export default function SimulacoesPage() {
-  return <ProposalsManager fixedStatus="SIMULACAO" title="Simulações" subtitle="simulações" allowCreate />
+  return <SimulationManager />
 }

@@ -558,6 +558,16 @@
 - **Observações:** nada a aplicar. A integração real de cada provedor só entra quando houver documentação + credenciais homologadas (e jamais por automação oculta).
 - **Próximo passo seguro:** Fase 6 — simulação comparativa: serviço que, por loja, monta `FinanceSimulation` + `FinanceSimulationOption` consumindo Bancos/Prioridades/Retornos e o `ManualAdapter.simulate` (ou opções inseridas pelo operador), com UI em /financiamento/simulacoes. Outra IA: ler LOGs 0040–0052.
 
+### LOG 0053 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 6: simulação comparativa
+- **Branch:** main (worktree). **Sem migration** — usa os models da Fase 4 (FinanceSimulation/FinanceSimulationOption).
+- **Tarefa:** simulação comparativa de F&I em /financiamento/simulacoes. O operador informa veículo/valor/entrada/parcelas e, por banco, a **taxa mensal**; o sistema calcula a **parcela (Tabela Price)** e o **retorno estimado** (pelas regras de retorno da loja). Persiste cabeçalho + opções e mantém histórico.
+- **Arquivos criados:** `src/lib/finance/simulation-service.ts` (puro: `financedAmount`, `priceInstallment` [PMT], `chooseReturnRule` [específico>todos, faixa mais estreita], `estimateReturn`, `computeOption`) + `simulation-service.test.ts` (10 testes); `src/app/api/financing/simulations/route.ts` (GET resumo / POST cria+calcula) + `.../[id]/route.ts` (GET detalhe / DELETE); `src/components/financing/SimulationManager.tsx` (simulador + comparativo ao vivo + histórico + modal de detalhe).
+- **Arquivos alterados:** `src/lib/validators/financing.ts` (`createSimulationSchema`); `src/app/(dashboard)/financiamento/simulacoes/page.tsx` (passa a usar SimulationManager em vez do ProposalsManager filtrado).
+- **Regras aplicadas:** criar/excluir simulação = `financing.manage` (vendedor pode); leitura = `financing`; **o retorno estimado (margem) só é exposto a `financing.config`** — a API zera o campo para os demais e o histórico esconde a coluna; tenant-scoped (`ownsTenant`); só bancos da loja entram; MASTER não cria (sem tenant); não inventamos taxa de banco — a taxa é informada pelo operador (alinhado ao ManualAdapter); auditoria CREATE/DELETE. Aditivo — nada quebrado.
+- **Validações:** `tsc` limpo; `eslint` 0 erros (warnings setState-in-effect pré-existentes); `npm test` **107/107** (+10); `npm run build` OK (rotas `/api/financing/simulations(/[id])` registradas).
+- **Observações:** as parcelas são estimativas com a taxa informada (não há integração de taxa de banco). A conexão real de simulação automática depende dos adapters oficiais (Fase 5/7). Sem RPA oculto.
+- **Próximo passo seguro:** Fase 7 — fichas profissionais: validação de documentos obrigatórios, envio multi-banco (gera `FinanceProposalSubmission` por banco via adapter, hoje ManualAdapter), linha do tempo de status (`FinanceProposalEvent`) e recepção de webhook (`FinanceWebhookEvent`). Outra IA: ler LOGs 0040–0053.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -573,7 +583,7 @@
 - [x] **Fase 2b.2** — Prioridades de Envio + Retornos por Banco + atalho Bancos da Loja (LOG 0050).
 - [x] **Fase 2b.3** — Documentos obrigatórios (por perfil) + Permissões F&I (LOG 0051). **AÇÃO USUÁRIO: aplicar migration `20260616140000_add_fi_tenant_settings`.**
 - [x] **Fase 5** — camada de adapters (interface + registry + Manual/Credere/Generic) — só estrutura, lib pura (LOG 0052). Sem migration/sem ação do usuário.
-- [ ] **Fase 6** — simulação comparativa (consome prioridades/retornos/bancos).
+- [x] **Fase 6** — simulação comparativa (parcela via Price + retorno estimado pelas regras) (LOG 0053). Sem migration.
 - [ ] **Fase 7** — fichas profissionais (validação, envio multi-banco, status via webhook).
 - [ ] **Fase 8** — integrar F&I na Negociação.
 - [ ] **Fase 9** — relatórios/BI avançados de F&I.

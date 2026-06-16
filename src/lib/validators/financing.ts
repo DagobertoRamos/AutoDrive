@@ -145,4 +145,18 @@ export const updateReturnRuleSchema = z.object({
   active:          z.boolean().optional(),
 })
 
+// ── Simulação comparativa (F&I) ───────────────────────────────────────────────
+export const createSimulationSchema = z.object({
+  proponentId:  z.string().cuid().nullish(),
+  vehicle:      optStr,
+  vehicleValue: z.number({ invalid_type_error: 'Valor do veículo inválido.' }).nonnegative().nullish(),
+  downPayment:  z.number({ invalid_type_error: 'Entrada inválida.' }).nonnegative().nullish(),
+  installments: z.number().int().positive('Informe o número de parcelas.'),
+  notes:        optStr,
+  options: z.array(z.object({
+    bankId: z.string().cuid('Banco inválido.'),
+    rate:   z.number({ invalid_type_error: 'Taxa inválida.' }).nonnegative().max(50).nullish(),
+  })).min(1, 'Selecione ao menos um banco.').max(50),
+})
+
 export type CreateProponentInput = z.infer<typeof createProponentSchema>
