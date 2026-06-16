@@ -461,6 +461,12 @@
 - **Validações:** `tsc` limpo; lint 1 warning advisory; `npm test` 87/87; `npm run build` OK.
 - **PRÓXIMO:** FN-3 bancos CRUD; FN-4 fichas/simulações; FN-5 relatórios. Migration FN-1 ainda PENDENTE de aplicar (o cadastro só funciona após `migrate deploy`).
 
+### LOG 0042 — 2026-06-16 — Claude (Opus 4.8) — Financiamento FN-3: cadastro de Bancos (CRUD)
+- **Branch:** main (worktree).
+- **Arquivos:** `/api/financing/banks` (GET ?active= + POST) e `/[id]` (PATCH/DELETE — com fichas vinculadas inativa; sem fichas remove). Página `/(dashboard)/financiamento/bancos` (substituiu stub): lista + busca + criar/editar (nome obrigatório, código/observações) + ativar/inativar. Tenant-scoped, gating financing/financing.manage, auditoria. Validators já existiam (createBankSchema).
+- **Validações:** `tsc` limpo; lint 1 warning advisory; `npm test` 87/87; `npm run build` OK.
+- **PRÓXIMO:** FN-4 fichas/simulações (criar ficha proponente+banco, status, aprovar/recusar + telas Aprovadas/Recusadas/Simulações); FN-5 relatórios. Migration FN-1 ainda PENDENTE (`migrate deploy`).
+
 ---
 
 ## TAREFAS PENDENTES
