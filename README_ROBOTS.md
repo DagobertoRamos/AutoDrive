@@ -3,6 +3,13 @@
 > Arquivo de coordenação para IAs (Claude, Codex, etc.) que trabalham neste
 > repositório. **Leia este arquivo inteiro antes de qualquer alteração.**
 
+## 🚧 TRABALHO EM ANDAMENTO — NÃO MEXER (claim ativo)
+> **Claude (Opus 4.8) está construindo o MÓDULO FINANCIAMENTO (FN).** Outra IA (Codex etc.): **NÃO trabalhe em FN-4 nem FN-5** abaixo — eles estão sendo feitos agora, em sequência, para evitar conflito de merge.
+> - ✅ FN-1 (schema/migration/menu), FN-2 (proponentes), FN-3 (bancos) — CONCLUÍDOS (ver LOGs 0040–0042).
+> - 🔨 **FN-4 (EM ANDAMENTO por Claude):** fichas/propostas — criar ficha vinculando proponente+banco, status (SIMULACAO/ENVIADA/APROVADA/RECUSADA/CANCELADA), aprovar/recusar, e as telas `/financiamento/{fichas,simulacoes,aprovadas,recusadas}` (hoje stubs). API `/api/financing/proposals` (+`/[id]`). Models já existem (`FinanceProposal`).
+> - 🔒 **FN-5 (RESERVADO por Claude, não iniciar):** relatórios em `/financiamento/relatorios` + API de agregação. Só começa após FN-4.
+> Se precisar mexer em OUTRA área do sistema, tudo bem — só não toque nas rotas/arquivos de `financiamento`/`financing` e nos models FinanceProponent/FinanceBank/FinanceProposal enquanto este claim estiver aqui. Quando concluir, removo este bloco.
+
 ## Protocolo obrigatório (toda IA)
 
 1. Ler este arquivo e **todos os logs anteriores** antes de mexer em qualquer coisa.
