@@ -94,4 +94,19 @@ export const updateProposalSchema = createProposalSchema.partial().extend({
   simulationResult: z.unknown().nullish(),
 })
 
+// ── Credencial de banco (F&I) — segredos opcionais (cifrados no servidor) ─────
+export const createCredentialSchema = z.object({
+  bankId:       z.string().cuid('Banco inválido.'),
+  environment:  z.enum(['HOMOLOGACAO', 'PRODUCAO']).default('HOMOLOGACAO'),
+  label:        optStr,
+  // segredos — todos opcionais; o servidor cifra e nunca devolve em texto puro
+  usuario:      optStr,
+  senha:        optStr,
+  token:        optStr,
+  clientId:     optStr,
+  clientSecret: optStr,
+  storeCode:    optStr,
+})
+export const updateCredentialSchema = createCredentialSchema.partial()
+
 export type CreateProponentInput = z.infer<typeof createProponentSchema>

@@ -519,6 +519,16 @@
 - **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260616120000_add_fi_phase4`** (`npx prisma migrate deploy`). Sem isso, qualquer query a esses novos models falha em runtime (mas nada usa ainda — telas seguem ok). NÃO criar RPA oculto de banco.
 - **Próximo passo seguro:** Fase 2b (helper de criptografia `FINANCE_ENCRYPTION_KEY` + CRUD de credenciais/integrações da loja em /configuracoes/fi, usando os models) OU Fase 5 (adapters). Recomendo Fase 2b após aplicar a migration. Outra IA: ler LOGs 0040–0048.
 
+### LOG 0049 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 2b.1: credenciais criptografadas da loja (FUNCIONAL)
+- **Branch:** main (worktree). Migration `20260616120000_add_fi_phase4` JÁ aplicada pelo usuário (FinanceCredential/FinanceIntegrationLog existem).
+- **Tarefa:** tornar **Configurações da Loja > F&I > Credenciais e Integrações** funcional. Cadastro de credenciais por banco com segredos **cifrados** (AES-256-GCM) e **mascarados**; teste de leitura/integridade; tudo auditado. Sem RPA/automação oculta de banco — conexão REAL fica para a Fase 5 (adapters).
+- **Arquivos criados:** `src/lib/finance/crypto.ts` (AES-256-GCM via `FINANCE_ENCRYPTION_KEY`→SHA-256; `isCryptoConfigured/encryptSecret(s)/decryptSecret(s)/maskSecret`); `src/app/api/settings/financing/credentials/route.ts` (GET mascarado + POST cifrado); `src/app/api/settings/financing/credentials/[id]/route.ts` (PATCH merge+recifra só segredos enviados; DELETE); `src/app/api/settings/financing/credentials/[id]/test/route.ts` (POST: decifra p/ validar integridade, grava FinanceIntegrationLog `TEST_CONNECTION` SEM segredo, audita).
+- **Arquivos alterados:** `src/lib/validators/financing.ts` (`createCredentialSchema`/`updateCredentialSchema`); `src/app/(dashboard)/configuracoes/fi/integracoes/page.tsx` (UI: tabela mascarada, modal add/edit com segredos em branco-na-edição, testar, excluir, guard de papel + aviso quando a chave não está configurada); `.env.example` (bloco `FINANCE_ENCRYPTION_KEY`).
+- **Regras aplicadas:** segredos NUNCA voltam em texto puro ao front — só `maskedHints` (usuário/clientId/storeCode visíveis; senha/token/clientSecret mascarados `••••••••<4>`); na edição os campos de segredo vêm em branco e em branco = manter; **MASTER bloqueado** em todas as rotas de credencial (segredos pertencem ao tenant); RBAC `financing.config` + `ownsTenant` (isolamento de tenant); 503 com mensagem clara se `FINANCE_ENCRYPTION_KEY` ausente; logs técnicos sem segredo; auditoria CREATE/UPDATE/DELETE/TEST_CONNECTION. Aditivo — nenhuma tela pronta alterada.
+- **Validações:** `tsc` limpo; `eslint` 0 erros (1 warning pré-existente do padrão setState-in-effect, idem ProposalsManager); `npm test` 87/87; `npm run build` OK (rotas `/api/settings/financing/credentials*` + `/configuracoes/fi/integracoes` registradas).
+- **Observações:** **AÇÃO USUÁRIO: definir `FINANCE_ENCRYPTION_KEY` (≥16 caracteres) no `.env` local e na Vercel** — sem ela o cadastro de credenciais responde 503 (por segurança). Trocar a chave depois invalida o que já foi cifrado.
+- **Próximo passo seguro:** Fase 2b.2 — Bancos da Loja + Prioridades de Envio (FinanceBankPriority) + Retornos por Banco (FinanceReturnRule), todos tenant-scoped/RBAC. Depois 2b.3 (Documentos obrigatórios + Permissões F&I). Outra IA: ler LOGs 0040–0049.
+
 ---
 
 ## TAREFAS PENDENTES
