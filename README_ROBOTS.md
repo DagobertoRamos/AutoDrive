@@ -501,6 +501,15 @@
 - **Observações:** migration `20260616000000_add_financiamento` **continua PENDENTE** (`migrate deploy`). Fase 2b (funcional, com criptografia de credenciais) e Fase 4 (models) exigem aplicá-la antes.
 - **Próximo passo seguro:** OU **Fase 3 (Master F&I estrutura)** — `/master/financing/*` placeholders + permissão `master.financing.*` (sem banco, seguro), OU aplicar a migration e ir para **Fase 4 (models aditivos)** que destrava as Fases 2b/5/6/7. Recomendo Fase 3 (estrutura, sem dependência de banco) e, em paralelo, usuário aplica a migration. Segurança de credenciais (Fase 2b): precisará de var de ambiente `FINANCE_ENCRYPTION_KEY` (criar helper isolado; API falha com erro claro se a var não existir). NÃO criar RPA oculto de banco.
 
+### LOG 0047 — 2026-06-16 — Claude — F&I Fase 3 (estrutura): Master > F&I
+- **Branch:** main (worktree).
+- **Tarefa:** criar o painel técnico **Master > F&I** (estrutura/navegação MASTER-only + placeholders). **Sem banco.** Provedores, Bancos Homologados, Adaptadores, Mapeamento de Campos, Webhooks, Logs Técnicos, Saúde das Integrações, Feature Flags.
+- **Arquivos criados/alterados:** `src/lib/permissions.ts` (módulo **`master.financing`** — MASTER-only); `src/components/layout/navigation.ts` (item "F&I" no grupo Master); `src/app/(dashboard)/master/financing/page.tsx` (hub 8 cards + guard MASTER) + 8 stubs `/master/financing/{providers,banks,adapters,mappings,webhooks,logs,health,flags}`.
+- **Regras aplicadas:** RBAC `master.financing` (MASTER-only); guard de papel no hub; separação clara MASTER (técnico) × loja (credenciais em /configuracoes/fi); **MASTER não cadastra/vê credenciais da loja** (reforçado no texto do hub); sem schema novo.
+- **Validações:** `tsc` limpo; `eslint` 0 problemas; `npm test` 87/87; `npm run build` OK (rotas /master/financing/* registradas).
+- **Observações:** migration `20260616000000_add_financiamento` **continua PENDENTE**. Fases 1–3 (estrutura) NÃO dependem do banco e estão completas.
+- **Próximo passo seguro (Fase 4 — models aditivos):** REQUER a migration anterior aplicada primeiro (`npx prisma migrate deploy`). Depois, criar de forma aditiva: FinanceProvider, FinanceProviderBank, FinanceTenantIntegration, FinanceCredential (criptografada), FinanceBankPriority, FinanceRoutingRule, FinanceSimulation, FinanceSimulationOption, FinanceProposalSubmission, FinanceProposalEvent, FinanceProposalDocument, FinanceConsent, FinanceProduct, FinanceProductSale, FinanceReturnRule, FinanceWebhookEvent, FinanceIntegrationLog. NÃO apagar models existentes. Helper de cripto isolado com env `FINANCE_ENCRYPTION_KEY`. NÃO criar RPA oculto de banco.
+
 ---
 
 ## TAREFAS PENDENTES

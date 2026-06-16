@@ -83,6 +83,7 @@ export type Module =
   | 'master'                    // painel master da plataforma
   | 'master.tenants'
   | 'master.modules'
+  | 'master.financing'          // painel F&I do MASTER (provedores, adapters, webhooks, logs técnicos)
   | 'master.plans'
   | 'master.users'
   | 'master.communication'
@@ -327,6 +328,10 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'create', 'update', 'delete'],
   },
   'master.modules': {
+    roles: ['MASTER'],
+    actions: ['read', 'configure'],
+  },
+  'master.financing': {
     roles: ['MASTER'],
     actions: ['read', 'configure'],
   },

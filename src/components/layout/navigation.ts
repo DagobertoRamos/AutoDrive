@@ -372,6 +372,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Comunicação',       href: '/master/communication',      module: 'master' },
       { label: 'Importador Sheets', href: '/master/sheets',             module: 'master' },
       { label: 'Integrações',       href: '/master/integrations',       module: 'master' },
+      { label: 'F&I',               href: '/master/financing',          module: 'master.financing' },
       { label: 'Feature Flags',     href: '/master/feature-flags',      module: 'master' },
       { label: 'Manutenção',        href: '/master/maintenance',        module: 'master' },
       { label: 'Identidade',        href: '/master/identity',           module: 'master' },
