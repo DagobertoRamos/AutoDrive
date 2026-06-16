@@ -510,6 +510,15 @@
 - **Observações:** migration `20260616000000_add_financiamento` **continua PENDENTE**. Fases 1–3 (estrutura) NÃO dependem do banco e estão completas.
 - **Próximo passo seguro (Fase 4 — models aditivos):** REQUER a migration anterior aplicada primeiro (`npx prisma migrate deploy`). Depois, criar de forma aditiva: FinanceProvider, FinanceProviderBank, FinanceTenantIntegration, FinanceCredential (criptografada), FinanceBankPriority, FinanceRoutingRule, FinanceSimulation, FinanceSimulationOption, FinanceProposalSubmission, FinanceProposalEvent, FinanceProposalDocument, FinanceConsent, FinanceProduct, FinanceProductSale, FinanceReturnRule, FinanceWebhookEvent, FinanceIntegrationLog. NÃO apagar models existentes. Helper de cripto isolado com env `FINANCE_ENCRYPTION_KEY`. NÃO criar RPA oculto de banco.
 
+### LOG 0048 — 2026-06-16 — Claude — F&I Fase 4: models aditivos (17 tabelas)
+- **Branch:** main (worktree). Migration FN base `20260616000000` JÁ aplicada (confirmado: "Database schema is up to date").
+- **Tarefa:** criar os models profissionais do F&I (aditivo, 1 migração). 2 enums (FinanceProviderKind, FinanceEnvironment) + 17 models: FinanceProvider, FinanceProviderBank (GLOBAL/MASTER); FinanceTenantIntegration, FinanceCredential (**secretsEncrypted** — nunca texto puro; maskedHints p/ exibição), FinanceBankPriority, FinanceRoutingRule, FinanceReturnRule, FinanceProduct, FinanceProductSale, FinanceConsent (LGPD), FinanceSimulation, FinanceSimulationOption, FinanceProposalSubmission, FinanceProposalEvent, FinanceProposalDocument, FinanceWebhookEvent, FinanceIntegrationLog (tenant-scoped). Back-relations adicionadas (virtuais) em FinanceProponent e FinanceProposal.
+- **Arquivos:** `prisma/schema.prisma` (+enums +17 models +back-relations); `prisma/migrations/20260616120000_add_fi_phase4/migration.sql` (hand-written, additive — novas tabelas/índices/FKs; NÃO altera tabelas existentes).
+- **Regras aplicadas:** additive-only; FK só entre novos + finance_proponents/finance_proposals/finance_banks; credenciais armazenadas cifradas (campo secretsEncrypted) — helper de cripto vem na Fase 2b/5; Decimal p/ dinheiro; tenant-scoped onde aplicável; globais (provider/providerBank) sem tenant.
+- **Validações:** `prisma validate` OK; `prisma generate` OK; `tsc` limpo; `npm test` 87/87; `npm run build` OK.
+- **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260616120000_add_fi_phase4`** (`npx prisma migrate deploy`). Sem isso, qualquer query a esses novos models falha em runtime (mas nada usa ainda — telas seguem ok). NÃO criar RPA oculto de banco.
+- **Próximo passo seguro:** Fase 2b (helper de criptografia `FINANCE_ENCRYPTION_KEY` + CRUD de credenciais/integrações da loja em /configuracoes/fi, usando os models) OU Fase 5 (adapters). Recomendo Fase 2b após aplicar a migration. Outra IA: ler LOGs 0040–0048.
+
 ---
 
 ## TAREFAS PENDENTES

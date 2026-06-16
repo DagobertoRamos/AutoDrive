@@ -3549,7 +3549,10 @@ model FinanceProponent {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  proposals FinanceProposal[]
+  proposals    FinanceProposal[]
+  simulations  FinanceSimulation[]
+  consents     FinanceConsent[]
+  documents    FinanceProposalDocument[]
 
   @@index([tenantId])
   @@index([cpf])
@@ -3595,8 +3598,12 @@ model FinanceProposal {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
-  proponent FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
-  bank      FinanceBank?     @relation(fields: [bankId], references: [id])
+  proponent    FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
+  bank         FinanceBank?     @relation(fields: [bankId], references: [id])
+  submissions  FinanceProposalSubmission[]
+  events       FinanceProposalEvent[]
+  documents    FinanceProposalDocument[]
+  productSales FinanceProductSale[]
 
   @@index([tenantId])
   @@index([status])
@@ -3604,4 +3611,311 @@ model FinanceProposal {
   @@index([bankId])
   @@index([sellerId])
   @@map("finance_proposals")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// F&I FASE 4 — provedores, integrações, credenciais, regras, simulação, fichas
+// Aditivo. Credenciais nunca em texto puro (secretsEncrypted). Logs sem segredo.
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum FinanceProviderKind {
+  CREDERE
+  BANCO_DIRETO
+  INTEGRADOR
+  MANUAL
+  OUTRO
+}
+
+enum FinanceEnvironment {
+  HOMOLOGACAO
+  PRODUCAO
+}
+
+model FinanceProvider {
+  id              String   @id @default(cuid())
+  name            String
+  kind            FinanceProviderKind @default(MANUAL)
+  active          Boolean  @default(true)
+  baseUrlHomolog  String?
+  baseUrlProd     String?
+  apiVersion      String?
+  supportsSimulate Boolean @default(false)
+  supportsSubmit   Boolean @default(false)
+  supportsWebhook  Boolean @default(false)
+  supportsStatus   Boolean @default(false)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  providerBanks   FinanceProviderBank[]
+  integrations    FinanceTenantIntegration[]
+  @@map("finance_providers")
+}
+
+model FinanceProviderBank {
+  id         String   @id @default(cuid())
+  providerId String
+  name       String
+  code       String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  provider   FinanceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@index([providerId])
+  @@map("finance_provider_banks")
+}
+
+model FinanceTenantIntegration {
+  id             String   @id @default(cuid())
+  tenantId       String
+  providerId     String
+  environment    FinanceEnvironment @default(HOMOLOGACAO)
+  active         Boolean  @default(true)
+  storeCode      String?
+  webhookActive  Boolean  @default(false)
+  lastTestAt     DateTime?
+  lastTestStatus String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  provider       FinanceProvider    @relation(fields: [providerId], references: [id])
+  credentials    FinanceCredential[]
+  @@index([tenantId])
+  @@index([providerId])
+  @@map("finance_tenant_integrations")
+}
+
+model FinanceCredential {
+  id               String   @id @default(cuid())
+  tenantId         String
+  integrationId    String?
+  bankId           String?
+  label            String?
+  environment      FinanceEnvironment @default(HOMOLOGACAO)
+  secretsEncrypted String?  // ciphertext do JSON {usuario,senha,token,clientId,clientSecret}
+  maskedHints      Json?    // ex.: { token: "****8F2A" } para exibição
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  integration      FinanceTenantIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  @@index([tenantId])
+  @@index([bankId])
+  @@map("finance_credentials")
+}
+
+model FinanceBankPriority {
+  id        String   @id @default(cuid())
+  tenantId  String
+  bankId    String
+  priority  Int      @default(1)
+  active    Boolean  @default(true)
+  rule      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, bankId])
+  @@index([tenantId])
+  @@map("finance_bank_priorities")
+}
+
+model FinanceRoutingRule {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  condition Json
+  bankId    String?
+  priority  Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  @@index([tenantId])
+  @@map("finance_routing_rules")
+}
+
+model FinanceReturnRule {
+  id              String   @id @default(cuid())
+  tenantId        String
+  bankId          String?
+  percent         Decimal? @db.Decimal(6, 2)
+  fixedValue      Decimal? @db.Decimal(14, 2)
+  minInstallments Int?
+  maxInstallments Int?
+  notes           String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([tenantId])
+  @@index([bankId])
+  @@map("finance_return_rules")
+}
+
+model FinanceProduct {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  kind         String?  // SEGURO | GARANTIA | PROTECAO | RASTREADOR | OUTRO
+  defaultValue Decimal? @db.Decimal(14, 2)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  sales        FinanceProductSale[]
+  @@index([tenantId])
+  @@map("finance_products")
+}
+
+model FinanceProductSale {
+  id          String   @id @default(cuid())
+  tenantId    String
+  productId   String?
+  proposalId  String?
+  description String
+  value       Decimal  @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
+  product     FinanceProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  proposal    FinanceProposal? @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  @@index([tenantId])
+  @@index([proposalId])
+  @@map("finance_product_sales")
+}
+
+model FinanceConsent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  proponentId String
+  type        String   // TRATAMENTO_DADOS | ENVIO_BANCO
+  granted     Boolean  @default(false)
+  grantedAt   DateTime?
+  ip          String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  proponent   FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
+  @@index([tenantId])
+  @@index([proponentId])
+  @@map("finance_consents")
+}
+
+model FinanceSimulation {
+  id             String   @id @default(cuid())
+  tenantId       String
+  proponentId    String?
+  vehicle        String?
+  vehicleValue   Decimal? @db.Decimal(14, 2)
+  downPayment    Decimal? @db.Decimal(14, 2)
+  financedAmount Decimal? @db.Decimal(14, 2)
+  installments   Int?
+  sellerId       String?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  proponent      FinanceProponent? @relation(fields: [proponentId], references: [id], onDelete: SetNull)
+  options        FinanceSimulationOption[]
+  @@index([tenantId])
+  @@index([proponentId])
+  @@map("finance_simulations")
+}
+
+model FinanceSimulationOption {
+  id               String   @id @default(cuid())
+  simulationId     String
+  bankId           String?
+  installments     Int?
+  installmentValue Decimal? @db.Decimal(14, 2)
+  rate             Decimal? @db.Decimal(8, 4)
+  cet              Decimal? @db.Decimal(8, 4)
+  estimatedReturn  Decimal? @db.Decimal(14, 2)
+  status           String?
+  createdAt        DateTime @default(now())
+  simulation       FinanceSimulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  @@index([simulationId])
+  @@map("finance_simulation_options")
+}
+
+model FinanceProposalSubmission {
+  id              String   @id @default(cuid())
+  tenantId        String
+  proposalId      String
+  bankId          String?
+  providerId      String?
+  environment     FinanceEnvironment @default(HOMOLOGACAO)
+  externalId      String?
+  status          String   @default("ENVIADA")
+  requestPayload  Json?
+  responsePayload Json?
+  submittedById   String?
+  submittedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  proposal        FinanceProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  events          FinanceProposalEvent[]
+  @@index([tenantId])
+  @@index([proposalId])
+  @@index([externalId])
+  @@map("finance_proposal_submissions")
+}
+
+model FinanceProposalEvent {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  proposalId   String?
+  submissionId String?
+  type         String   // STATUS_CHANGE | WEBHOOK | NOTE
+  status       String?
+  message      String?
+  source       String?  // MANUAL | WEBHOOK | API
+  createdById  String?
+  createdAt    DateTime @default(now())
+  proposal     FinanceProposal?           @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  submission   FinanceProposalSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  @@index([proposalId])
+  @@index([submissionId])
+  @@map("finance_proposal_events")
+}
+
+model FinanceProposalDocument {
+  id          String   @id @default(cuid())
+  tenantId    String
+  proposalId  String?
+  proponentId String?
+  type        String   // CNH | COMPROVANTE | HOLERITE | ...
+  fileUrl     String?
+  fileName    String?
+  required    Boolean  @default(false)
+  status      String   @default("PENDENTE") // PENDENTE | APROVADO | REPROVADO
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  proposal    FinanceProposal?  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  proponent   FinanceProponent? @relation(fields: [proponentId], references: [id], onDelete: SetNull)
+  @@index([tenantId])
+  @@index([proposalId])
+  @@index([proponentId])
+  @@map("finance_proposal_documents")
+}
+
+model FinanceWebhookEvent {
+  id             String   @id @default(cuid())
+  tenantId       String?
+  provider       String?
+  externalId     String?
+  signatureValid Boolean?
+  payload        Json
+  processed      Boolean  @default(false)
+  error          String?
+  createdAt      DateTime @default(now())
+  @@index([processed])
+  @@index([externalId])
+  @@map("finance_webhook_events")
+}
+
+model FinanceIntegrationLog {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  providerId String?
+  action     String   // TEST_CONNECTION | SIMULATE | SUBMIT | STATUS | WEBHOOK
+  status     String?  // OK | ERROR
+  durationMs Int?
+  message    String?
+  createdAt  DateTime @default(now())
+  @@index([tenantId])
+  @@index([providerId])
+  @@index([createdAt])
+  @@map("finance_integration_logs")
 }
