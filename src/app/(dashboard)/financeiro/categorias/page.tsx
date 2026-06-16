@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Tags, X, Save, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import SearchBox from '@/components/reports/SearchBox'
 
 interface Category { id: string; name: string; kind: 'RECEITA' | 'DESPESA'; color: string | null; active: boolean }
 interface Form { name: string; kind: 'RECEITA' | 'DESPESA'; color: string; active: boolean }
@@ -16,6 +17,7 @@ const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2.
 
 export default function FinanceCategoriesPage() {
   const [items, setItems] = useState<Category[]>([])
+  const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<Category | null>(null)
@@ -56,14 +58,22 @@ export default function FinanceCategoriesPage() {
     await load()
   }
 
+  const term = q.trim().toLowerCase()
+  const filtered = term
+    ? items.filter((c) => c.name.toLowerCase().includes(term) || (c.kind === 'RECEITA' ? 'receita' : 'despesa').includes(term))
+    : items
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Categorias financeiras</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} categorias`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${filtered.length}${term ? ` de ${items.length}` : ''} categorias`}</p>
         </div>
-        <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova categoria</button>
+        <div className="flex items-center gap-2">
+          <SearchBox value={q} onChange={setQ} placeholder="Buscar categoria..." className="w-56" />
+          <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova categoria</button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
@@ -72,10 +82,10 @@ export default function FinanceCategoriesPage() {
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 4 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
-            ) : items.length === 0 ? (
-              <tr><td colSpan={4} className="py-14 text-center"><Tags size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhuma categoria. Crie a primeira.</p></td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={4} className="py-14 text-center"><Tags size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">{term ? 'Nenhuma categoria encontrada para a busca.' : 'Nenhuma categoria. Crie a primeira.'}</p></td></tr>
             ) : (
-              items.map((c) => (
+              filtered.map((c) => (
                 <tr key={c.id} className={cn('hover:bg-gray-50', !c.active && 'opacity-50')}>
                   <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
                   <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', c.kind === 'RECEITA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600')}>{c.kind === 'RECEITA' ? 'Receita' : 'Despesa'}</span></td>

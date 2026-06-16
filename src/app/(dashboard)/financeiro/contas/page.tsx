@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Landmark, X, Save, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import SearchBox from '@/components/reports/SearchBox'
 
 interface Account { id: string; name: string; type: string; openingBalance: number | string; active: boolean }
 interface Form { name: string; type: 'CAIXA' | 'BANCO' | 'CARTAO' | 'OUTRO'; openingBalance: number; active: boolean }
@@ -19,6 +20,7 @@ const TYPE_LABEL: Record<string, string> = { CAIXA: 'Caixa', BANCO: 'Banco', CAR
 
 export default function FinanceAccountsPage() {
   const [items, setItems] = useState<Account[]>([])
+  const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<Account | null>(null)
@@ -59,14 +61,22 @@ export default function FinanceAccountsPage() {
     await load()
   }
 
+  const term = q.trim().toLowerCase()
+  const filtered = term
+    ? items.filter((a) => a.name.toLowerCase().includes(term) || (TYPE_LABEL[a.type] ?? a.type).toLowerCase().includes(term))
+    : items
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Contas financeiras</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} contas`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${filtered.length}${term ? ` de ${items.length}` : ''} contas`}</p>
         </div>
-        <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova conta</button>
+        <div className="flex items-center gap-2">
+          <SearchBox value={q} onChange={setQ} placeholder="Buscar conta..." className="w-56" />
+          <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova conta</button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
@@ -75,10 +85,10 @@ export default function FinanceAccountsPage() {
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 5 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
-            ) : items.length === 0 ? (
-              <tr><td colSpan={5} className="py-14 text-center"><Landmark size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhuma conta. Crie a primeira.</p></td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={5} className="py-14 text-center"><Landmark size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">{term ? 'Nenhuma conta encontrada para a busca.' : 'Nenhuma conta. Crie a primeira.'}</p></td></tr>
             ) : (
-              items.map((a) => (
+              filtered.map((a) => (
                 <tr key={a.id} className={cn('hover:bg-gray-50', !a.active && 'opacity-50')}>
                   <td className="px-4 py-3 font-medium text-gray-900">{a.name}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{TYPE_LABEL[a.type] ?? a.type}</td>
