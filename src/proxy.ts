@@ -49,13 +49,28 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // ── RBAC (defesa em profundidade): painel MASTER só para MASTER ─────────────
+  // Impede abrir /master/* digitando na barra de endereço com outro perfil.
+  // Fail-open se o papel não vier no token (não tranca ninguém indevidamente;
+  // as APIs já barram os dados de qualquer forma).
+  if (pathname.startsWith('/master') && token.role && token.role !== 'MASTER') {
+    const url = req.nextUrl.clone()
+    url.pathname = '/inicio'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
+
   return NextResponse.next()
 }
 
 // ── Matcher ───────────────────────────────────────────────────────────────────
 // Protege todas as rotas EXCETO páginas públicas de auth e arquivos estáticos.
+// IMPORTANTE: `cadastro(?=/|$)` casa SOMENTE a página pública `/cadastro`
+// (e `/cadastro/...`), NÃO `/cadastros/*` (plural, protegido — clientes,
+// vendedores, gerentes, veículos, garantias...). Sem o lookahead, o prefixo
+// "cadastro" excluía `/cadastros/*` da autenticação (furo de segurança).
 export const config = {
   matcher: [
-    '/((?!login|cadastro|ativar-cadastro|recuperar-senha|api/auth|api/webhook|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!login|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|api/auth|api/webhook|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

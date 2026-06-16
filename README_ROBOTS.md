@@ -426,6 +426,14 @@
 - **Validações:** `tsc` limpo; lint 0 erros; `npm test` 82/82; `npm run build` OK.
 - **PRÓXIMAS FASES desta sessão:** (B) RBAC por página; (C) varredura geral de bugs via build de produção + smoke; (D) campos obrigatórios com indicadores visuais.
 
+### LOG 0037 — 2026-06-16 — Claude (Opus 4.8) — Sessão autônoma Fase B/C: FURO DE SEGURANÇA + RBAC + varredura
+- **Branch:** main (worktree).
+- **🔴 FURO DE SEGURANÇA CRÍTICO (FIX):** o matcher do middleware (`src/proxy.ts`) excluía `cadastro` (página pública), mas o regex **prefix-matchava `cadastros/*`** (plural, PROTEGIDO) → todo o `/cadastros/*` (clientes, vendedores, gerentes, veículos, garantias, unidades, cargos, serviços) **ficava acessível SEM login** e crashava no SSR. Corrigido: `cadastro` → `cadastro(?=/|$)` (casa só o segmento exato). Verificado: `/cadastros/*` agora 307→login; `/cadastro` público segue 200.
+- **RBAC defense-in-depth:** middleware agora bloqueia `/master/*` para papel ≠ MASTER (redireciona /inicio; fail-open se papel ausente p/ não trancar ninguém). Reforço contra abrir painel master pela barra de endereço.
+- **Varredura de bugs (build de produção + 55 rotas via HTTP):** método = `npm run build && npm start` + curl checando 500. **Resultado: 0 crashes** (todas 200 público / 307 protegido).
+- **Falso-positivo investigado (NÃO é bug de prod):** `/login` e `/cadastro` davam 500 no MEU `next start` local porque `process.env.NEXTAUTH_URL` chegava VAZIO no runtime (provável pelas aspas no .env: `NEXTAUTH_URL="..."`), e o next-auth faz `new URL('')` quando a var é string vazia (undefined cairia no default OK). Subindo com `NEXTAUTH_URL` explícito → 200. **Na Vercel é env var real → funciona** (usuário loga online). Para testar localmente: remover as aspas do NEXTAUTH_URL no .env ou exportar a var.
+- **Validações:** `tsc` limpo; `npm test` 82/82; `npm run build` OK; varredura 55 rotas 0 crash.
+
 ---
 
 ## TAREFAS PENDENTES
