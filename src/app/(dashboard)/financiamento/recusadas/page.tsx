@@ -1,5 +1,6 @@
 'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Recusadas" description="Fichas recusadas (em construção)." />
+import ProposalsManager from '@/components/financing/ProposalsManager'
+
+export default function RecusadasPage() {
+  return <ProposalsManager fixedStatus="RECUSADA" title="Fichas Recusadas" subtitle="recusadas" allowCreate={false} />
 }

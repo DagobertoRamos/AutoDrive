@@ -5,9 +5,8 @@
 
 ## 🚧 TRABALHO EM ANDAMENTO — NÃO MEXER (claim ativo)
 > **Claude (Opus 4.8) está construindo o MÓDULO FINANCIAMENTO (FN).** Outra IA (Codex etc.): **NÃO trabalhe em FN-4 nem FN-5** abaixo — eles estão sendo feitos agora, em sequência, para evitar conflito de merge.
-> - ✅ FN-1 (schema/migration/menu), FN-2 (proponentes), FN-3 (bancos) — CONCLUÍDOS (ver LOGs 0040–0042).
-> - 🔨 **FN-4 (EM ANDAMENTO por Claude):** fichas/propostas — criar ficha vinculando proponente+banco, status (SIMULACAO/ENVIADA/APROVADA/RECUSADA/CANCELADA), aprovar/recusar, e as telas `/financiamento/{fichas,simulacoes,aprovadas,recusadas}` (hoje stubs). API `/api/financing/proposals` (+`/[id]`). Models já existem (`FinanceProposal`).
-> - 🔒 **FN-5 (RESERVADO por Claude, não iniciar):** relatórios em `/financiamento/relatorios` + API de agregação. Só começa após FN-4.
+> - ✅ FN-1 (schema/migration/menu), FN-2 (proponentes), FN-3 (bancos), **FN-4 (fichas/propostas)** — CONCLUÍDOS (ver LOGs 0040–0043).
+> - 🔒 **FN-5 (EM ANDAMENTO por Claude, NÃO MEXER):** relatórios em `/financiamento/relatorios` + API de agregação `/api/reports/financing` (totais por status/banco/vendedor, valores aprovados, taxa de aprovação, lista). Começando agora.
 > Se precisar mexer em OUTRA área do sistema, tudo bem — só não toque nas rotas/arquivos de `financiamento`/`financing` e nos models FinanceProponent/FinanceBank/FinanceProposal enquanto este claim estiver aqui. Quando concluir, removo este bloco.
 
 ## Protocolo obrigatório (toda IA)
@@ -473,6 +472,12 @@
 - **Arquivos:** `/api/financing/banks` (GET ?active= + POST) e `/[id]` (PATCH/DELETE — com fichas vinculadas inativa; sem fichas remove). Página `/(dashboard)/financiamento/bancos` (substituiu stub): lista + busca + criar/editar (nome obrigatório, código/observações) + ativar/inativar. Tenant-scoped, gating financing/financing.manage, auditoria. Validators já existiam (createBankSchema).
 - **Validações:** `tsc` limpo; lint 1 warning advisory; `npm test` 87/87; `npm run build` OK.
 - **PRÓXIMO:** FN-4 fichas/simulações (criar ficha proponente+banco, status, aprovar/recusar + telas Aprovadas/Recusadas/Simulações); FN-5 relatórios. Migration FN-1 ainda PENDENTE (`migrate deploy`).
+
+### LOG 0043 — 2026-06-16 — Claude (Opus 4.8) — Financiamento FN-4: fichas/propostas + simulações/aprovadas/recusadas
+- **Branch:** main (worktree).
+- **Arquivos:** `/api/financing/proposals` (GET filtros status/proponentId/bankId/q + POST) e `/[id]` (GET/PATCH com mudança de status/aprovar/recusar/DELETE). Componente reutilizável `src/components/financing/ProposalsManager.tsx` (lista + busca + filtro de status + criar/editar com selects de proponente/banco, campos da operação, e campos condicionais de aprovado/recusado). 4 páginas: `fichas` (todas + criar + filtro de status), `simulacoes` (fixedStatus SIMULACAO), `aprovadas` (APROVADA, sem criar), `recusadas` (RECUSADA, sem criar).
+- **Validações:** `tsc` limpo; lint 1 warning advisory; `npm test` 87/87; `npm run build` OK (rotas registradas).
+- **PRÓXIMO (FN-5, iniciando agora):** relatórios. Migration FN-1 ainda PENDENTE (`migrate deploy`).
 
 ---
 

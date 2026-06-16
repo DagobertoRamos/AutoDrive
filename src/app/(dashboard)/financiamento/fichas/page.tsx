@@ -1,5 +1,6 @@
 'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
-export default function Page() {
-  return <PlaceholderPage title="Fichas" description="Fichas de financiamento passadas aos bancos (em construção)." />
+import ProposalsManager from '@/components/financing/ProposalsManager'
+
+export default function FichasPage() {
+  return <ProposalsManager title="Fichas" subtitle="fichas" allowCreate />
 }
