@@ -589,6 +589,15 @@
 - **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260616160000_add_fi_deal_link`** (`npx prisma migrate deploy`). Sem isso, o painel de F&I na negociação falha em runtime (resto das telas ok).
 - **Próximo passo seguro:** Fase 9 — relatórios/BI de F&I (produção por banco/vendedor, retorno estimado vs. aprovado, funil simulação→envio→aprovação, documentos pendentes), reaproveitando o padrão de /api/reports. OU Fase 7b quando houver provedor oficial. Outra IA: ler LOGs 0040–0055.
 
+### LOG 0056 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 9: relatórios / BI avançados
+- **Branch:** main (worktree). **Sem migration** — relatório read-only sobre os models existentes.
+- **Tarefa:** ampliar `/financiamento/relatorios` com o BI destravado pelas fases novas: **funil** simulação→fichas→enviadas→aprovadas; **produção por vendedor**; **envios por banco** (submissões); KPI de **documentos pendentes**; **retorno estimado (margem)** — só para `financing.config`.
+- **Arquivos alterados:** `src/app/api/reports/financing/route.ts` (seções aditivas: `funnel`, `bySeller` [groupBy sellerId+status, nomes via User], `bySubmissionBank` [groupBy FinanceProposalSubmission bankId+status], `pendingDocsProposals` [groupBy doc obrigatório não-APROVADO], `margin` [aggregate FinanceSimulationOption.estimatedReturn via relação, gated], `canSeeReturn`); `src/app/(dashboard)/financiamento/relatorios/page.tsx` (funil em barras, card de retorno condicional, tabelas vendedor/envios, KPI docs pendentes).
+- **Regras aplicadas:** gate `financing`; **retorno estimado só com `financing.config`** (a API zera `margin`/oculta o card); tenant-scoped via `tenantWhere` (MASTER vê tudo); filtro de período reutilizando o padrão existente; read-only — nenhuma escrita; aditivo (KPIs/tabelas antigas mantidas).
+- **Validações:** `tsc` limpo; `eslint` 0 erros; `npm test` 114/114; `npm run build` OK (precisou `NODE_OPTIONS=--max-old-space-size=6144` — pico de memória do webpack, não erro de código).
+- **Observações:** sem ação do usuário. Com isto o **roadmap F&I (Fases 1–9) está concluído**, exceto **7b (webhook público)**, que segue adiado até provedor oficial homologado (assinatura/segredo). Evoluções seguintes: integração real de adapters (depende de doc/credencial oficial) ou novo pedido.
+- **Próximo passo seguro:** nenhuma fase pendente sem dependência externa. Se desejado: Fase 7b (webhook, requer provedor), upload real de arquivos de documento (hoje checklist) ou refino visual. Outra IA: ler LOGs 0040–0056.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -608,7 +617,9 @@
 - [x] **Fase 7a** — fichas profissionais: documentos obrigatórios (checklist) + envio multi-banco (ManualAdapter) + linha do tempo de status (LOG 0054). Sem migration.
 - [ ] **Fase 7b** — receptor de webhook público (`FinanceWebhookEvent`) — ADIADO até provedor oficial homologado (exige assinatura/segredo oficiais; sem isso, não expor endpoint público que grava no banco).
 - [x] **Fase 8** — integrar F&I na Negociação (ficha ligada ao Deal + aplicar aprovação) (LOG 0055). **AÇÃO USUÁRIO: aplicar migration `20260616160000_add_fi_deal_link`.**
-- [ ] **Fase 9** — relatórios/BI avançados de F&I.
+- [x] **Fase 9** — relatórios/BI de F&I (funil, produção por vendedor, envios por banco, docs pendentes, retorno estimado) (LOG 0056). Sem migration.
+
+> **Roadmap F&I concluído (1–9), exceto 7b (webhook, adiado).** Próximas evoluções dependem de provedor oficial homologado (adapters reais) ou de novo pedido do usuário.
 
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
 - [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").
