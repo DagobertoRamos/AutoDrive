@@ -659,6 +659,17 @@
 - **Pendências:** DOCX (hoje `unsupported` — falta lib `mammoth`); OCR real de imagens/escaneados depende do módulo de IA multimodal (próximas etapas). **Módulo de IA controlada (Etapas 3-16) ainda NÃO iniciado** — será feito em etapas seguintes (schema DocumentProcessingJob/AiProvider/AiInstruction/AiKnowledgeBase/AiUsageLog + adapters + Master UI + escopos/LGPD).
 - **Segurança:** sem chave/segredo/dado sensível em log; permissão `documents.pdf` mantida; sem mudança de schema/permissões/multi-tenant; nenhuma ação automatizada.
 
+### LOG 0063 — 2026-06-17 — Claude (Opus 4.8) — Módulo de IA: FUNDAÇÃO (dados + adapters + escopos) — Etapas 4/6/7/11/13/16
+- **Branch:** main (worktree). **Migration aditiva** `20260617120000_add_ai_module`.
+- **Tarefa:** preparar a arquitetura do módulo de IA controlada (sem UI e sem chamadas reais). Camada de dados + cripto + escopos + adapters + permissões + env.
+- **Schema (aditivo):** enums `DocumentProcessingStatus` (uploaded…too_large), `AiProviderKind` (GEMINI/OPENAI/ANTHROPIC/CUSTOM), `AiEnvironment` (SANDBOX/PRODUCAO); models `DocumentProcessingJob`, `AiProvider` (global, segredos cifrados), `AiInstruction` (+`AiInstructionVersion`), `AiKnowledgeBase` (+`AiKnowledgeChunk`), `AiUsageLog`. Migration hand-written (7 tabelas + 3 enums + 2 FKs). Nada existente alterado.
+- **Arquivos criados:** `src/lib/ai/crypto.ts` (AES-256-GCM via `AI_ENCRYPTION_KEY`→fallback `FINANCE_ENCRYPTION_KEY`); `src/lib/ai/scopes.ts` (AI_SCOPES + níveis de autonomia; **só leitura/sugestão/rascunho nesta fase**, ação automatizada NÃO habilitada); `src/lib/ai/adapters/{types,base,mock-ai.adapter,gemini.adapter,openai.adapter,anthropic.adapter,registry,index}.ts` (interface `AiProviderAdapter`: testConnection/generateText/summarizeText/analyzeDocument/analyzeImage/extractStructuredData/countTokens; **MockAI funcional** p/ testes; reais PREPARADOS lançam `AiNotConfiguredError`); `ai-adapters.test.ts` (5 testes).
+- **Arquivos alterados:** `src/lib/permissions.ts` (módulos `ai` [loja, read] e `master.ai` [MASTER-only]); `.env.example` (`AI_ENCRYPTION_KEY`, `AI_DEFAULT_PROVIDER`, `GEMINI/OPENAI/ANTHROPIC_API_KEY`, `AI_MAX_TOKENS`, `AI_TIMEOUT_MS`, `AI_RATE_LIMIT_PER_USER/TENANT`).
+- **Comandos:** `prisma validate` OK; `prisma generate` OK; `tsc` limpo; `eslint` 0 erros; `npm test` **136/136** (+5); `next build` OK. (Build completo via `prisma generate` trava localmente por lock de DLL no Windows; valido com `next build`.)
+- **Resultado:** arquitetura de IA pronta para receber UI/rotas. **NENHUMA chamada real** a provedor; MockAI cobre testes. IA controlada por escopos; sem ação sensível.
+- **Pendências / próximas etapas:** **Etapas 3/5/12/15** (Master > IA: APIs + telas de Provedores/Conectores/Instruções/Base de Conhecimento/Logs/Segurança/Testes); **Etapas 8/9/10** (chat de ajuda, IA p/ relatórios e documentos — rotas `/api/ai/*` com rate-limit + escopo + isolamento de tenant + `AiUsageLog`); integração do `DocumentProcessingJob` no pipeline de upload (Etapa 2 estendida). **AÇÃO USUÁRIO:** aplicar `20260617120000_add_ai_module` (`npx prisma migrate deploy`) e definir `AI_ENCRYPTION_KEY` quando for cadastrar provedor.
+- **Segurança:** segredos do provedor cifrados; nunca ao front/log; `master.ai` MASTER-only; IA sem ações sensíveis; tudo aditivo; multi-tenant preservado.
+
 ---
 
 ## TAREFAS PENDENTES

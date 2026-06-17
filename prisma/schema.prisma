@@ -3939,3 +3939,177 @@ model FinanceTenantSetting {
   @@index([tenantId])
   @@map("finance_tenant_settings")
 }
+
+// =============================================================================
+// MÓDULO DE IA CONTROLADA (aditivo) — pipeline de documentos + IA do AutoDrive.
+// Tudo opcional/global por padrão; tenant-scoped onde aplicável. Sem segredo em
+// texto puro (AiProvider.secretsEncrypted). Ver README_ROBOTS.md (LOG 0063+).
+// =============================================================================
+
+enum DocumentProcessingStatus {
+  uploaded
+  processing
+  text_extracted
+  requires_ocr
+  ai_processed
+  failed
+  unsupported
+  corrupted
+  protected
+  too_large
+}
+
+enum AiProviderKind {
+  GEMINI
+  OPENAI
+  ANTHROPIC
+  CUSTOM
+}
+
+enum AiEnvironment {
+  SANDBOX
+  PRODUCAO
+}
+
+// Job de processamento de um documento (extração de texto / IA).
+model DocumentProcessingJob {
+  id              String   @id @default(cuid())
+  tenantId        String?
+  documentId      String?  // referência opcional ao documento de origem
+  sourceModule    String?  // ex.: financing, evaluation, contracts
+  fileName        String?
+  mimeType        String?
+  fileSize        Int?
+  status          DocumentProcessingStatus @default(uploaded)
+  extractedText   String?
+  aiSummary       String?
+  errorMessage    String?
+  providerUsed    String?
+  createdByUserId String?
+  processedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([tenantId])
+  @@index([documentId])
+  @@index([status])
+  @@map("document_processing_jobs")
+}
+
+// Provedor de IA — GLOBAL (configurado pelo MASTER). Segredos cifrados.
+model AiProvider {
+  id                  String   @id @default(cuid())
+  name                String
+  code                String   @unique // identificador interno (ex.: gemini-default)
+  kind                AiProviderKind @default(CUSTOM)
+  model               String?  // modelo padrão
+  authType            String?  // API_KEY | OAUTH | CUSTOM
+  secretsEncrypted    String?  // ciphertext {apiKey, clientSecret, ...} — nunca texto puro
+  maskedHints         Json?    // exibição mascarada
+  baseUrl             String?
+  active              Boolean  @default(false)
+  environment         AiEnvironment @default(SANDBOX)
+  maxTokensPerRequest Int?
+  dailyLimit          Int?
+  monthlyLimit        Int?
+  timeoutMs           Int?
+  allowPdf            Boolean  @default(false)
+  allowImage          Boolean  @default(false)
+  allowReports        Boolean  @default(false)
+  allowHelpChat       Boolean  @default(false)
+  allowDocAnalysis    Boolean  @default(false)
+  notes               String?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  @@map("ai_providers")
+}
+
+// Instrução de comportamento da IA (ensinar a IA). Global se tenantId null.
+model AiInstruction {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  title       String
+  area        String?
+  scope       String   @default("global") // global|ajuda|relatorios|documentos|f&i|estoque|vendas|financeiro|pos-venda|marketing
+  content     String
+  status      String   @default("ATIVO") // ATIVO|INATIVO
+  priority    Int      @default(0)
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  versions    AiInstructionVersion[]
+  @@index([tenantId])
+  @@index([scope])
+  @@map("ai_instructions")
+}
+
+model AiInstructionVersion {
+  id            String   @id @default(cuid())
+  instructionId String
+  version       Int
+  content       String
+  scope         String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  instruction   AiInstruction @relation(fields: [instructionId], references: [id], onDelete: Cascade)
+  @@index([instructionId])
+  @@map("ai_instruction_versions")
+}
+
+// Base de conhecimento da IA. Global (Master) ou do tenant.
+model AiKnowledgeBase {
+  id               String   @id @default(cuid())
+  tenantId         String?
+  scope            String   @default("global") // global|tenant
+  title            String
+  description      String?
+  content          String?
+  sourceType       String   @default("manual_text") // manual_text|pdf|docx|image|url|system_doc
+  sourceDocumentId String?
+  status           String   @default("ATIVO") // ATIVO|INATIVO
+  createdByUserId  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  chunks           AiKnowledgeChunk[]
+  @@index([tenantId])
+  @@index([scope])
+  @@map("ai_knowledge_base")
+}
+
+model AiKnowledgeChunk {
+  id              String   @id @default(cuid())
+  knowledgeBaseId String
+  tenantId        String?
+  chunkText       String
+  chunkIndex      Int      @default(0)
+  metadata        Json?
+  embedding       Json?    // placeholder (sem pgvector nesta fase)
+  createdAt       DateTime @default(now())
+  knowledgeBase   AiKnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  @@index([knowledgeBaseId])
+  @@index([tenantId])
+  @@map("ai_knowledge_chunks")
+}
+
+// Log de uso da IA (sem dados sensíveis / sem prompt completo).
+model AiUsageLog {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  userId        String?
+  providerId    String?
+  feature       String   // help_chat | analyze_document | summarize_report | ...
+  promptSummary String?  // resumo/hash — nunca o conteúdo sensível completo
+  tokenInput    Int?
+  tokenOutput   Int?
+  costEstimate  Decimal? @db.Decimal(12, 6)
+  status        String   @default("OK") // OK | ERROR | BLOCKED
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  @@index([tenantId])
+  @@index([userId])
+  @@index([providerId])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
+}

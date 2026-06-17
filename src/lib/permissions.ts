@@ -78,12 +78,14 @@ export type Module =
   | 'financing'                   // módulo financiamento (FN): proponentes, fichas, simulações
   | 'financing.manage'            // criar/editar proponentes, bancos, fichas
   | 'financing.config'            // configurar F&I da loja (bancos, credenciais, prioridades, retornos) — ADM/gestão/financeiro
+  | 'ai'                          // usar a IA controlada (chat de ajuda, ler/resumir documentos) — loja
   | 'logs'
   | 'profile'
   | 'master'                    // painel master da plataforma
   | 'master.tenants'
   | 'master.modules'
   | 'master.financing'          // painel F&I do MASTER (provedores, adapters, webhooks, logs técnicos)
+  | 'master.ai'                 // painel de IA do MASTER (provedores, instruções, base de conhecimento, logs)
   | 'master.plans'
   | 'master.users'
   | 'master.communication'
@@ -296,6 +298,11 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
     actions: ['read', 'create', 'update', 'delete'],
   },
+  // IA controlada — uso pela loja (chat de ajuda, ler/resumir documentos).
+  ai: {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
   profile: {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read', 'update'],
@@ -332,6 +339,10 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'configure'],
   },
   'master.financing': {
+    roles: ['MASTER'],
+    actions: ['read', 'configure'],
+  },
+  'master.ai': {
     roles: ['MASTER'],
     actions: ['read', 'configure'],
   },
