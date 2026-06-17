@@ -618,6 +618,16 @@
 - **Observações:** sem ação do usuário. Resta opcional: upload real de arquivos de documento (hoje checklist) e Fase 7b (webhook, requer provedor oficial).
 - **Próximo passo seguro:** opcional — upload real de documentos ou Fase 7b. Outra IA: ler LOGs 0040–0058.
 
+### LOG 0059 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 7b: receptor de webhook
+- **Branch:** main (worktree). **Sem migration** — usa `FinanceWebhookEvent`/`FinanceProposalEvent` (Fase 4).
+- **Tarefa:** receber retornos de provedores de F&I por webhook, de forma SEGURA e provider-agnóstica: endpoint público protegido por segredo, que registra o evento, casa a submissão por `externalId` e atualiza o status (linha do tempo `source=WEBHOOK`).
+- **Arquivos criados:** `src/lib/finance/webhook-service.ts` (puro: `secretsMatch` [comparação de comprimento+conteúdo], `extractWebhookFields` [externalId/status/message com aliases], `mapProviderStatus`) + `webhook-service.test.ts` (8 testes); `src/app/api/webhook/financing/[provider]/route.ts` (receptor público); `src/app/api/master/financing/webhooks/route.ts` (GET eventos, MASTER); página `master/financing/webhooks` (status do receptor + endpoint + tabela de eventos).
+- **Arquivos alterados:** `.env.example` (`FINANCE_WEBHOOK_SECRET`).
+- **Regras aplicadas (SEGURANÇA):** o receptor fica sob `/api/webhook/...` (já público no matcher do `proxy.ts` — **sem alterar o middleware**); **sem `FINANCE_WEBHOOK_SECRET` → 503** (nunca um sink aberto); segredo inválido → **401 SEM gravar nada**; só grava com segredo válido; payload bruto **não** é exposto na visão Master (só metadados); aprovação reflete na ficha; **webhook é entrada legítima** (consta na lista permitida) — **não é RPA/automação oculta**; a verificação por segredo compartilhado será trocada pela **assinatura HMAC oficial** quando houver provedor homologado. Read-only no Master.
+- **Validações:** `tsc` limpo; `eslint` 0 erros; `npm test` **125/125** (+8); `npm run build` OK (`--max-old-space-size=6144`; rotas `/api/webhook/financing/[provider]`, `/api/master/financing/webhooks`, página registradas).
+- **Observações:** **AÇÃO USUÁRIO (opcional): definir `FINANCE_WEBHOOK_SECRET` (≥8) no ambiente** para ativar o receptor (e dá-lo ao provedor). Como o ManualAdapter não gera `externalId`, o casamento só ocorrerá com provedores reais que retornem um id — a infra já está pronta e os eventos são registrados de qualquer forma.
+- **Próximo passo seguro:** **Roadmap F&I concluído (1–9 + 7b).** Resta opcional: upload real de arquivos de documento; integração real de adapters (depende de doc/credencial oficial). Outra IA: ler LOGs 0040–0059.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -635,11 +645,11 @@
 - [x] **Fase 5** — camada de adapters (interface + registry + Manual/Credere/Generic) — só estrutura, lib pura (LOG 0052). Sem migration/sem ação do usuário.
 - [x] **Fase 6** — simulação comparativa (parcela via Price + retorno estimado pelas regras) (LOG 0053). Sem migration.
 - [x] **Fase 7a** — fichas profissionais: documentos obrigatórios (checklist) + envio multi-banco (ManualAdapter) + linha do tempo de status (LOG 0054). Sem migration.
-- [ ] **Fase 7b** — receptor de webhook público (`FinanceWebhookEvent`) — ADIADO até provedor oficial homologado (exige assinatura/segredo oficiais; sem isso, não expor endpoint público que grava no banco).
+- [x] **Fase 7b** — receptor de webhook público, protegido por `FINANCE_WEBHOOK_SECRET`, com casamento por externalId + status na linha do tempo + visão Master (LOG 0059). Assinatura HMAC oficial entra com provedor homologado. **AÇÃO USUÁRIO (opcional): definir `FINANCE_WEBHOOK_SECRET` para ativar.**
 - [x] **Fase 8** — integrar F&I na Negociação (ficha ligada ao Deal + aplicar aprovação) (LOG 0055). **AÇÃO USUÁRIO: aplicar migration `20260616160000_add_fi_deal_link`.**
 - [x] **Fase 9** — relatórios/BI de F&I (funil, produção por vendedor, envios por banco, docs pendentes, retorno estimado) (LOG 0056). Sem migration.
 
-> **Roadmap F&I concluído (1–9), exceto 7b (webhook, adiado).** Próximas evoluções dependem de provedor oficial homologado (adapters reais) ou de novo pedido do usuário.
+> **Roadmap F&I concluído (Fases 1–9 + 7b).** Próximas evoluções dependem de provedor oficial homologado (adapters reais + assinatura HMAC do webhook) ou de novo pedido do usuário. Opcional: upload real de arquivos de documento.
 
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
 - [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").
