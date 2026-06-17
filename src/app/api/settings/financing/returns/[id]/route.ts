@@ -11,6 +11,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateReturnRuleSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
+import { isFiAllowed } from '@/lib/finance/fi-permissions'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Regra não encontrada.' }, { status: 404 })
@@ -20,6 +21,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
   if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Retornos são gerenciados pela loja, não pelo MASTER.')
+  if (!(await isFiAllowed(user.tenantId, 'alterarRetorno', user.role))) return forbiddenResponse('Seu perfil não pode alterar retorno (Permissões F&I da loja).')
   const { id } = await params
 
   try {
@@ -55,6 +57,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
   if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Retornos são gerenciados pela loja, não pelo MASTER.')
+  if (!(await isFiAllowed(user.tenantId, 'alterarRetorno', user.role))) return forbiddenResponse('Seu perfil não pode alterar retorno (Permissões F&I da loja).')
   const { id } = await params
   try {
     const existing = await prisma.financeReturnRule.findUnique({ where: { id } })

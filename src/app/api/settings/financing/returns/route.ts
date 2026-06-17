@@ -13,6 +13,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createReturnRuleSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
+import { isFiAllowed } from '@/lib/finance/fi-permissions'
 
 export async function GET() {
   const user = await getSessionUser()
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão para configurar retornos.')
   if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Retornos são gerenciados pela loja, não pelo MASTER.')
+  if (!(await isFiAllowed(user.tenantId, 'alterarRetorno', user.role))) return forbiddenResponse('Seu perfil não pode alterar retorno (Permissões F&I da loja).')
 
   try {
     const tenantId = user.tenantId

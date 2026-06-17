@@ -17,6 +17,7 @@ import { submitProposalSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { requiredDocsForProfile, pendingRequiredDocs, type RequiredDocsConfig } from '@/lib/finance/proposal-service'
 import { getAdapter } from '@/lib/finance/adapters'
+import { isFiAllowed } from '@/lib/finance/fi-permissions'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Ficha não encontrada.' }, { status: 404 })
@@ -62,6 +63,8 @@ export async function POST(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, user.tenantId, proposal.tenantId)) return forbiddenResponse('Ficha de outro tenant.')
     const tenantId = proposal.tenantId ?? user.tenantId
     if (!tenantId) return forbiddenResponse('Ficha sem loja vinculada.')
+    // Permissões F&I da loja: quem pode enviar ficha.
+    if (!(await isFiAllowed(tenantId, 'enviarFicha', user.role))) return forbiddenResponse('Seu perfil não pode enviar fichas (Permissões F&I da loja).')
 
     const d = submitProposalSchema.parse(await req.json())
 

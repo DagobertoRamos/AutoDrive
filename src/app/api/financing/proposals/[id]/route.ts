@@ -10,6 +10,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateProposalSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
+import { isFiAllowed } from '@/lib/finance/fi-permissions'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Ficha não encontrada.' }, { status: 404 })
@@ -41,6 +42,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Ficha de outro tenant.')
 
     const d = updateProposalSchema.parse(await req.json())
+    // Permissões F&I: aprovar/recusar a ficha é restrito a quem a loja autoriza.
+    if ((d.status === 'APROVADA' || d.status === 'RECUSADA') && !(await isFiAllowed(existing.tenantId, 'aprovar', user.role))) {
+      return forbiddenResponse('Seu perfil não pode aprovar/recusar fichas (Permissões F&I da loja).')
+    }
     const updateData: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(d)) if (v !== undefined) updateData[k] = v
 

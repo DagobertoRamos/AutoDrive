@@ -12,6 +12,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { submissionEventSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
+import { isFiAllowed } from '@/lib/finance/fi-permissions'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -26,6 +27,10 @@ export async function POST(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, user.tenantId, submission.tenantId)) return forbiddenResponse('Submissão de outro tenant.')
 
     const d = submissionEventSchema.parse(await req.json())
+    // Permissões F&I: aprovar/recusar é restrito a quem a loja autoriza.
+    if ((d.status === 'APROVADA' || d.status === 'RECUSADA') && !(await isFiAllowed(submission.tenantId, 'aprovar', user.role))) {
+      return forbiddenResponse('Seu perfil não pode aprovar/recusar (Permissões F&I da loja).')
+    }
     await prisma.financeProposalSubmission.update({ where: { id }, data: { status: d.status } })
     await prisma.financeProposalEvent.create({
       data: { tenantId: submission.tenantId, proposalId: submission.proposalId, submissionId: id, type: 'STATUS_CHANGE', status: d.status, message: d.message ?? null, source: 'MANUAL', createdById: user.id },

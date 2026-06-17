@@ -122,7 +122,7 @@ export default function FiPermissionsPage() {
 
       <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
         <ShieldCheck size={16} className="mt-0.5 shrink-0" />
-        <span>Configuração registrada e auditada. A aplicação automática destas permissões no fluxo (bloquear ações fora do papel) entra junto com as fichas profissionais. Hoje, alterar retorno/credenciais já é restrito a administração/gerência/financeiro.</span>
+        <span>Aplicada no fluxo: papéis fora da lista são bloqueados ao enviar ficha, aprovar/recusar ou alterar retorno (além do RBAC base). <strong>Deixar uma capacidade sem nenhum papel = sem restrição extra</strong> (todos com permissão base podem). Tudo auditado.</span>
       </div>
     </div>
   )

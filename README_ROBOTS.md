@@ -598,6 +598,16 @@
 - **Observações:** sem ação do usuário. Com isto o **roadmap F&I (Fases 1–9) está concluído**, exceto **7b (webhook público)**, que segue adiado até provedor oficial homologado (assinatura/segredo). Evoluções seguintes: integração real de adapters (depende de doc/credencial oficial) ou novo pedido.
 - **Próximo passo seguro:** nenhuma fase pendente sem dependência externa. Se desejado: Fase 7b (webhook, requer provedor), upload real de arquivos de documento (hoje checklist) ou refino visual. Outra IA: ler LOGs 0040–0056.
 
+### LOG 0057 — 2026-06-16 — Claude (Opus 4.8) — F&I 2b.3+: aplicar Permissões F&I no fluxo (enforcement)
+- **Branch:** main (worktree). **Sem migration** — usa `finance_tenant_settings` (chave `permissions`) já existente.
+- **Tarefa:** evoluir a Fase 2b.3 fazendo a config de **Permissões F&I** (enviarFicha/aprovar/alterarRetorno) **restringir as ações no servidor** (camada ADICIONAL ao RBAC base). Antes era só persistida.
+- **Arquivos criados:** `src/lib/finance/fi-permissions.ts` (`roleAllowedByList` puro + `isFiAllowed` que carrega a config da loja) + `fi-permissions.test.ts` (3 testes).
+- **Arquivos alterados (pontos de enforcement):** `proposals/[id]/submissions` POST (enviarFicha); `submissions/[id]` POST (aprovar — status APROVADA/RECUSADA); `proposals/[id]` PATCH (aprovar — status APROVADA/RECUSADA); `settings/financing/returns` POST e `returns/[id]` PATCH/DELETE (alterarRetorno). UI `configuracoes/fi/permissoes` (nota atualizada: agora é aplicada).
+- **Regras aplicadas:** **padrão seguro** — capacidade com lista vazia/não configurada = sem restrição extra (não quebra lojas sem config); **MASTER nunca bloqueado** por esta camada; verificações SEMPRE adicionais ao RBAC base (financing/financing.manage/financing.config) e ao isolamento de tenant; mensagens de 403 claras citando “Permissões F&I da loja”. Aditivo — nada removido.
+- **Validações:** `tsc` limpo; `eslint` 0 erros; `npm test` **117/117** (+3); `npm run build` OK (`--max-old-space-size=6144`).
+- **Observações:** sem ação do usuário. Enforcement é server-side (autoritativo); a UI mostra o erro em caso de bloqueio. Esconder botões por papel no cliente fica como refino opcional.
+- **Próximo passo seguro:** opcional — refino de UI (ocultar ações conforme permissões no cliente), upload real de documentos, ou Fase 7b (webhook, requer provedor). Outra IA: ler LOGs 0040–0057.
+
 ---
 
 ## TAREFAS PENDENTES
