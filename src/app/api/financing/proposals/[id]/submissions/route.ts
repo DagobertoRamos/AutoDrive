@@ -16,7 +16,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { submitProposalSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { requiredDocsForProfile, pendingRequiredDocs, type RequiredDocsConfig } from '@/lib/finance/proposal-service'
-import { getAdapter } from '@/lib/finance/adapters'
+import { resolveAdapterForTenantBank } from '@/lib/finance/resolve-adapter'
 import { isFiAllowed } from '@/lib/finance/fi-permissions'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -84,20 +84,32 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     }
 
-    const adapter = getAdapter('MANUAL')
-    const ctx = { tenantId, environment: 'HOMOLOGACAO' as const }
     const created: string[] = []
     for (const bankId of ownedIds) {
-      const result = await adapter.submit({ proposalId: id, bankId, proponent: {} }, ctx)
+      // PASS-THROUGH / BYOC: usa a credencial DO TENANT para este banco; se não
+      // houver integração pronta, cai no ManualAdapter (registro supervisionado).
+      const { adapter, ctx, provider, source } = await resolveAdapterForTenantBank(tenantId, bankId, 'HOMOLOGACAO')
+      let result
+      try {
+        result = await adapter.submit({ proposalId: id, bankId, proponent: {} }, ctx)
+      } catch (e) {
+        // Falha do adapter real → não quebra o fluxo: registra manualmente com o erro.
+        const msg = e instanceof Error ? e.message : 'Falha na integração.'
+        result = { externalId: null, status: 'ENVIADA', source: 'MANUAL' as const, message: `Registro manual (integração indisponível): ${msg}`, requestPayload: { proposalId: id, bankId, manual: true } }
+      }
       const submission = await prisma.financeProposalSubmission.create({
         data: {
-          tenantId, proposalId: id, bankId, providerId: null, environment: 'HOMOLOGACAO',
+          tenantId, proposalId: id, bankId, providerId: provider?.id ?? null, environment: ctx.environment,
           externalId: result.externalId, status: result.status, requestPayload: (result.requestPayload ?? null) as never,
           submittedById: user.id,
           events: { create: { tenantId, proposalId: id, type: 'STATUS_CHANGE', status: result.status, message: result.message ?? null, source: result.source, createdById: user.id } },
         },
       })
       created.push(submission.id)
+      // Log técnico (sem segredo) p/ Master > Logs/Saúde.
+      await prisma.financeIntegrationLog.create({
+        data: { tenantId, providerId: provider?.id ?? null, action: 'SUBMIT', status: 'OK', message: `via ${source}${provider ? ` (${provider.name})` : ''}` },
+      }).catch(() => {})
     }
 
     // Primeira saída de SIMULAÇÃO → ENVIADA.
