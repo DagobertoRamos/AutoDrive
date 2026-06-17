@@ -670,6 +670,17 @@
 - **Pendências / próximas etapas:** **Etapas 3/5/12/15** (Master > IA: APIs + telas de Provedores/Conectores/Instruções/Base de Conhecimento/Logs/Segurança/Testes); **Etapas 8/9/10** (chat de ajuda, IA p/ relatórios e documentos — rotas `/api/ai/*` com rate-limit + escopo + isolamento de tenant + `AiUsageLog`); integração do `DocumentProcessingJob` no pipeline de upload (Etapa 2 estendida). **AÇÃO USUÁRIO:** aplicar `20260617120000_add_ai_module` (`npx prisma migrate deploy`) e definir `AI_ENCRYPTION_KEY` quando for cadastrar provedor.
 - **Segurança:** segredos do provedor cifrados; nunca ao front/log; `master.ai` MASTER-only; IA sem ações sensíveis; tudo aditivo; multi-tenant preservado.
 
+### LOG 0064 — 2026-06-17 — Claude (Opus 4.8) — Master > Inteligência Artificial: UI + APIs (Etapas 3/5/12-master/15)
+- **Branch:** main (worktree). **Sem migration** (usa os models do LOG 0063).
+- **Tarefa:** painel **Master > Inteligência Artificial** funcional: Provedores/Conectores, Instruções da IA, Base de Conhecimento, Logs de Uso e Testes.
+- **APIs criadas (MASTER-only, `master.ai`):** `providers` (GET mascarado / POST cifra apiKey+clientSecret) + `[id]` (PATCH recifra só segredos enviados / DELETE) + `[id]/test` (testConnection via adapter, grava AiUsageLog + auditoria); `instructions` (GET/POST com versão 1) + `[id]` (PATCH com snapshot de versão / DELETE); `knowledge` (GET/POST) + `[id]` (PATCH/DELETE) + `[id]/reprocess` (chunking → AiKnowledgeChunk); `logs` (GET AiUsageLog, sem dado sensível).
+- **Telas criadas:** hub `/master/ai` + `providers` (CRUD+cifra+mascarado+testar+capacidades/limites/ambiente), `instructions` (CRUD+escopo+sugestões), `knowledge` (CRUD+reprocessar), `logs` (read), `testes` (testar conexão por provedor — MockAI sem custo).
+- **Arquivos alterados:** `src/lib/validators/ai.ts` (schemas provider/instruction/knowledge); `src/lib/permissions.ts` (já tinha `master.ai`); `src/components/layout/navigation.ts` (item "Inteligência Artificial" no grupo Master).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros (warnings setState-in-effect pré-existentes); `npm test` 136/136; `next build` OK (todas as rotas `/api/master/ai/*` e telas registradas).
+- **Resultado:** Master configura provedores (chaves cifradas, mascaradas, nunca ao front/log), ensina a IA (instruções+versões), cadastra base de conhecimento (com reprocessamento em chunks), vê logs e testa conexão. Sem chamada real (MockAI cobre testes).
+- **Pendências:** Etapas 8/9/10 (rotas `/api/ai/*` da loja: chat de ajuda, resumir relatório, analisar documento — com rate-limit + escopo + isolamento de tenant + AiUsageLog); ligar `DocumentProcessingJob` ao pipeline de upload + botões "Processar/Analisar com IA" nas telas de documento (Etapa 2 estendida + 10/15-front). **AÇÃO USUÁRIO:** aplicar a migration `20260617120000_add_ai_module` e definir `AI_ENCRYPTION_KEY` para cadastrar provedor com chave (sem ela, POST/PATCH de provedor retorna 503; demais telas funcionam).
+- **Segurança:** segredos cifrados/mascarados/nunca expostos; MASTER-only; auditoria em CRUD/teste; IA controlada (sem ação sensível); multi-tenant intacto.
+
 ---
 
 ## TAREFAS PENDENTES
