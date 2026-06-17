@@ -10,8 +10,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, FileCheck2, Send, Plus, Trash2, Clock, Landmark, AlertTriangle, Check } from 'lucide-react'
+import { ArrowLeft, FileCheck2, Send, Plus, Trash2, Clock, Landmark, AlertTriangle, Check, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useFiPermissions } from './useFiPermissions'
 
 type DocStatus = 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 interface Proposal { id: string; vehicle: string | null; status: string; amountRequested: number; downPayment: number; installments: number | null; proponent: { nomeCompleto: string; occupation: string | null } | null; bank: { name: string } | null }
@@ -29,6 +30,7 @@ const DOC_CLS: Record<DocStatus, string> = { PENDENTE: 'bg-amber-100 text-amber-
 const SUB_CLS: Record<string, string> = { ENVIADA: 'bg-blue-100 text-blue-700', EM_ANALISE: 'bg-indigo-100 text-indigo-700', PENDENTE: 'bg-amber-100 text-amber-700', APROVADA: 'bg-green-100 text-green-700', RECUSADA: 'bg-red-100 text-red-600', CANCELADA: 'bg-gray-100 text-gray-500' }
 
 export default function FichaDetail({ id }: { id: string }) {
+  const { perms } = useFiPermissions()
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const [docs, setDocs] = useState<Docs>({ documents: [], requiredNames: [], pending: [] })
   const [subs, setSubs] = useState<Submission[]>([])
@@ -158,7 +160,9 @@ export default function FichaDetail({ id }: { id: string }) {
         {/* Envio multi-banco */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
           <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900"><Send size={16} className="text-brand-600" />Enviar para bancos</h2>
-          {banks.length === 0 ? (
+          {!perms.enviarFicha ? (
+            <p className="flex items-center gap-2 text-sm text-gray-400"><Lock size={14} />Seu perfil não pode enviar fichas (Permissões F&amp;I da loja).</p>
+          ) : banks.length === 0 ? (
             <p className="text-sm text-gray-400">Nenhum banco ativo. Cadastre em Bancos da Loja.</p>
           ) : (
             <>
@@ -189,7 +193,9 @@ export default function FichaDetail({ id }: { id: string }) {
                   <span className="inline-flex items-center gap-1.5 font-medium text-gray-900"><Landmark size={14} className="text-gray-400" />{s.bankName}{s.externalId && <span className="font-mono text-[11px] text-gray-400">#{s.externalId}</span>}</span>
                   <div className="flex items-center gap-2">
                     <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', SUB_CLS[s.status] ?? 'bg-gray-100 text-gray-600')}>{s.status}</span>
-                    <select value={s.status} onChange={(e) => updateSub(s.id, e.target.value)} className={cn(inputCls, 'py-1 text-xs')}>{SUB_STATUS.map((st) => <option key={st} value={st}>{st}</option>)}</select>
+                    <select value={s.status} onChange={(e) => updateSub(s.id, e.target.value)} className={cn(inputCls, 'py-1 text-xs')} title={!perms.aprovar ? 'Aprovar/recusar restrito (Permissões F&I)' : undefined}>
+                      {SUB_STATUS.filter((st) => perms.aprovar || st === s.status || (st !== 'APROVADA' && st !== 'RECUSADA')).map((st) => <option key={st} value={st}>{st}</option>)}
+                    </select>
                   </div>
                 </div>
                 {s.events.length > 0 && (

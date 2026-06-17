@@ -608,6 +608,16 @@
 - **Observações:** sem ação do usuário. Enforcement é server-side (autoritativo); a UI mostra o erro em caso de bloqueio. Esconder botões por papel no cliente fica como refino opcional.
 - **Próximo passo seguro:** opcional — refino de UI (ocultar ações conforme permissões no cliente), upload real de documentos, ou Fase 7b (webhook, requer provedor). Outra IA: ler LOGs 0040–0057.
 
+### LOG 0058 — 2026-06-16 — Claude (Opus 4.8) — F&I 2b.3+: refino de UI das Permissões F&I
+- **Branch:** main (worktree). **Sem migration.**
+- **Tarefa:** refletir as Permissões F&I no cliente — ocultar/desabilitar ações que o perfil não pode (enviar ficha / aprovar-recusar / alterar retorno), além do bloqueio no servidor (LOG 0057).
+- **Arquivos criados:** `src/app/api/financing/my-permissions/route.ts` (GET capacidades efetivas do usuário via `isFiAllowed` + RBAC base; read-only); `src/components/financing/useFiPermissions.ts` (hook; default otimista=true até carregar).
+- **Arquivos alterados:** `FichaDetail.tsx` (esconde "Enviar para bancos" sem `enviarFicha`; select de status oculta APROVADA/RECUSADA sem `aprovar`, mantendo o valor atual); `ProposalsManager.tsx` (mesma regra no select de status do modal); `configuracoes/fi/retornos/page.tsx` (sem `alterarRetorno`: oculta Nova regra/editar/excluir + aviso somente-leitura).
+- **Regras aplicadas:** o servidor continua sendo a autoridade (estas mudanças são só UX); default otimista evita esconder ação legítima no flash inicial; capacidade não configurada (lista vazia) = sem restrição, então a UI também não esconde. Aditivo.
+- **Validações:** `tsc` limpo; `eslint` 0 erros; `npm test` 117/117; `npm run build` OK (`--max-old-space-size=6144`; rota `/api/financing/my-permissions`).
+- **Observações:** sem ação do usuário. Resta opcional: upload real de arquivos de documento (hoje checklist) e Fase 7b (webhook, requer provedor oficial).
+- **Próximo passo seguro:** opcional — upload real de documentos ou Fase 7b. Outra IA: ler LOGs 0040–0058.
+
 ---
 
 ## TAREFAS PENDENTES

@@ -12,6 +12,7 @@ import { useSession } from 'next-auth/react'
 import { Plus, Pencil, Trash2, Percent, X, Save, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { useFiPermissions } from '@/components/financing/useFiPermissions'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 
@@ -25,9 +26,11 @@ const fmt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 
 export default function FiReturnsPage() {
   const { data: session } = useSession()
+  const { perms } = useFiPermissions()
   const role = (session?.user as { role?: string })?.role
   const allowed = !role || CONFIG_ROLES.includes(role)
   const isMaster = role === 'MASTER'
+  const canEdit = perms.alterarRetorno
 
   const [items, setItems] = useState<Row[]>([])
   const [banks, setBanks] = useState<Bank[]>([])
@@ -117,8 +120,12 @@ export default function FiReturnsPage() {
           <h1 className="text-xl font-bold text-gray-900">Retornos por Banco</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} regra(s) de retorno`}</p>
         </div>
-        <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova regra</button>
+        {canEdit && <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova regra</button>}
       </div>
+
+      {!canEdit && (
+        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500"><Lock size={15} />Somente leitura: seu perfil não pode alterar retorno (Permissões F&amp;I da loja).</div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
@@ -138,8 +145,10 @@ export default function FiReturnsPage() {
                     <td className="px-4 py-3 text-gray-600"><span className="block max-w-[220px] truncate">{r.notes || '—'}</span></td>
                     <td className="px-4 py-3 text-xs text-gray-500">{r.active ? 'Ativo' : 'Inativo'}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <button onClick={() => openEdit(r)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={15} /></button>
-                      <button onClick={() => remove(r)} className="inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir"><Trash2 size={15} /></button>
+                      {canEdit ? (<>
+                        <button onClick={() => openEdit(r)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={15} /></button>
+                        <button onClick={() => remove(r)} className="inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir"><Trash2 size={15} /></button>
+                      </>) : <span className="text-xs text-gray-300">—</span>}
                     </td>
                   </tr>
                 ))

@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, FileText, X, Save, FolderOpen } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL, maskCPF } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
+import { useFiPermissions } from '@/components/financing/useFiPermissions'
 
 type Status = 'SIMULACAO' | 'ENVIADA' | 'APROVADA' | 'RECUSADA' | 'CANCELADA'
 interface Row {
@@ -39,6 +40,7 @@ export default function ProposalsManager({
 }: {
   fixedStatus?: Status; title: string; subtitle?: string; allowCreate?: boolean
 }) {
+  const { perms } = useFiPermissions()
   const [items, setItems] = useState<Row[]>([])
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -171,7 +173,7 @@ export default function ProposalsManager({
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Proponente <span className="text-red-500">*</span></label><select className={inputCls} value={form.proponentId} onChange={(e) => set('proponentId', e.target.value)} disabled={!!editingId}><option value="">Selecione...</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}{editingId && !proponents.some((p) => p.id === form.proponentId) && <option value={form.proponentId}>Proponente atual</option>}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco</label><select className={inputCls} value={form.bankId} onChange={(e) => set('bankId', e.target.value)}><option value="">—</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Status</label><select className={inputCls} value={form.status} onChange={(e) => set('status', e.target.value as Status)}>{(['SIMULACAO', 'ENVIADA', 'APROVADA', 'RECUSADA', 'CANCELADA'] as Status[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Status{!perms.aprovar && <span className="ml-1 text-[10px] font-normal text-gray-400">(aprovar/recusar restrito)</span>}</label><select className={inputCls} value={form.status} onChange={(e) => set('status', e.target.value as Status)}>{(['SIMULACAO', 'ENVIADA', 'APROVADA', 'RECUSADA', 'CANCELADA'] as Status[]).filter((s) => perms.aprovar || s === form.status || (s !== 'APROVADA' && s !== 'RECUSADA')).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Veículo</label><input className={inputCls} value={form.vehicle} onChange={(e) => set('vehicle', e.target.value)} placeholder="Marca/modelo/ano" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Valor solicitado</label>{money(form.amountRequested, (v) => set('amountRequested', v))}</div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Entrada</label>{money(form.downPayment, (v) => set('downPayment', v))}</div>
