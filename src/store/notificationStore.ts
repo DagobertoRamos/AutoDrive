@@ -165,23 +165,9 @@ export const useNotificationStore = create<NotificationState>()(
           const json = await response.json()
           const incoming: Notification[] = json?.data ?? []
 
-          // Detecta novas não lidas e exibe como toast
-          const { notifications: current, addToast } = get()
-          const currentIds = new Set(current.map((n) => n.id))
-
-          incoming
-            .filter((n) => !currentIds.has(n.id) && !n.read)
-            .slice(0, 3)
-            .forEach((n) => {
-              addToast({
-                type:     n.type,
-                title:    n.title,
-                message:  n.message,
-                href:     n.actionUrl ?? null,
-                duration: 6000,
-              })
-            })
-
+          // NÃO exibe toast aqui. O balão é responsabilidade única do hook
+          // useNotifications (poll global), que só toasta o que é novo NA SESSÃO.
+          // Esta fetch (usada ao abrir o sino) apenas atualiza a lista/contador.
           set(
             {
               notifications: incoming,
