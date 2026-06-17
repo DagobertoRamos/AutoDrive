@@ -1225,6 +1225,7 @@ model Deal {
   reopenLogs      DealReopenLog[]
   attachments     DealAttachment[]
   documents       DealDocument[]
+  financeProposals FinanceProposal[]   @relation("DealFinanceProposals")
 
   @@index([tenantId])
   @@index([unitId])
@@ -3582,6 +3583,7 @@ model FinanceProposal {
   proponentId     String
   bankId          String?
   sellerId        String?
+  dealId          String?               // ligação opcional com a negociação (F&I)
   // ── Dados da operação ────────────────────────────────────────────────────
   vehicle         String?
   amountRequested Decimal?              @db.Decimal(14, 2)
@@ -3600,6 +3602,7 @@ model FinanceProposal {
 
   proponent    FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
   bank         FinanceBank?     @relation(fields: [bankId], references: [id])
+  deal         Deal?            @relation("DealFinanceProposals", fields: [dealId], references: [id], onDelete: SetNull)
   submissions  FinanceProposalSubmission[]
   events       FinanceProposalEvent[]
   documents    FinanceProposalDocument[]
@@ -3610,6 +3613,7 @@ model FinanceProposal {
   @@index([proponentId])
   @@index([bankId])
   @@index([sellerId])
+  @@index([dealId])
   @@map("finance_proposals")
 }
 

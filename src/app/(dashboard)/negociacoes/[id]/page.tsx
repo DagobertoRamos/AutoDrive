@@ -40,6 +40,7 @@ import { calculateNegotiationFinancialSummary, dealToFinancialInput } from '@/li
 import Phase2Panel from './_components/Phase2Panel'
 import ReturnPanel from './_components/ReturnPanel'
 import WarrantySalesPanel from './_components/WarrantySalesPanel'
+import FinancingPanel from './_components/FinancingPanel'
 import DealSummary from './_components/DealSummary'
 import AttachmentUploader, { type Attachment } from './_components/AttachmentUploader'
 import ContractsTab from './_components/ContractsTab'
@@ -1749,6 +1750,12 @@ export default function NegociacaoDetailPage() {
             onToast={(m, kind) => showToast(m, kind !== 'error')}
           />
           <WarrantySalesPanel
+            dealId={deal.id}
+            canEdit={!isDealLocked(deal.status)}
+            onReload={loadDeal}
+            onToast={(m, kind) => showToast(m, kind !== 'error')}
+          />
+          <FinancingPanel
             dealId={deal.id}
             canEdit={!isDealLocked(deal.status)}
             onReload={loadDeal}

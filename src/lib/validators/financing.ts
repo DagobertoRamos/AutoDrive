@@ -185,4 +185,14 @@ export const submissionEventSchema = z.object({
   message: optStr,
 })
 
+// ── Integração com a Negociação (F&I — Fase 8) ────────────────────────────────
+export const linkedProposalSchema = z.object({
+  proponentId:  z.string().cuid('Proponente inválido.'),
+  bankId:       z.string().cuid().nullish(),
+  installments: z.number().int().positive().nullish(),
+})
+export const applyProposalSchema = z.object({
+  applyProposalId: z.string().cuid('Ficha inválida.'),
+})
+
 export type CreateProponentInput = z.infer<typeof createProponentSchema>

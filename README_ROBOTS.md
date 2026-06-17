@@ -578,6 +578,17 @@
 - **Observações:** sem ação do usuário. A integração real (envio automático/status via API) depende de provedor oficial homologado (Fases 5/7b). Documentos hoje são checklist (com nome/status); upload de arquivo (fileUrl) pode entrar depois.
 - **Próximo passo seguro:** Fase 8 — integrar F&I na Negociação (ligar ficha/simulação ao Deal: criar/abrir ficha a partir da negociação e refletir aprovação) OU Fase 7b quando houver provedor oficial. Outra IA: ler LOGs 0040–0054.
 
+### LOG 0055 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 8: integração com a Negociação
+- **Branch:** main (worktree). **Migration aditiva** `20260616160000_add_fi_deal_link` (liga FinanceProposal↔Deal).
+- **Tarefa:** integrar o F&I na Negociação. Na aba **Valores** da negociação, um painel lista as fichas (FinanceProposal) ligadas ao Deal, cria ficha vinculada (proponente existente, valor financiado puxado da negociação) e **aplica** uma ficha APROVADA aos valores da negociação (copia banco + valor aprovado).
+- **Schema (aditivo):** `FinanceProposal.dealId String?` + relação `deal` (onDelete SetNull) + índice; back-relation `Deal.financeProposals`. Migration hand-written só adiciona coluna+índice+FK (não altera dados).
+- **Arquivos criados:** `prisma/migrations/20260616160000_add_fi_deal_link/migration.sql`; `src/app/api/negotiations/[id]/financing/route.ts` (GET fichas+prefill / POST criar-ligada ou `applyProposalId`); `src/app/(dashboard)/negociacoes/[id]/_components/FinancingPanel.tsx`.
+- **Arquivos alterados:** `prisma/schema.prisma`; `src/lib/validators/financing.ts` (`linkedProposalSchema`, `applyProposalSchema`); `src/app/(dashboard)/negociacoes/[id]/page.tsx` (FinancingPanel na aba Valores).
+- **Regras aplicadas:** leitura = `financing`; criar/aplicar = `financing.manage`; tenant-scoped (`ownsTenant`); só proponente/banco da loja; **aplicar exige ficha APROVADA** e negociação não FINALIZADA/CANCELADA; o "aplicar" só toca `deal.financedAmount` e `deal.paymentBank` (NÃO mexe em ILA/IOF/retorno/comissão); auditoria `FI_LINK_CREATE`/`FI_APPLY`. Aditivo — telas/colunas existentes intactas.
+- **Validações:** `prisma validate`+`generate` OK; `tsc` limpo; `eslint` 0 erros; `npm test` 114/114; `npm run build` OK (rota `/api/negotiations/[id]/financing`). Nota: o build local exigiu `NODE_OPTIONS=--max-old-space-size=6144` (pico de memória do webpack — não é erro de código).
+- **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260616160000_add_fi_deal_link`** (`npx prisma migrate deploy`). Sem isso, o painel de F&I na negociação falha em runtime (resto das telas ok).
+- **Próximo passo seguro:** Fase 9 — relatórios/BI de F&I (produção por banco/vendedor, retorno estimado vs. aprovado, funil simulação→envio→aprovação, documentos pendentes), reaproveitando o padrão de /api/reports. OU Fase 7b quando houver provedor oficial. Outra IA: ler LOGs 0040–0055.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -596,7 +607,7 @@
 - [x] **Fase 6** — simulação comparativa (parcela via Price + retorno estimado pelas regras) (LOG 0053). Sem migration.
 - [x] **Fase 7a** — fichas profissionais: documentos obrigatórios (checklist) + envio multi-banco (ManualAdapter) + linha do tempo de status (LOG 0054). Sem migration.
 - [ ] **Fase 7b** — receptor de webhook público (`FinanceWebhookEvent`) — ADIADO até provedor oficial homologado (exige assinatura/segredo oficiais; sem isso, não expor endpoint público que grava no banco).
-- [ ] **Fase 8** — integrar F&I na Negociação.
+- [x] **Fase 8** — integrar F&I na Negociação (ficha ligada ao Deal + aplicar aprovação) (LOG 0055). **AÇÃO USUÁRIO: aplicar migration `20260616160000_add_fi_deal_link`.**
 - [ ] **Fase 9** — relatórios/BI avançados de F&I.
 
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
