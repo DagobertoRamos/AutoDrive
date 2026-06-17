@@ -638,6 +638,17 @@
 - **Observações:** sem ação do usuário. Limite configurável por `FINANCE_DOC_MAX_BYTES`. Para produção com PII sensível, considerar trocar o backend de storage por um privado.
 - **Próximo passo seguro:** nenhum item pendente sem dependência externa. Resta apenas integração real de adapters/assinatura HMAC (requer provedor oficial). Outra IA: ler LOGs 0040–0060.
 
+### LOG 0061 — 2026-06-17 — Claude (Opus 4.8) — Master > F&I: painel técnico 100% funcional
+- **Branch:** main (worktree). **Migration aditiva** `20260617090000_add_fi_provider_mappings` (coluna `fieldMappings Json?` em FinanceProvider).
+- **Tarefa:** ativar TODAS as telas do painel Master > F&I (eram stubs, exceto Webhooks): Provedores, Bancos Homologados, Adaptadores, Mapeamento de Campos, Logs Técnicos, Saúde das Integrações, Feature Flags. Feito em 6 partes.
+- **APIs criadas (todas MASTER-only, `master.financing`):** `providers` (GET/POST) + `providers/[id]` (PATCH incl. `{mappings}` / DELETE); `provider-banks` (GET ?providerId / POST) + `[id]` (PATCH/DELETE); `adapters` (GET diagnóstico via registry: estado operante/preparado/não-configurado + capacidades); `logs` (GET FinanceIntegrationLog, filtros action/status); `health` (GET agregados OK/ERROR, webhooks pendentes, provedores ativos, últimos erros); `flags` (GET/POST) + `[id]` (PATCH/DELETE) sobre `FeatureFlag` global com convenção de chave `fi_*`.
+- **Páginas ativadas:** providers (CRUD + capabilities + URLs por ambiente), banks (CRUD por provedor), adapters (cards de diagnóstico, read-only), mappings (de/para por provedor, edita `fieldMappings`), logs (tabela + filtros), health (KPIs + últimos erros), flags (toggle + rollout% + CRUD).
+- **Schema/validators:** `FinanceProvider.fieldMappings Json?` (+migration); validators `createProviderSchema/updateProviderSchema`, `createProviderBankSchema/updateProviderBankSchema`, `fieldMappingsSchema`, `createFeatureFlagSchema/featureFlagSchema`.
+- **Regras aplicadas:** MASTER-only em todas as rotas/páginas (guard de papel + `master.financing`); GLOBAL (sem tenant) — **credenciais da loja nunca aparecem aqui** (reforçado nos textos); logs sem segredo; adapters reais seguem dependendo de doc/credencial oficial (não há automação oculta); auditoria em todas as mutações; aditivo — Webhooks (LOG 0059) intacto.
+- **Validações:** `prisma validate`+`generate` OK; `tsc` limpo; `eslint` 0 erros (9 warnings setState-in-effect pré-existentes); `npm test` 125/125; `npm run build` OK (`--max-old-space-size=6144`; todas as rotas `/api/master/financing/*` e páginas registradas).
+- **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260617090000_add_fi_provider_mappings`** (`npx prisma migrate deploy`). Sem isso, salvar Mapeamento de Campos e ler provedores (campo fieldMappings) falha em runtime; as demais telas Master funcionam. O hub Master ainda mostra um aviso “Estrutura criada (Fase 3)” — pode ser removido em ajuste futuro, é só texto.
+- **Próximo passo seguro:** nenhum item interno pendente. Integração real de provedores (adapters/HMAC) depende de doc/credencial oficial. Outra IA: ler LOGs 0040–0061.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -659,7 +670,9 @@
 - [x] **Fase 8** — integrar F&I na Negociação (ficha ligada ao Deal + aplicar aprovação) (LOG 0055). **AÇÃO USUÁRIO: aplicar migration `20260616160000_add_fi_deal_link`.**
 - [x] **Fase 9** — relatórios/BI de F&I (funil, produção por vendedor, envios por banco, docs pendentes, retorno estimado) (LOG 0056). Sem migration.
 
-> **Roadmap F&I concluído (Fases 1–9 + 7b + upload de documentos).** Próximas evoluções dependem de provedor oficial homologado (adapters reais + assinatura HMAC do webhook) ou de novo pedido do usuário.
+- [x] **Master F&I — painel completo** — todas as 8 telas do Master > F&I funcionais (Provedores, Bancos Homologados, Adaptadores, Mapeamento de Campos, Webhooks, Logs Técnicos, Saúde, Feature Flags) (LOG 0061). **AÇÃO USUÁRIO: aplicar migration `20260617090000_add_fi_provider_mappings`.**
+
+> **Roadmap F&I concluído (Fases 1–9 + 7b + upload de documentos + painel Master completo).** Próximas evoluções dependem de provedor oficial homologado (adapters reais + assinatura HMAC do webhook) ou de novo pedido do usuário.
 
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
 - [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").

@@ -195,4 +195,47 @@ export const applyProposalSchema = z.object({
   applyProposalId: z.string().cuid('Ficha inválida.'),
 })
 
+// ── Master > F&I: provedores / bancos homologados / mapeamento / flags ────────
+export const providerKinds = ['CREDERE', 'BANCO_DIRETO', 'INTEGRADOR', 'MANUAL', 'OUTRO'] as const
+export const createProviderSchema = z.object({
+  name:             reqStr('Nome do provedor'),
+  kind:             z.enum(providerKinds).default('MANUAL'),
+  active:           z.boolean().default(true),
+  baseUrlHomolog:   optStr,
+  baseUrlProd:      optStr,
+  apiVersion:       optStr,
+  supportsSimulate: z.boolean().default(false),
+  supportsSubmit:   z.boolean().default(false),
+  supportsWebhook:  z.boolean().default(false),
+  supportsStatus:   z.boolean().default(false),
+  notes:            optStr,
+})
+export const updateProviderSchema = createProviderSchema.partial()
+
+export const createProviderBankSchema = z.object({
+  providerId: z.string().cuid('Provedor inválido.'),
+  name:       reqStr('Nome do banco'),
+  code:       optStr,
+  active:     z.boolean().default(true),
+})
+export const updateProviderBankSchema = createProviderBankSchema.partial().omit({ providerId: true })
+
+// Mapeamento de/para: { campoAutoDrive: "caminho.na.api" }
+export const fieldMappingsSchema = z.object({
+  mappings: z.record(z.string().trim().min(1), z.string().trim().max(200)).default({}),
+})
+
+export const createFeatureFlagSchema = z.object({
+  key:        z.string().trim().regex(/^fi_[a-z0-9_]+$/, 'Use o formato fi_minha_flag (minúsculas, _).'),
+  name:       reqStr('Nome'),
+  enabled:    z.boolean().default(false),
+  rolloutPct: z.number().int().min(0).max(100).default(0),
+  notes:      optStr,
+})
+export const featureFlagSchema = z.object({
+  enabled:    z.boolean().optional(),
+  rolloutPct: z.number().int().min(0).max(100).optional(),
+  notes:      optStr,
+})
+
 export type CreateProponentInput = z.infer<typeof createProponentSchema>

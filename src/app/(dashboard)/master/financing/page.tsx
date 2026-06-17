@@ -43,9 +43,6 @@ export default function MasterFinancingHub() {
         <h1 className="text-xl font-bold text-gray-900">F&amp;I — Painel técnico (MASTER)</h1>
         <p className="mt-0.5 text-sm text-gray-500">Provedores, bancos homologados, adapters, webhooks e saúde das integrações. As credenciais são da loja, nunca cadastradas/visíveis aqui.</p>
       </div>
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-        Estrutura criada (Fase 3). A persistência (provedores, adapters, webhooks, logs) será ativada após os models do F&amp;I e a aplicação da migration.
-      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {AREAS.map((a) => (
           <Link key={a.href} href={a.href} className="group rounded-xl border border-gray-200 bg-white p-4 shadow-card transition-colors hover:border-brand-300 hover:bg-brand-50/30">
