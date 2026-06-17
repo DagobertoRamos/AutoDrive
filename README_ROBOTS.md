@@ -628,6 +628,16 @@
 - **Observações:** **AÇÃO USUÁRIO (opcional): definir `FINANCE_WEBHOOK_SECRET` (≥8) no ambiente** para ativar o receptor (e dá-lo ao provedor). Como o ManualAdapter não gera `externalId`, o casamento só ocorrerá com provedores reais que retornem um id — a infra já está pronta e os eventos são registrados de qualquer forma.
 - **Próximo passo seguro:** **Roadmap F&I concluído (1–9 + 7b).** Resta opcional: upload real de arquivos de documento; integração real de adapters (depende de doc/credencial oficial). Outra IA: ler LOGs 0040–0059.
 
+### LOG 0060 — 2026-06-16 — Claude (Opus 4.8) — F&I: upload real de arquivos de documento
+- **Branch:** main (worktree). **Sem migration** — usa `fileUrl`/`fileName` já existentes em `FinanceProposalDocument`.
+- **Tarefa:** permitir anexar o ARQUIVO de cada documento do checklist da ficha (antes só nome/status). Storage no mesmo padrão dos anexos de avaliação/negociação (FS local em `public/uploads/financing/{proposalId}`, abstração pluggável p/ S3/R2).
+- **Arquivos criados:** `src/lib/finance/doc-storage.ts` (`validateDocUpload` [whitelist MIME JPG/PNG/WEBP/HEIC/PDF + limite 20MB], `saveFinanceDoc`, `deleteFinanceDoc`; sanitização anti path-traversal, nome único); `src/app/api/financing/proposals/[id]/documents/[docId]/file/route.ts` (POST multipart anexa/substitui, DELETE remove; `runtime='nodejs'`).
+- **Arquivos alterados:** `documents/[docId]/route.ts` (DELETE da linha também apaga o arquivo do storage); `FichaDetail.tsx` (por documento: anexar via input oculto, link p/ ver o arquivo, remover); a API GET de documentos já retornava `fileUrl/fileName`.
+- **Regras aplicadas:** upload/remoção = `financing.manage`; tenant-scoped (`ownsTenant`); validação de MIME+tamanho; substituição apaga o arquivo anterior; auditoria UPLOAD/UPLOAD_REMOVE; `public/uploads/` já no `.gitignore`. **Privacidade:** segue o padrão existente (arquivos sob `public/uploads` com nome aleatório) — para PII em produção recomenda-se backend privado (S3/R2) via os adapters previstos no storage. Aditivo.
+- **Validações:** `tsc` limpo; `eslint` 0 erros; `npm test` 125/125; `npm run build` OK (`--max-old-space-size=6144`; rota `.../documents/[docId]/file`).
+- **Observações:** sem ação do usuário. Limite configurável por `FINANCE_DOC_MAX_BYTES`. Para produção com PII sensível, considerar trocar o backend de storage por um privado.
+- **Próximo passo seguro:** nenhum item pendente sem dependência externa. Resta apenas integração real de adapters/assinatura HMAC (requer provedor oficial). Outra IA: ler LOGs 0040–0060.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -649,7 +659,7 @@
 - [x] **Fase 8** — integrar F&I na Negociação (ficha ligada ao Deal + aplicar aprovação) (LOG 0055). **AÇÃO USUÁRIO: aplicar migration `20260616160000_add_fi_deal_link`.**
 - [x] **Fase 9** — relatórios/BI de F&I (funil, produção por vendedor, envios por banco, docs pendentes, retorno estimado) (LOG 0056). Sem migration.
 
-> **Roadmap F&I concluído (Fases 1–9 + 7b).** Próximas evoluções dependem de provedor oficial homologado (adapters reais + assinatura HMAC do webhook) ou de novo pedido do usuário. Opcional: upload real de arquivos de documento.
+> **Roadmap F&I concluído (Fases 1–9 + 7b + upload de documentos).** Próximas evoluções dependem de provedor oficial homologado (adapters reais + assinatura HMAC do webhook) ou de novo pedido do usuário.
 
 ### Retorno + Garantia (Fase D — UI) — PARCIAL
 - [x] **Painel da negociação** — CONCLUÍDO no LOG 0002 (ReturnPanel + WarrantySalesPanel na aba "valores").

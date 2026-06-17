@@ -10,13 +10,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, FileCheck2, Send, Plus, Trash2, Clock, Landmark, AlertTriangle, Check, Lock } from 'lucide-react'
+import { ArrowLeft, FileCheck2, Send, Plus, Trash2, Clock, Landmark, AlertTriangle, Check, Lock, Paperclip } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useFiPermissions } from './useFiPermissions'
 
 type DocStatus = 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 interface Proposal { id: string; vehicle: string | null; status: string; amountRequested: number; downPayment: number; installments: number | null; proponent: { nomeCompleto: string; occupation: string | null } | null; bank: { name: string } | null }
-interface DocRow { id: string; type: string; required: boolean; status: DocStatus; notes: string | null }
+interface DocRow { id: string; type: string; required: boolean; status: DocStatus; notes: string | null; fileUrl: string | null; fileName: string | null }
 interface Docs { documents: DocRow[]; requiredNames: string[]; pending: string[] }
 interface EventRow { id: string; type: string; status: string | null; message: string | null; source: string | null; createdAt: string }
 interface Submission { id: string; bankId: string | null; bankName: string; status: string; externalId: string | null; environment: string; submittedAt: string; events: EventRow[] }
@@ -80,6 +80,16 @@ export default function FichaDetail({ id }: { id: string }) {
   const removeDoc = async (docId: string) => {
     await fetch(`/api/financing/proposals/${id}/documents/${docId}`, { method: 'DELETE', credentials: 'include' }); await loadDocs()
   }
+  const uploadFile = async (docId: string, file: File) => {
+    const fd = new FormData(); fd.append('file', file)
+    const res = await fetch(`/api/financing/proposals/${id}/documents/${docId}/file`, { method: 'POST', credentials: 'include', body: fd })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) { setMsg({ ok: false, text: json?.error ?? 'Erro no upload.' }); return }
+    await loadDocs()
+  }
+  const removeFile = async (docId: string) => {
+    await fetch(`/api/financing/proposals/${id}/documents/${docId}/file`, { method: 'DELETE', credentials: 'include' }); await loadDocs()
+  }
 
   // ── Envio ──
   const toggleBank = (bankId: string) => setPickBanks((b) => b.includes(bankId) ? b.filter((x) => x !== bankId) : [...b, bankId])
@@ -142,11 +152,22 @@ export default function FichaDetail({ id }: { id: string }) {
               <li className="py-6 text-center text-sm text-gray-400">Nenhum documento. {docs.requiredNames.length > 0 ? 'Use “Obrigatórios”.' : ''}</li>
             ) : docs.documents.map((d) => (
               <li key={d.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate text-sm text-gray-800">{d.type}{d.required && <span className="ml-1 text-[10px] font-semibold text-red-500">obrig.</span>}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-gray-800">{d.type}{d.required && <span className="ml-1 text-[10px] font-semibold text-red-500">obrig.</span>}</span>
+                  {d.fileUrl && <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 truncate text-[11px] text-brand-600 hover:underline"><Paperclip size={11} className="shrink-0" /><span className="truncate">{d.fileName ?? 'arquivo'}</span></a>}
+                </div>
+                {d.fileUrl ? (
+                  <button onClick={() => removeFile(d.id)} className="rounded p-1 text-gray-400 hover:bg-amber-50 hover:text-amber-600" title="Remover arquivo"><Paperclip size={14} /></button>
+                ) : (
+                  <label className="cursor-pointer rounded p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-600" title="Anexar arquivo">
+                    <Paperclip size={14} />
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(d.id, f); e.currentTarget.value = '' }} />
+                  </label>
+                )}
                 <select value={d.status} onChange={(e) => setDocStatus(d.id, e.target.value as DocStatus)} className={cn('rounded-full border-0 px-2 py-0.5 text-xs font-semibold', DOC_CLS[d.status])}>
                   {(['PENDENTE', 'APROVADO', 'REPROVADO'] as DocStatus[]).map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <button onClick={() => removeDoc(d.id)} className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-600" title="Remover"><Trash2 size={14} /></button>
+                <button onClick={() => removeDoc(d.id)} className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-600" title="Remover documento"><Trash2 size={14} /></button>
               </li>
             ))}
           </ul>
