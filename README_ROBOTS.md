@@ -568,6 +568,16 @@
 - **Observações:** as parcelas são estimativas com a taxa informada (não há integração de taxa de banco). A conexão real de simulação automática depende dos adapters oficiais (Fase 5/7). Sem RPA oculto.
 - **Próximo passo seguro:** Fase 7 — fichas profissionais: validação de documentos obrigatórios, envio multi-banco (gera `FinanceProposalSubmission` por banco via adapter, hoje ManualAdapter), linha do tempo de status (`FinanceProposalEvent`) e recepção de webhook (`FinanceWebhookEvent`). Outra IA: ler LOGs 0040–0053.
 
+### LOG 0054 — 2026-06-16 — Claude (Opus 4.8) — F&I Fase 7a: fichas profissionais (documentos + envio multi-banco + status)
+- **Branch:** main (worktree). **Sem migration** — usa models da Fase 4 (FinanceProposalDocument/Submission/Event).
+- **Tarefa:** transformar a ficha (FinanceProposal) em ficha profissional com (1) checklist de **documentos obrigatórios** por perfil do proponente, (2) **envio multi-banco** gerando uma `FinanceProposalSubmission` por banco via adapter (hoje ManualAdapter), (3) **linha do tempo de status** (`FinanceProposalEvent`) por submissão. **Webhook público (7b) ADIADO** — exige assinatura/segredo de provedor oficial.
+- **Arquivos criados:** `src/lib/finance/proposal-service.ts` (puro: `requiredDocsForProfile` [TODOS+ocupação, dedupe ci], `pendingRequiredDocs`) + `proposal-service.test.ts` (7 testes); APIs `proposals/[id]/documents/route.ts` (GET lista+exigidos+pendências / POST add ou `seedRequired`), `proposals/[id]/documents/[docId]/route.ts` (PATCH status / DELETE), `proposals/[id]/submissions/route.ts` (GET timeline / POST envio multi-banco gated), `submissions/[id]/route.ts` (POST novo status+evento); UI `src/components/financing/FichaDetail.tsx` + página `financiamento/fichas/[id]/page.tsx`.
+- **Arquivos alterados:** `src/lib/validators/financing.ts` (`addDocumentSchema`/`seedDocumentsSchema`/`updateDocumentSchema`/`submitProposalSchema`/`submissionEventSchema`); `src/components/financing/ProposalsManager.tsx` (botão “abrir ficha” → detalhe).
+- **Regras aplicadas:** leitura = `financing`; ações (add/seed doc, mudar status, enviar) = `financing.manage`; tenant-scoped (`ownsTenant`); só bancos da loja entram; **gate de documentos** no envio (obrigatórios devem estar APROVADOS; override `force=true` supervisionado e auditado como SUBMIT_FORCED); **envio 100% via ManualAdapter** — registro supervisionado, **sem chamada externa / sem RPA**; eventos com `source=MANUAL`; APROVADA de um banco reflete na ficha; auditoria em todas as ações. Aditivo.
+- **Validações:** `tsc` limpo; `eslint` 0 erros (warnings setState-in-effect pré-existentes); `npm test` **114/114** (+7); `npm run build` OK (rotas documents/submissions + /financiamento/fichas/[id] registradas).
+- **Observações:** sem ação do usuário. A integração real (envio automático/status via API) depende de provedor oficial homologado (Fases 5/7b). Documentos hoje são checklist (com nome/status); upload de arquivo (fileUrl) pode entrar depois.
+- **Próximo passo seguro:** Fase 8 — integrar F&I na Negociação (ligar ficha/simulação ao Deal: criar/abrir ficha a partir da negociação e refletir aprovação) OU Fase 7b quando houver provedor oficial. Outra IA: ler LOGs 0040–0054.
+
 ---
 
 ## TAREFAS PENDENTES
@@ -584,7 +594,8 @@
 - [x] **Fase 2b.3** — Documentos obrigatórios (por perfil) + Permissões F&I (LOG 0051). **AÇÃO USUÁRIO: aplicar migration `20260616140000_add_fi_tenant_settings`.**
 - [x] **Fase 5** — camada de adapters (interface + registry + Manual/Credere/Generic) — só estrutura, lib pura (LOG 0052). Sem migration/sem ação do usuário.
 - [x] **Fase 6** — simulação comparativa (parcela via Price + retorno estimado pelas regras) (LOG 0053). Sem migration.
-- [ ] **Fase 7** — fichas profissionais (validação, envio multi-banco, status via webhook).
+- [x] **Fase 7a** — fichas profissionais: documentos obrigatórios (checklist) + envio multi-banco (ManualAdapter) + linha do tempo de status (LOG 0054). Sem migration.
+- [ ] **Fase 7b** — receptor de webhook público (`FinanceWebhookEvent`) — ADIADO até provedor oficial homologado (exige assinatura/segredo oficiais; sem isso, não expor endpoint público que grava no banco).
 - [ ] **Fase 8** — integrar F&I na Negociação.
 - [ ] **Fase 9** — relatórios/BI avançados de F&I.
 

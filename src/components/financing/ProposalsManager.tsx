@@ -7,7 +7,8 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, FileText, X, Save } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Pencil, Trash2, FileText, X, Save, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL, maskCPF } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
@@ -151,6 +152,7 @@ export default function ProposalsManager({
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[r.status])}>{STATUS_LABEL[r.status]}</span>{r.status === 'APROVADA' && r.monthlyPayment > 0 && <p className="mt-0.5 text-[11px] text-green-700">{fmt(r.monthlyPayment)}/mês</p>}{r.status === 'RECUSADA' && r.rejectionReason && <p className="mt-0.5 max-w-[160px] truncate text-[11px] text-red-500">{r.rejectionReason}</p>}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">{date(r.createdAt)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <Link href={`/financiamento/fichas/${r.id}`} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-brand-50 hover:text-brand-700" title="Abrir ficha (documentos, envio, status)"><FolderOpen size={15} /></Link>
                       <button onClick={() => openEdit(r)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar / mudar status"><Pencil size={15} /></button>
                       <button onClick={() => remove(r)} className="inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir"><Trash2 size={15} /></button>
                     </td>

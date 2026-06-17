@@ -159,4 +159,30 @@ export const createSimulationSchema = z.object({
   })).min(1, 'Selecione ao menos um banco.').max(50),
 })
 
+// ── Documentos da ficha (F&I — checklist) ─────────────────────────────────────
+const DOC_STATUS = ['PENDENTE', 'APROVADO', 'REPROVADO'] as const
+export const addDocumentSchema = z.object({
+  type:     reqStr('Documento', 1),
+  required: z.boolean().default(true),
+  status:   z.enum(DOC_STATUS).default('PENDENTE'),
+  notes:    optStr,
+})
+export const seedDocumentsSchema = z.object({ seedRequired: z.literal(true) })
+export const updateDocumentSchema = z.object({
+  status:   z.enum(DOC_STATUS).optional(),
+  required: z.boolean().optional(),
+  notes:    optStr,
+})
+
+// ── Envio multi-banco + linha do tempo (F&I) ──────────────────────────────────
+export const submitProposalSchema = z.object({
+  bankIds: z.array(z.string().cuid('Banco inválido.')).min(1, 'Selecione ao menos um banco.').max(50),
+  force:   z.boolean().default(false), // override supervisionado da validação de documentos
+})
+const SUBMISSION_STATUS = ['ENVIADA', 'EM_ANALISE', 'PENDENTE', 'APROVADA', 'RECUSADA', 'CANCELADA'] as const
+export const submissionEventSchema = z.object({
+  status:  z.enum(SUBMISSION_STATUS, { errorMap: () => ({ message: 'Status inválido.' }) }),
+  message: optStr,
+})
+
 export type CreateProponentInput = z.infer<typeof createProponentSchema>
