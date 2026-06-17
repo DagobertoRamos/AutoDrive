@@ -109,7 +109,8 @@ export const useNotificationStore = create<NotificationState>()(
           'notifications/setNotifications',
         ),
 
-      markAsRead: (id) =>
+      markAsRead: (id) => {
+        // Otimista no cliente…
         set(
           (state) => {
             const notifications = state.notifications.map((n) =>
@@ -119,9 +120,12 @@ export const useNotificationStore = create<NotificationState>()(
           },
           false,
           'notifications/markAsRead',
-        ),
+        )
+        // …e persiste no backend (some o badge mesmo após recarregar).
+        fetch(`/api/notifications/${id}/read`, { method: 'POST', credentials: 'include' }).catch(() => {})
+      },
 
-      markAllAsRead: () =>
+      markAllAsRead: () => {
         set(
           (state) => ({
             notifications: state.notifications.map((n) => ({ ...n, read: true })),
@@ -129,7 +133,9 @@ export const useNotificationStore = create<NotificationState>()(
           }),
           false,
           'notifications/markAllAsRead',
-        ),
+        )
+        fetch('/api/notifications/read-all', { method: 'POST', credentials: 'include' }).catch(() => {})
+      },
 
       removeNotification: (id) =>
         set(
