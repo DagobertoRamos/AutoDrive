@@ -681,6 +681,16 @@
 - **Pendências:** Etapas 8/9/10 (rotas `/api/ai/*` da loja: chat de ajuda, resumir relatório, analisar documento — com rate-limit + escopo + isolamento de tenant + AiUsageLog); ligar `DocumentProcessingJob` ao pipeline de upload + botões "Processar/Analisar com IA" nas telas de documento (Etapa 2 estendida + 10/15-front). **AÇÃO USUÁRIO:** aplicar a migration `20260617120000_add_ai_module` e definir `AI_ENCRYPTION_KEY` para cadastrar provedor com chave (sem ela, POST/PATCH de provedor retorna 503; demais telas funcionam).
 - **Segurança:** segredos cifrados/mascarados/nunca expostos; MASTER-only; auditoria em CRUD/teste; IA controlada (sem ação sensível); multi-tenant intacto.
 
+### LOG 0065 — 2026-06-17 — Claude (Opus 4.8) — Gemini real: chave só no backend + botão "Testar conexão Gemini"
+- **Branch:** main (worktree). **Sem migration.**
+- **Tarefa:** o usuário já tem `GEMINI_API_KEY`. Ler a chave SOMENTE no backend (`process.env.GEMINI_API_KEY`), sem expor no front nem em log, e implementar o botão "Testar conexão Gemini" em Master > IA > Provedores.
+- **Arquivos alterados:** `src/lib/ai/adapters/gemini.adapter.ts` — implementação REAL (Google Generative Language API): `testConnection` (GET /models), `generateText`/`summarizeText`/`analyzeDocument`/`extractStructuredData` (generateContent); a chave vai à API do Google **só no header `x-goog-api-key`** (nunca em URL/query/log), `isReady` exige apiKey, timeout via AbortController, mensagens de erro sem a chave. `analyzeImage` segue NotSupported (multimodal numa etapa futura). `src/app/api/master/ai/providers/[id]/test/route.ts` — provedor GEMINI sem chave salva usa `process.env.GEMINI_API_KEY` (BYOK do servidor, backend-only). `src/app/(dashboard)/master/ai/providers/page.tsx` — botão "Testar conexão Gemini" no cabeçalho.
+- **Arquivos criados:** `src/app/api/master/ai/test-gemini/route.ts` — POST MASTER-only que lê `process.env.GEMINI_API_KEY` no servidor, chama `GeminiAdapter.testConnection`, grava `AiUsageLog` (feature `test_gemini`, **sem a chave**) + auditoria, e retorna só `{ ok, configured, message }`.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK (rota `/api/master/ai/test-gemini` registrada).
+- **Resultado:** botão testa a conexão real com o Gemini usando a chave do servidor; resposta clara (OK/N modelos, chave recusada, timeout). A chave **nunca** trafega ao front nem aparece em log.
+- **Segurança/LGPD:** chave só em `process.env` (backend); header de auth (nunca query); não retornada/logada; MASTER-only; auditado. Demais provedores reais (OpenAI/Anthropic) seguem preparados (NotConfigured) até integração oficial.
+- **Pendências:** Etapas 8/9/10 (rotas `/api/ai/*` da loja: chat de ajuda, resumir relatório, analisar documento — com rate-limit/escopo/tenant/AiUsageLog) + `DocumentProcessingJob` no pipeline. Gemini multimodal (imagem/PDF escaneado) em etapa futura.
+
 ---
 
 ## TAREFAS PENDENTES

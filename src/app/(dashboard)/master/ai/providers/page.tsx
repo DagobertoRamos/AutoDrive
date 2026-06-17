@@ -38,8 +38,19 @@ export default function MasterAiProvidersPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
+  const [testingGemini, setTestingGemini] = useState(false)
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null)
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // Testa o Gemini com a chave do SERVIDOR (process.env.GEMINI_API_KEY) — a
+  // chave nunca trafega para o front; o backend só devolve ok/mensagem.
+  const testGemini = async () => {
+    setTestingGemini(true); setToast(null)
+    try {
+      const r = await fetch('/api/master/ai/test-gemini', { method: 'POST', credentials: 'include' }).then((x) => x.json())
+      setToast({ ok: !!r?.success, msg: r?.message ?? r?.error ?? 'Sem resposta.' })
+    } catch { setToast({ ok: false, msg: 'Erro de rede ao testar o Gemini.' }) } finally { setTestingGemini(false) }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -92,7 +103,10 @@ export default function MasterAiProvidersPage() {
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Plug size={20} className="text-brand-600" />Provedores / Conectores de IA</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} provedor(es) — chaves cifradas e mascaradas`}</p>
         </div>
-        <button onClick={openNew} disabled={!cryptoReady} className="btn-primary text-sm disabled:opacity-50"><Plus size={15} />Novo provedor</button>
+        <div className="flex items-center gap-2">
+          <button onClick={testGemini} disabled={testingGemini} className="btn-secondary text-sm disabled:opacity-50"><Zap size={15} />{testingGemini ? 'Testando...' : 'Testar conexão Gemini'}</button>
+          <button onClick={openNew} disabled={!cryptoReady} className="btn-primary text-sm disabled:opacity-50"><Plus size={15} />Novo provedor</button>
+        </div>
       </div>
 
       {!cryptoReady && <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><ShieldAlert size={18} className="mt-0.5 shrink-0" /><span>Defina <code className="rounded bg-red-100 px-1">AI_ENCRYPTION_KEY</code> (≥16) no ambiente para cadastrar provedores com chave.</span></div>}

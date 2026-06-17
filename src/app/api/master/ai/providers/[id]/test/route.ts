@@ -24,9 +24,11 @@ export async function POST(_req: Request, { params }: Ctx) {
     if (!p) return NextResponse.json({ success: false, error: 'Provedor não encontrado.' }, { status: 404 })
 
     const secrets = isAiCryptoConfigured() ? decryptSecrets(p.secretsEncrypted) : {}
+    // BYOK do servidor: provedor GEMINI sem chave salva usa process.env (backend-only).
+    const apiKey = secrets.apiKey || (p.kind === 'GEMINI' ? process.env.GEMINI_API_KEY : undefined)
     const adapter = getAiAdapter(p.kind)
     const ctx = {
-      providerId: p.id, model: p.model, baseUrl: p.baseUrl, apiKey: secrets.apiKey,
+      providerId: p.id, model: p.model, baseUrl: p.baseUrl, apiKey,
       environment: p.environment, timeoutMs: p.timeoutMs ?? undefined, maxTokens: p.maxTokensPerRequest,
     }
     const result = await adapter.testConnection(ctx)
