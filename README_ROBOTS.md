@@ -649,6 +649,16 @@
 - **Observações:** **AÇÃO USUÁRIO: aplicar a migration `20260617090000_add_fi_provider_mappings`** (`npx prisma migrate deploy`). Sem isso, salvar Mapeamento de Campos e ler provedores (campo fieldMappings) falha em runtime; as demais telas Master funcionam. O hub Master ainda mostra um aviso “Estrutura criada (Fase 3)” — pode ser removido em ajuste futuro, é só texto.
 - **Próximo passo seguro:** nenhum item interno pendente. Integração real de provedores (adapters/HMAC) depende de doc/credencial oficial. Outra IA: ler LOGs 0040–0061.
 
+### LOG 0062 — 2026-06-17 — Claude (Opus 4.8) — Leitura de PDF: correção definitiva + pipeline robusto (Etapas 1-2)
+- **Branch:** main (worktree). **Sem migration.**
+- **Tarefa:** corrigir o erro de leitura de PDF e criar o núcleo do pipeline de documentos. **Diagnóstico:** infra OK (`pdfjs-dist 5.4` + `pdf-parse 2.4` instalados e em `serverExternalPackages`; caminho CRLV `/api/evaluations/vehicle-document/extract`→`crlv/parser.ts` já robusto). **Causa real:** a rota genérica `/api/documents/pdf-parse` (usada por *Documentos > PDF*) era um STUB ("extração não implementada"). Faltava um pipeline unificado com status/mensagens claros.
+- **Arquivos criados:** `src/lib/documents/extract-text.ts` — serviço único `extractDocumentText(buffer, mime, opts)` que NUNCA lança e classifica em `text_extracted | requires_ocr | protected | corrupted | unsupported | too_large` (3 estratégias de PDF: pdfjs-dist legacy → pdf-parse v2 → v1; detecta protegido/corrompido por nome do erro; PDF sem texto + páginas>0 → requires_ocr; imagem → requires_ocr; texto puro → text_extracted). Mensagens claras em pt-BR. Logs SEM dados sensíveis (só nome do erro/contagens). + `extract-text.test.ts` (6 testes determinísticos).
+- **Arquivos alterados:** `src/app/api/documents/pdf-parse/route.ts` — agora faz extração REAL via o serviço + `parseContractText` (campos do contrato + confiança); preserva o contrato da página `/documentos/pdf` (`data` com contractNumber/customerName/plate/vehicle/value/date/rawText/confidence); casos sem texto retornam `success:false` + mensagem clara (não quebra). `runtime='nodejs'`, `maxDuration=30`, limite 15 MB.
+- **Comandos:** `npx tsc --noEmit` (limpo); `npx eslint` (0 erros); `npm test` (**131/131**, +6); `npx next build --webpack` (Compiled successfully). Obs.: `npm run build` completo trava localmente no `prisma generate` por lock de DLL no Windows (EPERM) — não afeta Vercel/Linux; por isso valido com `next build` direto.
+- **Resultado:** PDF com texto é lido de verdade; PDFs escaneados/protegidos/corrompidos/grandes retornam mensagem clara em vez de quebrar. Pipeline reutilizável pelo futuro módulo de IA.
+- **Pendências:** DOCX (hoje `unsupported` — falta lib `mammoth`); OCR real de imagens/escaneados depende do módulo de IA multimodal (próximas etapas). **Módulo de IA controlada (Etapas 3-16) ainda NÃO iniciado** — será feito em etapas seguintes (schema DocumentProcessingJob/AiProvider/AiInstruction/AiKnowledgeBase/AiUsageLog + adapters + Master UI + escopos/LGPD).
+- **Segurança:** sem chave/segredo/dado sensível em log; permissão `documents.pdf` mantida; sem mudança de schema/permissões/multi-tenant; nenhuma ação automatizada.
+
 ---
 
 ## TAREFAS PENDENTES
