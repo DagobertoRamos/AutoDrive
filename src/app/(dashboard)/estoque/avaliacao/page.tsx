@@ -843,6 +843,10 @@ function AvaliacaoForm() {
       mark('vehicleType')
     }
 
+    // Proprietário (do CRLV) — preenche os dados do dono quando vazios.
+    if (data.ownerName && !ownerName) { setOwnerName(data.ownerName); mark('ownerName') }
+    if (data.ownerDocument && !ownerCpf) { setOwnerCpf(data.ownerDocument); mark('ownerCpf') }
+
     setFieldSource((prev) => ({ ...prev, ...sourceMap }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

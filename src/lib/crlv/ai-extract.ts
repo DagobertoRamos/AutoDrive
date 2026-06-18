@@ -13,8 +13,10 @@
 
 import type { ExtractedVehicle, ExtractionResult } from './parser'
 
-const ENDPOINT = (model: string, key: string) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`
+// Endpoint SEM a chave na URL — a chave vai no header `x-goog-api-key` (não
+// vaza em logs/URL). Mesma regra de segurança do GeminiAdapter.
+const ENDPOINT = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
 const EXTRACTION_PROMPT = `Você é um extrator de dados de documentos veiculares brasileiros (CRLV / CRLV-e).
 Analise o documento (PDF ou imagem) e extraia os campos do veículo.
@@ -97,9 +99,9 @@ export async function extractWithAI(buffer: Buffer, mimeType: string): Promise<E
     },
   }
 
-  const res = await fetch(ENDPOINT(model, key), {
+  const res = await fetch(ENDPOINT(model), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(25_000),
   })

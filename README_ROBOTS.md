@@ -691,6 +691,15 @@
 - **Segurança/LGPD:** chave só em `process.env` (backend); header de auth (nunca query); não retornada/logada; MASTER-only; auditado. Demais provedores reais (OpenAI/Anthropic) seguem preparados (NotConfigured) até integração oficial.
 - **Pendências:** Etapas 8/9/10 (rotas `/api/ai/*` da loja: chat de ajuda, resumir relatório, analisar documento — com rate-limit/escopo/tenant/AiUsageLog) + `DocumentProcessingJob` no pipeline. Gemini multimodal (imagem/PDF escaneado) em etapa futura.
 
+### LOG 0066 — 2026-06-17 — Claude (Opus 4.8) — Avaliação: leitura por IA (PDF/imagem/foto) preenche o form + segurança da chave
+- **Branch:** main (worktree). **Sem migration.**
+- **Tarefa:** na avaliação de veículo, ler o documento (PDF, imagem ou foto do CRLV) e preencher automaticamente os campos do form. A infra já existia (`/api/evaluations/vehicle-document/extract` → `crlv/parser.ts` → `extractWithAI` Gemini, cobrindo PDF e imagem via `inline_data`); faltava (a) tirar a chave da URL e (b) mapear o proprietário.
+- **Arquivos alterados:** `src/lib/crlv/ai-extract.ts` — Gemini agora autentica por **header `x-goog-api-key`** (chave fora da URL/log; mesma regra do GeminiAdapter). `src/app/(dashboard)/estoque/avaliacao/page.tsx` — `handleExtracted` passa a preencher também **Proprietário** (`ownerName`→nome, `ownerDocument`→CPF) quando vazios, com marcação de origem "documento" (já preenchia placa/renavam/chassi/marca/modelo/versão/anos/cor/combustível/carroceria/potência/cilindrada/tipo).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros (warnings legados da página gigante); `npm test` 136/136; `next build` OK.
+- **Resultado:** com `GEMINI_API_KEY` no servidor, o upload de **PDF/imagem/foto** do documento na avaliação extrai os dados por IA e preenche os campos vazios automaticamente (inclui proprietário). Sem a chave, cai no parser de PDF-texto (comportamento anterior).
+- **Segurança/LGPD:** chave só no backend, header (nunca URL/log); `rawText` (PII) removido da resposta em produção; preenche apenas campos vazios (não sobrescreve o que o usuário digitou); permissão `stock.evaluate` mantida; multi-tenant intacto.
+- **Pendências:** revisão visual no fluxo real; Gemini multimodal já cobre imagem aqui (CRLV) — generalizar para outros documentos fica nas Etapas 9/10 (IA de documentos da loja).
+
 ---
 
 ## TAREFAS PENDENTES
