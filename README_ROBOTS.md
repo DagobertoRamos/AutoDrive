@@ -895,6 +895,22 @@
 - **PRÓXIMA FASE SEGURA:** painel MASTER de provedores (`master.marketing.telephony`); validar Asterisk/3CX/Twilio com doc real (+ presign real do storage); motor de distribuição automática + SLA; **Fase 5 — UI** substituindo placeholders (player de gravação deve consumir o `/play` → tocar a `url` assinada).
 - **AVISO p/ outra IA:** gravação agora é servida por link assinado (`/play` emite, `/stream` serve). NÃO voltar a expor `storageUrl` ao cliente. Para tocar em produção, configurar allowlist OU storage gerenciado. Assinatura usa `recording-storage.ts` — preserve a guarda anti-SSRF.
 
+### LOG 0083 — 2026-06-18 — Claude (Opus 4.8) — Telefonia: storage de gravação ABERTO a vários provedores (S3-compatível + presign real)
+- **Branch:** main (worktree). **Sem migration.** Refatora a resolução de origem da gravação numa **camada de providers plugável** (aberta a vários storages), com **presign SigV4 real** para S3-compatível.
+- **Tarefa:** "tem que deixar aberto para várias storages".
+- **Arquivos (novos) em `src/lib/telephony/storage/`:**
+  - `types.ts` — interface `RecordingStorageProvider` (`kind`, `ready`, `canHandle(ref)`, `getPlayback(ref,ttl)→ redirect|proxy|unavailable`).
+  - `s3.provider.ts` — **S3-COMPATÍVEL** (AWS S3, Cloudflare R2, DO Spaces, MinIO, Wasabi, Backblaze B2). Presign GET **SigV4 sem SDK** (só crypto), path-style/virtual-host, `parseS3Ref` (`s3://bucket/key` ou chave crua). Config `TELEPHONY_STORAGE_ENDPOINT/_REGION/_BUCKET/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY/_FORCE_PATH_STYLE`.
+  - `external.provider.ts` — gravações em URL externa (provedor de telefonia) via proxy com guarda anti-SSRF (https + host público + allowlist `TELEPHONY_RECORDING_ALLOWED_HOSTS`).
+  - `registry.ts` — array `PROVIDERS` (ordem: s3 → external) escolhido por `canHandle(ref)`; `resolveRecordingSource(ref,ttl)` e `listStorageProviders()`. **Adicionar GCS/Azure/Blob = implementar a interface e registrar aqui.**
+  - `index.ts` — exportações públicas. `storage/storage.test.ts` — 8 testes (parseS3Ref, presign SigV4 determinístico/estrutural/virtual-host, registry).
+- **Arquivos (alterados):**
+  - `recording-storage.ts` — passa a cuidar **só da assinatura do link** (sign/verify/buildSignedPlayPath) e **re-exporta** `resolveRecordingSource`/`isSafeExternalUrl`/`listStorageProviders` da nova camada (compat. mantida; o `/play` e `/stream` não mudaram de import).
+- **Como funciona a escolha:** a referência guardada em `TelephonyRecording.storageUrl` decide o provider — `s3://bucket/key` (ou chave crua, se S3 configurado) → **S3 presign → redirect 302**; `https://host/...` em allowlist → **proxy**; nada configurado → 501 honesto. Sem migration: o "tipo" de storage está embutido no esquema da referência.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **157/157** (8 novos); `next build` OK (`--max-old-space-size=8192`).
+- **NÃO implementado (intencional):** download das gravações do provedor para o storage próprio (depende de credenciais oficiais do provedor de telefonia) e providers GCS/Azure/Vercel Blob (a interface está pronta — implementar quando definido). O modo S3 já gera presign real; basta configurar as envs.
+- **AVISO p/ outra IA:** storage é plugável em `src/lib/telephony/storage/` — novos provedores implementam `RecordingStorageProvider` e entram no `PROVIDERS` do registry. S3-compatível já cobre a maioria (AWS/R2/Spaces/MinIO/Wasabi/B2) com presign SigV4 real. NÃO expor `storageUrl` ao cliente; servir sempre via `/play`→`/stream`. Preserve a guarda anti-SSRF do provider externo.
+
 ---
 
 ## TAREFAS PENDENTES
