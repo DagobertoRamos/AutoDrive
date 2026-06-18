@@ -79,6 +79,15 @@ export type Module =
   | 'financing.manage'            // criar/editar proponentes, bancos, fichas
   | 'financing.config'            // configurar F&I da loja (bancos, credenciais, prioridades, retornos) — ADM/gestão/financeiro
   | 'ai'                          // usar a IA controlada (chat de ajuda, ler/resumir documentos) — loja
+  | 'marketing'                             // módulo Marketing (Mesa SDR/pré-vendas + telefonia) — base
+  | 'marketing.sdr'                         // operar a Mesa SDR (inbox de leads, qualificar)
+  | 'marketing.sdr.manage'                  // gerenciar a mesa: times, membros, políticas
+  | 'marketing.leads.distribute'            // distribuir/atribuir leads (políticas/manual)
+  | 'marketing.leads.claim'                 // assumir lead disponível (tanque de tubarão)
+  | 'marketing.telephony'                   // ver telefonia (chamadas, números)
+  | 'marketing.telephony.manage'            // gerenciar conexões/números de telefonia
+  | 'marketing.telephony.recordings'        // ouvir gravações de chamadas
+  | 'marketing.telephony.recordings.audit'  // auditar acesso a gravações de chamadas
   | 'logs'
   | 'profile'
   | 'master'                    // painel master da plataforma
@@ -86,6 +95,7 @@ export type Module =
   | 'master.modules'
   | 'master.financing'          // painel F&I do MASTER (provedores, adapters, webhooks, logs técnicos)
   | 'master.ai'                 // painel de IA do MASTER (provedores, instruções, base de conhecimento, logs)
+  | 'master.marketing.telephony' // painel global de telefonia do MASTER (provedores homologados, limites)
   | 'master.plans'
   | 'master.users'
   | 'master.communication'
@@ -303,6 +313,53 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read'],
   },
+  // ── Marketing / Mesa SDR (pré-vendas) + Telefonia ──────────────────────────
+  // Fase inicial: somente estrutura/placeholders. Distribuição inteligente,
+  // tanque de tubarão, roleta e integração de telefonia ficam para fases futuras.
+  marketing: {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'marketing.sdr': {
+    // Operar a mesa: ver inbox, qualificar, trabalhar leads atribuídos.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'update'],
+  },
+  'marketing.sdr.manage': {
+    // Configurar times, membros e políticas da mesa — gestão da loja.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read', 'create', 'update', 'delete', 'configure'],
+  },
+  'marketing.leads.distribute': {
+    // Distribuir/atribuir leads (políticas automáticas ou manual) — gestão/SDR líder.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'USUARIO_LIDER'],
+    actions: ['read', 'create', 'update'],
+  },
+  'marketing.leads.claim': {
+    // Assumir um lead disponível (tanque de tubarão) — qualquer agente elegível.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'update'],
+  },
+  'marketing.telephony': {
+    // Ver telefonia (chamadas, números) — gestão/operação.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read'],
+  },
+  'marketing.telephony.manage': {
+    // Gerenciar conexões/números (credenciais cifradas) — gestão da loja.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'],
+    actions: ['read', 'create', 'update', 'delete', 'configure'],
+  },
+  'marketing.telephony.recordings': {
+    // Ouvir gravações de chamadas — acesso controlado (LGPD).
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read'],
+  },
+  'marketing.telephony.recordings.audit': {
+    // Auditar quem acessou gravações — compliance/gestão sênior.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
+    actions: ['read'],
+  },
   profile: {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read', 'update'],
@@ -343,6 +400,11 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'configure'],
   },
   'master.ai': {
+    roles: ['MASTER'],
+    actions: ['read', 'configure'],
+  },
+  // Telefonia global do MASTER — provedores homologados e limites da plataforma.
+  'master.marketing.telephony': {
     roles: ['MASTER'],
     actions: ['read', 'configure'],
   },

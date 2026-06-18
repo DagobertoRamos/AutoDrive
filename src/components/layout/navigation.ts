@@ -61,6 +61,13 @@ import {
   Palette,
   Target,
   Trophy,
+  // Marketing / Mesa SDR + Telefonia
+  Headset,
+  Phone,
+  PhoneCall,
+  Disc,
+  GitBranch,
+  Hash,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -202,6 +209,29 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Templates',              href: '/comunicacao/templates', icon: LayoutTemplate,  module: 'communication.templates' },
       { label: 'Avisos',                 href: '/comunicacao/avisos',    icon: Megaphone,       module: 'communication' },
       { label: 'Logs',                   href: '/comunicacao/logs',      icon: ScrollText,      module: 'communication' },
+    ],
+  },
+
+  // ── MARKETING (Mesa SDR / Pré-Vendas + Telefonia) ──────────────────────────
+  // Fase inicial: apenas estrutura e placeholders ("em breve"). Distribuição
+  // inteligente (roleta/tanque de tubarão/manual), SLA de atendimento e
+  // integração de telefonia (Asterisk/3CX/Twilio/genérico) virão em fases
+  // futuras — sem integração real sem credenciais/documentação oficiais.
+  {
+    label: 'Marketing',
+    icon:  Megaphone,
+    module: 'marketing',
+    children: [
+      // Mesa de Pré-Vendas / SDR
+      { label: 'Caixa de Leads',  href: '/marketing/sdr/inbox',     icon: Inbox,      module: 'marketing.sdr',              badge: 'em breve' },
+      { label: 'Times SDR',       href: '/marketing/sdr/times',     icon: Users,      module: 'marketing.sdr.manage',       badge: 'em breve' },
+      { label: 'Membros',         href: '/marketing/sdr/membros',   icon: Headset,    module: 'marketing.sdr.manage',       badge: 'em breve' },
+      { label: 'Distribuição',    href: '/marketing/sdr/politicas', icon: GitBranch,  module: 'marketing.leads.distribute', badge: 'em breve' },
+      // Telefonia
+      { label: 'Chamadas',        href: '/marketing/telephony/chamadas',  icon: PhoneCall, module: 'marketing.telephony',            badge: 'em breve' },
+      { label: 'Conexões',        href: '/marketing/telephony/conexoes',  icon: Phone,     module: 'marketing.telephony.manage',     badge: 'em breve' },
+      { label: 'Números',         href: '/marketing/telephony/numeros',   icon: Hash,      module: 'marketing.telephony.manage',     badge: 'em breve' },
+      { label: 'Gravações',       href: '/marketing/telephony/gravacoes', icon: Disc,      module: 'marketing.telephony.recordings', badge: 'em breve' },
     ],
   },
 
@@ -376,6 +406,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Integrações',       href: '/master/integrations',       module: 'master' },
       { label: 'F&I',               href: '/master/financing',          module: 'master.financing' },
       { label: 'Inteligência Artificial', href: '/master/ai',           module: 'master.ai' },
+      { label: 'Telefonia (global)', href: '/master/marketing/telephony', module: 'master.marketing.telephony', badge: 'em breve' },
       { label: 'Feature Flags',     href: '/master/feature-flags',      module: 'master' },
       { label: 'Manutenção',        href: '/master/maintenance',        module: 'master' },
       { label: 'Identidade',        href: '/master/identity',           module: 'master' },
