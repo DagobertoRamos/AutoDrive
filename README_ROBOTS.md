@@ -750,6 +750,15 @@
 - **Segurança:** mantém chave só no backend; isolamento de tenant; IA controlada; logs sem segredo.
 - **Pendências:** adapters reais de OpenAI/Anthropic (hoje stubs → não entram no failover até implementados); **AÇÃO USUÁRIO:** aplicar `20260618090000_add_ai_provider_priority`.
 
+### LOG 0072 — 2026-06-17 — Claude (Opus 4.8) — IA: adapters reais OpenAI + Anthropic (failover entre provedores)
+- **Branch:** main (worktree). **Sem migration.**
+- **Tarefa:** implementar os adapters reais de OpenAI e Anthropic para o failover funcionar entre provedores distintos (não só entre chaves Gemini).
+- **Arquivos alterados:** `src/lib/ai/adapters/openai.adapter.ts` — Chat Completions (`/chat/completions`), auth `Authorization: Bearer` (header), `testConnection` (GET /models), generateText/summarize/analyzeDocument(text)/analyzeImage(visão image/*)/extractStructuredData; PDF por imagem não suportado (cai no failover). `src/lib/ai/adapters/anthropic.adapter.ts` — Messages API (`/messages`), headers `x-api-key`+`anthropic-version`, suporta imagem E PDF (document block), `max_tokens` default 1024. Ambos: chave só no `ctx`/backend (nunca URL/log/front), timeout, erros amigáveis 429/401/404; `isReady` exige apiKey; lançam `AiNotConfiguredError` sem chave → o `runAiWithFailover` pula para o próximo.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK.
+- **Resultado:** cadastrando provedores OpenAI/Anthropic (com chave) no Master > IA, eles entram na cadeia de failover por prioridade junto com o Gemini. Ex.: Gemini(1) 429 → OpenAI(2) → Anthropic(3) → MockAI.
+- **Segurança:** chave por provedor cifrada no banco, decifrada só em runtime no backend; nunca ao front/log; IA controlada (só texto/resumo/análise), sem ações sensíveis.
+- **Pendências (opcionais):** `DocumentProcessingJob` no pipeline; embeddings reais; "Resumir com IA" em mais relatórios. Módulo de IA essencialmente completo.
+
 ---
 
 ## TAREFAS PENDENTES
