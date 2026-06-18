@@ -14,12 +14,28 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { extractDocumentText } from '@/lib/documents/extract-text'
 import { resolveAiProvider } from '@/lib/ai/resolve-ai-provider'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
 
 export const runtime = 'nodejs'
 export const maxDuration = 45
 
 const MAX_BYTES = 8 * 1024 * 1024 // 8MB (limite p/ envio multimodal)
 const PER_USER = Number(process.env.AI_RATE_LIMIT_PER_USER ?? 30)
+
+const MIME_BY_EXT: Record<string, string> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic' }
+
+// Lê um arquivo do storage local (somente /uploads/, anti path-traversal).
+async function readLocalUpload(fileUrl: string): Promise<{ buffer: Buffer; mimeType: string; fileName: string } | null> {
+  if (!fileUrl.startsWith('/uploads/') || fileUrl.includes('..')) return null
+  const key = fileUrl.replace(/^\/uploads\//, '')
+  const full = path.join(process.cwd(), 'public', 'uploads', key)
+  try {
+    const buffer = await fs.readFile(full)
+    const ext = (full.split('.').pop() ?? '').toLowerCase()
+    return { buffer, mimeType: MIME_BY_EXT[ext] ?? 'application/pdf', fileName: path.basename(full) }
+  } catch { return null }
+}
 
 async function withinRateLimit(userId: string): Promise<boolean> {
   try {
@@ -35,18 +51,29 @@ export async function POST(req: Request) {
   if (!canAccessModule(user.role, 'ai')) return forbiddenResponse('Sem acesso à análise por IA.')
 
   try {
-    const form = await req.formData()
-    const file = form.get('file')
-    if (!(file instanceof File)) return NextResponse.json({ success: false, error: 'Arquivo ausente.' }, { status: 400 })
-    if (file.size > MAX_BYTES) return NextResponse.json({ success: false, error: `Arquivo excede o limite (${Math.round(MAX_BYTES / 1024 / 1024)} MB).` }, { status: 200 })
+    // Entrada: multipart { file } OU JSON { fileUrl } (arquivo já anexado, /uploads/).
+    let buffer: Buffer
+    let mimeType: string
+    let fileName: string
+    const contentType = (req.headers.get('content-type') ?? '').toLowerCase()
+    if (contentType.includes('application/json')) {
+      const body = await req.json().catch(() => ({}))
+      const local = typeof body?.fileUrl === 'string' ? await readLocalUpload(body.fileUrl) : null
+      if (!local) return NextResponse.json({ success: false, error: 'Arquivo não encontrado.' }, { status: 400 })
+      buffer = local.buffer; mimeType = local.mimeType; fileName = local.fileName
+    } else {
+      const form = await req.formData()
+      const file = form.get('file')
+      if (!(file instanceof File)) return NextResponse.json({ success: false, error: 'Arquivo ausente.' }, { status: 400 })
+      buffer = Buffer.from(await file.arrayBuffer()); mimeType = (file.type || 'application/pdf').toLowerCase(); fileName = file.name
+    }
+    if (buffer.byteLength > MAX_BYTES) return NextResponse.json({ success: false, error: `Arquivo excede o limite (${Math.round(MAX_BYTES / 1024 / 1024)} MB).` }, { status: 200 })
 
     if (!(await withinRateLimit(user.id))) {
       return NextResponse.json({ success: false, error: 'Limite de análises por IA atingido. Tente mais tarde.' }, { status: 429 })
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const mimeType = (file.type || 'application/pdf').toLowerCase()
-    const extraction = await extractDocumentText(buffer, mimeType, { fileName: file.name, maxBytes: MAX_BYTES })
+    const extraction = await extractDocumentText(buffer, mimeType, { fileName, maxBytes: MAX_BYTES })
 
     // Estados sem como analisar → mensagem clara, sem chamar a IA.
     if (['protected', 'corrupted', 'too_large', 'unsupported'].includes(extraction.status)) {
@@ -72,7 +99,7 @@ export async function POST(req: Request) {
     }
 
     await prisma.aiUsageLog.create({
-      data: { tenantId: user.tenantId ?? null, userId: user.id, providerId, feature: 'analyze_document', promptSummary: file.name.slice(0, 60), status, errorMessage },
+      data: { tenantId: user.tenantId ?? null, userId: user.id, providerId, feature: 'analyze_document', promptSummary: fileName.slice(0, 60), status, errorMessage },
     }).catch(() => {})
 
     return NextResponse.json({

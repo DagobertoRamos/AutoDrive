@@ -729,6 +729,17 @@
 - **Segurança/LGPD:** gate `ai`; rate-limit; chave só backend; IA controlada (só resume/identifica, não valida/decide); `AiUsageLog` só nome do arquivo (60 chars)+status; não persiste o documento.
 - **Pendências:** Etapa 9 (resumir relatório), RAG real (AiKnowledgeChunk), `DocumentProcessingJob` no pipeline, botão "Analisar com IA" embutido nas telas de ficha/negociação (hoje há a página dedicada).
 
+### LOG 0070 — 2026-06-17 — Claude (Opus 4.8) — IA: RAG no chat + resumir relatório (Etapa 9) + analisar doc embutido
+- **Branch:** main (worktree). **Sem migration.**
+- **Tarefa:** completar o que faltava da IA da loja: (1) RAG real no chat de ajuda; (2) Etapa 9 — resumir relatório; (3) botão "Analisar com IA" embutido na ficha.
+- **(1) RAG-lite:** `help-chat` agora busca trechos relevantes em `AiKnowledgeChunk` (LIKE por palavras da pergunta; tenant null + tenant do usuário; nunca outro tenant) e injeta no contexto, além das instruções e títulos. Resiliente (try/catch).
+- **(2) Resumir relatório (Etapa 9):** `src/app/api/ai/reports/summarize/route.ts` (gate `ai`, rate-limit, `AiUsageLog`) — recebe `{ title, data }` (os DADOS QUE O USUÁRIO JÁ VÊ na tela, logo já passaram pelas permissões/tenant das APIs de relatório), resume com a IA (não inventa, só os dados fornecidos). Componente reutilizável `SummarizeReportButton` + ligado em `/financiamento/relatorios`. Validator `aiSummarizeReportSchema`.
+- **(3) Analisar doc embutido:** `documents/analyze` passou a aceitar JSON `{ fileUrl }` (lê do storage local `/uploads/`, anti path-traversal) além de multipart; `FichaDetail` ganhou botão "Analisar com IA" por documento anexado (modal com resumo + alerta de conferência).
+- **Arquivos:** criados `api/ai/reports/summarize/route.ts`, `components/ai/SummarizeReportButton.tsx`; alterados `api/ai/help-chat/route.ts` (RAG), `api/ai/documents/analyze/route.ts` (fileUrl), `components/financing/FichaDetail.tsx` (botão+modal), `financiamento/relatorios/page.tsx`, `lib/validators/ai.ts`.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK.
+- **Resultado:** chat usa a base de conhecimento de verdade; relatório F&I tem "Resumir com IA"; documentos anexados na ficha têm "Analisar com IA". Tudo controlado (IA só resume/explica/identifica), com chave só no backend, rate-limit, logs sem conteúdo sensível, isolamento de tenant.
+- **Pendências (opcionais):** `DocumentProcessingJob` registrar jobs no pipeline; embeddings reais (hoje RAG por LIKE); botão "Resumir com IA" em mais relatórios; analisar doc embutido na Negociação.
+
 ---
 
 ## TAREFAS PENDENTES

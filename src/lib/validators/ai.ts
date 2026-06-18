@@ -57,6 +57,12 @@ export const createAiKnowledgeSchema = z.object({
 })
 export const updateAiKnowledgeSchema = createAiKnowledgeSchema.partial()
 
+// Resumo de relatório (loja). title + dados que o usuário JÁ vê na tela.
+export const aiSummarizeReportSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  data:  z.unknown(),
+})
+
 // Chat de ajuda (loja). Mensagem do usuário + histórico curto opcional.
 export const aiHelpChatSchema = z.object({
   message: z.string().trim().min(1, 'Digite sua pergunta.').max(2000, 'Mensagem muito longa.'),

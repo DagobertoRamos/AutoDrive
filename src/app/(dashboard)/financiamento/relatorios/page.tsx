@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Landmark, BarChart3, Users, Send, FileWarning, Filter, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PeriodFilter from '@/components/reports/PeriodFilter'
+import SummarizeReportButton from '@/components/ai/SummarizeReportButton'
 
 interface Summary { total: number; simulacoes: number; enviadas: number; aprovadas: number; recusadas: number; canceladas: number; taxaAprovacao: number; valorAprovado: number }
 interface StatusRow { status: string; count: number; solicitado: number; aprovado: number }
@@ -71,7 +72,10 @@ export default function FinancingReportsPage() {
           <h1 className="text-xl font-bold text-gray-900">Relatórios de Financiamento</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : 'Visão consolidada de fichas, simulações, produção e funil'}</p>
         </div>
-        <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
+        <div className="flex items-center gap-2">
+          <SummarizeReportButton title="Relatório de Financiamento (F&I)" data={{ resumo: s, funil: funnel, porStatus: byStatus, porBanco: byBank, porVendedor: bySeller, enviosPorBanco: bySubBank, docsPendentes: pendingDocs, retorno: margin }} />
+          <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
+        </div>
       </div>
 
       <PeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />

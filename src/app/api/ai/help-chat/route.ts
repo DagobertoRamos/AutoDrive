@@ -45,15 +45,37 @@ async function withinRateLimit(userId: string, tenantId: string | null): Promise
   }
 }
 
-async function buildContext(tenantId: string | null): Promise<string> {
+// Busca trechos relevantes da base de conhecimento (RAG-lite: LIKE por palavras
+// da pergunta, sem embeddings). Tenant nunca vê conhecimento de outro tenant.
+async function searchKnowledge(message: string, tenantId: string | null): Promise<string[]> {
+  const words = [...new Set(message.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length >= 4))].slice(0, 8)
+  if (!words.length) return []
   try {
-    const [instructions, kb] = await Promise.all([
+    const chunks = await prisma.aiKnowledgeChunk.findMany({
+      where: {
+        OR: [{ tenantId: null }, ...(tenantId ? [{ tenantId }] : [])],
+        AND: { OR: words.map((w) => ({ chunkText: { contains: w, mode: 'insensitive' as const } })) },
+      },
+      take: 5,
+      select: { chunkText: true },
+    })
+    return chunks.map((c) => c.chunkText.slice(0, 800))
+  } catch {
+    return []
+  }
+}
+
+async function buildContext(message: string, tenantId: string | null): Promise<string> {
+  try {
+    const [instructions, kb, chunks] = await Promise.all([
       prisma.aiInstruction.findMany({ where: { tenantId: null, status: 'ATIVO', scope: { in: ['global', 'ajuda'] } }, orderBy: { priority: 'desc' }, take: 30, select: { content: true } }),
       prisma.aiKnowledgeBase.findMany({ where: { tenantId: null, status: 'ATIVO' }, orderBy: { updatedAt: 'desc' }, take: 12, select: { title: true, description: true } }),
+      searchKnowledge(message, tenantId),
     ])
     const parts: string[] = []
     if (instructions.length) parts.push('INSTRUÇÕES DA PLATAFORMA:\n' + instructions.map((i) => `- ${i.content}`).join('\n'))
-    if (kb.length) parts.push('TÓPICOS DA BASE DE CONHECIMENTO (use se relevante):\n' + kb.map((k) => `- ${k.title}${k.description ? `: ${k.description}` : ''}`).join('\n'))
+    if (chunks.length) parts.push('TRECHOS RELEVANTES DA BASE DE CONHECIMENTO (use se ajudar; cite que veio da base):\n' + chunks.map((c) => `"""${c}"""`).join('\n'))
+    if (kb.length) parts.push('OUTROS TÓPICOS DISPONÍVEIS:\n' + kb.map((k) => `- ${k.title}${k.description ? `: ${k.description}` : ''}`).join('\n'))
     return parts.join('\n\n')
   } catch {
     return ''
@@ -72,7 +94,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Limite de uso do assistente atingido. Tente novamente mais tarde.' }, { status: 429 })
     }
 
-    const extra = await buildContext(user.tenantId ?? null)
+    const extra = await buildContext(message, user.tenantId ?? null)
     const hist = (history ?? []).map((h) => `${h.role === 'user' ? 'Usuário' : 'Assistente'}: ${h.content}`).join('\n')
     const prompt = [
       BASE_SYSTEM,

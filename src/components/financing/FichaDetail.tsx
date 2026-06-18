@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, FileCheck2, Send, Plus, Trash2, Clock, Landmark, AlertTriangle, Check, Lock, Paperclip } from 'lucide-react'
+import { ArrowLeft, FileCheck2, Send, Plus, Trash2, Clock, Landmark, AlertTriangle, Check, Lock, Paperclip, Bot, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useFiPermissions } from './useFiPermissions'
 
@@ -90,6 +90,18 @@ export default function FichaDetail({ id }: { id: string }) {
   const removeFile = async (docId: string) => {
     await fetch(`/api/financing/proposals/${id}/documents/${docId}/file`, { method: 'DELETE', credentials: 'include' }); await loadDocs()
   }
+  // Analisa o arquivo anexado com IA (lê do storage local /uploads/).
+  const [analyzingDoc, setAnalyzingDoc] = useState<string | null>(null)
+  const [docAnalysis, setDocAnalysis] = useState<{ type: string; summary: string; needsReview: boolean; mock: boolean } | null>(null)
+  const analyzeFile = async (docId: string, fileUrl: string, type: string) => {
+    setAnalyzingDoc(docId); setDocAnalysis(null)
+    try {
+      const res = await fetch('/api/ai/documents/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ fileUrl }) })
+      const json = await res.json()
+      if (!json.success && !json.data) { setMsg({ ok: false, text: json?.error ?? 'Não foi possível analisar.' }); return }
+      setDocAnalysis({ type, summary: json.data?.summary ?? '', needsReview: !!json.data?.needsHumanReview, mock: !!json.mock })
+    } catch { setMsg({ ok: false, text: 'Erro de rede ao analisar.' }) } finally { setAnalyzingDoc(null) }
+  }
 
   // ── Envio ──
   const toggleBank = (bankId: string) => setPickBanks((b) => b.includes(bankId) ? b.filter((x) => x !== bankId) : [...b, bankId])
@@ -156,6 +168,11 @@ export default function FichaDetail({ id }: { id: string }) {
                   <span className="block truncate text-sm text-gray-800">{d.type}{d.required && <span className="ml-1 text-[10px] font-semibold text-red-500">obrig.</span>}</span>
                   {d.fileUrl && <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 truncate text-[11px] text-brand-600 hover:underline"><Paperclip size={11} className="shrink-0" /><span className="truncate">{d.fileName ?? 'arquivo'}</span></a>}
                 </div>
+                {d.fileUrl && (
+                  <button onClick={() => analyzeFile(d.id, d.fileUrl!, d.type)} disabled={analyzingDoc === d.id} className="rounded p-1 text-gray-400 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50" title="Analisar com IA">
+                    {analyzingDoc === d.id ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
+                  </button>
+                )}
                 {d.fileUrl ? (
                   <button onClick={() => removeFile(d.id)} className="rounded p-1 text-gray-400 hover:bg-amber-50 hover:text-amber-600" title="Remover arquivo"><Paperclip size={14} /></button>
                 ) : (
@@ -231,6 +248,22 @@ export default function FichaDetail({ id }: { id: string }) {
           </ul>
         )}
       </div>
+
+      {/* Análise de documento por IA */}
+      {docAnalysis && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setDocAnalysis(null)}>
+          <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-base font-bold text-gray-900"><Bot size={16} className="text-brand-600" />Análise: {docAnalysis.type}</h2>
+              <button onClick={() => setDocAnalysis(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            {docAnalysis.needsReview && <p className="mb-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Precisa de conferência humana</p>}
+            <p className="whitespace-pre-wrap text-sm text-gray-700">{docAnalysis.summary}</p>
+            {docAnalysis.mock && <p className="mt-3 rounded bg-amber-50 px-3 py-1.5 text-[11px] text-amber-700">Análise simulada (MockAI) — configure um provedor de IA no painel Master.</p>}
+            <p className="mt-3 border-t border-gray-100 pt-2 text-[11px] text-gray-400">IA auxilia a leitura; confira os dados sensíveis manualmente.</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
