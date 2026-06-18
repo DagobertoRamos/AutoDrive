@@ -14,6 +14,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAudi
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
+import { buildSignedPlayPath, isRecordingSigningConfigured, DEFAULT_PLAY_TTL_SECONDS } from '@/lib/telephony/recording-storage'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -41,11 +42,19 @@ export async function GET(_req: Request, { params }: Ctx) {
 
     // Acesso concedido — auditoria obrigatória (quem ouviu).
     await prisma.telephonyIntegrationLog.create({
-      data: { tenantId: rec.tenantId, action: 'RECORDING_ACCESS', status: 'OK', message: `acesso concedido (call ${rec.callId})`, createdByUserId: user.id },
+      data: { tenantId: rec.tenantId, action: 'RECORDING_ACCESS', status: 'OK', message: `link assinado emitido (call ${rec.callId})`, createdByUserId: user.id },
     }).catch(() => {})
     await createSafeAuditLog({ userId: user.id, tenantId: rec.tenantId, action: 'RECORDING_ACCESS', entity: 'TelephonyRecording', entityId: id, userName: user.name, userRole: user.role })
 
-    return NextResponse.json({ success: true, data: { url: rec.storageUrl, mimeType: rec.mimeType, durationSec: rec.durationSec } })
+    // NÃO devolve a URL bruta: gera um link ASSINADO de curta duração para o /stream.
+    if (!isRecordingSigningConfigured()) {
+      return NextResponse.json({ success: false, error: 'Assinatura de gravação não configurada no servidor (defina TELEPHONY_ENCRYPTION_KEY ou TELEPHONY_RECORDING_SIGNING_SECRET).' }, { status: 503 })
+    }
+    const { path, exp } = buildSignedPlayPath(id, DEFAULT_PLAY_TTL_SECONDS)
+    return NextResponse.json({
+      success: true,
+      data: { url: path, mimeType: rec.mimeType, durationSec: rec.durationSec, expiresAt: new Date(exp * 1000).toISOString(), expiresInSec: DEFAULT_PLAY_TTL_SECONDS },
+    })
   } catch (err) {
     return handlePrismaError(err)
   }
