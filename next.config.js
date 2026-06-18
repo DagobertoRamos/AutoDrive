@@ -16,6 +16,16 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Reduz uso de memória no build de produção.
+  productionBrowserSourceMaps: false,
+
+  experimental: {
+    webpackMemoryOptimizations: true,
+    webpackBuildWorker: true,
+    serverSourceMaps: false,
+    preloadEntriesOnStart: false,
+  },
+
   // Esconde o botão flutuante "N" do Next no canto inferior esquerdo durante o dev.
   devIndicators: false,
 
@@ -39,18 +49,20 @@ const nextConfig = {
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
-        fs:  false,
+        fs: false,
         net: false,
         tls: false,
         dns: false,
       }
     }
+
     // pdfjs-dist tenta carregar `canvas` em runtime — alias pra vazio em ambos
     // os bundles (client e server).
     config.resolve.alias = {
       ...config.resolve.alias,
       canvas: false,
     }
+
     return config
   },
 }
