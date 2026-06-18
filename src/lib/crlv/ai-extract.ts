@@ -100,7 +100,12 @@ async function callGemini(model: string, key: string, mimeType: string, base64: 
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
-    throw new Error(`Gemini ${res.status}: ${detail.replace(/\s+/g, ' ').slice(0, 180)}`)
+    // Mensagens amigáveis por status (sem expor a chave).
+    if (res.status === 429) throw new Error('limite de uso da IA atingido (cota do Google) — tente em alguns minutos ou ative o faturamento/aumente a cota no Google AI Studio')
+    if (res.status === 401 || res.status === 403) throw new Error('chave do Gemini inválida ou sem acesso ao modelo')
+    if (res.status === 404) throw new Error(`modelo "${model}" indisponível (ajuste GEMINI_MODEL)`)
+    if (res.status >= 500) throw new Error('serviço do Gemini instável no momento — tente novamente')
+    throw new Error(`Gemini ${res.status}: ${detail.replace(/\s+/g, ' ').slice(0, 160)}`)
   }
   const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   return json?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
