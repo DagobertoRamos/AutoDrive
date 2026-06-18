@@ -213,25 +213,24 @@ export const NAV_GROUPS: NavItem[] = [
   },
 
   // ── MARKETING (Mesa SDR / Pré-Vendas + Telefonia) ──────────────────────────
-  // Fase inicial: apenas estrutura e placeholders ("em breve"). Distribuição
-  // inteligente (roleta/tanque de tubarão/manual), SLA de atendimento e
-  // integração de telefonia (Asterisk/3CX/Twilio/genérico) virão em fases
-  // futuras — sem integração real sem credenciais/documentação oficiais.
+  // Mesa SDR e Telefonia operacionais (UI Fase 5). Distribuição automática
+  // (roleta/tanque/peso/regras) e integração real de telefonia (adapters reais
+  // Asterisk/3CX/Twilio) seguem em evolução — sem chamada externa sem doc oficial.
   {
     label: 'Marketing',
     icon:  Megaphone,
     module: 'marketing',
     children: [
       // Mesa de Pré-Vendas / SDR
-      { label: 'Caixa de Leads',  href: '/marketing/sdr/inbox',     icon: Inbox,      module: 'marketing.sdr',              badge: 'em breve' },
-      { label: 'Times SDR',       href: '/marketing/sdr/times',     icon: Users,      module: 'marketing.sdr.manage',       badge: 'em breve' },
-      { label: 'Membros',         href: '/marketing/sdr/membros',   icon: Headset,    module: 'marketing.sdr.manage',       badge: 'em breve' },
-      { label: 'Distribuição',    href: '/marketing/sdr/politicas', icon: GitBranch,  module: 'marketing.leads.distribute', badge: 'em breve' },
+      { label: 'Caixa de Leads',  href: '/marketing/sdr/inbox',     icon: Inbox,      module: 'marketing.sdr' },
+      { label: 'Times SDR',       href: '/marketing/sdr/times',     icon: Users,      module: 'marketing.sdr.manage' },
+      { label: 'Membros',         href: '/marketing/sdr/membros',   icon: Headset,    module: 'marketing.sdr.manage' },
+      { label: 'Distribuição',    href: '/marketing/sdr/politicas', icon: GitBranch,  module: 'marketing.leads.distribute' },
       // Telefonia
-      { label: 'Chamadas',        href: '/marketing/telephony/chamadas',  icon: PhoneCall, module: 'marketing.telephony',            badge: 'em breve' },
-      { label: 'Conexões',        href: '/marketing/telephony/conexoes',  icon: Phone,     module: 'marketing.telephony.manage',     badge: 'em breve' },
-      { label: 'Números',         href: '/marketing/telephony/numeros',   icon: Hash,      module: 'marketing.telephony.manage',     badge: 'em breve' },
-      { label: 'Gravações',       href: '/marketing/telephony/gravacoes', icon: Disc,      module: 'marketing.telephony.recordings', badge: 'em breve' },
+      { label: 'Chamadas',        href: '/marketing/telephony/chamadas',  icon: PhoneCall, module: 'marketing.telephony' },
+      { label: 'Conexões',        href: '/marketing/telephony/conexoes',  icon: Phone,     module: 'marketing.telephony.manage' },
+      { label: 'Números',         href: '/marketing/telephony/numeros',   icon: Hash,      module: 'marketing.telephony.manage' },
+      { label: 'Gravações',       href: '/marketing/telephony/gravacoes', icon: Disc,      module: 'marketing.telephony.recordings' },
     ],
   },
 

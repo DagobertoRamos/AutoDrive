@@ -939,6 +939,18 @@
 - **Config:** definir `CRON_SECRET` (Vercel + .env) — a Vercel injeta `Authorization: Bearer $CRON_SECRET` no cron automaticamente. Ajustar a frequência em `vercel.json` (hoje horário). Requer `TELEPHONY_STORAGE_*` + `TELEPHONY_RECORDING_ALLOWED_HOSTS` para efetivamente arquivar.
 - **AVISO p/ outra IA:** o cron está em `vercel.json` (`archive-run`, horário) e exige `CRON_SECRET`. A varredura é `archivePendingRecordings` (bounded por limit). Para ajustar volume/frequência, mudar o limit no cron (`?limit=`) ou o schedule. Não duplicar lógica de arquivamento — reusar `archiveRecording`.
 
+### LOG 0086 — 2026-06-18 — Claude (Opus 4.8) — Marketing: Fase 5 — UI real (Mesa SDR + Telefonia) substituindo placeholders
+- **Branch:** main (worktree). **Sem migration, sem novas APIs** — só telas consumindo as APIs das Fases 3A/3B/4. Remove os 8 badges "em breve" do nav.
+- **Tarefa:** "siga para a UI" (Fase 5).
+- **Arquivos (8 páginas reescritas de placeholder → funcionais):**
+  - **Mesa SDR:** `sdr/times` (CRUD de times), `sdr/membros` (CRUD + presença inline + seleção de time), `sdr/politicas` (CRUD de políticas de distribuição, modo + config JSON), `sdr/inbox` (operacional: 2 colunas Disponíveis/Meus leads; **assumir** [claim/tanque], **converter**, **liberar**; criar lead manual; toasts).
+  - **Telefonia:** `telephony/conexoes` (CRUD BYOC, provedor select, credenciais JSON cifradas, **testar conexão**, aviso se `cryptoReady=false`), `telephony/numeros` (CRUD números/ramais + conexão), `telephony/chamadas` (histórico read-only + filtros direção/status + indicador de gravação), `telephony/gravacoes` (lista + **player com link assinado** via `/play`→`<audio>`, **arquivar** no bucket, **excluir** LGPD).
+  - `navigation.ts` — removidos os 8 badges "em breve" do grupo Marketing.
+- **Padrão:** `'use client'` + `useSession` p/ mostrar ações de gestão só a `MANAGE_ROLES`; leitura via gates da API (403 → aviso "sem acesso"); tabela + modal no idioma visual do projeto (`inputCls`, `btn-primary/secondary`, `shadow-card`, lucide). Nenhuma credencial/URL bruta exposta (gravação toca pelo link assinado curto).
+- **Comandos:** `tsc` limpo; `eslint` **0 erros** (8 warnings `set-state-in-effect`, idênticos ao padrão já aceito em todo o app); `npm test` **163/163**; `next build` OK (`--max-old-space-size=8192`).
+- **NÃO implementado (intencional):** motor de distribuição automática (a tela de Distribuição cadastra as políticas; o consumo automático — roleta/menor-carga/peso/regras + SLA — é fase futura); painel MASTER de provedores de telefonia (`master/marketing/telephony` segue placeholder); seletor visual de usuário em Membros (hoje usa ID); validação real dos adapters Asterisk/3CX/Twilio (depende de doc/credenciais).
+- **AVISO p/ outra IA:** Marketing está com UI operacional (Fase 5). Telas consomem as APIs já existentes; preserve os gates e o fluxo de gravação por link assinado. Para "fechar" o módulo: motor de distribuição automática + painel MASTER de provedores + adapters reais (com doc oficial).
+
 ---
 
 ## TAREFAS PENDENTES
