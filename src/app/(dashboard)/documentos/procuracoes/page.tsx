@@ -1,5 +1,20 @@
 'use client'
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
+
+// =============================================================================
+// Documentos > Procurações — gerador de documentos (modelos → preencher → PDF).
+// =============================================================================
+
+import { FileText } from 'lucide-react'
+import DocumentGeneratorPanel from '@/components/documents/DocumentGeneratorPanel'
+
 export default function Page() {
-  return <PlaceholderPage title="Procurações" description="Modelos e geração de procurações para clientes." />
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><FileText size={20} className="text-brand-600" />Procurações</h1>
+        <p className="mt-0.5 text-sm text-gray-500">Gere procurações a partir de modelos prontos.</p>
+      </div>
+      <DocumentGeneratorPanel category="procuracao" />
+    </div>
+  )
 }

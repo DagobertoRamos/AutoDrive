@@ -312,9 +312,9 @@ export const NAV_GROUPS: NavItem[] = [
     children: [
       { label: 'Analisar com IA', href: '/documentos/analisar', icon: Bot, module: 'ai' },
       { label: 'Contratos',   href: '/documentos/contratos',   icon: FileSignature, module: 'documents.pdf' },
-      { label: 'Procurações', href: '/documentos/procuracoes', badge: 'em breve', icon: Stamp,         module: 'documents.pdf' },
-      { label: 'Termos',      href: '/documentos/termos', badge: 'em breve',      icon: FileCheck2,    module: 'documents.pdf' },
-      { label: 'Declarações', href: '/documentos/declaracoes', badge: 'em breve', icon: ScrollText,    module: 'documents.pdf' },
+      { label: 'Procurações', href: '/documentos/procuracoes', icon: Stamp,         module: 'documents.pdf' },
+      { label: 'Termos',      href: '/documentos/termos',      icon: FileCheck2,    module: 'documents.pdf' },
+      { label: 'Declarações', href: '/documentos/declaracoes', icon: ScrollText,    module: 'documents.pdf' },
     ],
   },
 

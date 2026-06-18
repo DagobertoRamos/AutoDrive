@@ -769,6 +769,15 @@
 - **Resultado:** **F&I da loja 100% funcional** — todas as áreas de Configurações > F&I (Bancos, Credenciais, Prioridades, Retornos, Documentos, Permissões, Produtos) implementadas.
 - **Pendências:** ver TAREFAS PENDENTES (telas stub fora do F&I: Documentos procuracoes/termos/declaracoes, Comunicação loja, Pendências config; opcionais de IA).
 
+### LOG 0074 — 2026-06-17 — Claude (Opus 4.8) — Documentos: Procurações / Termos / Declarações (gerador)
+- **Branch:** main (worktree). **Sem migration, sem backend, sem persistência** (geração sob demanda + impressão pelo navegador).
+- **Tarefa:** ativar as 3 telas stub de Documentos como gerador de documentos por modelos.
+- **Arquivos criados:** `src/lib/documents/templates.ts` (5 modelos: Procuração de transferência; Termo de garantia; Termo de entrega/vistoria; Declaração de quitação; Declaração de recebimento de documentos — render() em HTML escapado anti-XSS); `src/components/documents/DocumentGeneratorPanel.tsx` (escolhe modelo → formulário dinâmico → pré-visualização → Imprimir/Salvar PDF via window.open+print).
+- **Arquivos alterados:** páginas `documentos/{procuracoes,termos,declaracoes}` (eram PlaceholderPage → usam o painel); `navigation.ts` (removidos os badges "em breve" dos 3).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK (rotas registradas).
+- **Regras aplicadas:** gate `documents.pdf` (mantido); valores do usuário escapados no HTML (anti-XSS); nota de que são modelos genéricos (não substituem orientação jurídica); não grava nada no banco.
+- **Pendências (stub restantes):** Comunicação (loja) Central/Avisos/Logs; Pendências > Configurações. Opcionais de IA seguem em aberto.
+
 ---
 
 ## TAREFAS PENDENTES
