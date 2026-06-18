@@ -759,6 +759,16 @@
 - **Segurança:** chave por provedor cifrada no banco, decifrada só em runtime no backend; nunca ao front/log; IA controlada (só texto/resumo/análise), sem ações sensíveis.
 - **Pendências (opcionais):** `DocumentProcessingJob` no pipeline; embeddings reais; "Resumir com IA" em mais relatórios. Módulo de IA essencialmente completo.
 
+### LOG 0073 — 2026-06-17 — Claude (Opus 4.8) — F&I: Produtos Agregados (fecha o F&I da loja)
+- **Branch:** main (worktree). **Sem migration** (usa `FinanceProduct` da Fase 4).
+- **Tarefa:** ativar a última tela stub do F&I da loja — Configurações > F&I > Produtos Agregados (garantia/seguro/proteção/rastreador).
+- **Arquivos criados:** `src/app/api/settings/financing/products/route.ts` (GET/POST) + `[id]/route.ts` (PATCH/DELETE); página `configuracoes/fi/produtos` (CRUD + tipo + valor padrão + ativar/inativar).
+- **Arquivos alterados:** `src/lib/validators/financing.ts` (`createProductSchema`/`updateProductSchema` + `productKinds`).
+- **Regras aplicadas:** `financing.config`; tenant-scoped (`ownsTenant`); **MASTER bloqueado** (config da loja); Decimal p/ valor; auditoria CREATE/UPDATE/DELETE. Aditivo.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK.
+- **Resultado:** **F&I da loja 100% funcional** — todas as áreas de Configurações > F&I (Bancos, Credenciais, Prioridades, Retornos, Documentos, Permissões, Produtos) implementadas.
+- **Pendências:** ver TAREFAS PENDENTES (telas stub fora do F&I: Documentos procuracoes/termos/declaracoes, Comunicação loja, Pendências config; opcionais de IA).
+
 ---
 
 ## TAREFAS PENDENTES

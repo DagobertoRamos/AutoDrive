@@ -195,6 +195,16 @@ export const applyProposalSchema = z.object({
   applyProposalId: z.string().cuid('Ficha inválida.'),
 })
 
+// ── Produtos agregados do F&I (garantia/seguro/proteção/rastreador) ───────────
+export const productKinds = ['SEGURO', 'GARANTIA', 'PROTECAO', 'RASTREADOR', 'OUTRO'] as const
+export const createProductSchema = z.object({
+  name:         reqStr('Nome do produto'),
+  kind:         z.enum(productKinds).default('OUTRO'),
+  defaultValue: z.number({ invalid_type_error: 'Valor inválido.' }).nonnegative().nullish(),
+  active:       z.boolean().default(true),
+})
+export const updateProductSchema = createProductSchema.partial()
+
 // ── Master > F&I: provedores / bancos homologados / mapeamento / flags ────────
 export const providerKinds = ['CREDERE', 'BANCO_DIRETO', 'INTEGRADOR', 'MANUAL', 'OUTRO'] as const
 export const createProviderSchema = z.object({
