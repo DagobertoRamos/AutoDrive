@@ -719,6 +719,16 @@
 - **Segurança/LGPD:** gate `ai` por papel; isolamento de tenant; rate-limit; chave só backend; `AiUsageLog` guarda só resumo curto (60 chars) + status/tokens, sem conteúdo completo. IA sem ações sensíveis.
 - **Pendências:** Etapas 9/10 (resumir relatório / analisar documento via `/api/ai/*`) + RAG real (busca em AiKnowledgeChunk) + `DocumentProcessingJob` no pipeline. **AÇÃO USUÁRIO:** aplicar `20260617120000_add_ai_module` para persistir provedores/instruções/conhecimento/logs (o chat já funciona via Gemini do servidor mesmo sem a migration; só não registra log/rate-limit sem a tabela).
 
+### LOG 0069 — 2026-06-17 — Claude (Opus 4.8) — IA: analisar documento (Etapa 10) + botão flutuante de ajuda
+- **Branch:** main (worktree). **Sem migration.**
+- **Tarefa:** (10) analisar documento com IA (PDF/imagem) — resume/identifica, marca ilegível/precisa-conferência; (B) botão flutuante de ajuda em todas as telas.
+- **Arquivos criados:** `src/app/api/ai/documents/analyze/route.ts` (POST multipart, gate `ai`, rate-limit, extrai via `extractDocumentText`; texto→`analyzeDocument({text})`, imagem/escaneado→multimodal `analyzeDocument({base64})`; AiUsageLog sem conteúdo; estados protected/corrupted/too_large/unsupported retornam msg clara sem chamar IA); `src/app/(dashboard)/documentos/analisar/page.tsx` (uploader + resultado, aviso MockAI); `src/components/ai/HelpChatLauncher.tsx` (botão flutuante → painel com HelpChat).
+- **Arquivos alterados:** `src/lib/ai/adapters/gemini.adapter.ts` — **multimodal real**: `analyzeImage` (inlineData) e `analyzeDocument` agora leem imagem/PDF escaneado (visão); `generate()` aceita parts. `src/app/(dashboard)/DashboardShell.tsx` (monta `HelpChatLauncher`); `src/components/layout/navigation.ts` (item "Analisar com IA" em Documentos, ícone Bot).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK (`/api/ai/documents/analyze`, `/documentos/analisar`).
+- **Resultado:** Documentos > "Analisar com IA": upload de PDF/imagem → resumo + tipo + dados, com alerta de conferência humana quando preciso. Botão flutuante de assistente em qualquer tela. Com Gemini (cota OK) é real; senão MockAI (aviso).
+- **Segurança/LGPD:** gate `ai`; rate-limit; chave só backend; IA controlada (só resume/identifica, não valida/decide); `AiUsageLog` só nome do arquivo (60 chars)+status; não persiste o documento.
+- **Pendências:** Etapa 9 (resumir relatório), RAG real (AiKnowledgeChunk), `DocumentProcessingJob` no pipeline, botão "Analisar com IA" embutido nas telas de ficha/negociação (hoje há a página dedicada).
+
 ---
 
 ## TAREFAS PENDENTES

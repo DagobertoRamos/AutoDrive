@@ -48,6 +48,7 @@ import {
   ScrollText,
   // Documentos
   FileSignature,
+  Bot,
   Stamp,
   FileCheck2,
   Wallet,
@@ -309,6 +310,7 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  FileText,
     module: 'documents',
     children: [
+      { label: 'Analisar com IA', href: '/documentos/analisar', icon: Bot, module: 'ai' },
       { label: 'Contratos',   href: '/documentos/contratos',   icon: FileSignature, module: 'documents.pdf' },
       { label: 'Procurações', href: '/documentos/procuracoes', badge: 'em breve', icon: Stamp,         module: 'documents.pdf' },
       { label: 'Termos',      href: '/documentos/termos', badge: 'em breve',      icon: FileCheck2,    module: 'documents.pdf' },

@@ -8,7 +8,7 @@
 import type { AiProviderKind } from '@prisma/client'
 import { BaseAiAdapter } from './base'
 import type { AiCapabilities, AiAdapterContext, AiTextResult, AiDocAnalysis } from './types'
-import { AiNotConfiguredError, AiNotSupportedError } from './types'
+import { AiNotConfiguredError } from './types'
 
 const DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 const DEFAULT_MODEL = 'gemini-2.0-flash'
@@ -64,10 +64,11 @@ export class GeminiAdapter extends BaseAiAdapter {
     }
   }
 
-  private async generate(ctx: AiAdapterContext, prompt: string): Promise<AiTextResult> {
+  private async generate(ctx: AiAdapterContext, prompt: string, parts?: Record<string, unknown>[]): Promise<AiTextResult> {
     const model = ctx.model?.trim() || DEFAULT_MODEL
+    const allParts = parts ? [...parts, { text: prompt }] : [{ text: prompt }]
     const body = {
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ parts: allParts }],
       generationConfig: ctx.maxTokens ? { maxOutputTokens: ctx.maxTokens } : undefined,
     }
     const res = await this.call(ctx, `/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', body: JSON.stringify(body) })
@@ -89,17 +90,27 @@ export class GeminiAdapter extends BaseAiAdapter {
     return this.generate(ctx, prompt)
   }
 
+  private readonly DOC_PROMPT = `Analise este documento (português). Responda em texto corrido e objetivo: (1) tipo provável do documento; (2) resumo; (3) dados principais identificados. NÃO invente nada; se algo estiver ilegível, diga. NÃO substitui validação jurídica/contábil/financeira por um responsável humano.`
+
   async analyzeDocument(input: { text?: string; mimeType?: string; base64?: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
     const text = (input.text ?? '').trim()
-    if (!text) return { summary: 'Documento sem texto legível — precisa de OCR/conferência humana.', legible: false, needsHumanReview: true }
-    const prompt = `Analise o documento abaixo (português). Responda em texto corrido: (1) tipo provável do documento; (2) resumo objetivo; (3) dados principais. NÃO invente; aponte se algo estiver ilegível. Não substitui validação jurídica/contábil/financeira. Documento:\n\n${text.slice(0, 12000)}`
-    const r = await this.generate(ctx, prompt)
-    return { summary: r.text || 'Sem resposta do modelo.', legible: true, needsHumanReview: false, note: 'Análise por IA — confira dados sensíveis manualmente.' }
+    if (text) {
+      const r = await this.generate(ctx, `${this.DOC_PROMPT}\n\nConteúdo:\n\n${text.slice(0, 14000)}`)
+      return { summary: r.text || 'Sem resposta do modelo.', legible: true, needsHumanReview: false, note: 'Análise por IA — confira dados sensíveis manualmente.' }
+    }
+    // Sem texto, mas com arquivo (imagem/PDF escaneado) → multimodal.
+    if (input.base64 && input.mimeType) {
+      return this.analyzeImage({ base64: input.base64, mimeType: input.mimeType }, ctx)
+    }
+    return { summary: 'Documento sem texto legível — precisa de OCR/conferência humana.', legible: false, needsHumanReview: true }
   }
 
-  async analyzeImage(): Promise<AiDocAnalysis> {
-    // Multimodal (imagem inline) será habilitado numa etapa seguinte.
-    throw new AiNotSupportedError('analyzeImage (Gemini multimodal)')
+  // Multimodal: lê imagem/PDF escaneado direto (inlineData).
+  async analyzeImage(input: { base64: string; mimeType: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
+    const r = await this.generate(ctx, this.DOC_PROMPT, [{ inlineData: { mimeType: input.mimeType, data: input.base64 } }])
+    const summary = r.text?.trim()
+    if (!summary) return { summary: 'Não foi possível ler o documento (ilegível ou bloqueado).', legible: false, needsHumanReview: true }
+    return { summary, legible: true, needsHumanReview: false, note: 'Análise por IA (visão) — confira dados sensíveis manualmente.' }
   }
 
   async extractStructuredData(text: string, schemaHint: string, ctx: AiAdapterContext): Promise<Record<string, unknown>> {

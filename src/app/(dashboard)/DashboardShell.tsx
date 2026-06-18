@@ -17,6 +17,7 @@ import { ThemeInjector } from '@/components/layout/ThemeInjector'
 import SystemBannerBar from '@/components/layout/SystemBannerBar'
 import { NotificationToastContainer } from '@/components/notifications/NotificationToastContainer'
 import { useNotifications } from '@/hooks/useNotifications'
+import HelpChatLauncher from '@/components/ai/HelpChatLauncher'
 
 export default function DashboardShell({
   children,
@@ -64,6 +65,7 @@ export default function DashboardShell({
         </div>
         <NotificationToastContainer />
       </div>
+      <HelpChatLauncher />
     </>
   )
 }
