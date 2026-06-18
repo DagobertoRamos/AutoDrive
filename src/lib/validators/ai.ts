@@ -56,3 +56,12 @@ export const createAiKnowledgeSchema = z.object({
   status:      z.enum(['ATIVO', 'INATIVO']).default('ATIVO'),
 })
 export const updateAiKnowledgeSchema = createAiKnowledgeSchema.partial()
+
+// Chat de ajuda (loja). Mensagem do usuário + histórico curto opcional.
+export const aiHelpChatSchema = z.object({
+  message: z.string().trim().min(1, 'Digite sua pergunta.').max(2000, 'Mensagem muito longa.'),
+  history: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().trim().max(4000),
+  })).max(12).optional(),
+})

@@ -709,6 +709,16 @@
 - **AÇÃO USUÁRIO:** Redeploy e tentar de novo; se persistir, copiar a nova mensagem de erro (agora traz o motivo do Gemini). Confirmar `GEMINI_API_KEY` em Production.
 - **Segurança:** chave só no backend/header (nunca URL/log); erro propagado sem a chave; `rawText`/PII fora da resposta em prod.
 
+### LOG 0068 — 2026-06-17 — Claude (Opus 4.8) — IA da loja: chat de ajuda (Etapa 8)
+- **Branch:** main (worktree). **Sem migration** (usa models do LOG 0063; resiliente se a migration ainda não estiver aplicada).
+- **Tarefa:** assistente de ajuda por IA dentro do AutoDrive, controlado: orienta o uso do sistema usando instruções globais + base de conhecimento, respeitando tenant/permissão/escopo, com rate-limit e logs sem dados sensíveis.
+- **Arquivos criados:** `src/lib/ai/resolve-ai-provider.ts` (escolhe provedor: AiProvider ativo+pronto → Gemini do servidor `process.env.GEMINI_API_KEY` → MockAI; resiliente a migration pendente; chave só backend); `src/app/api/ai/help-chat/route.ts` (POST, gate `ai`, rate-limit por usuário/tenant via AiUsageLog [fail-open se tabela ausente], system-prompt com guard-rails + instruções [`tenantId null`, scope global/ajuda] + títulos da base de conhecimento, `AiUsageLog` sem conteúdo sensível); `src/components/ai/HelpChat.tsx` (chat com sugestões, aviso de MockAI).
+- **Arquivos alterados:** `src/lib/validators/ai.ts` (`aiHelpChatSchema`); `src/app/(dashboard)/ajuda/page.tsx` (assistente no topo da Central de Ajuda).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK (`/api/ai/help-chat`).
+- **Resultado:** em **Ajuda**, o usuário conversa com o assistente. Com Gemini configurado (e cota disponível) responde de verdade; sem provedor real, usa MockAI (com aviso). Guard-rails: não inventa, diz "não sei", não executa ações, não expõe outro tenant.
+- **Segurança/LGPD:** gate `ai` por papel; isolamento de tenant; rate-limit; chave só backend; `AiUsageLog` guarda só resumo curto (60 chars) + status/tokens, sem conteúdo completo. IA sem ações sensíveis.
+- **Pendências:** Etapas 9/10 (resumir relatório / analisar documento via `/api/ai/*`) + RAG real (busca em AiKnowledgeChunk) + `DocumentProcessingJob` no pipeline. **AÇÃO USUÁRIO:** aplicar `20260617120000_add_ai_module` para persistir provedores/instruções/conhecimento/logs (o chat já funciona via Gemini do servidor mesmo sem a migration; só não registra log/rate-limit sem a tabela).
+
 ---
 
 ## TAREFAS PENDENTES

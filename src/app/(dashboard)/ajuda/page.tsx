@@ -1,6 +1,7 @@
 'use client'
 
 import { BookOpen, MessageCircleQuestion, LifeBuoy, Mail } from 'lucide-react'
+import HelpChat from '@/components/ai/HelpChat'
 
 const CARDS = [
   { icon: BookOpen,              title: 'Como usar',          desc: 'Guias passo a passo para os principais fluxos.' },
@@ -18,6 +19,8 @@ export default function AjudaPage() {
           Encontre respostas rápidas, tutoriais e canais de atendimento.
         </p>
       </div>
+
+      <HelpChat />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {CARDS.map(({ icon: Icon, title, desc }) => (
