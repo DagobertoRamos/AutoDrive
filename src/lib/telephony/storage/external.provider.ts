@@ -28,6 +28,7 @@ export function isSafeExternalUrl(raw: string): boolean {
 
 export class ExternalUrlStorageProvider implements RecordingStorageProvider {
   readonly kind = 'external'
+  readonly writable = false // origem externa não é destino de arquivamento
   get ready(): boolean { return allowedHosts().length > 0 }
 
   canHandle(ref: string): boolean {

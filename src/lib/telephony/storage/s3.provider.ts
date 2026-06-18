@@ -66,8 +66,8 @@ export function parseS3Ref(ref: string, defaultBucket: string): { bucket: string
   return { bucket: defaultBucket, key: ref.replace(/^\/+/, '') }
 }
 
-/** Gera a URL GET pré-assinada (SigV4). `nowMs` injetável p/ testes. */
-export function presignGet(cfg: S3Config, bucket: string, key: string, ttlSeconds: number, nowMs: number): string {
+/** Gera URL pré-assinada (SigV4) para um método. `nowMs` injetável p/ testes. */
+export function presign(method: 'GET' | 'PUT', cfg: S3Config, bucket: string, key: string, ttlSeconds: number, nowMs: number): string {
   const ep = new URL(cfg.endpoint)
   const host = cfg.forcePathStyle ? ep.host : `${bucket}.${ep.host}`
   const path = cfg.forcePathStyle ? `/${enc(bucket)}/${encPath(key)}` : `/${encPath(key)}`
@@ -82,7 +82,7 @@ export function presignGet(cfg: S3Config, bucket: string, key: string, ttlSecond
     'X-Amz-SignedHeaders': 'host',
   }
   const canonicalQuery = Object.keys(query).sort().map((k) => `${enc(k)}=${enc(query[k])}`).join('&')
-  const canonicalRequest = ['GET', path, canonicalQuery, `host:${host}\n`, 'host', 'UNSIGNED-PAYLOAD'].join('\n')
+  const canonicalRequest = [method, path, canonicalQuery, `host:${host}\n`, 'host', 'UNSIGNED-PAYLOAD'].join('\n')
   const stringToSign = ['AWS4-HMAC-SHA256', amzdate, scope, sha256hex(canonicalRequest)].join('\n')
 
   const kDate = hmac(`AWS4${cfg.secretAccessKey}`, datestamp)
@@ -94,9 +94,15 @@ export function presignGet(cfg: S3Config, bucket: string, key: string, ttlSecond
   return `${ep.protocol}//${host}${path}?${canonicalQuery}&X-Amz-Signature=${signature}`
 }
 
+/** Compat: presign de GET. */
+export function presignGet(cfg: S3Config, bucket: string, key: string, ttlSeconds: number, nowMs: number): string {
+  return presign('GET', cfg, bucket, key, ttlSeconds, nowMs)
+}
+
 export class S3StorageProvider implements RecordingStorageProvider {
   readonly kind = 's3'
   get ready(): boolean { return readConfig() !== null }
+  get writable(): boolean { return this.ready }
 
   canHandle(ref: string): boolean {
     if (ref.startsWith('s3://')) return true
@@ -110,5 +116,19 @@ export class S3StorageProvider implements RecordingStorageProvider {
     const parsed = parseS3Ref(ref, cfg.bucket)
     if (!parsed) return { kind: 'unavailable', reason: 'Referência de gravação inválida para S3.' }
     return { kind: 'redirect', url: presignGet(cfg, parsed.bucket, parsed.key, ttlSeconds, nowMs) }
+  }
+
+  /** Sobe os bytes via PUT pré-assinado e devolve a referência `s3://bucket/key`. */
+  async putObject(key: string, body: Uint8Array, contentType: string): Promise<string> {
+    const cfg = readConfig()
+    if (!cfg) throw new Error('Storage S3 não configurado.')
+    const url = presign('PUT', cfg, cfg.bucket, key, 300, Date.now())
+    // undici aceita Uint8Array como corpo; o cast contorna a divergência de lib (ArrayBufferLike).
+    const res = await fetch(url, { method: 'PUT', body: body as unknown as BodyInit, headers: { 'content-type': contentType } })
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      throw new Error(`Falha ao enviar para o storage (${res.status}). ${detail.slice(0, 200)}`)
+    }
+    return `s3://${cfg.bucket}/${key}`
   }
 }

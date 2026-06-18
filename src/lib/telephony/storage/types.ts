@@ -15,8 +15,12 @@ export interface RecordingStorageProvider {
   readonly kind: string
   /** true se este provider está configurado e pronto para uso. */
   readonly ready: boolean
+  /** true se este provider sabe ARMAZENAR objetos (destino de arquivamento). */
+  readonly writable: boolean
   /** true se a referência (storageUrl/chave) pertence a este provider. */
   canHandle(ref: string): boolean
   /** Como servir a gravação a partir da referência (TTL em segundos). */
   getPlayback(ref: string, ttlSeconds: number, nowMs?: number): PlaybackSource
+  /** Armazena bytes e devolve a referência canônica (ex.: `s3://bucket/key`). */
+  putObject?(key: string, body: Uint8Array, contentType: string): Promise<string>
 }

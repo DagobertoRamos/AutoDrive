@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { parseS3Ref, presignGet, listStorageProviders, resolveRecordingSource } from './index'
+import { parseS3Ref, presign, presignGet, listStorageProviders, resolveRecordingSource, getManagedStorage } from './index'
 
 const ENV_KEYS = ['TELEPHONY_STORAGE_ENDPOINT', 'TELEPHONY_STORAGE_REGION', 'TELEPHONY_STORAGE_BUCKET', 'TELEPHONY_STORAGE_ACCESS_KEY_ID', 'TELEPHONY_STORAGE_SECRET_ACCESS_KEY', 'TELEPHONY_STORAGE_FORCE_PATH_STYLE'] as const
 const saved: Record<string, string | undefined> = {}
@@ -62,6 +62,11 @@ describe('presignGet (SigV4)', () => {
     const url = presignGet({ ...CFG, forcePathStyle: false }, 'recs', 'k.mp3', 300, now)
     expect(new URL(url).host).toBe('recs.s3.us-east-1.amazonaws.com')
   })
+  it('presign PUT difere do GET (método assinado)', () => {
+    const get = presign('GET', CFG, 'recs', 'k.mp3', 300, now)
+    const put = presign('PUT', CFG, 'recs', 'k.mp3', 300, now)
+    expect(new URL(get).searchParams.get('X-Amz-Signature')).not.toBe(new URL(put).searchParams.get('X-Amz-Signature'))
+  })
 })
 
 describe('registry', () => {
@@ -74,5 +79,10 @@ describe('registry', () => {
     const src = resolveRecordingSource('s3://recs/calls/x.mp3', 300, 1_700_000_000_000)
     expect(src.kind).toBe('redirect')
     if (src.kind === 'redirect') expect(src.url).toContain('X-Amz-Signature=')
+  })
+  it('getManagedStorage retorna o S3 (writable) quando configurado', () => {
+    const m = getManagedStorage()
+    expect(m?.kind).toBe('s3')
+    expect(typeof m?.putObject).toBe('function')
   })
 })

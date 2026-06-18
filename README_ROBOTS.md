@@ -911,6 +911,22 @@
 - **NÃO implementado (intencional):** download das gravações do provedor para o storage próprio (depende de credenciais oficiais do provedor de telefonia) e providers GCS/Azure/Vercel Blob (a interface está pronta — implementar quando definido). O modo S3 já gera presign real; basta configurar as envs.
 - **AVISO p/ outra IA:** storage é plugável em `src/lib/telephony/storage/` — novos provedores implementam `RecordingStorageProvider` e entram no `PROVIDERS` do registry. S3-compatível já cobre a maioria (AWS/R2/Spaces/MinIO/Wasabi/B2) com presign SigV4 real. NÃO expor `storageUrl` ao cliente; servir sempre via `/play`→`/stream`. Preserve a guarda anti-SSRF do provider externo.
 
+### LOG 0084 — 2026-06-18 — Claude (Opus 4.8) — Telefonia: download da gravação do provedor → bucket próprio (arquivamento)
+- **Branch:** main (worktree). **Sem migration.** Implementa o arquivamento: baixar a gravação da URL do provedor e guardar no SEU bucket (a gravação passa a ser sua — retenção/LGPD, independe da URL do provedor).
+- **Tarefa:** "Download das gravações do provedor → seu bucket".
+- **Arquivos:**
+  - `storage/types.ts` (alterado) — interface ganha `writable` + `putObject?(key,body,contentType)→ref`.
+  - `storage/s3.provider.ts` (alterado) — `presign('GET'|'PUT')` (generalizado), `writable=ready`, **`putObject`** via **PUT pré-assinado** (sobe os bytes e devolve `s3://bucket/key`). `external.provider` marcado `writable=false`.
+  - `storage/registry.ts` (alterado) — `getManagedStorage()` (primeiro provider writable+ready com `putObject`).
+  - `src/lib/telephony/archive.ts` (novo) — `archiveRecording(id, actorUserId?)`: valida storage gerenciado + URL externa (anti-SSRF) → baixa com **auth da conexão** (`downloadAuthHeaders`: Twilio Basic AccountSid:AuthToken da doc pública; Bearer/Basic genéricos por `downloadBearer`/`downloadUser+downloadPassword`/`downloadAuthHeader`) → **timeout 30s + limite de tamanho** (`TELEPHONY_RECORDING_MAX_BYTES`, default 50MB) → `putObject` → atualiza `storageUrl=s3://…`, `mimeType`, `sizeBytes`, `status=AVAILABLE` → audita (`TelephonyIntegrationLog` RECORDING_ARCHIVE). Idempotente (já `s3://` → `already_archived`).
+  - `recordings/[id]/archive/route.ts` (novo) — POST `marketing.telephony.manage`, tenant-scoped (`ownsTenant`), chama o serviço. Uso manual ou por job futuro.
+  - Testes: `storage.test.ts` (+presign PUT, +`getManagedStorage`), `archive.test.ts` (resolução de auth: Twilio/Bearer/Basic/none).
+- **Segurança:** download só de host em allowlist (anti-SSRF), com timeout e teto de tamanho; auth do provedor decifrada em runtime (nunca logada); após arquivar, o áudio é servido pelo bucket próprio via `/play`→`/stream` (presign S3, link curto) — a URL do provedor deixa de ser usada.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **163/163** (6 novos); `next build` OK (`--max-old-space-size=8192`); `/api/marketing/telephony/recordings/[id]/archive` no manifest.
+- **Config:** storage gerenciado (`TELEPHONY_STORAGE_*`) + allowlist do host de download (`TELEPHONY_RECORDING_ALLOWED_HOSTS`) + credenciais de download nas secrets da conexão (Twilio: `accountSid`/`authToken`; genérico: `downloadBearer` etc.). Opcional: `TELEPHONY_RECORDING_MAX_BYTES`.
+- **NÃO implementado (intencional):** disparo automático do arquivamento ao receber o webhook (hoje é via endpoint/job — evita download dentro da request do webhook; um job/cron pode varrer gravações `AVAILABLE` com `storageUrl` https e chamar `archiveRecording`); providers GCS/Azure/Blob (interface pronta).
+- **AVISO p/ outra IA:** arquivamento em `archive.ts` (download→bucket). Só baixa de host em allowlist; preserve isso. Para automatizar, criar job que lista gravações com `storageUrl` https e chama `archiveRecording`. Depois de arquivado, `storageUrl` vira `s3://…` e o playback usa presign do próprio bucket.
+
 ---
 
 ## TAREFAS PENDENTES

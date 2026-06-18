@@ -3,6 +3,6 @@
 // =============================================================================
 
 export * from './types'
-export { resolveRecordingSource, getStorageProviderFor, listStorageProviders } from './registry'
+export { resolveRecordingSource, getStorageProviderFor, getManagedStorage, listStorageProviders } from './registry'
 export { isSafeExternalUrl, ExternalUrlStorageProvider } from './external.provider'
-export { S3StorageProvider, presignGet, parseS3Ref } from './s3.provider'
+export { S3StorageProvider, presign, presignGet, parseS3Ref } from './s3.provider'

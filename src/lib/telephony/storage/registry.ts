@@ -24,6 +24,11 @@ export function getStorageProviderFor(ref: string): RecordingStorageProvider | n
   return PROVIDERS.find((p) => p.canHandle(ref)) ?? null
 }
 
+/** Provider de DESTINO p/ arquivamento (escrita) — o primeiro writable e pronto. */
+export function getManagedStorage(): RecordingStorageProvider | null {
+  return PROVIDERS.find((p) => p.writable && p.ready && typeof p.putObject === 'function') ?? null
+}
+
 /** Decide como servir a gravação a partir da referência registrada. */
 export function resolveRecordingSource(ref: string | null | undefined, ttlSeconds = 300, nowMs: number = Date.now()): PlaybackSource {
   if (!ref) return { kind: 'unavailable', reason: 'Gravação sem arquivo associado.' }
