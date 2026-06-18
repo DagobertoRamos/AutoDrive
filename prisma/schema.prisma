@@ -19,16 +19,16 @@ datasource db {
 
 /// Hierarquia de perfis do sistema (pirâmide de acesso)
 enum UserRole {
-  MASTER                 // Acesso total — controle da plataforma SaaS
-  ADM                    // Administrador do tenant — quase total
-  GERENTE_GERAL          // Gerencia unidades, gerentes, relatórios
+  MASTER // Acesso total — controle da plataforma SaaS
+  ADM // Administrador do tenant — quase total
+  GERENTE_GERAL // Gerencia unidades, gerentes, relatórios
   GERENTE_ADMINISTRATIVO // Gerente administrativo/financeiro do tenant (ILA/IOF, garantias)
-  GERENTE                // Gerencia equipe e pendências da unidade
-  VENDEDOR_LIDER         // Líder de equipe com permissões ampliadas
-  VENDEDOR               // Vê suas próprias pendências e comissões
-  FINANCEIRO             // Setor financeiro — ILA/IOF, conferência, garantias
-  USUARIO_LIDER          // Módulos específicos com permissão ampliada
-  USUARIO                // Acesso básico conforme permissões
+  GERENTE // Gerencia equipe e pendências da unidade
+  VENDEDOR_LIDER // Líder de equipe com permissões ampliadas
+  VENDEDOR // Vê suas próprias pendências e comissões
+  FINANCEIRO // Setor financeiro — ILA/IOF, conferência, garantias
+  USUARIO_LIDER // Módulos específicos com permissão ampliada
+  USUARIO // Acesso básico conforme permissões
 }
 
 enum UserStatus {
@@ -36,7 +36,7 @@ enum UserStatus {
   INATIVO
   PENDENTE
   BLOQUEADO
-  SUSPENSO    // suspensão temporária (ex.: férias, investigação) — diferente de BLOQUEADO (segurança) e INATIVO (encerrado)
+  SUSPENSO // suspensão temporária (ex.: férias, investigação) — diferente de BLOQUEADO (segurança) e INATIVO (encerrado)
 }
 
 enum TenantPlan {
@@ -92,9 +92,9 @@ enum DealType {
 enum DealStatus {
   // ── Status base (legado — mantidos para compatibilidade) ──────────────────
   RASCUNHO
-  AGUARDANDO_LIBERACAO        // legado → equivale a AGUARDANDO_APROVACAO
-  LIBERADA                    // legado → equivale a APROVADA
-  RECUSADA                    // legado → equivale a DESAPROVADA
+  AGUARDANDO_LIBERACAO // legado → equivale a AGUARDANDO_APROVACAO
+  LIBERADA // legado → equivale a APROVADA
+  RECUSADA // legado → equivale a DESAPROVADA
   EM_ANDAMENTO
   FINALIZADA
   CANCELADA
@@ -343,59 +343,59 @@ enum EvaluationIntention {
 
 /// Tenant = Loja/Revendedora cadastrada na plataforma AutoDrive
 model Tenant {
-  id                String       @id @default(cuid())
-  publicId          String       @unique // ex: AD-7K92P00LJ01
-  slug              String       @unique // ex: easycar-sp
-  name              String       // nome comercial da loja (= nomeFantasia ou razaoSocial)
-  razaoSocial       String?
-  nomeFantasia      String?
-  cnpj              String?      @unique
-  cpf               String?
-  inscricaoEstadual String?
-  isentoInscricaoEstadual Boolean @default(false)
-  situacaoCadastral String?      // ATIVA, INAPTA, BAIXADA, SUSPENSA
-  dataAbertura      DateTime?
-  cnaeCode          String?      // CNAE principal ex: "4511-1/01"
+  id                      String       @id @default(cuid())
+  publicId                String       @unique // ex: AD-7K92P00LJ01
+  slug                    String       @unique // ex: easycar-sp
+  name                    String // nome comercial da loja (= nomeFantasia ou razaoSocial)
+  razaoSocial             String?
+  nomeFantasia            String?
+  cnpj                    String?      @unique
+  cpf                     String?
+  inscricaoEstadual       String?
+  isentoInscricaoEstadual Boolean      @default(false)
+  situacaoCadastral       String? // ATIVA, INAPTA, BAIXADA, SUSPENSA
+  dataAbertura            DateTime?
+  cnaeCode                String? // CNAE principal ex: "4511-1/01"
   // Endereço estruturado (adicional ao address legado)
-  address           String?      // campo legado — string única
-  logradouro        String?
-  numero            String?
-  complemento       String?
-  bairro            String?
-  city              String?
-  state             String?
-  zipCode           String?      // CEP normalizado (sem hífen)
-  phone             String?
-  email             String?
-  logoUrl           String?
-  faviconUrl        String?
-  slogan            String?
-  primaryColor      String?      @default("#166534")
-  secondaryColor    String?
-  plan              TenantPlan   @default(BASICO)
-  status            TenantStatus @default(TESTE)
-  statusReason      String?      // motivo de suspensão/banimento
-  responsavel       String?      // nome do responsável
-  responsavelEmail  String?
-  responsavelPhone  String?
-  trialEndsAt       DateTime?
+  address                 String? // campo legado — string única
+  logradouro              String?
+  numero                  String?
+  complemento             String?
+  bairro                  String?
+  city                    String?
+  state                   String?
+  zipCode                 String? // CEP normalizado (sem hífen)
+  phone                   String?
+  email                   String?
+  logoUrl                 String?
+  faviconUrl              String?
+  slogan                  String?
+  primaryColor            String?      @default("#166534")
+  secondaryColor          String?
+  plan                    TenantPlan   @default(BASICO)
+  status                  TenantStatus @default(TESTE)
+  statusReason            String? // motivo de suspensão/banimento
+  responsavel             String? // nome do responsável
+  responsavelEmail        String?
+  responsavelPhone        String?
+  trialEndsAt             DateTime?
   // Limites do plano
-  maxUsers          Int          @default(10)
-  maxVehicles       Int          @default(100)
-  maxUnits          Int          @default(1)
-  notes             String?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  maxUsers                Int          @default(10)
+  maxVehicles             Int          @default(100)
+  maxUnits                Int          @default(1)
+  notes                   String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
   // Relations
-  units        Unit[]
-  users        User[]
-  modules      TenantModule[]
-  deals        Deal[]
-  partners     TenantPartner[]
-  featureFlags TenantFeatureFlag[]
-  goals        Goal[]
-  rankingRules RankingRule[]
+  units         Unit[]
+  users         User[]
+  modules       TenantModule[]
+  deals         Deal[]
+  partners      TenantPartner[]
+  featureFlags  TenantFeatureFlag[]
+  goals         Goal[]
+  rankingRules  RankingRule[]
   rankingScores RankingScore[]
 
   @@index([status])
@@ -408,12 +408,12 @@ model Tenant {
 model TenantModule {
   id         String    @id @default(cuid())
   tenantId   String
-  module     String    // ex: 'commissions', 'crm', 'marketing'
+  module     String // ex: 'commissions', 'crm', 'marketing'
   active     Boolean   @default(true)
-  limit      Int?      // limite de uso (0 = ilimitado)
+  limit      Int? // limite de uso (0 = ilimitado)
   enabledAt  DateTime?
   disabledAt DateTime?
-  enabledBy  String?   // userId de quem ativou (MASTER)
+  enabledBy  String? // userId de quem ativou (MASTER)
   notes      String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -427,31 +427,31 @@ model TenantModule {
 
 /// Sócios/responsáveis vinculados ao tenant (contrato social)
 model TenantPartner {
-  id           String      @id @default(cuid())
-  tenantId     String
-  cpf          String      // CPF normalizado (somente dígitos)
-  nomeCompleto String
-  rg           String?
-  celular      String?     // normalizado (somente dígitos)
-  email        String?
+  id             String      @id @default(cuid())
+  tenantId       String
+  cpf            String // CPF normalizado (somente dígitos)
+  nomeCompleto   String
+  rg             String?
+  celular        String? // normalizado (somente dígitos)
+  email          String?
   dataNascimento DateTime?
-  role         PartnerRole @default(SOCIO)
-  participacao Decimal?    @db.Decimal(5, 2)  // % de participação/cota
-  principal    Boolean     @default(false)    // sócio majoritário / responsável principal
+  role           PartnerRole @default(SOCIO)
+  participacao   Decimal?    @db.Decimal(5, 2) // % de participação/cota
+  principal      Boolean     @default(false) // sócio majoritário / responsável principal
   // Endereço do sócio
-  cep          String?
-  logradouro   String?
-  numero       String?
-  complemento  String?
-  bairro       String?
-  cidade       String?
-  estado       String?
+  cep            String?
+  logradouro     String?
+  numero         String?
+  complemento    String?
+  bairro         String?
+  cidade         String?
+  estado         String?
   // Usuário criado automaticamente para este sócio
-  userId       String?     @unique
-  active       Boolean     @default(true)
-  notes        String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  userId         String?     @unique
+  active         Boolean     @default(true)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id])
@@ -466,52 +466,52 @@ model TenantPartner {
 // ═════════════════════════════════════════════════════════════════════════════
 
 model User {
-  id                String     @id @default(cuid())
-  tenantId          String?    // null = usuário de plataforma (MASTER)
-  name              String
-  email             String     @unique
-  cpf               String?    @unique
-  phone             String?
-  passwordHash      String
-  role              UserRole   @default(USUARIO)
-  status            UserStatus @default(PENDENTE)
-  unitId            String?
-  image             String?
-  mustChangePassword Boolean   @default(false)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  lastLoginAt       DateTime?
+  id                 String     @id @default(cuid())
+  tenantId           String? // null = usuário de plataforma (MASTER)
+  name               String
+  email              String     @unique
+  cpf                String?    @unique
+  phone              String?
+  passwordHash       String
+  role               UserRole   @default(USUARIO)
+  status             UserStatus @default(PENDENTE)
+  unitId             String?
+  image              String?
+  mustChangePassword Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  lastLoginAt        DateTime?
 
   // Relations
-  tenant                 Tenant?                 @relation(fields: [tenantId], references: [id])
-  unit                   Unit?                   @relation(fields: [unitId], references: [id])
-  seller                 Seller?
-  manager                Manager?
-  notifications          Notification[]
-  commissionExtracts     CommissionExtract[]
-  commissionAdjustments  CommissionAdjustment[]
-  systemSettings         SystemSetting[]         @relation("SettingUpdatedBy")
-  auditLogs              AuditLog[]
-  passwordResets         PasswordReset[]
-  apiTokens              ApiToken[]
-  pendenciesResolved      Pendency[]              @relation("ResolvedByUser")
-  pendenciesAssigned      Pendency[]              @relation("AssignedPendencies")
-  pendenciesValidated     Pendency[]              @relation("ValidatedPendencies")
-  pendenciesEscalated     Pendency[]              @relation("EscalatedByUser")
-  pendencyStatusHistory   PendencyStatusHistory[] @relation("ChangedByUser")
+  tenant                  Tenant?                   @relation(fields: [tenantId], references: [id])
+  unit                    Unit?                     @relation(fields: [unitId], references: [id])
+  seller                  Seller?
+  manager                 Manager?
+  notifications           Notification[]
+  commissionExtracts      CommissionExtract[]
+  commissionAdjustments   CommissionAdjustment[]
+  systemSettings          SystemSetting[]           @relation("SettingUpdatedBy")
+  auditLogs               AuditLog[]
+  passwordResets          PasswordReset[]
+  apiTokens               ApiToken[]
+  pendenciesResolved      Pendency[]                @relation("ResolvedByUser")
+  pendenciesAssigned      Pendency[]                @relation("AssignedPendencies")
+  pendenciesValidated     Pendency[]                @relation("ValidatedPendencies")
+  pendenciesEscalated     Pendency[]                @relation("EscalatedByUser")
+  pendencyStatusHistory   PendencyStatusHistory[]   @relation("ChangedByUser")
   pendencyComments        PendencyComment[]
   importJobs              ImportJob[]
   notificationDeliveries  NotificationDelivery[]
   notificationPreference  NotificationPreference?
   contractParseResults    ContractParseResult[]
-  dealReleaseRequests     DealReleaseRequest[]    @relation("ReleasedByUser")
-  managedDeals            Deal[]                  @relation("DealManager")
-  vehicleEvaluations      VehicleEvaluation[]     @relation("EvaluatedByUser")
-  resolvedStockPendencies VehicleStockPendency[]  @relation("ResolvedStockPendencies")
+  dealReleaseRequests     DealReleaseRequest[]      @relation("ReleasedByUser")
+  managedDeals            Deal[]                    @relation("DealManager")
+  vehicleEvaluations      VehicleEvaluation[]       @relation("EvaluatedByUser")
+  resolvedStockPendencies VehicleStockPendency[]    @relation("ResolvedStockPendencies")
   tenantPartner           TenantPartner?
-  notificationRules       NotificationRule[]      @relation("NotificationRuleCreator")
+  notificationRules       NotificationRule[]        @relation("NotificationRuleCreator")
   mobileDevices           MobileDevice[]
-  communicationTestLogs   CommunicationTestLog[]  @relation("CommunicationTestLogs")
+  communicationTestLogs   CommunicationTestLog[]    @relation("CommunicationTestLogs")
   autoSyncJobs            GoogleSheetsAutoSyncJob[] @relation("AutoSyncJobCreator")
 
   positionId String?
@@ -582,12 +582,12 @@ model Seller {
   updatedAt      DateTime  @updatedAt
 
   // Relations
-  user            User             @relation(fields: [userId], references: [id])
-  unit            Unit             @relation(fields: [unitId], references: [id])
-  manager         Manager?         @relation("ManagerSellers", fields: [managerId], references: [id])
-  pendencies      Pendency[]       @relation("SellerPendencies")
+  user            User                @relation(fields: [userId], references: [id])
+  unit            Unit                @relation(fields: [unitId], references: [id])
+  manager         Manager?            @relation("ManagerSellers", fields: [managerId], references: [id])
+  pendencies      Pendency[]          @relation("SellerPendencies")
   messageReturns  MessageReturn[]
-  commissionRules CommissionRule[] @relation("SellerCommissionRules")
+  commissionRules CommissionRule[]    @relation("SellerCommissionRules")
   extracts        CommissionExtract[]
   deals           Deal[]
 
@@ -634,51 +634,51 @@ model Manager {
 
 /// Modelo unificado de pessoa (PF ou PJ) — clientes, fornecedores, sócios, etc.
 model Person {
-  id                String     @id @default(cuid())
-  tenantId          String?
-  type              PersonType @default(FISICA)
+  id       String     @id @default(cuid())
+  tenantId String?
+  type     PersonType @default(FISICA)
 
   // Pessoa Física
-  cpf               String?
-  rg                String?
-  nomeMae           String?
-  nomePai           String?
-  dataNascimento    DateTime?
+  cpf            String?
+  rg             String?
+  nomeMae        String?
+  nomePai        String?
+  dataNascimento DateTime?
 
   // Pessoa Jurídica
   cnpj              String?
   razaoSocial       String?
   nomeFantasia      String?
   inscricaoEstadual String?
-  possuiIE          Boolean    @default(false)
+  possuiIE          Boolean @default(false)
 
   // Sócio administrador (PJ)
-  socioAdmCpf       String?
-  socioAdmNome      String?
-  socioAdmNomeMae   String?
-  socioAdmEmail     String?
-  socioAdmPhone     String?
-  socioAdmWhatsapp  Boolean    @default(false)
-  socioAdmCota      Decimal?   @db.Decimal(5, 2)
+  socioAdmCpf      String?
+  socioAdmNome     String?
+  socioAdmNomeMae  String?
+  socioAdmEmail    String?
+  socioAdmPhone    String?
+  socioAdmWhatsapp Boolean  @default(false)
+  socioAdmCota     Decimal? @db.Decimal(5, 2)
 
   // Compartilhados
-  nomeCompleto      String     // nome completo ou razão social para exibição
-  email             String?
-  phone             String?
-  whatsapp          Boolean    @default(false)
+  nomeCompleto String // nome completo ou razão social para exibição
+  email        String?
+  phone        String?
+  whatsapp     Boolean @default(false)
 
   // Endereço
-  cep               String?
-  logradouro        String?
-  numero            String?
-  complemento       String?
-  bairro            String?
-  cidade            String?
-  estado            String?
+  cep         String?
+  logradouro  String?
+  numero      String?
+  complemento String?
+  bairro      String?
+  cidade      String?
+  estado      String?
 
-  notes             String?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   customers Customer[]
@@ -698,7 +698,7 @@ model Person {
 model Customer {
   id        String   @id @default(cuid())
   tenantId  String?
-  personId  String?  // vínculo com Person (modelo universal)
+  personId  String? // vínculo com Person (modelo universal)
   name      String
   cpf       String?
   phone     String?
@@ -724,26 +724,26 @@ model Customer {
 }
 
 model Vehicle {
-  id         String   @id @default(cuid())
-  tenantId   String?
-  unitId     String?  // unidade/revenda responsável
+  id       String  @id @default(cuid())
+  tenantId String?
+  unitId   String? // unidade/revenda responsável
 
   // Identificação
-  plate      String?
-  chassi     String?
-  renavam    String?
+  plate   String?
+  chassi  String?
+  renavam String?
 
   // Descrição
-  brand      String?
-  model      String?
-  version    String?   // versão/trim (ex: "Sport 2.0 4x4 Turbo")
-  year       Int?      // ano de fabricação (campo legado mantido)
-  modelYear  Int?      // ano do modelo
-  color      String?
-  fuel       String?   // GASOLINA, ETANOL, FLEX, DIESEL, ELETRICO, HIBRIDO
+  brand        String?
+  model        String?
+  version      String? // versão/trim (ex: "Sport 2.0 4x4 Turbo")
+  year         Int? // ano de fabricação (campo legado mantido)
+  modelYear    Int? // ano do modelo
+  color        String?
+  fuel         String? // GASOLINA, ETANOL, FLEX, DIESEL, ELETRICO, HIBRIDO
   transmission String? // MANUAL, AUTOMATICO, CVT, SEMI_AUTOMATICO
-  doors      Int?
-  km         Int?
+  doors        Int?
+  km           Int?
 
   // Classificação
   vehicleType   VehicleType?
@@ -752,62 +752,62 @@ model Vehicle {
   // Estoque
   stockType     VehicleStockType?
   stockLocation VehicleStockLocation?
-  stockStatus   VehicleStockStatus?  @default(DISPONIVEL)
+  stockStatus   VehicleStockStatus?   @default(DISPONIVEL)
 
   // Especificações técnicas extras
-  engine        String?   // ex: "1.0 Turbo Flex"
-  displacement  String?   // ex: "999 cc"
-  power         String?   // ex: "116 cv"
-  bodyType      String?   // ex: "Sedan", "SUV", "Hatch"
+  engine       String? // ex: "1.0 Turbo Flex"
+  displacement String? // ex: "999 cc"
+  power        String? // ex: "116 cv"
+  bodyType     String? // ex: "Sedan", "SUV", "Hatch"
 
   // Financeiro
-  salePrice     Decimal?  @db.Decimal(12, 2)
-  purchasePrice Decimal?  @db.Decimal(12, 2)
-  fipeValue     Decimal?  @db.Decimal(12, 2)
-  fipeCode         String?   // código FIPE ex: "005415-6"
+  salePrice          Decimal? @db.Decimal(12, 2)
+  purchasePrice      Decimal? @db.Decimal(12, 2)
+  fipeValue          Decimal? @db.Decimal(12, 2)
+  fipeCode           String? // código FIPE ex: "005415-6"
   fipeReferenceMonth String? // ex: "maio/2026"
 
   // ── Precificação de venda (gerente+ define APÓS aprovação da avaliação) ──
-  promoPrice           Decimal?  @db.Decimal(12, 2)
-  isPromo              Boolean   @default(false)
-  promoStartsAt        DateTime?
-  promoEndsAt          DateTime?
-  isAvailableForSale   Boolean   @default(false)
-  pricingNotes         String?
-  pricedById           String?
-  pricedAt             DateTime?
+  promoPrice         Decimal?  @db.Decimal(12, 2)
+  isPromo            Boolean   @default(false)
+  promoStartsAt      DateTime?
+  promoEndsAt        DateTime?
+  isAvailableForSale Boolean   @default(false)
+  pricingNotes       String?
+  pricedById         String?
+  pricedAt           DateTime?
 
   // Cautelar/perícia
-  cautelarStatus  CautelarStatus?  @default(SEM_CAUTELAR)
-  cautelarNumber  String?
-  cautelarNotes   String?
+  cautelarStatus CautelarStatus? @default(SEM_CAUTELAR)
+  cautelarNumber String?
+  cautelarNotes  String?
 
   // Mídia
   mainPhotoUrl String?
 
   // Origem
-  originEvaluationId String?   // avaliação que originou este cadastro
+  originEvaluationId String? // avaliação que originou este cadastro
 
   // Meta
-  active     Boolean  @default(true)
-  entryDate  DateTime?  // data de entrada no estoque
-  exitDate   DateTime?  // data de saída do estoque
+  active     Boolean   @default(true)
+  entryDate  DateTime? // data de entrada no estoque
+  exitDate   DateTime? // data de saída do estoque
   notes      String?
   customerId String?
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  unit         Unit?        @relation("UnitStockVehicles", fields: [unitId], references: [id])
-  customer     Customer?    @relation(fields: [customerId], references: [id])
-  contracts    Contract[]
-  pendencies   Pendency[]   // pendências de atendimento (modelo existente)
-  dealVehicles DealVehicle[]
-  photos       VehiclePhoto[]
-  evaluations  VehicleEvaluation[]
-  stockPendencies VehicleStockPendency[]  // pendências de estoque configuráveis
-  pricingHistory VehiclePricingHistory[]
+  unit            Unit?                   @relation("UnitStockVehicles", fields: [unitId], references: [id])
+  customer        Customer?               @relation(fields: [customerId], references: [id])
+  contracts       Contract[]
+  pendencies      Pendency[] // pendências de atendimento (modelo existente)
+  dealVehicles    DealVehicle[]
+  photos          VehiclePhoto[]
+  evaluations     VehicleEvaluation[]
+  stockPendencies VehicleStockPendency[] // pendências de estoque configuráveis
+  pricingHistory  VehiclePricingHistory[]
 
   @@index([tenantId])
   @@index([unitId])
@@ -821,21 +821,21 @@ model Vehicle {
 // ── Histórico de precificação de venda ────────────────────────────────────────
 
 model VehiclePricingHistory {
-  id              String    @id @default(cuid())
-  vehicleId       String
-  tenantId        String?
-  changedById     String
-  action          String    // SET_PRICE | UPDATE_PRICE | PROMO_START | PROMO_END | AVAILABILITY_ON | AVAILABILITY_OFF | NOTES_UPDATE
-  oldSalePrice    Decimal?  @db.Decimal(12, 2)
-  newSalePrice    Decimal?  @db.Decimal(12, 2)
-  oldPromoPrice   Decimal?  @db.Decimal(12, 2)
-  newPromoPrice   Decimal?  @db.Decimal(12, 2)
-  oldIsAvailable  Boolean?
-  newIsAvailable  Boolean?
-  oldIsPromo      Boolean?
-  newIsPromo      Boolean?
-  reason          String?
-  createdAt       DateTime  @default(now())
+  id             String   @id @default(cuid())
+  vehicleId      String
+  tenantId       String?
+  changedById    String
+  action         String // SET_PRICE | UPDATE_PRICE | PROMO_START | PROMO_END | AVAILABILITY_ON | AVAILABILITY_OFF | NOTES_UPDATE
+  oldSalePrice   Decimal? @db.Decimal(12, 2)
+  newSalePrice   Decimal? @db.Decimal(12, 2)
+  oldPromoPrice  Decimal? @db.Decimal(12, 2)
+  newPromoPrice  Decimal? @db.Decimal(12, 2)
+  oldIsAvailable Boolean?
+  newIsAvailable Boolean?
+  oldIsPromo     Boolean?
+  newIsPromo     Boolean?
+  reason         String?
+  createdAt      DateTime @default(now())
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
@@ -868,7 +868,7 @@ model VehicleEvaluation {
   id        String  @id @default(cuid())
   tenantId  String?
   unitId    String?
-  vehicleId String?  // preenchido se aprovado e adicionado ao estoque
+  vehicleId String? // preenchido se aprovado e adicionado ao estoque
 
   // Dados do veículo na avaliação
   plate           String?
@@ -887,30 +887,30 @@ model VehicleEvaluation {
   conditionType   VehicleCondition?
 
   // Specs extras capturadas na avaliação
-  doors         Int?
-  engine        String?   // motorização ex: "1.0 Turbo"
-  displacement  String?   // cilindradas ex: "999 cc"
-  power         String?   // potência ex: "116 cv"
-  bodyType      String?   // carroceria ex: "Sedan"
+  doors        Int?
+  engine       String? // motorização ex: "1.0 Turbo"
+  displacement String? // cilindradas ex: "999 cc"
+  power        String? // potência ex: "116 cv"
+  bodyType     String? // carroceria ex: "Sedan"
 
   // FIPE
-  fipeCode            String?
-  fipeReferenceMonth  String?
+  fipeCode           String?
+  fipeReferenceMonth String?
 
   // Dados da avaliação
-  fipeValue      Decimal?  @db.Decimal(12, 2)  // FIPE consultada
-  evaluatedValue Decimal?  @db.Decimal(12, 2)  // valor avaliado pelo avaliador
-  desiredValue   Decimal?  @db.Decimal(12, 2)  // valor desejado pelo proprietário
-  minimumValue   Decimal?  @db.Decimal(12, 2)  // mínimo aceitável para compra
-  suggestedSalePrice Decimal? @db.Decimal(12, 2) // sugestão de preço de venda
-  stockType      VehicleStockType?               // tipo de estoque pós-aprovação
-  evaluationNotes String?
-  result          EvaluationResult    @default(PENDENTE)
-  intention       EvaluationIntention @default(APENAS_AVALIACAO)
+  fipeValue          Decimal?            @db.Decimal(12, 2) // FIPE consultada
+  evaluatedValue     Decimal?            @db.Decimal(12, 2) // valor avaliado pelo avaliador
+  desiredValue       Decimal?            @db.Decimal(12, 2) // valor desejado pelo proprietário
+  minimumValue       Decimal?            @db.Decimal(12, 2) // mínimo aceitável para compra
+  suggestedSalePrice Decimal?            @db.Decimal(12, 2) // sugestão de preço de venda
+  stockType          VehicleStockType? // tipo de estoque pós-aprovação
+  evaluationNotes    String?
+  result             EvaluationResult    @default(PENDENTE)
+  intention          EvaluationIntention @default(APENAS_AVALIACAO)
 
   // Rastreabilidade da consulta por placa
-  lookupSource   String?  // "internal_cache" | "authorized_provider" | "manual"
-  lookupDataRaw  Json?    // payload bruto retornado pelo provedor
+  lookupSource  String? // "internal_cache" | "authorized_provider" | "manual"
+  lookupDataRaw Json? // payload bruto retornado pelo provedor
 
   // Cautelar
   cautelarStatus CautelarStatus?
@@ -930,8 +930,8 @@ model VehicleEvaluation {
   // Meta
   evaluatedById String?
   evaluatedAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   // ── Submissão para aprovação / Cancelamento / Liberação ──────────────────
   // Marca o momento em que o avaliador envia a avaliação para o gerente
@@ -949,9 +949,9 @@ model VehicleEvaluation {
   // Status de workflow paralelo ao `result`: DRAFT | IN_PROGRESS |
   // AGUARDANDO_APROVACAO | LIBERADA | PENDING_REVIEW | FINALIZED |
   // APPROVED | REJECTED | REOPENED | CANCELADA
-  status            String?   @default("DRAFT")
+  status            String?  @default("DRAFT")
   /// Soma de todos os EvaluationService.estimatedCost (cache calculado no save)
-  totalExpenses     Decimal?  @default(0) @db.Decimal(12, 2)
+  totalExpenses     Decimal? @default(0) @db.Decimal(12, 2)
   /// Previsão de dias para realizar os serviços
   estimatedDays     Int?
   /// Feedback final do avaliador no Resumo
@@ -959,22 +959,22 @@ model VehicleEvaluation {
   /// Vínculo com Deal (negociação) quando aplicável
   negotiationId     String?
   /// Para test-drive: usuário realizou? Observações opcionais
-  testDriveDone     Boolean?  @default(false)
+  testDriveDone     Boolean? @default(false)
 
   // ── Decisão do cliente sobre a proposta ───────────────────────────────────
   /// PENDENTE (default) | ACEITA | RECUSADA | ANALISANDO | EXPIRADA | CANCELADA
-  customerDecision      String?   @default("PENDENTE")
-  customerDecisionAt    DateTime?
-  customerDecisionById  String?
+  customerDecision     String?   @default("PENDENTE")
+  customerDecisionAt   DateTime?
+  customerDecisionById String?
   /// Motivo/observação da decisão (especialmente quando RECUSADA)
-  customerDecisionNote  String?
+  customerDecisionNote String?
 
   // ── Disponibilidade operacional (definida pelo gerente+) ──────────────────
   /// Lista CSV das operações em que o veículo pode entrar: "COMPRA,TROCA,CONSIGNACAO"
   /// Default null = nenhuma. O gerente define no momento da liberação.
-  availableFor          String?
+  availableFor       String?
   /// Validade da proposta — se vencer, customerDecision vira EXPIRADA na próxima leitura.
-  proposalValidUntil    DateTime?
+  proposalValidUntil DateTime?
 
   // Relations
   vehicle     Vehicle? @relation(fields: [vehicleId], references: [id])
@@ -995,14 +995,14 @@ model VehicleEvaluation {
 
 /// Categorias de pendência configuráveis pelo MASTER (global) ou ADM (tenant)
 model StockPendencyOption {
-  id              String  @id @default(cuid())
-  tenantId        String?  // null = global (MASTER), preenchido = tenant-specific (ADM)
-  label           String   // nome exibido no filtro e nos cards
+  id              String   @id @default(cuid())
+  tenantId        String? // null = global (MASTER), preenchido = tenant-specific (ADM)
+  label           String // nome exibido no filtro e nos cards
   description     String?
-  category        String?  // DOCUMENTACAO, PREPARACAO, AVALIACAO, FINANCEIRO, OUTROS
-  active          Boolean @default(true)
-  createdByMaster Boolean @default(false)  // MASTER criou → ADM não pode excluir/desativar
-  order           Int     @default(0)
+  category        String? // DOCUMENTACAO, PREPARACAO, AVALIACAO, FINANCEIRO, OUTROS
+  active          Boolean  @default(true)
+  createdByMaster Boolean  @default(false) // MASTER criou → ADM não pode excluir/desativar
+  order           Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -1064,14 +1064,14 @@ model Contract {
   updatedAt       DateTime     @updatedAt
 
   // Relations
-  customer        Customer?           @relation(fields: [customerId], references: [id])
-  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id])
+  customer        Customer?               @relation(fields: [customerId], references: [id])
+  vehicle         Vehicle?                @relation(fields: [vehicleId], references: [id])
   parseResults    ContractParseResult[]
   commissionCalcs CommissionCalculation[]
   pendencies      Pendency[]
 
-  dealId          String?
-  deal            Deal?           @relation("DealContracts", fields: [dealId], references: [id])
+  dealId String?
+  deal   Deal?   @relation("DealContracts", fields: [dealId], references: [id])
 
   @@index([tenantId])
   @@index([customerId])
@@ -1083,19 +1083,19 @@ model Contract {
 }
 
 model ContractParseResult {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   contractId       String?
   pdfOriginalName  String
   pdfPath          String?
   parsedData       Json
   extractedFields  Json?
   validationErrors Json?
-  status           String   @default("PENDENTE")
+  status           String    @default("PENDENTE")
   reviewedById     String?
   reviewedAt       DateTime?
   notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // Relations
   contract   Contract? @relation(fields: [contractId], references: [id])
@@ -1113,53 +1113,53 @@ model ContractParseResult {
 /// Negociação — unidade central do módulo comercial
 model Deal {
   id         String     @id @default(cuid())
-  dealNumber String?    // número legível da negociação (ex: NEG-2026-001)
+  dealNumber String? // número legível da negociação (ex: NEG-2026-001)
   tenantId   String?
   unitId     String?
   sellerId   String?
-  managerId  String?    // gerente responsável (User.id)
-  customerId String?    // Customer vinculado
-  personId   String?    // Person universal PF/PJ
+  managerId  String? // gerente responsável (User.id)
+  customerId String? // Customer vinculado
+  personId   String? // Person universal PF/PJ
   type       DealType   @default(VENDA)
   status     DealStatus @default(RASCUNHO)
   source     String?    @default("MANUAL") // MANUAL, PLANILHA, API
 
   // ── Valores financeiros expandidos ───────────────────────────────────────
-  saleAmount        Decimal? @db.Decimal(12, 2) // valor de venda
-  purchaseAmount    Decimal? @db.Decimal(12, 2) // valor de compra
-  financedAmount    Decimal? @db.Decimal(12, 2) // valor financiado
-  documentationFee  Decimal? @db.Decimal(12, 2) // taxa de documentação
-  signalAmount      Decimal? @db.Decimal(12, 2) // sinal / entrada
-  payoffAmount      Decimal? @db.Decimal(12, 2) // quitação do veículo recebido
-  discountAmount    Decimal? @db.Decimal(12, 2) // desconto concedido
-  servicesAmount    Decimal? @db.Decimal(12, 2) // total de serviços adicionais
-  marginAmount      Decimal? @db.Decimal(12, 2) // margem calculada
-  paymentBank       String?  // banco/financeira
-  paymentType       String?  // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, MISTO
+  saleAmount       Decimal? @db.Decimal(12, 2) // valor de venda
+  purchaseAmount   Decimal? @db.Decimal(12, 2) // valor de compra
+  financedAmount   Decimal? @db.Decimal(12, 2) // valor financiado
+  documentationFee Decimal? @db.Decimal(12, 2) // taxa de documentação
+  signalAmount     Decimal? @db.Decimal(12, 2) // sinal / entrada
+  payoffAmount     Decimal? @db.Decimal(12, 2) // quitação do veículo recebido
+  discountAmount   Decimal? @db.Decimal(12, 2) // desconto concedido
+  servicesAmount   Decimal? @db.Decimal(12, 2) // total de serviços adicionais
+  marginAmount     Decimal? @db.Decimal(12, 2) // margem calculada
+  paymentBank      String? // banco/financeira
+  paymentType      String? // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, MISTO
 
   // ── Retorno financeiro (etapa de financiamento) ──────────────────────────
   // financedAmount (acima) = valor financiado / base do retorno.
-  returnRatePercent      Decimal?         @db.Decimal(5, 2)  // % informado pelo vendedor (0–6)
+  returnRatePercent      Decimal?         @db.Decimal(5, 2) // % informado pelo vendedor (0–6)
   returnGrossValue       Decimal?         @db.Decimal(12, 2) // financedAmount * returnRatePercent/100
-  ilaPercent             Decimal?         @db.Decimal(7, 4)  // restrito a perfis autorizados
+  ilaPercent             Decimal?         @db.Decimal(7, 4) // restrito a perfis autorizados
   ilaValue               Decimal?         @db.Decimal(12, 2) // returnGrossValue * ilaPercent/100
-  iofPercent             Decimal?         @db.Decimal(7, 4)  // restrito a perfis autorizados
+  iofPercent             Decimal?         @db.Decimal(7, 4) // restrito a perfis autorizados
   iofValue               Decimal?         @db.Decimal(12, 2) // returnGrossValue * iofPercent/100
   returnNetValue         Decimal?         @db.Decimal(12, 2) // bruto - ILA - IOF (base da comissão)
   returnCommissionStatus CommissionStatus @default(PREVISTO)
 
   // ── Consignação ──────────────────────────────────────────────────────────
-  consignMinValue   Decimal?  @db.Decimal(12, 2) // valor mínimo aceito
-  consignCommPct    Decimal?  @db.Decimal(6, 4)  // comissão da loja (%)
-  consignDeadline   DateTime?                     // prazo da consignação
+  consignMinValue Decimal?  @db.Decimal(12, 2) // valor mínimo aceito
+  consignCommPct  Decimal?  @db.Decimal(6, 4) // comissão da loja (%)
+  consignDeadline DateTime? // prazo da consignação
 
   // ── Valores de resumo (calculados no save) — mantidos para compatibilidade
-  vehicleValue    Decimal? @db.Decimal(12, 2)
-  tradeValue      Decimal? @db.Decimal(12, 2)
-  totalDebts      Decimal? @db.Decimal(12, 2)
-  totalPayments   Decimal? @db.Decimal(12, 2)
-  balance         Decimal? @db.Decimal(12, 2)
-  changeAmount    Decimal? @db.Decimal(12, 2) // troco
+  vehicleValue  Decimal? @db.Decimal(12, 2)
+  tradeValue    Decimal? @db.Decimal(12, 2)
+  totalDebts    Decimal? @db.Decimal(12, 2)
+  totalPayments Decimal? @db.Decimal(12, 2)
+  balance       Decimal? @db.Decimal(12, 2)
+  changeAmount  Decimal? @db.Decimal(12, 2) // troco
 
   // ── Troco — destinatário ─────────────────────────────────────────────────
   changeBeneficiary    String?
@@ -1170,16 +1170,16 @@ model Deal {
   changePix            String?
 
   // ── Aprovação / Rejeição ─────────────────────────────────────────────────
-  approvalNotes    String?
-  approvedById     String?   // User.id de quem aprovou/rejeitou
-  approvedAt       DateTime?
+  approvalNotes String?
+  approvedById  String? // User.id de quem aprovou/rejeitou
+  approvedAt    DateTime?
 
   // ── Datas operacionais ───────────────────────────────────────────────────
-  deliveryDate     DateTime? // data prevista de entrega
-  finalizedAt      DateTime? // quando foi finalizada
-  cancelledAt      DateTime? // quando foi cancelada
-  cancelledById    String?   // User.id de quem cancelou
-  cancelledReason  String?   // motivo obrigatório do cancelamento
+  deliveryDate    DateTime? // data prevista de entrega
+  finalizedAt     DateTime? // quando foi finalizada
+  cancelledAt     DateTime? // quando foi cancelada
+  cancelledById   String? // User.id de quem cancelou
+  cancelledReason String? // motivo obrigatório do cancelamento
 
   // ── Controle de notificação ──────────────────────────────────────────────
   notificationSentAt DateTime?
@@ -1203,29 +1203,29 @@ model Deal {
   updatedAt DateTime @updatedAt
 
   // Relations
-  tenant          Tenant?              @relation(fields: [tenantId], references: [id])
-  seller          Seller?              @relation(fields: [sellerId], references: [id])
-  customer        Customer?            @relation(fields: [customerId], references: [id])
-  person          Person?              @relation("DealCustomerPerson", fields: [personId], references: [id])
-  manager         User?                @relation("DealManager", fields: [managerId], references: [id])
-  vehicles        DealVehicle[]
-  debts           DealDebt[]
-  payments        DealPayment[]
-  services        DealService[]
-  warrantySales   WarrantySale[]
-  history         DealStatusHistory[]
-  auditLogs       DealAuditLog[]
-  releaseRequests DealReleaseRequest[]
-  appointments    Appointment[]
-  pendencies      Pendency[]           @relation("DealPendencies")
-  contracts       Contract[]           @relation("DealContracts")
-  sheetImportRows SheetImportRow[]     @relation("DealSheetRows")
+  tenant           Tenant?               @relation(fields: [tenantId], references: [id])
+  seller           Seller?               @relation(fields: [sellerId], references: [id])
+  customer         Customer?             @relation(fields: [customerId], references: [id])
+  person           Person?               @relation("DealCustomerPerson", fields: [personId], references: [id])
+  manager          User?                 @relation("DealManager", fields: [managerId], references: [id])
+  vehicles         DealVehicle[]
+  debts            DealDebt[]
+  payments         DealPayment[]
+  services         DealService[]
+  warrantySales    WarrantySale[]
+  history          DealStatusHistory[]
+  auditLogs        DealAuditLog[]
+  releaseRequests  DealReleaseRequest[]
+  appointments     Appointment[]
+  pendencies       Pendency[]            @relation("DealPendencies")
+  contracts        Contract[]            @relation("DealContracts")
+  sheetImportRows  SheetImportRow[]      @relation("DealSheetRows")
   discountRequests DealDiscountRequest[]
-  changes         DealChange[]
-  reopenLogs      DealReopenLog[]
-  attachments     DealAttachment[]
-  documents       DealDocument[]
-  financeProposals FinanceProposal[]   @relation("DealFinanceProposals")
+  changes          DealChange[]
+  reopenLogs       DealReopenLog[]
+  attachments      DealAttachment[]
+  documents        DealDocument[]
+  financeProposals FinanceProposal[]     @relation("DealFinanceProposals")
 
   @@index([tenantId])
   @@index([unitId])
@@ -1243,7 +1243,7 @@ model DealVehicle {
   id             String   @id @default(cuid())
   dealId         String
   vehicleId      String?
-  role           String   // VENDIDO, TROCA, COMPRADO, CONSIGNADO
+  role           String // VENDIDO, TROCA, COMPRADO, CONSIGNADO
   plate          String?
   brand          String?
   model          String?
@@ -1251,14 +1251,14 @@ model DealVehicle {
   color          String?
   chassi         String?
   renavam        String?
-  km             Int?     // quilometragem
-  condition      String?  // OTIMO, BOM, REGULAR, RUIM
+  km             Int? // quilometragem
+  condition      String? // OTIMO, BOM, REGULAR, RUIM
   agreedValue    Decimal? @db.Decimal(12, 2) // valor acordado na negociação
   evaluatedValue Decimal? @db.Decimal(12, 2) // valor avaliado
   fipeValue      Decimal? @db.Decimal(12, 2) // valor FIPE
-  hasFinancing   Boolean  @default(false)    // tem financiamento ativo?
+  hasFinancing   Boolean  @default(false) // tem financiamento ativo?
   payoffValue    Decimal? @db.Decimal(12, 2) // valor de quitação
-  payoffBank     String?  // banco da quitação
+  payoffBank     String? // banco da quitação
   notes          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1276,10 +1276,10 @@ model DealVehicle {
 model DealService {
   id         String   @id @default(cuid())
   dealId     String
-  name       String   // ex: Garantia, Vitrificação, Insulfilm, Higienização…
+  name       String // ex: Garantia, Vitrificação, Insulfilm, Higienização…
   value      Decimal  @db.Decimal(12, 2) // valor cobrado do cliente
   cost       Decimal? @db.Decimal(12, 2) // custo para a loja
-  supplier   String?  // fornecedor
+  supplier   String? // fornecedor
   commission Decimal? @db.Decimal(12, 2) // comissão sobre o serviço
   notes      String?
   createdAt  DateTime @default(now())
@@ -1292,19 +1292,19 @@ model DealService {
 
 /// Auditoria detalhada (campo a campo) de ações nas negociações
 model DealAuditLog {
-  id       String   @id @default(cuid())
-  dealId   String
-  tenantId String?
-  unitId   String?
-  userId   String?
-  userName String?
-  userRole String?
-  action   String   // CRIAR, EDITAR, APROVAR, REJEITAR, CANCELAR, FINALIZAR, STATUS, etc.
-  field    String?  // campo alterado (ex: "status", "saleAmount")
-  oldValue String?  // valor anterior (serializado)
-  newValue String?  // valor novo (serializado)
-  reason   String?  // motivo informado
-  metadata Json?    // dados extras estruturados
+  id        String   @id @default(cuid())
+  dealId    String
+  tenantId  String?
+  unitId    String?
+  userId    String?
+  userName  String?
+  userRole  String?
+  action    String // CRIAR, EDITAR, APROVAR, REJEITAR, CANCELAR, FINALIZAR, STATUS, etc.
+  field     String? // campo alterado (ex: "status", "saleAmount")
+  oldValue  String? // valor anterior (serializado)
+  newValue  String? // valor novo (serializado)
+  reason    String? // motivo informado
+  metadata  Json? // dados extras estruturados
   createdAt DateTime @default(now())
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -1317,16 +1317,16 @@ model DealAuditLog {
 
 /// Débito do veículo envolvido na negociação
 model DealDebt {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   dealId      String
-  vehicleRole String?  // VENDIDO ou TROCA
-  type        String   // MULTA, IPVA, LICENCIAMENTO, FINANCIAMENTO, etc.
+  vehicleRole String? // VENDIDO ou TROCA
+  type        String // MULTA, IPVA, LICENCIAMENTO, FINANCIAMENTO, etc.
   description String?
-  value       Decimal  @db.Decimal(12, 2)
+  value       Decimal   @db.Decimal(12, 2)
   dueDate     DateTime?
-  responsavel String?  // quem paga: COMPRADOR, VENDEDOR, LOJA
+  responsavel String? // quem paga: COMPRADOR, VENDEDOR, LOJA
   notes       String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
@@ -1336,33 +1336,41 @@ model DealDebt {
 
 /// Forma de pagamento da negociação
 model DealPayment {
-  id            String    @id @default(cuid())
-  dealId        String
-  tenantId      String?
-  type          String    // DINHEIRO, PIX, CARTAO_DEBITO, CARTAO_CREDITO, FINANCIAMENTO, BOLETO, TRANSFERENCIA, SINAL, DUPLICATA, OUTROS
-  status        String?   // PENDENTE | CONFIRMADO | CANCELADO (default PENDENTE)
-  value         Decimal   @db.Decimal(12, 2)
-  bank          String?
-  cardBrand     String?   // VISA, MASTER, ELO, AMEX, HIPERCARD, OUTROS
-  pixKey        String?
-  agency        String?
-  account       String?
-  installments  Int?
-  /** Valor da parcela cadastrado manualmente (vindo da financeira). */
-  installmentValue        Decimal? @db.Decimal(12, 2)
-  /** Prazo entre parcelas em dias (30, 60...). */
+  id                      String    @id @default(cuid())
+  dealId                  String
+  tenantId                String?
+  type                    String // DINHEIRO, PIX, CARTAO_DEBITO, CARTAO_CREDITO, FINANCIAMENTO, BOLETO, TRANSFERENCIA, SINAL, DUPLICATA, OUTROS
+  status                  String? // PENDENTE | CONFIRMADO | CANCELADO (default PENDENTE)
+  value                   Decimal   @db.Decimal(12, 2)
+  bank                    String?
+  cardBrand               String? // VISA, MASTER, ELO, AMEX, HIPERCARD, OUTROS
+  pixKey                  String?
+  agency                  String?
+  account                 String?
+  installments            Int?
+  /**
+   * Valor da parcela cadastrado manualmente (vindo da financeira).
+   */
+  installmentValue        Decimal?  @db.Decimal(12, 2)
+  /**
+   * Prazo entre parcelas em dias (30, 60...).
+   */
   installmentIntervalDays Int?
-  /** Retorno da financeira em % (0,10–6,00). Cadastra-se F&I/gerente/financeiro. */
-  returnPct      Decimal?  @db.Decimal(4, 2)
-  /** Placa do veículo identificadora — útil pra negociações em lote multi-veículo. */
-  vehiclePlate   String?
-  firstDueDate   DateTime?
-  dueDate        DateTime?
-  paidAt         DateTime?
-  notes          String?
-  createdById    String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime? @updatedAt
+  /**
+   * Retorno da financeira em % (0,10–6,00). Cadastra-se F&I/gerente/financeiro.
+   */
+  returnPct               Decimal?  @db.Decimal(4, 2)
+  /**
+   * Placa do veículo identificadora — útil pra negociações em lote multi-veículo.
+   */
+  vehiclePlate            String?
+  firstDueDate            DateTime?
+  dueDate                 DateTime?
+  paidAt                  DateTime?
+  notes                   String?
+  createdById             String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime? @updatedAt
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
@@ -1462,23 +1470,23 @@ enum DealAttachmentCategory {
 /// Anexo de negociação — financeiro/back-office sobe comprovantes, contratos, NFe.
 /// Pode ser vinculado a um item específico (payment/debt/payoff/change).
 model DealAttachment {
-  id           String                 @id @default(cuid())
-  dealId       String
-  tenantId     String?
-  category     DealAttachmentCategory
-  fileName     String
-  fileType     String                 // image | pdf | other
-  mimeType     String
-  fileSize     Int?
-  storageKey   String
-  publicUrl    String?
-  notes        String?
+  id         String                 @id @default(cuid())
+  dealId     String
+  tenantId   String?
+  category   DealAttachmentCategory
+  fileName   String
+  fileType   String // image | pdf | other
+  mimeType   String
+  fileSize   Int?
+  storageKey String
+  publicUrl  String?
+  notes      String?
 
   // Vínculos opcionais com itens financeiros da negociação
-  paymentId    String?
-  debtId       String?
-  vehicleId    String?                // para comprovante de quitação por veículo
-  changeId     String?
+  paymentId String?
+  debtId    String?
+  vehicleId String? // para comprovante de quitação por veículo
+  changeId  String?
 
   uploadedById   String?
   uploadedByName String?
@@ -1511,18 +1519,18 @@ enum DocumentTemplateType {
 /// lojista (tenantId setado). Corpo HTML com merge fields tipo `{{cliente.nome}}`.
 model DocumentTemplate {
   id          String               @id @default(cuid())
-  tenantId    String?              // null = padrão global (MASTER)
+  tenantId    String? // null = padrão global (MASTER)
   type        DocumentTemplateType
   name        String
   description String?
   bodyHtml    String               @db.Text
-  variables   Json?                // lista de variáveis disponíveis (para UI de preview)
+  variables   Json? // lista de variáveis disponíveis (para UI de preview)
   active      Boolean              @default(true)
   isDefault   Boolean              @default(false)
 
   createdById String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   documents DealDocument[]
 
@@ -1540,8 +1548,8 @@ model DealDocument {
   templateId String?
   type       DocumentTemplateType
   name       String
-  bodyHtml   String?              @db.Text   // HTML renderizado (snapshot do template + merge)
-  pdfUrl     String?              // PDF gerado (se houver)
+  bodyHtml   String?              @db.Text // HTML renderizado (snapshot do template + merge)
+  pdfUrl     String? // PDF gerado (se houver)
   storageKey String?
 
   // Versão assinada anexada manualmente (upload pelo financeiro/cliente)
@@ -1549,7 +1557,7 @@ model DealDocument {
   signedAt      DateTime?
   signedBy      String?
 
-  status      String               @default("RASCUNHO") // RASCUNHO | GERADO | ASSINADO | ARQUIVADO
+  status String @default("RASCUNHO") // RASCUNHO | GERADO | ASSINADO | ARQUIVADO
 
   createdById String?
   createdAt   DateTime @default(now())
@@ -1583,18 +1591,18 @@ model DealStatusHistory {
 
 /// Solicitação de liberação de negociação
 model DealReleaseRequest {
-  id           String   @id @default(cuid())
-  dealId       String
-  requestedBy  String?  // userId do vendedor
-  requestedAt  DateTime @default(now())
-  reviewedBy   String?  // userId de quem avaliou
-  reviewedAt   DateTime?
-  status       String   @default("PENDENTE") // PENDENTE, LIBERADA, RECUSADA
-  reason       String?  // motivo se recusado
-  notes        String?
+  id          String    @id @default(cuid())
+  dealId      String
+  requestedBy String? // userId do vendedor
+  requestedAt DateTime  @default(now())
+  reviewedBy  String? // userId de quem avaliou
+  reviewedAt  DateTime?
+  status      String    @default("PENDENTE") // PENDENTE, LIBERADA, RECUSADA
+  reason      String? // motivo se recusado
+  notes       String?
 
-  deal         Deal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  reviewer     User? @relation("ReleasedByUser", fields: [reviewedBy], references: [id])
+  deal     Deal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  reviewer User? @relation("ReleasedByUser", fields: [reviewedBy], references: [id])
 
   @@index([dealId])
   @@index([status])
@@ -1606,22 +1614,22 @@ model DealReleaseRequest {
 // ═════════════════════════════════════════════════════════════════════════════
 
 model Appointment {
-  id              String    @id @default(cuid())
-  tenantId        String?
-  dealId          String?
-  type            String    // ENTREGA_VENDA, RECEBIMENTO_TROCA, RECEBIMENTO_COMPRA, RECEBIMENTO_CONSIGNADO, OUTRO
-  title           String
-  description     String?
-  date            DateTime
-  durationMinutes Int?
-  location        String?
-  responsavelId   String?   // userId
-  responsavelName String?
-  googleEventId   String?   // ID no Google Calendar
-  googleCalendarSynced Boolean @default(false)
-  notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                   String   @id @default(cuid())
+  tenantId             String?
+  dealId               String?
+  type                 String // ENTREGA_VENDA, RECEBIMENTO_TROCA, RECEBIMENTO_COMPRA, RECEBIMENTO_CONSIGNADO, OUTRO
+  title                String
+  description          String?
+  date                 DateTime
+  durationMinutes      Int?
+  location             String?
+  responsavelId        String? // userId
+  responsavelName      String?
+  googleEventId        String? // ID no Google Calendar
+  googleCalendarSynced Boolean  @default(false)
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   deal Deal? @relation(fields: [dealId], references: [id])
 
@@ -1656,32 +1664,32 @@ model Service {
 }
 
 model Warranty {
-  id                String   @id @default(cuid())
-  tenantId          String?
-  name              String
-  provider          String?
+  id                          String   @id @default(cuid())
+  tenantId                    String?
+  name                        String
+  provider                    String?
   // ── Campos legados (mantidos p/ compatibilidade com WarrantyRule/CommissionRule)
-  defaultValue      Decimal  @default(0) @db.Decimal(10, 2)
-  minValue          Decimal  @default(0) @db.Decimal(10, 2)
-  defaultCommission Decimal  @default(0) @db.Decimal(10, 2)
-  commissionType    String   @default("PERCENTUAL")
+  defaultValue                Decimal  @default(0) @db.Decimal(10, 2)
+  minValue                    Decimal  @default(0) @db.Decimal(10, 2)
+  defaultCommission           Decimal  @default(0) @db.Decimal(10, 2)
+  commissionType              String   @default("PERCENTUAL")
   // ── Precificação rica (valor cheio/reduzido + adicional prêmio/luxo) ───────
-  coverageType      String?  // ex: "150 itens"
-  fullPrice         Decimal  @default(0) @db.Decimal(12, 2)
-  reducedPrice      Decimal  @default(0) @db.Decimal(12, 2)
-  hasPremiumAddon   Boolean  @default(false)
-  premiumAddonName  String?
-  premiumAddonValue Decimal  @default(0) @db.Decimal(12, 2)
+  coverageType                String? // ex: "150 itens"
+  fullPrice                   Decimal  @default(0) @db.Decimal(12, 2)
+  reducedPrice                Decimal  @default(0) @db.Decimal(12, 2)
+  hasPremiumAddon             Boolean  @default(false)
+  premiumAddonName            String?
+  premiumAddonValue           Decimal  @default(0) @db.Decimal(12, 2)
   // ── Comissões fixas por tipo de venda (configuráveis no cadastro) ──────────
-  reducedSaleCommissionValue  Decimal @default(0) @db.Decimal(12, 2)
-  fullSaleCommissionValue     Decimal @default(0) @db.Decimal(12, 2)
-  premiumAddonCommissionValue Decimal @default(0) @db.Decimal(12, 2)
-  active            Boolean  @default(true)
-  notes             String?
-  createdById       String?
-  updatedById       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  reducedSaleCommissionValue  Decimal  @default(0) @db.Decimal(12, 2)
+  fullSaleCommissionValue     Decimal  @default(0) @db.Decimal(12, 2)
+  premiumAddonCommissionValue Decimal  @default(0) @db.Decimal(12, 2)
+  active                      Boolean  @default(true)
+  notes                       String?
+  createdById                 String?
+  updatedById                 String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 
   // Relations
   commissionRules CommissionRule[] @relation("WarrantyCommissionRules")
@@ -1694,8 +1702,8 @@ model Warranty {
 
 /// Tipo de venda da garantia
 enum WarrantySaleType {
-  FULL     // valor cheio
-  REDUCED  // valor reduzido
+  FULL // valor cheio
+  REDUCED // valor reduzido
 }
 
 /// Estado da venda da garantia
@@ -1715,10 +1723,10 @@ model WarrantySale {
   warrantyId        String
   sellerId          String?
   saleType          WarrantySaleType
-  basePrice         Decimal            @db.Decimal(12, 2)  // fullPrice ou reducedPrice no momento da venda
+  basePrice         Decimal            @db.Decimal(12, 2) // fullPrice ou reducedPrice no momento da venda
   hasPremiumAddon   Boolean            @default(false)
   premiumAddonValue Decimal            @default(0) @db.Decimal(12, 2)
-  finalPrice        Decimal            @db.Decimal(12, 2)  // basePrice + (premium? premiumAddonValue : 0)
+  finalPrice        Decimal            @db.Decimal(12, 2) // basePrice + (premium? premiumAddonValue : 0)
   status            WarrantySaleStatus @default(ATIVA)
   createdBy         String?
   createdAt         DateTime           @default(now())
@@ -1739,76 +1747,76 @@ model WarrantySale {
 // ═════════════════════════════════════════════════════════════════════════════
 
 model Pendency {
-  id               String           @id @default(cuid())
-  tenantId         String?
-  responsibleId    String
-  managerId        String?
-  customerId       String?
-  vehicleId        String?
-  contractId       String?
-  customerName     String
-  plate            String?
-  vehicle          String?
-  negotiation      String?
-  description      String?
-  lead             String?
-  priority         PendencyPriority @default(MEDIA)
-  status           PendencyStatus   @default(ABERTA)
-  type             String?
-  unitId           String
-  chargeRecipient  String?
-  dueDate          DateTime?
-  resolvedAt       DateTime?
-  resolvedByUserId String?
-  lastSentAt       DateTime?
-  nextSendAt       DateTime?
-  totalSent        Int              @default(0)
-  maxSends         Int?
-  sendsPerDay      Int?
-  automaticSend    Boolean          @default(false)
-  frequency        String?
-  allowedDays      String[]
-  startTime        String?
-  endTime          String?
-  templateId       String?
-  source           String?
-  referenceMonth   String?
+  id                String           @id @default(cuid())
+  tenantId          String?
+  responsibleId     String
+  managerId         String?
+  customerId        String?
+  vehicleId         String?
+  contractId        String?
+  customerName      String
+  plate             String?
+  vehicle           String?
+  negotiation       String?
+  description       String?
+  lead              String?
+  priority          PendencyPriority @default(MEDIA)
+  status            PendencyStatus   @default(ABERTA)
+  type              String?
+  unitId            String
+  chargeRecipient   String?
+  dueDate           DateTime?
+  resolvedAt        DateTime?
+  resolvedByUserId  String?
+  lastSentAt        DateTime?
+  nextSendAt        DateTime?
+  totalSent         Int              @default(0)
+  maxSends          Int?
+  sendsPerDay       Int?
+  automaticSend     Boolean          @default(false)
+  frequency         String?
+  allowedDays       String[]
+  startTime         String?
+  endTime           String?
+  templateId        String?
+  source            String?
+  referenceMonth    String?
   // Central de Avisos — campos de severidade, SLA, atribuição e rastreamento
-  severity         String?          // LOW | MEDIUM | HIGH | CRITICAL (complementa priority)
-  slaMinutes       Int?             // tempo alvo em minutos para resolução
-  slaDeadline      DateTime?        // calculado: createdAt + slaMinutes
-  assignedUserId   String?          // usuário designado para tratar
-  originModule     String?          // DEALS | COMMISSIONS | STOCK | CRM | WHATSAPP | MANUAL
-  originRecordId   String?          // ID do registro que originou a pendência
-  cancelReason     String?
-  reopenedAt       DateTime?
-  validatedAt      DateTime?        // quando foi validada como resolvida
-  validatedByUserId String?         // quem validou
-  escalatedAt      DateTime?
-  escalatedByUserId String?         // quem escalou
-  notes            String?
+  severity          String? // LOW | MEDIUM | HIGH | CRITICAL (complementa priority)
+  slaMinutes        Int? // tempo alvo em minutos para resolução
+  slaDeadline       DateTime? // calculado: createdAt + slaMinutes
+  assignedUserId    String? // usuário designado para tratar
+  originModule      String? // DEALS | COMMISSIONS | STOCK | CRM | WHATSAPP | MANUAL
+  originRecordId    String? // ID do registro que originou a pendência
+  cancelReason      String?
+  reopenedAt        DateTime?
+  validatedAt       DateTime? // quando foi validada como resolvida
+  validatedByUserId String? // quem validou
+  escalatedAt       DateTime?
+  escalatedByUserId String? // quem escalou
+  notes             String?
   // Vínculo com negociação (Deal)
-  dealId           String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  dealId            String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   // Relations
-  responsible       Seller                  @relation("SellerPendencies", fields: [responsibleId], references: [id])
-  manager           Manager?                @relation("ManagerPendencies", fields: [managerId], references: [id])
-  unit              Unit                    @relation(fields: [unitId], references: [id])
-  resolvedByUser    User?                   @relation("ResolvedByUser", fields: [resolvedByUserId], references: [id])
-  assignedUser      User?                   @relation("AssignedPendencies", fields: [assignedUserId], references: [id])
-  validatedByUser   User?                   @relation("ValidatedPendencies", fields: [validatedByUserId], references: [id])
-  escalatedByUser   User?                   @relation("EscalatedByUser", fields: [escalatedByUserId], references: [id])
-  customer       Customer?               @relation(fields: [customerId], references: [id])
-  vehicleRef     Vehicle?                @relation(fields: [vehicleId], references: [id])
-  contract       Contract?               @relation(fields: [contractId], references: [id])
-  deal           Deal?                   @relation("DealPendencies", fields: [dealId], references: [id])
-  template       WhatsappTemplate?       @relation(fields: [templateId], references: [id])
-  statusHistory  PendencyStatusHistory[]
-  messages       PendencyMessage[]
-  messageReturns MessageReturn[]
-  comments       PendencyComment[]
+  responsible     Seller                  @relation("SellerPendencies", fields: [responsibleId], references: [id])
+  manager         Manager?                @relation("ManagerPendencies", fields: [managerId], references: [id])
+  unit            Unit                    @relation(fields: [unitId], references: [id])
+  resolvedByUser  User?                   @relation("ResolvedByUser", fields: [resolvedByUserId], references: [id])
+  assignedUser    User?                   @relation("AssignedPendencies", fields: [assignedUserId], references: [id])
+  validatedByUser User?                   @relation("ValidatedPendencies", fields: [validatedByUserId], references: [id])
+  escalatedByUser User?                   @relation("EscalatedByUser", fields: [escalatedByUserId], references: [id])
+  customer        Customer?               @relation(fields: [customerId], references: [id])
+  vehicleRef      Vehicle?                @relation(fields: [vehicleId], references: [id])
+  contract        Contract?               @relation(fields: [contractId], references: [id])
+  deal            Deal?                   @relation("DealPendencies", fields: [dealId], references: [id])
+  template        WhatsappTemplate?       @relation(fields: [templateId], references: [id])
+  statusHistory   PendencyStatusHistory[]
+  messages        PendencyMessage[]
+  messageReturns  MessageReturn[]
+  comments        PendencyComment[]
 
   @@index([tenantId])
   @@index([status])
@@ -1930,22 +1938,22 @@ model CommissionRule {
 }
 
 model Position {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   tenantId    String?
   name        String
   slug        String
   description String?
   baseRole    UserRole?
-  isSystem    Boolean  @default(false)
-  active      Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isSystem    Boolean   @default(false)
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   commissionRules CommissionRule[]
-  sellers         Seller[]  @relation("SellerPosition")
-  managers        Manager[] @relation("ManagerPosition")
-  users           User[]    @relation("UserPosition")
+  sellers         Seller[]         @relation("SellerPosition")
+  managers        Manager[]        @relation("ManagerPosition")
+  users           User[]           @relation("UserPosition")
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -2024,7 +2032,7 @@ model CommissionCalculation {
   updatedAt       DateTime           @updatedAt
 
   // Relations
-  contract    Contract? @relation(fields: [contractId], references: [id])
+  contract    Contract?              @relation(fields: [contractId], references: [id])
   adjustments CommissionAdjustment[]
   extracts    CommissionExtract[]
 
@@ -2038,15 +2046,15 @@ model CommissionCalculation {
 }
 
 model CommissionAdjustment {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   calculationId String
   userId        String
-  previousValue Decimal  @db.Decimal(10, 2)
-  newValue      Decimal  @db.Decimal(10, 2)
+  previousValue Decimal   @db.Decimal(10, 2)
+  newValue      Decimal   @db.Decimal(10, 2)
   reason        String
   approvedById  String?
   approvedAt    DateTime?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
   // Relations
   calculation CommissionCalculation @relation(fields: [calculationId], references: [id])
@@ -2063,8 +2071,8 @@ model CommissionExtract {
   sellerId      String?
   unitId        String?
   calculationId String?
-  period        String           // YYYY-MM
-  type          String           // BASE, AJUSTE, GARANTIA, RETORNO, SERVICO, BONUS, DESCONTO
+  period        String // YYYY-MM
+  type          String // BASE, AJUSTE, GARANTIA, RETORNO, SERVICO, BONUS, DESCONTO
   referenceId   String?
   description   String?
   value         Decimal          @db.Decimal(10, 2)
@@ -2257,12 +2265,12 @@ model WebhookLog {
 model GoogleSheetConfig {
   id            String    @id @default(cuid())
   tenantId      String?
-  unitId        String?   // unidade vinculada para importação
+  unitId        String? // unidade vinculada para importação
   name          String
   spreadsheetId String
   description   String?
   active        Boolean   @default(true)
-  columnMapping Json?     // mapeamento de colunas (índice → campo)
+  columnMapping Json? // mapeamento de colunas (índice → campo)
   dedupeField   String?   @default("negotiation") // campo de deduplicação
   lastSyncAt    DateTime?
   syncStatus    String?
@@ -2284,8 +2292,8 @@ model GoogleSheetTab {
   configId       String
   internalName   String
   sheetName      String
-  gid            String?      // Google Sheet numeric tab GID (ex: "1507200471")
-  monthReference String?      // ex: "Abril", "Maio", "Junho"
+  gid            String? // Google Sheet numeric tab GID (ex: "1507200471")
+  monthReference String? // ex: "Abril", "Maio", "Junho"
   sortOrder      Int?         @default(0)
   description    String?
   tabType        SheetTabType @default(PERSONALIZADO)
@@ -2299,7 +2307,7 @@ model GoogleSheetTab {
   updatedAt      DateTime     @updatedAt
 
   // Relations
-  config     GoogleSheetConfig    @relation(fields: [configId], references: [id], onDelete: Cascade)
+  config     GoogleSheetConfig      @relation(fields: [configId], references: [id], onDelete: Cascade)
   columnMaps GoogleSheetColumnMap[]
   importJobs ImportJob[]
 
@@ -2329,20 +2337,20 @@ model GoogleSheetColumnMap {
 }
 
 model ImportJob {
-  id            String          @id @default(cuid())
-  configId      String?
-  tabId         String?
-  triggeredById String?
-  status        ImportJobStatus @default(AGUARDANDO)
-  totalRows     Int             @default(0)
-  processedRows Int             @default(0)
-  newRecords    Int             @default(0)
-  updatedRecords Int            @default(0)
-  errorRows     Int             @default(0)
-  errors        Json?
-  startedAt     DateTime?
-  finishedAt    DateTime?
-  createdAt     DateTime        @default(now())
+  id             String          @id @default(cuid())
+  configId       String?
+  tabId          String?
+  triggeredById  String?
+  status         ImportJobStatus @default(AGUARDANDO)
+  totalRows      Int             @default(0)
+  processedRows  Int             @default(0)
+  newRecords     Int             @default(0)
+  updatedRecords Int             @default(0)
+  errorRows      Int             @default(0)
+  errors         Json?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime        @default(now())
 
   // Relations
   config      GoogleSheetConfig? @relation(fields: [configId], references: [id])
@@ -2358,7 +2366,7 @@ model ImportJob {
 // ── Staging de linhas importadas (raw) — base para o processador de negociações ─
 
 model SheetImportRow {
-  id             String         @id @default(cuid())
+  id             String  @id @default(cuid())
   configId       String
   tabId          String?
   sheetName      String
@@ -2366,41 +2374,41 @@ model SheetImportRow {
   referenceMonth String?
 
   // Dados brutos mapeados (todos os campos do columnMapping)
-  rawData        Json
+  rawData Json
 
   // Campos-chave denormalizados para query eficiente
-  externalId     String?        // negotiation ID (Negociação Saida ID)
-  dedupeKey      String?        // configId:sheetName:externalId — para upsert idempotente
+  externalId String? // negotiation ID (Negociação Saida ID)
+  dedupeKey  String? // configId:sheetName:externalId — para upsert idempotente
 
   // Campos mapeados mais usados (para listagem sem parsear rawData)
-  customerName   String?
-  sellerName     String?
-  plate          String?
-  vehicleModel   String?
-  saleDate       String?        // string original da planilha
-  statusMain     String?
-  statusDetail   String?
-  saleValue      String?
-  docValue       String?
-  financedValue  String?
-  bank           String?
-  returnType     String?
-  dealType       String?
-  timeInStock    String?
+  customerName  String?
+  sellerName    String?
+  plate         String?
+  vehicleModel  String?
+  saleDate      String? // string original da planilha
+  statusMain    String?
+  statusDetail  String?
+  saleValue     String?
+  docValue      String?
+  financedValue String?
+  bank          String?
+  returnType    String?
+  dealType      String?
+  timeInStock   String?
 
   // Estado do processamento
   status         SheetRowStatus @default(PENDENTE)
-  dealId         String?        // Deal criado/atualizado a partir desta linha
+  dealId         String? // Deal criado/atualizado a partir desta linha
   errorMessage   String?
   warningMessage String?
   processedAt    DateTime?
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  config  GoogleSheetConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
-  deal    Deal?             @relation("DealSheetRows", fields: [dealId], references: [id])
+  config GoogleSheetConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  deal   Deal?             @relation("DealSheetRows", fields: [dealId], references: [id])
 
   @@index([configId, status])
   @@index([dedupeKey])
@@ -2414,31 +2422,31 @@ model SheetImportRow {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model GoogleSheetsAutoSyncConfig {
-  id                  String          @id @default(cuid())
-  importerId          String          @unique
-  enabled             Boolean         @default(false)
-  mode                AutoSyncMode    @default(SIMULATION)
-  frequencyMinutes    Int             @default(30)
-  allowedDays         Json            @default("[1,2,3,4,5]") // 0=Dom…6=Sab
-  startTime           String          @default("08:00")       // HH:mm
-  endTime             String          @default("18:00")
-  selectedTabs        Json?           // null = todas as abas ativas
-  actionAfterDownload AutoSyncAction  @default(IMPORTAR_PENDENCIAS)
-  processDeals        Boolean         @default(false) // processa negociações automaticamente após importação
-  notifyOnNewRecords  Boolean         @default(false)
-  notifyOnError       Boolean         @default(true)
+  id                  String         @id @default(cuid())
+  importerId          String         @unique
+  enabled             Boolean        @default(false)
+  mode                AutoSyncMode   @default(SIMULATION)
+  frequencyMinutes    Int            @default(30)
+  allowedDays         Json           @default("[1,2,3,4,5]") // 0=Dom…6=Sab
+  startTime           String         @default("08:00") // HH:mm
+  endTime             String         @default("18:00")
+  selectedTabs        Json? // null = todas as abas ativas
+  actionAfterDownload AutoSyncAction @default(IMPORTAR_PENDENCIAS)
+  processDeals        Boolean        @default(false) // processa negociações automaticamente após importação
+  notifyOnNewRecords  Boolean        @default(false)
+  notifyOnError       Boolean        @default(true)
   errorNotifyTarget   String?
-  maxRowsPerRun       Int             @default(500)
-  timeoutSeconds      Int             @default(120)
-  status              AutoSyncStatus  @default(PAUSADO)
-  isRunning           Boolean         @default(false)
+  maxRowsPerRun       Int            @default(500)
+  timeoutSeconds      Int            @default(120)
+  status              AutoSyncStatus @default(PAUSADO)
+  isRunning           Boolean        @default(false)
   lockUntil           DateTime?
   lastRunAt           DateTime?
   nextRunAt           DateTime?
   lastStatus          String?
   lastError           String?
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   // Relations
   importer GoogleSheetConfig         @relation(fields: [importerId], references: [id], onDelete: Cascade)
@@ -2448,25 +2456,25 @@ model GoogleSheetsAutoSyncConfig {
 }
 
 model GoogleSheetsAutoSyncJob {
-  id              String               @id @default(cuid())
+  id              String              @id @default(cuid())
   importerId      String
   configId        String
-  status          AutoSyncJobStatus    @default(RUNNING)
-  triggerType     AutoSyncTriggerType  @default(AUTO)
-  startedAt       DateTime             @default(now())
+  status          AutoSyncJobStatus   @default(RUNNING)
+  triggerType     AutoSyncTriggerType @default(AUTO)
+  startedAt       DateTime            @default(now())
   finishedAt      DateTime?
   durationMs      Int?
-  rowsRead        Int                  @default(0)
-  rowsImported    Int                  @default(0)
-  rowsUpdated     Int                  @default(0)
-  rowsIgnored     Int                  @default(0)
-  rowsError       Int                  @default(0)
+  rowsRead        Int                 @default(0)
+  rowsImported    Int                 @default(0)
+  rowsUpdated     Int                 @default(0)
+  rowsIgnored     Int                 @default(0)
+  rowsError       Int                 @default(0)
   sheetsRead      Json?
   sheetsNotFound  Json?
   errors          Json?
   summary         Json?
   createdByUserId String?
-  createdAt       DateTime             @default(now())
+  createdAt       DateTime            @default(now())
 
   // Relations
   config    GoogleSheetsAutoSyncConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
@@ -2483,10 +2491,10 @@ model GoogleSheetsAutoSyncJob {
 // ═════════════════════════════════════════════════════════════════════════════
 
 enum EmailPurpose {
-  SYSTEM           // comunicação geral do sistema (notificações internas, alertas)
-  NOTICES          // sistema de avisos / notícias enviadas a usuários
-  PASSWORD_RESET   // recuperação de senha / esqueci minha senha
-  TRANSACTIONAL    // confirmações, recibos, alterações de cadastro
+  SYSTEM // comunicação geral do sistema (notificações internas, alertas)
+  NOTICES // sistema de avisos / notícias enviadas a usuários
+  PASSWORD_RESET // recuperação de senha / esqueci minha senha
+  TRANSACTIONAL // confirmações, recibos, alterações de cadastro
 }
 
 model EmailConfig {
@@ -2495,15 +2503,15 @@ model EmailConfig {
   name         String       @default("Principal")
   purpose      EmailPurpose @default(SYSTEM)
   isDefault    Boolean      @default(false)
-  provider     String       @default("smtp")  // smtp | sendgrid | resend | mailgun | ses
+  provider     String       @default("smtp") // smtp | sendgrid | resend | mailgun | ses
   smtpHost     String?
   smtpPort     Int          @default(587)
   smtpSecure   Boolean      @default(false)
   smtpUser     String?
   smtpPass     String?
-  apiKey       String?      // sendgrid / resend / mailgun
-  domain       String?      // mailgun sending domain
-  region       String?      // ses region (ex: us-east-1)
+  apiKey       String? // sendgrid / resend / mailgun
+  domain       String? // mailgun sending domain
+  region       String? // ses region (ex: us-east-1)
   fromName     String
   fromEmail    String
   replyTo      String?
@@ -2523,13 +2531,13 @@ model EmailTemplate {
   id          String       @id @default(cuid())
   tenantId    String?
   purpose     EmailPurpose
-  key         String       // identifier for the template (e.g. "password_reset", "welcome")
-  name        String       // display name
+  key         String // identifier for the template (e.g. "password_reset", "welcome")
+  name        String // display name
   description String?
   subject     String
   bodyHtml    String       @db.Text
   bodyText    String?      @db.Text
-  variables   String[]     // list of {{vars}} the template accepts
+  variables   String[] // list of {{vars}} the template accepts
   active      Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -2546,8 +2554,8 @@ model EmailTemplate {
 
 model SystemSetting {
   id              String   @id @default(cuid())
-  tenantId        String?  // null = configuração global da plataforma
-  key             String   @unique  // TODO: migrar para @@unique([tenantId, key]) quando multi-tenancy ativo
+  tenantId        String? // null = configuração global da plataforma
+  key             String   @unique // TODO: migrar para @@unique([tenantId, key]) quando multi-tenancy ativo
   value           String
   description     String?
   group           String?
@@ -2611,14 +2619,14 @@ model PasswordReset {
 // =============================================================================
 
 model VehicleLookupCache {
-  id           String   @id @default(cuid())
-  plate        String   @unique  // normalizado sem hífen, maiúsculo
-  found        Boolean  @default(false)
-  source       String?  // "authorized_provider" | "internal_cache"
-  data         Json?    // VehicleLookupData normalizado
-  expiresAt    DateTime // TTL configurável (padrão: 30 dias)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(cuid())
+  plate     String   @unique // normalizado sem hífen, maiúsculo
+  found     Boolean  @default(false)
+  source    String? // "authorized_provider" | "internal_cache"
+  data      Json? // VehicleLookupData normalizado
+  expiresAt DateTime // TTL configurável (padrão: 30 dias)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([plate])
   @@index([expiresAt])
@@ -2626,16 +2634,16 @@ model VehicleLookupCache {
 }
 
 model ApiToken {
-  id         String    @id @default(cuid())
-  userId     String
-  tenantId   String?
-  name       String
-  token      String    @unique
+  id          String    @id @default(cuid())
+  userId      String
+  tenantId    String?
+  name        String
+  token       String    @unique
   permissions Json?
-  active     Boolean   @default(true)
-  expiresAt  DateTime?
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
+  active      Boolean   @default(true)
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2652,33 +2660,33 @@ model ApiToken {
 
 /// Planos da plataforma — CRUD completo via Painel Master
 model Plan {
-  id               String   @id @default(cuid())
-  code             String   @unique // BASICO | PRO | VIP | CUSTOM | ENTERPRISE | etc.
-  name             String
-  description      String?
-  priceMonthly     Decimal? @db.Decimal(10, 2)
-  priceYearly      Decimal? @db.Decimal(10, 2)
-  active           Boolean  @default(true)
+  id                   String   @id @default(cuid())
+  code                 String   @unique // BASICO | PRO | VIP | CUSTOM | ENTERPRISE | etc.
+  name                 String
+  description          String?
+  priceMonthly         Decimal? @db.Decimal(10, 2)
+  priceYearly          Decimal? @db.Decimal(10, 2)
+  active               Boolean  @default(true)
   // Limites padrão
-  maxUsers         Int      @default(10)
-  maxVehicles      Int      @default(100)
-  maxUnits         Int      @default(1)
-  maxStorageMb     Int      @default(1024)
-  whatsappMonthly  Int      @default(1000)
-  emailMonthly     Int      @default(5000)
-  trialDays        Int      @default(14)
+  maxUsers             Int      @default(10)
+  maxVehicles          Int      @default(100)
+  maxUnits             Int      @default(1)
+  maxStorageMb         Int      @default(1024)
+  whatsappMonthly      Int      @default(1000)
+  emailMonthly         Int      @default(5000)
+  trialDays            Int      @default(14)
   // Recursos liberados
-  allowWhiteLabel     Boolean @default(false)
-  allowCustomDomain   Boolean @default(false)
-  allowGoogleSheets   Boolean @default(true)
-  allowAdvancedReports Boolean @default(false)
-  allowApiAccess      Boolean @default(false)
+  allowWhiteLabel      Boolean  @default(false)
+  allowCustomDomain    Boolean  @default(false)
+  allowGoogleSheets    Boolean  @default(true)
+  allowAdvancedReports Boolean  @default(false)
+  allowApiAccess       Boolean  @default(false)
   // Módulos incluídos (lista de chaves de módulo)
-  modules          String[]
-  sortOrder        Int      @default(0)
-  notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  modules              String[]
+  sortOrder            Int      @default(0)
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([active])
   @@map("plans")
@@ -2687,11 +2695,11 @@ model Plan {
 /// Feature flags globais da plataforma
 model FeatureFlag {
   id          String   @id @default(cuid())
-  key         String   @unique  // ex: new_evaluation_flow
+  key         String   @unique // ex: new_evaluation_flow
   name        String
   description String?
   enabled     Boolean  @default(false) // estado global padrão
-  rolloutPct  Int      @default(0)     // 0-100 — rollout gradual
+  rolloutPct  Int      @default(0) // 0-100 — rollout gradual
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -2705,7 +2713,7 @@ model FeatureFlag {
 model TenantFeatureFlag {
   tenantId String
   flagKey  String
-  enabled  Boolean  @default(true)
+  enabled  Boolean @default(true)
 
   tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   flag   FeatureFlag @relation(fields: [flagKey], references: [key], onDelete: Cascade)
@@ -2723,9 +2731,9 @@ model MaintenanceMode {
   startAt      DateTime?
   endAt        DateTime?
   scope        String    @default("GLOBAL") // GLOBAL | MODULE | TENANT
-  scopeId      String?                      // moduleKey ou tenantId
-  allowedRoles String[]                     // roles que ignoram manutenção (ex: MASTER)
-  activatedBy  String?                      // userId de quem ativou
+  scopeId      String? // moduleKey ou tenantId
+  allowedRoles String[] // roles que ignoram manutenção (ex: MASTER)
+  activatedBy  String? // userId de quem ativou
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -2735,39 +2743,39 @@ model MaintenanceMode {
 
 /// Avisos internos (in-app notices) enviados pelo MASTER
 model InternalNotice {
-  id               String    @id @default(cuid())
-  title            String
-  message          String    @db.Text
-  type             String    @default("INFO")        // INFO | WARNING | CRITICAL | MAINTENANCE | BILLING | RELEASE
-  severity         String    @default("INFO")        // INFO | SUCCESS | WARNING | ERROR | CRITICAL
-  priority         String    @default("MEDIUM")      // LOW | MEDIUM | HIGH | CRITICAL
-  status           String    @default("ACTIVE")      // DRAFT | SCHEDULED | ACTIVE | PAUSED | CANCELLED | EXPIRED | ARCHIVED | DELETED
-  targetType       String    @default("ALL")         // ALL | ALL_TENANTS | SELECTED_TENANTS | SELECTED_UNITS | SELECTED_ROLES | SELECTED_USERS | MASTER_ONLY | ADM_ONLY | MANAGER_ONLY | SELLER_ONLY
-  targetId         String?                           // legado: id conforme targetType original
-  targetTenants    Json?                             // Array<string> de tenantIds
-  targetUnits      Json?                             // Array<string> de unitIds
-  targetRoles      Json?                             // Array<string> de roles
-  targetUsers      Json?                             // Array<string> de userIds
-  displayType      String    @default("BELL")        // BELL | BANNER | MODAL | TOAST (legado)
-  displayChannels  Json      @default("[\"BELL\"]")  // Array<BELL|BALLOON|BANNER|MODAL|DASHBOARD>
-  startsAt         DateTime  @default(now())
-  endsAt           DateTime?
-  required         Boolean   @default(false)
-  dismissible      Boolean   @default(true)
-  blockUntilRead   Boolean   @default(false)
-  allowComments    Boolean   @default(false)
-  actionUrl        String?
-  actionLabel      String?
-  createdBy        String                            // userId do MASTER
-  updatedById      String?
-  active           Boolean   @default(true)          // legado — mantido para compat.
-  publishedAt      DateTime?
-  pausedAt         DateTime?
-  cancelledAt      DateTime?
-  archivedAt       DateTime?
-  deletedAt        DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  title           String
+  message         String    @db.Text
+  type            String    @default("INFO") // INFO | WARNING | CRITICAL | MAINTENANCE | BILLING | RELEASE
+  severity        String    @default("INFO") // INFO | SUCCESS | WARNING | ERROR | CRITICAL
+  priority        String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  status          String    @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | CANCELLED | EXPIRED | ARCHIVED | DELETED
+  targetType      String    @default("ALL") // ALL | ALL_TENANTS | SELECTED_TENANTS | SELECTED_UNITS | SELECTED_ROLES | SELECTED_USERS | MASTER_ONLY | ADM_ONLY | MANAGER_ONLY | SELLER_ONLY
+  targetId        String? // legado: id conforme targetType original
+  targetTenants   Json? // Array<string> de tenantIds
+  targetUnits     Json? // Array<string> de unitIds
+  targetRoles     Json? // Array<string> de roles
+  targetUsers     Json? // Array<string> de userIds
+  displayType     String    @default("BELL") // BELL | BANNER | MODAL | TOAST (legado)
+  displayChannels Json      @default("[\"BELL\"]") // Array<BELL|BALLOON|BANNER|MODAL|DASHBOARD>
+  startsAt        DateTime  @default(now())
+  endsAt          DateTime?
+  required        Boolean   @default(false)
+  dismissible     Boolean   @default(true)
+  blockUntilRead  Boolean   @default(false)
+  allowComments   Boolean   @default(false)
+  actionUrl       String?
+  actionLabel     String?
+  createdBy       String // userId do MASTER
+  updatedById     String?
+  active          Boolean   @default(true) // legado — mantido para compat.
+  publishedAt     DateTime?
+  pausedAt        DateTime?
+  cancelledAt     DateTime?
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   reads InternalNoticeRead[]
   logs  InternalNoticeLog[]
@@ -2803,7 +2811,7 @@ model InternalNoticeLog {
   id        String   @id @default(cuid())
   noticeId  String
   userId    String?
-  action    String   // CREATED | EDITED | PUBLISHED | SCHEDULED | PAUSED | RESUMED | CANCELLED | ARCHIVED | DELETED | DUPLICATED | TESTED | READ | CLICKED | DISMISSED | EXPIRED
+  action    String // CREATED | EDITED | PUBLISHED | SCHEDULED | PAUSED | RESUMED | CANCELLED | ARCHIVED | DELETED | DUPLICATED | TESTED | READ | CLICKED | DISMISSED | EXPIRED
   success   Boolean  @default(true)
   details   Json?
   ip        String?
@@ -2820,10 +2828,10 @@ model InternalNoticeLog {
 /// Sessões de impersonation — auditoria obrigatória
 model ImpersonationSession {
   id             String    @id @default(cuid())
-  masterId       String    // MASTER executando a impersonation
-  targetUserId   String    // usuário alvo
-  targetTenantId String?   // tenant do usuário alvo
-  reason         String    // motivo obrigatório
+  masterId       String // MASTER executando a impersonation
+  targetUserId   String // usuário alvo
+  targetTenantId String? // tenant do usuário alvo
+  reason         String // motivo obrigatório
   startedAt      DateTime  @default(now())
   endedAt        DateTime?
   ipAddress      String?
@@ -2855,7 +2863,7 @@ model SystemIdentity {
   supportUrl     String?
   termsUrl       String?
   privacyUrl     String?
-  customDomain   String?   // domínio padrão da plataforma
+  customDomain   String? // domínio padrão da plataforma
   timezone       String   @default("America/Sao_Paulo")
   locale         String   @default("pt-BR")
   currency       String   @default("BRL")
@@ -2873,15 +2881,15 @@ model SystemIdentity {
 /// Credenciais de APIs externas controladas pelo MASTER
 model IntegrationCredential {
   id            String    @id @default(cuid())
-  service       String    // FIPE | PLATE_LOOKUP | RENAVAM | CNPJ_LOOKUP | CEP | STORAGE | PAYMENT | DIGITAL_SIGN | OTHER
-  name          String    // nome amigável
+  service       String // FIPE | PLATE_LOOKUP | RENAVAM | CNPJ_LOOKUP | CEP | STORAGE | PAYMENT | DIGITAL_SIGN | OTHER
+  name          String // nome amigável
   description   String?
   apiUrl        String?
-  apiKey        String?   // ⚠️ sensível
-  apiSecret     String?   // ⚠️ sensível
-  token         String?   // ⚠️ sensível
+  apiKey        String? // ⚠️ sensível
+  apiSecret     String? // ⚠️ sensível
+  token         String? // ⚠️ sensível
   username      String?
-  webhookSecret String?   // ⚠️ sensível
+  webhookSecret String? // ⚠️ sensível
   active        Boolean   @default(true)
   isDefault     Boolean   @default(false) // credencial padrão para o serviço
   lastTestedAt  DateTime?
@@ -2905,16 +2913,16 @@ model IntegrationCredential {
 /// Permite consultas offline e sobrevive a restart sem hit na API externa.
 /// Atualizado via /api/integrations/brasilapi/banks?refresh=1 (MASTER/ADM).
 model Bank {
-  id          String    @id @default(cuid())
+  id        String   @id @default(cuid())
   /// Código compe (3 dígitos). Pode ser nulo (ISPB-only).
-  code        Int?
+  code      Int?
   /// Identificador único oficial (ISPB) — 8 dígitos.
-  ispb        String    @unique
-  name        String
-  fullName    String?
-  active      Boolean   @default(true)
-  fetchedAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  ispb      String   @unique
+  name      String
+  fullName  String?
+  active    Boolean  @default(true)
+  fetchedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([code])
   @@index([active])
@@ -2928,13 +2936,13 @@ model FipeCache {
   id          String   @id @default(cuid())
   provider    String   @default("parallelum")
   cacheKey    String   @unique
-  endpoint    String   // references | brands | models | years | price | priceByCode
-  vehicleType String?  // cars | motorcycles | trucks
+  endpoint    String // references | brands | models | years | price | priceByCode
+  vehicleType String? // cars | motorcycles | trucks
   brandId     String?
   modelId     String?
   yearId      String?
   codeFipe    String?
-  reference   String?  // mês/ano referência da tabela FIPE
+  reference   String? // mês/ano referência da tabela FIPE
   data        Json
   expiresAt   DateTime
   createdAt   DateTime @default(now())
@@ -2958,11 +2966,11 @@ model EvaluationItem {
   id            String   @id @default(cuid())
   tenantId      String?
   evaluationId  String
-  section       String   // INTERIOR | FRENTE | DIREITA | TRASEIRA | ESQUERDA | TEST_DRIVE | DOCUMENTOS | SERVICOS
-  catalogKey    String?  // chave canônica do catálogo (ex: "interior.banco_motorista")
+  section       String // INTERIOR | FRENTE | DIREITA | TRASEIRA | ESQUERDA | TEST_DRIVE | DOCUMENTOS | SERVICOS
+  catalogKey    String? // chave canônica do catálogo (ex: "interior.banco_motorista")
   name          String
   status        String   @default("PENDING") // PENDING | CONFORME | ATENCAO | REPARO | OBRIGATORIO | NA | REAVALIAR
-  priority      String?  // BAIXA | MEDIA | ALTA | URGENTE
+  priority      String? // BAIXA | MEDIA | ALTA | URGENTE
   notes         String?
   totalExpenses Decimal? @default(0) @db.Decimal(12, 2)
   createdAt     DateTime @default(now())
@@ -2983,15 +2991,15 @@ model EvaluationService {
   id            String   @id @default(cuid())
   tenantId      String?
   evaluationId  String
-  itemId        String?  // null = serviço geral da avaliação
-  section       String?  // copiado do item, ou GERAL
+  itemId        String? // null = serviço geral da avaliação
+  section       String? // copiado do item, ou GERAL
   description   String
-  serviceType   String   // PINTURA | FUNILARIA | POLIMENTO | HIGIENIZACAO | MECANICA | ... | OUTRO
+  serviceType   String // PINTURA | FUNILARIA | POLIMENTO | HIGIENIZACAO | MECANICA | ... | OUTRO
   estimatedCost Decimal? @default(0) @db.Decimal(12, 2)
   actualCost    Decimal? @db.Decimal(12, 2)
   priority      String?
   status        String   @default("PREDICTED") // PREDICTED | APPROVED | IN_PROGRESS | DONE | CANCELED
-  responsibleId String?  // userId responsável sugerido
+  responsibleId String? // userId responsável sugerido
   notes         String?
   createdAt     DateTime @default(now())
   createdById   String?
@@ -3008,22 +3016,22 @@ model EvaluationService {
 /// Anexo (foto/PDF/documento) de uma avaliação.
 /// Pode estar ligado a um item, a um serviço, ou solto na avaliação.
 model EvaluationAttachment {
-  id           String   @id @default(cuid())
-  tenantId     String
-  evaluationId String
-  itemId       String?
-  serviceId    String?
-  section      String?  // INTERIOR | FRENTE | DOCUMENTOS | ...
-  category     String?  // CRLV | ATPV_E | DUT_CRV | LAUDO_CAUTELAR | COMPROVANTE | CNH | FOTO | OUTRO
-  fileName     String
-  fileType     String   // image | pdf | other
-  mimeType     String
-  fileSize     Int?
-  storageKey   String   // chave no storage (path local ou S3 key)
-  publicUrl    String?
-  uploadedById String?
+  id             String   @id @default(cuid())
+  tenantId       String
+  evaluationId   String
+  itemId         String?
+  serviceId      String?
+  section        String? // INTERIOR | FRENTE | DOCUMENTOS | ...
+  category       String? // CRLV | ATPV_E | DUT_CRV | LAUDO_CAUTELAR | COMPROVANTE | CNH | FOTO | OUTRO
+  fileName       String
+  fileType       String // image | pdf | other
+  mimeType       String
+  fileSize       Int?
+  storageKey     String // chave no storage (path local ou S3 key)
+  publicUrl      String?
+  uploadedById   String?
   uploadedByName String?
-  createdAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   item EvaluationItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
@@ -3044,7 +3052,7 @@ model EvaluationHistory {
   userId       String?
   userName     String?
   userRole     String?
-  action       String   // CREATE_ITEM | REVALUATE | ADD_SERVICE | UPDATE_SERVICE | REMOVE_SERVICE | ADD_ATTACHMENT | REMOVE_ATTACHMENT | FINISH | REOPEN
+  action       String // CREATE_ITEM | REVALUATE | ADD_SERVICE | UPDATE_SERVICE | REMOVE_SERVICE | ADD_ATTACHMENT | REMOVE_ATTACHMENT | FINISH | REOPEN
   oldValue     Json?
   newValue     Json?
   notes        String?
@@ -3064,30 +3072,30 @@ model EvaluationHistory {
 
 /// Regras configuráveis de notificação/pendência (MASTER global ou por tenant)
 model NotificationRule {
-  id              String    @id @default(cuid())
-  scope           String    @default("GLOBAL") // GLOBAL | TENANT
-  tenantId        String?   // null = global (MASTER)
-  name            String
-  description     String?
-  module          String    // DEALS | PENDENCIES | COMMISSIONS | STOCK | CRM | WHATSAPP
-  conditionType   String    // ex: DEAL_PENDING_RELEASE | COMMISSION_OVERDUE | STOCK_PENDENCY | etc.
-  conditionConfig Json?     // parâmetros específicos da condição
-  priority        String    @default("MEDIA")   // BAIXA | MEDIA | ALTA | URGENTE
-  severity        String    @default("MEDIA")   // LOW | MEDIUM | HIGH | CRITICAL
-  slaMinutes      Int?      // SLA padrão para pendências geradas por esta regra
-  channels        String[]  // APP_WEB | APP_MOBILE | WHATSAPP | EMAIL | PUSH
-  targetRoles     String[]  // roles que recebem: GERENTE | ADM | GERENTE_GERAL | etc.
-  escalationRoles String[]  // roles para escalonamento
+  id                     String    @id @default(cuid())
+  scope                  String    @default("GLOBAL") // GLOBAL | TENANT
+  tenantId               String? // null = global (MASTER)
+  name                   String
+  description            String?
+  module                 String // DEALS | PENDENCIES | COMMISSIONS | STOCK | CRM | WHATSAPP
+  conditionType          String // ex: DEAL_PENDING_RELEASE | COMMISSION_OVERDUE | STOCK_PENDENCY | etc.
+  conditionConfig        Json? // parâmetros específicos da condição
+  priority               String    @default("MEDIA") // BAIXA | MEDIA | ALTA | URGENTE
+  severity               String    @default("MEDIA") // LOW | MEDIUM | HIGH | CRITICAL
+  slaMinutes             Int? // SLA padrão para pendências geradas por esta regra
+  channels               String[] // APP_WEB | APP_MOBILE | WHATSAPP | EMAIL | PUSH
+  targetRoles            String[] // roles que recebem: GERENTE | ADM | GERENTE_GERAL | etc.
+  escalationRoles        String[] // roles para escalonamento
   escalationAfterMinutes Int? // minutos antes de escalonar
-  maxPerDay       Int       @default(10)  // máximo de notificações por dia por usuário
-  isActive        Boolean   @default(true)
-  startsAt        DateTime?
-  endsAt          DateTime?
-  createdByUserId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  maxPerDay              Int       @default(10) // máximo de notificações por dia por usuário
+  isActive               Boolean   @default(true)
+  startsAt               DateTime?
+  endsAt                 DateTime?
+  createdByUserId        String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  creator   User?             @relation("NotificationRuleCreator", fields: [createdByUserId], references: [id])
+  creator User? @relation("NotificationRuleCreator", fields: [createdByUserId], references: [id])
 
   @@index([scope, isActive])
   @@index([tenantId])
@@ -3100,8 +3108,8 @@ model MobileDevice {
   id          String    @id @default(cuid())
   userId      String
   deviceToken String    @unique // FCM/APNs token
-  platform    String    // ANDROID | IOS | WEB
-  deviceName  String?   // ex: "iPhone 15 Pro"
+  platform    String // ANDROID | IOS | WEB
+  deviceName  String? // ex: "iPhone 15 Pro"
   appVersion  String?
   isActive    Boolean   @default(true)
   lastSeenAt  DateTime?
@@ -3123,7 +3131,7 @@ model MobileDevice {
 model SecurityPolicy {
   id                    String   @id @default(cuid())
   scope                 String   @default("GLOBAL") // GLOBAL | TENANT
-  scopeId               String?  // tenantId se scope=TENANT
+  scopeId               String? // tenantId se scope=TENANT
   // Senha
   minPasswordLength     Int      @default(8)
   requireUppercase      Boolean  @default(true)
@@ -3132,7 +3140,7 @@ model SecurityPolicy {
   passwordExpiryDays    Int      @default(0) // 0 = nunca expira
   // Sessão
   sessionMaxAgeSecs     Int      @default(28800) // 8h
-  inactivityTimeoutSecs Int      @default(0)     // 0 = sem timeout
+  inactivityTimeoutSecs Int      @default(0) // 0 = sem timeout
   maxActiveSessions     Int      @default(5)
   // Bloqueio por tentativas
   maxLoginAttempts      Int      @default(5)
@@ -3159,17 +3167,17 @@ model SecurityPolicy {
 
 model CommunicationTestLog {
   id           String   @id @default(cuid())
-  channel      String   // EMAIL | WHATSAPP
-  provider     String?  // smtp | sendgrid | ses | mailgun | resend | meta | evolution | zapi | twilio
-  triggeredBy  String   // userId do master que disparou o teste
-  target       String   // e-mail ou telefone testado
+  channel      String // EMAIL | WHATSAPP
+  provider     String? // smtp | sendgrid | ses | mailgun | resend | meta | evolution | zapi | twilio
+  triggeredBy  String // userId do master que disparou o teste
+  target       String // e-mail ou telefone testado
   success      Boolean
-  errorCode    String?  // código do erro (ex: ECONNREFUSED, 535, 131047)
-  errorMessage String?  // mensagem descritiva do erro
-  errorDetails String?  // stack / response body completo para debug
-  responseMs   Int?     // latência em ms
-  messageId    String?  // ID externo da mensagem (sucesso)
-  metadata     Json?    // payload de resposta completo
+  errorCode    String? // código do erro (ex: ECONNREFUSED, 535, 131047)
+  errorMessage String? // mensagem descritiva do erro
+  errorDetails String? // stack / response body completo para debug
+  responseMs   Int? // latência em ms
+  messageId    String? // ID externo da mensagem (sucesso)
+  metadata     Json? // payload de resposta completo
   createdAt    DateTime @default(now())
 
   user User @relation("CommunicationTestLogs", fields: [triggeredBy], references: [id])
@@ -3189,18 +3197,18 @@ model CommunicationTestLog {
 
 /// Tipo de meta comercial (cada um agrega de uma fonte diferente)
 enum GoalType {
-  SALES_EXCHANGE    // vendas e trocas concluídas
-  PURCHASE          // compras concluídas
-  RETURN            // retornos concluídos
-  DOCUMENTATION     // despachante / documentação concluída
+  SALES_EXCHANGE // vendas e trocas concluídas
+  PURCHASE // compras concluídas
+  RETURN // retornos concluídos
+  DOCUMENTATION // despachante / documentação concluída
   EXTENDED_WARRANTY // garantia estendida vendida
-  SERVICE           // serviços vendidos/vinculados
+  SERVICE // serviços vendidos/vinculados
 }
 
 /// Escopo da meta — define o nível de agregação e os filtros obrigatórios
 enum GoalScope {
-  USER   // meta individual de um vendedor (filtra tenantId + userId)
-  UNIT   // meta de uma unidade/filial (filtra tenantId + unitId)
+  USER // meta individual de um vendedor (filtra tenantId + userId)
+  UNIT // meta de uma unidade/filial (filtra tenantId + unitId)
   TENANT // meta da loja/empresa inteira (filtra tenantId)
   GLOBAL // meta da plataforma (apenas MASTER; tenantId nulo)
 }
@@ -3226,9 +3234,9 @@ enum GoalStatus {
 /// `progressive = true`, os degraus ficam em GoalLevel (sem hardcode).
 model Goal {
   id          String     @id @default(cuid())
-  tenantId    String?    // null = meta GLOBAL (plataforma)
-  unitId      String?    // preenchido quando scope = UNIT
-  userId      String?    // preenchido quando scope = USER
+  tenantId    String? // null = meta GLOBAL (plataforma)
+  unitId      String? // preenchido quando scope = UNIT
+  userId      String? // preenchido quando scope = USER
   type        GoalType
   scope       GoalScope
   period      GoalPeriod
@@ -3236,8 +3244,8 @@ model Goal {
   startDate   DateTime
   endDate     DateTime
   targetValue Decimal    @db.Decimal(14, 2) // alvo base (quantidade ou R$)
-  measureUnit String     @default("QTD")    // QTD | BRL | PERCENT
-  progressive Boolean    @default(false)    // usa degraus em GoalLevel
+  measureUnit String     @default("QTD") // QTD | BRL | PERCENT
+  progressive Boolean    @default(false) // usa degraus em GoalLevel
   active      Boolean    @default(true)
   status      GoalStatus @default(ATIVA)
   notes       String?
@@ -3266,10 +3274,10 @@ model Goal {
 model GoalLevel {
   id          String   @id @default(cuid())
   goalId      String
-  level       Int      // 1, 2, 3, ...
+  level       Int // 1, 2, 3, ...
   targetValue Decimal  @db.Decimal(14, 2)
-  label       String?  // ex: "Bronze", "Meta 1"
-  reward      String?  // descrição opcional de bônus/premiação
+  label       String? // ex: "Bronze", "Meta 1"
+  reward      String? // descrição opcional de bônus/premiação
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -3292,8 +3300,8 @@ model GoalProgress {
   periodEnd     DateTime
   achievedValue Decimal   @default(0) @db.Decimal(14, 2)
   percent       Decimal   @default(0) @db.Decimal(7, 2) // % atingido (0–100+)
-  currentLevel  Int       @default(0)                   // maior nível alcançado
-  reachedAt     DateTime?                                // quando bateu o alvo base
+  currentLevel  Int       @default(0) // maior nível alcançado
+  reachedAt     DateTime? // quando bateu o alvo base
   computedAt    DateTime  @default(now())
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -3312,16 +3320,16 @@ model GoalProgress {
 /// Defaults seguem a sugestão de pontuação da especificação.
 model RankingRule {
   id                    String   @id @default(cuid())
-  tenantId              String?  // null = regra padrão da plataforma
+  tenantId              String? // null = regra padrão da plataforma
   name                  String   @default("Padrão")
   active                Boolean  @default(true)
   // Pesos (pontos por evento concluído)
   weightSale            Int      @default(100) // venda/troca concluída
-  weightPurchase        Int      @default(40)  // compra concluída
-  weightReturn          Int      @default(25)  // retorno concluído
-  weightDocumentation   Int      @default(20)  // documento/despachante concluído
-  weightWarranty        Int      @default(30)  // garantia estendida vendida
-  weightService         Int      @default(20)  // serviço vendido
+  weightPurchase        Int      @default(40) // compra concluída
+  weightReturn          Int      @default(25) // retorno concluído
+  weightDocumentation   Int      @default(20) // documento/despachante concluído
+  weightWarranty        Int      @default(30) // garantia estendida vendida
+  weightService         Int      @default(20) // serviço vendido
   weightOverduePendency Int      @default(-15) // pendência vencida
   weightCanceledSale    Int      @default(-50) // venda cancelada
   weightLateDocument    Int      @default(-10) // documento atrasado
@@ -3347,7 +3355,7 @@ model RankingScore {
   ruleId            String?
   tenantId          String?
   unitId            String?
-  userId            String     // vendedor pontuado
+  userId            String // vendedor pontuado
   period            GoalPeriod
   periodStart       DateTime
   periodEnd         DateTime
@@ -3364,8 +3372,8 @@ model RankingScore {
   // Resultado
   totalPoints       Int        @default(0)
   qualityScore      Decimal    @default(0) @db.Decimal(7, 2) // índice de qualidade da venda
-  rankGeneral       Int?       // posição no ranking geral do tenant
-  rankUnit          Int?       // posição no ranking da unidade
+  rankGeneral       Int? // posição no ranking geral do tenant
+  rankUnit          Int? // posição no ranking da unidade
   computedAt        DateTime   @default(now())
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
@@ -3395,9 +3403,9 @@ enum FinancialEntryType {
 }
 
 enum FinancialEntryStatus {
-  PREVISTO   // a pagar / a receber (ainda não liquidado)
-  PAGO       // despesa quitada
-  RECEBIDO   // receita recebida
+  PREVISTO // a pagar / a receber (ainda não liquidado)
+  PAGO // despesa quitada
+  RECEBIDO // receita recebida
   CANCELADO
 }
 
@@ -3459,15 +3467,15 @@ model FinancialEntry {
   dealId                  String?
   commissionCalculationId String?
   sellerId                String?
-  source                  String?   @default("MANUAL") // MANUAL | VENDA | COMISSAO | RETORNO | GARANTIA
+  source                  String?              @default("MANUAL") // MANUAL | VENDA | COMISSAO | RETORNO | GARANTIA
   // Auxiliares
-  counterparty            String?   // fornecedor / cliente
+  counterparty            String? // fornecedor / cliente
   documentNumber          String?
   paymentMethod           String?
   notes                   String?
   createdById             String?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
   account  FinancialAccount?  @relation(fields: [accountId], references: [id])
   category FinancialCategory? @relation(fields: [categoryId], references: [id])
@@ -3499,40 +3507,40 @@ enum ProponentOccupation {
 }
 
 enum FinanceProposalStatus {
-  SIMULACAO   // simulação (ainda não enviada ao banco)
-  ENVIADA     // ficha passada/enviada ao banco
+  SIMULACAO // simulação (ainda não enviada ao banco)
+  ENVIADA // ficha passada/enviada ao banco
   APROVADA
   RECUSADA
   CANCELADA
 }
 
 model FinanceProponent {
-  id             String               @id @default(cuid())
-  tenantId       String?
+  id                 String               @id @default(cuid())
+  tenantId           String?
   // ── Dados pessoais (obrigatórios, exceto telefoneFixo) ──────────────────
-  nomeCompleto   String
-  dataNascimento DateTime?
-  cpf            String?
-  rg             String?
-  nomeMae        String?
-  nomePai        String?
-  email          String?
-  celular        String?
-  telefoneFixo   String?
+  nomeCompleto       String
+  dataNascimento     DateTime?
+  cpf                String?
+  rg                 String?
+  nomeMae            String?
+  nomePai            String?
+  email              String?
+  celular            String?
+  telefoneFixo       String?
   // ── Endereço residencial ────────────────────────────────────────────────
-  cep            String?
-  logradouro     String?
-  bairro         String?
-  cidade         String?
-  estado         String?
-  numero         String?
-  complemento    String?
+  cep                String?
+  logradouro         String?
+  bairro             String?
+  cidade             String?
+  estado             String?
+  numero             String?
+  complemento        String?
   // ── Ocupação / renda ─────────────────────────────────────────────────────
-  occupation     ProponentOccupation?
-  cargo          String?              // autônomo: cargo
-  renda          Decimal?             @db.Decimal(14, 2)
-  outrasRendas   Json?                // [{ descricao, valor }]
-  numeroBeneficio String?             // aposentado/pensionista
+  occupation         ProponentOccupation?
+  cargo              String? // autônomo: cargo
+  renda              Decimal?             @db.Decimal(14, 2)
+  outrasRendas       Json? // [{ descricao, valor }]
+  numeroBeneficio    String? // aposentado/pensionista
   // ── Dados da empresa (CLT/empresário/autônomo opcional) ──────────────────
   empresaNome        String?
   empresaCnpj        String?
@@ -3545,15 +3553,15 @@ model FinanceProponent {
   empresaNumero      String?
   empresaComplemento String?
   // ── Meta ─────────────────────────────────────────────────────────────────
-  notes        String?
-  createdById  String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  notes              String?
+  createdById        String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
-  proposals    FinanceProposal[]
-  simulations  FinanceSimulation[]
-  consents     FinanceConsent[]
-  documents    FinanceProposalDocument[]
+  proposals   FinanceProposal[]
+  simulations FinanceSimulation[]
+  consents    FinanceConsent[]
+  documents   FinanceProposalDocument[]
 
   @@index([tenantId])
   @@index([cpf])
@@ -3565,7 +3573,7 @@ model FinanceBank {
   id        String   @id @default(cuid())
   tenantId  String?
   name      String
-  code      String?  // código/identificador do banco
+  code      String? // código/identificador do banco
   active    Boolean  @default(true)
   notes     String?
   createdAt DateTime @default(now())
@@ -3578,31 +3586,31 @@ model FinanceBank {
 }
 
 model FinanceProposal {
-  id              String                @id @default(cuid())
-  tenantId        String?
-  proponentId     String
-  bankId          String?
-  sellerId        String?
-  dealId          String?               // ligação opcional com a negociação (F&I)
+  id               String                @id @default(cuid())
+  tenantId         String?
+  proponentId      String
+  bankId           String?
+  sellerId         String?
+  dealId           String? // ligação opcional com a negociação (F&I)
   // ── Dados da operação ────────────────────────────────────────────────────
-  vehicle         String?
-  amountRequested Decimal?              @db.Decimal(14, 2)
-  downPayment     Decimal?             @db.Decimal(14, 2)
-  installments    Int?
-  status          FinanceProposalStatus @default(SIMULACAO)
+  vehicle          String?
+  amountRequested  Decimal?              @db.Decimal(14, 2)
+  downPayment      Decimal?              @db.Decimal(14, 2)
+  installments     Int?
+  status           FinanceProposalStatus @default(SIMULACAO)
   // ── Resultado / simulação ────────────────────────────────────────────────
   simulationResult Json?
-  approvedValue    Decimal?            @db.Decimal(14, 2)
-  monthlyPayment   Decimal?            @db.Decimal(14, 2)
+  approvedValue    Decimal?              @db.Decimal(14, 2)
+  monthlyPayment   Decimal?              @db.Decimal(14, 2)
   rejectionReason  String?
   notes            String?
   createdById      String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
-  proponent    FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
-  bank         FinanceBank?     @relation(fields: [bankId], references: [id])
-  deal         Deal?            @relation("DealFinanceProposals", fields: [dealId], references: [id], onDelete: SetNull)
+  proponent    FinanceProponent            @relation(fields: [proponentId], references: [id], onDelete: Cascade)
+  bank         FinanceBank?                @relation(fields: [bankId], references: [id])
+  deal         Deal?                       @relation("DealFinanceProposals", fields: [dealId], references: [id], onDelete: SetNull)
   submissions  FinanceProposalSubmission[]
   events       FinanceProposalEvent[]
   documents    FinanceProposalDocument[]
@@ -3636,72 +3644,76 @@ enum FinanceEnvironment {
 }
 
 model FinanceProvider {
-  id              String   @id @default(cuid())
-  name            String
-  kind            FinanceProviderKind @default(MANUAL)
-  active          Boolean  @default(true)
-  baseUrlHomolog  String?
-  baseUrlProd     String?
-  apiVersion      String?
-  supportsSimulate Boolean @default(false)
-  supportsSubmit   Boolean @default(false)
-  supportsWebhook  Boolean @default(false)
-  supportsStatus   Boolean @default(false)
-  fieldMappings   Json?     // de/para campos AutoDrive → API do provedor (Master)
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  providerBanks   FinanceProviderBank[]
-  integrations    FinanceTenantIntegration[]
+  id               String                     @id @default(cuid())
+  name             String
+  kind             FinanceProviderKind        @default(MANUAL)
+  active           Boolean                    @default(true)
+  baseUrlHomolog   String?
+  baseUrlProd      String?
+  apiVersion       String?
+  supportsSimulate Boolean                    @default(false)
+  supportsSubmit   Boolean                    @default(false)
+  supportsWebhook  Boolean                    @default(false)
+  supportsStatus   Boolean                    @default(false)
+  fieldMappings    Json? // de/para campos AutoDrive → API do provedor (Master)
+  notes            String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  providerBanks    FinanceProviderBank[]
+  integrations     FinanceTenantIntegration[]
+
   @@map("finance_providers")
 }
 
 model FinanceProviderBank {
-  id         String   @id @default(cuid())
+  id         String          @id @default(cuid())
   providerId String
   name       String
   code       String?
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now())
   provider   FinanceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
   @@index([providerId])
   @@map("finance_provider_banks")
 }
 
 model FinanceTenantIntegration {
-  id             String   @id @default(cuid())
+  id             String              @id @default(cuid())
   tenantId       String
   providerId     String
-  environment    FinanceEnvironment @default(HOMOLOGACAO)
-  active         Boolean  @default(true)
+  environment    FinanceEnvironment  @default(HOMOLOGACAO)
+  active         Boolean             @default(true)
   storeCode      String?
-  webhookActive  Boolean  @default(false)
+  webhookActive  Boolean             @default(false)
   lastTestAt     DateTime?
   lastTestStatus String?
   createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  provider       FinanceProvider    @relation(fields: [providerId], references: [id])
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  provider       FinanceProvider     @relation(fields: [providerId], references: [id])
   credentials    FinanceCredential[]
+
   @@index([tenantId])
   @@index([providerId])
   @@map("finance_tenant_integrations")
 }
 
 model FinanceCredential {
-  id               String   @id @default(cuid())
+  id               String                    @id @default(cuid())
   tenantId         String
   integrationId    String?
   bankId           String?
   label            String?
-  environment      FinanceEnvironment @default(HOMOLOGACAO)
-  secretsEncrypted String?  // ciphertext do JSON {usuario,senha,token,clientId,clientSecret}
-  maskedHints      Json?    // ex.: { token: "****8F2A" } para exibição
+  environment      FinanceEnvironment        @default(HOMOLOGACAO)
+  secretsEncrypted String? // ciphertext do JSON {usuario,senha,token,clientId,clientSecret}
+  maskedHints      Json? // ex.: { token: "****8F2A" } para exibição
   createdById      String?
   updatedById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
   integration      FinanceTenantIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+
   @@index([tenantId])
   @@index([bankId])
   @@map("finance_credentials")
@@ -3716,6 +3728,7 @@ model FinanceBankPriority {
   rule      Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@unique([tenantId, bankId])
   @@index([tenantId])
   @@map("finance_bank_priorities")
@@ -3730,6 +3743,7 @@ model FinanceRoutingRule {
   priority  Int      @default(0)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
+
   @@index([tenantId])
   @@map("finance_routing_rules")
 }
@@ -3746,109 +3760,116 @@ model FinanceReturnRule {
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
   @@index([tenantId])
   @@index([bankId])
   @@map("finance_return_rules")
 }
 
 model FinanceProduct {
-  id           String   @id @default(cuid())
+  id           String               @id @default(cuid())
   tenantId     String
   name         String
-  kind         String?  // SEGURO | GARANTIA | PROTECAO | RASTREADOR | OUTRO
-  defaultValue Decimal? @db.Decimal(14, 2)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  kind         String? // SEGURO | GARANTIA | PROTECAO | RASTREADOR | OUTRO
+  defaultValue Decimal?             @db.Decimal(14, 2)
+  active       Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
   sales        FinanceProductSale[]
+
   @@index([tenantId])
   @@map("finance_products")
 }
 
 model FinanceProductSale {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   tenantId    String
   productId   String?
   proposalId  String?
   description String
-  value       Decimal  @db.Decimal(14, 2)
-  createdAt   DateTime @default(now())
+  value       Decimal          @db.Decimal(14, 2)
+  createdAt   DateTime         @default(now())
   product     FinanceProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
   proposal    FinanceProposal? @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
   @@index([tenantId])
   @@index([proposalId])
   @@map("finance_product_sales")
 }
 
 model FinanceConsent {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   tenantId    String
   proponentId String
-  type        String   // TRATAMENTO_DADOS | ENVIO_BANCO
-  granted     Boolean  @default(false)
+  type        String // TRATAMENTO_DADOS | ENVIO_BANCO
+  granted     Boolean          @default(false)
   grantedAt   DateTime?
   ip          String?
   notes       String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime         @default(now())
   proponent   FinanceProponent @relation(fields: [proponentId], references: [id], onDelete: Cascade)
+
   @@index([tenantId])
   @@index([proponentId])
   @@map("finance_consents")
 }
 
 model FinanceSimulation {
-  id             String   @id @default(cuid())
+  id             String                    @id @default(cuid())
   tenantId       String
   proponentId    String?
   vehicle        String?
-  vehicleValue   Decimal? @db.Decimal(14, 2)
-  downPayment    Decimal? @db.Decimal(14, 2)
-  financedAmount Decimal? @db.Decimal(14, 2)
+  vehicleValue   Decimal?                  @db.Decimal(14, 2)
+  downPayment    Decimal?                  @db.Decimal(14, 2)
+  financedAmount Decimal?                  @db.Decimal(14, 2)
   installments   Int?
   sellerId       String?
   notes          String?
   createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  proponent      FinanceProponent? @relation(fields: [proponentId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  proponent      FinanceProponent?         @relation(fields: [proponentId], references: [id], onDelete: SetNull)
   options        FinanceSimulationOption[]
+
   @@index([tenantId])
   @@index([proponentId])
   @@map("finance_simulations")
 }
 
 model FinanceSimulationOption {
-  id               String   @id @default(cuid())
+  id               String            @id @default(cuid())
   simulationId     String
   bankId           String?
   installments     Int?
-  installmentValue Decimal? @db.Decimal(14, 2)
-  rate             Decimal? @db.Decimal(8, 4)
-  cet              Decimal? @db.Decimal(8, 4)
-  estimatedReturn  Decimal? @db.Decimal(14, 2)
+  installmentValue Decimal?          @db.Decimal(14, 2)
+  rate             Decimal?          @db.Decimal(8, 4)
+  cet              Decimal?          @db.Decimal(8, 4)
+  estimatedReturn  Decimal?          @db.Decimal(14, 2)
   status           String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime          @default(now())
   simulation       FinanceSimulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+
   @@index([simulationId])
   @@map("finance_simulation_options")
 }
 
 model FinanceProposalSubmission {
-  id              String   @id @default(cuid())
+  id              String                 @id @default(cuid())
   tenantId        String
   proposalId      String
   bankId          String?
   providerId      String?
-  environment     FinanceEnvironment @default(HOMOLOGACAO)
+  environment     FinanceEnvironment     @default(HOMOLOGACAO)
   externalId      String?
-  status          String   @default("ENVIADA")
+  status          String                 @default("ENVIADA")
   requestPayload  Json?
   responsePayload Json?
   submittedById   String?
-  submittedAt     DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  proposal        FinanceProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  submittedAt     DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  proposal        FinanceProposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
   events          FinanceProposalEvent[]
+
   @@index([tenantId])
   @@index([proposalId])
   @@index([externalId])
@@ -3856,39 +3877,41 @@ model FinanceProposalSubmission {
 }
 
 model FinanceProposalEvent {
-  id           String   @id @default(cuid())
+  id           String                     @id @default(cuid())
   tenantId     String?
   proposalId   String?
   submissionId String?
-  type         String   // STATUS_CHANGE | WEBHOOK | NOTE
+  type         String // STATUS_CHANGE | WEBHOOK | NOTE
   status       String?
   message      String?
-  source       String?  // MANUAL | WEBHOOK | API
+  source       String? // MANUAL | WEBHOOK | API
   createdById  String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime                   @default(now())
   proposal     FinanceProposal?           @relation(fields: [proposalId], references: [id], onDelete: Cascade)
   submission   FinanceProposalSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+
   @@index([proposalId])
   @@index([submissionId])
   @@map("finance_proposal_events")
 }
 
 model FinanceProposalDocument {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   tenantId    String
   proposalId  String?
   proponentId String?
-  type        String   // CNH | COMPROVANTE | HOLERITE | ...
+  type        String // CNH | COMPROVANTE | HOLERITE | ...
   fileUrl     String?
   fileName    String?
-  required    Boolean  @default(false)
-  status      String   @default("PENDENTE") // PENDENTE | APROVADO | REPROVADO
+  required    Boolean           @default(false)
+  status      String            @default("PENDENTE") // PENDENTE | APROVADO | REPROVADO
   notes       String?
   createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   proposal    FinanceProposal?  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
   proponent   FinanceProponent? @relation(fields: [proponentId], references: [id], onDelete: SetNull)
+
   @@index([tenantId])
   @@index([proposalId])
   @@index([proponentId])
@@ -3905,6 +3928,7 @@ model FinanceWebhookEvent {
   processed      Boolean  @default(false)
   error          String?
   createdAt      DateTime @default(now())
+
   @@index([processed])
   @@index([externalId])
   @@map("finance_webhook_events")
@@ -3914,11 +3938,12 @@ model FinanceIntegrationLog {
   id         String   @id @default(cuid())
   tenantId   String?
   providerId String?
-  action     String   // TEST_CONNECTION | SIMULATE | SUBMIT | STATUS | WEBHOOK
-  status     String?  // OK | ERROR
+  action     String // TEST_CONNECTION | SIMULATE | SUBMIT | STATUS | WEBHOOK
+  status     String? // OK | ERROR
   durationMs Int?
   message    String?
   createdAt  DateTime @default(now())
+
   @@index([tenantId])
   @@index([providerId])
   @@index([createdAt])
@@ -3930,11 +3955,12 @@ model FinanceIntegrationLog {
 model FinanceTenantSetting {
   id          String   @id @default(cuid())
   tenantId    String
-  key         String   // ex.: 'required_documents' | 'permissions'
-  value       Json     // conteúdo da configuração
+  key         String // ex.: 'required_documents' | 'permissions'
+  value       Json // conteúdo da configuração
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   @@unique([tenantId, key])
   @@index([tenantId])
   @@map("finance_tenant_settings")
@@ -3973,10 +3999,10 @@ enum AiEnvironment {
 
 // Job de processamento de um documento (extração de texto / IA).
 model DocumentProcessingJob {
-  id              String   @id @default(cuid())
+  id              String                   @id @default(cuid())
   tenantId        String?
-  documentId      String?  // referência opcional ao documento de origem
-  sourceModule    String?  // ex.: financing, evaluation, contracts
+  documentId      String? // referência opcional ao documento de origem
+  sourceModule    String? // ex.: financing, evaluation, contracts
   fileName        String?
   mimeType        String?
   fileSize        Int?
@@ -3987,8 +4013,9 @@ model DocumentProcessingJob {
   providerUsed    String?
   createdByUserId String?
   processedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
   @@index([tenantId])
   @@index([documentId])
   @@index([status])
@@ -3997,98 +4024,103 @@ model DocumentProcessingJob {
 
 // Provedor de IA — GLOBAL (configurado pelo MASTER). Segredos cifrados.
 model AiProvider {
-  id                  String   @id @default(cuid())
+  id                  String         @id @default(cuid())
   name                String
-  code                String   @unique // identificador interno (ex.: gemini-default)
+  code                String         @unique // identificador interno (ex.: gemini-default)
   kind                AiProviderKind @default(CUSTOM)
-  priority            Int      @default(100) // ordem de failover (1 = tentado primeiro)
-  model               String?  // modelo padrão
-  authType            String?  // API_KEY | OAUTH | CUSTOM
-  secretsEncrypted    String?  // ciphertext {apiKey, clientSecret, ...} — nunca texto puro
-  maskedHints         Json?    // exibição mascarada
+  priority            Int            @default(100) // ordem de failover (1 = tentado primeiro)
+  model               String? // modelo padrão
+  authType            String? // API_KEY | OAUTH | CUSTOM
+  secretsEncrypted    String? // ciphertext {apiKey, clientSecret, ...} — nunca texto puro
+  maskedHints         Json? // exibição mascarada
   baseUrl             String?
-  active              Boolean  @default(false)
-  environment         AiEnvironment @default(SANDBOX)
+  active              Boolean        @default(false)
+  environment         AiEnvironment  @default(SANDBOX)
   maxTokensPerRequest Int?
   dailyLimit          Int?
   monthlyLimit        Int?
   timeoutMs           Int?
-  allowPdf            Boolean  @default(false)
-  allowImage          Boolean  @default(false)
-  allowReports        Boolean  @default(false)
-  allowHelpChat       Boolean  @default(false)
-  allowDocAnalysis    Boolean  @default(false)
+  allowPdf            Boolean        @default(false)
+  allowImage          Boolean        @default(false)
+  allowReports        Boolean        @default(false)
+  allowHelpChat       Boolean        @default(false)
+  allowDocAnalysis    Boolean        @default(false)
   notes               String?
   createdById         String?
   updatedById         String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
   @@map("ai_providers")
 }
 
 // Instrução de comportamento da IA (ensinar a IA). Global se tenantId null.
 model AiInstruction {
-  id          String   @id @default(cuid())
+  id          String                 @id @default(cuid())
   tenantId    String?
   title       String
   area        String?
-  scope       String   @default("global") // global|ajuda|relatorios|documentos|f&i|estoque|vendas|financeiro|pos-venda|marketing
+  scope       String                 @default("global") // global|ajuda|relatorios|documentos|f&i|estoque|vendas|financeiro|pos-venda|marketing
   content     String
-  status      String   @default("ATIVO") // ATIVO|INATIVO
-  priority    Int      @default(0)
+  status      String                 @default("ATIVO") // ATIVO|INATIVO
+  priority    Int                    @default(0)
   createdById String?
   updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
   versions    AiInstructionVersion[]
+
   @@index([tenantId])
   @@index([scope])
   @@map("ai_instructions")
 }
 
 model AiInstructionVersion {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   instructionId String
   version       Int
   content       String
   scope         String?
   createdById   String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime      @default(now())
   instruction   AiInstruction @relation(fields: [instructionId], references: [id], onDelete: Cascade)
+
   @@index([instructionId])
   @@map("ai_instruction_versions")
 }
 
 // Base de conhecimento da IA. Global (Master) ou do tenant.
 model AiKnowledgeBase {
-  id               String   @id @default(cuid())
+  id               String             @id @default(cuid())
   tenantId         String?
-  scope            String   @default("global") // global|tenant
+  scope            String             @default("global") // global|tenant
   title            String
   description      String?
   content          String?
-  sourceType       String   @default("manual_text") // manual_text|pdf|docx|image|url|system_doc
+  sourceType       String             @default("manual_text") // manual_text|pdf|docx|image|url|system_doc
   sourceDocumentId String?
-  status           String   @default("ATIVO") // ATIVO|INATIVO
+  status           String             @default("ATIVO") // ATIVO|INATIVO
   createdByUserId  String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
   chunks           AiKnowledgeChunk[]
+
   @@index([tenantId])
   @@index([scope])
   @@map("ai_knowledge_base")
 }
 
 model AiKnowledgeChunk {
-  id              String   @id @default(cuid())
+  id              String          @id @default(cuid())
   knowledgeBaseId String
   tenantId        String?
   chunkText       String
-  chunkIndex      Int      @default(0)
+  chunkIndex      Int             @default(0)
   metadata        Json?
-  embedding       Json?    // placeholder (sem pgvector nesta fase)
-  createdAt       DateTime @default(now())
+  embedding       Json? // placeholder (sem pgvector nesta fase)
+  createdAt       DateTime        @default(now())
   knowledgeBase   AiKnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
   @@index([knowledgeBaseId])
   @@index([tenantId])
   @@map("ai_knowledge_chunks")
@@ -4100,17 +4132,541 @@ model AiUsageLog {
   tenantId      String?
   userId        String?
   providerId    String?
-  feature       String   // help_chat | analyze_document | summarize_report | ...
-  promptSummary String?  // resumo/hash — nunca o conteúdo sensível completo
+  feature       String // help_chat | analyze_document | summarize_report | ...
+  promptSummary String? // resumo/hash — nunca o conteúdo sensível completo
   tokenInput    Int?
   tokenOutput   Int?
   costEstimate  Decimal? @db.Decimal(12, 6)
   status        String   @default("OK") // OK | ERROR | BLOCKED
   errorMessage  String?
   createdAt     DateTime @default(now())
+
   @@index([tenantId])
   @@index([userId])
   @@index([providerId])
   @@index([createdAt])
   @@map("ai_usage_logs")
+}
+
+// =============================================================================
+// MARKETING — Mesa SDR / Pré-Vendas + Telefonia (Fase 2: schema aditivo).
+// Apenas estrutura/tomadas. Distribuição inteligente, lock transacional do
+// tanque de tubarão e integração real de telefonia ficam para fases futuras.
+// Convenções: tenantId/userId/unitId são FKs soltos (igual a F&I/IA — sem
+// back-relation em Tenant/User). Credenciais SEMPRE cifradas (secretsEncrypted)
+// + maskedHints; nunca texto puro. MASTER nunca vê credencial do tenant (BYOC).
+// =============================================================================
+
+enum LeadDistributionMode {
+  ROUND_ROBIN // roleta — próximo disponível
+  SHARK_TANK // tanque de tubarão — primeiro que assumir
+  MANUAL // livre — atribuição manual
+  LOAD_BALANCED // menor carga de leads abertos
+  PERFORMANCE_WEIGHTED // peso por performance (futuro)
+  PRIORITY_RULES // regras por origem/unidade/veículo
+}
+
+enum LeadStatus {
+  NEW // recém-criado, não distribuído
+  ASSIGNED // atribuído a um responsável
+  WORKING // em atendimento
+  QUALIFIED // qualificado (apto p/ vendedor)
+  CONVERTED // convertido (virou negociação/venda)
+  LOST // perdido
+  DISCARDED // descartado/inválido
+  RECYCLED // reciclado p/ nova distribuição
+}
+
+enum AgentPresenceStatus {
+  ONLINE
+  BUSY
+  AWAY
+  OFFLINE
+  ON_CALL
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum CallStatus {
+  RINGING
+  ANSWERED
+  MISSED
+  BUSY
+  FAILED
+  COMPLETED
+  VOICEMAIL
+  CANCELED
+}
+
+enum RecordingStatus {
+  PENDING // ainda não disponível
+  AVAILABLE // disponível p/ acesso controlado
+  FAILED
+  EXPIRED // expirou pela política de retenção
+  BLOCKED // bloqueado (LGPD / política do tenant)
+  DELETED
+}
+
+// Tipos de provedor de telefonia homologados pela plataforma (Master).
+enum TelephonyProviderKind {
+  ASTERISK
+  THREE_CX
+  TWILIO
+  GENERIC_WEBHOOK
+  MANUAL
+}
+
+// ── SDR / Pré-Vendas ─────────────────────────────────────────────────────────
+
+// Entidade-âncora do módulo: o lead que a mesa trata. (Adicionada além da lista
+// sugerida — todos os models de SDR/telefonia referenciam o lead.)
+model MarketingLead {
+  id               String                    @id @default(cuid())
+  tenantId         String
+  status           LeadStatus                @default(NEW)
+  source           String? // origem (site, whatsapp, ligação, indicação, etc.)
+  unitId           String?
+  teamId           String?
+  name             String?
+  phone            String?
+  email            String?
+  customerId       String? // cliente vinculado (Customer)
+  vehicleId        String? // veículo de interesse
+  assignedToUserId String? // responsável atual
+  // Lock otimista do tanque de tubarão (Fase 3): assume com UPDATE ... WHERE claimedByUserId IS NULL.
+  claimedByUserId  String?
+  claimedAt        DateTime?
+  score            Int?
+  lastContactAt    DateTime?
+  convertedDealId  String? // negociação resultante
+  convertedAt      DateTime?
+  lostReason       String?
+  notes            String?
+  metadata         Json?
+  createdById      String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  assignments      MarketingLeadAssignment[]
+  claims           MarketingLeadClaim[]
+  tasks            MarketingLeadTask[]
+  slas             MarketingLeadSla[]
+  calls            TelephonyCall[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([assignedToUserId])
+  @@index([unitId])
+  @@map("marketing_leads")
+}
+
+model MarketingSdrTeam {
+  id          String               @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  unitId      String?
+  active      Boolean              @default(true)
+  createdById String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  members     MarketingSdrMember[]
+
+  @@index([tenantId])
+  @@map("marketing_sdr_teams")
+}
+
+model MarketingSdrMember {
+  id             String              @id @default(cuid())
+  tenantId       String
+  teamId         String
+  userId         String
+  role           String              @default("SDR") // SDR | LEADER
+  active         Boolean             @default(true)
+  presence       AgentPresenceStatus @default(OFFLINE)
+  maxOpenLeads   Int?
+  weight         Decimal?            @db.Decimal(6, 2) // peso p/ PERFORMANCE_WEIGHTED (futuro)
+  unitId         String?
+  lastAssignedAt DateTime?
+  lastPresenceAt DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  team           MarketingSdrTeam    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("marketing_sdr_members")
+}
+
+model MarketingLeadDistributionPolicy {
+  id          String               @id @default(cuid())
+  tenantId    String
+  name        String
+  mode        LeadDistributionMode @default(ROUND_ROBIN)
+  active      Boolean              @default(true)
+  teamId      String?
+  unitId      String?
+  priority    Int                  @default(0)
+  // Parâmetros: slaSeconds, fallbackMode, maxOpenLeads, allowedSources, weights, horários...
+  config      Json?
+  createdById String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([tenantId])
+  @@index([teamId])
+  @@map("marketing_lead_distribution_policies")
+}
+
+model MarketingLeadDistributionQueue {
+  id                String               @id @default(cuid())
+  tenantId          String
+  policyId          String?
+  leadId            String?
+  mode              LeadDistributionMode @default(ROUND_ROBIN)
+  status            String               @default("PENDING") // PENDING | DISTRIBUTED | FALLBACK | CANCELED
+  unitId            String?
+  source            String?
+  position          Int?
+  enqueuedAt        DateTime             @default(now())
+  processedAt       DateTime?
+  fallbackAppliedAt DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([tenantId])
+  @@index([policyId])
+  @@index([status])
+  @@map("marketing_lead_distribution_queue")
+}
+
+// Histórico/auditoria de toda atribuição, aceite, recusa, redistribuição e conversão.
+model MarketingLeadAssignment {
+  id               String               @id @default(cuid())
+  tenantId         String
+  leadId           String
+  assignedToUserId String?
+  assignedByUserId String?
+  teamId           String?
+  mode             LeadDistributionMode @default(MANUAL)
+  // ASSIGNED | ACCEPTED | REFUSED | REDISTRIBUTED | EXPIRED | CONVERTED
+  status           String               @default("ASSIGNED")
+  reason           String?
+  slaDeadline      DateTime?
+  respondedAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  lead             MarketingLead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@index([assignedToUserId])
+  @@index([status])
+  @@map("marketing_lead_assignments")
+}
+
+// Tanque de tubarão: registra quem visualizou, tentou assumir e quem assumiu.
+model MarketingLeadClaim {
+  id        String        @id @default(cuid())
+  tenantId  String
+  leadId    String
+  userId    String
+  action    String        @default("VIEWED") // VIEWED | ATTEMPTED | CLAIMED | LOST_RACE
+  succeeded Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  lead      MarketingLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@index([userId])
+  @@map("marketing_lead_claims")
+}
+
+// SLA de atendimento do lead (redistribuir / avisar gerente se estourar).
+model MarketingLeadSla {
+  id                String        @id @default(cuid())
+  tenantId          String
+  leadId            String
+  assignmentId      String?
+  slaSeconds        Int
+  startedAt         DateTime      @default(now())
+  deadline          DateTime
+  status            String        @default("PENDING") // PENDING | MET | BREACHED | ESCALATED
+  breachedAt        DateTime?
+  escalatedToUserId String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  lead              MarketingLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@index([status])
+  @@map("marketing_lead_slas")
+}
+
+// Cadência/sequência de follow-up (definição). Passos em JSON nesta fase.
+model MarketingLeadCadence {
+  id          String              @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  active      Boolean             @default(true)
+  steps       Json?
+  createdById String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  tasks       MarketingLeadTask[]
+
+  @@index([tenantId])
+  @@map("marketing_lead_cadences")
+}
+
+model MarketingLeadTask {
+  id               String                @id @default(cuid())
+  tenantId         String
+  leadId           String?
+  assignmentId     String?
+  cadenceId        String?
+  assignedToUserId String?
+  type             String                @default("FOLLOW_UP") // CALL | EMAIL | WHATSAPP | FOLLOW_UP | OTHER
+  title            String
+  status           String                @default("PENDING") // PENDING | DONE | SKIPPED | CANCELED
+  dueAt            DateTime?
+  completedAt      DateTime?
+  notes            String?
+  createdById      String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  lead             MarketingLead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  cadence          MarketingLeadCadence? @relation(fields: [cadenceId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@index([assignedToUserId])
+  @@index([status])
+  @@map("marketing_lead_tasks")
+}
+
+// ── Telefonia ────────────────────────────────────────────────────────────────
+
+// Provedor homologado pela plataforma (camada técnica GLOBAL — Master). Sem tenantId.
+model TelephonyProvider {
+  id                String                      @id @default(cuid())
+  name              String
+  kind              TelephonyProviderKind       @default(MANUAL)
+  active            Boolean                     @default(true)
+  supportsInbound   Boolean                     @default(false)
+  supportsOutbound  Boolean                     @default(false)
+  supportsRecording Boolean                     @default(false)
+  supportsWebhook   Boolean                     @default(false)
+  baseUrl           String?
+  apiVersion        String?
+  fieldMappings     Json? // de/para AutoDrive → API do provedor (Master)
+  notes             String?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+  connections       TelephonyTenantConnection[]
+
+  @@map("telephony_providers")
+}
+
+// Conexão do tenant com um provedor (BYOC — credenciais da loja).
+model TelephonyTenantConnection {
+  id             String                @id @default(cuid())
+  tenantId       String
+  providerId     String
+  environment    String                @default("PRODUCAO") // HOMOLOGACAO | PRODUCAO
+  active         Boolean               @default(true)
+  label          String?
+  webhookActive  Boolean               @default(false)
+  lastTestAt     DateTime?
+  lastTestStatus String?
+  createdById    String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  provider       TelephonyProvider     @relation(fields: [providerId], references: [id])
+  credentials    TelephonyCredential[]
+  numbers        TelephonyNumber[]
+
+  @@index([tenantId])
+  @@index([providerId])
+  @@map("telephony_tenant_connections")
+}
+
+// Credenciais cifradas, tenant-scoped (MASTER nunca vê).
+model TelephonyCredential {
+  id               String                     @id @default(cuid())
+  tenantId         String
+  connectionId     String?
+  label            String?
+  secretsEncrypted String? // ciphertext {sipUser, sipPassword, apiKey, token, accountSid, ...}
+  maskedHints      Json? // ex.: { token: "****8F2A" }
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  connection       TelephonyTenantConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([connectionId])
+  @@map("telephony_credentials")
+}
+
+// Número rastreável / ramal por unidade/origem.
+model TelephonyNumber {
+  id           String                     @id @default(cuid())
+  tenantId     String
+  connectionId String?
+  number       String // E.164
+  label        String?
+  extension    String?
+  unitId       String?
+  source       String? // origem rastreável (campanha/canal)
+  inbound      Boolean                    @default(true)
+  outbound     Boolean                    @default(true)
+  active       Boolean                    @default(true)
+  createdById  String?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  connection   TelephonyTenantConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  calls        TelephonyCall[]
+
+  @@index([tenantId])
+  @@index([connectionId])
+  @@index([number])
+  @@map("telephony_numbers")
+}
+
+model TelephonyRoutingRule {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  condition    Json
+  numberId     String?
+  targetUserId String?
+  targetTeamId String?
+  priority     Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("telephony_routing_rules")
+}
+
+model TelephonyCall {
+  id             String               @id @default(cuid())
+  tenantId       String
+  connectionId   String?
+  providerCallId String? // id externo no provedor
+  direction      CallDirection        @default(INBOUND)
+  status         CallStatus           @default(RINGING)
+  fromNumber     String?
+  toNumber       String?
+  agentExtension String?
+  agentUserId    String?
+  numberId       String?
+  leadId         String?
+  customerId     String?
+  source         String?
+  startedAt      DateTime?
+  answeredAt     DateTime?
+  endedAt        DateTime?
+  durationSec    Int?
+  metadata       Json?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  number         TelephonyNumber?     @relation(fields: [numberId], references: [id], onDelete: SetNull)
+  lead           MarketingLead?       @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  events         TelephonyCallEvent[]
+  recording      TelephonyRecording?
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@index([numberId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("telephony_calls")
+}
+
+model TelephonyCallEvent {
+  id         String        @id @default(cuid())
+  tenantId   String?
+  callId     String
+  type       String // ringing | answered | hangup | transfer | recording_ready | ...
+  payload    Json?
+  occurredAt DateTime      @default(now())
+  createdAt  DateTime      @default(now())
+  call       TelephonyCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId])
+  @@map("telephony_call_events")
+}
+
+// Gravação de chamada — acesso controlado (URL protegida, retenção, LGPD).
+model TelephonyRecording {
+  id              String          @id @default(cuid())
+  tenantId        String
+  callId          String          @unique
+  status          RecordingStatus @default(PENDING)
+  storageUrl      String? // URL protegida (nunca pública)
+  fileName        String?
+  mimeType        String?
+  durationSec     Int?
+  sizeBytes       Int?
+  retentionUntil  DateTime?
+  deletedAt       DateTime?
+  deletedByUserId String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  call            TelephonyCall   @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("telephony_recordings")
+}
+
+// Evento bruto de webhook (para os endpoints futuros /api/webhooks/telephony/*).
+model TelephonyWebhookEvent {
+  id             String    @id @default(cuid())
+  tenantId       String?
+  providerKind   String?
+  connectionId   String?
+  eventType      String?
+  externalId     String?
+  payload        Json
+  signatureValid Boolean?
+  processed      Boolean   @default(false)
+  processedAt    DateTime?
+  callId         String?
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([processed])
+  @@index([createdAt])
+  @@map("telephony_webhook_events")
+}
+
+// Log técnico de integração (teste/sync/chamada/webhook). Sem dados sensíveis.
+model TelephonyIntegrationLog {
+  id              String   @id @default(cuid())
+  tenantId        String?
+  connectionId    String?
+  providerKind    String?
+  action          String // TEST | SYNC | CALL | WEBHOOK | RECORDING_ACCESS | ...
+  status          String   @default("OK") // OK | ERROR | BLOCKED
+  message         String?
+  metadata        Json?
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([connectionId])
+  @@index([createdAt])
+  @@map("telephony_integration_logs")
 }
