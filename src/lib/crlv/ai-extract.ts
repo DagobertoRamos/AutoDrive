@@ -79,43 +79,53 @@ function clean<T extends Record<string, unknown>>(obj: T): ExtractedVehicle {
   return out as ExtractedVehicle
 }
 
-/** Extrai via Gemini. Retorna null se a chave não estiver configurada. */
-export async function extractWithAI(buffer: Buffer, mimeType: string): Promise<ExtractionResult | null> {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-  if (!key) return null
-  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-
+/** Faz uma chamada generateContent ao Gemini e devolve o texto. */
+async function callGemini(model: string, key: string, mimeType: string, base64: string, withSchema: boolean): Promise<string> {
   const body = {
     contents: [{
       parts: [
-        { inline_data: { mime_type: mimeType, data: buffer.toString('base64') } },
-        { text: EXTRACTION_PROMPT },
+        { inlineData: { mimeType, data: base64 } },
+        { text: withSchema ? EXTRACTION_PROMPT : `${EXTRACTION_PROMPT}\nResponda APENAS um objeto JSON válido (sem markdown).` },
       ],
     }],
-    generationConfig: {
-      temperature: 0,
-      responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
-    },
+    generationConfig: withSchema
+      ? { temperature: 0, responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA }
+      : { temperature: 0, responseMimeType: 'application/json' },
   }
-
   const res = await fetch(ENDPOINT(model), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(25_000),
   })
-
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
-    throw new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`)
+    throw new Error(`Gemini ${res.status}: ${detail.replace(/\s+/g, ' ').slice(0, 180)}`)
   }
+  const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+  return json?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+}
 
-  const json = await res.json() as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[]
+/** Extrai via Gemini. Retorna null se a chave não estiver configurada. */
+export async function extractWithAI(buffer: Buffer, mimeType: string): Promise<ExtractionResult | null> {
+  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+  if (!key) return null
+  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+  const base64 = buffer.toString('base64')
+
+  // 1ª tentativa com saída estruturada (responseSchema); se falhar (alguns
+  // modelos recusam schema + arquivo), tenta novamente só pedindo JSON.
+  let text = ''
+  try {
+    text = await callGemini(model, key, mimeType, base64, true)
+  } catch (e1) {
+    try {
+      text = await callGemini(model, key, mimeType, base64, false)
+    } catch (e2) {
+      throw new Error((e2 as Error)?.message || (e1 as Error)?.message || 'Falha na IA.')
+    }
   }
-  const text = json?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
-  if (!text) throw new Error('Resposta vazia da IA.')
+  if (!text) throw new Error('Resposta vazia da IA (documento pode estar ilegível ou bloqueado).')
 
   let parsed: Record<string, unknown>
   try {

@@ -700,6 +700,15 @@
 - **Segurança/LGPD:** chave só no backend, header (nunca URL/log); `rawText` (PII) removido da resposta em produção; preenche apenas campos vazios (não sobrescreve o que o usuário digitou); permissão `stock.evaluate` mantida; multi-tenant intacto.
 - **Pendências:** revisão visual no fluxo real; Gemini multimodal já cobre imagem aqui (CRLV) — generalizar para outros documentos fica nas Etapas 9/10 (IA de documentos da loja).
 
+### LOG 0067 — 2026-06-17 — Claude (Opus 4.8) — Avaliação: robustez da leitura por IA + erro visível
+- **Branch:** main (worktree). **Sem migration.** Diagnóstico de erro reportado ("Não foi possível ler o documento" em PDF escaneado, com mensagem enganosa "imagem não suportada").
+- **Causa provável:** a chamada de IA (`extractWithAI`) estava falhando e sendo **silenciada** no try/catch de `extractFromCRLV`, caindo na mensagem de fallback (que dizia, erradamente, que leitura por imagem não é suportada). Sem a chave localmente não dá pra reproduzir o erro do Gemini.
+- **Arquivos alterados:** `src/lib/crlv/ai-extract.ts` — (1) `inlineData`/`mimeType` em camelCase (forma documentada v1beta); (2) **retry sem `responseSchema`** se a 1ª chamada (structured output + arquivo) falhar; (3) erro do Gemini propagado com status+detalhe (sem a chave). `src/lib/crlv/parser.ts` — quando a chave de IA ESTÁ configurada mas a leitura falha, a resposta passa a **mostrar o motivo real** (`message`/`warnings`) em vez do texto genérico "imagem não suportada"; mensagens distintas para com/sem chave.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` OK; `next build` OK.
+- **Resultado:** o retry sem schema + camelCase pode resolver direto (modelos que recusam schema+arquivo). Se ainda falhar, o usuário verá a **causa real** (ex.: "Gemini 400: ...", "Resposta vazia (bloqueado)") — base para o ajuste fino seguinte.
+- **AÇÃO USUÁRIO:** Redeploy e tentar de novo; se persistir, copiar a nova mensagem de erro (agora traz o motivo do Gemini). Confirmar `GEMINI_API_KEY` em Production.
+- **Segurança:** chave só no backend/header (nunca URL/log); erro propagado sem a chave; `rawText`/PII fora da resposta em prod.
+
 ---
 
 ## TAREFAS PENDENTES

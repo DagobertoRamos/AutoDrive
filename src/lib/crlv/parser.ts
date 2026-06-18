@@ -485,15 +485,19 @@ export async function extractFromCRLV(
   // ── 1) IA de visão (Gemini), se configurada (GEMINI_API_KEY) ──────────────
   // Cobre PDF E imagem (foto do CRLV) de forma robusta em serverless. Só é
   // usada quando a chave existe; senão cai no parser por regex abaixo.
+  const aiKeyConfigured = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)
+  let aiError: string | null = null
   try {
     const { extractWithAI } = await import('./ai-extract')
     const ai = await extractWithAI(buffer, mimeType)
     if (ai && ai.extracted) return ai
+    if (ai && !ai.extracted) aiError = ai.warnings?.[0] ?? 'A IA não localizou dados no documento.'
   } catch (e) {
-    console.warn('[CRLV parser] IA indisponível/falhou, usando fallback:', (e as Error)?.message)
+    aiError = (e as Error)?.message ?? 'Falha ao chamar a IA.'
+    console.warn('[CRLV parser] IA falhou:', aiError)
   }
 
-  // ── 2) Imagem sem IA configurada — resposta clara para o frontend ─────────
+  // ── 2) Imagem: precisa da IA. Se a chave existe mas falhou, mostra o motivo.
   if (mimeType !== 'application/pdf') {
     return {
       success:       true,
@@ -502,8 +506,10 @@ export async function extractFromCRLV(
       source:        'ocr',
       vehicle:       {},
       missingFields: [],
-      warnings:      ['Leitura de imagem requer IA (GEMINI_API_KEY) — não configurada.'],
-      message:       'Leitura automática de imagens requer a chave de IA (GEMINI_API_KEY). Envie o PDF do CRLV, use a consulta por placa, ou preencha manualmente.',
+      warnings:      aiKeyConfigured ? [`IA: ${aiError ?? 'sem dados'}`] : ['Leitura de imagem requer IA (GEMINI_API_KEY) — não configurada.'],
+      message:       aiKeyConfigured
+        ? `A IA não conseguiu ler a imagem${aiError ? ` (${aiError})` : ''}. Tente uma foto mais nítida e enquadrada, ou use a consulta por placa abaixo.`
+        : 'Leitura automática de imagens requer a chave de IA (GEMINI_API_KEY). Envie o PDF do CRLV, use a consulta por placa, ou preencha manualmente.',
     }
   }
 
@@ -534,8 +540,10 @@ export async function extractFromCRLV(
       source:        'pdf-text',
       vehicle:       {},
       missingFields: [],
-      warnings:      ['PDF sem texto extraível (provavelmente escaneado).'],
-      message:       'O PDF parece ser uma imagem digitalizada (sem camada de texto). Para CRLV-e: baixe o PDF original do app/site do Detran ou Senatran. Para CRLV físico antigo: tire foto e a leitura por imagem ainda não é suportada — use a consulta por placa abaixo.',
+      warnings:      aiKeyConfigured ? [`PDF escaneado; IA: ${aiError ?? 'sem dados'}`] : ['PDF sem texto extraível (provavelmente escaneado).'],
+      message:       aiKeyConfigured
+        ? `Este PDF é escaneado (sem camada de texto) e a IA não conseguiu lê-lo${aiError ? ` (${aiError})` : ''}. Tente o PDF original (app/site Detran/Senatran), uma foto nítida do documento, ou a consulta por placa abaixo.`
+        : 'O PDF parece ser uma imagem digitalizada (sem camada de texto). Para CRLV-e: baixe o PDF original do app/site do Detran ou Senatran. Para CRLV físico antigo: tire foto e a leitura por imagem ainda não é suportada — use a consulta por placa abaixo.',
       rawText:       text,
     }
   }
