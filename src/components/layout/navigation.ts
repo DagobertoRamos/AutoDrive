@@ -197,11 +197,11 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  MessageSquare,
     module: 'communication',
     children: [
-      { label: 'Central de Comunicação', href: '/comunicacao/central', badge: 'em breve',   icon: Inbox,           module: 'communication' },
+      { label: 'Central de Comunicação', href: '/comunicacao/central',   icon: Inbox,           module: 'communication' },
       { label: 'Disparo',                href: '/comunicacao/disparo',   icon: Send,            module: 'communication.dispatch' },
       { label: 'Templates',              href: '/comunicacao/templates', icon: LayoutTemplate,  module: 'communication.templates' },
-      { label: 'Avisos',                 href: '/comunicacao/avisos', badge: 'em breve',    icon: Megaphone,       module: 'communication' },
-      { label: 'Logs',                   href: '/comunicacao/logs', badge: 'em breve',      icon: ScrollText,      module: 'communication' },
+      { label: 'Avisos',                 href: '/comunicacao/avisos',    icon: Megaphone,       module: 'communication' },
+      { label: 'Logs',                   href: '/comunicacao/logs',      icon: ScrollText,      module: 'communication' },
     ],
   },
 

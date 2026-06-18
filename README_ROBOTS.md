@@ -778,6 +778,14 @@
 - **Regras aplicadas:** gate `documents.pdf` (mantido); valores do usuário escapados no HTML (anti-XSS); nota de que são modelos genéricos (não substituem orientação jurídica); não grava nada no banco.
 - **Pendências (stub restantes):** Comunicação (loja) Central/Avisos/Logs; Pendências > Configurações. Opcionais de IA seguem em aberto.
 
+### LOG 0075 — 2026-06-17 — Claude (Opus 4.8) — Comunicação (loja): Central / Avisos / Logs
+- **Branch:** main (worktree). **Sem migration** (reaproveita models/rotas existentes).
+- **Tarefa:** ativar as 3 telas stub de Comunicação da loja (Disparo e Templates já funcionavam).
+- **Arquivos alterados:** `comunicacao/central` (hub: atalhos p/ Disparo/Templates/Avisos/Logs/Relatórios + contagem de avisos ativos via `/api/internal-notices/active`); `comunicacao/avisos` (lista comunicados ativos da plataforma + "marcar como lido" via `/api/internal-notices/[id]/read`); `comunicacao/logs` (histórico de envios/entregas via `/api/reports/communication?view=logs`, com KPIs e tratamento de 403 → aponta p/ relatórios); `navigation.ts` (removidos badges "em breve" dos 3).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK.
+- **Regras aplicadas:** gate `communication` (mantido); reaproveita endpoints existentes (sem novos models/migration); logs com fallback gracioso quando o papel não tem `logs`; isolamento de tenant garantido na origem dos endpoints.
+- **Pendências (stub restantes):** Pendências > Configurações. Opcionais de IA seguem em aberto.
+
 ---
 
 ## TAREFAS PENDENTES
