@@ -36,7 +36,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const d = updateAiProviderSchema.parse(await req.json())
 
     const data: Record<string, unknown> = { updatedById: user.id }
-    for (const k of ['name', 'kind', 'model', 'authType', 'baseUrl', 'active', 'environment', 'maxTokensPerRequest', 'dailyLimit', 'monthlyLimit', 'timeoutMs', 'allowPdf', 'allowImage', 'allowReports', 'allowHelpChat', 'allowDocAnalysis', 'notes'] as const) {
+    for (const k of ['name', 'kind', 'priority', 'model', 'authType', 'baseUrl', 'active', 'environment', 'maxTokensPerRequest', 'dailyLimit', 'monthlyLimit', 'timeoutMs', 'allowPdf', 'allowImage', 'allowReports', 'allowHelpChat', 'allowDocAnalysis', 'notes'] as const) {
       const v = (d as Record<string, unknown>)[k]
       if (v !== undefined) data[k] = v
     }

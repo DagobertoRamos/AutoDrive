@@ -4001,6 +4001,7 @@ model AiProvider {
   name                String
   code                String   @unique // identificador interno (ex.: gemini-default)
   kind                AiProviderKind @default(CUSTOM)
+  priority            Int      @default(100) // ordem de failover (1 = tentado primeiro)
   model               String?  // modelo padrão
   authType            String?  // API_KEY | OAUTH | CUSTOM
   secretsEncrypted    String?  // ciphertext {apiKey, clientSecret, ...} — nunca texto puro

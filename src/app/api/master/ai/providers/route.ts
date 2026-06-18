@@ -28,9 +28,9 @@ export async function GET() {
   if (!canAccessModule(user.role, 'master.ai')) return forbiddenResponse('Área exclusiva do MASTER.')
   try {
     const rows = await prisma.aiProvider.findMany({
-      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      orderBy: [{ active: 'desc' }, { priority: 'asc' }, { name: 'asc' }],
       select: {
-        id: true, name: true, code: true, kind: true, model: true, authType: true, baseUrl: true, active: true,
+        id: true, name: true, code: true, kind: true, priority: true, model: true, authType: true, baseUrl: true, active: true,
         environment: true, maxTokensPerRequest: true, dailyLimit: true, monthlyLimit: true, timeoutMs: true,
         allowPdf: true, allowImage: true, allowReports: true, allowHelpChat: true, allowDocAnalysis: true,
         maskedHints: true, notes: true, updatedAt: true,
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     const secrets = { apiKey: d.apiKey ?? '', clientSecret: d.clientSecret ?? '' }
     const p = await prisma.aiProvider.create({
       data: {
-        name: d.name, code: d.code, kind: d.kind, model: d.model ?? null, authType: d.authType ?? null,
+        name: d.name, code: d.code, kind: d.kind, priority: d.priority, model: d.model ?? null, authType: d.authType ?? null,
         baseUrl: d.baseUrl ?? null, active: d.active, environment: d.environment,
         maxTokensPerRequest: d.maxTokensPerRequest ?? null, dailyLimit: d.dailyLimit ?? null,
         monthlyLimit: d.monthlyLimit ?? null, timeoutMs: d.timeoutMs ?? null,

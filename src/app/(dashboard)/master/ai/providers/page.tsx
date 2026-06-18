@@ -16,9 +16,9 @@ const KINDS = ['GEMINI', 'OPENAI', 'ANTHROPIC', 'CUSTOM'] as const
 type Kind = (typeof KINDS)[number]
 const KIND_LABEL: Record<Kind, string> = { GEMINI: 'Gemini', OPENAI: 'OpenAI', ANTHROPIC: 'Anthropic/Claude', CUSTOM: 'Customizado (Mock)' }
 type Hints = Record<string, string>
-interface Provider { id: string; name: string; code: string; kind: Kind; model: string | null; authType: string | null; baseUrl: string | null; active: boolean; environment: 'SANDBOX' | 'PRODUCAO'; maxTokensPerRequest: number | null; dailyLimit: number | null; monthlyLimit: number | null; timeoutMs: number | null; allowPdf: boolean; allowImage: boolean; allowReports: boolean; allowHelpChat: boolean; allowDocAnalysis: boolean; maskedHints: Hints | null; notes: string | null }
-interface Form { name: string; code: string; kind: Kind; model: string; authType: string; baseUrl: string; active: boolean; environment: 'SANDBOX' | 'PRODUCAO'; maxTokensPerRequest: string; dailyLimit: string; monthlyLimit: string; timeoutMs: string; allowPdf: boolean; allowImage: boolean; allowReports: boolean; allowHelpChat: boolean; allowDocAnalysis: boolean; notes: string; apiKey: string; clientSecret: string }
-const empty: Form = { name: '', code: '', kind: 'CUSTOM', model: '', authType: 'API_KEY', baseUrl: '', active: false, environment: 'SANDBOX', maxTokensPerRequest: '', dailyLimit: '', monthlyLimit: '', timeoutMs: '', allowPdf: false, allowImage: false, allowReports: false, allowHelpChat: false, allowDocAnalysis: false, notes: '', apiKey: '', clientSecret: '' }
+interface Provider { id: string; name: string; code: string; kind: Kind; priority: number; model: string | null; authType: string | null; baseUrl: string | null; active: boolean; environment: 'SANDBOX' | 'PRODUCAO'; maxTokensPerRequest: number | null; dailyLimit: number | null; monthlyLimit: number | null; timeoutMs: number | null; allowPdf: boolean; allowImage: boolean; allowReports: boolean; allowHelpChat: boolean; allowDocAnalysis: boolean; maskedHints: Hints | null; notes: string | null }
+interface Form { name: string; code: string; kind: Kind; priority: string; model: string; authType: string; baseUrl: string; active: boolean; environment: 'SANDBOX' | 'PRODUCAO'; maxTokensPerRequest: string; dailyLimit: string; monthlyLimit: string; timeoutMs: string; allowPdf: boolean; allowImage: boolean; allowReports: boolean; allowHelpChat: boolean; allowDocAnalysis: boolean; notes: string; apiKey: string; clientSecret: string }
+const empty: Form = { name: '', code: '', kind: 'CUSTOM', priority: '100', model: '', authType: 'API_KEY', baseUrl: '', active: false, environment: 'SANDBOX', maxTokensPerRequest: '', dailyLimit: '', monthlyLimit: '', timeoutMs: '', allowPdf: false, allowImage: false, allowReports: false, allowHelpChat: false, allowDocAnalysis: false, notes: '', apiKey: '', clientSecret: '' }
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const CAPS: { key: keyof Form; label: string }[] = [
@@ -62,7 +62,7 @@ export default function MasterAiProvidersPage() {
   const openNew = () => { setEditingId(null); setForm(empty); setError(null); setModal(true) }
   const openEdit = (p: Provider) => {
     setEditingId(p.id)
-    setForm({ name: p.name, code: p.code, kind: p.kind, model: p.model ?? '', authType: p.authType ?? '', baseUrl: p.baseUrl ?? '', active: p.active, environment: p.environment, maxTokensPerRequest: p.maxTokensPerRequest?.toString() ?? '', dailyLimit: p.dailyLimit?.toString() ?? '', monthlyLimit: p.monthlyLimit?.toString() ?? '', timeoutMs: p.timeoutMs?.toString() ?? '', allowPdf: p.allowPdf, allowImage: p.allowImage, allowReports: p.allowReports, allowHelpChat: p.allowHelpChat, allowDocAnalysis: p.allowDocAnalysis, notes: p.notes ?? '', apiKey: '', clientSecret: '' })
+    setForm({ name: p.name, code: p.code, kind: p.kind, priority: p.priority?.toString() ?? '100', model: p.model ?? '', authType: p.authType ?? '', baseUrl: p.baseUrl ?? '', active: p.active, environment: p.environment, maxTokensPerRequest: p.maxTokensPerRequest?.toString() ?? '', dailyLimit: p.dailyLimit?.toString() ?? '', monthlyLimit: p.monthlyLimit?.toString() ?? '', timeoutMs: p.timeoutMs?.toString() ?? '', allowPdf: p.allowPdf, allowImage: p.allowImage, allowReports: p.allowReports, allowHelpChat: p.allowHelpChat, allowDocAnalysis: p.allowDocAnalysis, notes: p.notes ?? '', apiKey: '', clientSecret: '' })
     setError(null); setModal(true)
   }
 
@@ -72,7 +72,7 @@ export default function MasterAiProvidersPage() {
     setSaving(true); setError(null)
     try {
       const num = (s: string) => (s.trim() ? Number(s) : null)
-      const base: Record<string, unknown> = { name: form.name, kind: form.kind, model: form.model || null, authType: form.authType || null, baseUrl: form.baseUrl || null, active: form.active, environment: form.environment, maxTokensPerRequest: num(form.maxTokensPerRequest), dailyLimit: num(form.dailyLimit), monthlyLimit: num(form.monthlyLimit), timeoutMs: num(form.timeoutMs), allowPdf: form.allowPdf, allowImage: form.allowImage, allowReports: form.allowReports, allowHelpChat: form.allowHelpChat, allowDocAnalysis: form.allowDocAnalysis, notes: form.notes || null }
+      const base: Record<string, unknown> = { name: form.name, kind: form.kind, priority: Number(form.priority) || 100, model: form.model || null, authType: form.authType || null, baseUrl: form.baseUrl || null, active: form.active, environment: form.environment, maxTokensPerRequest: num(form.maxTokensPerRequest), dailyLimit: num(form.dailyLimit), monthlyLimit: num(form.monthlyLimit), timeoutMs: num(form.timeoutMs), allowPdf: form.allowPdf, allowImage: form.allowImage, allowReports: form.allowReports, allowHelpChat: form.allowHelpChat, allowDocAnalysis: form.allowDocAnalysis, notes: form.notes || null }
       if (!editingId) base.code = form.code
       // segredos: em branco na edição = manter
       if (form.apiKey.trim()) base.apiKey = form.apiKey.trim()
@@ -115,12 +115,13 @@ export default function MasterAiProvidersPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Provedor', 'Tipo', 'Ambiente', 'Capacidades', 'Chave', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Prior.', 'Provedor', 'Tipo', 'Ambiente', 'Capacidades', 'Chave', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
-              {loading ? Array.from({ length: 3 }).map((_, i) => (<tr key={i}>{Array.from({ length: 7 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
-              : items.length === 0 ? (<tr><td colSpan={7} className="py-14 text-center"><Plug size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor. Crie um (use “Customizado (Mock)” para testar sem custo).</p></td></tr>)
+              {loading ? Array.from({ length: 3 }).map((_, i) => (<tr key={i}>{Array.from({ length: 8 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
+              : items.length === 0 ? (<tr><td colSpan={8} className="py-14 text-center"><Plug size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor. Crie um (use “Customizado (Mock)” para testar sem custo).</p></td></tr>)
               : items.map((p) => (
                 <tr key={p.id} className={cn('hover:bg-gray-50', !p.active && 'opacity-50')}>
+                  <td className="px-4 py-3 text-center"><span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">{p.priority}</span></td>
                   <td className="px-4 py-3 font-medium text-gray-900">{p.name}<span className="ml-1 font-mono text-[11px] text-gray-400">{p.code}</span></td>
                   <td className="px-4 py-3 text-gray-600">{KIND_LABEL[p.kind]}</td>
                   <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', p.environment === 'PRODUCAO' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>{p.environment === 'PRODUCAO' ? 'Produção' : 'Sandbox'}</span></td>
@@ -148,7 +149,8 @@ export default function MasterAiProvidersPage() {
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Gemini Produção" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Código interno <span className="text-red-500">*</span></label><input className={cn(inputCls, 'font-mono')} value={form.code} onChange={(e) => set('code', e.target.value)} disabled={!!editingId} placeholder="gemini-prod" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Provedor</label><select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Modelo padrão</label><input className={inputCls} value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="gemini-2.0-flash" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade (failover)</label><input type="number" min={1} max={999} className={inputCls} value={form.priority} onChange={(e) => set('priority', e.target.value)} placeholder="1 = tentado primeiro" /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Modelo padrão</label><input className={inputCls} value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="gemini-2.0-flash" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo de auth</label><input className={inputCls} value={form.authType} onChange={(e) => set('authType', e.target.value)} placeholder="API_KEY" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Ambiente</label><select className={inputCls} value={form.environment} onChange={(e) => set('environment', e.target.value as 'SANDBOX' | 'PRODUCAO')}><option value="SANDBOX">Sandbox</option><option value="PRODUCAO">Produção</option></select></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Endpoint customizado (opcional)</label><input className={inputCls} value={form.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} placeholder="https://api..." /></div>

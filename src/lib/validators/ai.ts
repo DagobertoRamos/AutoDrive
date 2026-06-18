@@ -14,6 +14,7 @@ export const createAiProviderSchema = z.object({
   name:                reqStr('Nome'),
   code:                z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{1,40}$/, 'Código: minúsculas, números, - ou _ (2-41).'),
   kind:                z.enum(aiProviderKinds).default('CUSTOM'),
+  priority:            z.number().int().min(1).max(999).default(100), // 1 = tentado primeiro
   model:               optStr,
   authType:            optStr,
   baseUrl:             optStr,

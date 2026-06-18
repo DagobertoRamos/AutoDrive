@@ -13,7 +13,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { aiSummarizeReportSchema } from '@/lib/validators/ai'
-import { resolveAiProvider } from '@/lib/ai/resolve-ai-provider'
+import { runAiWithFailover } from '@/lib/ai/resolve-ai-provider'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -47,25 +47,16 @@ export async function POST(req: Request) {
       `Dados (JSON):\n${payload}`,
     ].join('\n\n')
 
-    const { adapter, ctx, providerId, providerName, mock } = await resolveAiProvider('summarize_report')
-
-    let summary = ''
-    let status = 'OK'
-    let errorMessage: string | null = null
-    try {
-      const r = await adapter.generateText(prompt, ctx)
-      summary = r.text?.trim() || 'Não consegui gerar o resumo agora.'
-    } catch (e) {
-      status = 'ERROR'
-      errorMessage = e instanceof Error ? e.message : 'Falha na IA.'
-      summary = `Não consegui resumir agora (${errorMessage}).`
-    }
+    const fo = await runAiWithFailover('summarize_report', (r) => r.adapter.generateText(prompt, r.ctx))
+    const used = fo.provider
+    const summary = fo.ok ? (fo.result.text?.trim() || 'Não consegui gerar o resumo agora.') : `Não consegui resumir agora (${fo.error}).`
+    const status = fo.ok ? 'OK' : 'ERROR'
 
     await prisma.aiUsageLog.create({
-      data: { tenantId: user.tenantId ?? null, userId: user.id, providerId, feature: 'summarize_report', promptSummary: title.slice(0, 60), status, errorMessage },
+      data: { tenantId: user.tenantId ?? null, userId: user.id, providerId: used?.providerId ?? null, feature: 'summarize_report', promptSummary: title.slice(0, 60), status, errorMessage: fo.ok ? null : fo.error },
     }).catch(() => {})
 
-    return NextResponse.json({ success: status === 'OK', summary, provider: providerName, mock })
+    return NextResponse.json({ success: status === 'OK', summary, provider: used?.providerName, mock: used?.mock ?? false })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
     return handlePrismaError(err)

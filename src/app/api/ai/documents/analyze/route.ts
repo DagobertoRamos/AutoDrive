@@ -13,7 +13,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/a
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { extractDocumentText } from '@/lib/documents/extract-text'
-import { resolveAiProvider } from '@/lib/ai/resolve-ai-provider'
+import { runAiWithFailover } from '@/lib/ai/resolve-ai-provider'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
@@ -80,32 +80,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, status: extraction.status, error: extraction.message }, { status: 200 })
     }
 
-    const { adapter, ctx, providerId, providerName, mock } = await resolveAiProvider('analyze_document')
-
-    let analysis
-    let status = 'OK'
-    let errorMessage: string | null = null
-    try {
-      if (extraction.status === 'text_extracted') {
-        analysis = await adapter.analyzeDocument({ text: extraction.text, mimeType }, ctx)
-      } else {
-        // requires_ocr (imagem / PDF escaneado) → multimodal (visão).
-        analysis = await adapter.analyzeDocument({ base64: buffer.toString('base64'), mimeType }, ctx)
-      }
-    } catch (e) {
-      status = 'ERROR'
-      errorMessage = e instanceof Error ? e.message : 'Falha na IA.'
-      analysis = { summary: `Não foi possível analisar agora (${errorMessage}).`, legible: false, needsHumanReview: true }
-    }
+    const input = extraction.status === 'text_extracted'
+      ? { text: extraction.text, mimeType }
+      : { base64: buffer.toString('base64'), mimeType } // requires_ocr → multimodal (visão)
+    // Failover por prioridade entre provedores conectados.
+    const fo = await runAiWithFailover('analyze_document', (r) => r.adapter.analyzeDocument(input, r.ctx))
+    const used = fo.provider
+    const analysis = fo.ok ? fo.result : { summary: `Não foi possível analisar agora (${fo.error}).`, legible: false, needsHumanReview: true }
+    const status = fo.ok ? 'OK' : 'ERROR'
 
     await prisma.aiUsageLog.create({
-      data: { tenantId: user.tenantId ?? null, userId: user.id, providerId, feature: 'analyze_document', promptSummary: fileName.slice(0, 60), status, errorMessage },
+      data: { tenantId: user.tenantId ?? null, userId: user.id, providerId: used?.providerId ?? null, feature: 'analyze_document', promptSummary: fileName.slice(0, 60), status, errorMessage: fo.ok ? null : fo.error },
     }).catch(() => {})
 
     return NextResponse.json({
       success: status === 'OK',
-      provider: providerName,
-      mock,
+      provider: used?.providerName,
+      mock: used?.mock ?? false,
       extractionStatus: extraction.status,
       data: {
         summary: analysis.summary,

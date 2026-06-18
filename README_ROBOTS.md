@@ -740,6 +740,16 @@
 - **Resultado:** chat usa a base de conhecimento de verdade; relatório F&I tem "Resumir com IA"; documentos anexados na ficha têm "Analisar com IA". Tudo controlado (IA só resume/explica/identifica), com chave só no backend, rate-limit, logs sem conteúdo sensível, isolamento de tenant.
 - **Pendências (opcionais):** `DocumentProcessingJob` registrar jobs no pipeline; embeddings reais (hoje RAG por LIKE); botão "Resumir com IA" em mais relatórios; analisar doc embutido na Negociação.
 
+### LOG 0071 — 2026-06-17 — Claude (Opus 4.8) — IA: failover por prioridade entre provedores
+- **Branch:** main (worktree). **Migration aditiva** `20260618090000_add_ai_provider_priority`.
+- **Tarefa:** se um provedor de IA falhar (ex.: cota 429), o sistema tenta o próximo conectado, seguindo a ordem de prioridade (1,2,3…), evitando falhas.
+- **Schema:** `AiProvider.priority Int @default(100)` (1 = tentado primeiro). Migration hand-written.
+- **Arquivos alterados:** `src/lib/ai/resolve-ai-provider.ts` — `resolveAiCandidates(feature)` devolve a lista ordenada por priority (provedores ativos+prontos) + fallback Gemini do servidor + MockAI (último, sempre responde); `runAiWithFailover(feature, run)` tenta cada candidato e retorna no 1º sucesso. `help-chat`, `documents/analyze`, `reports/summarize` agora usam `runAiWithFailover` (logam o provedor que de fato atendeu). Master providers (API GET/POST/PATCH) + tela passam a ter **Prioridade** (coluna + input). `validators/ai.ts` (`priority`).
+- **Comandos:** `prisma validate`+`generate` OK; `tsc` limpo; `eslint` 0 erros; `npm test` 136/136; `next build` OK.
+- **Resultado:** com ≥2 provedores conectados (ex.: duas chaves Gemini, ou Gemini + futuro OpenAI), uma falha (429/timeout/erro) cai automaticamente para o próximo por prioridade; o MockAI garante resposta final. Funciona já com múltiplos provedores Gemini (chaves diferentes).
+- **Segurança:** mantém chave só no backend; isolamento de tenant; IA controlada; logs sem segredo.
+- **Pendências:** adapters reais de OpenAI/Anthropic (hoje stubs → não entram no failover até implementados); **AÇÃO USUÁRIO:** aplicar `20260618090000_add_ai_provider_priority`.
+
 ---
 
 ## TAREFAS PENDENTES
