@@ -927,6 +927,18 @@
 - **NÃO implementado (intencional):** disparo automático do arquivamento ao receber o webhook (hoje é via endpoint/job — evita download dentro da request do webhook; um job/cron pode varrer gravações `AVAILABLE` com `storageUrl` https e chamar `archiveRecording`); providers GCS/Azure/Blob (interface pronta).
 - **AVISO p/ outra IA:** arquivamento em `archive.ts` (download→bucket). Só baixa de host em allowlist; preserve isso. Para automatizar, criar job que lista gravações com `storageUrl` https e chama `archiveRecording`. Depois de arquivado, `storageUrl` vira `s3://…` e o playback usa presign do próprio bucket.
 
+### LOG 0085 — 2026-06-18 — Claude (Opus 4.8) — Telefonia: JOB automático de arquivamento de gravações (cron)
+- **Branch:** main (worktree). **Sem migration.** Automatiza o LOG 0084: um cron varre gravações ainda no provedor e arquiva no bucket próprio.
+- **Tarefa:** "crie o job automático de arquivamento".
+- **Arquivos:**
+  - `src/lib/telephony/archive.ts` (alterado) — `archivePendingRecordings({limit})`: se houver storage gerenciado, busca gravações `status=AVAILABLE` com `storageUrl` http/https (ainda no provedor), bounded por `limit` (default 25, máx 200), e chama `archiveRecording` em cada; devolve relatório `{scanned,archived,skipped,errors,items}`.
+  - `src/app/api/internal/marketing/telephony/recordings/archive-run/route.ts` (novo) — **JOB de cron** protegido por `CRON_SECRET` (mesmo padrão do auto-sync de Sheets: `Authorization: Bearer`/`x-cron-secret`). **GET** (Vercel Cron) e **POST** (manual); `?limit=N` opcional.
+  - `vercel.json` (alterado) — novo cron `"/api/internal/marketing/telephony/recordings/archive-run"` a cada hora (`0 * * * *`).
+- **Segurança:** endpoint recusa tudo sem `CRON_SECRET`; reaproveita as guardas do `archiveRecording` (allowlist anti-SSRF, timeout, teto de tamanho, auth decifrada em runtime). Sem storage gerenciado → no-op com `note`.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **163/163**; `next build` OK (`--max-old-space-size=8192`); rota `/api/internal/marketing/telephony/recordings/archive-run` no manifest.
+- **Config:** definir `CRON_SECRET` (Vercel + .env) — a Vercel injeta `Authorization: Bearer $CRON_SECRET` no cron automaticamente. Ajustar a frequência em `vercel.json` (hoje horário). Requer `TELEPHONY_STORAGE_*` + `TELEPHONY_RECORDING_ALLOWED_HOSTS` para efetivamente arquivar.
+- **AVISO p/ outra IA:** o cron está em `vercel.json` (`archive-run`, horário) e exige `CRON_SECRET`. A varredura é `archivePendingRecordings` (bounded por limit). Para ajustar volume/frequência, mudar o limit no cron (`?limit=`) ou o schedule. Não duplicar lógica de arquivamento — reusar `archiveRecording`.
+
 ---
 
 ## TAREFAS PENDENTES

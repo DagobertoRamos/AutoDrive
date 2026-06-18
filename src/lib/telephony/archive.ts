@@ -116,3 +116,43 @@ export async function archiveRecording(recordingId: string, actorUserId?: string
 
   return { ok: true, ref, bytes: bytes.byteLength, status: 'archived' }
 }
+
+export interface SweepResult {
+  scanned: number
+  archived: number
+  skipped: number
+  errors: number
+  note?: string
+  items: Array<{ id: string; status: ArchiveResult['status']; message?: string }>
+}
+
+/**
+ * Varredura para o JOB automático: arquiva as gravações ainda hospedadas no
+ * provedor (`storageUrl` http/https) cujo storage gerenciado já está pronto.
+ * Bounded por `limit` (default 25, máx 200) para caber na janela do cron.
+ */
+export async function archivePendingRecordings(opts?: { limit?: number }): Promise<SweepResult> {
+  const empty: SweepResult = { scanned: 0, archived: 0, skipped: 0, errors: 0, items: [] }
+
+  if (!getManagedStorage()?.putObject) {
+    return { ...empty, note: 'Storage gerenciado não configurado (TELEPHONY_STORAGE_*).' }
+  }
+
+  const limit = Math.min(Math.max(opts?.limit ?? 25, 1), 200)
+  const candidates = await prisma.telephonyRecording.findMany({
+    where: { status: 'AVAILABLE', storageUrl: { startsWith: 'http' } }, // ainda no provedor (não s3://)
+    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+    take: limit,
+  })
+
+  const out: SweepResult = { ...empty, scanned: candidates.length, items: [] }
+  for (const c of candidates) {
+    const r = await archiveRecording(c.id, null)
+    out.items.push({ id: c.id, status: r.status, message: r.message })
+    if (r.ok && r.status === 'archived') out.archived++
+    else if (r.status === 'already_archived' || r.status === 'skipped') out.skipped++
+    else out.errors++
+  }
+  return out
+}
