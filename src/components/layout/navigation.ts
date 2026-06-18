@@ -187,7 +187,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Minhas Pendências',     href: '/pendencias/minhas',         icon: ClipboardList, module: 'pendencies' },
       { label: 'Gerência',              href: '/pendencias/gerencia',       icon: UserCog,       module: 'pendencies.manage' },
       { label: 'Vendedor',              href: '/pendencias/vendedor',       icon: UserSquare,    module: 'pendencies' },
-      { label: 'Configurações',         href: '/pendencias/configuracoes', badge: 'em breve',  icon: Settings,      module: 'stock.pendencies.configure' },
+      { label: 'Configurações',         href: '/pendencias/configuracoes', icon: Settings,      module: 'stock.pendencies.configure' },
     ],
   },
 

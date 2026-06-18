@@ -786,6 +786,14 @@
 - **Regras aplicadas:** gate `communication` (mantido); reaproveita endpoints existentes (sem novos models/migration); logs com fallback gracioso quando o papel não tem `logs`; isolamento de tenant garantido na origem dos endpoints.
 - **Pendências (stub restantes):** Pendências > Configurações. Opcionais de IA seguem em aberto.
 
+### LOG 0076 — 2026-06-18 — Claude (Opus 4.8) — Pendências › Configurações (último stub do sistema)
+- **Branch:** main (worktree). **Sem migration** (reaproveita `StockPendencyOption` + `SystemSetting`).
+- **Tarefa:** ativar a última tela stub do sistema (`/pendencias/configuracoes`, gate `stock.pendencies.configure`, MASTER/ADM).
+- **Arquivos:** `src/app/api/settings/pendencies/route.ts` (novo — GET/PUT de padrões em `SystemSetting`, chave `t:{tenantId}:pendency_settings` / `global:pendency_settings` p/ MASTER, JSON saneado: SLA por prioridade + janela de envio automático; auditado); `pendencias/configuracoes/page.tsx` (reescrito de placeholder → 3 seções: (A) Tipos de pendência via `/api/stock/pendency-options` com CRUD, opções globais do MASTER somente-leitura p/ a loja; (B) SLA padrão por prioridade; (C) envio automático padrão — dias/horário/frequência/limites); `navigation.ts` (removido badge "em breve").
+- **Comandos:** `tsc` limpo; `eslint` 0 erros (1 warning `set-state-in-effect`, idêntico ao padrão já usado em `fi/produtos`); `npm test` 136/136; `next build --webpack` OK.
+- **Regras aplicadas:** gate `stock.pendencies.configure` (GET/PUT) reaproveitando o mesmo do CRUD de opções; tenant-scoped (chave por tenant); ADM não altera opções globais do MASTER; payload saneado/clampeado no backend (sem zod, igual a `settings/commissions`); auditoria em `AuditLog`; nenhuma ação destrutiva/automática perigosa; **zera os stubs do sistema**.
+- **Pendências restantes:** nenhum stub. Opcionais de IA (DocumentProcessingJob no pipeline, embeddings reais p/ RAG, "Resumir com IA" em mais relatórios) e integração bancária real do F&I seguem em aberto (dependem de credenciais/docs oficiais).
+
 ---
 
 ## TAREFAS PENDENTES
