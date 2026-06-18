@@ -824,6 +824,27 @@
 - **PRÓXIMA FASE SEGURA (parar e alinhar):** **Fase 3 — APIs internas** (`/api/marketing/sdr/*` e `/api/marketing/telephony/*`) seguindo o padrão de guards (`getSessionUser`→`canAccessModule`→`assertTenantId`→`tenantWhere`→`handlePrismaError`), com: lock transacional no claim (tanque de tubarão), auditoria (`AuditLog` + `TelephonyIntegrationLog`) de toda distribuição/aceite/recusa/redistribuição/conversão e de acesso a gravação, e **criação da chave `TELEPHONY_ENCRYPTION_KEY`** (NUNCA reutilizar `FINANCE_ENCRYPTION_KEY`) para cifrar `TelephonyCredential`. Depois: Fase 4 adapters (Asterisk/3CX/Twilio/GenericWebhook/ManualCall) + webhooks `/api/webhooks/telephony/*` (sem integração externa real sem credenciais/docs oficiais); Fase 5 UI real substituindo placeholders.
 - **AVISO p/ outra IA:** Fase 2 = só schema. A migration **pode ainda não estar aplicada** no banco — confirmar antes de escrever queries. Não há lógica de distribuição/telefonia ainda; só tabelas. Não criar integração externa sem aprovação.
 
+### LOG 0079 — 2026-06-18 — Claude (Opus 4.8) — Marketing: Fase 3A — APIs internas da Mesa SDR
+- **Branch:** main (worktree). **Sem migration nova** (usa os models da Fase 2). **Apenas APIs de SDR** — telefonia (Fase 3B) e UI (Fase 5) ficam para depois. Client Prisma regenerado localmente (`prisma generate` OK desta vez).
+- **⚠️ DEPENDÊNCIA:** estas rotas só funcionam em runtime se a migration `20260618120000_add_marketing_sdr_telephony` (Fase 2) **já tiver sido aplicada** (`npx prisma migrate deploy`). Build/tsc passam sem isso; queries 500 até aplicar.
+- **Tarefa:** APIs internas da Mesa SDR (times, membros, políticas, inbox, claim/assign/release/convert), com isolamento de tenant, auditoria e lock transacional do tanque de tubarão.
+- **Arquivos (novos):**
+  - `src/lib/validators/marketing.ts` — schemas zod (team/member/policy/lead/assign/release/convert) + listas de enums.
+  - `src/app/api/marketing/sdr/teams/route.ts` (GET `marketing.sdr` / POST `marketing.sdr.manage`) + `teams/[id]/route.ts` (PATCH/DELETE manage; membros caem em cascata).
+  - `.../members/route.ts` (GET sdr / POST manage — valida time e usuário do tenant) + `members/[id]/route.ts` (PATCH/DELETE; PATCH também atualiza `presence`).
+  - `.../policies/route.ts` (GET sdr / POST manage — `mode` + `config` JSON) + `policies/[id]/route.ts` (PATCH/DELETE).
+  - `.../leads/route.ts` (GET sdr lista, filtros `?status=&unassigned=` / POST sdr cria lead manual NEW).
+  - `.../inbox/route.ts` (GET sdr — `{ available, mine }`; elegibilidade simples: sem responsável, status NEW/RECYCLED, mesma unidade do agente ou sem unidade).
+  - `.../leads/[id]/claim/route.ts` (POST `marketing.leads.claim`) — **LOCK TRANSACIONAL**: `updateMany WHERE claimedByUserId IS NULL AND status IN (NEW,RECYCLED)`; só 1 vence (READ COMMITTED), demais recebem 409; registra `MarketingLeadClaim` (CLAIMED/LOST_RACE) + `MarketingLeadAssignment` (SHARK_TANK/ACCEPTED).
+  - `.../leads/[id]/assign/route.ts` (POST `marketing.leads.distribute`) — atribuição MANUAL; valida responsável do tenant; assignment ASSIGNED + motivo.
+  - `.../leads/[id]/release/route.ts` (POST sdr/dist) — só responsável atual ou gestão; devolve à fila (`recycle`→RECYCLED, senão NEW); assignment REFUSED.
+  - `.../leads/[id]/convert/route.ts` (POST sdr/dist) — marca CONVERTED + `convertedDealId`; **não cria/aprova venda** — só registra a conversão; assignment CONVERTED.
+- **Padrão/segurança:** todas usam `getSessionUser`→`canAccessModule`→exige `tenantId` (operação da loja; MASTER sem tenant é bloqueado com mensagem amigável — usar impersonation p/ contexto de tenant)→`ownsTenant` nas rotas `[id]`→`zodErrorResponse`/`handlePrismaError`. Auditoria via `createSafeAuditLog` (CREATE/UPDATE/DELETE/CLAIM/ASSIGN/RELEASE/CONVERT) + histórico em `MarketingLeadAssignment`/`MarketingLeadClaim`. Nenhuma ação perigosa/automática; nada de telefonia/integração externa aqui.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros nos novos; `npm test` 136/136; `next build --webpack` OK (12 rotas `/api/marketing/sdr/*` no manifest).
+- **NÃO implementado nesta fase (intencional):** distribuição automática real (roleta/menor-carga/peso/regras consomem `MarketingLeadDistributionPolicy`+`Queue`+presença/carga), enforcement de SLA (job que redistribui/avisa gerente via `MarketingLeadSla`), cadências (`MarketingLeadCadence`/`Task`), e o registro `VIEWED` no claim (entra na UI). Criação manual de lead (`POST /leads`) foi adicionada além da lista sugerida (necessária p/ popular o inbox sem telefonia).
+- **PRÓXIMA FASE SEGURA (parar e alinhar):** **Fase 3B — APIs de Telefonia** (`/api/marketing/telephony/*`): providers (Master), connections/credentials (BYOC, exige **criar `TELEPHONY_ENCRYPTION_KEY`** + `src/lib/telephony/crypto.ts` espelhando `src/lib/ai/crypto.ts`), numbers, calls/recordings (gravação com acesso controlado + auditoria em `TelephonyIntegrationLog`). Depois Fase 4 (adapters + webhooks, sem integração externa real sem docs/credenciais) e Fase 5 (UI substituindo placeholders, incluindo a tela de distribuição que consome as políticas). Opcional: motor de distribuição automática (service) consumindo as políticas — alinhar regras antes.
+- **AVISO p/ outra IA:** Mesa SDR (Fase 3A) tem APIs prontas e validadas; a UI ainda é placeholder. O **claim usa lock otimista** (`claimedByUserId`) — preserve esse padrão. Telefonia ainda NÃO tem API. Confirmar que a migration da Fase 2 está aplicada antes de testar em runtime.
+
 ---
 
 ## TAREFAS PENDENTES
