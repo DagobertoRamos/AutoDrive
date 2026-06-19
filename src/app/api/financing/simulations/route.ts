@@ -9,23 +9,25 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
+import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createSimulationSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { financedAmount, computeOption, type ReturnRuleLike } from '@/lib/finance/simulation-service'
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
   const canSeeReturn = canAccessModule(user.role, 'financing.config')
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
 
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const sims = await prisma.financeSimulation.findMany({
-      where: tenantWhere(user.role, tenantId, {}) as never,
+      where: { tenantId },
       orderBy: { createdAt: 'desc' },
       include: { proponent: { select: { nomeCompleto: true } }, options: { select: { installmentValue: true, estimatedReturn: true } } },
     })
@@ -50,10 +52,11 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão para simular.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Simulações são da loja, não do MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const d = createSimulationSchema.parse(await req.json())
 
     // Só bancos da loja entram na simulação.

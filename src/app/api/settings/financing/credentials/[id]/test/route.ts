@@ -8,23 +8,25 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
 import { decryptSecrets, isCryptoConfigured } from '@/lib/finance/crypto'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function POST(_req: Request, { params }: Ctx) {
+export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Credenciais são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
 
   try {
     const cred = await prisma.financeCredential.findUnique({ where: { id } })
     if (!cred) return NextResponse.json({ success: false, error: 'Credencial não encontrada.' }, { status: 404 })
-    if (!ownsTenant(user.role, user.tenantId, cred.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
+    if (!ownsTenant(user.role, tid, cred.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
     if (!isCryptoConfigured()) return NextResponse.json({ success: false, error: 'Criptografia não configurada (FINANCE_ENCRYPTION_KEY).' }, { status: 503 })
 
     // Verifica integridade/legibilidade dos segredos (sem expor valores).

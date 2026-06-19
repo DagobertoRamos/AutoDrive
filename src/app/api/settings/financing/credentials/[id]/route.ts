@@ -9,6 +9,7 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateCredentialSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
@@ -32,14 +33,15 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Credenciais são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   if (!isCryptoConfigured()) return NextResponse.json({ success: false, error: 'Criptografia não configurada (FINANCE_ENCRYPTION_KEY).' }, { status: 503 })
   const { id } = await params
 
   try {
     const existing = await prisma.financeCredential.findUnique({ where: { id } })
     if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
+    if (!ownsTenant(user.role, tid, existing.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
 
     const d = updateCredentialSchema.parse(await req.json())
     // Merge: mantém segredos atuais; substitui só os enviados não-vazios.
@@ -63,16 +65,17 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Credenciais são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
   try {
     const existing = await prisma.financeCredential.findUnique({ where: { id } })
     if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
+    if (!ownsTenant(user.role, tid, existing.tenantId)) return forbiddenResponse('Credencial de outro tenant.')
     await prisma.financeCredential.delete({ where: { id } })
     await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'DELETE', entity: 'FinanceCredential', entityId: id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true })

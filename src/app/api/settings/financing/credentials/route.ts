@@ -10,6 +10,7 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createCredentialSchema } from '@/lib/validators/financing'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
@@ -27,15 +28,16 @@ function buildHints(d: Record<string, string | null | undefined>) {
   return h
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem acesso às configurações de F&I.')
   // MASTER não vê/gerencia credenciais da loja (segredos pertencem ao tenant).
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Credenciais são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const rows = await prisma.financeCredential.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'desc' },
@@ -58,11 +60,12 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão para configurar credenciais.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Credenciais são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   if (!isCryptoConfigured()) return NextResponse.json({ success: false, error: 'Criptografia não configurada (FINANCE_ENCRYPTION_KEY). Defina a chave no ambiente antes de salvar credenciais.' }, { status: 503 })
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const d = createCredentialSchema.parse(await req.json())
     const secrets = { usuario: d.usuario ?? '', senha: d.senha ?? '', token: d.token ?? '', clientId: d.clientId ?? '', clientSecret: d.clientSecret ?? '', storeCode: d.storeCode ?? '' }
     const cred = await prisma.financeCredential.create({

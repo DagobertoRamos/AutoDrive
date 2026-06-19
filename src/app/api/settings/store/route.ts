@@ -16,6 +16,7 @@ import {
   createSafeAuditLog,
 } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
 // Campos cadastrais que o ADM pode editar na própria loja.
@@ -48,22 +49,16 @@ const SELECT = {
   slogan: true, plan: true, status: true,
 } as const
 
-async function resolveTenantId(role: string, tenantId: string | null): Promise<string | null> {
-  // MASTER não tem tenant próprio — edita lojas via Master › Tenants.
-  if (role === 'MASTER') return null
-  return tenantId
-}
-
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'settings')) return forbiddenResponse('Sem acesso à configuração da loja.')
 
   try {
-    const tenantId = await resolveTenantId(user.role, user.tenantId)
+    const tenantId = await resolveActingTenant(user, req)
     if (!tenantId) {
       return NextResponse.json(
-        { success: false, error: 'MASTER edita lojas no painel Master › Tenants.' },
+        { success: false, error: actingTenantError(user) },
         { status: 400 },
       )
     }
@@ -81,10 +76,10 @@ export async function PUT(req: Request) {
   if (!canAccessModule(user.role, 'settings')) return forbiddenResponse('Sem permissão para editar a loja.')
 
   try {
-    const tenantId = await resolveTenantId(user.role, user.tenantId)
+    const tenantId = await resolveActingTenant(user, req)
     if (!tenantId) {
       return NextResponse.json(
-        { success: false, error: 'MASTER edita lojas no painel Master › Tenants.' },
+        { success: false, error: actingTenantError(user) },
         { status: 400 },
       )
     }
