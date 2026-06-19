@@ -11,17 +11,18 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createPolicySchema } from '@/lib/validators/marketing'
 import type { Prisma } from '@prisma/client'
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr')) return forbiddenResponse('Sem acesso à Mesa SDR.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A Mesa SDR pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   try {
     const rows = await prisma.marketingLeadDistributionPolicy.findMany({
       where: { tenantId: tid },
@@ -37,8 +38,8 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr.manage')) return forbiddenResponse('Sem permissão para configurar políticas.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A Mesa SDR pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   try {
     const d = createPolicySchema.parse(await req.json())
     const p = await prisma.marketingLeadDistributionPolicy.create({

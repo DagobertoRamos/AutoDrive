@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import type { CallDirection, CallStatus, Prisma } from '@prisma/client'
 
@@ -19,8 +20,8 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony')) return forbiddenResponse('Sem acesso à telefonia.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A telefonia pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const sp = new URL(req.url).searchParams
   const where: Prisma.TelephonyCallWhereInput = { tenantId: tid }
   const dir = sp.get('direction'); const st = sp.get('status')

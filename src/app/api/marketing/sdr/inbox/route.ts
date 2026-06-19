@@ -11,15 +11,16 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import type { Prisma } from '@prisma/client'
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr')) return forbiddenResponse('Sem acesso à Mesa SDR.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A Mesa SDR pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
 
   // Elegibilidade simples desta fase: leads abertos sem responsável, da mesma
   // unidade do agente (ou sem unidade). Regras finas (presença, carga, SLA,

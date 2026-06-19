@@ -12,17 +12,18 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function POST(_req: Request, { params }: Ctx) {
+export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.leads.claim')) return forbiddenResponse('Sem permissão para assumir leads.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A Mesa SDR pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
   try {
     const lead = await prisma.marketingLead.findUnique({ where: { id }, select: { id: true, tenantId: true } })

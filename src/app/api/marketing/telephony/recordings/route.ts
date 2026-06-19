@@ -8,14 +8,15 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.recordings')) return forbiddenResponse('Sem acesso às gravações.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A telefonia pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   try {
     const rows = await prisma.telephonyRecording.findMany({
       where: { tenantId: tid },

@@ -10,18 +10,19 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createConnectionSchema } from '@/lib/validators/telephony'
 import { encryptSecrets, buildMaskedHints, isTelephonyCryptoConfigured } from '@/lib/telephony/crypto'
 import type { Prisma } from '@prisma/client'
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony')) return forbiddenResponse('Sem acesso à telefonia.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A telefonia pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   try {
     const rows = await prisma.telephonyTenantConnection.findMany({
       where: { tenantId: tid },
@@ -51,8 +52,8 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.manage')) return forbiddenResponse('Sem permissão para gerenciar telefonia.')
-  const tid = user.tenantId
-  if (!tid) return forbiddenResponse('A telefonia pertence à loja.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   try {
     const d = createConnectionSchema.parse(await req.json())
     const provider = await prisma.telephonyProvider.findFirst({ where: { id: d.providerId, active: true }, select: { id: true } })

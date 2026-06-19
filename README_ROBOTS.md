@@ -970,7 +970,18 @@
 - **Uso:** MASTER cadastra aqui os provedores homologados → a loja cria conexões (BYOC) escolhendo um provedor ativo em Marketing › Telefonia › Conexões. O `kind` define o adapter (LOG 0081); Asterisk/3CX/Twilio seguem `ready=false` até validação com doc oficial.
 - **AVISO p/ outra IA:** provedores de telefonia são MASTER/global (`master.marketing.telephony`), sem credencial. Não adicionar segredo aqui — credencial é da loja (BYOC). Restam p/ "fechar" o módulo: motor de distribuição automática (+SLA) e validação real dos adapters Asterisk/3CX/Twilio.
 
-## TAREFAS PENDENTES
+### LOG 0089 — 2026-06-18 — Claude (Opus 4.8) — Marketing: MASTER opera via "loja ativa" (acting tenant)
+- **Branch:** main (worktree). **Sem migration.** Resolve o "MASTER sem acesso ao Marketing": as telas são da loja (tenant-scoped) e o MASTER não tem `tenantId`. Agora o MASTER escolhe uma **loja ativa** e opera nela.
+- **Causa real:** os gates `marketing*` JÁ incluíam MASTER; o bloqueio vinha das rotas exigirem `user.tenantId` (null p/ MASTER → 403 → "sem acesso"). A impersonation existente só registra sessão/banner, **não troca o tenant** — por isso não resolvia.
+- **Arquivos:**
+  - `src/lib/marketing/acting-tenant.ts` (novo) — `resolveActingTenant(user, req)`: não-MASTER → próprio tenant; MASTER → loja do cookie `mkt_acting_tenant` (ou header `x-acting-tenant`), **validada no banco**. `actingTenantError(user)` (mensagem amigável). Só MASTER é honrado → isolamento preservado.
+  - 13 rotas de `/api/marketing/*` (SDR + telefonia) — trocado `const tid = user.tenantId` por `resolveActingTenant(user, req)`; `req` adicionado aos GET sem args; mensagem via `actingTenantError`.
+  - `src/components/marketing/MarketingMasterGate.tsx` (novo) — gate client: p/ MASTER mostra seletor de loja (lista `/api/master/tenants`), grava o cookie e recarrega; sem loja escolhida, bloqueia as telas com instrução. Transparente p/ não-MASTER.
+  - `src/app/(dashboard)/marketing/layout.tsx` (novo) — envolve toda a seção Marketing com o gate.
+- **Segurança:** cookie só é honrado p/ MASTER (checagem de role no backend) e a loja é validada (existe?). Escrita/listagem ficam restritas à loja ativa; `ownsTenant` segue protegendo as rotas `[id]`. Não-MASTER inalterado.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros (warnings `set-state-in-effect`, padrão); `npm test` **163/163**; `next build` OK (`--max-old-space-size=8192`).
+- **Uso (MASTER):** abrir Marketing → escolher a loja no seletor do topo → operar normalmente (Mesa SDR/Telefonia). A camada técnica global (provedores) permanece em Master › Telefonia (global), sem precisar de loja.
+- **AVISO p/ outra IA:** Marketing é tenant-scoped; o tenant efetivo vem de `resolveActingTenant` (NÃO usar `user.tenantId` direto nessas rotas). O MASTER seleciona a loja via cookie `mkt_acting_tenant` (gate no layout). Preserve a validação (só MASTER) p/ não furar isolamento.
 > **Não alterar sem autorização do usuário.** Marcar `[em andamento]` ao iniciar e mover para LOG ao concluir.
 
 ### F&I (Financiamento profissional) — EM ANDAMENTO
