@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { GitBranch, Plus, Pencil, Trash2, X, Save, Power } from 'lucide-react'
+import { GitBranch, Plus, Pencil, Trash2, X, Save, Power, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -33,6 +33,8 @@ export default function SdrPoliciesPage() {
   const [form, setForm] = useState<Form>(empty)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
+  const [runMsg, setRunMsg] = useState<string | null>(null)
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   const load = useCallback(async () => {
@@ -62,6 +64,16 @@ export default function SdrPoliciesPage() {
   }
   const toggle = async (p: Policy) => { await fetch(`/api/marketing/sdr/policies/${p.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ active: !p.active }) }); await load() }
   const remove = async (p: Policy) => { if (!confirm(`Excluir a política "${p.name}"?`)) return; await fetch(`/api/marketing/sdr/policies/${p.id}`, { method: 'DELETE', credentials: 'include' }); await load() }
+  const distribute = async () => {
+    setRunning(true); setRunMsg(null)
+    try {
+      const res = await fetch('/api/marketing/sdr/distribute', { method: 'POST', credentials: 'include' })
+      const j = await res.json()
+      if (!res.ok) { setRunMsg(j?.error ?? 'Falha ao distribuir.'); return }
+      const d = j.distribution, s = j.sla
+      setRunMsg(d?.note ? `Distribuição: ${d.note}` : `Distribuídos ${d?.assigned ?? 0} lead(s); ${d?.skipped ?? 0} sem agente elegível. SLA: ${s?.recycled ?? 0} devolvido(s) à fila.`)
+    } catch { setRunMsg('Erro de rede.') } finally { setRunning(false); setTimeout(() => setRunMsg(null), 6000) }
+  }
 
   return (
     <div className="space-y-5">
@@ -70,8 +82,15 @@ export default function SdrPoliciesPage() {
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><GitBranch size={20} className="text-brand-600" />Políticas de Distribuição</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} política(s) — como os leads são distribuídos`}</p>
         </div>
-        {canManage && <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova política</button>}
+        {canManage && (
+          <div className="flex gap-2">
+            <button onClick={distribute} disabled={running} className="btn-secondary text-sm"><Play size={14} className={cn(running && 'animate-pulse')} />{running ? 'Distribuindo...' : 'Distribuir agora'}</button>
+            <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova política</button>
+          </div>
+        )}
       </div>
+
+      {runMsg && <div className="rounded-lg border border-brand-200 bg-brand-50/50 px-4 py-2 text-sm text-brand-800">{runMsg}</div>}
 
       {denied ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Seu perfil não tem acesso à Mesa SDR.</div>

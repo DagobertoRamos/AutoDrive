@@ -14,6 +14,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-t
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createLeadSchema } from '@/lib/validators/marketing'
+import { distributeLeadById } from '@/lib/marketing/distribution'
 import type { LeadStatus, Prisma } from '@prisma/client'
 
 const STATUSES: LeadStatus[] = ['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED']
@@ -58,7 +59,9 @@ export async function POST(req: Request) {
       },
     })
     await createSafeAuditLog({ userId: user.id, tenantId: tid, action: 'CREATE', entity: 'MarketingLead', entityId: lead.id, userName: user.name, userRole: user.role })
-    return NextResponse.json({ success: true, data: { id: lead.id } }, { status: 201 })
+    // Distribuição automática (best-effort): se houver política ativa em modo automático.
+    const assigned = await distributeLeadById(tid, lead.id).catch(() => false)
+    return NextResponse.json({ success: true, data: { id: lead.id, assigned } }, { status: 201 })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
     return handlePrismaError(err)
