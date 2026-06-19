@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/internal/marketing/telephony/recordings/archive-run",
-      "schedule": "0 * * * *"
+      "schedule": "30 3 * * *"
     }
   ]
 }

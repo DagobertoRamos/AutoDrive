@@ -951,6 +951,12 @@
 - **NÃO implementado (intencional):** motor de distribuição automática (a tela de Distribuição cadastra as políticas; o consumo automático — roleta/menor-carga/peso/regras + SLA — é fase futura); painel MASTER de provedores de telefonia (`master/marketing/telephony` segue placeholder); seletor visual de usuário em Membros (hoje usa ID); validação real dos adapters Asterisk/3CX/Twilio (depende de doc/credenciais).
 - **AVISO p/ outra IA:** Marketing está com UI operacional (Fase 5). Telas consomem as APIs já existentes; preserve os gates e o fluxo de gravação por link assinado. Para "fechar" o módulo: motor de distribuição automática + painel MASTER de provedores + adapters reais (com doc oficial).
 
+### LOG 0087 — 2026-06-18 — Claude (Opus 4.8) — Cron de arquivamento: horário → DIÁRIO (limite do plano Vercel)
+- **Branch:** main (worktree). Só `vercel.json`. O cron `archive-run` (LOG 0085) estava `0 * * * *` (de hora em hora) e o plano da Vercel (Hobby) só permite cron **diário** — estava travando o deploy.
+- **Mudança:** `vercel.json` → `archive-run` agora `"30 3 * * *"` (diário, 03:30 UTC). O cron de Sheets permanece `0 8 * * *`.
+- **Impacto:** as gravações no provedor passam a ser arquivadas 1x/dia (em vez de a cada hora). Se precisar de mais frequência, exige plano Vercel Pro (aí pode voltar a `0 * * * *`) ou disparo manual via `POST /api/internal/marketing/telephony/recordings/archive-run` (com `CRON_SECRET`). Lógica inalterada (`archivePendingRecordings`).
+- **Comandos:** `vercel.json` validado (JSON ok). Sem mudança de código/test.
+
 ---
 
 ## TAREFAS PENDENTES
