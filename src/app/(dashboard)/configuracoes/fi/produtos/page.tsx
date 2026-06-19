@@ -29,7 +29,6 @@ export default function FiProductsPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role
   const allowed = !role || CONFIG_ROLES.includes(role)
-  const isMaster = role === 'MASTER'
 
   const [items, setItems] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,7 +44,7 @@ export default function FiProductsPage() {
     try { const r = await fetch('/api/settings/financing/products', { credentials: 'include' }).then((x) => x.json()); setItems(r?.data ?? []) }
     catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed && !isMaster) load() }, [allowed, isMaster, load])
+  useEffect(() => { if (allowed) load() }, [allowed, load])
 
   const openNew = () => { setEditingId(null); setForm(emptyForm); setError(null); setModal(true) }
   const openEdit = (r: Row) => { setEditingId(r.id); setForm({ name: r.name, kind: (r.kind as Kind) ?? 'OUTRO', defaultValue: r.defaultValue ?? 0, active: r.active }); setError(null); setModal(true) }
@@ -64,7 +63,7 @@ export default function FiProductsPage() {
   const toggle = async (r: Row) => { await fetch(`/api/settings/financing/products/${r.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ active: !r.active }) }); await load() }
   const remove = async (r: Row) => { if (!confirm(`Excluir o produto "${r.name}"?`)) return; await fetch(`/api/settings/financing/products/${r.id}`, { method: 'DELETE', credentials: 'include' }); await load() }
 
-  if (session && (!allowed || isMaster)) {
+  if (session && !allowed) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>

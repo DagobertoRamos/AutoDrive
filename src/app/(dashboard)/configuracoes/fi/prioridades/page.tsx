@@ -19,7 +19,6 @@ export default function FiPrioritiesPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role
   const allowed = !role || CONFIG_ROLES.includes(role)
-  const isMaster = role === 'MASTER'
 
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,7 +33,7 @@ export default function FiPrioritiesPage() {
       setRows(json?.data ?? [])
     } catch { setRows([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed && !isMaster) load() }, [allowed, isMaster, load])
+  useEffect(() => { if (allowed) load() }, [allowed, load])
 
   const move = (i: number, dir: -1 | 1) => {
     setRows((rs) => {
@@ -58,7 +57,7 @@ export default function FiPrioritiesPage() {
     } catch { setToast({ ok: false, msg: 'Erro de rede.' }) } finally { setSaving(false) }
   }
 
-  if (session && (!allowed || isMaster)) {
+  if (session && !allowed) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>

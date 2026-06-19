@@ -10,6 +10,7 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { FI_SETTING_KEYS, isFiSettingKey } from '@/lib/finance/settings'
@@ -17,16 +18,17 @@ import { FI_SETTING_KEYS, isFiSettingKey } from '@/lib/finance/settings'
 type Ctx = { params: Promise<{ key: string }> }
 const badKey = () => NextResponse.json({ success: false, error: 'Configuração desconhecida.' }, { status: 404 })
 
-export async function GET(_req: Request, { params }: Ctx) {
+export async function GET(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem acesso às configurações de F&I.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Configurações são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const { key } = await params
   if (!isFiSettingKey(key)) return badKey()
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const row = await prisma.financeTenantSetting.findUnique({ where: { tenantId_key: { tenantId, key } } })
     const spec = FI_SETTING_KEYS[key]
     // Aplica o schema sobre o valor salvo (preenche defaults de campos novos).
@@ -41,12 +43,13 @@ export async function PUT(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão para alterar configurações de F&I.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Configurações são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const { key } = await params
   if (!isFiSettingKey(key)) return badKey()
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const spec = FI_SETTING_KEYS[key]
     const value = spec.schema.parse(await req.json())
     await prisma.financeTenantSetting.upsert({

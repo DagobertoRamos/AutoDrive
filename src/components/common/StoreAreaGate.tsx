@@ -1,24 +1,24 @@
 'use client'
 
 // =============================================================================
-// MarketingMasterGate — Marketing é uma área da loja (tenant-scoped). Para o
-// MASTER (sem loja), exibe um seletor de "loja ativa" no topo e só libera as
-// telas após escolher uma loja. A escolha vai num cookie (mkt_acting_tenant)
-// enviado automaticamente às APIs (resolveActingTenant valida no backend).
-// Para não-MASTER, é transparente (renderiza os filhos direto).
+// StoreAreaGate — área da loja (tenant-scoped). Para o MASTER (sem loja), mostra
+// um seletor de "loja ativa" no topo e só libera os filhos após escolher. A
+// escolha vai no cookie `acting_tenant` (enviado às APIs; validado no backend
+// por resolveActingTenant). Transparente para não-MASTER.
+// Reutilizável em qualquer layout de área da loja (Marketing, F&I config, ...).
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Store, AlertCircle } from 'lucide-react'
 
-const COOKIE = 'mkt_acting_tenant'
-const readCookie = () => { const m = (typeof document !== 'undefined' ? document.cookie : '').match(/(?:^|;\s*)mkt_acting_tenant=([^;]+)/); return m ? decodeURIComponent(m[1]) : '' }
+const COOKIE = 'acting_tenant'
+const readCookie = () => { const m = (typeof document !== 'undefined' ? document.cookie : '').match(/(?:^|;\s*)acting_tenant=([^;]+)/); return m ? decodeURIComponent(m[1]) : '' }
 const writeCookie = (v: string) => { document.cookie = `${COOKIE}=${encodeURIComponent(v)}; path=/; max-age=${60 * 60 * 12}; samesite=lax` }
 
 interface Tenant { id: string; name: string }
 
-export function MarketingMasterGate({ children }: { children: React.ReactNode }) {
+export function StoreAreaGate({ children, area = 'esta área' }: { children: React.ReactNode; area?: string }) {
   const { data: session, status } = useSession()
   const role = (session?.user as { role?: string })?.role
   const isMaster = role === 'MASTER'
@@ -40,7 +40,6 @@ export function MarketingMasterGate({ children }: { children: React.ReactNode })
 
   const change = (id: string) => { writeCookie(id); setSelected(id); window.location.reload() }
 
-  // Não-MASTER (ou sessão ainda carregando): comportamento normal.
   if (status === 'loading' || !isMaster) return <>{children}</>
 
   const current = tenants.find((t) => t.id === selected)
@@ -51,7 +50,7 @@ export function MarketingMasterGate({ children }: { children: React.ReactNode })
         <Store size={18} className="text-brand-600" />
         <div className="min-w-0">
           <p className="text-sm font-semibold text-gray-800">Operando como MASTER</p>
-          <p className="text-xs text-gray-500">O Marketing é uma área da loja. Escolha a loja para operar.</p>
+          <p className="text-xs text-gray-500">{`${area.charAt(0).toUpperCase()}${area.slice(1)} é da loja. Escolha a loja para operar.`}</p>
         </div>
         <select
           value={selected}
@@ -67,8 +66,8 @@ export function MarketingMasterGate({ children }: { children: React.ReactNode })
       {selected && current ? children : (
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 py-16 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600"><AlertCircle size={22} /></div>
-          <p className="text-sm font-medium text-gray-700">Selecione uma loja acima para operar o Marketing.</p>
-          <p className="max-w-md text-xs text-gray-500">As telas de Mesa SDR e Telefonia são da loja. A camada técnica global (provedores) fica em <span className="font-medium">Master › Telefonia (global)</span>.</p>
+          <p className="text-sm font-medium text-gray-700">{`Selecione uma loja acima para operar ${area}.`}</p>
+          <p className="max-w-md text-xs text-gray-500">As configurações são por loja. A camada técnica global fica nos painéis do MASTER.</p>
         </div>
       )}
     </div>

@@ -981,8 +981,21 @@
 - **Segurança:** cookie só é honrado p/ MASTER (checagem de role no backend) e a loja é validada (existe?). Escrita/listagem ficam restritas à loja ativa; `ownsTenant` segue protegendo as rotas `[id]`. Não-MASTER inalterado.
 - **Comandos:** `tsc` limpo; `eslint` 0 erros (warnings `set-state-in-effect`, padrão); `npm test` **163/163**; `next build` OK (`--max-old-space-size=8192`).
 - **Uso (MASTER):** abrir Marketing → escolher a loja no seletor do topo → operar normalmente (Mesa SDR/Telefonia). A camada técnica global (provedores) permanece em Master › Telefonia (global), sem precisar de loja.
-- **AVISO p/ outra IA:** Marketing é tenant-scoped; o tenant efetivo vem de `resolveActingTenant` (NÃO usar `user.tenantId` direto nessas rotas). O MASTER seleciona a loja via cookie `mkt_acting_tenant` (gate no layout). Preserve a validação (só MASTER) p/ não furar isolamento.
-> **Não alterar sem autorização do usuário.** Marcar `[em andamento]` ao iniciar e mover para LOG ao concluir.
+- **AVISO p/ outra IA:** Marketing é tenant-scoped; o tenant efetivo vem de `resolveActingTenant` (NÃO usar `user.tenantId` direto nessas rotas). O MASTER seleciona a loja via cookie (gate no layout). Preserve a validação (só MASTER) p/ não furar isolamento. (Cookie unificado p/ `acting_tenant` no LOG 0090.)
+
+### LOG 0090 — 2026-06-18 — Claude (Opus 4.8) — "Loja ativa" generalizada → aplicada ao F&I config (e reutilizável)
+- **Branch:** main (worktree). **Sem migration.** Generaliza o acting-tenant (LOG 0089) e aplica às áreas da loja que bloqueavam o MASTER, começando pelo **F&I config**.
+- **Diagnóstico das áreas bloqueadas:** F&I config (`/configuracoes/fi/*`) bloqueia MASTER de fato (API + páginas). **Pendências › Configurações NÃO está bloqueada** — já funciona p/ MASTER em escopo GLOBAL (`settings/pendencies` usa chave `global:`; opções viram globais). **F&I › Credenciais permanece bloqueada ao MASTER por regra BYOC** (MASTER nunca vê/gerencia credencial bancária da loja) — NÃO foi liberada.
+- **Infra reutilizável:**
+  - `src/lib/acting-tenant.ts` (novo, compartilhado) — cookie único **`acting_tenant`**; `resolveActingTenant`/`actingTenantError`. `src/lib/marketing/acting-tenant.ts` agora re-exporta daqui (cookie unificado: MASTER escolhe a loja UMA vez p/ Marketing e F&I config).
+  - `src/components/common/StoreAreaGate.tsx` (novo, genérico, a partir do antigo MarketingMasterGate) — seletor de loja p/ MASTER em qualquer layout de área da loja (prop `area`). `MarketingMasterGate` removido; `marketing/layout.tsx` agora usa `StoreAreaGate`.
+- **F&I config (aplicado):**
+  - `src/app/(dashboard)/configuracoes/fi/layout.tsx` (novo) — envolve a área com `StoreAreaGate`.
+  - Backends → acting tenant: `settings/financing/{products,products/[id],priorities,returns,returns/[id],settings/[key]}` (troca do bloqueio `role==='MASTER'` por `resolveActingTenant`; `user.tenantId`→`tid`). **Credenciais intactas** (seguem bloqueando MASTER).
+  - Páginas liberadas p/ MASTER (removido o deny `isMaster`): `fi/{produtos,prioridades,retornos,documentos,permissoes}`.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros (warnings `set-state-in-effect`, padrão); `npm test` **163/163**; `next build` OK (`--max-old-space-size=8192`).
+- **Uso (MASTER):** abrir Marketing ou Configurações › F&I → escolher a loja no seletor → operar. A escolha vale p/ ambas (cookie único). Credenciais F&I continuam exclusivas da loja.
+- **AVISO p/ outra IA:** para liberar OUTRA área da loja ao MASTER: (1) no backend, trocar o bloqueio por `resolveActingTenant(user, req)` (`@/lib/acting-tenant`); (2) criar/usar um `layout.tsx` com `<StoreAreaGate area="...">`; (3) remover o deny `isMaster` da página. NUNCA liberar credenciais/segredos da loja ao MASTER (BYOC). Candidatas ainda bloqueadas (não feitas): registrations (positions/sellers/managers), ranking rules, settings/store, configuracoes/email|whatsapp (estes 2 redirecionam ao painel Master de propósito).
 
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.

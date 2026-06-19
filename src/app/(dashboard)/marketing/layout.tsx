@@ -1,10 +1,10 @@
 // =============================================================================
-// Layout do Marketing — envolve as telas com o gate de "loja ativa" do MASTER.
-// Para não-MASTER é transparente; para o MASTER exige selecionar a loja.
+// Layout do Marketing — área da loja: envolve as telas com o gate de "loja
+// ativa" do MASTER (transparente p/ não-MASTER).
 // =============================================================================
 
-import { MarketingMasterGate } from '@/components/marketing/MarketingMasterGate'
+import { StoreAreaGate } from '@/components/common/StoreAreaGate'
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
-  return <MarketingMasterGate>{children}</MarketingMasterGate>
+  return <StoreAreaGate area="o Marketing">{children}</StoreAreaGate>
 }

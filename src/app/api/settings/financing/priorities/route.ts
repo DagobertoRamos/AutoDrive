@@ -10,18 +10,20 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { savePrioritiesSchema } from '@/lib/validators/financing'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem acesso às configurações de F&I.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Prioridades são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const [banks, priorities] = await Promise.all([
       prisma.financeBank.findMany({ where: { tenantId, active: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } }),
       prisma.financeBankPriority.findMany({ where: { tenantId }, select: { bankId: true, priority: true, active: true } }),
@@ -47,10 +49,11 @@ export async function PUT(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão para alterar prioridades.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Prioridades são gerenciadas pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const { items } = savePrioritiesSchema.parse(await req.json())
     // Garante que os bancos pertencem ao tenant antes de gravar.
     const ids = items.map((i) => i.bankId)

@@ -10,19 +10,21 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createReturnRuleSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { isFiAllowed } from '@/lib/finance/fi-permissions'
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem acesso às configurações de F&I.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Retornos são gerenciados pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const rows = await prisma.financeReturnRule.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } })
     const bankIds = [...new Set(rows.map((r) => r.bankId).filter(Boolean))] as string[]
     const banks = bankIds.length ? await prisma.financeBank.findMany({ where: { id: { in: bankIds } }, select: { id: true, name: true } }) : []
@@ -44,11 +46,12 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão para configurar retornos.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Retornos são gerenciados pela loja, não pelo MASTER.')
-  if (!(await isFiAllowed(user.tenantId, 'alterarRetorno', user.role))) return forbiddenResponse('Seu perfil não pode alterar retorno (Permissões F&I da loja).')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
+  if (!(await isFiAllowed(tid, 'alterarRetorno', user.role))) return forbiddenResponse('Seu perfil não pode alterar retorno (Permissões F&I da loja).')
 
   try {
-    const tenantId = user.tenantId
+    const tenantId = tid
     const d = createReturnRuleSchema.parse(await req.json())
     // Banco (se informado) deve ser da loja.
     if (d.bankId) {

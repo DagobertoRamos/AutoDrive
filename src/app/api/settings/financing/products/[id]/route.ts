@@ -8,6 +8,7 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateProductSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
@@ -19,12 +20,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Produtos são gerenciados pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
   try {
     const existing = await prisma.financeProduct.findUnique({ where: { id } })
     if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Produto de outro tenant.')
+    if (!ownsTenant(user.role, tid, existing.tenantId)) return forbiddenResponse('Produto de outro tenant.')
     const d = updateProductSchema.parse(await req.json())
     const data: Record<string, unknown> = {}
     if (d.name !== undefined) data.name = d.name
@@ -40,16 +42,17 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
-  if (user.role === 'MASTER' || !user.tenantId) return forbiddenResponse('Produtos são gerenciados pela loja, não pelo MASTER.')
+  const tid = await resolveActingTenant(user, req)
+  if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
   try {
     const existing = await prisma.financeProduct.findUnique({ where: { id }, select: { id: true, tenantId: true } })
     if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Produto de outro tenant.')
+    if (!ownsTenant(user.role, tid, existing.tenantId)) return forbiddenResponse('Produto de outro tenant.')
     await prisma.financeProduct.delete({ where: { id } })
     await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'DELETE', entity: 'FinanceProduct', entityId: id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true })

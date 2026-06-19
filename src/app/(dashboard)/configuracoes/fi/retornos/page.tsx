@@ -29,7 +29,6 @@ export default function FiReturnsPage() {
   const { perms } = useFiPermissions()
   const role = (session?.user as { role?: string })?.role
   const allowed = !role || CONFIG_ROLES.includes(role)
-  const isMaster = role === 'MASTER'
   const canEdit = perms.alterarRetorno
 
   const [items, setItems] = useState<Row[]>([])
@@ -51,17 +50,17 @@ export default function FiReturnsPage() {
       setItems(json?.data ?? [])
     } catch { setItems([]) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed && !isMaster) load() }, [allowed, isMaster, load])
+  useEffect(() => { if (allowed) load() }, [allowed, load])
 
   useEffect(() => {
-    if (!allowed || isMaster) return
+    if (!allowed) return
     (async () => {
       try {
         const b = await fetch('/api/financing/banks?active=true', { credentials: 'include' }).then((r) => r.json())
         setBanks((b?.data ?? []).map((x: { id: string; name: string }) => ({ id: x.id, name: x.name })))
       } catch { /* sem bancos */ }
     })()
-  }, [allowed, isMaster])
+  }, [allowed])
 
   const openNew = () => { setEditingId(null); setForm(emptyForm); setError(null); setModal(true) }
   const openEdit = (r: Row) => {
@@ -101,7 +100,7 @@ export default function FiReturnsPage() {
     return 'Qualquer prazo'
   }
 
-  if (session && (!allowed || isMaster)) {
+  if (session && !allowed) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>

@@ -36,7 +36,6 @@ export default function FiPermissionsPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role
   const allowed = !role || CONFIG_ROLES.includes(role)
-  const isMaster = role === 'MASTER'
 
   const [config, setConfig] = useState<Config>(emptyConfig)
   const [loading, setLoading] = useState(true)
@@ -51,7 +50,7 @@ export default function FiPermissionsPage() {
       setConfig({ ...emptyConfig, ...(json?.data ?? {}) })
     } catch { setConfig(emptyConfig) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { if (allowed && !isMaster) load() }, [allowed, isMaster, load])
+  useEffect(() => { if (allowed) load() }, [allowed, load])
 
   const toggle = (cap: CapKey, r: RoleKey) => setConfig((c) => ({ ...c, [cap]: c[cap].includes(r) ? c[cap].filter((x) => x !== r) : [...c[cap], r] }))
 
@@ -65,7 +64,7 @@ export default function FiPermissionsPage() {
     } catch { setToast({ ok: false, msg: 'Erro de rede.' }) } finally { setSaving(false) }
   }
 
-  if (session && (!allowed || isMaster)) {
+  if (session && !allowed) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
