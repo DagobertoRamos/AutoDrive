@@ -957,7 +957,18 @@
 - **Impacto:** as gravações no provedor passam a ser arquivadas 1x/dia (em vez de a cada hora). Se precisar de mais frequência, exige plano Vercel Pro (aí pode voltar a `0 * * * *`) ou disparo manual via `POST /api/internal/marketing/telephony/recordings/archive-run` (com `CRON_SECRET`). Lógica inalterada (`archivePendingRecordings`).
 - **Comandos:** `vercel.json` validado (JSON ok). Sem mudança de código/test.
 
----
+### LOG 0088 — 2026-06-18 — Claude (Opus 4.8) — Marketing: painel MASTER de provedores de telefonia
+- **Branch:** main (worktree). **Sem migration** (usa `TelephonyProvider` da Fase 2). Substitui o placeholder `/master/marketing/telephony` por CRUD real.
+- **Tarefa:** "Painel MASTER de provedores de telefonia".
+- **Arquivos:**
+  - `src/lib/validators/telephony.ts` (alterado) — `createProviderSchema`/`updateProviderSchema` + `telephonyProviderKinds`.
+  - `src/app/api/master/marketing/telephony/providers/route.ts` (novo) — GET (lista + contagem de conexões) / POST. Gate `master.marketing.telephony` (MASTER-only). Global, sem credencial de tenant. Auditado.
+  - `.../providers/[id]/route.ts` (novo) — PATCH / DELETE. DELETE **bloqueia (409)** se houver conexões de loja vinculadas (FK RESTRICT) → orienta inativar.
+  - `(dashboard)/master/marketing/telephony/page.tsx` (reescrito) — tabela + modal: nome, tipo (Asterisk/3CX/Twilio/Genérico/Manual), Base URL/API version, capacidades (entrada/saída/gravação/webhook), observações, ativo; ativar/inativar/editar/excluir; aviso de que credenciais são BYOC (loja).
+- **Segurança:** MASTER-only; provedores são camada técnica GLOBAL (sem tenantId, sem segredo); credenciais continuam só na loja (`TelephonyCredential`, cifradas) — MASTER nunca vê. Auditado em `AuditLog` (tenantId 'MASTER').
+- **Comandos:** `tsc` limpo; `eslint` 0 erros (1 warning `set-state-in-effect`, padrão); `npm test` **163/163**; `next build` OK (`--max-old-space-size=8192`); rotas no manifest.
+- **Uso:** MASTER cadastra aqui os provedores homologados → a loja cria conexões (BYOC) escolhendo um provedor ativo em Marketing › Telefonia › Conexões. O `kind` define o adapter (LOG 0081); Asterisk/3CX/Twilio seguem `ready=false` até validação com doc oficial.
+- **AVISO p/ outra IA:** provedores de telefonia são MASTER/global (`master.marketing.telephony`), sem credencial. Não adicionar segredo aqui — credencial é da loja (BYOC). Restam p/ "fechar" o módulo: motor de distribuição automática (+SLA) e validação real dos adapters Asterisk/3CX/Twilio.
 
 ## TAREFAS PENDENTES
 > **Não alterar sem autorização do usuário.** Marcar `[em andamento]` ao iniciar e mover para LOG ao concluir.

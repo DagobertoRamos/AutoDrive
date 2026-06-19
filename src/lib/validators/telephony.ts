@@ -9,6 +9,35 @@ const optStr = z.string().trim().max(2000).nullish()
 const reqStr = (label: string, min = 1) => z.string().trim().min(min, `${label} é obrigatório.`)
 
 export const telephonyEnvironments = ['HOMOLOGACAO', 'PRODUCAO'] as const
+export const telephonyProviderKinds = ['ASTERISK', 'THREE_CX', 'TWILIO', 'GENERIC_WEBHOOK', 'MANUAL'] as const
+
+// ── Provedores (MASTER, global) ─────────────────────────────────────────────
+export const createProviderSchema = z.object({
+  name:              reqStr('Nome', 2),
+  kind:              z.enum(telephonyProviderKinds),
+  active:            z.boolean().default(true),
+  supportsInbound:   z.boolean().default(false),
+  supportsOutbound:  z.boolean().default(false),
+  supportsRecording: z.boolean().default(false),
+  supportsWebhook:   z.boolean().default(false),
+  baseUrl:           optStr,
+  apiVersion:        optStr,
+  notes:             optStr,
+  fieldMappings:     z.record(z.unknown()).nullish(),
+})
+export const updateProviderSchema = z.object({
+  name:              z.string().trim().min(2).optional(),
+  kind:              z.enum(telephonyProviderKinds).optional(),
+  active:            z.boolean().optional(),
+  supportsInbound:   z.boolean().optional(),
+  supportsOutbound:  z.boolean().optional(),
+  supportsRecording: z.boolean().optional(),
+  supportsWebhook:   z.boolean().optional(),
+  baseUrl:           optStr,
+  apiVersion:        optStr,
+  notes:             optStr,
+  fieldMappings:     z.record(z.unknown()).nullish(),
+})
 
 // Segredos da conexão (livres por provedor: sipUser, sipPassword, apiKey, token,
 // accountSid, authToken, etc.). Validados como mapa string→string não vazio.
