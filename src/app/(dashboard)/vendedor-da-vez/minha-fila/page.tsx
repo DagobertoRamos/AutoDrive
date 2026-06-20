@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { DoorOpen, LogOut, Pause, Play, Check, X, CheckCircle2, RefreshCw, Hand, Clock, QrCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
-import { unlockAudio, beep, ensureNotifyPermission, showAlertNotification } from '@/lib/seller-queue/alert-client'
+import { unlockAudio, playSound, ensureNotifyPermission, showAlertNotification } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'], ['CONSIGNMENT', 'Consignação'], ['FINANCING', 'Financiamento'], ['AFTER_SALES', 'Pós-venda'], ['OTHER', 'Outro']] as const
@@ -18,7 +18,7 @@ const RESULTS = [['CONVERTED_TO_NEGOTIATION', 'Virou negociação'], ['SCHEDULED
 
 interface Me { status: string; position: number }
 interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; recurring: boolean } | null }
-interface Alerts { sound: boolean; browserPush: boolean; repeatSeconds: number }
+interface Alerts { sound: boolean; soundType?: string; browserPush: boolean; repeatSeconds: number }
 interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
@@ -71,12 +71,12 @@ export default function MinhaFilaPage() {
     const isCalled = calledStatus === 'CALLED'
     const stop = () => { if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null } }
     if (isCalled && !alertTimer.current) {
-      const a = alerts ?? { sound: true, browserPush: true, repeatSeconds: 10 }
-      if (a.sound !== false) beep()
+      const a = alerts ?? { sound: true, soundType: 'siren', browserPush: true, repeatSeconds: 10 }
+      if (a.sound !== false) playSound(a.soundType)
       if (a.browserPush !== false) showAlertNotification('Você é o vendedor da vez 🔔', 'Cliente presencial aguardando — abra o app e aceite.')
       const every = Math.max(5, a.repeatSeconds || 10) * 1000
       alertTimer.current = setInterval(() => {
-        if (a.sound !== false) beep()
+        if (a.sound !== false) playSound(a.soundType)
         if (a.browserPush !== false) showAlertNotification('Você é o vendedor da vez 🔔', 'Cliente presencial aguardando — abra o app e aceite.')
       }, every)
     }

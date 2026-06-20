@@ -4936,6 +4936,7 @@ model SellerQueueUnitConfig {
   requestByNameRequiresApproval Boolean  @default(true)
   // Avisos/alertas da fila (configuráveis pelo ADM por unidade).
   alertSound                    Boolean  @default(true)  // som em loop na tela do vendedor da vez
+  alertSoundType                String   @default("siren") // modelo do som (siren|beep|chime|alarm|bell|soft)
   alertBrowserPush              Boolean  @default(true)  // notificação do navegador (aba minimizada)
   alertWhatsapp                 Boolean  @default(true)  // WhatsApp ao vendedor da vez (best-effort)
   alertWhatsappManagers         Boolean  @default(true)  // WhatsApp à gestão em timeout/sem vendedor

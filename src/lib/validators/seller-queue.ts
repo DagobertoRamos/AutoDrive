@@ -82,6 +82,7 @@ export const configSchema = z.object({
   requestByNameRequiresApproval: z.boolean().optional(),
   // Avisos/alertas
   alertSound:                    z.boolean().optional(),
+  alertSoundType:                z.enum(['siren', 'beep', 'chime', 'alarm', 'bell', 'soft']).optional(),
   alertBrowserPush:              z.boolean().optional(),
   alertWhatsapp:                 z.boolean().optional(),
   alertWhatsappManagers:         z.boolean().optional(),

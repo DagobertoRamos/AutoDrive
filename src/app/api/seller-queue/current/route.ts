@@ -28,6 +28,7 @@ export async function GET(req: Request) {
     const ucfg = await getUnitConfig(tenantId, unitId)
     const alerts = {
       sound: ucfg?.alertSound ?? true,
+      soundType: ucfg?.alertSoundType ?? 'siren',
       browserPush: ucfg?.alertBrowserPush ?? true,
       repeatSeconds: ucfg?.alertRepeatSeconds ?? 10,
     }

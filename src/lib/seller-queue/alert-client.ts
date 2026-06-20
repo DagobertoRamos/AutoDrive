@@ -1,7 +1,7 @@
 // =============================================================================
 // seller-queue/alert-client.ts — alerta CRÍTICO no navegador do vendedor da vez.
-// Som (Web Audio, sirene curta), notificação do SO (aba minimizada) e vibração.
-// Tudo best-effort e silencioso em caso de erro/bloqueio do navegador. O áudio
+// Som (Web Audio — vários modelos), notificação do SO (aba minimizada) e
+// vibração. Tudo best-effort e silencioso em caso de erro/bloqueio. O áudio
 // precisa de um gesto do usuário p/ "destravar" (unlockAudio em qualquer clique).
 // =============================================================================
 
@@ -23,24 +23,55 @@ function audioCtx(): AudioContext | null {
 /** Destrava o áudio num gesto do usuário (chamar em cliques de botão). */
 export function unlockAudio(): void { audioCtx() }
 
-/** Toca uma sirene curta de duas notas (alerta de "vendedor da vez"). */
-export function beep(): void {
-  const ac = audioCtx()
-  if (!ac) return
-  try {
-    const o = ac.createOscillator()
-    const g = ac.createGain()
-    o.type = 'square'
-    o.connect(g); g.connect(ac.destination)
-    const t = ac.currentTime
-    g.gain.setValueAtTime(0.0001, t)
-    g.gain.exponentialRampToValueAtTime(0.35, t + 0.03)
-    o.frequency.setValueAtTime(880, t)        // nota 1
-    o.frequency.setValueAtTime(660, t + 0.35) // nota 2
+// ── Catálogo de sons ─────────────────────────────────────────────────────────
+// Modelos disponíveis para o ADM escolher (chave salva em alertSoundType).
+export const SOUND_OPTIONS: { value: string; label: string }[] = [
+  { value: 'siren', label: 'Sirene (2 tons)' },
+  { value: 'beep',  label: 'Bipe curto (triplo)' },
+  { value: 'chime', label: 'Campainha (ascendente)' },
+  { value: 'alarm', label: 'Alarme (urgente)' },
+  { value: 'bell',  label: 'Sino' },
+  { value: 'soft',  label: 'Suave' },
+]
+export const DEFAULT_SOUND = 'siren'
+
+/** Toca uma nota com envelope (ataque rápido + decaimento exponencial). */
+function tone(ac: AudioContext, opts: { freq: number; start: number; dur: number; type?: OscillatorType; gain?: number }) {
+  const o = ac.createOscillator()
+  const g = ac.createGain()
+  o.type = opts.type ?? 'square'
+  o.frequency.setValueAtTime(opts.freq, opts.start)
+  o.connect(g); g.connect(ac.destination)
+  g.gain.setValueAtTime(0.0001, opts.start)
+  g.gain.exponentialRampToValueAtTime(opts.gain ?? 0.35, opts.start + 0.02)
+  g.gain.exponentialRampToValueAtTime(0.0001, opts.start + opts.dur)
+  o.start(opts.start)
+  o.stop(opts.start + opts.dur + 0.02)
+}
+
+const PLAYERS: Record<string, (ac: AudioContext, t: number) => void> = {
+  siren: (ac, t) => {
+    const o = ac.createOscillator(); const g = ac.createGain()
+    o.type = 'square'; o.connect(g); g.connect(ac.destination)
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.03)
+    o.frequency.setValueAtTime(880, t); o.frequency.setValueAtTime(660, t + 0.35)
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85)
     o.start(t); o.stop(t + 0.85)
-  } catch { /* ignore */ }
+  },
+  beep: (ac, t) => { [0, 0.18, 0.36].forEach((d) => tone(ac, { freq: 1000, start: t + d, dur: 0.12 })) },
+  chime: (ac, t) => { [660, 880, 1175].forEach((f, i) => tone(ac, { freq: f, start: t + i * 0.16, dur: 0.22, type: 'sine', gain: 0.3 })) },
+  alarm: (ac, t) => { for (let i = 0; i < 6; i++) tone(ac, { freq: i % 2 ? 800 : 1200, start: t + i * 0.12, dur: 0.1 }) },
+  bell: (ac, t) => { tone(ac, { freq: 1320, start: t, dur: 1.2, type: 'triangle', gain: 0.32 }); tone(ac, { freq: 2640, start: t, dur: 0.8, type: 'sine', gain: 0.12 }) },
+  soft: (ac, t) => { tone(ac, { freq: 587, start: t, dur: 0.4, type: 'sine', gain: 0.25 }); tone(ac, { freq: 784, start: t + 0.4, dur: 0.5, type: 'sine', gain: 0.25 }) },
 }
+
+/** Toca o modelo de som escolhido (uma vez). `beep()` mantém compat = sirene. */
+export function playSound(type?: string | null): void {
+  const ac = audioCtx()
+  if (!ac) return
+  try { (PLAYERS[type ?? DEFAULT_SOUND] ?? PLAYERS[DEFAULT_SOUND])(ac, ac.currentTime) } catch { /* ignore */ }
+}
+export function beep(): void { playSound(DEFAULT_SOUND) }
 
 /** Pede permissão de notificação do navegador (chamar num gesto do usuário). */
 export async function ensureNotifyPermission(): Promise<boolean> {

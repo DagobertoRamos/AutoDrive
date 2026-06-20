@@ -1209,6 +1209,13 @@
 - **UI da loja reescrita** (`configuracoes/whatsapp`): **removido o bloqueio "só MASTER"** (agora a própria loja/ADM configura), seletor de provedor + campos renderizados dinamicamente; bloco de Webhook só para Meta; segredos mascarados e preservados quando em branco.
 - **Comandos:** `tsc` limpo; `eslint` **0 erros**; `npm test` **177/177**; `next build` OK.
 
+### LOG 0110 — 2026-06-20 — Claude (Opus 4.8) — Fila: vários modelos de som no alerta
+- **MIGRATION (aditiva):** `20260620140000_add_seller_queue_alert_sound_type` adiciona `alertSoundType TEXT default 'siren'` em `seller_queue_unit_configs`. **Aplicar com `npx prisma migrate deploy`.**
+- **Catálogo de sons (Web Audio, sintetizados — sem assets):** `alert-client.ts` ganhou `SOUND_OPTIONS` + `playSound(type)` com 6 modelos: `siren` (2 tons), `beep` (bipe triplo), `chime` (campainha ascendente), `alarm` (urgente), `bell` (sino), `soft` (suave). `beep()` mantém compat (= siren).
+- **Config (ADM):** `configSchema`/rota aceitam `alertSoundType`; tela `vendedor-da-vez/configuracoes` ganhou seletor "Modelo do som" + botão **Tocar** (pré-escuta). `/current` devolve `alerts.soundType`.
+- **Vendedor:** `minha-fila` toca o modelo configurado (`playSound(alerts.soundType)`) em loop enquanto `CALLED`.
+- **Comandos:** `tsc` limpo; `eslint` **0 erros**; `npm test` **177/177**; `next build` OK.
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.
