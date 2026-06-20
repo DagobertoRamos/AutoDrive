@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function PUT(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
@@ -39,17 +40,14 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
       },
     })
 
-    await prisma.auditLog.create({
-      data: {
-        userId:   session.user.id,
-        tenantId: session.user.tenantId ?? null,
-        action:   'UPDATE',
-        entity:   'Unit',
-        entityId: params.id,
-        userName: session.user.name,
-        userRole: session.user.role,
-        status:   'SUCCESS',
-      },
+    await createSafeAuditLog({
+      userId:   session.user.id,
+      tenantId: session.user.tenantId ?? null,
+      action:   'UPDATE',
+      entity:   'Unit',
+      entityId: params.id,
+      userName: session.user.name,
+      userRole: session.user.role,
     })
 
     return NextResponse.json({ success: true, data: unit })

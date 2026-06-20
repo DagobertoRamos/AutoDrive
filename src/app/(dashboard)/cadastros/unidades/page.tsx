@@ -251,8 +251,8 @@ export default function UnidadesPage() {
         body: JSON.stringify(data),
       })
       if (!res.ok) {
-        const json = await res.json()
-        throw new Error(json?.message ?? 'Erro ao salvar unidade')
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error ?? json?.message ?? 'Erro ao salvar unidade')
       }
       setModalOpen(false)
       setSuccessMsg(editing ? 'Unidade atualizada com sucesso!' : 'Unidade criada com sucesso!')
