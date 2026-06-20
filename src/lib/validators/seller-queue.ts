@@ -52,3 +52,21 @@ export const finishSchema = z.object({
   leadId: optStr,
   notes:  optStr,
 })
+
+// ── Configuração da unidade (Fase 8) ────────────────────────────────────────
+export const presenceMethodValues = ['GPS', 'QR_CODE', 'DEVICE_CHECK'] as const
+export const configSchema = z.object({
+  active:                        z.boolean().optional(),
+  presenceMethods:               z.array(z.enum(presenceMethodValues)).optional(),
+  geofenceLat:                   z.number().min(-90).max(90).nullish(),
+  geofenceLng:                   z.number().min(-180).max(180).nullish(),
+  geofenceRadiusM:               z.number().int().min(10).max(5000).optional(),
+  qrSecret:                      optStr,
+  acceptTimeoutSeconds:          z.number().int().min(10).max(600).optional(),
+  requireRevalidationOnAccept:   z.boolean().optional(),
+  openTime:                      optStr,
+  closeTime:                     optStr,
+  allowedDays:                   z.array(z.string().trim().max(8)).optional(),
+  recurringCustomerRule:         z.enum(['RESPONSIBLE', 'QUEUE']).optional(),
+  requestByNameRequiresApproval: z.boolean().optional(),
+})

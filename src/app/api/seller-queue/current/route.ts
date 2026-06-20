@@ -50,6 +50,13 @@ export async function GET(req: Request) {
     const vencedor = list.find((e) => e.status === 'WAITING' && !e.blocked) ?? null
     const me = list.find((e) => e.sellerId === user.id) ?? null
 
+    // Atendimento ativo do próprio solicitante (p/ aceitar/recusar/finalizar).
+    const myAtt = await prisma.sellerQueueAttendance.findFirst({
+      where: { queueId: queue.id, sellerId: user.id, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
+      orderBy: { calledAt: 'desc' },
+      include: { arrival: { select: { customerName: true, customerPhone: true, recurring: true } } },
+    })
+
     return NextResponse.json({
       success: true,
       data: {
@@ -58,6 +65,7 @@ export async function GET(req: Request) {
         vendedorDaVez: vencedor ? { sellerId: vencedor.sellerId, sellerName: vencedor.sellerName, position: vencedor.position } : null,
         me,
         arrivalsPending,
+        myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
       },
     })
   } catch (err) {
