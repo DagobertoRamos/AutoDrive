@@ -13,9 +13,12 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import { notifyByRole } from '@/services/notification.service'
 import type { LeadDistributionMode, Prisma } from '@prisma/client'
 
 const AUTO_MODES: LeadDistributionMode[] = ['ROUND_ROBIN', 'LOAD_BALANCED', 'PERFORMANCE_WEIGHTED', 'PRIORITY_RULES']
+// Papéis de gestão avisados quando o SLA estoura.
+const MANAGER_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER']
 const OPEN_STATUSES = ['ASSIGNED', 'WORKING', 'QUALIFIED'] as const
 const DEFAULT_SLA_SECONDS = 1800 // 30 min
 const DEFAULT_ELIGIBLE_PRESENCE = ['ONLINE']
@@ -184,6 +187,19 @@ export async function processSlaBreaches(tenantId: string, limit = 100): Promise
       }
     })
   }
+  // Avisa os gestores (best-effort, agregado) quando houve estouro de SLA.
+  if (breaches.length > 0) {
+    await notifyByRole({
+      tenantId,
+      roles: MANAGER_ROLES,
+      type: 'WARNING',
+      title: 'SLA de atendimento estourado',
+      message: `${breaches.length} lead(s) sem atendimento dentro do SLA${recycled > 0 ? ` — ${recycled} devolvido(s) à fila para redistribuição` : ''}.`,
+      actionUrl: '/marketing/sdr/inbox',
+      metadata: { kind: 'sla_breach', breached: breaches.length, recycled },
+    }).catch(() => {})
+  }
+
   // Após reciclar, tenta redistribuir os que voltaram à fila.
   if (recycled > 0) await distributePendingLeads(tenantId, recycled)
   return { scanned: breaches.length, breached: breaches.length, recycled }
