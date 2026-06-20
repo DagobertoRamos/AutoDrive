@@ -8,6 +8,7 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { notifyDealSubmittedForApproval } from '@/services/notification.service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const SUBMITTABLE_STATUSES = new Set([
   'RASCUNHO',
@@ -25,6 +26,7 @@ export async function POST(
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const deal = await prisma.deal.findUnique({

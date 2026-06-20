@@ -10,6 +10,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { requireModule }        from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const VALID_STATUS = new Set(['RASCUNHO', 'GERADO', 'ASSINADO', 'ARQUIVADO'])
 
@@ -19,6 +20,7 @@ export async function GET(_req: NextRequest, ctxArg: { params: { id: string; doc
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const doc = await prisma.dealDocument.findUnique({ where: { id: params.documentId } })
   if (!doc || doc.dealId !== params.id) return NextResponse.json({ error: 'Documento não encontrado' }, { status: 404 })
@@ -34,6 +36,7 @@ export async function PATCH(req: NextRequest, ctxArg: { params: { id: string; do
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations.manage') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const doc = await prisma.dealDocument.findUnique({ where: { id: params.documentId } })
@@ -69,6 +72,7 @@ export async function DELETE(_req: NextRequest, ctxArg: { params: { id: string; 
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations.manage') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const doc = await prisma.dealDocument.findUnique({ where: { id: params.documentId } })

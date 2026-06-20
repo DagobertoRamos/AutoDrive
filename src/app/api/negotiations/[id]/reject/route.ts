@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const REJECTABLE_STATUSES = new Set(['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'])
 
@@ -19,6 +20,7 @@ export async function POST(
 
   try { requireModule(session.user.role, 'negotiations.approve') }
   catch { return NextResponse.json({ error: 'Sem permissão para desaprovar' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations.approve'); if (gate) return gate }
 
   try {
     const body   = await req.json().catch(() => ({}))

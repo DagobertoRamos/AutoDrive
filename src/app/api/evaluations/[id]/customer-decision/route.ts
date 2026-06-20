@@ -18,6 +18,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,7 @@ export async function POST(
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'stock') } catch {
+  { const gate = await assertModuleEnabled(session.user, 'stock.view'); if (gate) return gate }
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 

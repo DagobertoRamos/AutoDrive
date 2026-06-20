@@ -8,6 +8,7 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { canEditDeal }          from '@/lib/negotiation-rbac'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — Listar débitos ──────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ export async function GET(
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const deal = await prisma.deal.findUnique({
@@ -53,6 +55,7 @@ export async function POST(
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const deal = await prisma.deal.findUnique({

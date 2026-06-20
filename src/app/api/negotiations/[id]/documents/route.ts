@@ -11,6 +11,7 @@ import { prisma }               from '@/lib/prisma'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { requireModule }        from '@/lib/permissions'
 import { renderTemplate, buildDealContext } from '@/lib/negotiation/document-merge'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const VALID_TYPES = new Set([
   'CONTRATO_COMPRA', 'CONTRATO_VENDA', 'CONTRATO_TROCA', 'CONTRATO_CONSIGNACAO',
@@ -23,6 +24,7 @@ export async function GET(_req: NextRequest, ctxArg: { params: { id: string } | 
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const deal = await prisma.deal.findUnique({
     where:  { id: params.id },
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest, ctxArg: { params: { id: string } | 
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations.manage') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const body = await req.json()

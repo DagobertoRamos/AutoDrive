@@ -10,6 +10,7 @@ import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { prisma }               from '@/lib/prisma'
 import { ITEMS, type SectionKey } from '@/lib/evaluation/catalog'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: NextRequest) {
   const session = await getServerAuthSession()
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
 
   try { requireModule(session.user.role, 'stock.evaluate') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'stock.evaluate'); if (gate) return gate }
 
   try {
     const { searchParams } = req.nextUrl
@@ -107,6 +109,7 @@ export async function POST(req: NextRequest) {
 
   try { requireModule(session.user.role, 'stock.evaluate') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'stock.evaluate'); if (gate) return gate }
 
   try {
     const body = await req.json()

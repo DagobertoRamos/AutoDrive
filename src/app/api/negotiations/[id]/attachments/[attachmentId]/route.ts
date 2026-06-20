@@ -9,6 +9,7 @@ import { prisma }               from '@/lib/prisma'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { requireModule }        from '@/lib/permissions'
 import { deleteDealAttachment } from '@/lib/negotiation/storage'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const runtime = 'nodejs'
 
@@ -20,6 +21,7 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations.manage') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const att = await prisma.dealAttachment.findUnique({ where: { id: params.attachmentId } })

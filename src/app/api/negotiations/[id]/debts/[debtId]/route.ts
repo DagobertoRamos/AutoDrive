@@ -8,6 +8,7 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { canEditDeal }          from '@/lib/negotiation-rbac'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 async function getDealAndCheck(dealId: string, session: { user: { tenantId?: string | null; role: string; id: string; name?: string | null } }) {
   const deal = await prisma.deal.findUnique({
@@ -36,6 +37,7 @@ export async function PATCH(
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const { deal, err } = await getDealAndCheck(params.id, session)
   if (err) return err
@@ -76,6 +78,7 @@ export async function DELETE(
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const { deal, err } = await getDealAndCheck(params.id, session)
   if (err) return err

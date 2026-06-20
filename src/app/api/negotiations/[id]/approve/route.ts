@@ -9,6 +9,7 @@ import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { APPROVABLE_STATUSES }  from '@/lib/negotiation-permissions'
 import { notifyDealApproved }   from '@/services/notification.service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function POST(
   req: NextRequest,
@@ -19,6 +20,7 @@ export async function POST(
 
   try { requireModule(session.user.role, 'negotiations.approve') }
   catch { return NextResponse.json({ error: 'Sem permissão para aprovar' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations.approve'); if (gate) return gate }
 
   try {
     const body  = await req.json().catch(() => ({}))

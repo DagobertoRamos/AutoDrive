@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { requireModule }        from '@/lib/permissions'
 import { extractFromCRLV }      from '@/lib/crlv/parser'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const runtime       = 'nodejs'
 export const dynamic       = 'force-dynamic'
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
 
   try { requireModule(session.user.role, 'stock.evaluate') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'stock.evaluate'); if (gate) return gate }
 
   let buffer:   Buffer | null = null
   let mimeType: string        = ''

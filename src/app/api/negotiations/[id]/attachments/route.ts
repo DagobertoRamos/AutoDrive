@@ -19,6 +19,7 @@ import { prisma }               from '@/lib/prisma'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { requireModule }        from '@/lib/permissions'
 import { saveDealAttachment, validateDealUpload } from '@/lib/negotiation/storage'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const runtime = 'nodejs'
 
@@ -58,6 +59,7 @@ export async function GET(
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const dealId = await resolveDealId(ctxArg)
   if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
@@ -93,6 +95,7 @@ export async function POST(
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const dealId = await resolveDealId(ctxArg)
   if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })

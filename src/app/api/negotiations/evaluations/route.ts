@@ -11,6 +11,7 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { canEvaluationVehicleBeUsed, type Operation } from '@/lib/evaluation/availability'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: NextRequest) {
   const session = await getServerAuthSession()
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const { searchParams } = req.nextUrl
