@@ -14,7 +14,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { timeoutSchema } from '@/lib/validators/seller-queue'
-import { logQueueEvent } from '@/lib/seller-queue/queue'
+import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { callForArrival } from '@/lib/seller-queue/call'
 import { notifyTimeoutManagers } from '@/lib/seller-queue/notify'
@@ -50,11 +50,13 @@ export async function POST(req: Request, { params }: Ctx) {
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'TIMEOUT', sellerId: att.sellerId, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id })
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
 
-    // Avisa a gestão (best-effort).
-    await notifyTimeoutManagers({ tenantId, unitId: att.unitId, attendanceId: att.id })
+    // Avisa a gestão (best-effort) — WhatsApp se o ADM ligou na unidade.
+    const cfg = await getUnitConfig(tenantId, att.unitId)
+    await notifyTimeoutManagers({ tenantId, unitId: att.unitId, attendanceId: att.id, whatsapp: cfg?.alertWhatsappManagers ?? false })
 
+    const arrival = att.arrivalId ? await prisma.sellerQueueCustomerArrival.findUnique({ where: { id: att.arrivalId }, select: { customerName: true, recurring: true } }) : null
     const call = att.arrivalId
-      ? await callForArrival({ tenantId, unitId: att.unitId, queueId: att.queueId, arrivalId: att.arrivalId, actorId: user.id, reason: 'timeout' })
+      ? await callForArrival({ tenantId, unitId: att.unitId, queueId: att.queueId, arrivalId: att.arrivalId, actorId: user.id, reason: 'timeout', customerName: arrival?.customerName ?? null, recurring: arrival?.recurring ?? false })
       : { ok: false, reason: 'Sem cliente vinculado.' }
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'TIMEOUT', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true, data: { call } })

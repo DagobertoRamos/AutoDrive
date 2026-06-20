@@ -22,7 +22,8 @@ export default function PainelUnidadePage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role
   const canManage = !!role && MANAGE_ROLES.includes(role)
-  const [cur, setCur] = useState<{ entries: Entry[]; vendedorDaVez: { sellerName: string } | null } | null>(null)
+  const [cur, setCur] = useState<{ entries: Entry[]; vendedorDaVez: { sellerName: string } | null; allowChooseSeller?: boolean } | null>(null)
+  const [pick, setPick] = useState<Record<string, string>>({})
   const [arrivals, setArrivals] = useState<Arrival[]>([])
   const [active, setActive] = useState<Att[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,11 +48,18 @@ export default function PainelUnidadePage() {
   }, [])
   useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i) }, [load])
 
-  const callNext = async (a: Arrival) => {
+  const callNext = async (a: Arrival, sellerId?: string) => {
+    let body: { sellerId?: string; reason?: string } = {}
+    if (sellerId) {
+      const reason = prompt('Justificativa para escolher este vendedor (fura a ordem da fila — será auditado):')
+      if (!reason?.trim()) return
+      body = { sellerId, reason: reason.trim() }
+    }
     setBusy(a.id)
     try {
-      const res = await fetch(`/api/seller-queue/customer-arrivals/${a.id}/call-next`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({}) })
-      const j = await res.json().catch(() => ({})); flash(res.ok ? 'Próximo vendedor chamado.' : (j?.error ?? 'Falha ao chamar.'), res.ok); await load()
+      const res = await fetch(`/api/seller-queue/customer-arrivals/${a.id}/call-next`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+      const j = await res.json().catch(() => ({})); flash(res.ok ? (sellerId ? 'Vendedor escolhido foi chamado.' : 'Próximo vendedor chamado.') : (j?.error ?? 'Falha ao chamar.'), res.ok)
+      setPick((p) => ({ ...p, [a.id]: '' })); await load()
     } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
   const doTimeout = async (att: Att) => {
@@ -70,6 +78,9 @@ export default function PainelUnidadePage() {
     setBusy(e.id)
     try { const res = await fetch('/api/seller-queue/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ entryId: e.id, direction, reason: 'ajuste manual da gestão' }) }); const j = await res.json().catch(() => ({})); if (!res.ok) flash(j?.error ?? 'Falha.', false); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
+
+  const waiting = (cur?.entries ?? []).filter((e) => e.status === 'WAITING' && !e.blocked)
+  const canChoose = canManage && cur?.allowChooseSeller !== false && waiting.length > 0
 
   if (denied) return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
 
@@ -90,9 +101,17 @@ export default function PainelUnidadePage() {
           {arrivals.length === 0 ? <p className="px-4 py-8 text-center text-sm text-gray-400">Nenhum cliente na espera.</p> : (
             <ul className="divide-y divide-gray-100">
               {arrivals.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                  <div className="min-w-0"><p className="truncate font-medium text-gray-900">{a.customerName || a.customerPhone || 'Cliente'}{a.recurring && <span className="ml-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] text-brand-700">recorrente</span>}</p><p className="text-xs text-gray-400">{dt(a.createdAt)} · {a.status}</p></div>
-                  <button onClick={() => callNext(a)} disabled={busy === a.id} className="btn-primary shrink-0 text-xs"><PhoneCall size={13} />Chamar</button>
+                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                  <div className="min-w-0"><p className="truncate font-medium text-gray-900">{a.customerName || a.customerPhone || 'Cliente'}{a.recurring && <span className="ml-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] text-brand-700">recorrente / retorno</span>}</p><p className="text-xs text-gray-400">{dt(a.createdAt)} · {a.status}</p></div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {canChoose && (
+                      <select value={pick[a.id] ?? ''} onChange={(e) => setPick((p) => ({ ...p, [a.id]: e.target.value }))} disabled={busy === a.id} className="max-w-[9rem] rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" title="Escolher o vendedor (opcional)">
+                        <option value="">1º da fila</option>
+                        {waiting.map((s) => <option key={s.sellerId} value={s.sellerId}>{s.sellerName}</option>)}
+                      </select>
+                    )}
+                    <button onClick={() => callNext(a, pick[a.id] || undefined)} disabled={busy === a.id} className="btn-primary text-xs"><PhoneCall size={13} />{pick[a.id] ? 'Chamar escolhido' : 'Chamar'}</button>
+                  </div>
                 </li>
               ))}
             </ul>

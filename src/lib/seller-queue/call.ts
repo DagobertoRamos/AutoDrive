@@ -29,6 +29,8 @@ export async function callForArrival(opts: {
   actorId: string
   preferSellerId?: string | null
   reason?: string | null
+  customerName?: string | null
+  recurring?: boolean
 }): Promise<CallResult> {
   const cfg = await getUnitConfig(opts.tenantId, opts.unitId)
   const timeout = cfg?.acceptTimeoutSeconds ?? 60
@@ -40,7 +42,7 @@ export async function callForArrival(opts: {
     select: { id: true, sellerId: true },
   })
   if (waiting.length === 0) {
-    await notifyNoSellerAvailable({ tenantId: opts.tenantId, unitId: opts.unitId, arrivalId: opts.arrivalId })
+    await notifyNoSellerAvailable({ tenantId: opts.tenantId, unitId: opts.unitId, arrivalId: opts.arrivalId, whatsapp: cfg?.alertWhatsappManagers ?? false })
     return { ok: false, reason: 'Nenhum vendedor disponível na fila.' }
   }
 
@@ -70,8 +72,8 @@ export async function callForArrival(opts: {
     if (!result) continue
 
     await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId: cand.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.id, reason: opts.reason ?? null })
-    // Alerta o vendedor da vez (best-effort, alimenta o balão/central).
-    await notifySellerCalled({ tenantId: opts.tenantId, sellerId: cand.sellerId, timeoutSeconds: timeout, attendanceId: result.id, arrivalId: opts.arrivalId })
+    // Alerta (crítico) o vendedor da vez: in-app sempre; WhatsApp se o ADM ligou.
+    await notifySellerCalled({ tenantId: opts.tenantId, sellerId: cand.sellerId, timeoutSeconds: timeout, attendanceId: result.id, arrivalId: opts.arrivalId, customerName: opts.customerName ?? null, recurring: opts.recurring ?? false, whatsapp: cfg?.alertWhatsapp ?? false })
 
     return { ok: true, attendanceId: result.id, sellerId: cand.sellerId }
   }

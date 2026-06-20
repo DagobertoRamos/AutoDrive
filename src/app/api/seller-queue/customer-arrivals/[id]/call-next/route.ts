@@ -48,7 +48,7 @@ export async function POST(req: Request, { params }: Ctx) {
       await flagFraud({ tenantId, unitId: arrival.unitId, sellerId: d.sellerId, actorId: user.id, arrivalId: arrival.id, kind: 'FAVORITISM', severity: 'LOW', detail: `Vendedor forçado pela gestão: ${d.reason.trim()}` })
     }
 
-    const call = await callForArrival({ tenantId, unitId: arrival.unitId, queueId: arrival.queueId, arrivalId: arrival.id, actorId: user.id, preferSellerId, reason: d.reason ?? null })
+    const call = await callForArrival({ tenantId, unitId: arrival.unitId, queueId: arrival.queueId, arrivalId: arrival.id, actorId: user.id, preferSellerId, reason: d.reason ?? null, customerName: arrival.customerName, recurring: arrival.recurring })
     if (!call.ok) return NextResponse.json({ success: false, error: call.reason ?? 'Não foi possível chamar.', call }, { status: 409 })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CALL_NEXT', entity: 'SellerQueueCustomerArrival', entityId: arrival.id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true, data: { call } })

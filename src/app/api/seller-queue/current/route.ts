@@ -11,7 +11,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/a
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { queueDate , unitFromRequest } from '@/lib/seller-queue/queue'
+import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
@@ -25,9 +25,16 @@ export async function GET(req: Request) {
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: 400 })
 
   try {
+    const ucfg = await getUnitConfig(tenantId, unitId)
+    const alerts = {
+      sound: ucfg?.alertSound ?? true,
+      browserPush: ucfg?.alertBrowserPush ?? true,
+      repeatSeconds: ucfg?.alertRepeatSeconds ?? 10,
+    }
+    const allowChooseSeller = ucfg?.allowChooseSeller ?? true
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0 } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller } })
     }
 
     const [entries, arrivalsPending] = await Promise.all([
@@ -67,6 +74,8 @@ export async function GET(req: Request) {
         vendedorDaVez: vencedor ? { sellerId: vencedor.sellerId, sellerName: vencedor.sellerName, position: vencedor.position } : null,
         me,
         arrivalsPending,
+        alerts,
+        allowChooseSeller,
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
       },
     })

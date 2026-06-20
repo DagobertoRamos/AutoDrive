@@ -80,4 +80,11 @@ export const configSchema = z.object({
   allowedDays:                   z.array(z.string().trim().max(8)).optional(),
   recurringCustomerRule:         z.enum(['RESPONSIBLE', 'QUEUE']).optional(),
   requestByNameRequiresApproval: z.boolean().optional(),
+  // Avisos/alertas
+  alertSound:                    z.boolean().optional(),
+  alertBrowserPush:              z.boolean().optional(),
+  alertWhatsapp:                 z.boolean().optional(),
+  alertWhatsappManagers:         z.boolean().optional(),
+  alertRepeatSeconds:            z.number().int().min(5).max(120).optional(),
+  allowChooseSeller:             z.boolean().optional(),
 })

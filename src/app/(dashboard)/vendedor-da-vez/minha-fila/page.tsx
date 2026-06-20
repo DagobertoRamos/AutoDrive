@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { DoorOpen, LogOut, Pause, Play, Check, X, CheckCircle2, RefreshCw, Hand, Clock, QrCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
+import { unlockAudio, beep, ensureNotifyPermission, showAlertNotification } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'], ['CONSIGNMENT', 'Consignação'], ['FINANCING', 'Financiamento'], ['AFTER_SALES', 'Pós-venda'], ['OTHER', 'Outro']] as const
@@ -17,7 +18,8 @@ const RESULTS = [['CONVERTED_TO_NEGOTIATION', 'Virou negociação'], ['SCHEDULED
 
 interface Me { status: string; position: number }
 interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; recurring: boolean } | null }
-interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown }
+interface Alerts { sound: boolean; browserPush: boolean; repeatSeconds: number }
+interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -52,6 +54,36 @@ export default function MinhaFilaPage() {
   useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i) }, [load])
   useEffect(() => { setNow(Date.now()); timer.current = setInterval(() => setNow(Date.now()), 1000); return () => { if (timer.current) clearInterval(timer.current) } }, [])
 
+  // Destrava o áudio no 1º gesto do usuário na página (política de autoplay).
+  useEffect(() => {
+    const onGesture = () => unlockAudio()
+    window.addEventListener('pointerdown', onGesture, { once: true })
+    return () => window.removeEventListener('pointerdown', onGesture)
+  }, [])
+
+  // Alerta CRÍTICO enquanto for o vendedor da vez (status CALLED): som em loop +
+  // notificação do navegador + vibração, conforme a config da unidade. Para ao
+  // aceitar/recusar/timeout (status muda) ou ao sair da tela.
+  const alertTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const calledStatus = data?.myAttendance?.status
+  const alerts = data?.alerts
+  useEffect(() => {
+    const isCalled = calledStatus === 'CALLED'
+    const stop = () => { if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null } }
+    if (isCalled && !alertTimer.current) {
+      const a = alerts ?? { sound: true, browserPush: true, repeatSeconds: 10 }
+      if (a.sound !== false) beep()
+      if (a.browserPush !== false) showAlertNotification('Você é o vendedor da vez 🔔', 'Cliente presencial aguardando — abra o app e aceite.')
+      const every = Math.max(5, a.repeatSeconds || 10) * 1000
+      alertTimer.current = setInterval(() => {
+        if (a.sound !== false) beep()
+        if (a.browserPush !== false) showAlertNotification('Você é o vendedor da vez 🔔', 'Cliente presencial aguardando — abra o app e aceite.')
+      }, every)
+    }
+    if (!isCalled) stop()
+    return stop
+  }, [calledStatus, alerts])
+
   const post = async (path: string, body?: unknown, okMsg?: string) => {
     setBusy(true)
     try {
@@ -63,8 +95,8 @@ export default function MinhaFilaPage() {
   }
 
   const [scanOpen, setScanOpen] = useState(false)
-  const checkIn = async () => { const pos = await getPosition(); await post('check-in', pos, 'Você entrou na fila!') }
-  const checkInQr = async (token: string) => { setScanOpen(false); await post('check-in', { qrToken: token }, 'Você entrou na fila!') }
+  const checkIn = async () => { unlockAudio(); void ensureNotifyPermission(); const pos = await getPosition(); await post('check-in', pos, 'Você entrou na fila!') }
+  const checkInQr = async (token: string) => { unlockAudio(); void ensureNotifyPermission(); setScanOpen(false); await post('check-in', { qrToken: token }, 'Você entrou na fila!') }
   const resume = async () => { const pos = await getPosition(); await post('resume', pos, 'De volta à fila!') }
   const me = data?.me
   const att = data?.myAttendance

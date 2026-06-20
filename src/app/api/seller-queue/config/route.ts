@@ -52,6 +52,8 @@ export async function PUT(req: Request) {
       geofenceRadiusM: d.geofenceRadiusM, qrSecret: d.qrSecret ?? null, acceptTimeoutSeconds: d.acceptTimeoutSeconds,
       requireRevalidationOnAccept: d.requireRevalidationOnAccept, openTime: d.openTime ?? null, closeTime: d.closeTime ?? null,
       allowedDays: d.allowedDays, recurringCustomerRule: d.recurringCustomerRule, requestByNameRequiresApproval: d.requestByNameRequiresApproval,
+      alertSound: d.alertSound, alertBrowserPush: d.alertBrowserPush, alertWhatsapp: d.alertWhatsapp,
+      alertWhatsappManagers: d.alertWhatsappManagers, alertRepeatSeconds: d.alertRepeatSeconds, allowChooseSeller: d.allowChooseSeller,
       updatedById: user.id,
     }
     // Remove undefined (mantém só o que veio).

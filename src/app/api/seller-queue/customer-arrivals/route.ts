@@ -94,7 +94,7 @@ export async function POST(req: Request) {
     if (d.requestedSellerId && cfg && !cfg.requestByNameRequiresApproval) preferSellerId = d.requestedSellerId
     else if (recurring.suggestedSellerId && (cfg?.recurringCustomerRule ?? 'RESPONSIBLE') === 'RESPONSIBLE') preferSellerId = recurring.suggestedSellerId
 
-    const call = await callForArrival({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, preferSellerId })
+    const call = await callForArrival({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, preferSellerId, customerName: d.customerName ?? null, recurring: recurring.recurring })
 
     return NextResponse.json({ success: true, data: { arrivalId: arrival.id, recurring, call } }, { status: 201 })
   } catch (err) {
