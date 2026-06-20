@@ -21,7 +21,11 @@ const nextConfig = {
 
   experimental: {
     webpackMemoryOptimizations: true,
-    webpackBuildWorker: true,
+    // DESLIGADO de propósito: o build worker do Next roda um 2º processo pesado
+    // em paralelo; somado ao processo principal estoura a RAM do container da
+    // Vercel (SIGKILL/OOM). Com 1 processo único (cap de heap no script build)
+    // o pico de RAM total cai e o build cabe no container. Ver LOG 0103.
+    webpackBuildWorker: false,
     serverSourceMaps: false,
     preloadEntriesOnStart: false,
   },

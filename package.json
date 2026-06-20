@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-   "build": "prisma generate && node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build --webpack",
+   "build": "prisma generate && node --max-old-space-size=7168 ./node_modules/next/dist/bin/next build --webpack",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint .",
