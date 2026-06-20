@@ -5,7 +5,13 @@
 // =============================================================================
 
 import { StoreAreaGate } from '@/components/common/StoreAreaGate'
+import { SellerQueueUnitBar } from '@/components/seller-queue/SellerQueueUnitBar'
 
 export default function VendedorDaVezLayout({ children }: { children: React.ReactNode }) {
-  return <StoreAreaGate area="a Fila de Atendimento">{children}</StoreAreaGate>
+  return (
+    <StoreAreaGate area="a Fila de Atendimento">
+      <SellerQueueUnitBar />
+      {children}
+    </StoreAreaGate>
+  )
 }

@@ -1121,6 +1121,20 @@
 - **MÓDULO COMPLETO (Fases 0–9):** estrutura → schema → check-in/fila → cliente na loja + chamada (lock) → aceite/recusa/timeout/finalizar → notificações → UI. Antifraude/auditoria/presença-por-evento/tenant+unit respeitados; sem rastreio contínuo.
 - **NÃO implementado (intencional / refinamentos):** seletor de UNIDADE para o MASTER (hoje usa `user.unitId`; MASTER pode passar `?unitId=` nas APIs); tempo real é por polling (sem WebSocket); cron de timeout (Hobby) — disparado pela UI quando o contador zera; leitura/scan de QR fica a cargo do app/câmera (o backend valida o token). Bloqueio/reordenação avançada de vendedor pelo gerente e flags de fraude automáticas podem evoluir.
 
+### LOG 0101 — 2026-06-19 — Claude (Opus 4.8) — Fila de Atendimento — Refinamentos (seletor de unidade do MASTER + ações do gerente)
+- **Branch:** main (worktree). **Sem migration.** Fecha 2 lacunas: o MASTER consegue escolher a unidade, e o gerente bloqueia/libera e reordena a fila.
+- **(1) Seletor de unidade (MASTER/usuário sem unidade):**
+  - `GET /api/seller-queue/units` (novo) — unidades **escopadas à loja ativa** (`resolveActingTenant` + `tenantId`), diferente de `/api/units` (que p/ MASTER lista todas).
+  - `unitFromRequest(req, fallback)` em `queue.ts` — `?unitId=` → cookie `sq_unit` → `user.unitId`. Aplicado em `current`, `attendances`, `customer-arrivals` (GET), `config`, `reports`.
+  - `SellerQueueUnitBar` (componente) + `layout.tsx` — barra de seleção só renderiza p/ quem NÃO tem `unitId` (MASTER); grava o cookie e recarrega. Transparente p/ vendedores/líderes/gerentes.
+- **(2) Ações do gerente (`sellerQueue.manage`, com justificativa):**
+  - `POST /api/seller-queue/entries/:id/block` (novo) — bloqueia/libera vendedor (status BLOCKED/WAITING), log MANAGER/LEADER_OVERRIDE.
+  - `POST /api/seller-queue/reorder` (novo) — move 1 posição (up/down) trocando com o vizinho, log QUEUE_REORDERED.
+  - `validators/seller-queue.ts` — `blockSchema`/`reorderSchema` (justificativa obrigatória).
+  - **Painel** — coluna de ações (↑/↓ + cadeado) visível só p/ gestão (`MANAGE_ROLES`), com indicador "bloqueado".
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **177/177**; `next build` OK; rotas novas no manifest.
+- **AVISO p/ outra IA:** unidade efetiva nas leituras vem de `unitFromRequest` (cookie `sq_unit` p/ MASTER). Ações de gerência exigem `sellerQueue.manage` + justificativa e são auditadas. Flags de fraude automáticas seguem como evolução.
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.

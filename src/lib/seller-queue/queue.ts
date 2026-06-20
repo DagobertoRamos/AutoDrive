@@ -13,6 +13,16 @@ export function queueDate(now = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 }
 
+/** Unidade efetiva da requisição: ?unitId= → cookie `sq_unit` (MASTER) → unidade do usuário. */
+export function unitFromRequest(req: Request, fallback: string | null | undefined): string | null {
+  const q = new URL(req.url).searchParams.get('unitId')
+  if (q) return q
+  const c = req.headers.get('cookie') ?? ''
+  const m = c.match(/(?:^|;\s*)sq_unit=([^;]+)/)
+  if (m) return decodeURIComponent(m[1])
+  return fallback ?? null
+}
+
 /** Config da fila da unidade (ou null se não houver). */
 export async function getUnitConfig(tenantId: string, unitId: string) {
   return prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } } })

@@ -53,6 +53,17 @@ export const finishSchema = z.object({
   notes:  optStr,
 })
 
+// ── Ações do gerente: bloquear/liberar + reordenar (Fase 8) ─────────────────
+export const blockSchema = z.object({
+  blocked: z.boolean(),
+  reason:  z.string().trim().min(2, 'Justificativa obrigatória.'),
+})
+export const reorderSchema = z.object({
+  entryId:   z.string().trim().min(1),
+  direction: z.enum(['up', 'down']),
+  reason:    z.string().trim().min(2, 'Justificativa obrigatória.'),
+})
+
 // ── Configuração da unidade (Fase 8) ────────────────────────────────────────
 export const presenceMethodValues = ['GPS', 'QR_CODE', 'DEVICE_CHECK'] as const
 export const configSchema = z.object({

@@ -7,16 +7,21 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const dt = (s: string | null) => (s ? new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—')
 
-interface Entry { id: string; sellerName: string; status: string }
+interface Entry { id: string; sellerId: string; sellerName: string; status: string; blocked: boolean }
 interface Arrival { id: string; customerName: string | null; customerPhone: string | null; recurring: boolean; status: string; createdAt: string }
 interface Att { id: string; sellerName: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null } | null }
 
 export default function PainelUnidadePage() {
+  const { data: session } = useSession()
+  const role = (session?.user as { role?: string })?.role
+  const canManage = !!role && MANAGE_ROLES.includes(role)
   const [cur, setCur] = useState<{ entries: Entry[]; vendedorDaVez: { sellerName: string } | null } | null>(null)
   const [arrivals, setArrivals] = useState<Arrival[]>([])
   const [active, setActive] = useState<Att[]>([])
@@ -55,6 +60,15 @@ export default function PainelUnidadePage() {
       const res = await fetch(`/api/seller-queue/attendances/${att.id}/timeout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ reason: 'pulo pela gestão' }) })
       const j = await res.json().catch(() => ({})); flash(res.ok ? 'Pulado — próximo chamado.' : (j?.error ?? 'Falha.'), res.ok); await load()
     } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
+  const block = async (e: Entry) => {
+    const reason = prompt(e.blocked ? 'Justificativa para liberar:' : 'Justificativa para bloquear:'); if (!reason) return
+    setBusy(e.id)
+    try { const res = await fetch(`/api/seller-queue/entries/${e.id}/block`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ blocked: !e.blocked, reason }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? (e.blocked ? 'Vendedor liberado.' : 'Vendedor bloqueado.') : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
+  const reorder = async (e: Entry, direction: 'up' | 'down') => {
+    setBusy(e.id)
+    try { const res = await fetch('/api/seller-queue/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ entryId: e.id, direction, reason: 'ajuste manual da gestão' }) }); const j = await res.json().catch(() => ({})); if (!res.ok) flash(j?.error ?? 'Falha.', false); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
 
   if (denied) return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
@@ -101,12 +115,25 @@ export default function PainelUnidadePage() {
       </div>
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
-        <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">Fila atual</p></div>
+        <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">Fila atual {canManage && <span className="font-normal text-gray-400">— gerência pode bloquear/reordenar</span>}</p></div>
         <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50"><tr>{['#', 'Vendedor', 'Status'].map((h) => (<th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+          <thead className="bg-gray-50"><tr>{['#', 'Vendedor', 'Status', ''].map((h) => (<th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
           <tbody className="divide-y divide-gray-100">
-            {(cur?.entries ?? []).length === 0 ? (<tr><td colSpan={3} className="py-8 text-center text-sm text-gray-400">Fila vazia.</td></tr>)
-            : cur!.entries.map((e, i) => (<tr key={e.id} className="hover:bg-gray-50"><td className="px-4 py-2 tabular-nums text-gray-500">{i + 1}</td><td className="px-4 py-2 font-medium text-gray-900">{e.sellerName}</td><td className="px-4 py-2 text-xs text-gray-500">{e.status}</td></tr>))}
+            {(cur?.entries ?? []).length === 0 ? (<tr><td colSpan={4} className="py-8 text-center text-sm text-gray-400">Fila vazia.</td></tr>)
+            : cur!.entries.map((e, i) => (
+              <tr key={e.id} className={cn('hover:bg-gray-50', e.blocked && 'opacity-60')}>
+                <td className="px-4 py-2 tabular-nums text-gray-500">{i + 1}</td>
+                <td className="px-4 py-2 font-medium text-gray-900">{e.sellerName}{e.blocked && <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600"><Lock size={10} />bloqueado</span>}</td>
+                <td className="px-4 py-2 text-xs text-gray-500">{e.status}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-right">
+                  {canManage && <>
+                    <button onClick={() => reorder(e, 'up')} disabled={busy === e.id || i === 0} className="inline-flex rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30" title="Subir"><ChevronUp size={14} /></button>
+                    <button onClick={() => reorder(e, 'down')} disabled={busy === e.id || i === (cur!.entries.length - 1)} className="mr-1 inline-flex rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30" title="Descer"><ChevronDown size={14} /></button>
+                    <button onClick={() => block(e)} disabled={busy === e.id} className={cn('inline-flex rounded p-1', e.blocked ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-red-50 hover:text-red-600')} title={e.blocked ? 'Liberar' : 'Bloquear'}>{e.blocked ? <Unlock size={14} /> : <Lock size={14} />}</button>
+                  </>}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </section>

@@ -10,7 +10,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/a
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { queueDate } from '@/lib/seller-queue/queue'
+import { queueDate , unitFromRequest } from '@/lib/seller-queue/queue'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const sp = new URL(req.url).searchParams
-  const unitId = sp.get('unitId') || user.unitId
+  const unitId = unitFromRequest(req, user.unitId)
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
   const active = sp.get('active') === 'true'
   try {

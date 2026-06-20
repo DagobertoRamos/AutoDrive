@@ -15,7 +15,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createArrivalSchema } from '@/lib/validators/seller-queue'
-import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent } from '@/lib/seller-queue/queue'
+import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent , unitFromRequest } from '@/lib/seller-queue/queue'
 import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
 import { callForArrival } from '@/lib/seller-queue/call'
 
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
-  const unitId = new URL(req.url).searchParams.get('unitId') || user.unitId
+  const unitId = unitFromRequest(req, user.unitId)
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
   try {
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } }, select: { id: true } })

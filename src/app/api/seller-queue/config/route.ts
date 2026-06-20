@@ -14,10 +14,9 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { configSchema } from '@/lib/validators/seller-queue'
+import { unitFromRequest } from '@/lib/seller-queue/queue'
 
-function unitOf(req: Request, fallback: string | null) {
-  return new URL(req.url).searchParams.get('unitId') || fallback
-}
+const unitOf = (req: Request, fallback: string | null) => unitFromRequest(req, fallback)
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
