@@ -13,11 +13,11 @@ import { prisma } from '@/lib/prisma'
 const GROUP = 'whatsapp'
 
 const ALLOWED_KEYS = [
-  'active', 'phoneNumberId', 'wabaId', 'token',
-  'webhookVerifyToken', 'businessName', 'defaultMessage',
+  'active', 'provider', 'phoneNumberId', 'businessAccountId', 'accessToken',
+  'webhookVerifyToken', 'apiVersion', 'defaultMessage',
 ]
 
-const SENSITIVE_KEYS = ['token', 'webhookVerifyToken']
+const SENSITIVE_KEYS = ['accessToken', 'webhookVerifyToken']
 
 function tenantKey(tenantId: string, field: string) {
   return `t:${tenantId}:${GROUP}.${field}`
@@ -84,8 +84,9 @@ export async function POST(req: NextRequest) {
 
     for (const field of ALLOWED_KEYS) {
       if (body[field] === undefined || field === 'id') continue
-      // Não sobrescreve campo sensível se veio mascarado
-      if (SENSITIVE_KEYS.includes(field) && body[field] === '••••••••') continue
+      // Não sobrescreve campo sensível (token) se veio mascarado ou em branco —
+      // a tela limpa o campo ao carregar; salvar vazio apagaria a credencial.
+      if (SENSITIVE_KEYS.includes(field) && (body[field] === '••••••••' || body[field] === '')) continue
 
       const key   = tenantKey(tid, field)
       const value = String(body[field] ?? '')

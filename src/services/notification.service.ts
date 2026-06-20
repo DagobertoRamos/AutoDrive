@@ -21,6 +21,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { metaWhatsApp } from './meta-whatsapp.service'
+import { getTenantWhatsappCredentials } from '@/lib/whatsapp/credentials'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -62,20 +63,6 @@ async function loadUserContact(userId: string): Promise<UserContact> {
   return { id: u.id, phone }
 }
 
-/** Garante que existe um WhatsappProvider ativo (global ou do tenant). */
-async function getActiveWhatsappProvider(tenantId?: string | null) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (prisma as any).whatsappProvider.findFirst({
-    where: {
-      active:        true,
-      accessToken:   { not: null },
-      phoneNumberId: { not: null },
-      OR: tenantId ? [{ tenantId }, { tenantId: null }] : [{ tenantId: null }],
-    },
-    orderBy: [{ tenantId: 'desc' }], // prioriza provider do tenant antes do global
-  })
-}
-
 async function sendWhatsappBestEffort(
   notificationId: string | null,
   userId: string,
@@ -85,12 +72,11 @@ async function sendWhatsappBestEffort(
 ): Promise<void> {
   if (!to) return
   try {
-    const provider = await getActiveWhatsappProvider(tenantId)
-    if (!provider) return  // não há provedor configurado/ativo → silencioso
-    // metaWhatsApp lê env vars; se o provider do tenant tem credenciais
-    // próprias, idealmente a service aceitaria override. Mantemos compat
-    // usando env por enquanto.
-    await metaWhatsApp.sendText({ to, text })
+    // BYOC: cada loja usa as SUAS credenciais. Sem credencial da loja → não
+    // envia (não usamos número da plataforma para mensagens do tenant).
+    const creds = await getTenantWhatsappCredentials(tenantId)
+    if (tenantId && !creds) return  // loja sem WhatsApp configurado → silencioso
+    await metaWhatsApp.sendText({ to, text }, creds ?? undefined)
     if (notificationId) {
       await prisma.notificationDelivery.create({
         data: { notificationId, userId, channel: 'WHATSAPP', status: 'ENVIADO', sentAt: new Date() },
