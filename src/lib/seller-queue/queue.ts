@@ -14,14 +14,22 @@ export function queueDate(now = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 }
 
-/** Unidade efetiva da requisição: ?unitId= → cookie `sq_unit` (MASTER) → unidade do usuário. */
+/**
+ * Unidade efetiva da requisição: `?unitId=` (override explícito) → unidade do
+ * próprio usuário → cookie `sq_unit` (apenas p/ quem NÃO tem unidade, ex.: MASTER).
+ * IMPORTANTE: a unidade própria precede o cookie. As rotas de escrita (check-in,
+ * pause, etc.) usam `user.unitId` direto; se a leitura priorizasse o cookie, um
+ * cookie `sq_unit` herdado (de uma sessão MASTER no mesmo navegador) faria o
+ * vendedor gravar numa unidade e ler de outra — entrava na fila e "sumia".
+ */
 export function unitFromRequest(req: Request, fallback: string | null | undefined): string | null {
   const q = new URL(req.url).searchParams.get('unitId')
   if (q) return q
+  if (fallback) return fallback
   const c = req.headers.get('cookie') ?? ''
   const m = c.match(/(?:^|;\s*)sq_unit=([^;]+)/)
   if (m) return decodeURIComponent(m[1])
-  return fallback ?? null
+  return null
 }
 
 /** Config da fila da unidade (ou null se não houver). */
