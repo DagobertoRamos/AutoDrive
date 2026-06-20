@@ -20,8 +20,8 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { metaWhatsApp } from './meta-whatsapp.service'
-import { getTenantWhatsappCredentials } from '@/lib/whatsapp/credentials'
+import { getTenantWhatsappConfig } from '@/lib/whatsapp/credentials'
+import { getWhatsappAdapter } from '@/lib/whatsapp/registry'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -72,11 +72,13 @@ async function sendWhatsappBestEffort(
 ): Promise<void> {
   if (!to) return
   try {
-    // BYOC: cada loja usa as SUAS credenciais. Sem credencial da loja → não
-    // envia (não usamos número da plataforma para mensagens do tenant).
-    const creds = await getTenantWhatsappCredentials(tenantId)
-    if (tenantId && !creds) return  // loja sem WhatsApp configurado → silencioso
-    await metaWhatsApp.sendText({ to, text }, creds ?? undefined)
+    // BYOC + multi-provedor: cada loja usa o SEU provedor/credenciais. Sem
+    // configuração da loja → não envia (não usamos número da plataforma).
+    const cfg = await getTenantWhatsappConfig(tenantId)
+    if (!cfg) return  // loja sem WhatsApp configurado → silencioso
+    const adapter = getWhatsappAdapter(cfg.kind)
+    if (!adapter) return  // provedor sem adapter implementado → silencioso
+    await adapter.sendText({ to, text }, cfg.creds)
     if (notificationId) {
       await prisma.notificationDelivery.create({
         data: { notificationId, userId, channel: 'WHATSAPP', status: 'ENVIADO', sentAt: new Date() },

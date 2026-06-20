@@ -1,23 +1,24 @@
 // =============================================================================
 // API: /api/settings/whatsapp — AutoDrive
-// Configuração da integração WhatsApp (Meta Cloud API)
-//
-// Chave de armazenamento: `t:{tenantId}:whatsapp.{field}`
+// Configuração da integração WhatsApp por loja (multi-provedor / BYOC).
+// Os campos aceitos são derivados do registry de adaptadores (Meta, Twilio, ...),
+// então somar um provedor novo já reflete aqui. Chave: `t:{tenantId}:whatsapp.{field}`
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
+import { listWhatsappProviders } from '@/lib/whatsapp/registry'
 
 const GROUP = 'whatsapp'
 
-const ALLOWED_KEYS = [
-  'active', 'provider', 'phoneNumberId', 'businessAccountId', 'accessToken',
-  'webhookVerifyToken', 'apiVersion', 'defaultMessage',
+const PROVIDERS = listWhatsappProviders()
+// União de todos os campos de credencial + campos de controle.
+const ALLOWED_KEYS = ['active', 'provider', 'defaultMessage',
+  ...Array.from(new Set(PROVIDERS.flatMap((p) => p.fields.map((f) => f.key)))),
 ]
-
-const SENSITIVE_KEYS = ['accessToken', 'webhookVerifyToken']
+const SENSITIVE_KEYS = Array.from(new Set(PROVIDERS.flatMap((p) => p.fields.filter((f) => f.secret).map((f) => f.key))))
 
 function tenantKey(tenantId: string, field: string) {
   return `t:${tenantId}:${GROUP}.${field}`

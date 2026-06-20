@@ -1199,6 +1199,16 @@
 - **Para ativar (cada loja):** Configurações › WhatsApp → preencher Phone Number ID + Access Token (Meta Cloud API) e marcar Ativo. A partir daí os alertas da fila saem pelo número da própria loja.
 - **Comandos:** `tsc` limpo; `eslint` **0 erros**; `npm test` **177/177**; `next build` OK.
 
+### LOG 0109 — 2026-06-20 — Claude (Opus 4.8) — WhatsApp multi-provedor (arquitetura de adaptadores)
+- **Sem migration.** Abre o "leque" de provedores de WhatsApp além do Meta, mantendo BYOC por loja.
+- **Contrato:** `src/lib/whatsapp/types.ts` (`WhatsappAdapter`, `WhatsappProviderKind`, `WhatsappCreds`, `ProviderField`). Cada adapter declara seus `fields` (a UI monta o formulário a partir disso).
+- **Adapters:** `adapters/meta.ts` (reusa `meta-whatsapp.service`, que aceita `MetaCreds` por chamada) e `adapters/twilio.ts` (REST + Basic Auth, `accountSid`/`authToken`/`from`). `registry.ts` mapeia kind→adapter (`Partial<Record>`; somar Zenvia/360dialog = novo arquivo + 1 linha).
+- **Resolução por loja:** `credentials.ts` `getTenantWhatsappConfig(tenantId)` → `{ kind, creds }` lendo `SystemSetting t:{tid}:whatsapp.*` (campo `provider` define o kind; demais viram `creds`) → fallback `WhatsappProvider` do tenant (Meta) → null. Sem fallback global/env p/ tenant.
+- **Envio:** `notification.service.sendWhatsappBestEffort` resolve config da loja → `getWhatsappAdapter(kind).sendText(...)`. Sem config/adapter → silencioso.
+- **Rota dinâmica:** `settings/whatsapp` deriva `ALLOWED_KEYS`/`SENSITIVE_KEYS` do registry (auto-inclui campos de novos provedores). Nova `GET /api/settings/whatsapp/providers` lista provedores+campos (sem segredos) p/ a UI.
+- **UI da loja reescrita** (`configuracoes/whatsapp`): **removido o bloqueio "só MASTER"** (agora a própria loja/ADM configura), seletor de provedor + campos renderizados dinamicamente; bloco de Webhook só para Meta; segredos mascarados e preservados quando em branco.
+- **Comandos:** `tsc` limpo; `eslint` **0 erros**; `npm test` **177/177**; `next build` OK.
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.
