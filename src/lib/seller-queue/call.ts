@@ -7,8 +7,8 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { notify } from '@/services/notification.service'
 import { getUnitConfig, logQueueEvent } from './queue'
+import { notifySellerCalled, notifyNoSellerAvailable } from './notify'
 
 export interface CallResult {
   ok: boolean
@@ -39,7 +39,10 @@ export async function callForArrival(opts: {
     orderBy: [{ position: 'asc' }, { joinedAt: 'asc' }],
     select: { id: true, sellerId: true },
   })
-  if (waiting.length === 0) return { ok: false, reason: 'Nenhum vendedor disponível na fila.' }
+  if (waiting.length === 0) {
+    await notifyNoSellerAvailable({ tenantId: opts.tenantId, unitId: opts.unitId, arrivalId: opts.arrivalId })
+    return { ok: false, reason: 'Nenhum vendedor disponível na fila.' }
+  }
 
   const ordered = opts.preferSellerId
     ? [...waiting.filter((w) => w.sellerId === opts.preferSellerId), ...waiting.filter((w) => w.sellerId !== opts.preferSellerId)]
@@ -67,14 +70,8 @@ export async function callForArrival(opts: {
     if (!result) continue
 
     await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId: cand.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.id, reason: opts.reason ?? null })
-    // Alerta o vendedor da vez (best-effort).
-    await notify({
-      userId: cand.sellerId, tenantId: opts.tenantId, type: 'WARNING',
-      title: 'Você é o vendedor da vez',
-      message: `Cliente presencial aguardando. Você tem ${timeout} segundos para aceitar.`,
-      actionUrl: '/vendedor-da-vez/minha-fila',
-      metadata: { kind: 'seller_queue_called', attendanceId: result.id, arrivalId: opts.arrivalId },
-    }).catch(() => {})
+    // Alerta o vendedor da vez (best-effort, alimenta o balão/central).
+    await notifySellerCalled({ tenantId: opts.tenantId, sellerId: cand.sellerId, timeoutSeconds: timeout, attendanceId: result.id, arrivalId: opts.arrivalId })
 
     return { ok: true, attendanceId: result.id, sellerId: cand.sellerId }
   }

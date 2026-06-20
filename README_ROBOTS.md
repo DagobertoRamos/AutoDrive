@@ -1096,6 +1096,18 @@
 - **Obs.:** o alerta ao vendedor (chamada) já vinha da Fase 4; o alerta de **timeout à gestão** foi incluído aqui (intrínseco). A Fase 6 (notificações) consolidará/expandirá (painel da unidade, e-mail/WhatsApp opcionais). Sem cron de timeout (plano Hobby) — o `timeout` é disparado pela UI quando o relógio zera (qualquer viewer) ou pela gestão.
 - **PRÓXIMA FASE:** **Fase 6 — Notificações** (consolidar alertas: vendedor da vez, timeout p/ líder/gerente, painel da unidade, balão/central) → depois F7 (painel líder), F8 (painel gerente), F9 (relatórios) e UI substituindo placeholders.
 
+### LOG 0099 — 2026-06-19 — Claude (Opus 4.8) — Comercial › Fila de Atendimento — Fase 6 (notificações consolidadas)
+- **Branch:** main (worktree). **Sem migration.** Consolida e completa os alertas da fila usando o `NotificationService` (canal APP_WEB → balão/central).
+- **Tarefa:** Fase 6 — notificações.
+- **Arquivos:**
+  - `src/lib/seller-queue/notify.ts` (novo) — centraliza as mensagens: `notifySellerCalled` (vendedor da vez, texto exato da spec: "Atenção: você é o vendedor da vez. Cliente presencial aguardando. Você tem X segundos para aceitar."), `notifyTimeoutManagers` (gestão no timeout) e **`notifyNoSellerAvailable`** (NOVO — avisa a gestão quando há cliente aguardando e ninguém disponível na fila). Best-effort.
+  - `src/lib/seller-queue/call.ts` (alterado) — usa `notifySellerCalled`; quando não há candidato, dispara `notifyNoSellerAvailable`.
+  - `src/app/api/seller-queue/attendances/[id]/timeout/route.ts` (alterado) — usa `notifyTimeoutManagers` (removido o `notifyByRole` inline).
+- **Cobertura dos alertas (spec):** vendedor da vez ✓ (chamada); líder/gerente no timeout ✓; **sem vendedor disponível** ✓ (novo); balão/central ✓ (APP_WEB alimenta o sino). Painel da unidade = a tela (F7) consome `GET /current` (polling) — sem websocket; documentado.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **177/177**; `next build` OK.
+- **NÃO implementado (intencional):** push/WhatsApp/e-mail (basta passar `channels` no `notifyByRole`/`notify` se desejado); tempo real no painel = polling do `current` (sem WS).
+- **PRÓXIMA FASE:** **F7 painel do líder** + **F8 painel do gerente** + **F9 relatórios** e **UI** substituindo os 7 placeholders de `/vendedor-da-vez/*` (incl. layout com `StoreAreaGate` p/ MASTER e o player do fluxo: entrar na fila, cliente na loja, aceitar/recusar/finalizar).
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.

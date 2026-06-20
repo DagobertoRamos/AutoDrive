@@ -13,14 +13,13 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
-import { notifyByRole } from '@/services/notification.service'
 import { timeoutSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { callForArrival } from '@/lib/seller-queue/call'
+import { notifyTimeoutManagers } from '@/lib/seller-queue/notify'
 
 type Ctx = { params: Promise<{ id: string }> }
-const MANAGER_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER']
 
 export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
@@ -50,12 +49,7 @@ export async function POST(req: Request, { params }: Ctx) {
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
 
     // Avisa a gestão (best-effort).
-    await notifyByRole({
-      tenantId, roles: MANAGER_ROLES, type: 'WARNING',
-      title: 'Vendedor não aceitou no prazo',
-      message: 'Um cliente presencial não foi aceito a tempo — o próximo vendedor foi chamado.',
-      actionUrl: '/vendedor-da-vez/painel', metadata: { kind: 'seller_queue_timeout', attendanceId: att.id, unitId: att.unitId },
-    }).catch(() => {})
+    await notifyTimeoutManagers({ tenantId, unitId: att.unitId, attendanceId: att.id })
 
     const call = att.arrivalId
       ? await callForArrival({ tenantId, unitId: att.unitId, queueId: att.queueId, arrivalId: att.arrivalId, actorId: user.id, reason: 'timeout' })
