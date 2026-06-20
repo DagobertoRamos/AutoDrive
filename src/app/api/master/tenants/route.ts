@@ -14,6 +14,7 @@ import { normalizeCPF, isValidCPF } from '@/lib/br-docs/cpf'
 import { normalizeCEP } from '@/lib/br-docs/cep'
 import { normalizePhone } from '@/lib/br-docs/phone'
 import bcrypt from 'bcryptjs'
+import { ALL_FEATURE_KEYS } from '@/lib/modules-catalog'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -176,6 +177,7 @@ export async function POST(req: NextRequest) {
         tenantPlan:    string
         tenantStatus?: string
         modules?:      string[]
+        disabledModules?: string[]
         limits?: {
           maxUsers?:    number
           maxVehicles?: number
@@ -419,22 +421,26 @@ export async function POST(req: NextRequest) {
         createdPartners.push(partner)
       }
 
-      // 5. Criar módulos ativos conforme configuração do plano
-      // enabledBy é só String? sem FK declarada, mas mesmo assim só passamos
-      // o userId se o user realmente existe no banco.
-      const modulesToActivate = planConfig?.modules ?? [
-        'dashboard', 'estoque', 'negociacoes', 'comissoes', 'clientes',
-      ]
-      await tx.tenantModule.createMany({
-        data: modulesToActivate.map((module: string) => ({
-          tenantId:  tenant.id,
-          module:    module.toLowerCase(),
-          active:    true,
-          enabledBy: sessionUserExists ? session.user.id : null,
-          enabledAt: new Date(),
-        })),
-        skipDuplicates: true,
-      })
+      // 5. Funcionalidades por loja (TenantModule).
+      // Default = HABILITADO quando NÃO há registro. Por isso só gravamos linhas
+      // para o que o MASTER DESLIGOU na criação (active=false). As chaves usam o
+      // mesmo vocabulário de permissão (modules-catalog), então refletem no menu
+      // e no gate de API (requireModule).
+      const disabledKeys: string[] = Array.isArray(planConfig?.disabledModules)
+        ? planConfig.disabledModules.filter((m) => ALL_FEATURE_KEYS.includes(m))
+        : []
+      if (disabledKeys.length) {
+        await tx.tenantModule.createMany({
+          data: disabledKeys.map((module: string) => ({
+            tenantId:   tenant.id,
+            module,
+            active:     false,
+            disabledAt: new Date(),
+            enabledBy:  sessionUserExists ? session.user.id : null,
+          })),
+          skipDuplicates: true,
+        })
+      }
 
       // 6. AuditLog dentro da transação
       // userId é opcional (FK para User.id). Se a sessão aponta para um user

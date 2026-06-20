@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { normalizePlate, isValidPlate } from '@/lib/vehicles/plate'
 import { lookupVehicleByPlate } from '@/lib/vehicle-lookup'
 import { createSafeAuditLog } from '@/lib/auth-guards'
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'stock.evaluate')) return forbiddenResponse('Sem permissão para consultar veículos.')
+  { const gate = await assertModuleEnabled(user, 'stock.evaluate'); if (gate) return gate }
 
   try {
     const { searchParams } = new URL(req.url)

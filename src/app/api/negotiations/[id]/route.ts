@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canEditSensitiveFields, SENSITIVE_FIELDS, EDITABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { computeDealTotals, createDealAudit } from '@/lib/negotiation-service'
@@ -31,6 +32,7 @@ export async function GET(
   } catch {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const params = await Promise.resolve(ctxArg.params)
   const dealId = params?.id
@@ -145,6 +147,7 @@ export async function PATCH(
   } catch {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   const params = await Promise.resolve(ctxArg.params)
   const dealId = params?.id

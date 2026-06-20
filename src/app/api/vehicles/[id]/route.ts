@@ -14,6 +14,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
 
@@ -26,6 +27,7 @@ export async function GET(
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'stock.view')) return forbiddenResponse()
+  { const gate = await assertModuleEnabled(user, 'stock.view'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -101,6 +103,7 @@ export async function PATCH(
   if (!canAccessModule(user.role, 'stock.manage')) {
     return forbiddenResponse('Sem permissão para editar veículos.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.view'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -188,6 +191,7 @@ export async function DELETE(
   if (!canAccessModule(user.role, 'stock.manage')) {
     return forbiddenResponse('Sem permissão para remover veículos.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.view'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

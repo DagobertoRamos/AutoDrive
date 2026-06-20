@@ -19,6 +19,7 @@ import { normalizeCNPJ, formatCNPJ, isValidCNPJ, isCNPJComplete } from '@/lib/br
 import { normalizeCPF, formatCPF, isValidCPF, isCPFComplete } from '@/lib/br-docs/cpf'
 import { normalizeCEP, formatCEP, isValidCEP } from '@/lib/br-docs/cep'
 import { formatPhone, normalizePhone } from '@/lib/br-docs/phone'
+import { MODULE_CATALOG, ALL_FEATURE_KEYS, FEATURE_LABEL } from '@/lib/modules-catalog'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -304,9 +305,9 @@ function NovoTenantForm() {
   const [maxUsers,      setMaxUsers]      = useState('10')
   const [maxVehicles,   setMaxVehicles]   = useState('100')
   const [maxUnits,      setMaxUnits]      = useState('1')
-  const [activeModules, setActiveModules] = useState<string[]>([
-    'dashboard', 'estoque', 'negociacoes', 'comissoes', 'clientes',
-  ])
+  // Funcionalidades liberadas: default = TODAS ligadas. O MASTER pode desligar
+  // item por item já na criação; o que ficar desligado vira TenantModule(active=false).
+  const [activeModules, setActiveModules] = useState<string[]>(ALL_FEATURE_KEYS)
 
   // ── Consulta CNPJ ─────────────────────────────────────────────────────────
 
@@ -491,18 +492,15 @@ function NovoTenantForm() {
 
   // ── Módulos ───────────────────────────────────────────────────────────────
 
-  const ALL_MODULES = [
-    { key: 'dashboard',     label: 'Dashboard' },
-    { key: 'estoque',       label: 'Estoque' },
-    { key: 'negociacoes',   label: 'Negociações' },
-    { key: 'comissoes',     label: 'Comissões' },
-    { key: 'clientes',      label: 'Clientes' },
-    { key: 'financeiro',    label: 'Financeiro' },
-    { key: 'comunicacao',   label: 'Comunicação' },
-    { key: 'documentacao',  label: 'Documentação' },
-    { key: 'auditoria',     label: 'Auditoria' },
-    { key: 'configuracoes', label: 'Configurações' },
-  ]
+  // Liga/desliga TODAS as funcionalidades de uma área de uma vez.
+  function toggleArea(keys: string[], enable: boolean) {
+    setActiveModules(prev => {
+      const set = new Set(prev)
+      keys.forEach(k => (enable ? set.add(k) : set.delete(k)))
+      return ALL_FEATURE_KEYS.filter(k => set.has(k))
+    })
+  }
+  const disabledModules = ALL_FEATURE_KEYS.filter(k => !activeModules.includes(k))
 
   function toggleModule(key: string) {
     setActiveModules(prev =>
@@ -627,6 +625,7 @@ function NovoTenantForm() {
           tenantPlan:   tenantPlan,
           tenantStatus: tenantStatus,
           modules:      activeModules,
+          disabledModules: disabledModules,
           limits: {
             maxUsers:    Number(maxUsers)    || 10,
             maxVehicles: Number(maxVehicles) || 100,
@@ -1228,23 +1227,48 @@ function NovoTenantForm() {
             </div>
 
             <div className="border-t border-gray-100 pt-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Módulos ativos</p>
-              <div className="flex flex-wrap gap-2">
-                {ALL_MODULES.map(m => (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => toggleModule(m.key)}
-                    className={[
-                      'rounded-lg border-2 px-3 py-1.5 text-sm font-medium transition-colors',
-                      activeModules.includes(m.key)
-                        ? 'border-brand-500 bg-brand-50 text-brand-700'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300',
-                    ].join(' ')}
-                  >
-                    {m.label}
-                  </button>
-                ))}
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Funcionalidades liberadas</p>
+                <span className="text-xs text-gray-500">{activeModules.length} de {ALL_FEATURE_KEYS.length} ligadas</span>
+              </div>
+              <p className="mb-4 text-xs text-gray-400">Tudo começa ligado. Desligue item por item o que esta loja não deve acessar — depois você ainda pode ajustar em Master › Funcionalidades.</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {MODULE_CATALOG.map(group => {
+                  const keys = group.features.map(f => f.key)
+                  const allOn = keys.every(k => activeModules.includes(k))
+                  return (
+                    <div key={group.area} className="overflow-hidden rounded-xl border border-gray-200">
+                      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-3 py-2">
+                        <p className="text-sm font-semibold text-gray-700">{group.area}</p>
+                        <button type="button" onClick={() => toggleArea(keys, !allOn)} className="text-xs font-medium text-brand-600 hover:underline">
+                          {allOn ? 'Desligar área' : 'Ligar área'}
+                        </button>
+                      </div>
+                      <ul className="divide-y divide-gray-100">
+                        {group.features.map(f => {
+                          const on = activeModules.includes(f.key)
+                          return (
+                            <li key={f.key} className="flex items-center justify-between gap-2 px-3 py-2">
+                              <span className="truncate text-sm text-gray-700">{f.label}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleModule(f.key)}
+                                role="switch" aria-checked={on}
+                                className={[
+                                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+                                  on ? 'bg-brand-600' : 'bg-gray-300',
+                                ].join(' ')}
+                                title={on ? 'Ligado — clique p/ desligar' : 'Desligado — clique p/ ligar'}
+                              >
+                                <span className={['inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform', on ? 'translate-x-4' : 'translate-x-0.5'].join(' ')} />
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </Section>
@@ -1314,13 +1338,20 @@ function NovoTenantForm() {
               <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                 <div><span className="text-xs text-gray-400">Plano</span><p className="font-medium">{tenantPlan}</p></div>
                 <div><span className="text-xs text-gray-400">Status inicial</span><p className="font-medium">{tenantStatus}</p></div>
-                <div><span className="text-xs text-gray-400">Módulos</span><p className="font-medium">{activeModules.length} ativos</p></div>
+                <div><span className="text-xs text-gray-400">Funcionalidades</span><p className="font-medium">{activeModules.length} de {ALL_FEATURE_KEYS.length} ligadas</p></div>
               </div>
-              <div className="flex flex-wrap gap-1">
-                {activeModules.map(m => (
-                  <span key={m} className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">{m}</span>
-                ))}
-              </div>
+              {disabledModules.length === 0 ? (
+                <p className="text-xs text-gray-500">Todas as funcionalidades liberadas para esta loja.</p>
+              ) : (
+                <>
+                  <p className="mb-1 text-xs font-medium text-gray-500">Desligadas ({disabledModules.length}):</p>
+                  <div className="flex flex-wrap gap-1">
+                    {disabledModules.map(m => (
+                      <span key={m} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{FEATURE_LABEL[m] ?? m}</span>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Aviso de senha */}

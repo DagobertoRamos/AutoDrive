@@ -22,6 +22,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function POST(
   req: NextRequest,
@@ -32,6 +33,7 @@ export async function POST(
   if (!canAccessModule(user.role, 'stock.manage')) {
     return forbiddenResponse('Apenas gerentes e administradores podem aprovar avaliações para o estoque.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.view'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

@@ -15,6 +15,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // Status que NÃO finalizaram a negociação — veículo está em negociação ativa
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'stock.view')) return forbiddenResponse('Sem acesso ao módulo de estoque.')
+  { const gate = await assertModuleEnabled(user, 'stock.view'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -294,6 +296,7 @@ export async function POST(req: NextRequest) {
   if (!canAccessModule(user.role, 'stock.manage')) {
     return forbiddenResponse('Apenas gerentes e administradores podem cadastrar veículos.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.view'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

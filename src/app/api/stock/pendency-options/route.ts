@@ -16,6 +16,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — Listar opções disponíveis para o tenant ────────────────────────────
 
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'stock.view')) return forbiddenResponse()
+  { const gate = await assertModuleEnabled(user, 'stock.view'); if (gate) return gate }
 
   try {
     const tenantId = user.role === 'MASTER' ? null : assertTenantId(user.tenantId, user.role)
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
   if (!canAccessModule(user.role, 'stock.pendencies.configure')) {
     return forbiddenResponse('Apenas administradores podem configurar opções de pendência.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.pendencies.configure'); if (gate) return gate }
 
   try {
     const tenantId = user.role === 'MASTER' ? null : assertTenantId(user.tenantId, user.role)
@@ -122,6 +125,7 @@ export async function PATCH(req: NextRequest) {
   if (!canAccessModule(user.role, 'stock.pendencies.configure')) {
     return forbiddenResponse('Sem permissão para editar opções de pendência.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.pendencies.configure'); if (gate) return gate }
 
   try {
     const tenantId = user.role === 'MASTER' ? null : assertTenantId(user.tenantId, user.role)
@@ -182,6 +186,7 @@ export async function DELETE(req: NextRequest) {
   if (!canAccessModule(user.role, 'stock.pendencies.configure')) {
     return forbiddenResponse('Sem permissão para remover opções de pendência.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.pendencies.configure'); if (gate) return gate }
 
   try {
     const tenantId = user.role === 'MASTER' ? null : assertTenantId(user.tenantId, user.role)

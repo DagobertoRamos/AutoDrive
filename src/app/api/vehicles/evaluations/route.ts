@@ -15,6 +15,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — Listar avaliações ───────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'stock.evaluate')) return forbiddenResponse('Sem acesso às avaliações.')
+  { const gate = await assertModuleEnabled(user, 'stock.evaluate'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -98,6 +100,7 @@ export async function POST(req: NextRequest) {
   if (!canAccessModule(user.role, 'stock.evaluate')) {
     return forbiddenResponse('Sem permissão para criar avaliações.')
   }
+  { const gate = await assertModuleEnabled(user, 'stock.evaluate'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

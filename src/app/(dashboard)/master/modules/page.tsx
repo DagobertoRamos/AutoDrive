@@ -1,226 +1,119 @@
 'use client'
 
 // =============================================================================
-// /master/modules — Controle de módulos por tenant
+// /master/modules — Liberação de funcionalidades por tenant (MASTER).
+// Item por item: escolhe a loja e liga/desliga cada funcionalidade do AutoDrive.
+// Desligar esconde do menu E bloqueia a API (requireModule). Default = ligado.
 // =============================================================================
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import {
-  Package,
-  Search,
-  RefreshCw,
-  CheckCircle2,
-  XCircle,
-  ChevronDown,
-} from 'lucide-react'
+import { Package, RefreshCw, Lock } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { MODULE_CATALOG } from '@/lib/modules-catalog'
 
-// ── Tipos ─────────────────────────────────────────────────────────────────────
-
-interface TenantModuleEntry {
-  tenantId: string
-  module:   string
-  active:   boolean
-  enabledAt: string | null
-  disabledAt: string | null
-}
-
-interface TenantWithModules {
-  id:       string
-  publicId: string
-  name:     string
-  plan:     string
-  status:   string
-  primaryColor: string | null
-  modules:  TenantModuleEntry[]
-}
-
-const ALL_MODULES = [
-  { key: 'dashboard',             label: 'Dashboard' },
-  { key: 'pendencies',            label: 'Pendências' },
-  { key: 'negotiations',          label: 'Negociações' },
-  { key: 'commissions',           label: 'Comissões' },
-  { key: 'communication',         label: 'Comunicação' },
-  { key: 'documents',             label: 'Documentos' },
-  { key: 'registrations',         label: 'Cadastros' },
-  { key: 'settings',              label: 'Configurações' },
-  { key: 'logs',                  label: 'Relatórios' },
-]
-
-// ── Página ────────────────────────────────────────────────────────────────────
+interface TenantModuleEntry { module: string; active: boolean }
+interface TenantWithModules { id: string; name: string; plan: string; status: string; modules: TenantModuleEntry[] }
 
 export default function MasterModulesPage() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
+  const { data: session } = useSession()
+  const isMaster = (session?.user as { role?: string })?.role === 'MASTER'
 
   const [tenants, setTenants] = useState<TenantWithModules[]>([])
+  const [sel, setSel] = useState('')
   const [loading, setLoading] = useState(true)
-  const [search, setSearch]   = useState('')
-  const [saving, setSaving]   = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (status === 'authenticated' && session?.user?.role !== 'MASTER') {
-      router.replace('/inicio')
-    }
-  }, [session, status, router])
-
-  const load = useCallback(() => {
-    if (session?.user?.role !== 'MASTER') return
+  const load = useCallback(async () => {
     setLoading(true)
-    fetch('/api/master/modules')
-      .then((r) => r.json())
-      .then((d) => setTenants(d.data ?? []))
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [session])
-
+    try {
+      const r = await fetch('/api/master/modules', { credentials: 'include' }).then((x) => x.json())
+      const list: TenantWithModules[] = r?.data ?? []
+      setTenants(list)
+      setSel((s) => s || list[0]?.id || '')
+    } catch { setTenants([]) } finally { setLoading(false) }
+  }, [])
   useEffect(() => { load() }, [load])
 
-  const toggleModule = async (tenantId: string, module: string, currentActive: boolean) => {
-    const key = `${tenantId}:${module}`
-    setSaving(key)
-    try {
-      await fetch('/api/master/modules', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId, module, active: !currentActive }),
-      })
-      setTenants((prev) =>
-        prev.map((t) =>
-          t.id !== tenantId ? t : {
-            ...t,
-            modules: t.modules.map((m) =>
-              m.module !== module ? m : { ...m, active: !currentActive },
-            ),
-          },
-        ),
-      )
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setSaving(null)
-    }
+  const tenant = tenants.find((t) => t.id === sel)
+  // Mapa de active por módulo (default = true quando não há registro).
+  const stateOf = (key: string): boolean => {
+    const row = tenant?.modules?.find((m) => m.module === key)
+    return row ? row.active : true
   }
 
-  const filtered = tenants.filter((t) =>
-    !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.publicId.includes(search),
-  )
+  const toggle = async (key: string, current: boolean) => {
+    if (!tenant) return
+    const id = `${tenant.id}:${key}`
+    setBusy(id)
+    // otimista
+    setTenants((ts) => ts.map((t) => t.id !== tenant.id ? t : {
+      ...t, modules: [...t.modules.filter((m) => m.module !== key), { module: key, active: !current }],
+    }))
+    try {
+      const res = await fetch('/api/master/modules', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ tenantId: tenant.id, module: key, active: !current }) })
+      if (!res.ok) await load()
+    } catch { await load() } finally { setBusy(null) }
+  }
+
+  if (session && !isMaster) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
+        <div><p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p><p className="mt-1 text-sm text-gray-500">A liberação de funcionalidades por loja é controlada pela plataforma.</p></div>
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Package size={22} className="text-brand-700" />
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Módulos por Tenant</h1>
-            <p className="text-sm text-gray-500">Ative ou desative módulos por cliente</p>
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Funcionalidades por Loja</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Ligue/desligue cada item do AutoDrive para a loja. Desligado some do menu e é bloqueado nas APIs.</p>
         </div>
-        <button onClick={load} className="btn-secondary flex items-center gap-1.5 text-sm">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Atualizar
-        </button>
-      </div>
-
-      {/* Filtro */}
-      <div className="card">
-        <div className="relative max-w-sm">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            className="input pl-9 text-sm"
-            placeholder="Buscar tenant..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="flex items-center gap-2">
+          <select value={sel} onChange={(e) => setSel(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+            {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
         </div>
       </div>
 
-      {/* Lista de tenants com módulos */}
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <div className="h-7 w-7 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
-        </div>
+        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-gray-100" />)}</div>
+      ) : !tenant ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Nenhuma loja encontrada.</div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((tenant) => {
-            const isOpen = expanded === tenant.id
-            const activeCount = tenant.modules.filter((m) => m.active).length
-
-            // Map modules for quick lookup
-            const moduleMap: Record<string, TenantModuleEntry> = {}
-            tenant.modules.forEach((m) => { moduleMap[m.module] = m })
-
-            return (
-              <div key={tenant.id} className="card overflow-hidden p-0">
-                {/* Header tenant */}
-                <button
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left"
-                  onClick={() => setExpanded(isOpen ? null : tenant.id)}
-                >
-                  <div
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-white text-xs font-bold shrink-0"
-                    style={{ backgroundColor: tenant.primaryColor ?? '#166534' }}
-                  >
-                    {tenant.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900">{tenant.name}</p>
-                    <p className="text-xs text-gray-400">{tenant.publicId} · {activeCount}/{ALL_MODULES.length} módulos ativos</p>
-                  </div>
-                  <ChevronDown
-                    size={15}
-                    className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-
-                {/* Módulos grid */}
-                {isOpen && (
-                  <div className="border-t border-gray-100 px-4 py-4">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                      {ALL_MODULES.map((mod) => {
-                        const entry = moduleMap[mod.key]
-                        const active = entry?.active ?? false
-                        const key = `${tenant.id}:${mod.key}`
-                        const isSaving = saving === key
-
-                        return (
-                          <button
-                            key={mod.key}
-                            onClick={() => toggleModule(tenant.id, mod.key, active)}
-                            disabled={isSaving}
-                            className={`
-                              flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm
-                              transition-all duration-150
-                              ${active
-                                ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
-                                : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
-                              }
-                              ${isSaving ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
-                            `}
-                          >
-                            {active
-                              ? <CheckCircle2 size={13} className="shrink-0 text-green-600" />
-                              : <XCircle     size={13} className="shrink-0 text-gray-400" />
-                            }
-                            <span className="text-xs font-medium truncate">{mod.label}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-
-          {filtered.length === 0 && (
-            <div className="card flex h-32 items-center justify-center text-gray-400 text-sm">
-              Nenhum tenant encontrado
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {MODULE_CATALOG.map((group) => (
+            <div key={group.area} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
+              <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">{group.area}</p></div>
+              <ul className="divide-y divide-gray-100">
+                {group.features.map((f) => {
+                  const active = stateOf(f.key)
+                  const id = `${tenant.id}:${f.key}`
+                  return (
+                    <li key={f.key} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-gray-800">{f.label}</p>
+                        <p className="font-mono text-[10px] text-gray-400">{f.key}</p>
+                      </div>
+                      <button
+                        onClick={() => toggle(f.key, active)}
+                        disabled={busy === id}
+                        role="switch" aria-checked={active}
+                        className={cn('relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors', active ? 'bg-brand-600' : 'bg-gray-300', busy === id && 'opacity-50')}
+                        title={active ? 'Ativo — clique p/ desativar' : 'Inativo — clique p/ ativar'}
+                      >
+                        <span className={cn('inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform', active ? 'translate-x-5' : 'translate-x-0.5')} />
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>

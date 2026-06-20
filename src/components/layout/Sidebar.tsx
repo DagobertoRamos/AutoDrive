@@ -51,9 +51,10 @@ function BrandLogo({ size = 22 }: { size?: number }) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function hasAccess(item: NavItem, role: string | undefined): boolean {
+function hasAccess(item: NavItem, role: string | undefined, disabled: Set<string>): boolean {
   if (item.separator) return true
   if (!item.module) return true
+  if (disabled.has(item.module)) return false // desligado pelo MASTER p/ a loja
   return canAccessModule(role, item.module)
 }
 
@@ -74,10 +75,10 @@ function anyChildActive(pathname: string, item: NavItem): boolean {
  * Filtra recursivamente o menu de acordo com (a) permissões do role e
  * (b) presença de URL para itens externos (redes sociais).
  */
-function filterTree(items: NavItem[], role: string | undefined, socials: Record<string, string>): NavItem[] {
+function filterTree(items: NavItem[], role: string | undefined, socials: Record<string, string>, disabled: Set<string>): NavItem[] {
   const out: NavItem[] = []
   for (const it of items) {
-    if (!hasAccess(it, role)) continue
+    if (!hasAccess(it, role, disabled)) continue
     if (it.separator) { out.push(it); continue }
 
     // Item externo (rede social) — só renderiza se houver URL configurada
@@ -90,7 +91,7 @@ function filterTree(items: NavItem[], role: string | undefined, socials: Record<
     }
 
     if (it.children && it.children.length) {
-      const filtered = filterTree(it.children, role, socials)
+      const filtered = filterTree(it.children, role, socials, disabled)
       if (filtered.length === 0) continue
       out.push({ ...it, children: filtered })
     } else {
@@ -287,6 +288,7 @@ export function Sidebar() {
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebarStore()
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({})
   const [socials, setSocials] = useState<Record<string, string>>({})
+  const [disabledModules, setDisabledModules] = useState<string[]>([])
   const [mounted, setMounted] = useState(false)
 
   // Hidrata open-groups e marca como montado (evita SSR mismatch)
@@ -315,6 +317,20 @@ export function Sidebar() {
     return () => { cancelled = true }
   }, [userRole])
 
+  // Funcionalidades desabilitadas pelo MASTER para a loja (esconde do menu).
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch('/api/me/modules', { credentials: 'include' })
+        const data = await res.json()
+        if (!cancelled && data?.success && Array.isArray(data.disabled)) setDisabledModules(data.disabled)
+      } catch { /* silent */ }
+    }
+    if (userRole) load()
+    return () => { cancelled = true }
+  }, [userRole])
+
   const setOpen = (key: string, val: boolean) => {
     setOpenMap((prev) => {
       const next = { ...prev, [key]: val }
@@ -324,8 +340,8 @@ export function Sidebar() {
   }
 
   const filteredTree = useMemo(
-    () => filterTree(NAV_GROUPS, userRole, socials),
-    [userRole, socials],
+    () => filterTree(NAV_GROUPS, userRole, socials, new Set(disabledModules)),
+    [userRole, socials, disabledModules],
   )
 
   const handleSignOut = () => {

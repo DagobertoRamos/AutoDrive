@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
+import { assertModuleEnabled }  from '@/lib/tenant-modules'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const { searchParams } = req.nextUrl
@@ -133,6 +135,7 @@ export async function POST(req: NextRequest) {
 
   try { requireModule(session.user.role, 'negotiations') }
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
+  { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
     const body = await req.json()
