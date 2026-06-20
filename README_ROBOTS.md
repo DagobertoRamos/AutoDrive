@@ -1135,6 +1135,16 @@
 - **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **177/177**; `next build` OK; rotas novas no manifest.
 - **AVISO p/ outra IA:** unidade efetiva nas leituras vem de `unitFromRequest` (cookie `sq_unit` p/ MASTER). Ações de gerência exigem `sellerQueue.manage` + justificativa e são auditadas. Flags de fraude automáticas seguem como evolução.
 
+### LOG 0102 — 2026-06-19 — Claude (Opus 4.8) — Fila de Atendimento — flags de fraude automáticas + leitura de QR pela câmera
+- **Branch:** main (worktree). **Sem migration.** Fecha duas evoluções: detecção automática de fraude e check-in por QR escaneado.
+- **(1) Flags de fraude automáticas:** `src/lib/seller-queue/fraud.ts` (`flagFraud`, best-effort → `SellerQueueFraudFlag`, aparece nos relatórios). Detecções fiadas:
+  - **CHECK_IN_OUTSIDE** (em `recordPresence`): quando um **override** de presença libera alguém cujo GPS reprovaria por estar fora do raio (severity MEDIUM/HIGH conforme distância).
+  - **DUPLICATE** (em `customer-arrivals` POST): mesmo telefone registrado de novo em ≤10min na mesma fila.
+  - **FAVORITISM** (em `call-next`): gestão força um vendedor específico (fura a ordem) — LOW, p/ revisão.
+- **(2) QR pela câmera:** `src/components/seller-queue/QrScanner.tsx` (API nativa **BarcodeDetector**, sem dependência; fallback com aviso) + botão **"Entrar com QR da loja"** no `minha-fila` → check-in com `qrToken` (o backend valida o token contra `qrSecret`).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **177/177**; `next build` OK.
+- **Restantes (evolução):** tempo real via WebSocket/SSE (hoje polling) e revisão/resolução das flags de fraude na UI (hoje aparecem em Relatórios; ação de "marcar como revisada" pode ser adicionada).
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.

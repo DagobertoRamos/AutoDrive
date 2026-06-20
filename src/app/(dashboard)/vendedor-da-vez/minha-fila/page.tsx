@@ -7,8 +7,9 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { DoorOpen, LogOut, Pause, Play, Check, X, CheckCircle2, RefreshCw, Hand, Clock } from 'lucide-react'
+import { DoorOpen, LogOut, Pause, Play, Check, X, CheckCircle2, RefreshCw, Hand, Clock, QrCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { QrScanner } from '@/components/seller-queue/QrScanner'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'], ['CONSIGNMENT', 'Consignação'], ['FINANCING', 'Financiamento'], ['AFTER_SALES', 'Pós-venda'], ['OTHER', 'Outro']] as const
@@ -61,7 +62,9 @@ export default function MinhaFilaPage() {
     } catch { flash('Erro de rede.', false); return false } finally { setBusy(false) }
   }
 
+  const [scanOpen, setScanOpen] = useState(false)
   const checkIn = async () => { const pos = await getPosition(); await post('check-in', pos, 'Você entrou na fila!') }
+  const checkInQr = async (token: string) => { setScanOpen(false); await post('check-in', { qrToken: token }, 'Você entrou na fila!') }
   const resume = async () => { const pos = await getPosition(); await post('resume', pos, 'De volta à fila!') }
   const me = data?.me
   const att = data?.myAttendance
@@ -109,6 +112,7 @@ export default function MinhaFilaPage() {
           <>
             <p className="text-center text-sm text-gray-500">Você não está na fila.</p>
             <button onClick={checkIn} disabled={busy} className="btn-primary mt-3 w-full justify-center py-3 text-base"><Hand size={18} />Entrar na fila</button>
+            <button onClick={() => setScanOpen(true)} disabled={busy} className="btn-secondary mt-2 w-full justify-center"><QrCode size={16} />Entrar com QR da loja</button>
             <p className="mt-2 text-center text-[11px] text-gray-400">Sua presença será validada (GPS/QR/dispositivo).</p>
           </>
         ) : (
@@ -132,6 +136,8 @@ export default function MinhaFilaPage() {
           </>
         )}
       </div>
+
+      {scanOpen && <QrScanner onResult={checkInQr} onClose={() => setScanOpen(false)} />}
 
       {finishOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>

@@ -16,6 +16,7 @@ import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { callNextSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
 import { callForArrival } from '@/lib/seller-queue/call'
+import { flagFraud } from '@/lib/seller-queue/fraud'
 
 type Ctx = { params: Promise<{ id: string }> }
 const MGMT_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -41,6 +42,8 @@ export async function POST(req: Request, { params }: Ctx) {
       if (!d.reason?.trim()) return NextResponse.json({ success: false, error: 'Justificativa obrigatória para forçar um vendedor.' }, { status: 400 })
       preferSellerId = d.sellerId
       await logQueueEvent({ tenantId, unitId: arrival.unitId, queueId: arrival.queueId, type: MGMT_ROLES.includes(user.role) ? 'MANAGER_OVERRIDE' : 'LEADER_OVERRIDE', sellerId: d.sellerId, actorId: user.id, arrivalId: arrival.id, reason: d.reason.trim() })
+      // Antifraude: forçar um vendedor específico fura a ordem da fila → registra p/ revisão (favorecimento).
+      await flagFraud({ tenantId, unitId: arrival.unitId, sellerId: d.sellerId, actorId: user.id, arrivalId: arrival.id, kind: 'FAVORITISM', severity: 'LOW', detail: `Vendedor forçado pela gestão: ${d.reason.trim()}` })
     }
 
     const call = await callForArrival({ tenantId, unitId: arrival.unitId, queueId: arrival.queueId, arrivalId: arrival.id, actorId: user.id, preferSellerId, reason: d.reason ?? null })

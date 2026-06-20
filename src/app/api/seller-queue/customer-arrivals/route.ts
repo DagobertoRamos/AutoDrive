@@ -18,6 +18,7 @@ import { createArrivalSchema } from '@/lib/validators/seller-queue'
 import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent , unitFromRequest } from '@/lib/seller-queue/queue'
 import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
 import { callForArrival } from '@/lib/seller-queue/call'
+import { flagFraud } from '@/lib/seller-queue/fraud'
 
 const ACTIVE_ENTRY = ['WAITING', 'NEXT', 'CALLED', 'ACCEPTED', 'IN_ATTENDANCE', 'PAUSED']
 
@@ -74,6 +75,16 @@ export async function POST(req: Request) {
     })
     await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CUSTOMER_ARRIVED', actorId: user.id, arrivalId: arrival.id, reason: recurring.recurring ? 'recorrente' : 'novo' })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CUSTOMER_ARRIVED', entity: 'SellerQueueCustomerArrival', entityId: arrival.id, userName: user.name, userRole: user.role })
+
+    // Antifraude: mesmo telefone registrado de novo em ≤10min → suspeita de cliente duplicado.
+    const digits = (d.customerPhone ?? '').replace(/\D/g, '')
+    if (digits.length >= 8) {
+      const dup = await prisma.sellerQueueCustomerArrival.findFirst({
+        where: { queueId: queue.id, id: { not: arrival.id }, customerPhone: { contains: digits.slice(-8) }, createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) } },
+        select: { id: true },
+      })
+      if (dup) await flagFraud({ tenantId, unitId, actorId: user.id, arrivalId: arrival.id, kind: 'DUPLICATE', severity: 'MEDIUM', detail: 'Mesmo telefone registrado novamente em menos de 10 minutos.' })
+    }
 
     // Quem chamar: cliente pediu por nome (se a regra permitir) > responsável (recorrente) > vendedor da vez.
     let preferSellerId: string | null = null

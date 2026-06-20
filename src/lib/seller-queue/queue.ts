@@ -7,6 +7,7 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma, SellerQueueEventType, SellerPresenceMethod } from '@prisma/client'
 import { evaluatePresence, type PresenceConfig, type PresenceInput, type PresenceResult } from './geo'
+import { flagFraud } from './fraud'
 
 /** Data (sem hora) de hoje, em UTC — suficiente p/ o campo @db.Date da fila. */
 export function queueDate(now = new Date()): Date {
@@ -99,6 +100,19 @@ export async function recordPresence(args: {
   let result: PresenceResult
   if (args.override) {
     result = { ok: true, method: args.override.method }
+    // Antifraude: se a presença real (GPS) reprovaria por estar FORA do raio,
+    // o override liberou alguém de fora → registra suspeita p/ revisão.
+    const real = evaluatePresence(args.cfg, args.input)
+    if (real.method === 'GPS' && !real.ok && real.distanceM != null) {
+      result.distanceM = real.distanceM
+      const radius = args.cfg?.geofenceRadiusM ?? 0
+      await flagFraud({
+        tenantId: args.tenantId, unitId: args.unitId, sellerId: args.sellerId, actorId: args.override.byId,
+        kind: 'CHECK_IN_OUTSIDE', severity: real.distanceM > radius * 2 ? 'HIGH' : 'MEDIUM',
+        detail: `Override de presença a ${real.distanceM}m da loja (raio ${radius}m) — contexto ${args.context}.`,
+        metadata: { distanceM: real.distanceM, radius, context: args.context },
+      })
+    }
   } else {
     result = evaluatePresence(args.cfg, args.input)
   }
