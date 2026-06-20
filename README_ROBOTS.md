@@ -1079,6 +1079,23 @@
 - **NÃO implementado (intencional):** aceite/recusa/timeout/finalizar (Fase 5) — a chamada cria o atendimento CALLED com `acceptDeadline`, mas o aceite/timeout que move ao fim/chama o próximo entra na Fase 5; o alerta ao vendedor já vai aqui (intrínseco ao fluxo), e o alerta de timeout ao líder/gerente fica na Fase 6.
 - **PRÓXIMA FASE:** **Fase 5 — Chamada/aceite/timeout/finalizar** (`POST /api/seller-queue/attendances/:id/{accept,reject,timeout,finish}`): aceitar revalida presença; timeout chama o próximo (reusa `callForArrival`); finalizar exige resultado e move o vendedor ao fim da fila.
 
+### LOG 0098 — 2026-06-19 — Claude (Opus 4.8) — Comercial › Fila de Atendimento — Fase 5 (aceite/recusa/timeout/finalizar)
+- **Branch:** main (worktree). **Sem migration nova** (models da Fase 2). **⚠️ Requer migration da Fase 2 aplicada** em runtime.
+- **Tarefa:** ciclo do atendimento (aceitar/recusar/expirar/finalizar).
+- **Arquivos (novos):**
+  - `src/lib/seller-queue/attendance.ts` — `moveEntryToEnd(tx, queueId, sellerId, {countAttendance})` (volta o vendedor ao fim da fila).
+  - `validators/seller-queue.ts` — `acceptSchema` (presença), `rejectSchema` (motivo obrigatório), `timeoutSchema`, `finishSchema` (type+result + dealId/leadId/notes).
+  - `src/app/api/seller-queue/attendances/[id]/{accept,reject,timeout,finish}/route.ts`.
+- **Regras aplicadas:**
+  - **accept** (`sellerQueue.attend`, só o vendedor chamado): bloqueia se prazo expirou; **revalida presença** (`requireRevalidationOnAccept`, override permitido); inicia (IN_ATTENDANCE), chegada → ASSIGNED.
+  - **reject** (`sellerQueue.attend`, motivo obrigatório): move ao fim e **chama o próximo** (`callForArrival`).
+  - **timeout** (`sellerQueue.lead` OU prazo expirado p/ qualquer viewer): EXPIRED, move ao fim, cria `SellerQueuePenalty` TIMEOUT, **avisa a gestão** (`notifyByRole`) e chama o próximo.
+  - **finish** (`sellerQueue.attend` do vendedor ou `sellerQueue.lead`): exige **type + result**; FINISHED, vendedor **ao fim da fila** (attendanceCount++), chegada → DONE; grava `dealId`/`leadId` (vínculo).
+  - Auditoria em todos (`SellerQueueEvent` ACCEPTED/ATTENDANCE_STARTED/REJECTED/TIMEOUT/MOVED_TO_END/ATTENDANCE_FINISHED + `AuditLog`). Tenant via loja ativa.
+- **Comandos:** `tsc` limpo; `eslint` 0 erros; `npm test` **177/177**; `next build` OK; 4 rotas novas no manifest.
+- **Obs.:** o alerta ao vendedor (chamada) já vinha da Fase 4; o alerta de **timeout à gestão** foi incluído aqui (intrínseco). A Fase 6 (notificações) consolidará/expandirá (painel da unidade, e-mail/WhatsApp opcionais). Sem cron de timeout (plano Hobby) — o `timeout` é disparado pela UI quando o relógio zera (qualquer viewer) ou pela gestão.
+- **PRÓXIMA FASE:** **Fase 6 — Notificações** (consolidar alertas: vendedor da vez, timeout p/ líder/gerente, painel da unidade, balão/central) → depois F7 (painel líder), F8 (painel gerente), F9 (relatórios) e UI substituindo placeholders.
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.

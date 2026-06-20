@@ -37,3 +37,18 @@ export const callNextSchema = z.object({
   sellerId: optStr,
   reason:   optStr,
 })
+
+// ── Atendimento: aceite / recusa / timeout / finalizar (Fase 5) ─────────────
+export const attendanceTypes = ['SALE', 'EXCHANGE', 'PURCHASE', 'CONSIGNMENT', 'FINANCING', 'AFTER_SALES', 'OTHER'] as const
+export const attendanceResults = ['CONVERTED_TO_NEGOTIATION', 'SCHEDULED_RETURN', 'NO_INTEREST', 'LOST', 'DUPLICATED', 'FORWARDED_TO_RESPONSIBLE', 'INVALID_ATTENDANCE'] as const
+
+export const acceptSchema = presenceSchema // aceitar revalida presença
+export const rejectSchema = z.object({ reason: z.string().trim().min(2, 'Motivo da recusa é obrigatório.') })
+export const timeoutSchema = z.object({ reason: optStr })
+export const finishSchema = z.object({
+  type:   z.enum(attendanceTypes),
+  result: z.enum(attendanceResults),
+  dealId: optStr,
+  leadId: optStr,
+  notes:  optStr,
+})
