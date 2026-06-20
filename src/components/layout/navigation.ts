@@ -68,6 +68,11 @@ import {
   Disc,
   GitBranch,
   Hash,
+  // Comercial / Fila de Atendimento (Vendedor da Vez)
+  UserCheck,
+  ListOrdered,
+  DoorOpen,
+  Bell,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -110,6 +115,25 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Todas',              href: '/negociacoes',            icon: ListChecks, module: 'negotiations' },
       { label: 'Nova Negociação',    href: '/negociacoes/nova',       icon: Handshake,  module: 'negotiations' },
       { label: 'Pendente Aprovação', href: '/negociacoes/aprovacoes', icon: ShieldCheck,module: 'negotiations.approve' },
+    ],
+  },
+
+  // ── COMERCIAL (Fila de Atendimento — "Vendedor da Vez") ────────────────────
+  // Organiza a fila de atendimento presencial da loja sem recepção. Fase 1:
+  // estrutura/placeholders ("em breve"). Presença, antifraude, chamada do
+  // vendedor da vez e relatórios entram nas próximas fases.
+  {
+    label: 'Comercial',
+    icon:  UserCheck,
+    module: 'sellerQueue.view',
+    children: [
+      { label: 'Fila de Atendimento', href: '/vendedor-da-vez',               icon: ListOrdered,     module: 'sellerQueue.view',            badge: 'em breve' },
+      { label: 'Minha Fila',          href: '/vendedor-da-vez/minha-fila',     icon: DoorOpen,        module: 'sellerQueue.checkIn',         badge: 'em breve' },
+      { label: 'Cliente na Loja',     href: '/vendedor-da-vez/cliente-na-loja', icon: Bell,           module: 'sellerQueue.customerArrived', badge: 'em breve' },
+      { label: 'Painel da Unidade',   href: '/vendedor-da-vez/painel',         icon: LayoutDashboard, module: 'sellerQueue.lead',            badge: 'em breve' },
+      { label: 'Atendimentos',        href: '/vendedor-da-vez/atendimentos',   icon: ClipboardList,   module: 'sellerQueue.view',            badge: 'em breve' },
+      { label: 'Relatórios',          href: '/vendedor-da-vez/relatorios',     icon: BarChart3,       module: 'sellerQueue.reports',         badge: 'em breve' },
+      { label: 'Configurações',       href: '/vendedor-da-vez/configuracoes',  icon: Settings,        module: 'sellerQueue.settings',        badge: 'em breve' },
     ],
   },
 

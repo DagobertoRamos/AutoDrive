@@ -110,6 +110,16 @@ export type Module =
   | 'goals.manage'                // criar/configurar metas e níveis
   | 'ranking'                     // ver ranking
   | 'ranking.configure'           // configurar pesos do ranking
+  // ── Comercial › Fila de Atendimento ("Vendedor da Vez") ──────────────────
+  | 'sellerQueue.view'            // ver a fila / própria posição / histórico
+  | 'sellerQueue.checkIn'         // entrar/sair/pausar a fila (presença)
+  | 'sellerQueue.customerArrived' // registrar "cliente na loja"
+  | 'sellerQueue.attend'          // aceitar/recusar/finalizar atendimento
+  | 'sellerQueue.lead'            // painel do líder (chamar/confirmar/pular)
+  | 'sellerQueue.manage'          // gerente: auditar/reordenar/bloquear/corrigir
+  | 'sellerQueue.reports'         // relatórios da fila/atendimentos
+  | 'sellerQueue.settings'        // configurar regras da unidade
+  | 'sellerQueue.override'        // exceção/override com justificativa
 
 // ── Hierarquia numérica de roles ─────────────────────────────────────────────
 // Quanto maior, mais alto na hierarquia
@@ -463,6 +473,48 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'ranking.configure': {
     roles: ['MASTER', 'ADM', 'GERENTE_ADMINISTRATIVO'],
     actions: ['read', 'configure'],
+  },
+  // ── Comercial › Fila de Atendimento ("Vendedor da Vez") ──────────────────────
+  // Operação na loja: vendedor entra na fila, registra cliente, atende.
+  'sellerQueue.view': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'sellerQueue.checkIn': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'create', 'update'],
+  },
+  'sellerQueue.customerArrived': {
+    // Qualquer vendedor presente registra "cliente na loja" (não escolhe quem atende).
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'create'],
+  },
+  'sellerQueue.attend': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'update'],
+  },
+  'sellerQueue.lead': {
+    // Painel do líder: chamar/confirmar/pular com justificativa.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read', 'update'],
+  },
+  'sellerQueue.manage': {
+    // Gerente: auditar/reordenar/bloquear/corrigir.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read', 'create', 'update', 'delete', 'configure'],
+  },
+  'sellerQueue.reports': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read'],
+  },
+  'sellerQueue.settings': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read', 'create', 'update', 'delete', 'configure'],
+  },
+  'sellerQueue.override': {
+    // Exceção/override autorizada (líder simples; gestão ampla) — sempre com justificativa.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read', 'update', 'configure'],
   },
 }
 
