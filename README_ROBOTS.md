@@ -1053,6 +1053,19 @@
 - **AÇÃO DO USUÁRIO (antes da Fase 3):** rodar **`npx prisma migrate deploy`** (aplica `20260619120000_add_seller_queue`).
 - **PRÓXIMA FASE:** **Fase 3 — Check-in e fila** (`/api/seller-queue/{current,check-in,check-out,pause,resume}`), com `SellerPresenceCheck` na validação de presença e `SellerQueueEvent` na auditoria; gate de loja ativa p/ MASTER.
 
+### LOG 0096 — 2026-06-19 — Claude (Opus 4.8) — Comercial › Fila de Atendimento — Fase 3 (check-in e fila)
+- **Branch:** main (worktree). **Sem migration nova** (usa os models da Fase 2). **⚠️ Requer a migration `20260619120000_add_seller_queue` aplicada** (`prisma migrate deploy`) p/ runtime — build/tsc passam sem isso.
+- **Tarefa:** APIs de check-in/fila + validação de presença por evento.
+- **Arquivos (novos):**
+  - `src/lib/seller-queue/geo.ts` — **puro/testável**: `haversineMeters` + `evaluatePresence(cfg,input)` por camadas (QR → GPS/geofence → device; sem config ativa não força = MANUAL_REVIEW). Override é tratado na rota.
+  - `src/lib/seller-queue/queue.ts` — `queueDate` (UTC, p/ @db.Date), `getUnitConfig`, `toPresenceConfig`, `getOrCreateQueue` (1 fila por unidade/dia, resiliente a corrida), `nextPosition`, `logQueueEvent` (auditoria), `recordPresence` (avalia + grava `SellerPresenceCheck`).
+  - `src/lib/validators/seller-queue.ts` — `presenceSchema`/check-in/out/pause/resume.
+  - `src/app/api/seller-queue/{check-in,check-out,pause,resume,current}/route.ts`.
+- **Regras aplicadas:** gate `sellerQueue.checkIn` (ações) / `sellerQueue.view` (current); tenant via `resolveActingTenant` (loja ativa p/ MASTER); unidade = `user.unitId` (sem unidade → bloqueia, MASTER não é vendedor — usa `?unitId` só no `current`); presença validada e registrada como EVENTO (lat/lng só no evento, **sem rastreio contínuo**); override de gerente/líder exige `sellerQueue.override` + justificativa; bloqueado não entra; check-in idempotente; resume revalida presença e volta ao fim da fila; tudo auditado (`SellerQueueEvent` + `AuditLog`).
+- **Comandos:** `tsc` limpo; `eslint` 0 erros nos novos; `npm test` **177/177** (8 novos — haversine/presença); `next build` OK (`--max-old-space-size=8192`); 5 rotas no manifest.
+- **NÃO implementado (intencional):** "vendedor da vez" é só COMPUTADO no `current` (1º WAITING por posição); chamada/aceite/timeout/finalizar = Fase 5; "cliente na loja" = Fase 4; UI = fases 7–9 (placeholders por enquanto).
+- **PRÓXIMA FASE:** **Fase 4 — Cliente na Loja** (`POST/GET /api/seller-queue/customer-arrivals`, `POST .../:id/call-next`): qualquer vendedor presente registra; o sistema chama o vendedor da vez (lock transacional), com identificação de cliente recorrente (lead/negociação/responsável em LEITURA).
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.

@@ -1,0 +1,66 @@
+// =============================================================================
+// GET /api/seller-queue/current — estado da fila da unidade hoje.
+// Gate: sellerQueue.view. Retorna a fila ordenada, o "vendedor da vez", a
+// posição do solicitante e a contagem de clientes aguardando. Tenant/unit-scoped.
+// MASTER: passar ?unitId=. Não cria fila (só leitura).
+// =============================================================================
+
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
+import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
+import { handlePrismaError } from '@/lib/prisma-errors'
+import { queueDate } from '@/lib/seller-queue/queue'
+
+export async function GET(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
+  const unitId = new URL(req.url).searchParams.get('unitId') || user.unitId
+  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: 400 })
+
+  try {
+    const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
+    if (!queue) {
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0 } })
+    }
+
+    const [entries, arrivalsPending] = await Promise.all([
+      prisma.sellerQueueEntry.findMany({
+        where: { queueId: queue.id, status: { notIn: ['LEFT'] } },
+        orderBy: [{ position: 'asc' }, { joinedAt: 'asc' }],
+      }),
+      prisma.sellerQueueCustomerArrival.count({ where: { queueId: queue.id, status: { in: ['PENDING', 'CALLING'] } } }),
+    ])
+
+    // Nomes dos vendedores (User não tem relação direta no model da fila).
+    const names = new Map<string, string>()
+    if (entries.length) {
+      const us = await prisma.user.findMany({ where: { id: { in: entries.map((e) => e.sellerId) } }, select: { id: true, name: true } })
+      us.forEach((u) => names.set(u.id, u.name))
+    }
+
+    const list = entries.map((e) => ({
+      id: e.id, sellerId: e.sellerId, sellerName: names.get(e.sellerId) ?? e.sellerId,
+      status: e.status, position: e.position, joinedAt: e.joinedAt, blocked: e.blocked, attendanceCount: e.attendanceCount,
+    }))
+    const vencedor = list.find((e) => e.status === 'WAITING' && !e.blocked) ?? null
+    const me = list.find((e) => e.sellerId === user.id) ?? null
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        queue: { id: queue.id, date: queue.date, status: queue.status, unitId },
+        entries: list,
+        vendedorDaVez: vencedor ? { sellerId: vencedor.sellerId, sellerName: vencedor.sellerName, position: vencedor.position } : null,
+        me,
+        arrivalsPending,
+      },
+    })
+  } catch (err) {
+    return handlePrismaError(err)
+  }
+}
