@@ -12,6 +12,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateProductSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Produto não encontrado.' }, { status: 404 })
@@ -20,6 +21,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
@@ -46,6 +48,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params

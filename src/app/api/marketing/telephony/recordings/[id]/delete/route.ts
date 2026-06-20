@@ -13,6 +13,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAudi
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -20,6 +21,7 @@ export async function POST(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.manage')) return forbiddenResponse('Sem permissão para excluir gravações.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony.manage'); if (gate) return gate }
   const { id } = await params
   try {
     const rec = await prisma.telephonyRecording.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true, callId: true } })

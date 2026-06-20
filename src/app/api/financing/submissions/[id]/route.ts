@@ -13,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { submissionEventSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { isFiAllowed } from '@/lib/finance/fi-permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -20,6 +21,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
   try {
     const submission = await prisma.financeProposalSubmission.findUnique({ where: { id } })

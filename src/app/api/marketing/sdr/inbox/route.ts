@@ -14,11 +14,13 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import type { Prisma } from '@prisma/client'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr')) return forbiddenResponse('Sem acesso à Mesa SDR.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
 

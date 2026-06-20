@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const schema = z.object({
   reason: z.string().min(5, 'Motivo do escalonamento é obrigatório (mín. 5 caracteres)'),
@@ -22,6 +23,7 @@ export async function POST(
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     if (!ALLOWED_ROLES.includes(session.user.role)) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })

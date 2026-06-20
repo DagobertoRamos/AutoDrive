@@ -11,6 +11,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { computeRanking } from '@/lib/ranking/service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const PERIODS: GoalPeriod[] = ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', 'CUSTOM']
 
@@ -19,6 +20,7 @@ const PERIODS: GoalPeriod[] = ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARL
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'ranking'); if (gate) return gate }
 
   try {
     const { searchParams } = new URL(req.url)

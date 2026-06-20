@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateCredentialSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { encryptSecrets, decryptSecrets, maskSecret, isCryptoConfigured } from '@/lib/finance/crypto'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Credencial não encontrada.' }, { status: 404 })
@@ -33,6 +34,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   if (!isCryptoConfigured()) return NextResponse.json({ success: false, error: 'Criptografia não configurada (FINANCE_ENCRYPTION_KEY).' }, { status: 503 })
@@ -69,6 +71,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params

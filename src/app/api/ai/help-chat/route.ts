@@ -15,6 +15,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { aiHelpChatSchema } from '@/lib/validators/ai'
 import { runAiWithFailover } from '@/lib/ai/resolve-ai-provider'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'ai')) return forbiddenResponse('Sem acesso ao assistente de IA.')
+  { const gate = await assertModuleEnabled(user, 'ai'); if (gate) return gate }
 
   try {
     const { message, history } = aiHelpChatSchema.parse(await req.json())

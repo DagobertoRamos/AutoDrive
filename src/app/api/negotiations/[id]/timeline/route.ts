@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type TimelineEvent = {
   type: 'STATUS' | 'AUDIT' | 'SERVICE' | 'VEHICLE' | 'PENDENCY'
@@ -56,6 +57,7 @@ export async function GET(
 
   try {
     requireModule(session.user.role, 'negotiations')
+    { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
   } catch {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }

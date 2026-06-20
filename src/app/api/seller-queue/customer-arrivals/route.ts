@@ -19,6 +19,7 @@ import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent , unitFromReq
 import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
 import { callForArrival } from '@/lib/seller-queue/call'
 import { flagFraud } from '@/lib/seller-queue/fraud'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const ACTIVE_ENTRY = ['WAITING', 'NEXT', 'CALLED', 'ACCEPTED', 'IN_ATTENDANCE', 'PAUSED']
 
@@ -26,6 +27,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = unitFromRequest(req, user.unitId)
@@ -47,6 +49,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.customerArrived')) return forbiddenResponse('Sem permissão para registrar cliente.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.customerArrived'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = user.unitId

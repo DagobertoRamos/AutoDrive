@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { canAccessModule } from '@/lib/permissions'
 import { getReferences, getPriceByCodeAt } from '@/lib/fipe/parallelum'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
   if (!canAccessModule(session.user.role, 'stock.evaluate')) {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
+  { const gate = await assertModuleEnabled(session.user, 'stock.evaluate'); if (gate) return gate }
 
   const fipeCode = (req.nextUrl.searchParams.get('fipeCode') ?? '').trim()
   const vehicleType = (req.nextUrl.searchParams.get('vehicleType') ?? 'carros').trim()

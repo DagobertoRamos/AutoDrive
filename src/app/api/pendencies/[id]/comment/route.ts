@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const schema = z.object({
   content:  z.string().min(1, 'Comentário não pode estar vazio').max(2000),
@@ -22,6 +23,7 @@ export async function GET(
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const { id } = params
 
@@ -63,6 +65,7 @@ export async function POST(
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const { content, internal } = schema.parse(await req.json())
     const { id }               = params

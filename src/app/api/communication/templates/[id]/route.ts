@@ -8,6 +8,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { z } from 'zod'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const updateSchema = z.object({
   name:        z.string().min(1).max(100).optional(),
@@ -25,6 +26,7 @@ export async function PATCH(req: NextRequest, ctxArg: { params: { id: string } |
     if (!canAccessModule(session.user.role, 'communication.templates')) {
       return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'communication.templates'); if (gate) return gate }
 
     const body   = await req.json()
     const parsed = updateSchema.safeParse(body)
@@ -79,6 +81,7 @@ export async function DELETE(_req: NextRequest, ctxArg: { params: { id: string }
     if (!canAccessModule(session.user.role, 'communication.templates')) {
       return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'communication.templates'); if (gate) return gate }
 
     await prisma.whatsappTemplate.delete({ where: { id: params.id } })
 

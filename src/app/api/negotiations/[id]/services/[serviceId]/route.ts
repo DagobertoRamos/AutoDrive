@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function DELETE(
   _req: NextRequest,
@@ -18,6 +19,7 @@ export async function DELETE(
 
   try {
     requireModule(session.user.role, 'negotiations.manage')
+    { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
   } catch {
     return NextResponse.json({ error: 'Sem permissão para remover serviços' }, { status: 403 })
   }

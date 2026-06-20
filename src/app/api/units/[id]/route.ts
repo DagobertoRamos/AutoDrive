@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function PUT(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   try {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
+    { const gate = await assertModuleEnabled(session.user, 'registrations.units'); if (gate) return gate }
 
     if (!['MASTER', 'ADM', 'GERENTE'].includes(session.user.role)) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })

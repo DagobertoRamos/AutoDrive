@@ -8,6 +8,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { z } from 'zod'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const SELLER_ROLES   = ['VENDEDOR', 'USUARIO_LIDER', 'USUARIO']
 
@@ -154,6 +155,7 @@ export async function POST(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'pendencies')) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const body   = await req.json()
     const parsed = createSchema.safeParse(body)

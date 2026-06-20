@@ -15,6 +15,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
 import { buildSignedPlayPath, isRecordingSigningConfigured, DEFAULT_PLAY_TTL_SECONDS } from '@/lib/telephony/recording-storage'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -22,6 +23,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.recordings')) return forbiddenResponse('Sem acesso às gravações.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony.recordings'); if (gate) return gate }
   const { id } = await params
   try {
     const rec = await prisma.telephonyRecording.findUnique({ where: { id } })

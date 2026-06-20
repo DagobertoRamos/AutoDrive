@@ -10,6 +10,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateProponentSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Proponente não encontrado.' }, { status: 404 })
@@ -18,6 +19,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
 
   try {
@@ -34,6 +36,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
 
   try {
@@ -69,6 +72,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
 
   try {

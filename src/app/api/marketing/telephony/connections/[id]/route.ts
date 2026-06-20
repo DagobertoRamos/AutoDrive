@@ -15,6 +15,7 @@ import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { updateConnectionSchema } from '@/lib/validators/telephony'
 import { encryptSecrets, buildMaskedHints, isTelephonyCryptoConfigured } from '@/lib/telephony/crypto'
 import type { Prisma } from '@prisma/client'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Conexão não encontrada.' }, { status: 404 })
@@ -23,6 +24,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony.manage'); if (gate) return gate }
   const { id } = await params
   try {
     const existing = await prisma.telephonyTenantConnection.findUnique({ where: { id } })
@@ -66,6 +68,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony.manage'); if (gate) return gate }
   const { id } = await params
   try {
     const existing = await prisma.telephonyTenantConnection.findUnique({ where: { id }, select: { id: true, tenantId: true } })

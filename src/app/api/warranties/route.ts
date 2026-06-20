@@ -18,6 +18,7 @@ import {
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createWarrantySchema } from '@/lib/validators/warranty'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — listar garantias do tenant ──────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export async function POST(req: Request) {
   if (!canAccessModule(user.role, 'registrations.warranties')) {
     return forbiddenResponse('Sem permissão para cadastrar garantias.')
   }
+  { const gate = await assertModuleEnabled(user, 'registrations.warranties'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

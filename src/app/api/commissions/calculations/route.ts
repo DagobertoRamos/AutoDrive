@@ -15,6 +15,7 @@ import {
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const num = (v: unknown): number => {
   if (v == null) return 0
@@ -29,6 +30,7 @@ export async function GET(req: Request) {
   if (!canAccessModule(user.role, 'commissions')) {
     return forbiddenResponse('Sem acesso a comissões.')
   }
+  { const gate = await assertModuleEnabled(user, 'commissions'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

@@ -15,6 +15,7 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canManageGoals, canReadGoal } from '@/lib/goals/service'
 import { updateGoalSchema } from '@/lib/validators/goal'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -27,6 +28,7 @@ function notFound() {
 export async function GET(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
   const { id } = await params
 
   try {
@@ -48,6 +50,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
   if (!canManageGoals(user.role)) return forbiddenResponse('Apenas gestores podem editar metas.')
   const { id } = await params
 
@@ -113,6 +116,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 export async function DELETE(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
   if (!canManageGoals(user.role)) return forbiddenResponse('Apenas gestores podem excluir metas.')
   const { id } = await params
 

@@ -14,11 +14,13 @@ import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-t
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createMemberSchema } from '@/lib/validators/marketing'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr')) return forbiddenResponse('Sem acesso à Mesa SDR.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const teamId = new URL(req.url).searchParams.get('teamId') ?? undefined
@@ -44,6 +46,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr.manage')) return forbiddenResponse('Sem permissão para gerenciar a Mesa SDR.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr.manage'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   try {

@@ -8,6 +8,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { z } from 'zod'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const createSchema = z.object({
   name:        z.string().min(1, 'Nome obrigatório').max(100),
@@ -24,6 +25,7 @@ export async function GET(_req: NextRequest) {
     if (!canAccessModule(session.user.role, 'communication')) {
       return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'communication'); if (gate) return gate }
 
     const templates = await prisma.whatsappTemplate.findMany({
       orderBy: { name: 'asc' },
@@ -50,6 +52,7 @@ export async function POST(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'communication.templates')) {
       return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'communication.templates'); if (gate) return gate }
 
     const body   = await req.json()
     const parsed = createSchema.safeParse(body)

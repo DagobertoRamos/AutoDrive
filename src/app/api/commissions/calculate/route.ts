@@ -13,6 +13,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { findCommissionRule, computeCommissionValue, type EmployeeKind } from '@/lib/commission-matcher'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'commissions.calculate')) {
       return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'commissions.calculate'); if (gate) return gate }
 
     const tenantId = session.user.tenantId ?? null
     const body = await req.json().catch(() => ({}))

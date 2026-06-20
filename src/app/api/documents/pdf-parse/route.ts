@@ -11,6 +11,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { canAccessModule } from '@/lib/permissions'
 import { extractDocumentText } from '@/lib/documents/extract-text'
 import { parseContractText } from '@/services/contract-pdf-parser.service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'documents.pdf')) {
       return NextResponse.json({ success: false, error: 'Sem permissão para leitura de PDF' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'documents'); if (gate) return gate }
 
     const formData = await req.formData()
     const file = formData.get('file') as File | null

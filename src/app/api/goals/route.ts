@@ -16,6 +16,7 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canManageGoals, goalReadWhere } from '@/lib/goals/service'
 import { createGoalSchema } from '@/lib/validators/goal'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 function zodResponse(err: ZodError) {
   return NextResponse.json(
@@ -29,6 +30,7 @@ function zodResponse(err: ZodError) {
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
 
   try {
     const { searchParams } = new URL(req.url)
@@ -61,6 +63,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
 
   if (!canManageGoals(user.role)) {
     return forbiddenResponse('Apenas gestores podem cadastrar metas.')

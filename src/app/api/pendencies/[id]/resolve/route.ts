@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function POST(_req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
@@ -14,6 +15,7 @@ export async function POST(_req: Request, ctxArg: { params: { id: string } | Pro
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const pendency = await prisma.pendency.findUnique({
       where:   { id: params.id },

@@ -8,12 +8,14 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { goalReadWhere, computeGoalProgress } from '@/lib/goals/service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — metas ativas do usuário + progresso ─────────────────────────────────
 
 export async function GET(_req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
 
   try {
     const goals = await prisma.goal.findMany({

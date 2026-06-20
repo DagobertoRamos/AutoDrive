@@ -9,6 +9,7 @@ import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canReturnForCorrection } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory } from '@/lib/negotiation-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const RETURNABLE_STATUSES = ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO']
 
@@ -21,6 +22,7 @@ export async function POST(
 
   try {
     requireModule(session.user.role, 'negotiations.approve')
+    { const gate = await assertModuleEnabled(session.user, 'negotiations.approve'); if (gate) return gate }
   } catch {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }

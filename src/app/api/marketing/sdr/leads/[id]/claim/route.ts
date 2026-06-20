@@ -15,6 +15,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -22,6 +23,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.leads.claim')) return forbiddenResponse('Sem permissão para assumir leads.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params

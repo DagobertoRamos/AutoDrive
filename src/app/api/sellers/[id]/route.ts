@@ -15,6 +15,7 @@ import {
   MANAGEMENT_ROLES,
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── Verificar se seller pertence ao tenant do usuário ────────────────────────
 
@@ -34,6 +35,7 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.sellers'); if (gate) return gate }
   if (!hasRole(user.role, MANAGEMENT_ROLES)) return forbiddenResponse()
 
   try {
@@ -111,6 +113,7 @@ export async function DELETE(req: Request, ctxArg: { params: { id: string } | Pr
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.sellers'); if (gate) return gate }
   if (!hasRole(user.role, MANAGEMENT_ROLES)) return forbiddenResponse()
 
   try {

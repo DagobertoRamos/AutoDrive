@@ -14,6 +14,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canManageRanking, getRankingRule, DEFAULT_TIEBREAKERS } from '@/lib/ranking/service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const weightField = z.number().int().min(-1000).max(1000)
 
@@ -36,6 +37,7 @@ const rulesSchema = z.object({
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'ranking'); if (gate) return gate }
 
   try {
     const tenantId = user.role === 'MASTER' ? null : assertTenantId(user.tenantId, user.role)
@@ -51,6 +53,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'ranking'); if (gate) return gate }
   if (!canManageRanking(user.role)) return forbiddenResponse('Apenas gestores podem configurar o ranking.')
 
   try {

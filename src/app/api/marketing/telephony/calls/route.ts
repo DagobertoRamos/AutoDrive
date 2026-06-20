@@ -12,6 +12,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import type { CallDirection, CallStatus, Prisma } from '@prisma/client'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const DIRECTIONS: CallDirection[] = ['INBOUND', 'OUTBOUND', 'INTERNAL']
 const STATUSES: CallStatus[] = ['RINGING', 'ANSWERED', 'MISSED', 'BUSY', 'FAILED', 'COMPLETED', 'VOICEMAIL', 'CANCELED']
@@ -20,6 +21,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony')) return forbiddenResponse('Sem acesso à telefonia.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const sp = new URL(req.url).searchParams

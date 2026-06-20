@@ -10,11 +10,13 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/a
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { isFiAllowed } from '@/lib/finance/fi-permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
 
   try {
     // Capacidades de configuração exigem financing.config (e não MASTER p/ alterar retorno da loja).

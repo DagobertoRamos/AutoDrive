@@ -15,12 +15,14 @@ import {
   createSafeAuditLog,
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — Listar gerentes ────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.managers'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -58,6 +60,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.managers'); if (gate) return gate }
 
   if (!hasRole(user.role, MANAGEMENT_ROLES)) {
     return forbiddenResponse('Apenas gerentes e administradores podem cadastrar gerentes.')

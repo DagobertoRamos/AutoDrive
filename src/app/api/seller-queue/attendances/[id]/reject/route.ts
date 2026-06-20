@@ -15,6 +15,7 @@ import { rejectSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { callForArrival } from '@/lib/seller-queue/call'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -22,6 +23,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.attend')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.attend'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const { id } = await params

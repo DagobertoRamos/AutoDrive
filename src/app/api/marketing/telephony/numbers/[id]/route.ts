@@ -11,6 +11,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { updateNumberSchema } from '@/lib/validators/telephony'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Número não encontrado.' }, { status: 404 })
@@ -19,6 +20,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony.manage'); if (gate) return gate }
   const { id } = await params
   try {
     const existing = await prisma.telephonyNumber.findUnique({ where: { id } })

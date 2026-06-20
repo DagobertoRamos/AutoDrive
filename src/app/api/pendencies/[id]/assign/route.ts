@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { notifyPendency } from '@/services/notification.service'
 import { canActOn } from '@/lib/role-hierarchy'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const schema = z.object({
   assignedUserId: z.string().min(1, 'Usuário obrigatório').nullable(),
@@ -25,6 +26,7 @@ export async function PATCH(
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     if (!ALLOWED_ROLES.includes(session.user.role)) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })

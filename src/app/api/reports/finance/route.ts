@@ -12,6 +12,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { num, entryTextSearch } from '@/lib/finance/finance-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const VIEWS = ['visao-geral', 'dre', 'contas', 'contas-a-pagar', 'contas-a-receber', 'fluxo-de-caixa', 'receitas', 'despesas', 'resultado-unidade', 'resultado-vendedor', 'resultado-periodo'] as const
 type View = (typeof VIEWS)[number]
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'logs')) return forbiddenResponse('Sem acesso a relatórios.')
+  { const gate = await assertModuleEnabled(user, 'logs'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

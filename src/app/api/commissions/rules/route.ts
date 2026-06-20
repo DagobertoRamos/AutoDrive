@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — Listar regras ───────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export async function GET(_req: NextRequest) {
     const session = await getServerAuthSession()
     if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     if (!canAccessModule(session.user.role, 'commissions')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(session.user, 'commissions'); if (gate) return gate }
 
     const rules = await prisma.commissionRule.findMany({
       where:   { tenantId: session.user.tenantId ?? undefined },
@@ -41,6 +43,7 @@ export async function POST(req: NextRequest) {
     const session = await getServerAuthSession()
     if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     if (!canAccessModule(session.user.role, 'commissions.rules')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(session.user, 'commissions.rules'); if (gate) return gate }
 
     const body = await req.json()
     const {

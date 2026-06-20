@@ -15,6 +15,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
 import { isTelephonyCryptoConfigured } from '@/lib/telephony/crypto'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -22,6 +23,7 @@ export async function POST(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony.manage'); if (gate) return gate }
   const { id } = await params
   try {
     const conn = await prisma.telephonyTenantConnection.findUnique({

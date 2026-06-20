@@ -16,6 +16,7 @@ import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createLeadSchema } from '@/lib/validators/marketing'
 import { distributeLeadById } from '@/lib/marketing/distribution'
 import type { LeadStatus, Prisma } from '@prisma/client'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const STATUSES: LeadStatus[] = ['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED']
 
@@ -23,6 +24,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr')) return forbiddenResponse('Sem acesso à Mesa SDR.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const sp = new URL(req.url).searchParams
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr')) return forbiddenResponse('Sem acesso à Mesa SDR.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   try {

@@ -12,6 +12,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
 import { validateDocUpload, saveFinanceDoc, deleteFinanceDoc } from '@/lib/finance/doc-storage'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const runtime = 'nodejs'
 
@@ -29,6 +30,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id, docId } = await params
   try {
     const g = await guard(docId, id, user.tenantId, user.role)
@@ -57,6 +59,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id, docId } = await params
   try {
     const g = await guard(docId, id, user.tenantId, user.role)

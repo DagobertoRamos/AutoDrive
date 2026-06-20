@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
   if (!canAccessModule(session.user.role, 'stock.evaluate')) {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
+  { const gate = await assertModuleEnabled(session.user, 'stock.evaluate'); if (gate) return gate }
   try {
     const body = await req.json()
     const name  = String(body.name ?? '').trim()

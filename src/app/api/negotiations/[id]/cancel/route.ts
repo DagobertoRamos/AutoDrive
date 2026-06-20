@@ -9,6 +9,7 @@ import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canCancelDeal } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/negotiation-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function POST(
   req: NextRequest,
@@ -19,6 +20,7 @@ export async function POST(
 
   try {
     requireModule(session.user.role, 'negotiations')
+    { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
   } catch {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }

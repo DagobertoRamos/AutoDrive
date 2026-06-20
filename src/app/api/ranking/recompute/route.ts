@@ -13,12 +13,14 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canManageRanking, computeRanking, persistRanking } from '@/lib/ranking/service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const PERIODS: GoalPeriod[] = ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', 'CUSTOM']
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'ranking'); if (gate) return gate }
   if (!canManageRanking(user.role)) return forbiddenResponse('Apenas gestores podem recalcular o ranking.')
 
   try {

@@ -13,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateDocumentSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { deleteFinanceDoc } from '@/lib/finance/doc-storage'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string; docId: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Documento não encontrado.' }, { status: 404 })
@@ -28,6 +29,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id, docId } = await params
   try {
     const g = await guard(docId, id, user.tenantId, user.role)
@@ -50,6 +52,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id, docId } = await params
   try {
     const g = await guard(docId, id, user.tenantId, user.role)

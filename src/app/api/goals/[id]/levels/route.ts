@@ -14,6 +14,7 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canManageGoals, canReadGoal } from '@/lib/goals/service'
 import { replaceLevelsSchema } from '@/lib/validators/goal'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -26,6 +27,7 @@ function notFound() {
 export async function GET(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
   const { id } = await params
 
   try {
@@ -47,6 +49,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function PUT(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
   if (!canManageGoals(user.role)) return forbiddenResponse('Apenas gestores podem configurar níveis.')
   const { id } = await params
 

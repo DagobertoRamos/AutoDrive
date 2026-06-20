@@ -16,11 +16,13 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { createSimulationSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { financedAmount, computeOption, type ReturnRuleLike } from '@/lib/finance/simulation-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const canSeeReturn = canAccessModule(user.role, 'financing.config')
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
@@ -52,6 +54,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão para simular.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
 

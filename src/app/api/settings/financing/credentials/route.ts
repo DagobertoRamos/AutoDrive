@@ -15,6 +15,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { createCredentialSchema } from '@/lib/validators/financing'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { encryptSecrets, maskSecret, isCryptoConfigured } from '@/lib/finance/crypto'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // Monta os hints de exibição: usuário/clientId/storeCode visíveis; segredos mascarados.
 function buildHints(d: Record<string, string | null | undefined>) {
@@ -32,6 +33,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem acesso às configurações de F&I.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   // MASTER não vê/gerencia credenciais da loja (segredos pertencem ao tenant).
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
@@ -60,6 +62,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão para configurar credenciais.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   if (!isCryptoConfigured()) return NextResponse.json({ success: false, error: 'Criptografia não configurada (FINANCE_ENCRYPTION_KEY). Defina a chave no ambiente antes de salvar credenciais.' }, { status: 503 })

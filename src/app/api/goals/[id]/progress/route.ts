@@ -12,6 +12,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canReadGoal, canManageGoals, computeGoalProgress, persistGoalProgress } from '@/lib/goals/service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -24,6 +25,7 @@ function notFound() {
 export async function GET(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
   const { id } = await params
 
   try {
@@ -46,6 +48,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function POST(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'goals'); if (gate) return gate }
   if (!canManageGoals(user.role)) return forbiddenResponse('Apenas gestores podem recalcular metas.')
   const { id } = await params
 

@@ -7,12 +7,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerAuthSession()
     if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     if (!canAccessModule(session.user.role, 'documents')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(session.user, 'documents'); if (gate) return gate }
 
     const { searchParams } = new URL(req.url)
     const page    = Math.max(1, Number(searchParams.get('page')    ?? 1))
@@ -72,6 +74,7 @@ export async function POST(req: NextRequest) {
     const session = await getServerAuthSession()
     if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     if (!canAccessModule(session.user.role, 'documents.pdf')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(session.user, 'documents'); if (gate) return gate }
 
     const body = await req.json()
 

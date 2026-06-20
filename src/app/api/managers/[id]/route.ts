@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, hasRole, MANAGEMENT_ROLES } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,7 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.managers'); if (gate) return gate }
   if (!hasRole(user.role, MANAGEMENT_ROLES)) return forbiddenResponse()
 
   try {

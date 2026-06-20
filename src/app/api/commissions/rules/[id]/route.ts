@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── PUT — Editar ──────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ export async function PUT(
     const session = await getServerAuthSession()
     if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     if (!canAccessModule(session.user.role, 'commissions.rules')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(session.user, 'commissions.rules'); if (gate) return gate }
 
     const rule = await prisma.commissionRule.findUnique({ where: { id: params.id } })
     if (!rule) return NextResponse.json({ success: false, error: 'Regra não encontrada.' }, { status: 404 })
@@ -97,6 +99,7 @@ export async function DELETE(
     const session = await getServerAuthSession()
     if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     if (!canAccessModule(session.user.role, 'commissions.rules')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(session.user, 'commissions.rules'); if (gate) return gate }
 
     const rule = await prisma.commissionRule.findUnique({ where: { id: params.id } })
     if (!rule) return NextResponse.json({ success: false, error: 'Regra não encontrada.' }, { status: 404 })

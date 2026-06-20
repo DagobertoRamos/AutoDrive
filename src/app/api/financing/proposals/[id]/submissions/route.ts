@@ -18,6 +18,7 @@ import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { requiredDocsForProfile, pendingRequiredDocs, type RequiredDocsConfig } from '@/lib/finance/proposal-service'
 import { resolveAdapterForTenantBank } from '@/lib/finance/resolve-adapter'
 import { isFiAllowed } from '@/lib/finance/fi-permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Ficha não encontrada.' }, { status: 404 })
@@ -26,6 +27,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
   try {
     const proposal = await prisma.financeProposal.findUnique({ where: { id }, select: { id: true, tenantId: true } })
@@ -56,6 +58,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.manage')) return forbiddenResponse('Sem permissão para enviar fichas.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
   try {
     const proposal = await prisma.financeProposal.findUnique({ where: { id }, include: { proponent: { select: { occupation: true } } } })

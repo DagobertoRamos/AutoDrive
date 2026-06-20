@@ -12,6 +12,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { updateMemberSchema } from '@/lib/validators/marketing'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Membro não encontrado.' }, { status: 404 })
@@ -20,6 +21,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr.manage'); if (gate) return gate }
   const { id } = await params
   try {
     const existing = await prisma.marketingSdrMember.findUnique({ where: { id } })
@@ -46,6 +48,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.sdr.manage')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'marketing.sdr.manage'); if (gate) return gate }
   const { id } = await params
   try {
     const existing = await prisma.marketingSdrMember.findUnique({ where: { id }, select: { id: true, tenantId: true } })

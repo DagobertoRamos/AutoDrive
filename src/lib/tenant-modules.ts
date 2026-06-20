@@ -11,14 +11,28 @@ import { canAccessModule, type Module } from '@/lib/permissions'
 
 /** Lista as chaves desabilitadas (active=false) do tenant. */
 export async function getDisabledModules(tenantId: string): Promise<string[]> {
-  const rows = await prisma.tenantModule.findMany({ where: { tenantId, active: false }, select: { module: true } })
-  return rows.map((r) => r.module)
+  try {
+    const rows = await prisma.tenantModule.findMany({ where: { tenantId, active: false }, select: { module: true } })
+    return rows.map((r) => r.module)
+  } catch (err) {
+    // Fail-open: se a consulta de entitlement falhar, não escondemos nada.
+    console.error('[tenant-modules] getDisabledModules falhou:', err)
+    return []
+  }
 }
 
-/** true se a funcionalidade está habilitada p/ o tenant (default = true). */
+/**
+ * true se a funcionalidade está habilitada p/ o tenant (default = true).
+ * Fail-open: erro na consulta => habilitado (não trava a loja por falha do gate).
+ */
 export async function isModuleEnabled(tenantId: string, module: string): Promise<boolean> {
-  const row = await prisma.tenantModule.findUnique({ where: { tenantId_module: { tenantId, module } }, select: { active: true } })
-  return row ? row.active : true
+  try {
+    const row = await prisma.tenantModule.findUnique({ where: { tenantId_module: { tenantId, module } }, select: { active: true } })
+    return row ? row.active : true
+  } catch (err) {
+    console.error('[tenant-modules] isModuleEnabled falhou:', err)
+    return true
+  }
 }
 
 /**

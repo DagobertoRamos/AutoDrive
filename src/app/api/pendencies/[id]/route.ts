@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canActOn } from '@/lib/role-hierarchy'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const PENDENCY_INCLUDE = {
   responsible: { select: { id: true, fullName: true, shortName: true, whatsapp: true } },
@@ -42,6 +43,7 @@ export async function GET(req: Request, ctxArg: { params: { id: string } | Promi
   try {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const pendency = await prisma.pendency.findUnique({
       where: { id: params.id },
@@ -61,6 +63,7 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
   try {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const { pendency: target, targetRole } = await loadPendencyAndTargetRole(params.id)
     if (!target) return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
@@ -91,6 +94,7 @@ export async function DELETE(req: Request, ctxArg: { params: { id: string } | Pr
   try {
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const allowed = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE']
     if (!allowed.includes(session.user.role)) {

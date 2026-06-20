@@ -9,6 +9,7 @@ import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forb
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const STATUSES = ['PENDENTE', 'APROVADO', 'REPROVADO']
 
@@ -16,6 +17,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing')) return forbiddenResponse('Sem acesso ao financiamento.')
+  { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

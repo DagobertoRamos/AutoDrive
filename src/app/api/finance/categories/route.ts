@@ -11,11 +11,13 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createCategorySchema } from '@/lib/validators/finance'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'finance')) return forbiddenResponse('Sem acesso ao financeiro.')
+  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -38,6 +40,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'finance.manage')) return forbiddenResponse('Sem permissão para gerenciar categorias.')
+  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

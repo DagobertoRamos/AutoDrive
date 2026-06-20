@@ -14,6 +14,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { FI_SETTING_KEYS, isFiSettingKey } from '@/lib/finance/settings'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ key: string }> }
 const badKey = () => NextResponse.json({ success: false, error: 'Configuração desconhecida.' }, { status: 404 })
@@ -22,6 +23,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem acesso às configurações de F&I.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const { key } = await params
@@ -43,6 +45,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'financing.config')) return forbiddenResponse('Sem permissão para alterar configurações de F&I.')
+  { const gate = await assertModuleEnabled(user, 'financing.config'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const { key } = await params

@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const schema = z.object({
   reason: z.string().min(1, 'Informe o motivo'),
@@ -19,6 +20,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const body   = await req.json()
     const parsed = schema.safeParse(body)

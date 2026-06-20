@@ -16,6 +16,7 @@ import { extractDocumentText } from '@/lib/documents/extract-text'
 import { runAiWithFailover } from '@/lib/ai/resolve-ai-provider'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const runtime = 'nodejs'
 export const maxDuration = 45
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'ai')) return forbiddenResponse('Sem acesso à análise por IA.')
+  { const gate = await assertModuleEnabled(user, 'ai'); if (gate) return gate }
 
   try {
     // Entrada: multipart { file } OU JSON { fileUrl } (arquivo já anexado, /uploads/).

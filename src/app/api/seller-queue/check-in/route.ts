@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { checkInSchema } from '@/lib/validators/seller-queue'
 import { getUnitConfig, toPresenceConfig, getOrCreateQueue, nextPosition, recordPresence, logQueueEvent } from '@/lib/seller-queue/queue'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const MGMT_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.checkIn')) return forbiddenResponse('Sem permissão para entrar na fila.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.checkIn'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = user.unitId

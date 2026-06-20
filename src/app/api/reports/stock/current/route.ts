@@ -15,6 +15,7 @@ import {
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const OUT_OF_STOCK = ['VENDIDO', 'CANCELADO', 'DEVOLVIDO']
 
@@ -29,6 +30,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'logs')) return forbiddenResponse('Sem acesso a relatórios.')
+  { const gate = await assertModuleEnabled(user, 'logs'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

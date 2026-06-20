@@ -12,6 +12,7 @@ import { createDealAudit, createStatusHistory, updateVehicleStock, computeDealBa
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { canForceFinalize } from '@/lib/negotiation-rbac'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +25,7 @@ export async function POST(
 
   try {
     requireModule(session.user.role, 'negotiations.manage')
+    { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
   } catch {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }

@@ -8,6 +8,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { z } from 'zod'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const dispatchSchema = z.object({
   pendencyId: z.string().cuid(),
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'communication.dispatch')) {
       return NextResponse.json({ success: false, error: 'Sem permissão para disparar mensagens' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'communication.dispatch'); if (gate) return gate }
 
     const body   = await req.json()
     const parsed = dispatchSchema.safeParse(body)

@@ -15,6 +15,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { configSchema } from '@/lib/validators/seller-queue'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const unitOf = (req: Request, fallback: string | null) => unitFromRequest(req, fallback)
 
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.settings')) return forbiddenResponse('Sem acesso às configurações.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.settings'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = unitOf(req, user.unitId)
@@ -38,6 +40,7 @@ export async function PUT(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.settings')) return forbiddenResponse('Sem permissão para configurar.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.settings'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = unitOf(req, user.unitId)

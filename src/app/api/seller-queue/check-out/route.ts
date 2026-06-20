@@ -12,11 +12,13 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { checkOutSchema } from '@/lib/validators/seller-queue'
 import { queueDate, logQueueEvent } from '@/lib/seller-queue/queue'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.checkIn')) return forbiddenResponse('Sem permissão.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.checkIn'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = user.unitId

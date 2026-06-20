@@ -16,12 +16,14 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { parseCurrency } from '@/lib/parsers/currency'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — Listar serviços ────────────────────────────────────────────────────
 
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.services'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -42,6 +44,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.services'); if (gate) return gate }
 
   if (!hasRole(user.role, MANAGEMENT_ROLES)) {
     return forbiddenResponse('Apenas gerentes e administradores podem cadastrar serviços.')

@@ -10,6 +10,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/a
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -17,6 +18,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony')) return forbiddenResponse('Sem acesso à telefonia.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony'); if (gate) return gate }
   const { id } = await params
   try {
     const call = await prisma.telephonyCall.findUnique({

@@ -13,6 +13,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-t
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { assignLeadSchema } from '@/lib/validators/marketing'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -20,6 +21,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.leads.distribute')) return forbiddenResponse('Sem permissão para distribuir leads.')
+  { const gate = await assertModuleEnabled(user, 'marketing.leads.distribute'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   const { id } = await params

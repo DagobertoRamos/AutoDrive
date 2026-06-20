@@ -17,6 +17,7 @@ import { callNextSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
 import { callForArrival } from '@/lib/seller-queue/call'
 import { flagFraud } from '@/lib/seller-queue/fraud'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const MGMT_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -25,6 +26,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'sellerQueue.lead')) return forbiddenResponse('Apenas líder/gerência pode chamar manualmente.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.lead'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const { id } = await params

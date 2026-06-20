@@ -12,6 +12,7 @@ import {
 } from '@/lib/auth-guards'
 import { canAccessModule, canPerformAction, type UserRole } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'registrations.positions')) return forbiddenResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.positions'); if (gate) return gate }
 
   try {
     const url = new URL(req.url)

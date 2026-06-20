@@ -15,12 +15,14 @@ import {
   createSafeAuditLog,
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 // ── GET — Listar unidades ────────────────────────────────────────────────────
 
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.units'); if (gate) return gate }
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
@@ -41,6 +43,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
+  { const gate = await assertModuleEnabled(user, 'registrations.units'); if (gate) return gate }
 
   if (!hasRole(user.role, ADMIN_ROLES)) {
     return forbiddenResponse('Apenas administradores podem cadastrar unidades.')

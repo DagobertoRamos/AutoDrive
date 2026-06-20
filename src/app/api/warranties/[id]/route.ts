@@ -14,6 +14,7 @@ import {
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateWarrantySchema } from '@/lib/validators/warranty'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -34,6 +35,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!canAccessModule(user.role, 'registrations.warranties')) {
     return forbiddenResponse('Sem permissão para editar garantias.')
   }
+  { const gate = await assertModuleEnabled(user, 'registrations.warranties'); if (gate) return gate }
   const { id } = await params
 
   try {
@@ -110,6 +112,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!canAccessModule(user.role, 'registrations.warranties')) {
     return forbiddenResponse('Sem permissão para inativar garantias.')
   }
+  { const gate = await assertModuleEnabled(user, 'registrations.warranties'); if (gate) return gate }
   const { id } = await params
 
   try {

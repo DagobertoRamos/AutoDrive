@@ -11,11 +11,13 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { distributePendingLeads, processSlaBreaches } from '@/lib/marketing/distribution'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.leads.distribute')) return forbiddenResponse('Sem permissão para distribuir leads.')
+  { const gate = await assertModuleEnabled(user, 'marketing.leads.distribute'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   try {

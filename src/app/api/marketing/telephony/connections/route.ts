@@ -16,11 +16,13 @@ import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createConnectionSchema } from '@/lib/validators/telephony'
 import { encryptSecrets, buildMaskedHints, isTelephonyCryptoConfigured } from '@/lib/telephony/crypto'
 import type { Prisma } from '@prisma/client'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony')) return forbiddenResponse('Sem acesso à telefonia.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   try {
@@ -52,6 +54,7 @@ export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony.manage')) return forbiddenResponse('Sem permissão para gerenciar telefonia.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony.manage'); if (gate) return gate }
   const tid = await resolveActingTenant(user, req)
   if (!tid) return forbiddenResponse(actingTenantError(user))
   try {

@@ -16,6 +16,7 @@ import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { calculateWarrantySale } from '@/lib/warranty/warranty-calc'
 import { warrantySaleSchema } from '@/lib/validators/warranty'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try {
     requireModule(session.user.role, 'negotiations')
+    { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
   } catch {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }

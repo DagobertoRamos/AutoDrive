@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const KEY_BASE = 'pendency_settings'
 const GROUP    = 'pendency'
@@ -99,6 +100,7 @@ export async function GET() {
     if (!canAccessModule(session.user.role, 'stock.pendencies.configure')) {
       return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'stock.pendencies.configure'); if (gate) return gate }
 
     const key = keyFor(session.user.role, session.user.tenantId)
     const setting = await prisma.systemSetting.findFirst({ where: { key } })
@@ -121,6 +123,7 @@ export async function PUT(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'stock.pendencies.configure')) {
       return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     }
+    { const gate = await assertModuleEnabled(session.user, 'stock.pendencies.configure'); if (gate) return gate }
 
     const tid = session.user.tenantId ?? null
     const key = keyFor(session.user.role, tid)

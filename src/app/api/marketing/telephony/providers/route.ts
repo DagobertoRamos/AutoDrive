@@ -10,11 +10,13 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   if (!canAccessModule(user.role, 'marketing.telephony')) return forbiddenResponse('Sem acesso à telefonia.')
+  { const gate = await assertModuleEnabled(user, 'marketing.telephony'); if (gate) return gate }
   try {
     const rows = await prisma.telephonyProvider.findMany({
       where: { active: true },
