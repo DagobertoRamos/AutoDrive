@@ -1,0 +1,83 @@
+// =============================================================================
+// seller-queue/call.ts — chama o "vendedor da vez" para um cliente que chegou.
+// LOCK TRANSACIONAL: o candidato só é chamado se sua entry ainda estiver WAITING
+// (updateMany compare-and-set) — evita chamar 2 vendedores p/ o mesmo cliente ou
+// o mesmo vendedor p/ 2 clientes. Cria o atendimento (CALLED) com prazo de aceite
+// e NOTIFICA o vendedor. Quem registra o cliente NÃO escolhe quem atende.
+// =============================================================================
+
+import { prisma } from '@/lib/prisma'
+import { notify } from '@/services/notification.service'
+import { getUnitConfig, logQueueEvent } from './queue'
+
+export interface CallResult {
+  ok: boolean
+  attendanceId?: string
+  sellerId?: string
+  reason?: string
+}
+
+/**
+ * Chama o próximo vendedor elegível para o `arrivalId`.
+ * `preferSellerId` (responsável/override) é tentado primeiro, se estiver WAITING.
+ */
+export async function callForArrival(opts: {
+  tenantId: string
+  unitId: string
+  queueId: string
+  arrivalId: string
+  actorId: string
+  preferSellerId?: string | null
+  reason?: string | null
+}): Promise<CallResult> {
+  const cfg = await getUnitConfig(opts.tenantId, opts.unitId)
+  const timeout = cfg?.acceptTimeoutSeconds ?? 60
+
+  // Candidatos: WAITING, não bloqueados, por posição. Preferido vai à frente.
+  const waiting = await prisma.sellerQueueEntry.findMany({
+    where: { queueId: opts.queueId, status: 'WAITING', blocked: false },
+    orderBy: [{ position: 'asc' }, { joinedAt: 'asc' }],
+    select: { id: true, sellerId: true },
+  })
+  if (waiting.length === 0) return { ok: false, reason: 'Nenhum vendedor disponível na fila.' }
+
+  const ordered = opts.preferSellerId
+    ? [...waiting.filter((w) => w.sellerId === opts.preferSellerId), ...waiting.filter((w) => w.sellerId !== opts.preferSellerId)]
+    : waiting
+
+  // Tenta travar o primeiro candidato disponível (compare-and-set atômico).
+  for (const cand of ordered) {
+    const now = new Date()
+    const deadline = new Date(now.getTime() + timeout * 1000)
+    const result = await prisma.$transaction(async (tx) => {
+      const upd = await tx.sellerQueueEntry.updateMany({
+        where: { id: cand.id, status: 'WAITING', blocked: false },
+        data: { status: 'CALLED', lastActiveAt: now },
+      })
+      if (upd.count !== 1) return null // perdeu a corrida — tenta o próximo
+      const att = await tx.sellerQueueAttendance.create({
+        data: {
+          tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, sellerId: cand.sellerId,
+          arrivalId: opts.arrivalId, status: 'CALLED', calledAt: now, acceptDeadline: deadline,
+        },
+      })
+      await tx.sellerQueueCustomerArrival.update({ where: { id: opts.arrivalId }, data: { status: 'CALLING' } })
+      return att
+    })
+    if (!result) continue
+
+    await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId: cand.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.id, reason: opts.reason ?? null })
+    // Alerta o vendedor da vez (best-effort).
+    await notify({
+      userId: cand.sellerId, tenantId: opts.tenantId, type: 'WARNING',
+      title: 'Você é o vendedor da vez',
+      message: `Cliente presencial aguardando. Você tem ${timeout} segundos para aceitar.`,
+      actionUrl: '/vendedor-da-vez/minha-fila',
+      metadata: { kind: 'seller_queue_called', attendanceId: result.id, arrivalId: opts.arrivalId },
+    }).catch(() => {})
+
+    return { ok: true, attendanceId: result.id, sellerId: cand.sellerId }
+  }
+
+  return { ok: false, reason: 'Nenhum vendedor disponível na fila.' }
+}

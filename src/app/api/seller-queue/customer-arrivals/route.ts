@@ -1,0 +1,90 @@
+// =============================================================================
+// /api/seller-queue/customer-arrivals — cliente na loja.
+//   GET  : sellerQueue.view           — clientes do dia (PENDING/CALLING/ASSIGNED)
+//   POST : sellerQueue.customerArrived — registra chegada e CHAMA o vendedor da vez
+// Regra: quem registra precisa estar com check-in ativo e NÃO escolhe o atendente.
+// Cliente recorrente (lead/negociação/responsável) é identificado em LEITURA.
+// =============================================================================
+
+import { NextResponse } from 'next/server'
+import { ZodError } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
+import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
+import { handlePrismaError } from '@/lib/prisma-errors'
+import { zodErrorResponse } from '@/lib/finance/finance-service'
+import { createArrivalSchema } from '@/lib/validators/seller-queue'
+import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent } from '@/lib/seller-queue/queue'
+import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
+import { callForArrival } from '@/lib/seller-queue/call'
+
+const ACTIVE_ENTRY = ['WAITING', 'NEXT', 'CALLED', 'ACCEPTED', 'IN_ATTENDANCE', 'PAUSED']
+
+export async function GET(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
+  const unitId = new URL(req.url).searchParams.get('unitId') || user.unitId
+  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
+  try {
+    const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } }, select: { id: true } })
+    if (!queue) return NextResponse.json({ success: true, data: [] })
+    const rows = await prisma.sellerQueueCustomerArrival.findMany({
+      where: { queueId: queue.id },
+      orderBy: { createdAt: 'desc' }, take: 200,
+    })
+    return NextResponse.json({ success: true, data: rows })
+  } catch (err) {
+    return handlePrismaError(err)
+  }
+}
+
+export async function POST(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!canAccessModule(user.role, 'sellerQueue.customerArrived')) return forbiddenResponse('Sem permissão para registrar cliente.')
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
+  const unitId = user.unitId
+  if (!unitId) return forbiddenResponse('Seu usuário não tem unidade vinculada.')
+  try {
+    const d = createArrivalSchema.parse(await req.json())
+    const queue = await getOrCreateQueue(tenantId, unitId)
+
+    // Antifraude: quem registra precisa estar com check-in ATIVO.
+    const myEntry = await prisma.sellerQueueEntry.findUnique({ where: { queueId_sellerId: { queueId: queue.id, sellerId: user.id } }, select: { status: true } })
+    if (!myEntry || !ACTIVE_ENTRY.includes(myEntry.status)) {
+      return NextResponse.json({ success: false, error: 'Faça check-in na fila antes de registrar um cliente.' }, { status: 403 })
+    }
+
+    const recurring = await detectRecurringCustomer(tenantId, d.customerPhone, d.customerName)
+    const cfg = await getUnitConfig(tenantId, unitId)
+
+    const arrival = await prisma.sellerQueueCustomerArrival.create({
+      data: {
+        tenantId, unitId, queueId: queue.id, registeredById: user.id,
+        customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null,
+        customerId: recurring.customerId ?? null, leadId: recurring.leadId ?? null,
+        recurring: recurring.recurring, suggestedSellerId: recurring.suggestedSellerId ?? null,
+        requestedSellerId: d.requestedSellerId ?? null, status: 'PENDING', notes: d.notes ?? null,
+      },
+    })
+    await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CUSTOMER_ARRIVED', actorId: user.id, arrivalId: arrival.id, reason: recurring.recurring ? 'recorrente' : 'novo' })
+    await createSafeAuditLog({ userId: user.id, tenantId, action: 'CUSTOMER_ARRIVED', entity: 'SellerQueueCustomerArrival', entityId: arrival.id, userName: user.name, userRole: user.role })
+
+    // Quem chamar: cliente pediu por nome (se a regra permitir) > responsável (recorrente) > vendedor da vez.
+    let preferSellerId: string | null = null
+    if (d.requestedSellerId && cfg && !cfg.requestByNameRequiresApproval) preferSellerId = d.requestedSellerId
+    else if (recurring.suggestedSellerId && (cfg?.recurringCustomerRule ?? 'RESPONSIBLE') === 'RESPONSIBLE') preferSellerId = recurring.suggestedSellerId
+
+    const call = await callForArrival({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, preferSellerId })
+
+    return NextResponse.json({ success: true, data: { arrivalId: arrival.id, recurring, call } }, { status: 201 })
+  } catch (err) {
+    if (err instanceof ZodError) return zodErrorResponse(err)
+    return handlePrismaError(err)
+  }
+}

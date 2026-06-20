@@ -23,3 +23,17 @@ export const checkInSchema = presenceSchema
 export const resumeSchema = presenceSchema
 export const checkOutSchema = z.object({ reason: optStr })
 export const pauseSchema = z.object({ reason: optStr })
+
+// ── Cliente na loja (Fase 4) ────────────────────────────────────────────────
+export const createArrivalSchema = z.object({
+  customerName:      z.string().trim().max(200).nullish(),
+  customerPhone:     z.string().trim().max(40).nullish(),
+  requestedSellerId: optStr, // cliente pediu por um vendedor (exige regra/aprovação)
+  notes:             optStr,
+}).refine((d) => Boolean(d.customerName || d.customerPhone), { message: 'Informe ao menos o nome ou o telefone do cliente.' })
+
+// call-next: líder/gerente pode forçar um vendedor (com justificativa).
+export const callNextSchema = z.object({
+  sellerId: optStr,
+  reason:   optStr,
+})
