@@ -4670,3 +4670,327 @@ model TelephonyIntegrationLog {
   @@index([createdAt])
   @@map("telephony_integration_logs")
 }
+
+// =============================================================================
+// COMERCIAL — Fila de Atendimento ("Vendedor da Vez") — Fase 2 (schema aditivo).
+// Atendimento presencial sem recepção: o sistema chama o vendedor da vez. A
+// presença é validada por EVENTOS (nunca rastreio contínuo). Tudo tenant/unit.
+// FKs soltos (tenantId/unitId/sellerId/actorId); relações só intra-módulo
+// (queue → entries/attendances/arrivals/events). Não toca em Unit/User.
+// =============================================================================
+
+enum SellerQueueEntryStatus {
+  WAITING
+  NEXT
+  CALLED
+  ACCEPTED
+  IN_ATTENDANCE
+  PAUSED
+  SKIPPED
+  LEFT
+  EXPIRED
+  BLOCKED
+}
+
+enum SellerQueueEventType {
+  CHECK_IN
+  CHECK_OUT
+  PAUSE
+  RESUME
+  CUSTOMER_ARRIVED
+  CALLED
+  ACCEPTED
+  REJECTED
+  TIMEOUT
+  SKIPPED
+  ATTENDANCE_STARTED
+  ATTENDANCE_FINISHED
+  MOVED_TO_END
+  MANAGER_OVERRIDE
+  LEADER_OVERRIDE
+  QUEUE_REORDERED
+  FRAUD_FLAGGED
+}
+
+enum SellerPresenceMethod {
+  GPS
+  QR_CODE
+  DEVICE_CHECK
+  MANAGER_OVERRIDE
+  LEADER_OVERRIDE
+  MANUAL_REVIEW
+}
+
+enum SellerAttendanceType {
+  SALE
+  EXCHANGE
+  PURCHASE
+  CONSIGNMENT
+  FINANCING
+  AFTER_SALES
+  OTHER
+}
+
+enum SellerAttendanceResult {
+  CONVERTED_TO_NEGOTIATION
+  SCHEDULED_RETURN
+  NO_INTEREST
+  LOST
+  DUPLICATED
+  FORWARDED_TO_RESPONSIBLE
+  INVALID_ATTENDANCE
+}
+
+// Fila por unidade/dia (agrupador). Uma fila por unidade por dia.
+model SellerQueue {
+  id        String    @id @default(cuid())
+  tenantId  String
+  unitId    String
+  date      DateTime  @db.Date
+  status    String    @default("OPEN") // OPEN | CLOSED
+  openedAt  DateTime  @default(now())
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  entries     SellerQueueEntry[]
+  attendances SellerQueueAttendance[]
+  arrivals    SellerQueueCustomerArrival[]
+  events      SellerQueueEvent[]
+
+  @@unique([tenantId, unitId, date])
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([date])
+  @@index([status])
+  @@map("seller_queues")
+}
+
+// Vendedor presente na fila (posição + status).
+model SellerQueueEntry {
+  id               String                 @id @default(cuid())
+  tenantId         String
+  unitId           String
+  queueId          String
+  sellerId         String
+  status           SellerQueueEntryStatus @default(WAITING)
+  position         Int                    @default(0)
+  joinedAt         DateTime               @default(now())
+  lastActiveAt     DateTime?
+  pausedAt         DateTime?
+  leftAt           DateTime?
+  blocked          Boolean                @default(false)
+  lastAttendanceAt DateTime?
+  attendanceCount  Int                    @default(0)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  queue SellerQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  @@unique([queueId, sellerId])
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([queueId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("seller_queue_entries")
+}
+
+// Cliente que chegou na loja. Qualquer vendedor presente registra; NÃO escolhe quem atende.
+model SellerQueueCustomerArrival {
+  id                String   @id @default(cuid())
+  tenantId          String
+  unitId            String
+  queueId           String
+  registeredById    String // quem clicou "cliente na loja"
+  customerName      String?
+  customerPhone     String?
+  customerId        String? // Customer vinculado (recorrente)
+  leadId            String? // lead aberto (recorrente)
+  recurring         Boolean  @default(false)
+  suggestedSellerId String? // vendedor responsável (recorrente)
+  requestedSellerId String? // cliente pediu pelo nome (exige confirmação/regra)
+  status            String   @default("PENDING") // PENDING | CALLING | ASSIGNED | DONE | CANCELED
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  queue       SellerQueue             @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  attendances SellerQueueAttendance[]
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([queueId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("seller_queue_customer_arrivals")
+}
+
+// Chamada → aceite → atendimento → resultado.
+model SellerQueueAttendance {
+  id             String                  @id @default(cuid())
+  tenantId       String
+  unitId         String
+  queueId        String
+  sellerId       String
+  arrivalId      String?
+  status         String                  @default("CALLED") // CALLED | ACCEPTED | IN_ATTENDANCE | FINISHED | REJECTED | EXPIRED
+  type           SellerAttendanceType?
+  result         SellerAttendanceResult?
+  calledAt       DateTime                @default(now())
+  acceptDeadline DateTime?
+  acceptedAt     DateTime?
+  rejectedAt     DateTime?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  rejectReason   String?
+  notes          String?
+  leadId         String? // lead gerado/vinculado
+  dealId         String? // negociação gerada (resultado)
+  customerId     String?
+  createdById    String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  queue   SellerQueue                 @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  arrival SellerQueueCustomerArrival? @relation(fields: [arrivalId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([queueId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([calledAt])
+  @@map("seller_queue_attendances")
+}
+
+// Histórico/auditoria de TODOS os eventos da fila.
+model SellerQueueEvent {
+  id           String               @id @default(cuid())
+  tenantId     String
+  unitId       String?
+  queueId      String?
+  type         SellerQueueEventType
+  sellerId     String? // sujeito do evento (vendedor)
+  actorId      String? // quem executou a ação
+  arrivalId    String?
+  attendanceId String?
+  entryId      String?
+  reason       String?
+  metadata     Json?
+  createdAt    DateTime             @default(now())
+
+  queue SellerQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([queueId])
+  @@index([sellerId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("seller_queue_events")
+}
+
+// Evento de presença (NÃO contínuo): só em check-in/chamada/aceite/revalidação/check-out/pausa.
+model SellerPresenceCheck {
+  id             String               @id @default(cuid())
+  tenantId       String
+  unitId         String
+  sellerId       String
+  method         SellerPresenceMethod
+  context        String               @default("CHECK_IN") // CHECK_IN | CALL | ACCEPT | REVALIDATION | CHECK_OUT | PAUSE | RESUME
+  success        Boolean              @default(false)
+  latitude       Float?
+  longitude      Float?
+  accuracyM      Float?
+  distanceM      Float? // distância à unidade (geofence)
+  deviceId       String?
+  overrideById   String? // gerente/líder que liberou manualmente
+  overrideReason String?
+  createdAt      DateTime             @default(now())
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([sellerId])
+  @@index([createdAt])
+  @@map("seller_presence_checks")
+}
+
+// Configuração da fila por unidade (geofence/QR/timeout/horário/regras). UMA por unidade.
+model SellerQueueUnitConfig {
+  id                            String   @id @default(cuid())
+  tenantId                      String
+  unitId                        String
+  active                        Boolean  @default(false)
+  presenceMethods               String[] // ex.: ["GPS","QR_CODE","DEVICE_CHECK"]
+  geofenceLat                   Float?
+  geofenceLng                   Float?
+  geofenceRadiusM               Int      @default(150)
+  qrSecret                      String? // segredo do QR fixo da loja (token rotacionável)
+  acceptTimeoutSeconds          Int      @default(60)
+  requireRevalidationOnAccept   Boolean  @default(true)
+  openTime                      String? // "HH:MM"
+  closeTime                     String? // "HH:MM"
+  allowedDays                   String[] // ["MON",...]
+  recurringCustomerRule         String   @default("RESPONSIBLE") // RESPONSIBLE | QUEUE
+  requestByNameRequiresApproval Boolean  @default(true)
+  config                        Json?
+  updatedById                   String?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  @@unique([tenantId, unitId])
+  @@index([tenantId])
+  @@index([unitId])
+  @@map("seller_queue_unit_configs")
+}
+
+// Penalidade/bloqueio de vendedor (timeout, no-show, bloqueio manual).
+model SellerQueuePenalty {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  sellerId    String
+  type        String // TIMEOUT | NO_SHOW | MANUAL_BLOCK | OTHER
+  reason      String?
+  points      Int       @default(0)
+  active      Boolean   @default(true)
+  appliedById String?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([sellerId])
+  @@index([active])
+  @@map("seller_queue_penalties")
+}
+
+// Suspeita de fraude/manipulação (aparece nos relatórios).
+model SellerQueueFraudFlag {
+  id           String    @id @default(cuid())
+  tenantId     String
+  unitId       String?
+  sellerId     String?
+  actorId      String?
+  arrivalId    String?
+  attendanceId String?
+  kind         String // CHECK_IN_OUTSIDE | FAKE_CUSTOMER | FAVORITISM | IMPROPER_SKIP | DUPLICATE | OFF_SYSTEM | DISPUTE | MANIPULATION | OTHER
+  severity     String    @default("LOW") // LOW | MEDIUM | HIGH
+  detail       String?
+  status       String    @default("OPEN") // OPEN | REVIEWED | DISMISSED | CONFIRMED
+  reviewedById String?
+  reviewedAt   DateTime?
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("seller_queue_fraud_flags")
+}
