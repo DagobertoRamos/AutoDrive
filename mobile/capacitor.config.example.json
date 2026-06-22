@@ -1,0 +1,18 @@
+{
+  "appId": "br.com.autodrive.app",
+  "appName": "AutoDrive",
+  "webDir": "public",
+  "server": {
+    "url": "https://homologacao.autodrive.example/",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "_notas": [
+    "Exemplo SEGURO — copie para capacitor.config.ts na raiz e ajuste server.url.",
+    "O AutoDrive usa Next.js/API/NextAuth/Prisma; o app deve apontar para a URL HTTPS do AutoDrive (homologacao/producao), NAO para export estatico.",
+    "server.url acima e um PLACEHOLDER de homologacao; troque pela URL HTTPS real.",
+    "cleartext=false: apenas HTTPS. Nunca embutir segredos/tokens no app."
+  ]
+}
