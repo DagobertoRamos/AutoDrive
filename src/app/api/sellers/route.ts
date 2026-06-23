@@ -109,6 +109,15 @@ export async function POST(req: Request) {
     // ── Valida que a unidade pertence ao tenant ──────────────────────────────
     await assertUnitBelongsToTenant(String(unitId), tenantId, user.role)
 
+    // O tenant do vendedor é o tenant DA UNIDADE — não o do criador. Isso corrige
+    // o caso do MASTER (tenantId null), que antes criava o usuário SEM tenant e
+    // o impedia de logar ("Usuário sem empresa/loja vinculada" → "credenciais inválidas").
+    const unitRec = await prisma.unit.findUnique({ where: { id: String(unitId) }, select: { tenantId: true } })
+    const effectiveTenantId = unitRec?.tenantId ?? tenantId
+    if (!effectiveTenantId) {
+      return NextResponse.json({ success: false, error: 'Unidade sem empresa vinculada.' }, { status: 400 })
+    }
+
     // ── Valida cargo (positionId) — sistema (tenantId null) ou do tenant ─────
     let validatedPositionId: string | null = null
     if (positionId) {
@@ -162,7 +171,7 @@ export async function POST(req: Request) {
     const { seller } = await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
-          tenantId:          tenantId!,
+          tenantId:          effectiveTenantId,
           unitId:            String(unitId),
           name:              String(fullName).trim(),
           email:             emailNorm,
@@ -194,7 +203,7 @@ export async function POST(req: Request) {
 
     await createSafeAuditLog({
       userId:   user.id,
-      tenantId: tenantId ?? undefined,
+      tenantId: effectiveTenantId,
       action:   'CREATE',
       entity:   'Seller',
       entityId: seller.id,
