@@ -83,12 +83,13 @@ export async function ensureNotifyPermission(): Promise<boolean> {
   } catch { return false }
 }
 
-/** Mostra notificação do SO + vibra (se suportado/permitido). */
+/** Mostra notificação do SO + vibra (se suportado/permitido). Aparece mesmo com
+ *  a aba em segundo plano; fica fixa até o vendedor interagir. */
 export function showAlertNotification(title: string, body: string): void {
   try {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      const n = new Notification(title, { body, tag: 'seller-queue-called' })
-      setTimeout(() => { try { n.close() } catch { /* ignore */ } }, 8000)
+      const n = new Notification(title, { body, tag: 'seller-queue-called', requireInteraction: true, renotify: true } as NotificationOptions)
+      n.onclick = () => { try { window.focus(); n.close() } catch { /* ignore */ } }
     }
   } catch { /* ignore */ }
   try { navigator.vibrate?.([300, 150, 300, 150, 300]) } catch { /* ignore */ }

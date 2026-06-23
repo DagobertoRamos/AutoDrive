@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { DoorOpen, LogOut, Pause, Play, Check, X, CheckCircle2, RefreshCw, Hand, Clock, QrCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
-import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
+import { unlockAudio, ensureNotifyPermission, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'], ['CONSIGNMENT', 'Consignação'], ['FINANCING', 'Financiamento'], ['AFTER_SALES', 'Pós-venda'], ['OTHER', 'Outro']] as const
@@ -70,34 +70,9 @@ export default function MinhaFilaPage() {
     return () => window.removeEventListener('pointerdown', onGesture)
   }, [])
 
-  // Alerta CRÍTICO enquanto for o vendedor da vez (status CALLED): som em loop +
-  // notificação do navegador + vibração, conforme a config da unidade. Para ao
-  // aceitar/recusar/timeout (status muda) ou ao sair da tela.
-  const alertTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const calledStatus = data?.myAttendance?.status
-  const alerts = data?.alerts
-  useEffect(() => {
-    const isCalled = calledStatus === 'CALLED'
-    const stop = () => {
-      if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null }
-      stopCriticalAlert()
-    }
-    if (isCalled && !alertTimer.current) {
-      const a = alerts ?? { sound: true, soundType: 'siren', browserPush: true, repeatSeconds: 10 }
-      const fire = () => criticalAlert({
-        title: 'Você é o vendedor da vez 🔔',
-        body: 'Cliente presencial aguardando — abra o app e aceite.',
-        soundType: a.soundType,
-        sound: a.sound,
-        push: a.browserPush,
-      })
-      fire()
-      const every = Math.max(5, a.repeatSeconds || 10) * 1000
-      alertTimer.current = setInterval(fire, every)
-    }
-    if (!isCalled) stop()
-    return stop
-  }, [calledStatus, alerts])
+  // O alerta CRÍTICO (som/balão/vibração) é disparado pelo vigia GLOBAL
+  // (QueueAlertWatcher no DashboardShell), que funciona em QUALQUER página/aba.
+  // Aqui só paramos o alarme ao aceitar/recusar (ver accept/reject).
 
   const post = async (path: string, body?: unknown, okMsg?: string) => {
     setBusy(true)

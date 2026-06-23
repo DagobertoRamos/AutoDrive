@@ -18,6 +18,7 @@ import SystemBannerBar from '@/components/layout/SystemBannerBar'
 import { NotificationToastContainer } from '@/components/notifications/NotificationToastContainer'
 import { useNotifications } from '@/hooks/useNotifications'
 import HelpChatLauncher from '@/components/ai/HelpChatLauncher'
+import QueueAlertWatcher from '@/components/seller-queue/QueueAlertWatcher'
 
 export default function DashboardShell({
   children,
@@ -65,6 +66,7 @@ export default function DashboardShell({
         </div>
         <NotificationToastContainer />
       </div>
+      <QueueAlertWatcher />
       <HelpChatLauncher />
     </>
   )
