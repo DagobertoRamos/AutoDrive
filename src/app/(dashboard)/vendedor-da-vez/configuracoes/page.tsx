@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert } from 'lucide-react'
+import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert, Unlock, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 
@@ -24,12 +24,25 @@ interface Cfg {
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
 const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, autoBlock: DEFAULT_AUTO_BLOCK }
 
+interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
+
+function untilText(b: BlockedSeller): string {
+  if (b.type === 'MANUAL') return 'bloqueio manual'
+  if (b.type === 'DAILY_BLOCK') return 'até o fim do dia'
+  if (!b.endsAt) return 'temporário'
+  const mins = Math.max(0, Math.ceil((new Date(b.endsAt).getTime() - Date.now()) / 60000))
+  const h = Math.floor(mins / 60), m = mins % 60
+  return h > 0 ? `~${h}h${m > 0 ? ` ${m}min` : ''} restantes` : `~${m}min restantes`
+}
+
 export default function ConfiguracoesFilaPage() {
   const [cfg, setCfg] = useState<Cfg>(DEFAULTS)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [blocks, setBlocks] = useState<BlockedSeller[]>([])
+  const [blocksBusy, setBlocksBusy] = useState<string | null>(null)
   const set = <K extends keyof Cfg>(k: K, v: Cfg[K]) => setCfg((c) => ({ ...c, [k]: v }))
   const toggleMethod = (m: string) => setCfg((c) => ({ ...c, presenceMethods: c.presenceMethods.includes(m) ? c.presenceMethods.filter((x) => x !== m) : [...c.presenceMethods, m] }))
 
@@ -41,7 +54,24 @@ export default function ConfiguracoesFilaPage() {
       setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
-  useEffect(() => { load() }, [load])
+  const loadBlocks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/seller-queue/blocks', { credentials: 'include' })
+      if (res.ok) setBlocks((await res.json())?.data ?? [])
+    } catch { /* noop */ }
+  }, [])
+  useEffect(() => { load(); loadBlocks() }, [load, loadBlocks])
+
+  const release = async (sellerId?: string) => {
+    setBlocksBusy(sellerId ?? 'ALL')
+    try {
+      const body = sellerId ? { sellerId } : { all: true }
+      const res = await fetch('/api/seller-queue/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+      const j = await res.json().catch(() => ({}))
+      setMsg(res.ok ? (sellerId ? 'Vendedor liberado.' : 'Todos liberados.') : (j?.error ?? 'Falha ao liberar.')); setTimeout(() => setMsg(null), 3000)
+      await loadBlocks()
+    } catch { setMsg('Erro de rede.') } finally { setBlocksBusy(null) }
+  }
 
   const useMyLocation = () => {
     if (!navigator.geolocation) return
@@ -135,8 +165,38 @@ export default function ConfiguracoesFilaPage() {
         <p className="-mt-1 text-[11px] text-gray-400">Ex.: {cfg.autoBlock.strikesForCooldown} perdas → {cfg.autoBlock.cooldownHours}h fora; {cfg.autoBlock.strikesForDailyBlock} perdas no dia → bloqueado até amanhã. A contagem zera à meia-noite.</p>
       </div>
 
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><Unlock size={16} className="text-brand-600" />Vendedores bloqueados</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={loadBlocks} className="btn-secondary text-xs"><RefreshCw size={13} />Atualizar</button>
+            {blocks.length > 0 && <button onClick={() => release()} disabled={blocksBusy !== null} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">{blocksBusy === 'ALL' ? 'Liberando...' : 'Liberar todos'}</button>}
+          </div>
+        </div>
+        <p className="-mt-1 text-xs text-gray-500">Vendedores bloqueados por reincidência (saem da fila) ou manualmente. Liberar zera o bloqueio e as perdas do dia — ele pode voltar à fila.</p>
+
+        {blocks.length === 0 ? (
+          <p className="py-4 text-center text-sm text-gray-400">Nenhum vendedor bloqueado. 🎉</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {blocks.map((b) => (
+              <div key={b.sellerId} className="flex items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900">{b.name}</p>
+                  <p className="text-xs text-gray-500">
+                    <span className={cn('mr-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold', b.type === 'DAILY_BLOCK' ? 'bg-red-100 text-red-700' : b.type === 'MANUAL' ? 'bg-gray-200 text-gray-700' : 'bg-amber-100 text-amber-700')}>{b.type === 'DAILY_BLOCK' ? 'DIÁRIO' : b.type === 'MANUAL' ? 'MANUAL' : 'TEMPORÁRIO'}</span>
+                    {untilText(b)} · {b.strikes} perda(s) hoje
+                  </p>
+                </div>
+                <button onClick={() => release(b.sellerId)} disabled={blocksBusy !== null} className="shrink-0 rounded-lg border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-60">{blocksBusy === b.sellerId ? '...' : 'Liberar'}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center justify-end gap-3">
-        {msg && <span className={cn('text-sm', /salvas/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
+        {msg && <span className={cn('text-sm', /salvas|liberad/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
         <button onClick={save} disabled={saving || loading} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar configurações'}</button>
       </div>
     </div>

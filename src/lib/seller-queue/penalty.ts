@@ -60,10 +60,11 @@ export function blockMessage(block: QueueBlock): string {
   return `Você está temporariamente fora da fila por perder a vez vezes demais. Volta liberada em ~${dur}.`
 }
 
-/** Perdas (timeouts) do vendedor hoje (desde a meia-noite UTC da fila). */
+/** Perdas (timeouts) do vendedor hoje (desde a meia-noite UTC da fila).
+ *  Só conta as ATIVAS — liberar um vendedor desativa as perdas (zera o contador). */
 export async function countStrikesToday(tenantId: string, unitId: string, sellerId: string): Promise<number> {
   return prisma.sellerQueuePenalty.count({
-    where: { tenantId, unitId, sellerId, type: 'TIMEOUT', createdAt: { gte: queueDate() } },
+    where: { tenantId, unitId, sellerId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDate() } },
   })
 }
 
@@ -125,4 +126,72 @@ export async function clearActiveBlocks(tenantId: string, unitId: string, seller
     where: { tenantId, unitId, sellerId, active: true, type: { in: ['COOLDOWN', 'DAILY_BLOCK'] } },
     data: { active: false, endsAt: new Date() },
   }).catch(() => {})
+}
+
+export interface BlockedSeller {
+  sellerId: string
+  name: string
+  type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'
+  endsAt: Date | null
+  strikes: number
+}
+
+/** Lista os vendedores bloqueados na unidade: automáticos (cooldown/diário —
+ *  fora da fila) E manuais (entry.blocked). Inclui as perdas do dia. */
+export async function listBlockedSellers(tenantId: string, unitId: string): Promise<BlockedSeller[]> {
+  const now = new Date()
+  const penalties = await prisma.sellerQueuePenalty.findMany({
+    where: { tenantId, unitId, active: true, type: { in: ['COOLDOWN', 'DAILY_BLOCK'] }, endsAt: { gt: now } },
+    orderBy: { endsAt: 'desc' },
+  })
+  const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } }, select: { id: true } })
+  const manual = queue ? await prisma.sellerQueueEntry.findMany({ where: { queueId: queue.id, blocked: true }, select: { sellerId: true } }) : []
+
+  const ids = [...new Set([...penalties.map((p) => p.sellerId), ...manual.map((m) => m.sellerId)])]
+  if (!ids.length) return []
+
+  const [users, strikeGroups] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
+    prisma.sellerQueuePenalty.groupBy({ by: ['sellerId'], where: { tenantId, unitId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDate() }, sellerId: { in: ids } }, _count: { _all: true } }),
+  ])
+  const nameOf = new Map(users.map((u) => [u.id, u.name]))
+  const strikeOf = new Map(strikeGroups.map((s) => [s.sellerId, s._count._all]))
+
+  const out: BlockedSeller[] = []
+  const seen = new Set<string>()
+  for (const p of penalties) {
+    seen.add(p.sellerId)
+    out.push({ sellerId: p.sellerId, name: nameOf.get(p.sellerId) ?? p.sellerId, type: p.type as 'COOLDOWN' | 'DAILY_BLOCK', endsAt: p.endsAt, strikes: strikeOf.get(p.sellerId) ?? 0 })
+  }
+  for (const m of manual) {
+    if (seen.has(m.sellerId)) continue
+    out.push({ sellerId: m.sellerId, name: nameOf.get(m.sellerId) ?? m.sellerId, type: 'MANUAL', endsAt: null, strikes: strikeOf.get(m.sellerId) ?? 0 })
+  }
+  return out
+}
+
+/** Libera um vendedor: zera bloqueios (auto + manual) e as perdas do dia. */
+export async function releaseSeller(tenantId: string, unitId: string, sellerId: string): Promise<void> {
+  const now = new Date()
+  // desativa bloqueios temporizados + zera as perdas do dia
+  await prisma.sellerQueuePenalty.updateMany({
+    where: { tenantId, unitId, sellerId, active: true, type: { in: ['COOLDOWN', 'DAILY_BLOCK'] } },
+    data: { active: false, endsAt: now },
+  }).catch(() => {})
+  await prisma.sellerQueuePenalty.updateMany({
+    where: { tenantId, unitId, sellerId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDate() } },
+    data: { active: false },
+  }).catch(() => {})
+  // desbloqueia o bloqueio manual na fila de hoje (se houver)
+  const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } }, select: { id: true } })
+  if (queue) {
+    await prisma.sellerQueueEntry.updateMany({ where: { queueId: queue.id, sellerId, blocked: true }, data: { blocked: false, status: 'WAITING' } }).catch(() => {})
+  }
+}
+
+/** Libera TODOS os vendedores bloqueados da unidade. Retorna quantos. */
+export async function releaseAllSellers(tenantId: string, unitId: string): Promise<number> {
+  const blocked = await listBlockedSellers(tenantId, unitId)
+  for (const b of blocked) await releaseSeller(tenantId, unitId, b.sellerId)
+  return blocked.length
 }

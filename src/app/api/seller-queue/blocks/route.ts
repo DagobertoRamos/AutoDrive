@@ -1,0 +1,59 @@
+// =============================================================================
+// /api/seller-queue/blocks — bloqueios da fila por unidade.
+//   GET  : sellerQueue.manage — lista vendedores bloqueados (auto + manual)
+//   POST : sellerQueue.manage — libera 1 vendedor ({sellerId}) ou todos ({all:true})
+// Auto-bloqueados saem da fila; por isso não aparecem no Painel. Aqui a gestão
+// vê e libera/zera. Tenant/unit-scoped, auditado.
+// =============================================================================
+
+import { NextResponse } from 'next/server'
+import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
+import { canAccessModule } from '@/lib/permissions'
+import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
+import { handlePrismaError } from '@/lib/prisma-errors'
+import { unitFromRequest } from '@/lib/seller-queue/queue'
+import { listBlockedSellers, releaseSeller, releaseAllSellers } from '@/lib/seller-queue/penalty'
+import { assertModuleEnabled } from '@/lib/tenant-modules'
+
+export async function GET(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gerência pode gerir bloqueios.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.manage'); if (gate) return gate }
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
+  const unitId = unitFromRequest(req, user.unitId)
+  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
+  try {
+    const data = await listBlockedSellers(tenantId, unitId)
+    return NextResponse.json({ success: true, data })
+  } catch (err) {
+    return handlePrismaError(err)
+  }
+}
+
+export async function POST(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gerência pode liberar vendedores.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.manage'); if (gate) return gate }
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
+  const unitId = unitFromRequest(req, user.unitId)
+  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
+  try {
+    const body = await req.json().catch(() => ({}))
+    if (body?.all === true) {
+      const count = await releaseAllSellers(tenantId, unitId)
+      await createSafeAuditLog({ userId: user.id, tenantId, action: 'UNBLOCK', entity: 'SellerQueue', entityId: unitId, userName: user.name, userRole: user.role })
+      return NextResponse.json({ success: true, data: { released: count } })
+    }
+    const sellerId = typeof body?.sellerId === 'string' ? body.sellerId : null
+    if (!sellerId) return NextResponse.json({ success: false, error: 'Informe sellerId ou all:true.' }, { status: 400 })
+    await releaseSeller(tenantId, unitId, sellerId)
+    await createSafeAuditLog({ userId: user.id, tenantId, action: 'UNBLOCK', entity: 'SellerQueueEntry', entityId: sellerId, userName: user.name, userRole: user.role })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return handlePrismaError(err)
+  }
+}
