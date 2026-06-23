@@ -13,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { blockSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
+import { clearActiveBlocks } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -36,6 +37,8 @@ export async function POST(req: Request, { params }: Ctx) {
       where: { id },
       data: { blocked: d.blocked, status: d.blocked ? 'BLOCKED' : 'WAITING', ...(d.blocked ? {} : { pausedAt: null }) },
     })
+    // Ao liberar, também encerra cooldown/bloqueio diário automático ativo.
+    if (!d.blocked) await clearActiveBlocks(tenantId, entry.unitId, entry.sellerId)
     await logQueueEvent({ tenantId, unitId: entry.unitId, queueId: entry.queueId, type: MGMT_ROLES.includes(user.role) ? 'MANAGER_OVERRIDE' : 'LEADER_OVERRIDE', sellerId: entry.sellerId, actorId: user.id, entryId: entry.id, reason: `${d.blocked ? 'bloqueio' : 'liberação'}: ${d.reason}` })
     await createSafeAuditLog({ userId: user.id, tenantId, action: d.blocked ? 'BLOCK' : 'UNBLOCK', entity: 'SellerQueueEntry', entityId: entry.id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true })

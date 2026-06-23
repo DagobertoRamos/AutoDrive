@@ -88,4 +88,14 @@ export const configSchema = z.object({
   alertWhatsappManagers:         z.boolean().optional(),
   alertRepeatSeconds:            z.number().int().min(5).max(120).optional(),
   allowChooseSeller:             z.boolean().optional(),
+  // Estratégia anti-abuso (bloqueio por reincidência de timeouts no dia).
+  autoBlock: z.object({
+    enabled:              z.boolean(),
+    strikesForCooldown:   z.number().int().min(1).max(20),
+    cooldownHours:        z.number().int().min(1).max(24),
+    strikesForDailyBlock: z.number().int().min(2).max(40),
+  }).refine((a) => a.strikesForDailyBlock > a.strikesForCooldown, {
+    message: 'O bloqueio diário deve exigir mais perdas que o bloqueio temporário.',
+    path: ['strikesForDailyBlock'],
+  }).optional(),
 })

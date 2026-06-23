@@ -19,7 +19,8 @@ const RESULTS = [['CONVERTED_TO_NEGOTIATION', 'Virou negociação'], ['SCHEDULED
 interface Me { status: string; position: number }
 interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; recurring: boolean } | null }
 interface Alerts { sound: boolean; soundType?: string; browserPush: boolean; repeatSeconds: number }
-interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts }
+interface Block { type: 'COOLDOWN' | 'DAILY_BLOCK'; endsAt: string }
+interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts; myBlock?: Block | null }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -29,6 +30,14 @@ function getPosition(): Promise<{ latitude?: number; longitude?: number; accurac
       () => resolve({}), { enableHighAccuracy: true, timeout: 8000 },
     )
   })
+}
+
+function blockText(b: Block, nowMs: number): string {
+  if (b.type === 'DAILY_BLOCK') return 'Bloqueado por reincidência até o fim do dia. Procure a gerência para liberar.'
+  const mins = Math.max(0, Math.ceil((new Date(b.endsAt).getTime() - nowMs) / 60000))
+  const h = Math.floor(mins / 60), m = mins % 60
+  const dur = h > 0 ? `${h}h${m > 0 ? ` ${m}min` : ''}` : `${m}min`
+  return `Você perdeu a vez vezes demais e está fora da fila. Volta liberada em ~${dur}.`
 }
 
 export default function MinhaFilaPage() {
@@ -121,6 +130,14 @@ export default function MinhaFilaPage() {
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
+
+      {/* Bloqueio por reincidência (cooldown/diário) */}
+      {data?.myBlock && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm">
+          <p className="font-semibold text-red-700">🚫 Você está fora da fila</p>
+          <p className="mt-0.5 text-red-600">{blockText(data.myBlock, now)}</p>
+        </div>
+      )}
 
       {/* Chamado — aceitar/recusar */}
       {att?.status === 'CALLED' && (

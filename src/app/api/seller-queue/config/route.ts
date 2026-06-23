@@ -47,6 +47,15 @@ export async function PUT(req: Request) {
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
   try {
     const d = configSchema.parse(await req.json())
+
+    // Estratégia anti-abuso vai no campo JSON `config` (sem coluna nova). Mescla
+    // com o que já houver lá para não apagar outros extras.
+    let mergedConfig: Record<string, unknown> | undefined
+    if (d.autoBlock !== undefined) {
+      const existing = await prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } }, select: { config: true } })
+      mergedConfig = { ...((existing?.config as Record<string, unknown>) ?? {}), autoBlock: d.autoBlock }
+    }
+
     const data = {
       active: d.active, presenceMethods: d.presenceMethods, geofenceLat: d.geofenceLat ?? null, geofenceLng: d.geofenceLng ?? null,
       geofenceRadiusM: d.geofenceRadiusM, qrSecret: d.qrSecret ?? null, acceptTimeoutSeconds: d.acceptTimeoutSeconds,
@@ -54,6 +63,7 @@ export async function PUT(req: Request) {
       allowedDays: d.allowedDays, recurringCustomerRule: d.recurringCustomerRule, requestByNameRequiresApproval: d.requestByNameRequiresApproval,
       alertSound: d.alertSound, alertSoundType: d.alertSoundType, alertBrowserPush: d.alertBrowserPush, alertWhatsapp: d.alertWhatsapp,
       alertWhatsappManagers: d.alertWhatsappManagers, alertRepeatSeconds: d.alertRepeatSeconds, allowChooseSeller: d.allowChooseSeller,
+      config: mergedConfig,
       updatedById: user.id,
     }
     // Remove undefined (mantém só o que veio).

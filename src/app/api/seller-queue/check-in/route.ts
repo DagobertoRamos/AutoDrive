@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { checkInSchema } from '@/lib/validators/seller-queue'
 import { getUnitConfig, toPresenceConfig, getOrCreateQueue, nextPosition, recordPresence, logQueueEvent } from '@/lib/seller-queue/queue'
+import { getActiveQueueBlock, blockMessage } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const MGMT_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -28,6 +29,10 @@ export async function POST(req: Request) {
   const unitId = user.unitId
   if (!unitId) return forbiddenResponse('Seu usuário não tem unidade vinculada — necessária para a fila.')
   const sellerId = user.id
+
+  // Bloqueio automático (cooldown/diário) por reincidência — barra antes do GPS.
+  const block = await getActiveQueueBlock(tenantId, unitId, sellerId)
+  if (block) return NextResponse.json({ success: false, error: blockMessage(block), block: { type: block.type, endsAt: block.endsAt } }, { status: 403 })
 
   try {
     const d = checkInSchema.parse(await req.json().catch(() => ({})))

@@ -6,20 +6,23 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Settings, Save, MapPin, Bell, Volume2 } from 'lucide-react'
+import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const METHODS = [['GPS', 'GPS / geofence'], ['QR_CODE', 'QR Code'], ['DEVICE_CHECK', 'Dispositivo']] as const
 
+interface AutoBlock { enabled: boolean; strikesForCooldown: number; cooldownHours: number; strikesForDailyBlock: number }
 interface Cfg {
   active: boolean; presenceMethods: string[]; geofenceLat: number | null; geofenceLng: number | null; geofenceRadiusM: number;
   qrSecret: string | null; acceptTimeoutSeconds: number; requireRevalidationOnAccept: boolean;
   recurringCustomerRule: string; requestByNameRequiresApproval: boolean;
-  alertSound: boolean; alertSoundType: string; alertBrowserPush: boolean; alertWhatsapp: boolean; alertWhatsappManagers: boolean; alertRepeatSeconds: number; allowChooseSeller: boolean
+  alertSound: boolean; alertSoundType: string; alertBrowserPush: boolean; alertWhatsapp: boolean; alertWhatsappManagers: boolean; alertRepeatSeconds: number; allowChooseSeller: boolean;
+  autoBlock: AutoBlock
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true }
+const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, autoBlock: DEFAULT_AUTO_BLOCK }
 
 export default function ConfiguracoesFilaPage() {
   const [cfg, setCfg] = useState<Cfg>(DEFAULTS)
@@ -35,7 +38,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '' })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -116,6 +119,20 @@ export default function ConfiguracoesFilaPage() {
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.allowChooseSeller} onChange={(e) => set('allowChooseSeller', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Gestão pode escolher o vendedor (auto-organização)</label>
         <p className="-mt-1 text-[11px] text-gray-400">O WhatsApp usa o provedor já configurado da loja; sem provedor ativo, o envio é ignorado silenciosamente.</p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><ShieldAlert size={16} className="text-brand-600" />Bloqueio por reincidência (anti-abuso)</h2>
+        <p className="-mt-2 text-xs text-gray-500">Vendedor chamado que não aceita no prazo acumula uma "perda" no dia. Ao atingir os limites, é bloqueado temporariamente e, na reincidência, até o fim do dia. O vendedor é avisado a cada perda. A gestão pode liberar no Painel.</p>
+
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-800"><input type="checkbox" checked={cfg.autoBlock.enabled} onChange={(e) => set('autoBlock', { ...cfg.autoBlock, enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativar bloqueio automático por reincidência</label>
+
+        <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-3', !cfg.autoBlock.enabled && 'pointer-events-none opacity-50')}>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Perdas p/ bloqueio temporário</label><input type="number" min={1} max={20} className={inputCls} value={cfg.autoBlock.strikesForCooldown} onChange={(e) => set('autoBlock', { ...cfg.autoBlock, strikesForCooldown: Number(e.target.value) || 1 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Duração do bloqueio (horas)</label><input type="number" min={1} max={24} className={inputCls} value={cfg.autoBlock.cooldownHours} onChange={(e) => set('autoBlock', { ...cfg.autoBlock, cooldownHours: Number(e.target.value) || 1 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Perdas p/ bloqueio diário</label><input type="number" min={2} max={40} className={inputCls} value={cfg.autoBlock.strikesForDailyBlock} onChange={(e) => set('autoBlock', { ...cfg.autoBlock, strikesForDailyBlock: Number(e.target.value) || 2 })} /></div>
+        </div>
+        <p className="-mt-1 text-[11px] text-gray-400">Ex.: {cfg.autoBlock.strikesForCooldown} perdas → {cfg.autoBlock.cooldownHours}h fora; {cfg.autoBlock.strikesForDailyBlock} perdas no dia → bloqueado até amanhã. A contagem zera à meia-noite.</p>
       </div>
 
       <div className="flex items-center justify-end gap-3">

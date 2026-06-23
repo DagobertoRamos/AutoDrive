@@ -18,6 +18,7 @@ import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { callForArrival } from '@/lib/seller-queue/call'
 import { notifyTimeoutManagers } from '@/lib/seller-queue/notify'
+import { escalateAfterTimeout } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -53,6 +54,9 @@ export async function POST(req: Request, { params }: Ctx) {
     // Avisa a gestão (best-effort) — WhatsApp se o ADM ligou na unidade.
     const cfg = await getUnitConfig(tenantId, att.unitId)
     await notifyTimeoutManagers({ tenantId, unitId: att.unitId, attendanceId: att.id, whatsapp: cfg?.alertWhatsappManagers ?? false })
+
+    // Estratégia anti-abuso: conta as perdas do dia e avisa/bloqueia se preciso.
+    await escalateAfterTimeout({ tenantId, unitId: att.unitId, queueId: att.queueId, sellerId: att.sellerId, whatsapp: cfg?.alertWhatsappManagers ?? false }).catch(() => {})
 
     const arrival = att.arrivalId ? await prisma.sellerQueueCustomerArrival.findUnique({ where: { id: att.arrivalId }, select: { customerName: true, recurring: true } }) : null
     const call = att.arrivalId

@@ -13,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { resumeSchema } from '@/lib/validators/seller-queue'
 import { queueDate, getUnitConfig, toPresenceConfig, nextPosition, recordPresence, logQueueEvent } from '@/lib/seller-queue/queue'
+import { getActiveQueueBlock, blockMessage } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 const MGMT_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -26,6 +27,9 @@ export async function POST(req: Request) {
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = user.unitId
   if (!unitId) return forbiddenResponse('Seu usuário não tem unidade vinculada.')
+  const block = await getActiveQueueBlock(tenantId, unitId, user.id)
+  if (block) return NextResponse.json({ success: false, error: blockMessage(block), block: { type: block.type, endsAt: block.endsAt } }, { status: 403 })
+
   try {
     const d = resumeSchema.parse(await req.json().catch(() => ({})))
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } }, select: { id: true } })

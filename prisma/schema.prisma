@@ -4942,7 +4942,7 @@ model SellerQueueUnitConfig {
   alertWhatsappManagers         Boolean  @default(true)  // WhatsApp à gestão em timeout/sem vendedor
   alertRepeatSeconds            Int      @default(10)    // intervalo do som/alerta repetido até aceitar
   allowChooseSeller             Boolean  @default(true)  // gestão pode escolher o vendedor (auto-organização)
-  config                        Json?
+  config                        Json?    // extras por unidade (ex.: estratégia anti-abuso autoBlock)
   updatedById                   String?
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
