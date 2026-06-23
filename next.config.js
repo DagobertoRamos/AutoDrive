@@ -19,6 +19,16 @@ const nextConfig = {
   // Reduz uso de memória no build de produção.
   productionBrowserSourceMaps: false,
 
+  // O `next build` rodava o type-check embutido ("Running TypeScript ...") DEPOIS
+  // do webpack já ter ocupado a RAM do container Hobby da Vercel → a checagem
+  // entrava em thrashing e TRAVAVA até o timeout de 45 min (deploy 5de01a7).
+  // A validação de tipos é feita SEPARADAMENTE (`tsc --noEmit`) em toda etapa do
+  // protocolo (README_ROBOTS) e no CI local — então pular a checagem redundante
+  // do build não perde segurança de tipos e alivia o pico de RAM/tempo do build.
+  typescript: { ignoreBuildErrors: true },
+  // Lint também não roda no build (já rodamos `eslint .` separadamente).
+  eslint: { ignoreDuringBuilds: true },
+
   experimental: {
     webpackMemoryOptimizations: true,
     // DESLIGADO de propósito: o build worker do Next roda um 2º processo pesado

@@ -1230,6 +1230,13 @@
 - **Riscos pendentes:** abrir/rodar no Android Studio exige JDK+Android SDK locais; `server.url` é placeholder (ajustar `CAP_SERVER_URL`); smoke autenticado depende de variáveis de homologação.
 - **Próximo passo seguro:** configurar `CAP_SERVER_URL` (HTTPS homologação), `npx cap open android`, login real + `GET /api/mobile/bootstrap` autenticado quando as variáveis estiverem ativas.
 
+### LOG 0112 — 2026-06-22 — Claude (Opus 4.8) — Build: deploy de produção travando no type-check (timeout 45min)
+- **Sintoma:** o deploy de produção do merge `5de01a7` **falhou por timeout** na Vercel (Hobby): build excedeu 45 min (2 tentativas). Build local e Preview do mesmo código passavam.
+- **Causa raiz (log da Vercel):** `✓ Compiled successfully in 84s` → `Running TypeScript ...` e **travou ~43 min** nessa etapa até o timeout. O `next build` roda o type-check embutido DEPOIS do webpack já ter ocupado a RAM do container → a checagem entra em thrashing e congela. (Mesma classe de OOM já tratada no LOG 0103.)
+- **Fix:** `next.config.js` → `typescript.ignoreBuildErrors: true` + `eslint.ignoreDuringBuilds: true`. A validação de tipos/lint continua sendo feita SEPARADAMENTE (`tsc --noEmit` / `eslint .`) em toda etapa do protocolo, então não há perda de segurança — só alívio do pico de RAM/tempo do build. **Não** mexe em regra de negócio/schema.
+- **Validações:** `tsc --noEmit` 0 erros (separado); `npm run build` OK, agora **sem a etapa "Running TypeScript"** (webpack 2.5min + static 176 páginas). 
+- **Próximo passo:** novo deploy de produção (commit do hotfix) deve concluir bem abaixo de 45 min.
+
 ### F&I (Financiamento profissional) — EM ANDAMENTO
 > **ARQUITETURA (governa tudo): F&I é Pass-through / BYOC (Bring Your Own Credentials).** Cada tenant (loja) usa as PRÓPRIAS credenciais bancárias — a plataforma não tem credencial central nem opera por uma conta única; ela apenas usa/repasse a credencial da loja ao chamar o provedor. `FinanceCredential` é tenant-scoped (cifrada); MASTER NUNCA cadastra/vê credencial da loja; Master > F&I é só a camada técnica GLOBAL (provedores/bancos homologados/adapters); a execução de adapter recebe a credencial do tenant em `AdapterContext.credentials` em runtime. `FINANCE_ENCRYPTION_KEY`/`FINANCE_WEBHOOK_SECRET` são chaves da plataforma, não credenciais bancárias.
 > Evolução do módulo Financiamento (FN-1..FN-5) para F&I profissional, em fases pequenas e validadas. Regras fixas: API oficial/webhook/registro manual — **NUNCA RPA oculto de banco**; credenciais cifradas/mascaradas/auditadas; MASTER (técnico) × loja (operacional) separados; vendedor não altera credenciais/retorno; migrations só aditivas; não quebrar telas prontas.
