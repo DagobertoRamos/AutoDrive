@@ -47,7 +47,7 @@ export default function MinhaFilaPage() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [finishOpen, setFinishOpen] = useState(false)
-  const [finForm, setFinForm] = useState({ type: 'SALE', result: 'CONVERTED_TO_NEGOTIATION', notes: '' })
+  const [finForm, setFinForm] = useState({ type: 'SALE', result: 'CONVERTED_TO_NEGOTIATION', notes: '', customerName: '', customerPhone: '' })
   const [now, setNow] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const flash = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500) }
@@ -157,7 +157,7 @@ export default function MinhaFilaPage() {
         <div className="rounded-2xl border-2 border-green-400 bg-green-50 p-5 text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-green-700">Em atendimento</p>
           <p className="mt-1 text-gray-700">{att.arrival?.customerName ?? 'Cliente'}{att.arrival?.customerPhone ? ` · ${att.arrival.customerPhone}` : ''}</p>
-          <button onClick={() => setFinishOpen(true)} disabled={busy} className="btn-primary mt-4 w-full justify-center py-3 text-base"><CheckCircle2 size={18} />Finalizar atendimento</button>
+          <button onClick={() => { setFinForm((f) => ({ ...f, customerName: att?.arrival?.customerName ?? '', customerPhone: att?.arrival?.customerPhone ?? '' })); setFinishOpen(true) }} disabled={busy} className="btn-primary mt-4 w-full justify-center py-3 text-base"><CheckCircle2 size={18} />Finalizar atendimento</button>
         </div>
       )}
 
@@ -197,8 +197,13 @@ export default function MinhaFilaPage() {
       {finishOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-3 text-lg font-bold text-gray-900">Finalizar atendimento</h2>
+            <h2 className="mb-1 text-lg font-bold text-gray-900">Finalizar atendimento</h2>
+            <p className="mb-3 text-xs text-gray-500">Cadastre o cliente — gera um lead de atendimento no seu nome.</p>
             <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente</label><input className={inputCls} value={finForm.customerName} onChange={(e) => setFinForm((f) => ({ ...f, customerName: e.target.value }))} placeholder="Nome" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone</label><input className={inputCls} value={finForm.customerPhone} onChange={(e) => setFinForm((f) => ({ ...f, customerPhone: e.target.value }))} placeholder="(00) 00000-0000" /></div>
+              </div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={finForm.type} onChange={(e) => setFinForm((f) => ({ ...f, type: e.target.value }))}>{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Resultado</label><select className={inputCls} value={finForm.result} onChange={(e) => setFinForm((f) => ({ ...f, result: e.target.value }))}>{RESULTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} /></div>

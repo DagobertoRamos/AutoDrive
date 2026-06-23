@@ -15,6 +15,7 @@ import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { finishSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
+import { ensureAttendanceLead } from '@/lib/seller-queue/lead'
 import type { SellerAttendanceType, SellerAttendanceResult } from '@prisma/client'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -52,7 +53,20 @@ export async function POST(req: Request, { params }: Ctx) {
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'ATTENDANCE_FINISHED', sellerId: att.sellerId, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id, reason: d.result })
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'FINISH', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
-    return NextResponse.json({ success: true })
+
+    // Gera o "lead de atendimento" no sistema de leads, creditando o vendedor.
+    // Se virou negociação, marca o lead como convertido (o Deal segue o fluxo).
+    const leadId = await ensureAttendanceLead({
+      tenantId, unitId: att.unitId, sellerId: att.sellerId, actorId: user.id,
+      attendanceId: att.id, arrivalId: att.arrivalId, result: d.result,
+      dealId: d.dealId ?? null, notes: d.notes ?? null, existingLeadId: d.leadId ?? null,
+      customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null,
+    }).catch(() => null)
+    if (leadId && leadId !== (d.leadId ?? null)) {
+      await prisma.sellerQueueAttendance.update({ where: { id: att.id }, data: { leadId } }).catch(() => {})
+    }
+
+    return NextResponse.json({ success: true, data: { leadId } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
     return handlePrismaError(err)

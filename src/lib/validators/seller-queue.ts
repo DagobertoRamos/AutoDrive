@@ -51,6 +51,9 @@ export const finishSchema = z.object({
   dealId: optStr,
   leadId: optStr,
   notes:  optStr,
+  // Cliente registrado pelo vendedor que atendeu (gera o lead de atendimento).
+  customerName:  z.string().trim().max(200).nullish(),
+  customerPhone: z.string().trim().max(40).nullish(),
 })
 
 // ── Ações do gerente: bloquear/liberar + reordenar (Fase 8) ─────────────────
