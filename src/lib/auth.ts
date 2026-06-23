@@ -194,7 +194,7 @@ export const authOptions: NextAuthOptions = {
     // ------------------------------------------------------------------
     // JWT callback — popula o token com dados extras
     // ------------------------------------------------------------------
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id                = user.id
         token.role              = (user as { role: UserRole }).role
@@ -202,6 +202,12 @@ export const authOptions: NextAuthOptions = {
         token.unitId            = (user as { unitId: string | null }).unitId
         token.tenantId          = (user as { tenantId: string | null }).tenantId
         token.mustChangePassword = (user as { mustChangePassword?: boolean }).mustChangePassword ?? false
+      }
+      // Atualização vinda do client via useSession().update(...) — ex.: após
+      // trocar a senha no 1º acesso, limpamos o flag para não voltar à tela.
+      if (trigger === 'update' && session && typeof session === 'object') {
+        const s = session as { mustChangePassword?: boolean }
+        if ('mustChangePassword' in s) token.mustChangePassword = s.mustChangePassword ?? false
       }
       return token
     },

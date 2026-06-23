@@ -191,13 +191,8 @@ export default function LoginPage() {
       </form>
 
       {/* Ações secundárias */}
+      {/* "Ativar cadastro" desabilitado temporariamente (fluxo em revisão). */}
       <div className="mt-5 space-y-2 border-t border-gray-100 pt-5">
-        <Link
-          href="/ativar-cadastro"
-          className="btn-secondary w-full text-center"
-        >
-          Ativar cadastro
-        </Link>
         <Link
           href="/cadastro"
           className="btn-secondary w-full text-center"
