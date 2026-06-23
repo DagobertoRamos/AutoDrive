@@ -11,10 +11,6 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: false,
   },
-  webView: {
-    allowFileAccessFromFileURLs: true,
-    allowUniversalAccessFromFileURLs: true,
-  },
 };
 
 export default config;

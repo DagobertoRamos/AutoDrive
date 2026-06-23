@@ -16,6 +16,8 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    // Registra plugins locais ANTES do super.onCreate (exigência do Capacitor)
+    registerPlugin(LoudAlertPlugin.class);
     super.onCreate(savedInstanceState);
     requestRequiredPermissions();
   }

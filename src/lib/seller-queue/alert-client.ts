@@ -93,3 +93,40 @@ export function showAlertNotification(title: string, body: string): void {
   } catch { /* ignore */ }
   try { navigator.vibrate?.([300, 150, 300, 150, 300]) } catch { /* ignore */ }
 }
+
+// ── App nativo (Capacitor) ─────────────────────────────────────────────────────
+// Dentro do app Android, a Web Notification API não funciona e o áudio fica no
+// volume de mídia. O plugin nativo LoudAlert faz banner heads-up + alarme alto
+// (volume de alarme) + vibração forte de uma só vez.
+interface NativeLoudAlert {
+  alert: (o: { title: string; body: string }) => Promise<void> | void
+  stop?: () => Promise<void> | void
+}
+function nativeLoudAlert(): NativeLoudAlert | null {
+  try {
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { LoudAlert?: NativeLoudAlert } } }).Capacitor
+    if (cap?.isNativePlatform?.() && cap.Plugins?.LoudAlert) return cap.Plugins.LoudAlert
+  } catch { /* ignore */ }
+  return null
+}
+
+/**
+ * Alerta CRÍTICO unificado. No app nativo (Android), dispara o plugin LoudAlert
+ * (banner + alarme alto + vibração). No navegador/PWA, cai no melhor esforço web
+ * (Web Audio + Web Notification + navigator.vibrate), respeitando as flags.
+ */
+export function criticalAlert(opts: { title: string; body: string; soundType?: string | null; sound?: boolean; push?: boolean }): void {
+  const native = nativeLoudAlert()
+  if (native) {
+    try { void native.alert({ title: opts.title, body: opts.body }) } catch { /* ignore */ }
+    return
+  }
+  if (opts.sound !== false) playSound(opts.soundType)
+  if (opts.push !== false) showAlertNotification(opts.title, opts.body)
+}
+
+/** Para o alarme nativo (chamar ao aceitar/recusar/sair). No-op no navegador. */
+export function stopCriticalAlert(): void {
+  const native = nativeLoudAlert()
+  try { void native?.stop?.() } catch { /* ignore */ }
+}

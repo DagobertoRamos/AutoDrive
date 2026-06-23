@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { DoorOpen, LogOut, Pause, Play, Check, X, CheckCircle2, RefreshCw, Hand, Clock, QrCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
-import { unlockAudio, playSound, ensureNotifyPermission, showAlertNotification } from '@/lib/seller-queue/alert-client'
+import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'], ['CONSIGNMENT', 'Consignação'], ['FINANCING', 'Financiamento'], ['AFTER_SALES', 'Pós-venda'], ['OTHER', 'Outro']] as const
@@ -69,16 +69,22 @@ export default function MinhaFilaPage() {
   const alerts = data?.alerts
   useEffect(() => {
     const isCalled = calledStatus === 'CALLED'
-    const stop = () => { if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null } }
+    const stop = () => {
+      if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null }
+      stopCriticalAlert()
+    }
     if (isCalled && !alertTimer.current) {
       const a = alerts ?? { sound: true, soundType: 'siren', browserPush: true, repeatSeconds: 10 }
-      if (a.sound !== false) playSound(a.soundType)
-      if (a.browserPush !== false) showAlertNotification('Você é o vendedor da vez 🔔', 'Cliente presencial aguardando — abra o app e aceite.')
+      const fire = () => criticalAlert({
+        title: 'Você é o vendedor da vez 🔔',
+        body: 'Cliente presencial aguardando — abra o app e aceite.',
+        soundType: a.soundType,
+        sound: a.sound,
+        push: a.browserPush,
+      })
+      fire()
       const every = Math.max(5, a.repeatSeconds || 10) * 1000
-      alertTimer.current = setInterval(() => {
-        if (a.sound !== false) playSound(a.soundType)
-        if (a.browserPush !== false) showAlertNotification('Você é o vendedor da vez 🔔', 'Cliente presencial aguardando — abra o app e aceite.')
-      }, every)
+      alertTimer.current = setInterval(fire, every)
     }
     if (!isCalled) stop()
     return stop
@@ -102,8 +108,8 @@ export default function MinhaFilaPage() {
   const att = data?.myAttendance
   const secsLeft = att?.acceptDeadline ? Math.max(0, Math.floor((new Date(att.acceptDeadline).getTime() - now) / 1000)) : null
 
-  const accept = async () => { if (!att) return; const pos = await getPosition(); await post(`attendances/${att.id}/accept`, pos, 'Atendimento iniciado!') }
-  const reject = async () => { if (!att) return; const reason = prompt('Motivo da recusa:'); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
+  const accept = async () => { if (!att) return; stopCriticalAlert(); const pos = await getPosition(); await post(`attendances/${att.id}/accept`, pos, 'Atendimento iniciado!') }
+  const reject = async () => { if (!att) return; stopCriticalAlert(); const reason = prompt('Motivo da recusa:'); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
   const finish = async () => { if (!att) return; const ok = await post(`attendances/${att.id}/finish`, finForm, 'Atendimento finalizado!'); if (ok) setFinishOpen(false) }
 
   if (denied) return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
