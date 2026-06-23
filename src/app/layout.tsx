@@ -24,6 +24,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   icons: {
     icon: '/favicon.ico',
+    apple: '/icons/apple-touch-icon.png',
   },
 }
 
