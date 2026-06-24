@@ -185,6 +185,11 @@ export async function PATCH(
       },
     })
 
+    // Transferência: o registro Seller acompanha a unidade do usuário.
+    if (unitId) {
+      await prisma.seller.updateMany({ where: { userId: params.id }, data: { unitId: String(unitId) } }).catch(() => {})
+    }
+
     // ── Sub-cadastro Seller (se role atual=VENDEDOR e bloco enviado) ─────────
     if (sellerData && typeof sellerData === 'object' && updated.role === 'VENDEDOR') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -113,7 +113,25 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
     status:             user.status,
     mustChangePassword: user.mustChangePassword,
     positionId:         user.position?.id ?? '',
+    tenantId:           user.tenantId ?? '',
+    unitId:             user.unitId ?? '',
   })
+  // MASTER pode transferir entre tenants/unidades. Carrega as opções.
+  const [tenants, setTenants] = useState<{ id: string; name: string }[]>([])
+  const [units, setUnits] = useState<{ id: string; name: string; tenantId: string }[]>([])
+  useEffect(() => {
+    let off = false
+    ;(async () => {
+      try {
+        const [tR, uR] = await Promise.all([fetch('/api/master/tenants'), fetch('/api/units')])
+        const tJ = await tR.json().catch(() => ({})); const uJ = await uR.json().catch(() => ({}))
+        if (off) return
+        setTenants((tJ?.data ?? []).map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })))
+        setUnits((uJ?.data ?? []).map((u: { id: string; name: string; tenantId: string }) => ({ id: u.id, name: u.name, tenantId: u.tenantId })))
+      } catch { /* noop */ }
+    })()
+    return () => { off = true }
+  }, [])
   const [seller, setSeller] = useState<SellerExtra & { loaded: boolean }>({
     loaded: false,
   })
@@ -161,6 +179,8 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
         status:             form.status,
         mustChangePassword: form.mustChangePassword,
         positionId:         form.positionId || null,
+        tenantId:           form.tenantId || null,
+        unitId:             form.unitId || null,
       }
       if (isVendedor && seller.loaded) {
         payload.seller = {
@@ -258,6 +278,22 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
             {/* ── Aba: Acesso e permissões ───────────────────────── */}
             {tab === 'acesso' && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className={labelCls}>Empresa (Tenant)</label>
+                  <select className={inputCls} value={form.tenantId}
+                    onChange={e => setForm(p => ({ ...p, tenantId: e.target.value, unitId: '', positionId: '' }))}>
+                    <option value="">— sem empresa (plataforma) —</option>
+                    {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Unidade</label>
+                  <select className={inputCls} value={form.unitId}
+                    onChange={e => setForm(p => ({ ...p, unitId: e.target.value }))}>
+                    <option value="">— sem unidade —</option>
+                    {units.filter(u => u.tenantId === form.tenantId).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label className={labelCls}>Papel (Role)</label>
                   <select className={inputCls} value={form.role}
