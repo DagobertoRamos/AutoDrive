@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { useEffect, useRef } from 'react'
-import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
+import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert, ALERT_STOP_EVENT } from '@/lib/seller-queue/alert-client'
 
 const POLL_MS = 8000
 
@@ -78,9 +78,14 @@ export default function QueueAlertWatcher() {
       } catch { /* noop */ }
     }
 
+    // Aceite/recusa em qualquer tela dispara este evento → para na hora,
+    // sem esperar o próximo poll (corrige "continua apitando após aceitar").
+    const onStop = () => { isCalled.current = false; stopAlert() }
+    window.addEventListener(ALERT_STOP_EVENT, onStop)
+
     void poll()
     const i = setInterval(poll, POLL_MS)
-    return () => { stopped = true; clearInterval(i); stopAlert() }
+    return () => { stopped = true; clearInterval(i); window.removeEventListener(ALERT_STOP_EVENT, onStop); stopAlert() }
   }, [])
 
   return null

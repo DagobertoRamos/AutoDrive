@@ -111,12 +111,19 @@ function nativeLoudAlert(): NativeLoudAlert | null {
   return null
 }
 
+// Silêncio temporário após aceitar/recusar: o vigia global pode disparar mais
+// uma vez antes de perceber a mudança de status (poll). Durante a janela de mute,
+// criticalAlert vira no-op, evitando que o alarme volte a apitar após o aceite.
+let mutedUntil = 0
+export const ALERT_STOP_EVENT = 'sq:alert-stop'
+
 /**
  * Alerta CRÍTICO unificado. No app nativo (Android), dispara o plugin LoudAlert
  * (banner + alarme alto + vibração). No navegador/PWA, cai no melhor esforço web
  * (Web Audio + Web Notification + navigator.vibrate), respeitando as flags.
  */
 export function criticalAlert(opts: { title: string; body: string; soundType?: string | null; sound?: boolean; push?: boolean }): void {
+  if (Date.now() < mutedUntil) return // silenciado logo após aceitar/recusar
   const native = nativeLoudAlert()
   if (native) {
     try { void native.alert({ title: opts.title, body: opts.body }) } catch { /* ignore */ }
@@ -126,8 +133,11 @@ export function criticalAlert(opts: { title: string; body: string; soundType?: s
   if (opts.push !== false) showAlertNotification(opts.title, opts.body)
 }
 
-/** Para o alarme nativo (chamar ao aceitar/recusar/sair). No-op no navegador. */
+/** Para o alarme imediatamente (aceitar/recusar/sair): silencia por uma janela
+ *  curta, para o plugin nativo e avisa o vigia global para encerrar o loop. */
 export function stopCriticalAlert(): void {
+  mutedUntil = Date.now() + 12000
   const native = nativeLoudAlert()
   try { void native?.stop?.() } catch { /* ignore */ }
+  try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ALERT_STOP_EVENT)) } catch { /* ignore */ }
 }
