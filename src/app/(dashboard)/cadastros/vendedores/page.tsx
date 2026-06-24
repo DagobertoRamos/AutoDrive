@@ -311,8 +311,8 @@ export default function VendedoresPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Vendedores</h1>
-          <p className="mt-1 text-sm text-gray-500">Gerencie os vendedores cadastrados no sistema.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Colaboradores</h1>
+          <p className="mt-1 text-sm text-gray-500">Cadastre colaboradores (vendedor, auxiliar, financeiro, pós-vendas…). O cargo define o acesso.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800 transition-colors">
           <Plus className="h-4 w-4" />

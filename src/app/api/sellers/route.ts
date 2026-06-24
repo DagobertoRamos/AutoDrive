@@ -120,10 +120,11 @@ export async function POST(req: Request) {
 
     // ── Valida cargo (positionId) — sistema (tenantId null) ou do tenant ─────
     let validatedPositionId: string | null = null
+    let positionBaseRole: string | null = null
     if (positionId) {
       const pos = await prisma.position.findUnique({
         where:  { id: String(positionId) },
-        select: { id: true, tenantId: true },
+        select: { id: true, tenantId: true, baseRole: true },
       })
       if (!pos || (pos.tenantId !== null && pos.tenantId !== tenantId)) {
         return NextResponse.json(
@@ -131,8 +132,14 @@ export async function POST(req: Request) {
           { status: 400 },
         )
       }
+      positionBaseRole = pos.baseRole ?? null
       validatedPositionId = pos.id
     }
+    // O papel (role) do colaborador vem do CARGO escolhido (baseRole). Sem cargo
+    // → VENDEDOR (padrão). MASTER nunca é criado por aqui (segurança).
+    const collaboratorRole = (positionBaseRole && positionBaseRole !== 'MASTER')
+      ? (positionBaseRole as 'ADM' | 'GERENTE_GERAL' | 'GERENTE_ADMINISTRATIVO' | 'GERENTE' | 'VENDEDOR_LIDER' | 'VENDEDOR' | 'FINANCEIRO' | 'USUARIO_LIDER' | 'USUARIO')
+      : 'VENDEDOR'
 
     // ── Checa duplicidade de e-mail ──────────────────────────────────────────
     const emailNorm = String(email).toLowerCase().trim()
@@ -176,7 +183,8 @@ export async function POST(req: Request) {
           name:              String(fullName).trim(),
           email:             emailNorm,
           passwordHash,
-          role:              'VENDEDOR',
+          role:              collaboratorRole,
+          positionId:        validatedPositionId,
           status:            'ATIVO',
           mustChangePassword: true,
         },
