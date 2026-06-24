@@ -4823,6 +4823,8 @@ model SellerQueueCustomerArrival {
   registeredById    String // quem clicou "cliente na loja"
   customerName      String?
   customerPhone     String?
+  customerEmail     String?
+  customerIsWhatsapp Boolean @default(false)
   customerId        String? // Customer vinculado (recorrente)
   leadId            String? // lead aberto (recorrente)
   recurring         Boolean  @default(false)

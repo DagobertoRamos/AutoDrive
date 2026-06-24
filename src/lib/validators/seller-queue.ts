@@ -28,6 +28,8 @@ export const pauseSchema = z.object({ reason: optStr })
 export const createArrivalSchema = z.object({
   customerName:      z.string().trim().max(200).nullish(),
   customerPhone:     z.string().trim().max(40).nullish(),
+  customerEmail:     z.string().trim().email('E-mail inválido').max(200).nullish(),
+  customerIsWhatsapp: z.boolean().optional(),
   requestedSellerId: optStr, // cliente pediu por um vendedor (exige regra/aprovação)
   notes:             optStr,
   // Modo de atendimento ao registrar a chegada.

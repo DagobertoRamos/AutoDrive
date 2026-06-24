@@ -13,12 +13,26 @@ import { cn } from '@/lib/utils'
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const dt = (s: string) => new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
+// Máscara (xx)x.xxxx-xxxx (celular BR). Title-case de nome (mantém "de/da/do" minúsculo).
+function maskPhoneBR(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 11)
+  if (d.length <= 2) return d.length ? `(${d}` : ''
+  if (d.length <= 3) return `(${d.slice(0, 2)})${d.slice(2)}`
+  if (d.length <= 7) return `(${d.slice(0, 2)})${d.slice(2, 3)}.${d.slice(3)}`
+  return `(${d.slice(0, 2)})${d.slice(2, 3)}.${d.slice(3, 7)}-${d.slice(7, 11)}`
+}
+const SMALL_WORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e'])
+function capitalizeName(s: string): string {
+  return s.toLowerCase().split(/\s+/).filter(Boolean).map((w, i) => (i > 0 && SMALL_WORDS.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())
+
 interface Arrival { id: string; customerName: string | null; customerPhone: string | null; recurring: boolean; status: string; createdAt: string }
 interface Callable { sellerId: string; name: string; role: string; positionName: string | null; queueStatus: string | null; inQueue: boolean }
 type Mode = 'NORMAL' | 'SPECIFIC' | 'POS_VENDAS' | 'AGENDAMENTO'
 
 export default function ClienteNaLojaPage() {
-  const [form, setForm] = useState({ customerName: '', customerPhone: '', notes: '' })
+  const [form, setForm] = useState({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false })
   const [mode, setMode] = useState<Mode>('NORMAL')
   const [targetSellerId, setTargetSellerId] = useState('')
   const [callable, setCallable] = useState<Callable[]>([])
@@ -27,7 +41,7 @@ export default function ClienteNaLojaPage() {
   const [denied, setDenied] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
-  const set = <K extends keyof typeof form>(k: K, v: string) => setForm((f) => ({ ...f, [k]: v }))
+  const set = (k: 'customerName' | 'customerPhone' | 'customerEmail' | 'notes', v: string) => setForm((f) => ({ ...f, [k]: v }))
   const flash = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 5000) }
 
   useEffect(() => {
@@ -49,17 +63,24 @@ export default function ClienteNaLojaPage() {
   useEffect(() => { load(); const i = setInterval(load, 8000); return () => clearInterval(i) }, [load])
 
   const submit = async () => {
-    if (mode === 'NORMAL' && !form.customerName && !form.customerPhone) { flash('Informe nome ou telefone.', false); return }
+    const name = capitalizeName(form.customerName.trim())
+    const phoneDigits = form.customerPhone.replace(/\D/g, '')
+    if (!name) { flash('Informe o nome do cliente.', false); return }
+    if (phoneDigits.length < 10) { flash('Informe um telefone válido.', false); return }
+    if (!isEmail(form.customerEmail)) { flash('Informe um e-mail válido.', false); return }
     if (mode !== 'NORMAL' && !targetSellerId) { flash('Escolha o colaborador.', false); return }
     setSaving(true)
     try {
-      const res = await fetch('/api/seller-queue/customer-arrivals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ customerName: form.customerName || null, customerPhone: form.customerPhone || null, notes: form.notes || null, mode, targetSellerId: mode === 'NORMAL' ? null : targetSellerId }) })
+      const res = await fetch('/api/seller-queue/customer-arrivals', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ customerName: name, customerPhone: form.customerPhone, customerEmail: form.customerEmail.trim(), customerIsWhatsapp: form.isWhatsapp, notes: form.notes || null, mode, targetSellerId: mode === 'NORMAL' ? null : targetSellerId }),
+      })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { flash(j?.error ?? 'Não foi possível registrar.', false); return }
       const call = j?.data?.call
       const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'AGENDAMENTO' ? 'Agendamento iniciado — colaborador em atendimento.' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
       flash(call?.ok ? okMsg : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, !!call?.ok)
-      setForm({ customerName: '', customerPhone: '', notes: '' }); setTargetSellerId(''); await load()
+      setForm({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false }); setTargetSellerId(''); await load()
     } catch { flash('Erro de rede.', false) } finally { setSaving(false) }
   }
 
@@ -77,14 +98,7 @@ export default function ClienteNaLojaPage() {
             <button key={m} type="button" onClick={() => setMode(m)} className={cn('rounded-lg border px-2 py-2 text-xs font-semibold transition', mode === m ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300')}>{label}</button>
           ))}
         </div>
-        <p className="mb-3 text-xs text-gray-500">
-          {mode === 'NORMAL' && <>O sistema chama o <strong>vendedor da vez</strong> (não escolha quem atende).</>}
-          {mode === 'SPECIFIC' && <>Chama um <strong>colaborador específico</strong> (responsável pelo cliente). Fica registrado/auditado.</>}
-          {mode === 'POS_VENDAS' && <>Coloca o colaborador em <strong>pós-vendas</strong> (pausado na fila; volta com autorização do gestor).</>}
-          {mode === 'AGENDAMENTO' && <>O colaborador vai <strong>direto para atendimento</strong> (sem alarme); ao finalizar, vai para o fim da fila.</>}
-        </p>
-
-        <div className="space-y-3">
+        <div className="mt-3 space-y-3">
           {mode !== 'NORMAL' && (
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">Colaborador *</label>
@@ -96,8 +110,10 @@ export default function ClienteNaLojaPage() {
               </select>
             </div>
           )}
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente{mode === 'NORMAL' ? '' : ' (opcional)'}</label><input className={inputCls} value={form.customerName} onChange={(e) => set('customerName', e.target.value)} /></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone{mode === 'NORMAL' ? '' : ' (opcional)'}</label><input className={inputCls} value={form.customerPhone} onChange={(e) => set('customerPhone', e.target.value)} placeholder="(11) 9 9999-9999" /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={form.customerName} onChange={(e) => set('customerName', e.target.value)} onBlur={() => set('customerName', capitalizeName(form.customerName))} placeholder="Ex.: Dagoberto Ramos de Francisco" /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => set('customerPhone', maskPhoneBR(e.target.value))} placeholder="(11)9.9999-9999" /></div>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.isWhatsapp} onChange={(e) => setForm((f) => ({ ...f, isWhatsapp: e.target.checked }))} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />É WhatsApp?</label>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => set('customerEmail', e.target.value)} placeholder="cliente@email.com" /></div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>
         <button onClick={submit} disabled={saving} className="btn-primary mt-4 w-full justify-center py-3 text-base"><Send size={17} />{saving ? 'Registrando...' : mode === 'POS_VENDAS' ? 'Registrar e iniciar pós-vendas' : mode === 'AGENDAMENTO' ? 'Registrar agendamento' : 'Registrar e chamar'}</button>

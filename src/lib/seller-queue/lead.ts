@@ -49,12 +49,13 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<s
   const arrival = opts.arrivalId
     ? await prisma.sellerQueueCustomerArrival.findUnique({
         where: { id: opts.arrivalId },
-        select: { customerName: true, customerPhone: true, customerId: true, leadId: true },
+        select: { customerName: true, customerPhone: true, customerEmail: true, customerId: true, leadId: true },
       }).catch(() => null)
     : null
 
   const name = opts.customerName?.trim() || arrival?.customerName || null
   const phone = opts.customerPhone?.trim() || arrival?.customerPhone || null
+  const email = arrival?.customerEmail || null
   const targetLeadId = opts.existingLeadId || arrival?.leadId || null
 
   const convertedFields = converted ? { status: 'CONVERTED' as LeadStatus, convertedDealId: opts.dealId ?? undefined, convertedAt: now } : {}
@@ -72,6 +73,7 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<s
         ...lostFields,
         ...(name ? { name } : {}),
         ...(phone ? { phone } : {}),
+        ...(email ? { email } : {}),
       },
     }).catch(() => null)
     return updated?.id ?? targetLeadId
@@ -81,7 +83,7 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<s
   const lead = await prisma.marketingLead.create({
     data: {
       tenantId: opts.tenantId, unitId: opts.unitId,
-      name, phone, customerId: arrival?.customerId ?? null,
+      name, phone, email, customerId: arrival?.customerId ?? null,
       source: 'FILA_ATENDIMENTO',
       assignedToUserId: opts.sellerId, createdById: opts.actorId,
       status: converted ? 'CONVERTED' : status,
