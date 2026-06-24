@@ -1,18 +1,18 @@
 'use client'
 
 // =============================================================================
-// QueueAlertWatcher — vigia GLOBAL do "vendedor da vez". Montado no DashboardShell,
-// roda em TODAS as páginas (app, PWA iPhone, PC). Quando o usuário é chamado
-// (status CALLED), dispara o alerta CRÍTICO (sirene + balão + vibração) e abre
-// um POP-UP de aceite com Aceitar / Recusar / Passar a vez (motivo na recusa).
-// O alarme para EXATAMENTE no fim do prazo de aceite e dispara o timeout.
+// QueueAlertWatcher — vigia GLOBAL do "vendedor da vez". Roda em TODAS as telas
+// (app Android, PWA iPhone, PC). Ao ser chamado (CALLED) toca o alerta CRÍTICO
+// e abre um POP-UP: Aceitar / Recusar (com motivo) / Passar a vez.
+// Robusto: clicar PARA tudo na hora; chamada já tratada não volta a tocar; o
+// alarme/pop-up encerram exatamente quando o prazo vence (e dispara o timeout).
 // =============================================================================
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { CheckCircle2, XCircle, SkipForward, Loader2 } from 'lucide-react'
-import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert, ALERT_STOP_EVENT } from '@/lib/seller-queue/alert-client'
+import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 
-const POLL_MS = 8000
+const POLL_MS = 6000
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -33,16 +33,24 @@ export default function QueueAlertWatcher() {
   const baseTitle = useRef<string>('')
   const isCalled = useRef(false)
   const noAccess = useRef(false)
+  const handledAttId = useRef<string | null>(null) // chamada já tratada pelo usuário → não re-alertar
 
-  // Estado do POP-UP de aceite (mostrado em qualquer tela).
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [rejectMode, setRejectMode] = useState(false)
   const [reason, setReason] = useState('')
-  const promptRef = useRef<Prompt | null>(null)
-  promptRef.current = prompt
 
+  // Para TUDO de uma vez (timers + sirene nativa + título). Direto, sem eventos.
+  const stopAll = useCallback(() => {
+    if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null }
+    if (deadlineTimer.current) { clearTimeout(deadlineTimer.current); deadlineTimer.current = null }
+    if (titleTimer.current) { clearInterval(titleTimer.current); titleTimer.current = null; if (baseTitle.current) document.title = baseTitle.current }
+    isCalled.current = false
+    stopCriticalAlert()
+  }, [])
+
+  // Destrava áudio + permissão de notificação no 1º gesto.
   useEffect(() => {
     const onGesture = () => { unlockAudio(); void ensureNotifyPermission() }
     window.addEventListener('pointerdown', onGesture)
@@ -59,24 +67,13 @@ export default function QueueAlertWatcher() {
       let on = false
       titleTimer.current = setInterval(() => { document.title = on ? '🔔 SUA VEZ — atender!' : baseTitle.current; on = !on }, 1000)
     }
-    const stopTitleFlash = () => {
-      if (titleTimer.current) { clearInterval(titleTimer.current); titleTimer.current = null }
-      if (baseTitle.current) document.title = baseTitle.current
-    }
     const startAlert = (a: { soundType?: string; repeatSeconds?: number; sound?: boolean; browserPush?: boolean }) => {
       if (alertTimer.current) return
-      const fire = () => criticalAlert({ title: 'Você é o vendedor da vez 🔔', body: 'Cliente presencial aguardando — aceite ou recuse.', soundType: a.soundType, sound: a.sound, push: a.browserPush })
+      const fire = () => criticalAlert({ title: 'Você é o vendedor da vez 🔔', body: 'Cliente aguardando — aceite ou recuse.', soundType: a.soundType, sound: a.sound, push: a.browserPush })
       fire()
       alertTimer.current = setInterval(fire, Math.max(5, a.repeatSeconds || 10) * 1000)
       startTitleFlash()
     }
-    const stopAlert = () => {
-      if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null }
-      if (deadlineTimer.current) { clearTimeout(deadlineTimer.current); deadlineTimer.current = null }
-      stopTitleFlash()
-      stopCriticalAlert()
-    }
-    const closePrompt = () => { setPrompt(null); setRejectMode(false); setReason(''); setErr(null) }
     const fireTimeout = (attId?: string) => {
       if (!attId) return
       fetch(`/api/seller-queue/attendances/${attId}/timeout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ reason: 'prazo de aceite esgotado' }) }).catch(() => {})
@@ -90,60 +87,76 @@ export default function QueueAlertWatcher() {
         if (!res.ok) return
         const data = (await res.json())?.data
         const att = data?.myAttendance
-        const deadlineMs = att?.acceptDeadline ? new Date(att.acceptDeadline).getTime() : null
-        const called = att?.status === 'CALLED' && (deadlineMs === null || Date.now() < deadlineMs)
-        if (called && !isCalled.current) {
-          isCalled.current = true
-          startAlert(data.alerts ?? { soundType: 'siren', repeatSeconds: 10, sound: true, browserPush: true })
-          setPrompt({ attId: att.id, customerName: att.arrival?.customerName ?? null })
-          if (deadlineMs) {
-            if (deadlineTimer.current) clearTimeout(deadlineTimer.current)
-            deadlineTimer.current = setTimeout(() => { isCalled.current = false; stopAlert(); closePrompt(); fireTimeout(att?.id) }, Math.max(0, deadlineMs - Date.now()))
+
+        // Sem chamada ativa → para tudo, fecha e libera p/ a próxima.
+        if (!att || att.status !== 'CALLED') {
+          if (isCalled.current) stopAll()
+          setPrompt(null); handledAttId.current = null
+          return
+        }
+
+        const deadlineMs = att.acceptDeadline ? new Date(att.acceptDeadline).getTime() : null
+        const expired = deadlineMs !== null && Date.now() >= deadlineMs
+
+        // Chamada já tratada pelo usuário (ex.: aceite recusado/erro) → não toca de novo.
+        if (att.id === handledAttId.current) {
+          if (isCalled.current) stopAll()
+          if (expired) { fireTimeout(att.id); setPrompt(null) }
+          return
+        }
+
+        if (!expired) {
+          if (!isCalled.current) {
+            isCalled.current = true
+            startAlert(data.alerts ?? { soundType: 'siren', repeatSeconds: 10, sound: true, browserPush: true })
+            setPrompt({ attId: att.id, customerName: att.arrival?.customerName ?? null })
+            if (deadlineMs) {
+              if (deadlineTimer.current) clearTimeout(deadlineTimer.current)
+              deadlineTimer.current = setTimeout(() => { stopAll(); setPrompt(null); fireTimeout(att.id) }, Math.max(0, deadlineMs - Date.now()))
+            }
           }
-        } else if (!called && isCalled.current) {
-          isCalled.current = false
-          stopAlert()
-          closePrompt()
+        } else {
+          // Prazo venceu sem ação → para, fecha e avança a fila.
+          if (isCalled.current) stopAll()
+          setPrompt(null)
+          fireTimeout(att.id)
         }
       } catch { /* noop */ }
     }
 
-    // Aceite/recusa em qualquer tela → para na hora.
-    const onStop = () => { isCalled.current = false; stopAlert() }
-    window.addEventListener(ALERT_STOP_EVENT, onStop)
-
     void poll()
     const i = setInterval(poll, POLL_MS)
-    return () => { stopped = true; clearInterval(i); window.removeEventListener(ALERT_STOP_EVENT, onStop); stopAlert() }
-  }, [])
+    return () => { stopped = true; clearInterval(i); stopAll() }
+  }, [stopAll])
 
   // ── Ações do pop-up ─────────────────────────────────────────────────────────
   const act = async (path: string, body: unknown) => {
     if (!prompt) return
+    const attId = prompt.attId
+    stopAll()                       // para alarme/sirene IMEDIATAMENTE
+    handledAttId.current = attId    // não volta a tocar para esta chamada
     setBusy(true); setErr(null)
-    stopCriticalAlert()
     try {
-      const res = await fetch(`/api/seller-queue/attendances/${prompt.attId}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+      const res = await fetch(`/api/seller-queue/attendances/${attId}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) { setErr(j?.error ?? 'Não foi possível concluir.'); return }
-      isCalled.current = false
+      if (!res.ok) { setErr(j?.error ?? 'Não foi possível concluir.'); return } // mantém pop-up p/ tentar de novo (ex.: longe da loja)
       setPrompt(null); setRejectMode(false); setReason('')
-    } catch { setErr('Erro de rede.') } finally { setBusy(false) }
+    } catch { setErr('Erro de rede. Tente de novo.') } finally { setBusy(false) }
   }
-  const accept = async () => { const pos = await getPosition(); await act('accept', pos) }
+  const accept = async () => { setBusy(true); const pos = await getPosition(); await act('accept', pos) }
   const reject = async () => { if (!reason.trim()) { setErr('Informe o motivo da recusa.'); return } await act('reject', { reason: reason.trim() }) }
   const pass = async () => { await act('reject', { reason: 'Passou a vez' }) }
 
   if (!prompt) return null
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-3 sm:items-center">
       <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-2xl">🔔</span>
           <h2 className="text-lg font-bold text-gray-900">Você é o vendedor da vez!</h2>
         </div>
-        <p className="mb-4 text-sm text-gray-500">{prompt.customerName ? <>Cliente: <strong>{prompt.customerName}</strong></> : 'Cliente presencial aguardando.'} Aceite, recuse ou passe a vez.</p>
+        <p className="mb-4 text-sm text-gray-500">{prompt.customerName ? <>Cliente: <strong>{prompt.customerName}</strong>. </> : 'Cliente presencial aguardando. '}Aceite, recuse ou passe a vez.</p>
 
         {err && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
 
