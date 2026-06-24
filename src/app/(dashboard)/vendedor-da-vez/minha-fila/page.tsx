@@ -32,6 +32,20 @@ function getPosition(): Promise<{ latitude?: number; longitude?: number; accurac
   })
 }
 
+// Helpers de cliente (máscara/nome/email) — para o encerramento sem cliente.
+function maskPhoneBR(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 11)
+  if (d.length <= 2) return d.length ? `(${d}` : ''
+  if (d.length <= 3) return `(${d.slice(0, 2)})${d.slice(2)}`
+  if (d.length <= 7) return `(${d.slice(0, 2)})${d.slice(2, 3)}.${d.slice(3)}`
+  return `(${d.slice(0, 2)})${d.slice(2, 3)}.${d.slice(3, 7)}-${d.slice(7, 11)}`
+}
+const SMALL_WORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e'])
+function capName(s: string): string {
+  return s.toLowerCase().split(/\s+/).filter(Boolean).map((w, i) => (i > 0 && SMALL_WORDS.has(w)) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())
+
 function blockText(b: Block, nowMs: number): string {
   if (b.type === 'DAILY_BLOCK') return 'Bloqueado por reincidência até o fim do dia. Procure a gerência para liberar.'
   const mins = Math.max(0, Math.ceil((new Date(b.endsAt).getTime() - nowMs) / 60000))
@@ -47,7 +61,7 @@ export default function MinhaFilaPage() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [finishOpen, setFinishOpen] = useState(false)
-  const [finForm, setFinForm] = useState({ type: 'SALE', result: 'CONVERTED_TO_NEGOTIATION', notes: '' })
+  const [finForm, setFinForm] = useState({ type: 'SALE', result: 'CONVERTED_TO_NEGOTIATION', notes: '', customerName: '', customerPhone: '', customerEmail: '' })
   const [now, setNow] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const flash = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500) }
@@ -95,7 +109,21 @@ export default function MinhaFilaPage() {
   const pedirVoltar = async () => { await post('pos-vendas/request-return', undefined, 'Retorno solicitado — aguarde a autorização do gestor.') }
   const accept = async () => { if (!att) return; stopCriticalAlert(); const pos = await getPosition(); await post(`attendances/${att.id}/accept`, pos, 'Atendimento iniciado!') }
   const reject = async () => { if (!att) return; stopCriticalAlert(); const reason = prompt('Motivo da recusa:'); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
-  const finish = async () => { if (!att) return; const ok = await post(`attendances/${att.id}/finish`, finForm, 'Atendimento finalizado!'); if (ok) setFinishOpen(false) }
+  const needClient = !att?.arrival?.customerName // chamada do vendedor da vez sem cadastro prévio
+  const finish = async () => {
+    if (!att) return
+    let payload: Record<string, unknown> = { type: finForm.type, result: finForm.result, notes: finForm.notes.trim() }
+    if (needClient) {
+      const name = capName(finForm.customerName.trim())
+      if (!name) { flash('Informe o nome do cliente.', false); return }
+      if (finForm.customerPhone.replace(/\D/g, '').length < 10) { flash('Informe um telefone válido.', false); return }
+      if (!isEmail(finForm.customerEmail)) { flash('Informe um e-mail válido.', false); return }
+      payload = { ...payload, customerName: name, customerPhone: finForm.customerPhone, customerEmail: finForm.customerEmail.trim() }
+    }
+    if (!finForm.notes.trim()) { flash('As observações são obrigatórias.', false); return }
+    const ok = await post(`attendances/${att.id}/finish`, payload, 'Atendimento finalizado!')
+    if (ok) setFinishOpen(false)
+  }
 
   if (denied) return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
 
@@ -148,7 +176,7 @@ export default function MinhaFilaPage() {
         <div className="rounded-2xl border-2 border-green-400 bg-green-50 p-5 text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-green-700">Em atendimento</p>
           <p className="mt-1 text-gray-700">{att.arrival?.customerName ?? 'Cliente'}{att.arrival?.customerPhone ? ` · ${att.arrival.customerPhone}` : ''}</p>
-          <button onClick={() => setFinishOpen(true)} disabled={busy} className="btn-primary mt-4 w-full justify-center py-3 text-base"><CheckCircle2 size={18} />Finalizar atendimento</button>
+          <button onClick={() => { setFinForm((f) => ({ ...f, notes: '', customerName: '', customerPhone: '', customerEmail: '' })); setFinishOpen(true) }} disabled={busy} className="btn-primary mt-4 w-full justify-center py-3 text-base"><CheckCircle2 size={18} />Finalizar atendimento</button>
         </div>
       )}
 
@@ -189,16 +217,24 @@ export default function MinhaFilaPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-1 text-lg font-bold text-gray-900">Finalizar atendimento</h2>
-            <p className="mb-3 text-xs text-gray-500">Gera um lead de atendimento no seu nome. Os dados do cliente são editados no lead.</p>
+            <p className="mb-3 text-xs text-gray-500">Gera um lead de atendimento no seu nome.{needClient ? ' Cadastre o cliente.' : ' Os dados do cliente são editados no lead.'}</p>
             <div className="space-y-3">
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Cliente (registro)</p>
-                <p className="mt-0.5 text-sm font-medium text-gray-800">{att?.arrival?.customerName || '— sem nome —'}</p>
-                <p className="text-xs text-gray-500">{att?.arrival?.customerPhone || 'sem telefone'}{att?.arrival?.customerEmail ? ` · ${att.arrival.customerEmail}` : ''}</p>
-              </div>
+              {needClient ? (
+                <>
+                  <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={finForm.customerName} onChange={(e) => setFinForm((f) => ({ ...f, customerName: e.target.value }))} onBlur={() => setFinForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Ex.: Dagoberto Ramos de Francisco" /></div>
+                  <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={finForm.customerPhone} onChange={(e) => setFinForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) }))} placeholder="(11)9.9999-9999" /></div>
+                  <div><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={finForm.customerEmail} onChange={(e) => setFinForm((f) => ({ ...f, customerEmail: e.target.value }))} placeholder="cliente@email.com" /></div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Cliente (registro)</p>
+                  <p className="mt-0.5 text-sm font-medium text-gray-800">{att?.arrival?.customerName}</p>
+                  <p className="text-xs text-gray-500">{att?.arrival?.customerPhone || 'sem telefone'}{att?.arrival?.customerEmail ? ` · ${att.arrival.customerEmail}` : ''}</p>
+                </div>
+              )}
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={finForm.type} onChange={(e) => setFinForm((f) => ({ ...f, type: e.target.value }))}>{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Resultado</label><select className={inputCls} value={finForm.result} onChange={(e) => setFinForm((f) => ({ ...f, result: e.target.value }))}>{RESULTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações *</label><textarea rows={2} className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Obrigatório — resumo do atendimento" /></div>
             </div>
             <div className="mt-4 flex justify-end gap-2"><button onClick={() => setFinishOpen(false)} className="btn-secondary text-sm">Cancelar</button><button onClick={finish} disabled={busy} className="btn-primary text-sm"><CheckCircle2 size={15} />Finalizar</button></div>
           </div>

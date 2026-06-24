@@ -34,6 +34,7 @@ export interface AttendanceLeadInput {
   existingLeadId?: string | null
   customerName?: string | null
   customerPhone?: string | null
+  customerEmail?: string | null
 }
 
 /**
@@ -55,7 +56,7 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<s
 
   const name = opts.customerName?.trim() || arrival?.customerName || null
   const phone = opts.customerPhone?.trim() || arrival?.customerPhone || null
-  const email = arrival?.customerEmail || null
+  const email = opts.customerEmail?.trim() || arrival?.customerEmail || null
   const targetLeadId = opts.existingLeadId || arrival?.leadId || null
 
   const convertedFields = converted ? { status: 'CONVERTED' as LeadStatus, convertedDealId: opts.dealId ?? undefined, convertedAt: now } : {}

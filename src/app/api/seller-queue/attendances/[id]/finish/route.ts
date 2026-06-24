@@ -67,7 +67,7 @@ export async function POST(req: Request, { params }: Ctx) {
       tenantId, unitId: att.unitId, sellerId: att.sellerId, actorId: user.id,
       attendanceId: att.id, arrivalId: att.arrivalId, result: d.result,
       dealId: d.dealId ?? null, notes: d.notes ?? null, existingLeadId: d.leadId ?? null,
-      customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null,
+      customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null, customerEmail: d.customerEmail ?? null,
     }).catch(() => null)
     if (leadId && leadId !== (d.leadId ?? null)) {
       await prisma.sellerQueueAttendance.update({ where: { id: att.id }, data: { leadId } }).catch(() => {})
