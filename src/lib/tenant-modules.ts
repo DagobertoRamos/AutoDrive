@@ -21,6 +21,28 @@ export async function getDisabledModules(tenantId: string): Promise<string[]> {
   }
 }
 
+/** Módulos REMOVIDOS de um colaborador (override allowed=false por usuário). */
+export async function getUserDeniedModules(userId: string): Promise<string[]> {
+  try {
+    const rows = await prisma.userModule.findMany({ where: { userId, allowed: false }, select: { moduleKey: true } })
+    return rows.map((r) => r.moduleKey)
+  } catch (err) {
+    console.error('[tenant-modules] getUserDeniedModules falhou:', err)
+    return []
+  }
+}
+
+/** true se o módulo foi explicitamente removido para o colaborador. */
+export async function isModuleDeniedForUser(userId: string, module: string): Promise<boolean> {
+  try {
+    const row = await prisma.userModule.findUnique({ where: { userId_moduleKey: { userId, moduleKey: module } }, select: { allowed: true } })
+    return row ? !row.allowed : false
+  } catch (err) {
+    console.error('[tenant-modules] isModuleDeniedForUser falhou:', err)
+    return false // fail-open
+  }
+}
+
 /**
  * true se a funcionalidade está habilitada p/ o tenant (default = true).
  * Fail-open: erro na consulta => habilitado (não trava a loja por falha do gate).
@@ -56,10 +78,16 @@ export async function requireModule(user: SessionUser, module: Module) {
  * `module` aqui é a chave RAIZ da área no modules-catalog (ex.: 'negotiations',
  * 'stock.view') — desligá-la bloqueia a área inteira para a loja.
  */
-export async function assertModuleEnabled(user: { role: string; tenantId?: string | null }, module: string) {
-  if (user.role !== 'MASTER' && user.tenantId) {
+export async function assertModuleEnabled(user: { id?: string; role: string; tenantId?: string | null }, module: string) {
+  if (user.role === 'MASTER') return null
+  if (user.tenantId) {
     const ok = await isModuleEnabled(user.tenantId, module)
     if (!ok) return forbiddenResponse('Este recurso não está habilitado para a sua loja. Fale com o suporte.')
+  }
+  // Override por colaborador: módulo removido por um superior (ADM/gestão).
+  if (user.id) {
+    const denied = await isModuleDeniedForUser(user.id, module)
+    if (denied) return forbiddenResponse('Você não tem acesso a este recurso. Fale com o gestor.')
   }
   return null
 }

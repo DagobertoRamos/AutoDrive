@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
-import { getDisabledModules } from '@/lib/tenant-modules'
+import { getDisabledModules, getUserDeniedModules } from '@/lib/tenant-modules'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
 export async function GET() {
@@ -14,7 +14,13 @@ export async function GET() {
   if (!user) return unauthorizedResponse()
   if (user.role === 'MASTER' || !user.tenantId) return NextResponse.json({ success: true, disabled: [] })
   try {
-    return NextResponse.json({ success: true, disabled: await getDisabledModules(user.tenantId) })
+    // Esconde do menu: módulos desligados para a loja UNIÃO módulos removidos
+    // deste colaborador (override por usuário).
+    const [tenantDisabled, userDenied] = await Promise.all([
+      getDisabledModules(user.tenantId),
+      getUserDeniedModules(user.id),
+    ])
+    return NextResponse.json({ success: true, disabled: [...new Set([...tenantDisabled, ...userDenied])] })
   } catch (err) {
     return handlePrismaError(err)
   }

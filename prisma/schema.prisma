@@ -519,12 +519,30 @@ model User {
 
   goals         Goal[]         @relation("UserGoals")
   rankingScores RankingScore[] @relation("UserRankingScores")
+  userModules   UserModule[]
 
   @@index([tenantId])
   @@index([email])
   @@index([cpf])
   @@index([positionId])
   @@map("users")
+}
+
+// Liberação/remoção de módulos POR COLABORADOR (override do padrão do cargo).
+// Sem registro = usa o padrão do papel (canAccessModule). allowed=false REMOVE
+// o módulo para este usuário (esconde do menu e barra na API).
+model UserModule {
+  id        String   @id @default(cuid())
+  userId    String
+  moduleKey String
+  allowed   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleKey])
+  @@index([userId])
+  @@map("user_modules")
 }
 
 model Unit {

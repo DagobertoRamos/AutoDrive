@@ -27,6 +27,7 @@ interface Position {
 
 interface Seller {
   id: string
+  userId?: string | null
   fullName: string
   shortName: string
   cpf: string
@@ -88,6 +89,66 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 }
 
 // -----------------------------------------------------------------------------
+// Editor de módulos por colaborador (override do cargo)
+// -----------------------------------------------------------------------------
+
+interface ModFeature { key: string; label: string; tenantDisabled: boolean; enabled: boolean }
+interface ModGroup { area: string; features: ModFeature[] }
+
+function ModulesEditor({ userId }: { userId: string }) {
+  const [groups, setGroups] = useState<ModGroup[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/users/${userId}/modules`, { credentials: 'include' })
+        const j = await r.json()
+        if (!cancelled && j?.success) setGroups(j.data.groups ?? [])
+      } catch { /* noop */ } finally { if (!cancelled) setLoading(false) }
+    })()
+    return () => { cancelled = true }
+  }, [userId])
+
+  const toggle = (key: string) => setGroups((gs) => gs.map((g) => ({ ...g, features: g.features.map((f) => (f.key === key ? { ...f, enabled: !f.enabled } : f)) })))
+  const save = async () => {
+    setSaving(true); setMsg(null)
+    try {
+      const denied = groups.flatMap((g) => g.features).filter((f) => !f.enabled).map((f) => f.key)
+      const r = await fetch(`/api/users/${userId}/modules`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ denied }) })
+      setMsg(r.ok ? 'Módulos salvos.' : 'Falha ao salvar.')
+    } catch { setMsg('Erro de rede.') } finally { setSaving(false); setTimeout(() => setMsg(null), 2500) }
+  }
+
+  if (loading) return <p className="text-xs text-gray-400">Carregando módulos…</p>
+  if (!groups.length) return <p className="text-xs text-gray-400">Este cargo não dá acesso a módulos configuráveis.</p>
+  return (
+    <div className="space-y-3">
+      {groups.map((g) => (
+        <div key={g.area}>
+          <p className="mb-1 text-xs font-semibold text-gray-600">{g.area}</p>
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            {g.features.map((f) => (
+              <label key={f.key} className={cn('flex items-center gap-2 text-sm', f.tenantDisabled && 'opacity-50')}>
+                <input type="checkbox" checked={f.enabled} disabled={f.tenantDisabled} onChange={() => toggle(f.key)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                <span className={f.enabled ? 'text-gray-800' : 'text-gray-400 line-through'}>{f.label}{f.tenantDisabled ? ' (desligado p/ loja)' : ''}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? 'Salvando…' : 'Salvar módulos'}</button>
+        {msg && <span className={cn('text-xs', /salvos/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
 // Modal
 // -----------------------------------------------------------------------------
 
@@ -108,7 +169,7 @@ function Modal({
   useEffect(() => {
     if (open) {
       if (initial) {
-        const { id: _id, unitName: _unitName, position: _p, ...rest } = initial
+        const { id: _id, userId: _uid, unitName: _unitName, position: _p, ...rest } = initial
         setForm({ ...rest, positionId: initial.positionId ?? null })
       } else {
         // default: cargo "Vendedor" do sistema
@@ -134,7 +195,7 @@ function Modal({
               <User className="h-5 w-5 text-brand-700" />
             </div>
             <h2 className="text-base font-semibold text-gray-900">
-              {initial ? 'Editar Vendedor' : 'Novo Vendedor'}
+              {initial ? 'Editar Colaborador' : 'Novo Colaborador'}
             </h2>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -192,9 +253,17 @@ function Modal({
           </div>
 
           <div className="space-y-2">
-            <Toggle label="Vendedor ativo" checked={form.active} onChange={(v) => set('active', v)} />
+            <Toggle label="Colaborador ativo" checked={form.active} onChange={(v) => set('active', v)} />
             <Toggle label="Recebe cobranças" checked={form.receivesCharge} onChange={(v) => set('receivesCharge', v)} />
           </div>
+
+          {initial?.userId && (
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="mb-2 text-xs font-semibold text-gray-700">Módulos liberados (acesso deste colaborador)</p>
+              <p className="-mt-1 mb-2 text-[11px] text-gray-400">Desmarque para remover o acesso. A lista mostra só o que o cargo permite. Salva separadamente.</p>
+              <ModulesEditor userId={initial.userId} />
+            </div>
+          )}
 
           {!initial && (
             <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-700">
