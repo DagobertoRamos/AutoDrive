@@ -1,6 +1,9 @@
 package br.com.autodrive.app;
 
 import android.Manifest;
+import android.app.NotificationManager;
+import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,8 +21,34 @@ public class MainActivity extends BridgeActivity {
   public void onCreate(Bundle savedInstanceState) {
     // Registra plugins locais ANTES do super.onCreate (exigência do Capacitor)
     registerPlugin(LoudAlertPlugin.class);
+    registerPlugin(PushBridgePlugin.class);
     super.onCreate(savedInstanceState);
     requestRequiredPermissions();
+    handleCallIntent(getIntent());
+  }
+
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    handleCallIntent(intent);
+  }
+
+  // Abriu por uma CHAMADA da fila (toque na notificação ou botão Aceitar/Recusar):
+  // para o alarme, fecha a notificação e guarda a ação p/ a WebView executar.
+  private void handleCallIntent(Intent intent) {
+    if (intent == null) return;
+    String action = intent.getStringExtra("sqAction");
+    String attId = intent.getStringExtra("attId");
+    if (action == null && attId == null) return;
+
+    try { CallRinger.stop(getApplicationContext()); } catch (Exception ignored) {}
+    try {
+      NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+      if (nm != null) nm.cancel(AutoDriveFcmService.NOTIFICATION_ID);
+    } catch (Exception ignored) {}
+
+    if (action != null) PushBridgePlugin.setPending(action, attId);
   }
 
   private void requestRequiredPermissions() {

@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { CheckCircle2, XCircle, SkipForward, Loader2 } from 'lucide-react'
 import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
+import { registerPushToken, consumePushAction } from '@/lib/mobile/push-bridge'
 
 const POLL_MS = 6000
 
@@ -57,6 +58,33 @@ export default function QueueAlertWatcher() {
     window.addEventListener('keydown', onGesture)
     return () => { window.removeEventListener('pointerdown', onGesture); window.removeEventListener('keydown', onGesture) }
   }, [])
+
+  // App nativo (Android): registra o token de push e executa a ação que o usuário
+  // tocou na NOTIFICAÇÃO (Aceitar/Recusar) com o app fechado ou em 2º plano.
+  const processNativeAction = useCallback(async () => {
+    const { action, attId } = await consumePushAction()
+    if (!action || !attId) return
+    handledAttId.current = attId
+    stopAll(); setPrompt(null)
+    try {
+      if (action === 'accept') {
+        const pos = await getPosition()
+        const res = await fetch(`/api/seller-queue/attendances/${attId}/accept`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(pos) })
+        if (!res.ok) handledAttId.current = null // ex.: longe da loja → deixa o pop-up reaparecer
+      } else if (action === 'reject') {
+        await fetch(`/api/seller-queue/attendances/${attId}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ reason: 'Recusado pela notificação' }) })
+      }
+    } catch { handledAttId.current = null }
+  }, [stopAll])
+
+  useEffect(() => {
+    void registerPushToken()
+    void processNativeAction()
+    const onResume = () => { if (!document.hidden) void processNativeAction() }
+    document.addEventListener('visibilitychange', onResume)
+    window.addEventListener('focus', onResume)
+    return () => { document.removeEventListener('visibilitychange', onResume); window.removeEventListener('focus', onResume) }
+  }, [processNativeAction])
 
   useEffect(() => {
     let stopped = false
