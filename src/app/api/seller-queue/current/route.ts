@@ -70,7 +70,7 @@ export async function GET(req: Request) {
     const myAtt = await prisma.sellerQueueAttendance.findFirst({
       where: { queueId: queue.id, sellerId: user.id, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
       orderBy: { calledAt: 'desc' },
-      include: { arrival: { select: { customerName: true, customerPhone: true, recurring: true } } },
+      include: { arrival: { select: { customerName: true, customerPhone: true, customerEmail: true, recurring: true } } },
     })
 
     return NextResponse.json({
