@@ -59,7 +59,12 @@ const nextConfig = {
   ],
 
   // Webpack: fallback de módulos Node em código client + alias para canvas
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
+    // No build de produção, limita o paralelismo do webpack: processa menos
+    // módulos ao mesmo tempo → reduz o PICO de RAM e evita o OOM (SIGKILL) no
+    // container Hobby da Vercel. Não afeta o dev (HMR).
+    if (!dev) config.parallelism = 2
+
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
