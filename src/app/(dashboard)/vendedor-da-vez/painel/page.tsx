@@ -17,6 +17,7 @@ const dt = (s: string | null) => (s ? new Date(s).toLocaleTimeString('pt-BR', { 
 interface Entry { id: string; sellerId: string; sellerName: string; status: string; blocked: boolean }
 interface Arrival { id: string; customerName: string | null; customerPhone: string | null; recurring: boolean; status: string; createdAt: string }
 interface Att { id: string; sellerName: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null } | null }
+interface PosVenda { sellerId: string; name: string; status: string; returnRequestedAt: string | null; since: string }
 
 export default function PainelUnidadePage() {
   const { data: session } = useSession()
@@ -26,6 +27,7 @@ export default function PainelUnidadePage() {
   const [pick, setPick] = useState<Record<string, string>>({})
   const [arrivals, setArrivals] = useState<Arrival[]>([])
   const [active, setActive] = useState<Att[]>([])
+  const [posVendas, setPosVendas] = useState<PosVenda[]>([])
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -34,16 +36,18 @@ export default function PainelUnidadePage() {
 
   const load = useCallback(async () => {
     try {
-      const [cRes, aRes, atRes] = await Promise.all([
+      const [cRes, aRes, atRes, pvRes] = await Promise.all([
         fetch('/api/seller-queue/current', { credentials: 'include' }),
         fetch('/api/seller-queue/customer-arrivals', { credentials: 'include' }),
         fetch('/api/seller-queue/attendances?active=true', { credentials: 'include' }),
+        fetch('/api/seller-queue/pos-vendas', { credentials: 'include' }),
       ])
       if (cRes.status === 403 || cRes.status === 400) { const j = await cRes.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
       setDenied(null)
       setCur((await cRes.json())?.data ?? null)
       setArrivals(((await aRes.json())?.data ?? []).filter((a: Arrival) => ['PENDING', 'CALLING'].includes(a.status)))
       setActive((await atRes.json())?.data ?? [])
+      setPosVendas(pvRes.ok ? ((await pvRes.json())?.data ?? []) : [])
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i) }, [load])
@@ -67,6 +71,13 @@ export default function PainelUnidadePage() {
     try {
       const res = await fetch(`/api/seller-queue/attendances/${att.id}/timeout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ reason: 'pulo pela gestão' }) })
       const j = await res.json().catch(() => ({})); flash(res.ok ? 'Pulado — próximo chamado.' : (j?.error ?? 'Falha.'), res.ok); await load()
+    } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
+  const authorizeReturn = async (sellerId: string) => {
+    setBusy(sellerId)
+    try {
+      const res = await fetch('/api/seller-queue/pos-vendas/authorize-return', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId }) })
+      const j = await res.json().catch(() => ({})); flash(res.ok ? 'Retorno autorizado — voltou à fila.' : (j?.error ?? 'Falha.'), res.ok); await load()
     } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
   const block = async (e: Entry) => {
@@ -132,6 +143,27 @@ export default function PainelUnidadePage() {
           )}
         </section>
       </div>
+
+      {/* Pós-vendas — pausados / aguardando autorização de retorno */}
+      {posVendas.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 shadow-card">
+          <div className="border-b border-amber-100 px-4 py-2.5"><p className="text-sm font-semibold text-amber-800">Pós-vendas ({posVendas.length})</p></div>
+          <ul className="divide-y divide-amber-100">
+            {posVendas.map((pv) => (
+              <li key={pv.sellerId} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-gray-900">{pv.name}</p>
+                  <p className="text-xs text-gray-500">{pv.status === 'RETURN_REQUESTED' ? `🔔 pediu para voltar (${dt(pv.returnRequestedAt)})` : 'em pós-vendas (pausado)'}</p>
+                </div>
+                <button onClick={() => authorizeReturn(pv.sellerId)} disabled={busy === pv.sellerId}
+                  className={cn('shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60', pv.status === 'RETURN_REQUESTED' ? 'bg-brand-600 hover:bg-brand-700' : 'bg-gray-400 hover:bg-gray-500')}>
+                  {busy === pv.sellerId ? '...' : 'Autorizar retorno'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">Fila atual {canManage && <span className="font-normal text-gray-400">— gerência pode bloquear/reordenar</span>}</p></div>

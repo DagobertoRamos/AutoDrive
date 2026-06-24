@@ -20,7 +20,7 @@ interface Me { status: string; position: number }
 interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; recurring: boolean } | null }
 interface Alerts { sound: boolean; soundType?: string; browserPush: boolean; repeatSeconds: number }
 interface Block { type: 'COOLDOWN' | 'DAILY_BLOCK'; endsAt: string }
-interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts; myBlock?: Block | null }
+interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts; myBlock?: Block | null; myPosVenda?: { status: string } | null }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -92,6 +92,7 @@ export default function MinhaFilaPage() {
   const att = data?.myAttendance
   const secsLeft = att?.acceptDeadline ? Math.max(0, Math.floor((new Date(att.acceptDeadline).getTime() - now) / 1000)) : null
 
+  const pedirVoltar = async () => { await post('pos-vendas/request-return', undefined, 'Retorno solicitado — aguarde a autorização do gestor.') }
   const accept = async () => { if (!att) return; stopCriticalAlert(); const pos = await getPosition(); await post(`attendances/${att.id}/accept`, pos, 'Atendimento iniciado!') }
   const reject = async () => { if (!att) return; stopCriticalAlert(); const reason = prompt('Motivo da recusa:'); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
   const finish = async () => { if (!att) return; const ok = await post(`attendances/${att.id}/finish`, finForm, 'Atendimento finalizado!'); if (ok) setFinishOpen(false) }
@@ -105,6 +106,21 @@ export default function MinhaFilaPage() {
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
+
+      {/* Pós-vendas — pausado, pede para voltar à fila (autorização do gestor) */}
+      {data?.myPosVenda && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+          <p className="font-semibold text-amber-800">🛠️ Você está em pós-vendas (pausado na fila)</p>
+          {data.myPosVenda.status === 'RETURN_REQUESTED' ? (
+            <p className="mt-1 text-amber-700">Retorno solicitado — aguardando autorização do gestor.</p>
+          ) : (
+            <>
+              <p className="mt-1 text-amber-700">Ao terminar o pós-vendas, peça para voltar à fila (você volta à mesma posição).</p>
+              <button onClick={pedirVoltar} disabled={busy} className="mt-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60">Pedir para voltar à fila</button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Bloqueio por reincidência (cooldown/diário) */}
       {data?.myBlock && (

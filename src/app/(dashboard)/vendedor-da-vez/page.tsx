@@ -76,9 +76,10 @@ export default function FilaOverviewPage() {
   const [pickerLoading, setPickerLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [callingId, setCallingId] = useState<string | null>(null)
+  const [posVendaMode, setPosVendaMode] = useState(false)
 
   const openPicker = async () => {
-    setPickerOpen(true); setSearch(''); setPickerLoading(true)
+    setPickerOpen(true); setSearch(''); setPosVendaMode(false); setPickerLoading(true)
     try {
       const res = await fetch('/api/seller-queue/callable', { credentials: 'include' })
       const j = await res.json().catch(() => ({}))
@@ -88,11 +89,17 @@ export default function FilaOverviewPage() {
   const callSpecific = async (c: Callable) => {
     setCallingId(c.sellerId)
     try {
-      const res = await fetch('/api/seller-queue/call-specific', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId: c.sellerId }) })
-      const j = await res.json().catch(() => ({}))
-      if (!res.ok) flash(j?.error ?? 'Falha ao chamar.', false)
-      else if (j?.data?.call?.ok) { flash(`${c.name} chamado! 🔔`, true); setPickerOpen(false) }
-      else flash(j?.data?.call?.reason ?? 'Não foi possível chamar.', false)
+      if (posVendaMode) {
+        const res = await fetch('/api/seller-queue/pos-vendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId: c.sellerId }) })
+        const j = await res.json().catch(() => ({}))
+        if (res.ok) { flash(`${c.name} em pós-vendas (pausado).`, true); setPickerOpen(false) } else flash(j?.error ?? 'Não foi possível.', false)
+      } else {
+        const res = await fetch('/api/seller-queue/call-specific', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId: c.sellerId }) })
+        const j = await res.json().catch(() => ({}))
+        if (!res.ok) flash(j?.error ?? 'Falha ao chamar.', false)
+        else if (j?.data?.call?.ok) { flash(`${c.name} chamado! 🔔`, true); setPickerOpen(false) }
+        else flash(j?.data?.call?.reason ?? 'Não foi possível chamar.', false)
+      }
       await load()
     } catch { flash('Erro de rede.', false) } finally { setCallingId(null) }
   }
@@ -188,11 +195,15 @@ export default function FilaOverviewPage() {
               <h2 className="text-base font-bold text-gray-900">Chamar colaborador</h2>
               <button onClick={() => setPickerOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <div className="border-b border-gray-100 p-3">
+            <div className="space-y-2 border-b border-gray-100 p-3">
               <div className="relative">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou cargo…" className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
               </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={posVendaMode} onChange={(e) => setPosVendaMode(e.target.checked)} className="rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+                <span>É <strong>pós-vendas</strong> (pausa o colaborador na fila até liberação do gestor)</span>
+              </label>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {pickerLoading ? (
@@ -208,7 +219,7 @@ export default function FilaOverviewPage() {
                       <p className="truncate text-sm font-medium text-gray-900">{c.name}</p>
                       <p className="text-xs text-gray-500">{c.positionName ?? ROLE_LABEL[c.role] ?? c.role}{c.inQueue ? ' · na fila' : c.queueStatus ? ` · ${c.queueStatus.toLowerCase()}` : ' · fora da fila'}</p>
                     </div>
-                    <span className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white">{callingId === c.sellerId ? '...' : busy ? 'ocupado' : 'Chamar'}</span>
+                    <span className={cn('shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white', posVendaMode ? 'bg-amber-600' : 'bg-brand-600')}>{callingId === c.sellerId ? '...' : posVendaMode ? 'Pós-vendas' : busy ? 'ocupado' : 'Chamar'}</span>
                   </button>
                 )
               })}

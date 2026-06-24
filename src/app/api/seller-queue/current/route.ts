@@ -13,6 +13,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/queue'
 import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
+import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
@@ -36,9 +37,11 @@ export async function GET(req: Request) {
     const allowChooseSeller = ucfg?.allowChooseSeller ?? true
     const myBlockRaw = await getActiveQueueBlock(tenantId, unitId, user.id)
     const myBlock = myBlockRaw ? { type: myBlockRaw.type, endsAt: myBlockRaw.endsAt } : null
+    const myPosVendaRaw = await getActivePosVenda(tenantId, unitId, user.id)
+    const myPosVenda = myPosVendaRaw ? { status: myPosVendaRaw.status } : null
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda } })
     }
 
     const [entries, arrivalsPending] = await Promise.all([
@@ -81,6 +84,7 @@ export async function GET(req: Request) {
         alerts,
         allowChooseSeller,
         myBlock,
+        myPosVenda,
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
       },
     })

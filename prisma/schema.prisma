@@ -4994,6 +4994,29 @@ model SellerQueuePenalty {
   @@map("seller_queue_penalties")
 }
 
+// Sessão de PÓS-VENDAS: o colaborador fica PAUSADO na fila (mantém a posição) e
+// só volta com autorização de um superior. status: ACTIVE → RETURN_REQUESTED →
+// DONE. Standalone (sem relações) para não tocar tabelas existentes.
+model SellerQueuePosVenda {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String
+  queueId           String
+  sellerId          String
+  attendanceId      String?
+  status            String    @default("ACTIVE") // ACTIVE | RETURN_REQUESTED | DONE
+  returnRequestedAt DateTime?
+  startedById       String?
+  authorizedById    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([queueId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("seller_queue_pos_vendas")
+}
+
 // Suspeita de fraude/manipulação (aparece nos relatórios).
 model SellerQueueFraudFlag {
   id           String    @id @default(cuid())
