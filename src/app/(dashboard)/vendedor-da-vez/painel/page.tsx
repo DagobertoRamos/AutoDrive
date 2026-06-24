@@ -18,6 +18,15 @@ interface Entry { id: string; sellerId: string; sellerName: string; status: stri
 interface Arrival { id: string; customerName: string | null; customerPhone: string | null; recurring: boolean; status: string; createdAt: string }
 interface Att { id: string; sellerName: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null } | null }
 interface PosVenda { sellerId: string; name: string; status: string; returnRequestedAt: string | null; since: string }
+interface QEvent { id: string; type: string; sellerName: string | null; actorName: string | null; reason: string | null; createdAt: string }
+
+const EVENT_LABEL: Record<string, string> = {
+  CHECK_IN: 'Entrou na fila', CHECK_OUT: 'Saiu da fila', PAUSE: 'Pausou', RESUME: 'Voltou',
+  CUSTOMER_ARRIVED: 'Cliente registrado', CALLED: 'Chamado', ACCEPTED: 'Aceitou', REJECTED: 'Recusou',
+  TIMEOUT: 'Não aceitou (timeout)', SKIPPED: 'Pulado', ATTENDANCE_STARTED: 'Atendimento iniciado',
+  ATTENDANCE_FINISHED: 'Atendimento finalizado', MOVED_TO_END: 'Foi pro fim', MANAGER_OVERRIDE: 'Override gerente',
+  LEADER_OVERRIDE: 'Override líder', QUEUE_REORDERED: 'Fila reordenada', FRAUD_FLAGGED: '⚠️ Suspeita de fraude',
+}
 
 export default function PainelUnidadePage() {
   const { data: session } = useSession()
@@ -28,6 +37,8 @@ export default function PainelUnidadePage() {
   const [arrivals, setArrivals] = useState<Arrival[]>([])
   const [active, setActive] = useState<Att[]>([])
   const [posVendas, setPosVendas] = useState<PosVenda[]>([])
+  const [events, setEvents] = useState<QEvent[]>([])
+  const [showLog, setShowLog] = useState(false)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -42,6 +53,7 @@ export default function PainelUnidadePage() {
         fetch('/api/seller-queue/attendances?active=true', { credentials: 'include' }),
         fetch('/api/seller-queue/pos-vendas', { credentials: 'include' }),
       ])
+      fetch('/api/seller-queue/events?limit=80', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setEvents(j.data ?? []) }).catch(() => {})
       if (cRes.status === 403 || cRes.status === 400) { const j = await cRes.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
       setDenied(null)
       setCur((await cRes.json())?.data ?? null)
@@ -187,6 +199,31 @@ export default function PainelUnidadePage() {
             ))}
           </tbody>
         </table>
+      </section>
+
+      {/* Log / Auditoria da fila (antifraude) */}
+      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
+        <button onClick={() => setShowLog((v) => !v)} className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50">
+          <span className="text-sm font-semibold text-gray-700">Log da fila — hoje ({events.length})</span>
+          <span className="text-xs text-gray-400">{showLog ? 'ocultar' : 'mostrar'}</span>
+        </button>
+        {showLog && (
+          events.length === 0 ? <p className="px-4 py-6 text-center text-sm text-gray-400">Sem eventos hoje.</p> : (
+            <ul className="max-h-96 divide-y divide-gray-100 overflow-y-auto">
+              {events.map((ev) => (
+                <li key={ev.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+                  <div className="min-w-0">
+                    <span className={cn('mr-2 rounded px-1.5 py-0.5 text-[10px] font-semibold', ev.type === 'FRAUD_FLAGGED' ? 'bg-red-100 text-red-700' : ev.type === 'TIMEOUT' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600')}>{EVENT_LABEL[ev.type] ?? ev.type}</span>
+                    <span className="text-gray-800">{ev.sellerName ?? '—'}</span>
+                    {ev.actorName && ev.actorName !== ev.sellerName && <span className="text-xs text-gray-400"> · por {ev.actorName}</span>}
+                    {ev.reason && <span className="text-xs text-gray-400"> · {ev.reason}</span>}
+                  </div>
+                  <span className="shrink-0 text-xs tabular-nums text-gray-400">{dt(ev.createdAt)}</span>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
       </section>
     </div>
   )

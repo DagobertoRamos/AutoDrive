@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { queueDate } from './queue'
+import { queueDate, logQueueEvent } from './queue'
 import { notify, notifyByRole } from '@/services/notification.service'
 
 const MANAGER_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER']
@@ -46,6 +46,7 @@ export async function startPosVenda(opts: { tenantId: string; unitId: string; se
     prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'PAUSED', pausedAt: new Date() } }),
     prisma.sellerQueuePosVenda.create({ data: { tenantId, unitId, queueId: qid, sellerId, startedById, status: 'ACTIVE' } }),
   ])
+  await logQueueEvent({ tenantId, unitId, queueId: qid, type: 'PAUSE', sellerId, actorId: startedById, reason: 'pós-vendas' })
   await notify({ userId: sellerId, tenantId, type: 'WARNING', title: 'Pós-vendas 🛠️', message: 'Você entrou em pós-vendas e está pausado na fila. Ao terminar, peça para voltar à fila.', actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'] }).catch(() => {})
   return { ok: true }
 }
@@ -73,6 +74,7 @@ export async function authorizeReturn(tenantId: string, unitId: string, sellerId
     // volta à MESMA posição: a entry preserva o `position`; só reativa o status
     ...(entry && entry.status === 'PAUSED' ? [prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'WAITING', pausedAt: null } })] : []),
   ])
+  await logQueueEvent({ tenantId, unitId, queueId: qid, type: 'RESUME', sellerId, actorId: authorizedById, reason: 'retorno de pós-vendas autorizado' })
   await notify({ userId: sellerId, tenantId, type: 'WARNING', title: 'De volta à fila ✅', message: 'Seu retorno do pós-vendas foi autorizado — você voltou à sua posição.', actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'] }).catch(() => {})
   return { ok: true }
 }
