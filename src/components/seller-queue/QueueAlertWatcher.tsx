@@ -17,6 +17,7 @@ const POLL_MS = 8000
 export default function QueueAlertWatcher() {
   const alertTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const titleTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const deadlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const baseTitle = useRef<string>('')
   const isCalled = useRef(false)
   const noAccess = useRef(false)
@@ -56,8 +57,16 @@ export default function QueueAlertWatcher() {
     }
     const stopAlert = () => {
       if (alertTimer.current) { clearInterval(alertTimer.current); alertTimer.current = null }
+      if (deadlineTimer.current) { clearTimeout(deadlineTimer.current); deadlineTimer.current = null }
       stopTitleFlash()
       stopCriticalAlert()
+    }
+
+    // Dispara o timeout no servidor (fila anda) quando o prazo estoura — mesmo
+    // que ninguém esteja olhando o painel. Best-effort.
+    const fireTimeout = (attId?: string) => {
+      if (!attId) return
+      fetch(`/api/seller-queue/attendances/${attId}/timeout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ reason: 'prazo de aceite esgotado' }) }).catch(() => {})
     }
 
     const poll = async () => {
@@ -67,10 +76,18 @@ export default function QueueAlertWatcher() {
         if (res.status === 403) { noAccess.current = true; return } // não pertence à fila
         if (!res.ok) return
         const data = (await res.json())?.data
-        const called = data?.myAttendance?.status === 'CALLED'
+        const att = data?.myAttendance
+        const deadlineMs = att?.acceptDeadline ? new Date(att.acceptDeadline).getTime() : null
+        // Só toca enquanto CHAMADO **e** dentro do prazo de aceite.
+        const called = att?.status === 'CALLED' && (deadlineMs === null || Date.now() < deadlineMs)
         if (called && !isCalled.current) {
           isCalled.current = true
           startAlert(data.alerts ?? { soundType: 'siren', repeatSeconds: 10, sound: true, browserPush: true })
+          // PARA exatamente no fim do prazo (não espera o próximo poll) e avança a fila.
+          if (deadlineMs) {
+            if (deadlineTimer.current) clearTimeout(deadlineTimer.current)
+            deadlineTimer.current = setTimeout(() => { isCalled.current = false; stopAlert(); fireTimeout(att?.id) }, Math.max(0, deadlineMs - Date.now()))
+          }
         } else if (!called && isCalled.current) {
           isCalled.current = false
           stopAlert()
