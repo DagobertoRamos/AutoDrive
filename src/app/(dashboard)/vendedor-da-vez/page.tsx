@@ -9,12 +9,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { ListOrdered, DoorOpen, Bell, RefreshCw, Crown, Hand, Clock } from 'lucide-react'
+import { ListOrdered, DoorOpen, Bell, RefreshCw, Crown, Hand, Clock, UserSearch, X, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number }
 interface Data { entries: Entry[]; vendedorDaVez: { sellerName: string } | null; arrivalsPending: number; queue: unknown | null }
 interface Att { id: string; sellerName: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null } | null }
+interface Callable { sellerId: string; name: string; role: string; positionName: string | null; queueStatus: string | null; inQueue: boolean }
+
+const ROLE_LABEL: Record<string, string> = { GERENTE_GERAL: 'Gerente Geral', GERENTE_ADMINISTRATIVO: 'Ger. Administrativo', GERENTE: 'Gerente', VENDEDOR_LIDER: 'Líder', VENDEDOR: 'Vendedor', FINANCEIRO: 'Financeiro', USUARIO_LIDER: 'Líder (apoio)', USUARIO: 'Auxiliar' }
 
 const STATUS_CLS: Record<string, string> = { WAITING: 'bg-gray-100 text-gray-600', PAUSED: 'bg-amber-100 text-amber-700', CALLED: 'bg-blue-100 text-blue-700', IN_ATTENDANCE: 'bg-green-100 text-green-700', NEXT: 'bg-brand-100 text-brand-700' }
 
@@ -67,6 +70,34 @@ export default function FilaOverviewPage() {
     } catch { flash('Erro de rede.', false) } finally { setCalling(false) }
   }
 
+  // ── Chamar colaborador específico (responsável / pós-vendas / superior) ──────
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [callable, setCallable] = useState<Callable[]>([])
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [callingId, setCallingId] = useState<string | null>(null)
+
+  const openPicker = async () => {
+    setPickerOpen(true); setSearch(''); setPickerLoading(true)
+    try {
+      const res = await fetch('/api/seller-queue/callable', { credentials: 'include' })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok) setCallable(j?.data ?? [])
+    } catch { /* noop */ } finally { setPickerLoading(false) }
+  }
+  const callSpecific = async (c: Callable) => {
+    setCallingId(c.sellerId)
+    try {
+      const res = await fetch('/api/seller-queue/call-specific', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId: c.sellerId }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) flash(j?.error ?? 'Falha ao chamar.', false)
+      else if (j?.data?.call?.ok) { flash(`${c.name} chamado! 🔔`, true); setPickerOpen(false) }
+      else flash(j?.data?.call?.reason ?? 'Não foi possível chamar.', false)
+      await load()
+    } catch { flash('Erro de rede.', false) } finally { setCallingId(null) }
+  }
+  const filteredCallable = callable.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()) || (c.positionName ?? '').toLowerCase().includes(search.toLowerCase()))
+
   const called = active.filter((a) => a.status === 'CALLED')
 
   return (
@@ -92,7 +123,13 @@ export default function FilaOverviewPage() {
           >
             <Hand size={20} />{calling ? 'Chamando...' : 'Chamar vendedor da vez'}
           </button>
-          <p className="mt-2 text-center text-xs text-gray-500">O vendedor é alertado na hora. Se não aceitar no prazo, o próximo é chamado automaticamente.</p>
+          <button
+            onClick={openPicker}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50"
+          >
+            <UserSearch size={16} />Chamar responsável / específico
+          </button>
+          <p className="mt-2 text-center text-xs text-gray-500">O vendedor da vez é alertado na hora; se não aceitar no prazo, o próximo é chamado automaticamente. Para retorno/pós-vendas, use "chamar responsável".</p>
 
           {called.length > 0 && (
             <div className="mt-3 space-y-1.5">
@@ -141,6 +178,43 @@ export default function FilaOverviewPage() {
 
       {toast && (
         <div className={cn('fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-lg', toast.ok ? 'bg-brand-600' : 'bg-red-600')}>{toast.msg}</div>
+      )}
+
+      {/* Modal — escolher colaborador específico (responsável / pós-vendas / superior) */}
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setPickerOpen(false)}>
+          <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+              <h2 className="text-base font-bold text-gray-900">Chamar colaborador</h2>
+              <button onClick={() => setPickerOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            <div className="border-b border-gray-100 p-3">
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou cargo…" className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {pickerLoading ? (
+                <p className="py-8 text-center text-sm text-gray-400">Carregando…</p>
+              ) : filteredCallable.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">Nenhum colaborador encontrado.</p>
+              ) : filteredCallable.map((c) => {
+                const busy = c.queueStatus === 'CALLED' || c.queueStatus === 'ACCEPTED' || c.queueStatus === 'IN_ATTENDANCE'
+                return (
+                  <button key={c.sellerId} onClick={() => callSpecific(c)} disabled={callingId !== null || busy}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-gray-50 disabled:opacity-50">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{c.name}</p>
+                      <p className="text-xs text-gray-500">{c.positionName ?? ROLE_LABEL[c.role] ?? c.role}{c.inQueue ? ' · na fila' : c.queueStatus ? ` · ${c.queueStatus.toLowerCase()}` : ' · fora da fila'}</p>
+                    </div>
+                    <span className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white">{callingId === c.sellerId ? '...' : busy ? 'ocupado' : 'Chamar'}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
