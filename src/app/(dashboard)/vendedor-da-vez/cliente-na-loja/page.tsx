@@ -14,9 +14,14 @@ const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 te
 const dt = (s: string) => new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
 interface Arrival { id: string; customerName: string | null; customerPhone: string | null; recurring: boolean; status: string; createdAt: string }
+interface Callable { sellerId: string; name: string; role: string; positionName: string | null; queueStatus: string | null; inQueue: boolean }
+type Mode = 'NORMAL' | 'SPECIFIC' | 'POS_VENDAS'
 
 export default function ClienteNaLojaPage() {
   const [form, setForm] = useState({ customerName: '', customerPhone: '', notes: '' })
+  const [mode, setMode] = useState<Mode>('NORMAL')
+  const [targetSellerId, setTargetSellerId] = useState('')
+  const [callable, setCallable] = useState<Callable[]>([])
   const [items, setItems] = useState<Arrival[]>([])
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
@@ -24,6 +29,15 @@ export default function ClienteNaLojaPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const set = <K extends keyof typeof form>(k: K, v: string) => setForm((f) => ({ ...f, [k]: v }))
   const flash = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 5000) }
+
+  useEffect(() => {
+    if (mode === 'NORMAL' || callable.length) return
+    let cancelled = false
+    ;(async () => {
+      try { const r = await fetch('/api/seller-queue/callable', { credentials: 'include' }); const j = await r.json(); if (!cancelled && j?.success) setCallable(j.data ?? []) } catch { /* noop */ }
+    })()
+    return () => { cancelled = true }
+  }, [mode, callable.length])
 
   const load = useCallback(async () => {
     try {
@@ -35,15 +49,17 @@ export default function ClienteNaLojaPage() {
   useEffect(() => { load(); const i = setInterval(load, 8000); return () => clearInterval(i) }, [load])
 
   const submit = async () => {
-    if (!form.customerName && !form.customerPhone) { flash('Informe nome ou telefone.', false); return }
+    if (mode === 'NORMAL' && !form.customerName && !form.customerPhone) { flash('Informe nome ou telefone.', false); return }
+    if (mode !== 'NORMAL' && !targetSellerId) { flash('Escolha o colaborador.', false); return }
     setSaving(true)
     try {
-      const res = await fetch('/api/seller-queue/customer-arrivals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ customerName: form.customerName || null, customerPhone: form.customerPhone || null, notes: form.notes || null }) })
+      const res = await fetch('/api/seller-queue/customer-arrivals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ customerName: form.customerName || null, customerPhone: form.customerPhone || null, notes: form.notes || null, mode, targetSellerId: mode === 'NORMAL' ? null : targetSellerId }) })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { flash(j?.error ?? 'Não foi possível registrar.', false); return }
       const call = j?.data?.call
-      flash(call?.ok ? 'Cliente registrado — vendedor da vez foi chamado!' : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, true)
-      setForm({ customerName: '', customerPhone: '', notes: '' }); await load()
+      const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
+      flash(call?.ok ? okMsg : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, !!call?.ok)
+      setForm({ customerName: '', customerPhone: '', notes: '' }); setTargetSellerId(''); await load()
     } catch { flash('Erro de rede.', false) } finally { setSaving(false) }
   }
 
@@ -55,13 +71,35 @@ export default function ClienteNaLojaPage() {
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-card">
-        <p className="mb-3 text-xs text-gray-500">Você registra a chegada — o sistema chama o <strong>vendedor da vez</strong> (não escolha quem atende).</p>
+        {/* Modo de atendimento */}
+        <div className="mb-3 grid grid-cols-3 gap-1.5">
+          {([['NORMAL', 'Vendedor da vez'], ['SPECIFIC', 'Responsável'], ['POS_VENDAS', 'Pós-vendas']] as [Mode, string][]).map(([m, label]) => (
+            <button key={m} type="button" onClick={() => setMode(m)} className={cn('rounded-lg border px-2 py-2 text-xs font-semibold transition', mode === m ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300')}>{label}</button>
+          ))}
+        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          {mode === 'NORMAL' && <>O sistema chama o <strong>vendedor da vez</strong> (não escolha quem atende).</>}
+          {mode === 'SPECIFIC' && <>Chama um <strong>colaborador específico</strong> (responsável pelo cliente). Fica registrado/auditado.</>}
+          {mode === 'POS_VENDAS' && <>Coloca o colaborador em <strong>pós-vendas</strong> (pausado na fila; volta com autorização do gestor).</>}
+        </p>
+
         <div className="space-y-3">
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente</label><input className={inputCls} value={form.customerName} onChange={(e) => set('customerName', e.target.value)} /></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone</label><input className={inputCls} value={form.customerPhone} onChange={(e) => set('customerPhone', e.target.value)} placeholder="(11) 9 9999-9999" /></div>
+          {mode !== 'NORMAL' && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Colaborador *</label>
+              <select className={inputCls} value={targetSellerId} onChange={(e) => setTargetSellerId(e.target.value)}>
+                <option value="">— selecione —</option>
+                {callable.map((c) => (
+                  <option key={c.sellerId} value={c.sellerId}>{c.name}{c.positionName ? ` — ${c.positionName}` : ''}{c.inQueue ? ' (na fila)' : c.queueStatus ? ` (${c.queueStatus.toLowerCase()})` : ' (fora da fila)'}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente{mode === 'NORMAL' ? '' : ' (opcional)'}</label><input className={inputCls} value={form.customerName} onChange={(e) => set('customerName', e.target.value)} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone{mode === 'NORMAL' ? '' : ' (opcional)'}</label><input className={inputCls} value={form.customerPhone} onChange={(e) => set('customerPhone', e.target.value)} placeholder="(11) 9 9999-9999" /></div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>
-        <button onClick={submit} disabled={saving} className="btn-primary mt-4 w-full justify-center py-3 text-base"><Send size={17} />{saving ? 'Registrando...' : 'Registrar e chamar vendedor'}</button>
+        <button onClick={submit} disabled={saving} className="btn-primary mt-4 w-full justify-center py-3 text-base"><Send size={17} />{saving ? 'Registrando...' : mode === 'POS_VENDAS' ? 'Registrar e iniciar pós-vendas' : 'Registrar e chamar'}</button>
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white shadow-card">

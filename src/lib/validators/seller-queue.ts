@@ -30,7 +30,10 @@ export const createArrivalSchema = z.object({
   customerPhone:     z.string().trim().max(40).nullish(),
   requestedSellerId: optStr, // cliente pediu por um vendedor (exige regra/aprovação)
   notes:             optStr,
-}).refine((d) => Boolean(d.customerName || d.customerPhone), { message: 'Informe ao menos o nome ou o telefone do cliente.' })
+  // Modo de atendimento ao registrar a chegada.
+  mode:              z.enum(['NORMAL', 'SPECIFIC', 'POS_VENDAS']).optional(),
+  targetSellerId:    optStr, // colaborador escolhido (SPECIFIC / POS_VENDAS)
+}).refine((d) => Boolean(d.customerName || d.customerPhone || d.targetSellerId), { message: 'Informe o cliente (nome/telefone) ou escolha o colaborador.' })
 
 // call-next: líder/gerente pode forçar um vendedor (com justificativa).
 export const callNextSchema = z.object({

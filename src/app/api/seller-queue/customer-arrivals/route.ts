@@ -17,7 +17,8 @@ import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createArrivalSchema } from '@/lib/validators/seller-queue'
 import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent , unitFromRequest } from '@/lib/seller-queue/queue'
 import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
-import { callForArrival } from '@/lib/seller-queue/call'
+import { callForArrival, callSpecificSeller } from '@/lib/seller-queue/call'
+import { startPosVenda } from '@/lib/seller-queue/pos-vendas'
 import { flagFraud } from '@/lib/seller-queue/fraud'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -89,12 +90,30 @@ export async function POST(req: Request) {
       if (dup) await flagFraud({ tenantId, unitId, actorId: user.id, arrivalId: arrival.id, kind: 'DUPLICATE', severity: 'MEDIUM', detail: 'Mesmo telefone registrado novamente em menos de 10 minutos.' })
     }
 
-    // Quem chamar: cliente pediu por nome (se a regra permitir) > responsável (recorrente) > vendedor da vez.
-    let preferSellerId: string | null = null
-    if (d.requestedSellerId && cfg && !cfg.requestByNameRequiresApproval) preferSellerId = d.requestedSellerId
-    else if (recurring.suggestedSellerId && (cfg?.recurringCustomerRule ?? 'RESPONSIBLE') === 'RESPONSIBLE') preferSellerId = recurring.suggestedSellerId
+    // Modo de atendimento escolhido por quem registra.
+    let call: { ok: boolean; reason?: string; sellerId?: string; attendanceId?: string }
+    const mode = d.mode ?? 'NORMAL'
 
-    const call = await callForArrival({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, preferSellerId, customerName: d.customerName ?? null, recurring: recurring.recurring })
+    if ((mode === 'SPECIFIC' || mode === 'POS_VENDAS') && d.targetSellerId) {
+      // Valida que o colaborador escolhido é da mesma unidade.
+      const target = await prisma.user.findUnique({ where: { id: d.targetSellerId }, select: { tenantId: true, unitId: true, status: true } })
+      if (!target || target.tenantId !== tenantId || target.unitId !== unitId || target.status !== 'ATIVO') {
+        return NextResponse.json({ success: false, error: 'Colaborador inválido para esta unidade.' }, { status: 400 })
+      }
+      if (mode === 'POS_VENDAS') {
+        const pv = await startPosVenda({ tenantId, unitId, sellerId: d.targetSellerId, startedById: user.id })
+        if (pv.ok) await prisma.sellerQueueCustomerArrival.update({ where: { id: arrival.id }, data: { status: 'ASSIGNED' } }).catch(() => {})
+        call = pv.ok ? { ok: true } : { ok: false, reason: pv.reason }
+      } else {
+        call = await callSpecificSeller({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId: d.targetSellerId, customerName: d.customerName ?? null })
+      }
+    } else {
+      // NORMAL: cliente pediu por nome (se a regra permitir) > responsável (recorrente) > vendedor da vez.
+      let preferSellerId: string | null = null
+      if (d.requestedSellerId && cfg && !cfg.requestByNameRequiresApproval) preferSellerId = d.requestedSellerId
+      else if (recurring.suggestedSellerId && (cfg?.recurringCustomerRule ?? 'RESPONSIBLE') === 'RESPONSIBLE') preferSellerId = recurring.suggestedSellerId
+      call = await callForArrival({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, preferSellerId, customerName: d.customerName ?? null, recurring: recurring.recurring })
+    }
 
     return NextResponse.json({ success: true, data: { arrivalId: arrival.id, recurring, call } }, { status: 201 })
   } catch (err) {
