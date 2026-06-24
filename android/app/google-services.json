@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "183584775004",
+    "project_id": "autodrive-97b5c",
+    "storage_bucket": "autodrive-97b5c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:183584775004:android:adf559a4c6ff11d870ff99",
+        "android_client_info": {
+          "package_name": "br.com.autodrive.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvVesoaXAh52u5gAwzxv_LSGzpp2UnXqY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

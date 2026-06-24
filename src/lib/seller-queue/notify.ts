@@ -8,6 +8,7 @@
 
 import { notify, notifyByRole, type NotifyChannel } from '@/services/notification.service'
 import { prisma } from '@/lib/prisma'
+import { pushQueueCall } from '@/lib/push/queue-push'
 
 const MANAGER_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER']
 
@@ -26,6 +27,8 @@ export async function notifySellerCalled(p: {
 }): Promise<void> {
   const who = p.customerName?.trim() ? `: ${p.customerName.trim()}` : ''
   const rec = p.recurring ? ' (cliente recorrente / retorno)' : ''
+  // Push nativo (FCM) — alerta no celular mesmo em 2º plano / tela bloqueada.
+  void pushQueueCall({ sellerId: p.sellerId, attendanceId: p.attendanceId, customerName: p.customerName ?? null, timeoutSeconds: p.timeoutSeconds })
   await notify({
     userId: p.sellerId, tenantId: p.tenantId, type: 'WARNING',
     title: 'Você é o vendedor da vez 🔔',
