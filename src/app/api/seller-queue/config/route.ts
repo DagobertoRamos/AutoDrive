@@ -51,9 +51,11 @@ export async function PUT(req: Request) {
     // Estratégia anti-abuso vai no campo JSON `config` (sem coluna nova). Mescla
     // com o que já houver lá para não apagar outros extras.
     let mergedConfig: Record<string, unknown> | undefined
-    if (d.autoBlock !== undefined) {
+    if (d.autoBlock !== undefined || d.allowSellerFinish !== undefined) {
       const existing = await prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } }, select: { config: true } })
-      mergedConfig = { ...((existing?.config as Record<string, unknown>) ?? {}), autoBlock: d.autoBlock }
+      mergedConfig = { ...((existing?.config as Record<string, unknown>) ?? {}) }
+      if (d.autoBlock !== undefined) mergedConfig.autoBlock = d.autoBlock
+      if (d.allowSellerFinish !== undefined) mergedConfig.allowSellerFinish = d.allowSellerFinish
     }
 
     const data = {

@@ -13,7 +13,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { finishSchema } from '@/lib/validators/seller-queue'
-import { logQueueEvent } from '@/lib/seller-queue/queue'
+import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { ensureAttendanceLead } from '@/lib/seller-queue/lead'
 import type { SellerAttendanceType, SellerAttendanceResult } from '@prisma/client'
@@ -36,6 +36,13 @@ export async function POST(req: Request, { params }: Ctx) {
     const isLead = canAccessModule(user.role, 'sellerQueue.lead')
     if (att.sellerId !== user.id && !isLead) return forbiddenResponse('Apenas o vendedor do atendimento ou a gestão pode finalizar.')
     if (!['IN_ATTENDANCE', 'ACCEPTED'].includes(att.status)) return NextResponse.json({ success: false, error: 'Atendimento não está em andamento.' }, { status: 409 })
+
+    // Config da loja: se o vendedor NÃO pode finalizar, só a gestão (líder/gerente).
+    const cfgFinish = await getUnitConfig(tenantId, att.unitId)
+    const allowSellerFinish = (cfgFinish?.config as { allowSellerFinish?: boolean } | null)?.allowSellerFinish ?? true
+    if (!allowSellerFinish && att.sellerId === user.id && !isLead) {
+      return forbiddenResponse('A finalização do atendimento é feita pela gestão (configuração da loja).')
+    }
 
     const d = finishSchema.parse(await req.json())
     await prisma.$transaction(async (tx) => {

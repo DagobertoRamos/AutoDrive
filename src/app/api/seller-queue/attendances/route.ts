@@ -42,7 +42,7 @@ export async function GET(req: Request) {
       data: rows.map((r) => ({
         id: r.id, sellerId: r.sellerId, sellerName: names.get(r.sellerId) ?? r.sellerId,
         status: r.status, type: r.type, result: r.result, calledAt: r.calledAt, acceptDeadline: r.acceptDeadline,
-        acceptedAt: r.acceptedAt, finishedAt: r.finishedAt, arrival: r.arrival,
+        acceptedAt: r.acceptedAt, finishedAt: r.finishedAt, leadId: r.leadId, arrival: r.arrival,
       })),
     })
   } catch (err) {

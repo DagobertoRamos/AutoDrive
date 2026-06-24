@@ -19,10 +19,11 @@ interface Cfg {
   qrSecret: string | null; acceptTimeoutSeconds: number; requireRevalidationOnAccept: boolean;
   recurringCustomerRule: string; requestByNameRequiresApproval: boolean;
   alertSound: boolean; alertSoundType: string; alertBrowserPush: boolean; alertWhatsapp: boolean; alertWhatsappManagers: boolean; alertRepeatSeconds: number; allowChooseSeller: boolean;
+  allowSellerFinish: boolean;
   autoBlock: AutoBlock
 }
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, autoBlock: DEFAULT_AUTO_BLOCK }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, autoBlock: DEFAULT_AUTO_BLOCK }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -51,7 +52,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -148,6 +149,7 @@ export default function ConfiguracoesFilaPage() {
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Repetir o som a cada (segundos)</label><input type="number" min={5} max={120} className={inputCls} value={cfg.alertRepeatSeconds} onChange={(e) => set('alertRepeatSeconds', Number(e.target.value) || 10)} /></div>
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.allowChooseSeller} onChange={(e) => set('allowChooseSeller', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Gestão pode escolher o vendedor (auto-organização)</label>
+        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.allowSellerFinish} onChange={(e) => set('allowSellerFinish', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Vendedor pode finalizar o próprio atendimento <span className="text-xs text-gray-400">(se desmarcado, só a gestão finaliza)</span></label>
         <p className="-mt-1 text-[11px] text-gray-400">O WhatsApp usa o provedor já configurado da loja; sem provedor ativo, o envio é ignorado silenciosamente.</p>
       </div>
 
