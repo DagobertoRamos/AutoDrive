@@ -121,10 +121,34 @@ function QuickAction({ label, description, icon: Icon, href, colorClass, bgClass
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
+// Saudação pela HORA LOCAL: 06:00–11:59 Bom dia · 12:00–17:59 Boa tarde ·
+// 18:00–05:59 Boa noite. `h` é a hora local (0–23) do dispositivo do usuário.
+function greetingFromHour(h: number): string {
+  if (h >= 6 && h < 12) return 'Bom dia'
+  if (h >= 12 && h < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
 export default function DashboardPage() {
   const { data: session } = useSession()
   const userRole = session?.user?.role as UserRole | undefined
   const firstName = session?.user?.name?.split(' ')[0] ?? 'usuário'
+
+  // Saudação dinâmica pelo horário LOCAL (fuso do dispositivo = local da pessoa).
+  // Refina com a hora do SERVIDOR (cabeçalho HTTP `Date`, fonte externa/NTP)
+  // convertida ao fuso local; se falhar, vale o relógio do aparelho. Atualiza
+  // a cada minuto para mudar ao cruzar uma faixa.
+  const [greeting, setGreeting] = useState('Olá')
+  useEffect(() => {
+    let active = true
+    const apply = (h: number) => { if (active) setGreeting(greetingFromHour(h)) }
+    apply(new Date().getHours())
+    fetch('/api/me/modules', { method: 'GET', cache: 'no-store', credentials: 'include' })
+      .then((r) => { const d = r.headers.get('date'); if (d) apply(new Date(d).getHours()) })
+      .catch(() => {})
+    const i = setInterval(() => apply(new Date().getHours()), 60000)
+    return () => { active = false; clearInterval(i) }
+  }, [])
 
   const [stats, setStats] = useState<DashboardStats>({
     pendenciasAbertas:    0,
@@ -291,7 +315,7 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">
-            Bom dia, {firstName}
+            {greeting}, {firstName}
           </h1>
           <p className="mt-0.5 text-sm text-gray-500">
             Aqui está o resumo da sua operação.
