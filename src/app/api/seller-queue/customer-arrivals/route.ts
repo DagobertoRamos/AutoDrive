@@ -17,7 +17,7 @@ import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createArrivalSchema } from '@/lib/validators/seller-queue'
 import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent , unitFromRequest } from '@/lib/seller-queue/queue'
 import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
-import { callForArrival, callSpecificSeller } from '@/lib/seller-queue/call'
+import { callForArrival, callSpecificSeller, startAgendamento } from '@/lib/seller-queue/call'
 import { startPosVenda } from '@/lib/seller-queue/pos-vendas'
 import { flagFraud } from '@/lib/seller-queue/fraud'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
     let call: { ok: boolean; reason?: string; sellerId?: string; attendanceId?: string }
     const mode = d.mode ?? 'NORMAL'
 
-    if ((mode === 'SPECIFIC' || mode === 'POS_VENDAS') && d.targetSellerId) {
+    if ((mode === 'SPECIFIC' || mode === 'POS_VENDAS' || mode === 'AGENDAMENTO') && d.targetSellerId) {
       // Valida que o colaborador escolhido é da mesma unidade.
       const target = await prisma.user.findUnique({ where: { id: d.targetSellerId }, select: { tenantId: true, unitId: true, status: true } })
       if (!target || target.tenantId !== tenantId || target.unitId !== unitId || target.status !== 'ATIVO') {
@@ -104,6 +104,8 @@ export async function POST(req: Request) {
         const pv = await startPosVenda({ tenantId, unitId, sellerId: d.targetSellerId, startedById: user.id })
         if (pv.ok) await prisma.sellerQueueCustomerArrival.update({ where: { id: arrival.id }, data: { status: 'ASSIGNED' } }).catch(() => {})
         call = pv.ok ? { ok: true } : { ok: false, reason: pv.reason }
+      } else if (mode === 'AGENDAMENTO') {
+        call = await startAgendamento({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId: d.targetSellerId, customerName: d.customerName ?? null })
       } else {
         call = await callSpecificSeller({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId: d.targetSellerId, customerName: d.customerName ?? null })
       }

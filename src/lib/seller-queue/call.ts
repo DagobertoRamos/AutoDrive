@@ -130,3 +130,43 @@ export async function callSpecificSeller(opts: {
 
   return { ok: true, attendanceId: result.att.id, sellerId: opts.sellerId }
 }
+
+/**
+ * AGENDAMENTO: o colaborador escolhido vai DIRETO para atendimento (sem alarme/
+ * aceite — é planejado). Sai da fila enquanto atende; ao FINALIZAR vai para o
+ * FIM da fila (fluxo normal de finish). Recusa se já estiver em atendimento.
+ */
+export async function startAgendamento(opts: {
+  tenantId: string
+  unitId: string
+  queueId: string
+  arrivalId: string
+  actorId: string
+  sellerId: string
+  customerName?: string | null
+}): Promise<CallResult> {
+  const busy = await prisma.sellerQueueAttendance.findFirst({
+    where: { queueId: opts.queueId, sellerId: opts.sellerId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
+    select: { id: true },
+  })
+  if (busy) return { ok: false, reason: 'Este colaborador já está em atendimento.' }
+
+  const now = new Date()
+  const result = await prisma.$transaction(async (tx) => {
+    const locked = await tx.sellerQueueEntry.updateMany({
+      where: { queueId: opts.queueId, sellerId: opts.sellerId, status: 'WAITING', blocked: false },
+      data: { status: 'IN_ATTENDANCE', lastActiveAt: now },
+    })
+    const att = await tx.sellerQueueAttendance.create({
+      data: {
+        tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, sellerId: opts.sellerId,
+        arrivalId: opts.arrivalId, status: 'IN_ATTENDANCE', calledAt: now, acceptedAt: now, startedAt: now,
+      },
+    })
+    await tx.sellerQueueCustomerArrival.update({ where: { id: opts.arrivalId }, data: { status: 'ASSIGNED' } })
+    return { att, fromQueue: locked.count === 1 }
+  })
+
+  await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'ATTENDANCE_STARTED', sellerId: opts.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.att.id, reason: 'agendamento' })
+  return { ok: true, attendanceId: result.att.id, sellerId: opts.sellerId }
+}

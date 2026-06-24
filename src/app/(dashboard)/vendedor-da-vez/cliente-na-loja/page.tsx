@@ -15,7 +15,7 @@ const dt = (s: string) => new Date(s).toLocaleTimeString('pt-BR', { hour: '2-dig
 
 interface Arrival { id: string; customerName: string | null; customerPhone: string | null; recurring: boolean; status: string; createdAt: string }
 interface Callable { sellerId: string; name: string; role: string; positionName: string | null; queueStatus: string | null; inQueue: boolean }
-type Mode = 'NORMAL' | 'SPECIFIC' | 'POS_VENDAS'
+type Mode = 'NORMAL' | 'SPECIFIC' | 'POS_VENDAS' | 'AGENDAMENTO'
 
 export default function ClienteNaLojaPage() {
   const [form, setForm] = useState({ customerName: '', customerPhone: '', notes: '' })
@@ -57,7 +57,7 @@ export default function ClienteNaLojaPage() {
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { flash(j?.error ?? 'Não foi possível registrar.', false); return }
       const call = j?.data?.call
-      const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
+      const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'AGENDAMENTO' ? 'Agendamento iniciado — colaborador em atendimento.' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
       flash(call?.ok ? okMsg : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, !!call?.ok)
       setForm({ customerName: '', customerPhone: '', notes: '' }); setTargetSellerId(''); await load()
     } catch { flash('Erro de rede.', false) } finally { setSaving(false) }
@@ -72,8 +72,8 @@ export default function ClienteNaLojaPage() {
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-card">
         {/* Modo de atendimento */}
-        <div className="mb-3 grid grid-cols-3 gap-1.5">
-          {([['NORMAL', 'Vendedor da vez'], ['SPECIFIC', 'Responsável'], ['POS_VENDAS', 'Pós-vendas']] as [Mode, string][]).map(([m, label]) => (
+        <div className="mb-3 grid grid-cols-2 gap-1.5">
+          {([['NORMAL', 'Vendedor da vez'], ['SPECIFIC', 'Responsável'], ['POS_VENDAS', 'Pós-vendas'], ['AGENDAMENTO', 'Agendamento']] as [Mode, string][]).map(([m, label]) => (
             <button key={m} type="button" onClick={() => setMode(m)} className={cn('rounded-lg border px-2 py-2 text-xs font-semibold transition', mode === m ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300')}>{label}</button>
           ))}
         </div>
@@ -81,6 +81,7 @@ export default function ClienteNaLojaPage() {
           {mode === 'NORMAL' && <>O sistema chama o <strong>vendedor da vez</strong> (não escolha quem atende).</>}
           {mode === 'SPECIFIC' && <>Chama um <strong>colaborador específico</strong> (responsável pelo cliente). Fica registrado/auditado.</>}
           {mode === 'POS_VENDAS' && <>Coloca o colaborador em <strong>pós-vendas</strong> (pausado na fila; volta com autorização do gestor).</>}
+          {mode === 'AGENDAMENTO' && <>O colaborador vai <strong>direto para atendimento</strong> (sem alarme); ao finalizar, vai para o fim da fila.</>}
         </p>
 
         <div className="space-y-3">
@@ -99,7 +100,7 @@ export default function ClienteNaLojaPage() {
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone{mode === 'NORMAL' ? '' : ' (opcional)'}</label><input className={inputCls} value={form.customerPhone} onChange={(e) => set('customerPhone', e.target.value)} placeholder="(11) 9 9999-9999" /></div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>
-        <button onClick={submit} disabled={saving} className="btn-primary mt-4 w-full justify-center py-3 text-base"><Send size={17} />{saving ? 'Registrando...' : mode === 'POS_VENDAS' ? 'Registrar e iniciar pós-vendas' : 'Registrar e chamar'}</button>
+        <button onClick={submit} disabled={saving} className="btn-primary mt-4 w-full justify-center py-3 text-base"><Send size={17} />{saving ? 'Registrando...' : mode === 'POS_VENDAS' ? 'Registrar e iniciar pós-vendas' : mode === 'AGENDAMENTO' ? 'Registrar agendamento' : 'Registrar e chamar'}</button>
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white shadow-card">

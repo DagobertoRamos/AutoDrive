@@ -31,7 +31,7 @@ export const createArrivalSchema = z.object({
   requestedSellerId: optStr, // cliente pediu por um vendedor (exige regra/aprovação)
   notes:             optStr,
   // Modo de atendimento ao registrar a chegada.
-  mode:              z.enum(['NORMAL', 'SPECIFIC', 'POS_VENDAS']).optional(),
+  mode:              z.enum(['NORMAL', 'SPECIFIC', 'POS_VENDAS', 'AGENDAMENTO']).optional(),
   targetSellerId:    optStr, // colaborador escolhido (SPECIFIC / POS_VENDAS)
 }).refine((d) => Boolean(d.customerName || d.customerPhone || d.targetSellerId), { message: 'Informe o cliente (nome/telefone) ou escolha o colaborador.' })
 
