@@ -64,7 +64,12 @@ export async function GET(req: Request) {
       status: e.status, position: e.position, joinedAt: e.joinedAt, blocked: e.blocked, attendanceCount: e.attendanceCount,
     }))
     const vencedor = list.find((e) => e.status === 'WAITING' && !e.blocked) ?? null
-    const me = list.find((e) => e.sellerId === user.id) ?? null
+    const meRaw = list.find((e) => e.sellerId === user.id) ?? null
+    // Posição REAL na fila: rank entre os que estão aguardando (1º, 2º, 3º…),
+    // não o campo interno `position` (que cresce como contador ao ir pro fim).
+    const lineOrder = list.filter((e) => (e.status === 'WAITING' || e.status === 'NEXT') && !e.blocked)
+    const myRank = lineOrder.findIndex((e) => e.sellerId === user.id) + 1
+    const me = meRaw ? { ...meRaw, position: myRank > 0 ? myRank : meRaw.position } : null
 
     // Atendimento ativo do próprio solicitante (p/ aceitar/recusar/finalizar).
     const myAtt = await prisma.sellerQueueAttendance.findFirst({
