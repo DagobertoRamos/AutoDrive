@@ -85,8 +85,13 @@ public class AutoDriveFcmService extends FirebaseMessagingService {
         PendingIntent piAccept = open("accept", attId, 101);
         PendingIntent piReject = open("reject", attId, 102);
 
+        // Ícone pequeno DEVE ser um drawable monocromático simples — usar o ícone
+        // adaptativo do app faz o Android descartar a notificação silenciosamente.
+        int smallIcon = getResources().getIdentifier("ic_notification", "drawable", getPackageName());
+        if (smallIcon == 0) smallIcon = android.R.drawable.ic_popup_reminder;
+
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(getApplicationInfo().icon)
+                .setSmallIcon(smallIcon)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
