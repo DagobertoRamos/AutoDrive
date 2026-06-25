@@ -64,6 +64,14 @@ export default function QueueAlertWatcher() {
   const processNativeAction = useCallback(async () => {
     const { action, attId } = await consumePushAction()
     if (!action || !attId) return
+    // Tocou no corpo da notificação → abre a Minha Fila (o pop-up de aceite
+    // aparece sozinho pelo poll, pois o atendimento está CALLED).
+    if (action === 'open') {
+      if (!window.location.pathname.includes('/vendedor-da-vez/minha-fila')) {
+        window.location.assign('/vendedor-da-vez/minha-fila')
+      }
+      return
+    }
     handledAttId.current = attId
     stopAll(); setPrompt(null)
     try {

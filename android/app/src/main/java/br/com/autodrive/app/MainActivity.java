@@ -4,18 +4,31 @@ import android.Manifest;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends BridgeActivity {
+
+  // IMPORTANTE: o launcher precisa ser registrado na CONSTRUÇÃO da Activity
+  // (antes de STARTED). Registrar dentro de onCreate, depois do super, dá
+  // IllegalStateException em vários aparelhos e a permissão NUNCA é pedida —
+  // por isso a notificação não aparecia em alguns devices. Campo = universal.
+  private final ActivityResultLauncher<String[]> permLauncher =
+      registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+        for (String p : result.keySet()) {
+          android.util.Log.d("AutoDrivePerm", p + " => " + result.get(p));
+        }
+      });
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
@@ -24,6 +37,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(PushBridgePlugin.class);
     super.onCreate(savedInstanceState);
     requestRequiredPermissions();
+    ensureFullScreenIntentAccess();
     handleCallIntent(getIntent());
   }
 
@@ -52,51 +66,49 @@ public class MainActivity extends BridgeActivity {
   }
 
   private void requestRequiredPermissions() {
-    List<String> permissionsToRequest = new ArrayList<>();
+    List<String> toRequest = new ArrayList<>();
 
-    // Permissões necessárias
-    String[] requiredPermissions = {
-      Manifest.permission.INTERNET,
+    String[] required = {
       Manifest.permission.CAMERA,
       Manifest.permission.ACCESS_FINE_LOCATION,
       Manifest.permission.ACCESS_COARSE_LOCATION,
-      Manifest.permission.READ_EXTERNAL_STORAGE,
       Manifest.permission.RECORD_AUDIO,
     };
-
-    // Android 13+ requer POST_NOTIFICATIONS
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
+    for (String p : required) {
+      if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) toRequest.add(p);
     }
 
-    // Android 11+ (WRITE_EXTERNAL_STORAGE)
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-      permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+    // Android 13+ exige POST_NOTIFICATIONS — sem ela a notificação de chamada
+    // é descartada em silêncio (o alarme toca, mas o balão não aparece).
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+      toRequest.add(Manifest.permission.POST_NOTIFICATIONS);
     }
 
-    // Verificar quais permissões já foram concedidas
-    for (String permission : requiredPermissions) {
-      if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-        permissionsToRequest.add(permission);
-      }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+        && ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+      toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
     }
 
-    // Se houver permissões a pedir, pedir
-    if (!permissionsToRequest.isEmpty()) {
-      ActivityResultLauncher<String[]> launcher = registerForActivityResult(
-        new ActivityResultContracts.RequestMultiplePermissions(),
-        result -> {
-          // Permissões foram processadas
-          for (String permission : permissionsToRequest) {
-            if (result.getOrDefault(permission, false)) {
-              android.util.Log.d("PermissionManager", "Permission granted: " + permission);
-            } else {
-              android.util.Log.w("PermissionManager", "Permission denied: " + permission);
-            }
-          }
-        }
-      );
-      launcher.launch(permissionsToRequest.toArray(new String[0]));
+    if (!toRequest.isEmpty()) {
+      try { permLauncher.launch(toRequest.toArray(new String[0])); } catch (Exception ignored) {}
     }
+  }
+
+  // Android 14+ não concede "notificação em tela cheia" por padrão. Sem isso a
+  // chamada não sobrepõe a tela bloqueada. Pedimos UMA vez levando o usuário à
+  // tela de configuração correta.
+  private void ensureFullScreenIntentAccess() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return;
+    try {
+      NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+      if (nm != null && nm.canUseFullScreenIntent()) return;
+      SharedPreferences sp = getSharedPreferences("autodrive_push", Context.MODE_PRIVATE);
+      if (sp.getBoolean("fsi_asked", false)) return;
+      sp.edit().putBoolean("fsi_asked", true).apply();
+      Intent i = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getPackageName()));
+      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      startActivity(i);
+    } catch (Exception ignored) {}
   }
 }

@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.os.Build;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.Person;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
@@ -81,7 +82,7 @@ public class AutoDriveFcmService extends FirebaseMessagingService {
         if (nm == null) return;
         ensureChannel(nm);
 
-        PendingIntent piOpen = open(null, attId, 100);
+        PendingIntent piOpen = open("open", attId, 100);
         PendingIntent piAccept = open("accept", attId, 101);
         PendingIntent piReject = open("reject", attId, 102);
 
@@ -98,11 +99,19 @@ public class AutoDriveFcmService extends FirebaseMessagingService {
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setOngoing(true)
-                .setAutoCancel(true)
+                .setAutoCancel(false)
                 .setContentIntent(piOpen)
-                .setFullScreenIntent(piOpen, true) // pop-up/tela cheia mesmo bloqueado
-                .addAction(0, "Aceitar", piAccept)
-                .addAction(0, "Recusar", piReject);
+                .setFullScreenIntent(piOpen, true); // tela cheia mesmo bloqueado
+
+        // CallStyle (Android 12+) — visual de CHAMADA RECEBIDA com Aceitar/Recusar.
+        // Tem tratamento prioritário do sistema (heads-up/lock screen) em qualquer
+        // fabricante, igual app de ligação. Abaixo do 12, usa botões de ação.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Person caller = new Person.Builder().setName(title).setImportant(true).build();
+            b.setStyle(NotificationCompat.CallStyle.forIncomingCall(caller, piReject, piAccept));
+        } else {
+            b.addAction(0, "Aceitar", piAccept).addAction(0, "Recusar", piReject);
+        }
 
         nm.notify(NOTIFICATION_ID, b.build());
     }
