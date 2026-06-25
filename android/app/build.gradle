@@ -11,7 +11,7 @@ android {
     namespace = "br.com.autodrive.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "br.com.autodrive.app"
+        applicationId "br.com.autodrive"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

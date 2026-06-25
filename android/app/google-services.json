@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:183584775004:android:3b9de38a41d047ba70ff99",
+        "android_client_info": {
+          "package_name": "br.com.autodrive"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvVesoaXAh52u5gAwzxv_LSGzpp2UnXqY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:183584775004:android:adf559a4c6ff11d870ff99",
         "android_client_info": {
           "package_name": "br.com.autodrive.app"
