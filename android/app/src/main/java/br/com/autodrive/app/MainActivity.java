@@ -57,6 +57,10 @@ public class MainActivity extends BridgeActivity {
     String attId = intent.getStringExtra("attId");
     if (action == null && attId == null) return;
 
+    // Aberto por uma CHAMADA → mostrar POR CIMA da tela bloqueada e acordar a
+    // tela (senão a Activity abre atrás do cadeado e o usuário só ouve o alarme).
+    showOverLockScreen();
+
     // SOMENTE aceitar/recusar param o alarme e fecham a chamada. Abrir pela
     // tela cheia / toque no corpo ("open") apenas traz o app — o alarme CONTINUA
     // tocando até o usuário decidir (senão a chamada "acende e apaga" ao abrir
@@ -70,6 +74,24 @@ public class MainActivity extends BridgeActivity {
     }
 
     if (action != null) PushBridgePlugin.setPending(action, attId);
+  }
+
+  // Faz a Activity aparecer sobre a tela bloqueada e acende a tela (estilo
+  // chamada recebida). Pede ao sistema para dispensar o cadeado não seguro.
+  private void showOverLockScreen() {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+        setShowWhenLocked(true);
+        setTurnScreenOn(true);
+        android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+        if (km != null) km.requestDismissKeyguard(this, null);
+      } else {
+        getWindow().addFlags(
+            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+          | android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+          | android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+      }
+    } catch (Exception ignored) {}
   }
 
   private void requestRequiredPermissions() {
