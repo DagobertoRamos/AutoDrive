@@ -26,7 +26,7 @@ export async function GET() {
     title: 'Teste de chamada 🔔',
     body: 'Push de teste do AutoDrive — produção',
     ttlSeconds: 60,
-    data: { type: 'QUEUE_CALL', attendanceId: 'PUSHTEST', customerName: 'Teste', timeoutSeconds: '60' },
+    data: { type: 'QUEUE_CALL', attendanceId: 'PUSHTEST', customerName: 'Teste', timeoutSeconds: '15' },
   })
 
   const selfTest = await fcmSelfTest()

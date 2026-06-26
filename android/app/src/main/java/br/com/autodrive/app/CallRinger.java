@@ -7,6 +7,8 @@ import android.media.MediaPlayer;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
@@ -20,10 +22,18 @@ import android.os.VibratorManager;
 public final class CallRinger {
     private static MediaPlayer player;
     private static int savedVolume = -1;
+    private static Handler autoStop;
+    private static Runnable autoStopTask;
 
     private CallRinger() {}
 
     public static synchronized void start(Context ctx) {
+        start(ctx, 90);
+    }
+
+    /** Toca/vibra e AUTO-PARA após maxSeconds (rede de segurança: nunca infinito). */
+    public static synchronized void start(Context ctx, int maxSeconds) {
+        scheduleAutoStop(ctx, maxSeconds);
         if (player != null && player.isPlaying()) return;
         try {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
@@ -51,6 +61,7 @@ public final class CallRinger {
     }
 
     public static synchronized void stop(Context ctx) {
+        cancelAutoStop();
         if (player != null) {
             try { if (player.isPlaying()) player.stop(); player.release(); } catch (Exception ignored) {}
             player = null;
@@ -59,10 +70,33 @@ public final class CallRinger {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             if (am != null && savedVolume >= 0) { am.setStreamVolume(AudioManager.STREAM_ALARM, savedVolume, 0); savedVolume = -1; }
         } catch (Exception ignored) {}
+        // Cancela a vibração de forma robusta (Vibrator e, no S+, o VibratorManager).
         try {
             Vibrator v = vibrator(ctx);
             if (v != null) v.cancel();
         } catch (Exception ignored) {}
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                VibratorManager vm = (VibratorManager) ctx.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                if (vm != null) vm.cancel();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private static synchronized void scheduleAutoStop(Context ctx, int maxSeconds) {
+        cancelAutoStop();
+        final Context app = ctx.getApplicationContext();
+        autoStop = new Handler(Looper.getMainLooper());
+        autoStopTask = () -> stop(app);
+        autoStop.postDelayed(autoStopTask, Math.max(5, maxSeconds) * 1000L);
+    }
+
+    private static synchronized void cancelAutoStop() {
+        if (autoStop != null && autoStopTask != null) {
+            try { autoStop.removeCallbacks(autoStopTask); } catch (Exception ignored) {}
+        }
+        autoStop = null;
+        autoStopTask = null;
     }
 
     private static void vibrate(Context ctx) {

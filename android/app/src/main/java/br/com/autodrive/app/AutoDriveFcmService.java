@@ -47,8 +47,11 @@ public class AutoDriveFcmService extends FirebaseMessagingService {
         String title = d.getOrDefault("title", "Você é o vendedor da vez 🔔");
         String body = d.getOrDefault("body", "Cliente aguardando — aceite ou recuse.");
         String attId = d.getOrDefault("attendanceId", "");
+        int timeout = 90;
+        try { timeout = Integer.parseInt(d.getOrDefault("timeoutSeconds", "90")); } catch (Exception ignored) {}
 
-        try { CallRinger.start(getApplicationContext()); } catch (Exception ignored) {}
+        // toca/vibra e AUTO-PARA no fim do prazo (rede de segurança contra loop)
+        try { CallRinger.start(getApplicationContext(), timeout); } catch (Exception ignored) {}
         showCallNotification(title, body, attId);
     }
 
