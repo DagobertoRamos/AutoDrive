@@ -23,7 +23,11 @@ export async function pushToUser(userId: string, msg: PushMessage): Promise<void
 
 /** Push de CHAMADA do vendedor da vez (estilo Uber/99 — o app mostra full-screen). */
 export async function pushQueueCall(opts: { sellerId: string; attendanceId: string; customerName?: string | null; timeoutSeconds: number }): Promise<void> {
-  await pushToUser(opts.sellerId, {
+  // sellerId é o id do Seller; o aparelho é registrado pelo userId — resolver.
+  // Fallback: se não houver Seller com esse id, talvez já seja o próprio userId.
+  const seller = await prisma.seller.findUnique({ where: { id: opts.sellerId }, select: { userId: true } })
+  const userId = seller?.userId ?? opts.sellerId
+  await pushToUser(userId, {
     title: 'Você é o vendedor da vez 🔔',
     body: opts.customerName?.trim() ? `Cliente: ${opts.customerName.trim()} — aceite ou recuse.` : 'Cliente presencial aguardando — aceite ou recuse.',
     ttlSeconds: Math.max(30, opts.timeoutSeconds),
