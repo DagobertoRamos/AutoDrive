@@ -7,23 +7,22 @@ import android.media.MediaPlayer;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
 
 // =============================================================================
-// CallRinger — alarme de CHAMADA em loop (estilo Uber/99). Toca no volume de
-// alarme e vibra forte. Usado pelo FCM (push) e pode ser parado ao aceitar/
-// recusar/expirar. Estático para sobreviver entre serviço e Activity.
+// CallRinger — alarme de CHAMADA (estilo Uber/99). Toca no volume de alarme e
+// vibra forte. PARA SOZINHO no fim do prazo SEM depender de timer (que o Doze
+// adia): a vibração é um padrão FINITO que termina por conta própria, e o som
+// só repete enquanto não passou do prazo. stop() corta tudo na hora ao
+// aceitar/recusar. Estático para sobreviver entre serviço e Activity.
 // =============================================================================
 
 public final class CallRinger {
     private static MediaPlayer player;
     private static int savedVolume = -1;
-    private static Handler autoStop;
-    private static Runnable autoStopTask;
+    private static long deadline = 0;
 
     private CallRinger() {}
 
@@ -31,10 +30,12 @@ public final class CallRinger {
         start(ctx, 90);
     }
 
-    /** Toca/vibra e AUTO-PARA após maxSeconds (rede de segurança: nunca infinito). */
+    /** Toca/vibra por no máximo maxSeconds e termina SOZINHO (robusto contra Doze). */
     public static synchronized void start(Context ctx, int maxSeconds) {
-        scheduleAutoStop(ctx, maxSeconds);
-        if (player != null && player.isPlaying()) return;
+        final int secs = Math.max(5, maxSeconds);
+        deadline = System.currentTimeMillis() + secs * 1000L;
+        if (player != null && player.isPlaying()) return; // já tocando: só estendeu o prazo
+        final Context app = ctx.getApplicationContext();
         try {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             if (am != null) {
@@ -50,20 +51,28 @@ public final class CallRinger {
                 mp.setAudioAttributes(new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
-                mp.setLooping(true);
+                mp.setLooping(false);
                 mp.setDataSource(ctx, uri);
                 mp.setOnPreparedListener(MediaPlayer::start);
+                // Repete o toque só enquanto não venceu o prazo — sem timer.
+                mp.setOnCompletionListener(m -> {
+                    if (System.currentTimeMillis() < deadline) {
+                        try { m.seekTo(0); m.start(); } catch (Exception ignored) {}
+                    } else {
+                        stop(app);
+                    }
+                });
                 mp.prepareAsync();
                 player = mp;
             }
-            vibrate(ctx);
+            vibrate(ctx, secs);
         } catch (Exception ignored) { stop(ctx); }
     }
 
     public static synchronized void stop(Context ctx) {
-        cancelAutoStop();
+        deadline = 0;
         if (player != null) {
-            try { if (player.isPlaying()) player.stop(); player.release(); } catch (Exception ignored) {}
+            try { player.setOnCompletionListener(null); if (player.isPlaying()) player.stop(); player.release(); } catch (Exception ignored) {}
             player = null;
         }
         try {
@@ -83,31 +92,22 @@ public final class CallRinger {
         } catch (Exception ignored) {}
     }
 
-    private static synchronized void scheduleAutoStop(Context ctx, int maxSeconds) {
-        cancelAutoStop();
-        final Context app = ctx.getApplicationContext();
-        autoStop = new Handler(Looper.getMainLooper());
-        autoStopTask = () -> stop(app);
-        autoStop.postDelayed(autoStopTask, Math.max(5, maxSeconds) * 1000L);
-    }
-
-    private static synchronized void cancelAutoStop() {
-        if (autoStop != null && autoStopTask != null) {
-            try { autoStop.removeCallbacks(autoStopTask); } catch (Exception ignored) {}
-        }
-        autoStop = null;
-        autoStopTask = null;
-    }
-
-    private static void vibrate(Context ctx) {
+    // Vibração FINITA: ~1 ciclo por segundo, repetido 'seconds' vezes, então PARA
+    // sozinha. Não usa repeat infinito nem timer — imune ao Doze/processo congelado.
+    private static void vibrate(Context ctx, int seconds) {
         Vibrator v = vibrator(ctx);
         if (v == null || !v.hasVibrator()) return;
-        long[] pattern = {0, 600, 400, 600, 400, 600, 400};
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            v.vibrate(VibrationEffect.createWaveform(pattern, 0)); // repeat
-        } else {
-            v.vibrate(pattern, 0);
-        }
+        int cycles = Math.max(5, seconds);
+        long[] pattern = new long[1 + cycles * 2];
+        pattern[0] = 0;
+        for (int i = 0; i < cycles; i++) { pattern[1 + i * 2] = 600; pattern[2 + i * 2] = 400; }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createWaveform(pattern, -1)); // -1 = NÃO repetir
+            } else {
+                v.vibrate(pattern, -1);
+            }
+        } catch (Exception ignored) {}
     }
 
     private static Vibrator vibrator(Context ctx) {
