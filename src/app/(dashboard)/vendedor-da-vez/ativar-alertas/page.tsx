@@ -60,6 +60,22 @@ export default function AtivarAlertas() {
   const [status, setStatus] = useState<AlertStatus | null>(null)
   const [native, setNative] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
+  const [testMsg, setTestMsg] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  const testarAlerta = async () => {
+    setTesting(true); setTestMsg(null)
+    try {
+      const r = await fetch('/api/mobile/push-test', { credentials: 'include' })
+      const j = await r.json()
+      if (j?.enviados > 0) setTestMsg('✅ Alerta enviado! Em alguns segundos o celular deve tocar.')
+      else if (j?.devicesAtivos === 0) setTestMsg('⚠️ Este aparelho ainda não foi registrado. Saia e entre de novo no app.')
+      else if (!j?.fcmConfigured) setTestMsg('⚠️ Servidor de push não configurado. Avise o suporte.')
+      else setTestMsg('⚠️ Não foi possível enviar. Tente sair e entrar de novo no app.')
+    } catch {
+      setTestMsg('⚠️ Erro de rede ao testar.')
+    } finally { setTesting(false) }
+  }
 
   const refresh = useCallback(async () => {
     const isNative = isNativeAndroid()
@@ -141,6 +157,16 @@ export default function AtivarAlertas() {
           <span>{tip}</span>
         </div>
       )}
+
+      <button
+        onClick={() => void testarAlerta()}
+        disabled={testing}
+        className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-60"
+      >
+        {testing ? <Loader2 size={16} className="animate-spin" /> : <BellRing size={16} />}
+        Enviar alerta de teste para este celular
+      </button>
+      {testMsg && <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">{testMsg}</div>}
 
       <button
         onClick={() => void openAppDetailsSettings()}
