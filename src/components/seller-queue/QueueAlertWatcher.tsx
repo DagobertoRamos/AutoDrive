@@ -148,7 +148,10 @@ export default function QueueAlertWatcher() {
           if (!isCalled.current) {
             isCalled.current = true
             startAlert(data.alerts ?? { soundType: 'siren', repeatSeconds: 10, sound: true, browserPush: true })
-            setPrompt({ attId: att.id, customerName: att.arrival?.customerName ?? null })
+            // App Android: a notificação de chamada do SISTEMA (CallStyle) é o
+            // único "Aceitar/Recusar" — não mostrar o balão interno para não
+            // duplicar/conflitar. No PWA/PC (sem notificação nativa), mostra.
+            if (!isNativeAndroid()) setPrompt({ attId: att.id, customerName: att.arrival?.customerName ?? null })
             if (deadlineMs) {
               if (deadlineTimer.current) clearTimeout(deadlineTimer.current)
               deadlineTimer.current = setTimeout(() => { stopAll(); setPrompt(null); fireTimeout(att.id) }, Math.max(0, deadlineMs - Date.now()))
