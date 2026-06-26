@@ -63,6 +63,17 @@ public class PushBridgePlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /** A WebView chama ao Aceitar/Recusar/encerrar: para o alarme e fecha a chamada. */
+    @PluginMethod
+    public void stopRinger(PluginCall call) {
+        try { CallRinger.stop(getContext()); } catch (Exception ignored) {}
+        try {
+            NotificationManager nm = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(AutoDriveFcmService.NOTIFICATION_ID);
+        } catch (Exception ignored) {}
+        call.resolve();
+    }
+
     // ── Fase 4: diagnóstico e atalhos para as configurações do aparelho ─────────
 
     @PluginMethod

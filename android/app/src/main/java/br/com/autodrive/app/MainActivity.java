@@ -57,11 +57,17 @@ public class MainActivity extends BridgeActivity {
     String attId = intent.getStringExtra("attId");
     if (action == null && attId == null) return;
 
-    try { CallRinger.stop(getApplicationContext()); } catch (Exception ignored) {}
-    try {
-      NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-      if (nm != null) nm.cancel(AutoDriveFcmService.NOTIFICATION_ID);
-    } catch (Exception ignored) {}
+    // SOMENTE aceitar/recusar param o alarme e fecham a chamada. Abrir pela
+    // tela cheia / toque no corpo ("open") apenas traz o app — o alarme CONTINUA
+    // tocando até o usuário decidir (senão a chamada "acende e apaga" ao abrir
+    // sozinha na tela bloqueada).
+    if ("accept".equals(action) || "reject".equals(action)) {
+      try { CallRinger.stop(getApplicationContext()); } catch (Exception ignored) {}
+      try {
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(AutoDriveFcmService.NOTIFICATION_ID);
+      } catch (Exception ignored) {}
+    }
 
     if (action != null) PushBridgePlugin.setPending(action, attId);
   }

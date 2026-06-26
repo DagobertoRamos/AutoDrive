@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { CheckCircle2, XCircle, SkipForward, Loader2 } from 'lucide-react'
 import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
-import { registerPushToken, consumePushAction } from '@/lib/mobile/push-bridge'
+import { registerPushToken, consumePushAction, isNativeAndroid, stopNativeRinger } from '@/lib/mobile/push-bridge'
 
 const POLL_MS = 6000
 
@@ -49,6 +49,7 @@ export default function QueueAlertWatcher() {
     if (titleTimer.current) { clearInterval(titleTimer.current); titleTimer.current = null; if (baseTitle.current) document.title = baseTitle.current }
     isCalled.current = false
     stopCriticalAlert()
+    void stopNativeRinger() // para o alarme/sirene do app Android (no-op no PWA/PC)
   }, [])
 
   // Destrava áudio + permissão de notificação no 1º gesto.
@@ -105,6 +106,8 @@ export default function QueueAlertWatcher() {
     }
     const startAlert = (a: { soundType?: string; repeatSeconds?: number; sound?: boolean; browserPush?: boolean }) => {
       if (alertTimer.current) return
+      // No app Android nativo, quem toca é o CallRinger (push) — não duplicar som aqui.
+      if (isNativeAndroid()) { startTitleFlash(); return }
       const fire = () => criticalAlert({ title: 'Você é o vendedor da vez 🔔', body: 'Cliente aguardando — aceite ou recuse.', soundType: a.soundType, sound: a.sound, push: a.browserPush })
       fire()
       alertTimer.current = setInterval(fire, Math.max(5, a.repeatSeconds || 10) * 1000)

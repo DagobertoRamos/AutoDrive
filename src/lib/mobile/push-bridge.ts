@@ -22,6 +22,7 @@ interface PushBridgePlugin {
   openBattery: () => Promise<void>
   openFullScreen: () => Promise<void>
   openAppDetails: () => Promise<void>
+  stopRinger?: () => Promise<void>
 }
 
 function bridge(): PushBridgePlugin | null {
@@ -77,6 +78,9 @@ export async function getAlertStatus(): Promise<AlertStatus | null> {
     return null
   }
 }
+
+/** Para o alarme nativo + fecha a notificação de chamada (ao aceitar/recusar/encerrar). */
+export async function stopNativeRinger(): Promise<void> { try { await bridge()?.stopRinger?.() } catch { /* */ } }
 
 export async function openNotificationSettings(): Promise<void> { try { await bridge()?.openNotifications() } catch { /* */ } }
 export async function openBatterySettings(): Promise<void> { try { await bridge()?.openBattery() } catch { /* */ } }
