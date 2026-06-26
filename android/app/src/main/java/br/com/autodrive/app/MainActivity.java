@@ -38,6 +38,7 @@ public class MainActivity extends BridgeActivity {
     super.onCreate(savedInstanceState);
     requestRequiredPermissions();
     ensureFullScreenIntentAccess();
+    PresenceService.start(getApplicationContext()); // mantém o app ativo p/ chamadas
     handleCallIntent(getIntent());
   }
 
