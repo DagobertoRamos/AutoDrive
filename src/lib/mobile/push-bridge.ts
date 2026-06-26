@@ -6,9 +6,22 @@
 // No iPhone/PWA/PC o plugin não existe → tudo vira no-op silencioso.
 // =============================================================================
 
+export interface AlertStatus {
+  available: boolean
+  manufacturer: string
+  notifications: boolean
+  batteryUnrestricted: boolean
+  fullScreen: boolean
+}
+
 interface PushBridgePlugin {
   getToken: () => Promise<{ token?: string }>
   consumeAction: () => Promise<{ action?: string | null; attId?: string | null }>
+  getStatus: () => Promise<AlertStatus>
+  openNotifications: () => Promise<void>
+  openBattery: () => Promise<void>
+  openFullScreen: () => Promise<void>
+  openAppDetails: () => Promise<void>
 }
 
 function bridge(): PushBridgePlugin | null {
@@ -48,3 +61,24 @@ export async function consumePushAction(): Promise<{ action: string | null; attI
     return { action: null, attId: null }
   }
 }
+
+/** true quando rodando dentro do app nativo Android (não PWA/PC). */
+export function isNativeAndroid(): boolean {
+  return bridge() !== null
+}
+
+/** Status das permissões/ajustes do aparelho (Fase 4). null fora do app nativo. */
+export async function getAlertStatus(): Promise<AlertStatus | null> {
+  const p = bridge()
+  if (!p || !p.getStatus) return null
+  try {
+    return await p.getStatus()
+  } catch {
+    return null
+  }
+}
+
+export async function openNotificationSettings(): Promise<void> { try { await bridge()?.openNotifications() } catch { /* */ } }
+export async function openBatterySettings(): Promise<void> { try { await bridge()?.openBattery() } catch { /* */ } }
+export async function openFullScreenSettings(): Promise<void> { try { await bridge()?.openFullScreen() } catch { /* */ } }
+export async function openAppDetailsSettings(): Promise<void> { try { await bridge()?.openAppDetails() } catch { /* */ } }
