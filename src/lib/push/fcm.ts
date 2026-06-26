@@ -87,3 +87,31 @@ export async function sendToTokens(tokens: string[], msg: PushMessage): Promise<
 export function fcmConfigured(): boolean {
   return !!process.env.FIREBASE_SERVICE_ACCOUNT_B64
 }
+
+/** Diagnóstico da credencial (sem expor segredos): mostra ONDE a config quebra. */
+export async function fcmSelfTest(): Promise<Record<string, unknown>> {
+  const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64
+  if (!b64) return { hasEnv: false }
+  let decoded = ''
+  try { decoded = Buffer.from(b64, 'base64').toString('utf8') } catch { /* */ }
+  const sa = serviceAccount()
+  const out: Record<string, unknown> = {
+    hasEnv: true,
+    b64Len: b64.length,
+    b64TemEspacoOuQuebra: /\s/.test(b64.trim()),
+    decodaParaJson: (() => { try { JSON.parse(decoded); return true } catch { return false } })(),
+    saValido: !!sa,
+    projectId: sa?.project_id ?? null,
+    chaveParecePem: !!sa?.private_key && sa.private_key.includes('BEGIN') && sa.private_key.includes('PRIVATE KEY'),
+  }
+  if (sa) {
+    try {
+      await accessToken(sa)
+      out.oauthOk = true
+    } catch (err) {
+      out.oauthOk = false
+      out.oauthErro = (err instanceof Error ? err.message : String(err)).slice(0, 200)
+    }
+  }
+  return out
+}

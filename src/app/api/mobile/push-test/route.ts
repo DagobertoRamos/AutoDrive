@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
-import { sendToTokens, fcmConfigured } from '@/lib/push/fcm'
+import { sendToTokens, fcmConfigured, fcmSelfTest } from '@/lib/push/fcm'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,8 +29,11 @@ export async function GET() {
     data: { type: 'QUEUE_CALL', attendanceId: 'PUSHTEST', customerName: 'Teste', timeoutSeconds: '60' },
   })
 
+  const selfTest = await fcmSelfTest()
+
   return NextResponse.json({
     fcmConfigured: configured,
+    credencial: selfTest,
     userId: user.id,
     devicesAtivos: devices.length,
     enviados: res.sent,
