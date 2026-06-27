@@ -34,7 +34,9 @@ export async function sendWebPushToUser(userId: string, payload: WebPushPayload)
   await Promise.all(subs.map(async (s) => {
     try {
       const subscription = JSON.parse(s.deviceToken)
-      await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 60 })
+      // urgency 'high' = entrega IMEDIATA mesmo com o iPhone bloqueado/ocioso
+      // (sem isso o iOS adia a entrega e não toca/vibra na tela bloqueada).
+      await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 60, urgency: 'high' })
       sent++
     } catch (err: unknown) {
       const code = (err as { statusCode?: number })?.statusCode
