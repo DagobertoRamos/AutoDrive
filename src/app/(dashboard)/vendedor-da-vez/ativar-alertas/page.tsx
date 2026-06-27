@@ -194,7 +194,7 @@ function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => 
     setBusy(true); setMsg(null)
     const r = await enableWebPush()
     setPerm(notificationPermission())
-    setMsg(r.ok ? '✅ Notificações ativadas neste aparelho!' : r.reason === 'denied' ? '⚠️ Permissão negada. Ative nas Ajustes do iPhone › AutoDrive › Notificações.' : '⚠️ Não foi possível ativar agora. Tente de novo.')
+    setMsg(r.ok ? '✅ Notificações ativadas neste aparelho!' : r.reason === 'denied' ? '⚠️ Permissão negada. Ative em Ajustes do iPhone › Notificações › AutoDrive.' : '⚠️ ' + (r.reason || 'Não foi possível ativar agora. Tente de novo.'))
     setBusy(false)
   }
 

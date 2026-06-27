@@ -10,6 +10,11 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 
 export const dynamic = 'force-dynamic'
 
+// Entrega a chave pública VAPID em runtime (robusto: não depende do build inlining).
+export async function GET() {
+  return NextResponse.json({ publicKey: process.env.VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null })
+}
+
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
