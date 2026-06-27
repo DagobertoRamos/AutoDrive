@@ -69,7 +69,9 @@ export async function GET(req: Request) {
     // não o campo interno `position` (que cresce como contador ao ir pro fim).
     const lineOrder = list.filter((e) => (e.status === 'WAITING' || e.status === 'NEXT') && !e.blocked)
     const myRank = lineOrder.findIndex((e) => e.sellerId === user.id) + 1
-    const me = meRaw ? { ...meRaw, position: myRank > 0 ? myRank : meRaw.position } : null
+    // Em atendimento/chamado o vendedor NÃO está na fila de espera → posição 0
+    // (a UI mostra a situação, não o contador interno, que confundia como "14º").
+    const me = meRaw ? { ...meRaw, position: myRank > 0 ? myRank : 0 } : null
 
     // Atendimento ativo do próprio solicitante (p/ aceitar/recusar/finalizar).
     const myAtt = await prisma.sellerQueueAttendance.findFirst({

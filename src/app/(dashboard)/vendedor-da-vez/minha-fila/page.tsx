@@ -33,6 +33,11 @@ function getPosition(): Promise<{ latitude?: number; longitude?: number; accurac
   })
 }
 
+// Rótulo amigável do status do vendedor na fila.
+function statusLabel(s: string): string {
+  return ({ WAITING: 'Aguardando', NEXT: 'Próximo', CALLED: 'Sua vez!', ACCEPTED: 'Aceito', IN_ATTENDANCE: 'Em atendimento', PAUSED: 'Pausado' } as Record<string, string>)[s] ?? s
+}
+
 // Helpers de cliente (máscara/nome/email) — para o encerramento sem cliente.
 function maskPhoneBR(v: string): string {
   const d = v.replace(/\D/g, '').slice(0, 11)
@@ -196,10 +201,19 @@ export default function MinhaFilaPage() {
           <>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-400">Sua posição</p>
-                <p className="text-3xl font-bold tabular-nums text-gray-900">{me.position}º</p>
+                {me.position > 0 ? (
+                  <>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Sua posição</p>
+                    <p className="text-3xl font-bold tabular-nums text-gray-900">{me.position}º</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Situação</p>
+                    <p className="text-2xl font-bold text-gray-900">{statusLabel(me.status)}</p>
+                  </>
+                )}
               </div>
-              <span className={cn('rounded-full px-3 py-1 text-xs font-semibold', me.status === 'PAUSED' ? 'bg-amber-100 text-amber-700' : me.status === 'IN_ATTENDANCE' ? 'bg-green-100 text-green-700' : me.status === 'CALLED' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')}>{me.status}</span>
+              <span className={cn('rounded-full px-3 py-1 text-xs font-semibold', me.status === 'PAUSED' ? 'bg-amber-100 text-amber-700' : me.status === 'IN_ATTENDANCE' ? 'bg-green-100 text-green-700' : me.status === 'CALLED' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')}>{statusLabel(me.status)}</span>
             </div>
             {data?.vendedorDaVez && <p className="mt-2 text-sm text-gray-500">Vendedor da vez agora: <strong>{data.vendedorDaVez.sellerName}</strong></p>}
             <div className="mt-4 flex gap-2">

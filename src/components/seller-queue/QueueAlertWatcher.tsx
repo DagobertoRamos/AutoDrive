@@ -183,6 +183,10 @@ export default function QueueAlertWatcher() {
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(j?.error ?? 'Não foi possível concluir.'); return } // mantém pop-up p/ tentar de novo (ex.: longe da loja)
       setPrompt(null); setRejectMode(false); setReason('')
+      // Aceitou → vai direto para a Minha Fila (atendimento em andamento).
+      if (path === 'accept' && !window.location.pathname.includes('/vendedor-da-vez/minha-fila')) {
+        window.location.assign('/vendedor-da-vez/minha-fila')
+      }
     } catch { setErr('Erro de rede. Tente de novo.') } finally { setBusy(false) }
   }
   const accept = async () => { setBusy(true); const pos = await getPosition(); await act('accept', pos) }
