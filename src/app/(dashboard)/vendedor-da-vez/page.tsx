@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { ListOrdered, DoorOpen, Bell, RefreshCw, Crown, Hand, Clock, UserSearch, X, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import QueueSelfCard from '@/components/seller-queue/QueueSelfCard'
 
 interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number }
 interface Data { entries: Entry[]; vendedorDaVez: { sellerName: string } | null; arrivalsPending: number; queue: unknown | null }
@@ -116,6 +117,8 @@ export default function FilaOverviewPage() {
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
+
+      <QueueSelfCard />
 
       {/* Chamar vendedor da vez — 1 toque, qualquer pessoa com acesso à fila */}
       {!denied && (

@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bell, Send, RefreshCw, UserCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import QueueSelfCard from '@/components/seller-queue/QueueSelfCard'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const dt = (s: string) => new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -90,6 +91,8 @@ export default function ClienteNaLojaPage() {
     <div className="mx-auto max-w-md space-y-4">
       <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Bell size={20} className="text-brand-600" />Cliente na Loja</h1>
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
+
+      <QueueSelfCard />
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-card">
         {/* Modo de atendimento */}

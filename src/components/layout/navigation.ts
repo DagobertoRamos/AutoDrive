@@ -123,11 +123,11 @@ export const NAV_GROUPS: NavItem[] = [
   // estrutura/placeholders ("em breve"). Presença, antifraude, chamada do
   // vendedor da vez e relatórios entram nas próximas fases.
   {
-    label: 'Comercial',
+    label: 'Fila de Atendimento',
     icon:  UserCheck,
     module: 'sellerQueue.view',
     children: [
-      { label: 'Fila de Atendimento', href: '/vendedor-da-vez',               icon: ListOrdered,     module: 'sellerQueue.view' },
+      { label: 'Visão Geral',         href: '/vendedor-da-vez',               icon: ListOrdered,     module: 'sellerQueue.view' },
       { label: 'Minha Fila',          href: '/vendedor-da-vez/minha-fila',     icon: DoorOpen,        module: 'sellerQueue.checkIn' },
       { label: 'Ativar Alertas',      href: '/vendedor-da-vez/ativar-alertas', icon: Bell,            module: 'sellerQueue.checkIn' },
       { label: 'Cliente na Loja',     href: '/vendedor-da-vez/cliente-na-loja', icon: Bell,           module: 'sellerQueue.customerArrived' },

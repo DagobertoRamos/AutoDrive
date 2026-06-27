@@ -39,9 +39,12 @@ export async function GET(req: Request) {
     const myBlock = myBlockRaw ? { type: myBlockRaw.type, endsAt: myBlockRaw.endsAt } : null
     const myPosVendaRaw = await getActivePosVenda(tenantId, unitId, user.id)
     const myPosVenda = myPosVendaRaw ? { status: myPosVendaRaw.status } : null
+    // O usuário é um vendedor ativo? (define se mostramos "Entrar na fila").
+    const sellerRec = await prisma.seller.findFirst({ where: { userId: user.id, active: true, unit: { tenantId } }, select: { id: true } })
+    const canCheckIn = !!sellerRec
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn } })
     }
 
     const [entries, arrivalsPending] = await Promise.all([
@@ -92,6 +95,7 @@ export async function GET(req: Request) {
         allowChooseSeller,
         myBlock,
         myPosVenda,
+        canCheckIn,
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
       },
     })
