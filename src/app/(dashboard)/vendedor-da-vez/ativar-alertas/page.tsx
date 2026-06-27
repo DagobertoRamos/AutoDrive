@@ -69,10 +69,10 @@ export default function AtivarAlertas() {
     try {
       const r = await fetch('/api/mobile/push-test', { credentials: 'include' })
       const j = await r.json()
-      if (j?.enviados > 0) setTestMsg('✅ Alerta enviado! Em alguns segundos o celular deve tocar.')
-      else if (j?.devicesAtivos === 0) setTestMsg('⚠️ Este aparelho ainda não foi registrado. Saia e entre de novo no app.')
-      else if (!j?.fcmConfigured) setTestMsg('⚠️ Servidor de push não configurado. Avise o suporte.')
-      else setTestMsg('⚠️ Não foi possível enviar. Tente sair e entrar de novo no app.')
+      const total = (j?.devicesNativos ?? 0) + (j?.webPushInscricoes ?? 0)
+      if (j?.enviados > 0) setTestMsg('✅ Alerta enviado! Em alguns segundos deve aparecer a notificação.')
+      else if (total === 0) setTestMsg('⚠️ Este aparelho ainda não está inscrito. Toque em "Ativar notificações" primeiro.')
+      else setTestMsg('⚠️ Não foi possível enviar (a inscrição pode ter expirado). Toque em "Ativar notificações" de novo.')
     } catch {
       setTestMsg('⚠️ Erro de rede ao testar.')
     } finally { setTesting(false) }
@@ -186,8 +186,13 @@ function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => 
   const [env, setEnv] = useState<{ supported: boolean; ios: boolean; standalone: boolean }>({ supported: false, ios: false, standalone: false })
 
   useEffect(() => {
-    setEnv({ supported: webPushSupported(), ios: isIOS(), standalone: isStandalonePWA() })
+    const st = isStandalonePWA()
+    setEnv({ supported: webPushSupported(), ios: isIOS(), standalone: st })
     setPerm(notificationPermission())
+    // Se já tem permissão mas (pode) não estar inscrito no servidor, re-inscreve.
+    if (st && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      void enableWebPush().then((r) => { if (r.ok) setMsg('✅ Notificações ativas neste aparelho.'); else setMsg('⚠️ ' + (r.reason || 'reative as notificações abaixo.')) })
+    }
   }, [])
 
   const ativar = async () => {
@@ -236,11 +241,9 @@ function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => 
             <div className="min-w-0 flex-1">
               <h3 className="font-semibold text-gray-900">Notificações {perm === 'granted' && <span className="ml-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">Ativado</span>}</h3>
               <p className="mt-0.5 text-sm text-gray-500">Permite tocar e mostrar a chamada na tela bloqueada.</p>
-              {perm !== 'granted' && (
-                <button onClick={() => void ativar()} disabled={busy} className="mt-2 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
-                  {busy ? <Loader2 size={15} className="animate-spin" /> : <BellRing size={15} />} Ativar notificações
-                </button>
-              )}
+              <button onClick={() => void ativar()} disabled={busy} className="mt-2 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <BellRing size={15} />} {perm === 'granted' ? 'Reativar notificações' : 'Ativar notificações'}
+              </button>
             </div>
           </div>
           {msg && <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">{msg}</div>}
