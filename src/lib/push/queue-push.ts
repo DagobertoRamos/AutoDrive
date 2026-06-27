@@ -6,11 +6,12 @@
 
 import { prisma } from '@/lib/prisma'
 import { sendToTokens, type PushMessage } from './fcm'
+import { sendWebPushToUser } from './web-push'
 
-/** Envia um push para todos os aparelhos ativos do usuário. */
+/** Envia um push FCM para os aparelhos NATIVOS ativos do usuário (Android/iOS). */
 export async function pushToUser(userId: string, msg: PushMessage): Promise<void> {
   try {
-    const devices = await prisma.mobileDevice.findMany({ where: { userId, isActive: true }, select: { deviceToken: true } })
+    const devices = await prisma.mobileDevice.findMany({ where: { userId, isActive: true, platform: { in: ['ANDROID', 'IOS'] } }, select: { deviceToken: true } })
     if (!devices.length) return
     const { invalid } = await sendToTokens(devices.map((d) => d.deviceToken), msg)
     if (invalid.length) {
@@ -27,15 +28,17 @@ export async function pushQueueCall(opts: { sellerId: string; attendanceId: stri
   // Fallback: se não houver Seller com esse id, talvez já seja o próprio userId.
   const seller = await prisma.seller.findUnique({ where: { id: opts.sellerId }, select: { userId: true } })
   const userId = seller?.userId ?? opts.sellerId
-  await pushToUser(userId, {
-    title: 'Você é o vendedor da vez 🔔',
-    body: opts.customerName?.trim() ? `Cliente: ${opts.customerName.trim()} — aceite ou recuse.` : 'Cliente presencial aguardando — aceite ou recuse.',
-    ttlSeconds: Math.max(30, opts.timeoutSeconds),
-    data: {
-      type: 'QUEUE_CALL',
-      attendanceId: opts.attendanceId,
-      customerName: opts.customerName?.trim() ?? '',
-      timeoutSeconds: String(opts.timeoutSeconds),
-    },
-  })
+  const title = 'Você é o vendedor da vez 🔔'
+  const body = opts.customerName?.trim() ? `Cliente: ${opts.customerName.trim()} — aceite ou recuse.` : 'Cliente presencial aguardando — aceite ou recuse.'
+  const data = {
+    type: 'QUEUE_CALL',
+    attendanceId: opts.attendanceId,
+    customerName: opts.customerName?.trim() ?? '',
+    timeoutSeconds: String(opts.timeoutSeconds),
+  }
+  // Nativo (Android/iOS) via FCM + PWA/iPhone via Web Push.
+  await Promise.all([
+    pushToUser(userId, { title, body, ttlSeconds: Math.max(30, opts.timeoutSeconds), data }),
+    sendWebPushToUser(userId, { title, body, data }).catch(() => ({ sent: 0 })),
+  ])
 }

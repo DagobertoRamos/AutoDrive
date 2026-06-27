@@ -8,11 +8,12 @@
 // =============================================================================
 
 import { useCallback, useEffect, useState } from 'react'
-import { BellRing, BatteryCharging, Maximize, CheckCircle2, AlertTriangle, ChevronRight, Smartphone, Loader2 } from 'lucide-react'
+import { BellRing, BatteryCharging, Maximize, CheckCircle2, AlertTriangle, ChevronRight, Smartphone, Loader2, Share, PlusSquare } from 'lucide-react'
 import {
   isNativeAndroid, getAlertStatus, type AlertStatus,
   openNotificationSettings, openBatterySettings, openFullScreenSettings, openAppDetailsSettings,
 } from '@/lib/mobile/push-bridge'
+import { webPushSupported, isIOS, isStandalonePWA, notificationPermission, enableWebPush } from '@/lib/mobile/web-push-client'
 
 // Dicas específicas por fabricante (o caminho exato muda de marca para marca).
 function oemTip(manufacturer: string): string | null {
@@ -97,17 +98,9 @@ export default function AtivarAlertas() {
     return <div className="flex min-h-[40vh] items-center justify-center text-gray-400"><Loader2 className="animate-spin" /></div>
   }
 
-  // PWA/PC: nada a configurar nativamente.
+  // Fora do app Android → fluxo Web Push (PWA / iPhone).
   if (!native) {
-    return (
-      <div className="mx-auto max-w-md p-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-6 text-center">
-          <Smartphone className="mx-auto mb-3 text-brand-600" size={32} />
-          <h1 className="text-lg font-bold text-gray-900">Ativar alertas no celular</h1>
-          <p className="mt-2 text-sm text-gray-500">Esta tela serve para o <strong>aplicativo Android</strong> do AutoDrive. Abra-a pelo app instalado no seu celular para liberar os alertas de chamada.</p>
-        </div>
-      </div>
-    )
+    return <WebPushSetup testarAlerta={testarAlerta} testing={testing} testMsg={testMsg} />
   }
 
   const allOk = status ? status.notifications && status.batteryUnrestricted && status.fullScreen : false
@@ -181,6 +174,92 @@ export default function AtivarAlertas() {
       >
         Já configurei — verificar de novo
       </button>
+    </div>
+  )
+}
+
+// ── Web Push (PWA / iPhone) ───────────────────────────────────────────────────
+function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => Promise<void>; testing: boolean; testMsg: string | null }) {
+  const [perm, setPerm] = useState<string>('default')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [env, setEnv] = useState<{ supported: boolean; ios: boolean; standalone: boolean }>({ supported: false, ios: false, standalone: false })
+
+  useEffect(() => {
+    setEnv({ supported: webPushSupported(), ios: isIOS(), standalone: isStandalonePWA() })
+    setPerm(notificationPermission())
+  }, [])
+
+  const ativar = async () => {
+    setBusy(true); setMsg(null)
+    const r = await enableWebPush()
+    setPerm(notificationPermission())
+    setMsg(r.ok ? '✅ Notificações ativadas neste aparelho!' : r.reason === 'denied' ? '⚠️ Permissão negada. Ative nas Ajustes do iPhone › AutoDrive › Notificações.' : '⚠️ Não foi possível ativar agora. Tente de novo.')
+    setBusy(false)
+  }
+
+  // iPhone fora da Tela de Início: o iOS só permite notificação no app instalado.
+  const precisaInstalar = env.ios && !env.standalone
+
+  return (
+    <div className="mx-auto max-w-md space-y-3 p-4">
+      <div className="mb-1">
+        <h1 className="text-xl font-bold text-gray-900">Ativar alertas neste aparelho</h1>
+        <p className="mt-1 text-sm text-gray-500">Receba a chamada do "vendedor da vez" mesmo com a tela bloqueada.</p>
+      </div>
+
+      {!env.supported && !precisaInstalar && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Este navegador não suporta notificações. No iPhone, use o Safari e adicione o app à Tela de Início.
+        </div>
+      )}
+
+      {precisaInstalar ? (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <p className="font-semibold">📲 Primeiro, instale o app na Tela de Início</p>
+            <p className="mt-1">No iPhone, a notificação só funciona com o app adicionado à Tela de Início. Faça uma vez:</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5">
+              <li>Toque no botão <strong>Compartilhar</strong> <Share size={14} className="inline" /> (barra inferior do Safari).</li>
+              <li>Escolha <strong>“Adicionar à Tela de Início”</strong> <PlusSquare size={14} className="inline" />.</li>
+              <li>Confirme em <strong>Adicionar</strong>.</li>
+              <li><strong>Abra o AutoDrive pelo ícone</strong> que apareceu na tela do iPhone e volte aqui.</li>
+            </ol>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4">
+            <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${perm === 'granted' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
+              {perm === 'granted' ? <CheckCircle2 size={20} /> : <BellRing size={20} />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-gray-900">Notificações {perm === 'granted' && <span className="ml-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">Ativado</span>}</h3>
+              <p className="mt-0.5 text-sm text-gray-500">Permite tocar e mostrar a chamada na tela bloqueada.</p>
+              {perm !== 'granted' && (
+                <button onClick={() => void ativar()} disabled={busy} className="mt-2 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+                  {busy ? <Loader2 size={15} className="animate-spin" /> : <BellRing size={15} />} Ativar notificações
+                </button>
+              )}
+            </div>
+          </div>
+          {msg && <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">{msg}</div>}
+
+          {perm === 'granted' && (
+            <>
+              <button onClick={() => void testarAlerta()} disabled={testing} className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-60">
+                {testing ? <Loader2 size={16} className="animate-spin" /> : <BellRing size={16} />} Enviar alerta de teste para este aparelho
+              </button>
+              {testMsg && <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">{testMsg}</div>}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+        <Smartphone size={16} className="mt-0.5 shrink-0" />
+        <span>No iPhone, o alerta toca uma vez com som e aparece na tela bloqueada. O alarme contínuo e a tela de chamada cheia são exclusivos do app Android (limitação da Apple).</span>
+      </div>
     </div>
   )
 }
