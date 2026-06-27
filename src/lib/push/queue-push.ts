@@ -16,8 +16,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 // CHAMANDO (para sozinho ao aceitar/recusar/expirar). Roda em 2º plano (after).
 function repeatWebPush(userId: string, attendanceId: string, payload: WebPushPayload, maxSeconds: number): void {
   const run = async () => {
-    const intervalMs = 5000
-    const rounds = Math.min(8, Math.floor((Math.min(40, Math.max(10, maxSeconds)) * 1000) / intervalMs))
+    const intervalMs = 3000
+    const rounds = Math.min(9, Math.floor((Math.min(30, Math.max(9, maxSeconds)) * 1000) / intervalMs))
     for (let i = 0; i < rounds; i++) {
       await sleep(intervalMs)
       const att = await prisma.sellerQueueAttendance.findUnique({ where: { id: attendanceId }, select: { status: true } }).catch(() => null)
