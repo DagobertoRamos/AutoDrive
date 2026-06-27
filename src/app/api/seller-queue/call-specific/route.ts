@@ -8,6 +8,8 @@
 
 import { NextResponse } from 'next/server'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
+
+export const maxDuration = 30 // reenvios de web push (iPhone) rodam em 2º plano
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'

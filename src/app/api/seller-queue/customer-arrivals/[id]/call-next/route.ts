@@ -7,6 +7,8 @@
 
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
+
+export const maxDuration = 30 // reenvios de web push (iPhone) rodam em 2º plano
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'

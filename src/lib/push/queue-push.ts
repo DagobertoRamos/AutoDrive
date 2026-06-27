@@ -4,9 +4,29 @@
 // Best-effort: nunca quebra o fluxo do servidor.
 // =============================================================================
 
+import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendToTokens, type PushMessage } from './fcm'
-import { sendWebPushToUser } from './web-push'
+import { sendWebPushToUser, type WebPushPayload } from './web-push'
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// iPhone/PWA: a Apple não permite alarme contínuo. Para ficar insistente,
+// REENVIAMOS a notificação a cada poucos segundos enquanto o atendimento segue
+// CHAMANDO (para sozinho ao aceitar/recusar/expirar). Roda em 2º plano (after).
+function repeatWebPush(userId: string, attendanceId: string, payload: WebPushPayload, maxSeconds: number): void {
+  const run = async () => {
+    const intervalMs = 5000
+    const rounds = Math.min(8, Math.floor((Math.min(40, Math.max(10, maxSeconds)) * 1000) / intervalMs))
+    for (let i = 0; i < rounds; i++) {
+      await sleep(intervalMs)
+      const att = await prisma.sellerQueueAttendance.findUnique({ where: { id: attendanceId }, select: { status: true } }).catch(() => null)
+      if (!att || att.status !== 'CALLED') return // aceitou/recusou/venceu → para
+      await sendWebPushToUser(userId, payload).catch(() => {})
+    }
+  }
+  try { after(run) } catch { /* fora de contexto de request (cron): sem reforço */ }
+}
 
 /** Envia um push FCM para os aparelhos NATIVOS ativos do usuário (Android/iOS). */
 export async function pushToUser(userId: string, msg: PushMessage): Promise<void> {
@@ -41,4 +61,6 @@ export async function pushQueueCall(opts: { sellerId: string; attendanceId: stri
     pushToUser(userId, { title, body, ttlSeconds: Math.max(30, opts.timeoutSeconds), data }),
     sendWebPushToUser(userId, { title, body, data }).catch(() => ({ sent: 0 })),
   ])
+  // iPhone: reforça o "buzz" repetindo a notificação até aceitar/recusar/expirar.
+  repeatWebPush(userId, opts.attendanceId, { title, body, data }, opts.timeoutSeconds)
 }
