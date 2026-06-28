@@ -35,50 +35,69 @@ export async function callForArrival(opts: {
   const cfg = await getUnitConfig(opts.tenantId, opts.unitId)
   const timeout = cfg?.acceptTimeoutSeconds ?? 60
 
+  // Trava e cria a chamada para um colaborador (vendedor ou gerente-fallback).
+  // entryId != null → exige a entry WAITING (rotação). entryId null → gerente
+  // fora da rotação (best-effort: tira da fila se por acaso estiver WAITING).
+  const tryCall = async (entryId: string | null, sellerId: string, reason: string | null, recurring: boolean): Promise<CallResult | null> => {
+    const now = new Date()
+    const deadline = new Date(now.getTime() + timeout * 1000)
+    const result = await prisma.$transaction(async (tx) => {
+      if (entryId) {
+        const upd = await tx.sellerQueueEntry.updateMany({ where: { id: entryId, status: 'WAITING', blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
+        if (upd.count !== 1) return null // perdeu a corrida
+      } else {
+        await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId, status: 'WAITING', blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
+      }
+      const att = await tx.sellerQueueAttendance.create({
+        data: { tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, sellerId, arrivalId: opts.arrivalId, status: 'CALLED', calledAt: now, acceptDeadline: deadline },
+      })
+      await tx.sellerQueueCustomerArrival.update({ where: { id: opts.arrivalId }, data: { status: 'CALLING' } })
+      return att
+    })
+    if (!result) return null
+    await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.id, reason })
+    await notifySellerCalled({ tenantId: opts.tenantId, sellerId, timeoutSeconds: timeout, attendanceId: result.id, arrivalId: opts.arrivalId, customerName: opts.customerName ?? null, recurring, whatsapp: cfg?.alertWhatsapp ?? false })
+    return { ok: true, attendanceId: result.id, sellerId }
+  }
+
   // Candidatos: WAITING, não bloqueados, por posição. Preferido vai à frente.
   const waiting = await prisma.sellerQueueEntry.findMany({
     where: { queueId: opts.queueId, status: 'WAITING', blocked: false },
     orderBy: [{ position: 'asc' }, { joinedAt: 'asc' }],
     select: { id: true, sellerId: true },
   })
-  if (waiting.length === 0) {
-    await notifyNoSellerAvailable({ tenantId: opts.tenantId, unitId: opts.unitId, arrivalId: opts.arrivalId, whatsapp: cfg?.alertWhatsappManagers ?? false })
-    return { ok: false, reason: 'Nenhum vendedor disponível na fila.' }
+  // Cargo de cada candidato (entry.sellerId = userId; o GERENTE fica FORA da
+  // rotação normal — só é acionado no fallback quando não há vendedor).
+  const cargoByUser = new Map<string, string>()
+  if (waiting.length) {
+    const recs = await prisma.seller.findMany({ where: { userId: { in: waiting.map((w) => w.sellerId) } }, select: { userId: true, cargo: true } })
+    recs.forEach((r) => cargoByUser.set(r.userId, r.cargo ?? 'VENDEDOR'))
   }
-
   const ordered = opts.preferSellerId
     ? [...waiting.filter((w) => w.sellerId === opts.preferSellerId), ...waiting.filter((w) => w.sellerId !== opts.preferSellerId)]
     : waiting
+  // Rotação regular = vendedores (exclui GERENTE), mas honra o preferido específico.
+  const regular = ordered.filter((w) => w.sellerId === opts.preferSellerId || cargoByUser.get(w.sellerId) !== 'GERENTE')
 
-  // Tenta travar o primeiro candidato disponível (compare-and-set atômico).
-  for (const cand of ordered) {
-    const now = new Date()
-    const deadline = new Date(now.getTime() + timeout * 1000)
-    const result = await prisma.$transaction(async (tx) => {
-      const upd = await tx.sellerQueueEntry.updateMany({
-        where: { id: cand.id, status: 'WAITING', blocked: false },
-        data: { status: 'CALLED', lastActiveAt: now },
-      })
-      if (upd.count !== 1) return null // perdeu a corrida — tenta o próximo
-      const att = await tx.sellerQueueAttendance.create({
-        data: {
-          tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, sellerId: cand.sellerId,
-          arrivalId: opts.arrivalId, status: 'CALLED', calledAt: now, acceptDeadline: deadline,
-        },
-      })
-      await tx.sellerQueueCustomerArrival.update({ where: { id: opts.arrivalId }, data: { status: 'CALLING' } })
-      return att
-    })
-    if (!result) continue
-
-    await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId: cand.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.id, reason: opts.reason ?? null })
-    // Alerta (crítico) o vendedor da vez: in-app sempre; WhatsApp se o ADM ligou.
-    await notifySellerCalled({ tenantId: opts.tenantId, sellerId: cand.sellerId, timeoutSeconds: timeout, attendanceId: result.id, arrivalId: opts.arrivalId, customerName: opts.customerName ?? null, recurring: opts.recurring ?? false, whatsapp: cfg?.alertWhatsapp ?? false })
-
-    return { ok: true, attendanceId: result.id, sellerId: cand.sellerId }
+  // 1) Tenta um vendedor disponível.
+  for (const cand of regular) {
+    const res = await tryCall(cand.id, cand.sellerId, opts.reason ?? null, opts.recurring ?? false)
+    if (res) return res
   }
 
-  return { ok: false, reason: 'Nenhum vendedor disponível na fila.' }
+  // 2) FALLBACK: nenhum vendedor disponível → aciona um GERENTE da unidade (o
+  // cliente tem prioridade). O gerente atende e depois verifica o que houve.
+  const gerentes = await prisma.seller.findMany({ where: { unitId: opts.unitId, cargo: 'GERENTE', active: true }, select: { userId: true } })
+  for (const g of gerentes) {
+    const busy = await prisma.sellerQueueAttendance.findFirst({ where: { queueId: opts.queueId, sellerId: g.userId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } }, select: { id: true } })
+    if (busy) continue
+    const res = await tryCall(null, g.userId, 'fallback — nenhum vendedor disponível: gerente acionado', false)
+    if (res) return res
+  }
+
+  // 3) Ninguém disponível (nem gerente) → avisa a gestão.
+  await notifyNoSellerAvailable({ tenantId: opts.tenantId, unitId: opts.unitId, arrivalId: opts.arrivalId, whatsapp: cfg?.alertWhatsappManagers ?? false })
+  return { ok: false, reason: 'Nenhum vendedor nem gerente disponível na fila.' }
 }
 
 /**
