@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock } from 'lucide-react'
+import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock, Pause, Play, UserMinus, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -38,6 +38,8 @@ export default function PainelUnidadePage() {
   const [active, setActive] = useState<Att[]>([])
   const [posVendas, setPosVendas] = useState<PosVenda[]>([])
   const [events, setEvents] = useState<QEvent[]>([])
+  const [callable, setCallable] = useState<{ sellerId: string; name: string; inQueue: boolean; queueStatus: string | null }[]>([])
+  const [addPick, setAddPick] = useState('')
   const [showLog, setShowLog] = useState(false)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
@@ -54,6 +56,7 @@ export default function PainelUnidadePage() {
         fetch('/api/seller-queue/pos-vendas', { credentials: 'include' }),
       ])
       fetch('/api/seller-queue/events?limit=80', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setEvents(j.data ?? []) }).catch(() => {})
+      fetch('/api/seller-queue/callable', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setCallable(j.data ?? []) }).catch(() => {})
       if (cRes.status === 403 || cRes.status === 400) { const j = await cRes.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
       setDenied(null)
       setCur((await cRes.json())?.data ?? null)
@@ -100,6 +103,18 @@ export default function PainelUnidadePage() {
   const reorder = async (e: Entry, direction: 'up' | 'down') => {
     setBusy(e.id)
     try { const res = await fetch('/api/seller-queue/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ entryId: e.id, direction, reason: 'ajuste manual da gestão' }) }); const j = await res.json().catch(() => ({})); if (!res.ok) flash(j?.error ?? 'Falha.', false); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
+  // Transfere um atendimento ativo para outro vendedor (ele é chamado de novo).
+  const transferAtt = async (attId: string, toSellerId: string) => {
+    if (!toSellerId) return
+    setBusy(attId)
+    try { const res = await fetch(`/api/seller-queue/attendances/${attId}/manage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'transfer', toSellerId }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? 'Atendimento transferido.' : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
+  // Gestão controla a fila do vendedor: pausar / voltar / retirar / colocar.
+  const manageSeller = async (sellerId: string, action: 'pause' | 'resume' | 'remove' | 'add', label: string) => {
+    if (action === 'remove' && !confirm('Retirar este vendedor da fila?')) return
+    setBusy(sellerId)
+    try { const res = await fetch('/api/seller-queue/manage-seller', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId, action }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? label : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
 
   const waiting = (cur?.entries ?? []).filter((e) => e.status === 'WAITING' && !e.blocked)
@@ -148,7 +163,15 @@ export default function PainelUnidadePage() {
               {active.map((att) => (
                 <li key={att.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
                   <div className="min-w-0"><p className="truncate font-medium text-gray-900">{att.sellerName}</p><p className="text-xs text-gray-400">{att.status} · {att.arrival?.customerName ?? 'cliente'}</p></div>
-                  {att.status === 'CALLED' && <button onClick={() => doTimeout(att)} disabled={busy === att.id} className="btn-secondary shrink-0 text-xs text-amber-700"><Clock size={13} />Pular</button>}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {canManage && callable.length > 0 && (
+                      <select value="" onChange={(e) => { if (e.target.value) void transferAtt(att.id, e.target.value) }} disabled={busy === att.id} className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600" title="Transferir atendimento">
+                        <option value="">Transferir…</option>
+                        {callable.map((c) => <option key={c.sellerId} value={c.sellerId}>{c.name}</option>)}
+                      </select>
+                    )}
+                    {att.status === 'CALLED' && <button onClick={() => doTimeout(att)} disabled={busy === att.id} className="btn-secondary text-xs text-amber-700"><Clock size={13} />Pular</button>}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -178,7 +201,20 @@ export default function PainelUnidadePage() {
       )}
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
-        <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">Fila atual {canManage && <span className="font-normal text-gray-400">— gerência pode bloquear/reordenar</span>}</p></div>
+        <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">Fila atual {canManage && <span className="font-normal text-gray-400">— gerência: pausar/voltar/retirar/colocar/bloquear/reordenar</span>}</p></div>
+        {canManage && (() => {
+          const fora = callable.filter((c) => !c.inQueue || c.queueStatus === 'LEFT' || c.queueStatus === null)
+          return fora.length > 0 ? (
+            <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-4 py-2">
+              <UserPlus size={15} className="text-brand-600" />
+              <select value={addPick} onChange={(e) => setAddPick(e.target.value)} className="flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
+                <option value="">Colocar vendedor na fila…</option>
+                {fora.map((c) => <option key={c.sellerId} value={c.sellerId}>{c.name}</option>)}
+              </select>
+              <button onClick={() => { if (addPick) { manageSeller(addPick, 'add', 'Vendedor colocado na fila.'); setAddPick('') } }} disabled={!addPick || busy === addPick} className="btn-primary text-xs">Adicionar</button>
+            </div>
+          ) : null
+        })()}
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50"><tr>{['#', 'Vendedor', 'Status', ''].map((h) => (<th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
           <tbody className="divide-y divide-gray-100">
@@ -192,7 +228,10 @@ export default function PainelUnidadePage() {
                   {canManage && <>
                     <button onClick={() => reorder(e, 'up')} disabled={busy === e.id || i === 0} className="inline-flex rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30" title="Subir"><ChevronUp size={14} /></button>
                     <button onClick={() => reorder(e, 'down')} disabled={busy === e.id || i === (cur!.entries.length - 1)} className="mr-1 inline-flex rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30" title="Descer"><ChevronDown size={14} /></button>
+                    {['WAITING', 'NEXT'].includes(e.status) && <button onClick={() => manageSeller(e.sellerId, 'pause', 'Vendedor pausado.')} disabled={busy === e.id} className="inline-flex rounded p-1 text-gray-400 hover:bg-amber-50 hover:text-amber-600" title="Pausar"><Pause size={14} /></button>}
+                    {e.status === 'PAUSED' && <button onClick={() => manageSeller(e.sellerId, 'resume', 'Vendedor de volta à fila.')} disabled={busy === e.id} className="inline-flex rounded p-1 text-green-600 hover:bg-green-50" title="Voltar à fila"><Play size={14} /></button>}
                     <button onClick={() => block(e)} disabled={busy === e.id} className={cn('inline-flex rounded p-1', e.blocked ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-red-50 hover:text-red-600')} title={e.blocked ? 'Liberar' : 'Bloquear'}>{e.blocked ? <Unlock size={14} /> : <Lock size={14} />}</button>
+                    {e.status !== 'LEFT' && <button onClick={() => manageSeller(e.sellerId, 'remove', 'Vendedor retirado da fila.')} disabled={busy === e.id} className="inline-flex rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Retirar da fila"><UserMinus size={14} /></button>}
                   </>}
                 </td>
               </tr>

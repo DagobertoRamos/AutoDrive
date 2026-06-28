@@ -12,7 +12,8 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
-import { logQueueEvent } from '@/lib/seller-queue/queue'
+import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
+import { notifySellerCalled } from '@/lib/seller-queue/notify'
 import type { LeadStatus } from '@prisma/client'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -20,14 +21,14 @@ type Ctx = { params: Promise<{ id: string }> }
 export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gestão pode reabrir/cancelar/excluir atendimentos.')
+  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gestão pode reabrir/cancelar/excluir/transferir atendimentos.')
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
   try {
     const body = await req.json().catch(() => ({}))
-    const action = body?.action as 'reopen' | 'cancel' | 'delete' | undefined
-    if (!action || !['reopen', 'cancel', 'delete'].includes(action)) {
+    const action = body?.action as 'reopen' | 'cancel' | 'delete' | 'transfer' | undefined
+    if (!action || !['reopen', 'cancel', 'delete', 'transfer'].includes(action)) {
       return NextResponse.json({ success: false, error: 'Ação inválida.' }, { status: 400 })
     }
 
@@ -37,6 +38,25 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const setLead = async (status: LeadStatus) => {
       if (att.leadId) await prisma.marketingLead.update({ where: { id: att.leadId }, data: { status, lastContactAt: new Date() } }).catch(() => {})
+    }
+
+    if (action === 'transfer') {
+      const toSellerId = typeof body?.toSellerId === 'string' ? body.toSellerId : ''
+      if (!toSellerId) return NextResponse.json({ success: false, error: 'Informe o vendedor de destino.' }, { status: 400 })
+      if (toSellerId === att.sellerId) return NextResponse.json({ success: false, error: 'Já é o vendedor atual.' }, { status: 409 })
+      const dest = await prisma.seller.findFirst({ where: { userId: toSellerId, unit: { tenantId } }, select: { id: true } })
+      if (!dest) return NextResponse.json({ success: false, error: 'Vendedor de destino não encontrado nesta loja.' }, { status: 404 })
+      const busy = await prisma.sellerQueueAttendance.findFirst({ where: { queueId: att.queueId, sellerId: toSellerId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } }, select: { id: true } })
+      if (busy) return NextResponse.json({ success: false, error: 'O vendedor de destino já está em atendimento.' }, { status: 409 })
+      const cfg = await getUnitConfig(tenantId, att.unitId)
+      const timeout = cfg?.acceptTimeoutSeconds ?? 60
+      const now = new Date()
+      await prisma.sellerQueueAttendance.update({ where: { id }, data: { sellerId: toSellerId, status: 'CALLED', calledAt: now, acceptDeadline: new Date(now.getTime() + timeout * 1000), acceptedAt: null, startedAt: null } })
+      await prisma.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: toSellerId, status: 'WAITING' }, data: { status: 'CALLED', lastActiveAt: now } }).catch(() => {})
+      await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'CALLED', sellerId: toSellerId, actorId: user.id, attendanceId: att.id, reason: 'atendimento transferido pela gestão' })
+      await notifySellerCalled({ tenantId, sellerId: toSellerId, timeoutSeconds: timeout, attendanceId: att.id, arrivalId: att.arrivalId, customerName: null, recurring: false, whatsapp: cfg?.alertWhatsapp ?? false })
+      await createSafeAuditLog({ userId: user.id, tenantId, action: 'TRANSFER', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
+      return NextResponse.json({ success: true })
     }
 
     if (action === 'reopen') {
