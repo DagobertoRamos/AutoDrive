@@ -1,8 +1,9 @@
 // =============================================================================
 // POST /api/seller-queue/attendances/:id/manage — ciclo do atendimento pela
-// GESTÃO: reabrir, cancelar ou excluir. Mantém o LEAD interligado (reabrir →
-// lead volta a WORKING; cancelar/excluir → lead DISCARDED). Gate: sellerQueue
-// .manage. Auditado. Body: { action: 'reopen' | 'cancel' | 'delete' }
+// GESTÃO: finalizar, reabrir, cancelar, excluir ou transferir. Mantém o LEAD
+// interligado (finalizar/reabrir → WORKING; cancelar/excluir → DISCARDED). Gate:
+// sellerQueue.manage. Auditado.
+// Body: { action: 'finish' | 'reopen' | 'cancel' | 'delete' | 'transfer', toSellerId? }
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -12,7 +13,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
-import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
+import { logQueueEvent, getUnitConfig, nextPosition } from '@/lib/seller-queue/queue'
 import { notifySellerCalled } from '@/lib/seller-queue/notify'
 import type { LeadStatus } from '@prisma/client'
 
@@ -27,8 +28,8 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params
   try {
     const body = await req.json().catch(() => ({}))
-    const action = body?.action as 'reopen' | 'cancel' | 'delete' | 'transfer' | undefined
-    if (!action || !['reopen', 'cancel', 'delete', 'transfer'].includes(action)) {
+    const action = body?.action as 'reopen' | 'cancel' | 'delete' | 'transfer' | 'finish' | undefined
+    if (!action || !['reopen', 'cancel', 'delete', 'transfer', 'finish'].includes(action)) {
       return NextResponse.json({ success: false, error: 'Ação inválida.' }, { status: 400 })
     }
 
@@ -56,6 +57,20 @@ export async function POST(req: Request, { params }: Ctx) {
       await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'CALLED', sellerId: toSellerId, actorId: user.id, attendanceId: att.id, reason: 'atendimento transferido pela gestão' })
       await notifySellerCalled({ tenantId, sellerId: toSellerId, timeoutSeconds: timeout, attendanceId: att.id, arrivalId: att.arrivalId, customerName: null, recurring: false, whatsapp: cfg?.alertWhatsapp ?? false })
       await createSafeAuditLog({ userId: user.id, tenantId, action: 'TRANSFER', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'finish') {
+      if (att.status === 'FINISHED' || att.status === 'CANCELED') {
+        return NextResponse.json({ success: false, error: 'Atendimento já encerrado.' }, { status: 409 })
+      }
+      await prisma.sellerQueueAttendance.update({ where: { id }, data: { status: 'FINISHED', finishedAt: new Date() } })
+      await setLead('WORKING')
+      if (att.arrivalId) await prisma.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'DONE' } }).catch(() => {})
+      // Devolve o vendedor para o fim da fila (fica disponível de novo).
+      await prisma.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: att.sellerId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE', 'NEXT'] } }, data: { status: 'WAITING', position: await nextPosition(att.queueId), lastActiveAt: new Date() } }).catch(() => {})
+      await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'ATTENDANCE_FINISHED', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id, reason: 'finalizado pela gestão' })
+      await createSafeAuditLog({ userId: user.id, tenantId, action: 'FINISH', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
       return NextResponse.json({ success: true })
     }
 

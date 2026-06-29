@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock, Pause, Play, UserMinus, UserPlus } from 'lucide-react'
+import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock, Pause, Play, UserMinus, UserPlus, CheckCircle2, PlayCircle } from 'lucide-react'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { cn } from '@/lib/utils'
 
@@ -41,6 +41,7 @@ export default function PainelUnidadePage() {
   const [events, setEvents] = useState<QEvent[]>([])
   const [callable, setCallable] = useState<{ sellerId: string; name: string; inQueue: boolean; queueStatus: string | null }[]>([])
   const [addPick, setAddPick] = useState('')
+  const [startPick, setStartPick] = useState('')
   const [showLog, setShowLog] = useState(false)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
@@ -111,6 +112,17 @@ export default function PainelUnidadePage() {
     setBusy(attId)
     try { const res = await fetch(`/api/seller-queue/attendances/${attId}/manage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'transfer', toSellerId }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? 'Atendimento transferido.' : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
+  // Finaliza um atendimento ativo pela gestão (encerra e libera o vendedor).
+  const finishAtt = async (attId: string) => {
+    if (!confirm('Finalizar este atendimento agora?')) return
+    setBusy(attId)
+    try { const res = await fetch(`/api/seller-queue/attendances/${attId}/manage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'finish' }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? 'Atendimento finalizado.' : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
+  // Gestão inicia um atendimento direto para um vendedor (ou para si: sellerId vazio).
+  const startAttendance = async (sellerId: string) => {
+    setBusy('start')
+    try { const res = await fetch('/api/seller-queue/start-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(sellerId ? { sellerId } : {}) }); const j = await res.json().catch(() => ({})); flash(res.ok ? `Atendimento iniciado${j?.data?.sellerName ? ` para ${j.data.sellerName}` : ''}.` : (j?.error ?? 'Falha.'), res.ok); setStartPick(''); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
   // Gestão controla a fila do vendedor: pausar / voltar / retirar / colocar.
   const manageSeller = async (sellerId: string, action: 'pause' | 'resume' | 'remove' | 'add', label: string) => {
     if (action === 'remove' && !confirm('Retirar este vendedor da fila?')) return
@@ -133,6 +145,18 @@ export default function PainelUnidadePage() {
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
+
+      {canManage && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-card">
+          <PlayCircle size={16} className="text-brand-600" />
+          <span className="text-sm font-semibold text-gray-700">Iniciar atendimento</span>
+          <select value={startPick} onChange={(e) => setStartPick(e.target.value)} disabled={busy === 'start'} className="min-w-[12rem] flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+            <option value="">Eu mesmo (atender agora)</option>
+            {callable.map((c) => <option key={c.sellerId} value={c.sellerId}>{c.name}</option>)}
+          </select>
+          <button onClick={() => startAttendance(startPick)} disabled={busy === 'start'} className="btn-primary text-xs"><PlayCircle size={13} />{busy === 'start' ? '...' : 'Iniciar'}</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="rounded-xl border border-gray-200 bg-white shadow-card">
@@ -172,6 +196,7 @@ export default function PainelUnidadePage() {
                       </select>
                     )}
                     {att.status === 'CALLED' && <button onClick={() => doTimeout(att)} disabled={busy === att.id} className="btn-secondary text-xs text-amber-700"><Clock size={13} />Pular</button>}
+                    {canManage && <button onClick={() => finishAtt(att.id)} disabled={busy === att.id} className="btn-secondary text-xs text-green-700" title="Finalizar atendimento"><CheckCircle2 size={13} />Finalizar</button>}
                   </div>
                 </li>
               ))}
