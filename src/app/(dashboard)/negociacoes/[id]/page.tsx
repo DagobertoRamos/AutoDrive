@@ -855,11 +855,26 @@ interface MotiveModalProps {
 
 function MotiveModal({ title, onConfirm, onCancel, loading }: MotiveModalProps) {
   const [reason, setReason] = useState('')
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  // Motivos cadastrados em Configurações da Fila › Negociação (opção rápida).
+  useEffect(() => {
+    fetch('/api/seller-queue/reasons', { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (j?.success) setSuggestions(j.data?.negotiationReasons ?? []) })
+      .catch(() => {})
+  }, [])
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <h3 className="mb-1 text-lg font-semibold text-gray-900">{title}</h3>
         <p className="mb-4 text-sm text-gray-500">Informe o motivo (obrigatório).</p>
+        {suggestions.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {suggestions.map((s) => (
+              <button key={s} type="button" onClick={() => setReason(s)} className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${reason === s ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-600 hover:border-brand-300'}`}>{s}</button>
+            ))}
+          </div>
+        )}
         <textarea
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 min-h-24 resize-y"
           placeholder="Descreva o motivo..."
