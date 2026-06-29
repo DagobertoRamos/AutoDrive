@@ -47,6 +47,7 @@ export async function PUT(req: Request) {
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
   try {
     const d = configSchema.parse(await req.json())
+    // (O schema já exige, via refine, que o bloqueio diário > o temporário.)
 
     // Estratégia anti-abuso vai no campo JSON `config` (sem coluna nova). Mescla
     // com o que já houver lá para não apagar outros extras.

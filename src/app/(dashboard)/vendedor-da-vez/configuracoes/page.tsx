@@ -133,7 +133,16 @@ export default function ConfiguracoesFilaPage() {
     navigator.geolocation.getCurrentPosition((p) => setCfg((c) => ({ ...c, geofenceLat: p.coords.latitude, geofenceLng: p.coords.longitude })))
   }
 
+  // Trava: o bloqueio diário (reincidência) tem que exigir MAIS perdas que o
+  // temporário (diário > temporário), igual à regra validada no servidor.
+  const blockConfigInvalid = cfg.autoBlock.enabled && cfg.autoBlock.strikesForDailyBlock <= cfg.autoBlock.strikesForCooldown
+
   const save = async () => {
+    if (blockConfigInvalid) {
+      setMsg('O "bloqueio diário" deve exigir mais perdas que o "bloqueio temporário".')
+      setTimeout(() => setMsg(null), 4000)
+      return
+    }
     setSaving(true); setMsg(null)
     try {
       const body = { ...cfg, qrSecret: cfg.qrSecret || null, openTime: cfg.openTime || null, closeTime: cfg.closeTime || null }
@@ -240,6 +249,9 @@ export default function ConfiguracoesFilaPage() {
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Perdas p/ bloqueio diário</label><input type="number" min={2} max={40} className={inputCls} value={cfg.autoBlock.strikesForDailyBlock} onChange={(e) => set('autoBlock', { ...cfg.autoBlock, strikesForDailyBlock: Number(e.target.value) || 2 })} /></div>
         </div>
         <p className="-mt-1 text-[11px] text-gray-400">Ex.: {cfg.autoBlock.strikesForCooldown} perdas → {cfg.autoBlock.cooldownHours}h fora; {cfg.autoBlock.strikesForDailyBlock} perdas no dia → bloqueado até amanhã. A contagem zera à meia-noite.</p>
+        {blockConfigInvalid && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">⚠️ O "bloqueio diário" ({cfg.autoBlock.strikesForDailyBlock}) precisa ser maior que o "bloqueio temporário" ({cfg.autoBlock.strikesForCooldown}). Ajuste para salvar.</p>
+        )}
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-3">
@@ -316,7 +328,7 @@ export default function ConfiguracoesFilaPage() {
 
       <div className="flex items-center justify-end gap-3">
         {msg && <span className={cn('text-sm', /salvas|liberad|ativado|desativado/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
-        <button onClick={save} disabled={saving || loading} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar configurações'}</button>
+        <button onClick={save} disabled={saving || loading || blockConfigInvalid} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar configurações'}</button>
       </div>
       </>)}
 
