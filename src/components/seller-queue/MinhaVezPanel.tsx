@@ -8,10 +8,11 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LogOut, Pause, Play, Check, X, CheckCircle2, Hand, Clock, QrCode } from 'lucide-react'
+import { LogOut, Pause, Play, Check, X, CheckCircle2, Hand, Clock, QrCode, DoorOpen, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
 import AlertSetupBanner from '@/components/seller-queue/AlertSetupBanner'
+import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { unlockAudio, ensureNotifyPermission, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 
@@ -93,6 +94,7 @@ export default function MinhaVezPanel() {
   }
 
   const [scanOpen, setScanOpen] = useState(false)
+  const [customerOpen, setCustomerOpen] = useState(false)
   const checkIn = async () => { unlockAudio(); void ensureNotifyPermission(); const pos = await getPosition(); await post('check-in', pos, 'Você entrou na fila!') }
   const checkInQr = async (token: string) => { unlockAudio(); void ensureNotifyPermission(); setScanOpen(false); await post('check-in', { qrToken: token }, 'Você entrou na fila!') }
   const resume = async () => { const pos = await getPosition(); await post('resume', pos, 'De volta à fila!') }
@@ -121,6 +123,14 @@ export default function MinhaVezPanel() {
 
   return (
     <div className="space-y-4">
+      <style>{`
+        @keyframes mv-rise { from { opacity:0; transform: translateY(12px) } to { opacity:1; transform:none } }
+        @keyframes mv-shine { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes mv-float { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-4px) } }
+        .mv-card { animation: mv-rise .5s cubic-bezier(.2,.7,.3,1) both }
+        .mv-card::after { content:''; position:absolute; inset:0; background-image:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.5) 50%,transparent 65%); background-size:200% 100%; animation: mv-shine 3s linear infinite; pointer-events:none }
+        .mv-float { animation: mv-float 2.6s ease-in-out infinite }
+      `}</style>
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
 
       <AlertSetupBanner />
@@ -183,49 +193,69 @@ export default function MinhaVezPanel() {
         </div>
       )}
 
-      {/* Status na fila */}
-      {showStatusCard && (
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-card">
-        {!me || me.status === 'LEFT' ? (
-          <>
-            <p className="text-center text-sm text-gray-500">Você não está na fila.</p>
-            <button onClick={checkIn} disabled={busy} className="btn-primary mt-3 w-full justify-center py-3 text-base"><Hand size={18} />Entrar na fila</button>
-            <button onClick={() => setScanOpen(true)} disabled={busy} className="btn-secondary mt-2 w-full justify-center"><QrCode size={16} />Entrar com QR da loja</button>
-            <p className="mt-2 text-center text-[11px] text-gray-400">Sua presença será validada (GPS/QR/dispositivo).</p>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <div>
-                {me.position > 0 ? (
-                  <>
-                    <p className="text-xs uppercase tracking-wide text-gray-400">Sua posição</p>
-                    <p className="text-3xl font-bold tabular-nums text-gray-900">{me.position}º</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs uppercase tracking-wide text-gray-400">Situação</p>
-                    <p className="text-2xl font-bold text-gray-900">{statusLabel(me.status)}</p>
-                  </>
-                )}
-              </div>
-              <span className={cn('rounded-full px-3 py-1 text-xs font-semibold', me.status === 'PAUSED' ? 'bg-amber-100 text-amber-700' : me.status === 'IN_ATTENDANCE' ? 'bg-green-100 text-green-700' : me.status === 'CALLED' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')}>{statusLabel(me.status)}</span>
-            </div>
-            {data?.vendedorDaVez && <p className="mt-2 text-sm text-gray-500">Vendedor da vez agora: <strong>{data.vendedorDaVez.sellerName}</strong></p>}
-            <div className="mt-4 flex gap-2">
-              {me.status === 'PAUSED' ? (
-                <button onClick={resume} disabled={busy} className="btn-primary flex-1 justify-center"><Play size={15} />Voltar</button>
-              ) : ['WAITING', 'NEXT'].includes(me.status) ? (
-                <button onClick={() => post('pause', {}, 'Pausado.')} disabled={busy} className="btn-secondary flex-1 justify-center"><Pause size={15} />Pausar</button>
-              ) : null}
-              <button onClick={() => post('check-out', {}, 'Você saiu da fila.')} disabled={busy} className="btn-secondary justify-center text-red-600"><LogOut size={15} />Sair</button>
-            </div>
-          </>
+      {/* Ações rápidas — 3 cards animados: Entrar na fila · Ler QR · Atender cliente */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {/* Card 1 — Entrar na fila / seu status */}
+        {showStatusCard && (
+          <div className="mv-card relative overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4 shadow-card" style={{ animationDelay: '0ms' }}>
+            <DoorOpen size={22} className="mv-float text-brand-600" />
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-500">Sua vez</p>
+            {!me || me.status === 'LEFT' ? (
+              <>
+                <p className="text-lg font-bold leading-tight text-gray-900">Fora da fila</p>
+                <button onClick={checkIn} disabled={busy} className="relative z-10 mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"><Hand size={15} />Entrar na fila</button>
+                <p className="mt-1.5 text-center text-[10px] text-gray-400">Presença validada (GPS/QR)</p>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold leading-tight text-gray-900">{me.position > 0 ? `${me.position}º` : statusLabel(me.status)}</p>
+                <p className="text-xs text-gray-400">{statusLabel(me.status)}</p>
+                <div className="relative z-10 mt-2 flex gap-1.5">
+                  {me.status === 'PAUSED' ? (
+                    <button onClick={resume} disabled={busy} className="flex-1 rounded-lg bg-brand-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-60"><Play size={13} className="mr-1 inline" />Voltar</button>
+                  ) : ['WAITING', 'NEXT'].includes(me.status) ? (
+                    <button onClick={() => post('pause', {}, 'Pausado.')} disabled={busy} className="flex-1 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60"><Pause size={13} className="mr-1 inline" />Pausar</button>
+                  ) : null}
+                  <button onClick={() => post('check-out', {}, 'Você saiu da fila.')} disabled={busy} className="flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"><LogOut size={13} className="mr-1 inline" />Sair</button>
+                </div>
+              </>
+            )}
+          </div>
         )}
+
+        {/* Card 2 — Ler QR da loja */}
+        {showStatusCard && (
+          <button onClick={() => setScanOpen(true)} disabled={busy} className="mv-card group relative overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '90ms' }}>
+            <QrCode size={22} className="mv-float text-gray-700" />
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">QR da loja</p>
+            <p className="text-lg font-bold leading-tight text-gray-900">Entrar com QR</p>
+            <p className="relative z-10 mt-1 text-xs font-medium text-gray-500">Escanear código →</p>
+          </button>
+        )}
+
+        {/* Card 3 — Atender cliente (chamar responsável / registrar chegada) */}
+        <button onClick={() => setCustomerOpen(true)} className={cn('mv-card group relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg', !showStatusCard && 'sm:col-span-3')} style={{ animationDelay: '180ms' }}>
+          <Bell size={22} className="mv-float text-blue-500" />
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">Atender cliente</p>
+          <p className="text-lg font-bold leading-tight text-gray-900">Registrar / chamar</p>
+          <p className="relative z-10 mt-1 text-xs font-medium text-blue-600">Cadastrar cliente · chamar responsável →</p>
+        </button>
       </div>
-      )}
 
       {scanOpen && <QrScanner onResult={checkInQr} onClose={() => setScanOpen(false)} />}
+
+      {/* Popup — atender cliente (registrar chegada / chamar responsável / pós-vendas / agendamento) */}
+      {customerOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3" onClick={() => setCustomerOpen(false)}>
+          <div className="mx-auto my-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-base font-bold text-white drop-shadow">Atender cliente</h3>
+              <button onClick={() => setCustomerOpen(false)} className="rounded-lg bg-white/90 p-1.5 text-gray-600 shadow hover:bg-white"><X size={18} /></button>
+            </div>
+            <ClienteNaLojaPanel />
+          </div>
+        </div>
+      )}
 
       {finishOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>
