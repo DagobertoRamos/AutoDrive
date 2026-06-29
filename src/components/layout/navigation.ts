@@ -128,13 +128,9 @@ export const NAV_GROUPS: NavItem[] = [
     module: 'sellerQueue.view',
     children: [
       { label: 'Visão Geral',         href: '/vendedor-da-vez',               icon: ListOrdered,     module: 'sellerQueue.view' },
-      { label: 'Minha Fila',          href: '/vendedor-da-vez/minha-fila',     icon: DoorOpen,        module: 'sellerQueue.checkIn' },
-      { label: 'Ativar Alertas',      href: '/vendedor-da-vez/ativar-alertas', icon: Bell,            module: 'sellerQueue.checkIn' },
-      { label: 'Cliente na Loja',     href: '/vendedor-da-vez/cliente-na-loja', icon: Bell,           module: 'sellerQueue.customerArrived' },
       { label: 'Painel da Unidade',   href: '/vendedor-da-vez/painel',         icon: LayoutDashboard, module: 'sellerQueue.lead' },
-      { label: 'Atendimentos',        href: '/vendedor-da-vez/atendimentos',   icon: ClipboardList,   module: 'sellerQueue.view' },
       { label: 'Relatórios',          href: '/vendedor-da-vez/relatorios',     icon: BarChart3,       module: 'sellerQueue.reports' },
-      { label: 'Configurações',       href: '/vendedor-da-vez/configuracoes',  icon: Settings,        module: 'sellerQueue.settings' },
+      { label: 'Configurações',       href: '/vendedor-da-vez/configuracoes',  icon: Settings,        module: 'sellerQueue.view' },
     ],
   },
 

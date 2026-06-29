@@ -8,10 +8,10 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import Link from 'next/link'
-import { ListOrdered, DoorOpen, Bell, RefreshCw, Crown, Hand, Clock, UserSearch, X, Search } from 'lucide-react'
+import { ListOrdered, RefreshCw, Crown, Hand, Clock, UserSearch, X, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import QueueSelfCard from '@/components/seller-queue/QueueSelfCard'
+import MinhaVezPanel from '@/components/seller-queue/MinhaVezPanel'
+import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number }
@@ -120,7 +120,7 @@ export default function FilaOverviewPage() {
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
 
-      <QueueSelfCard />
+      <MinhaVezPanel />
 
       {/* Chamar vendedor da vez — 1 toque, qualquer pessoa com acesso à fila */}
       {!denied && (
@@ -159,10 +159,7 @@ export default function FilaOverviewPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Link href="/vendedor-da-vez/minha-fila" className="rounded-xl border border-gray-200 bg-white p-4 shadow-card hover:border-brand-300"><DoorOpen size={20} className="mb-2 text-brand-600" /><p className="font-semibold text-gray-900">Minha Fila</p><p className="text-xs text-gray-500">Entrar, pausar, atender</p></Link>
-        <Link href="/vendedor-da-vez/cliente-na-loja" className="rounded-xl border border-gray-200 bg-white p-4 shadow-card hover:border-brand-300"><Bell size={20} className="mb-2 text-brand-600" /><p className="font-semibold text-gray-900">Cliente na Loja</p><p className="text-xs text-gray-500">Registrar com nome/telefone</p></Link>
-      </div>
+      {!denied && <ClienteNaLojaPanel />}
 
       {denied ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
