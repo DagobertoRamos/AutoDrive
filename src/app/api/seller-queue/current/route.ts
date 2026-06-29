@@ -104,6 +104,7 @@ export async function GET(req: Request) {
         myBlock,
         myPosVenda,
         canCheckIn,
+        closeReasons: ((ucfg?.config as Record<string, unknown> | undefined)?.leadCloseReasons as string[] | undefined) ?? [],
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
       },
     })

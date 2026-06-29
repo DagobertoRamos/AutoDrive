@@ -22,7 +22,7 @@ interface Me { status: string; position: number }
 interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; customerEmail: string | null; recurring: boolean } | null }
 interface Alerts { sound: boolean; soundType?: string; browserPush: boolean; repeatSeconds: number }
 interface Block { type: 'COOLDOWN' | 'DAILY_BLOCK'; endsAt: string }
-interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts; myBlock?: Block | null; myPosVenda?: { status: string } | null }
+interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts; myBlock?: Block | null; myPosVenda?: { status: string } | null; closeReasons?: string[] }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -66,7 +66,7 @@ export default function MinhaFilaPage() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [finishOpen, setFinishOpen] = useState(false)
-  const [finForm, setFinForm] = useState({ type: 'SALE', result: 'CONVERTED_TO_NEGOTIATION', notes: '', customerName: '', customerPhone: '', customerEmail: '' })
+  const [finForm, setFinForm] = useState({ type: 'SALE', result: 'CONVERTED_TO_NEGOTIATION', motivo: '', notes: '', customerName: '', customerPhone: '', customerEmail: '' })
   const [now, setNow] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const flash = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500) }
@@ -117,7 +117,8 @@ export default function MinhaFilaPage() {
   const needClient = !att?.arrival?.customerName // chamada do vendedor da vez sem cadastro prévio
   const finish = async () => {
     if (!att) return
-    let payload: Record<string, unknown> = { type: finForm.type, result: finForm.result, notes: finForm.notes.trim() }
+    const notesWithMotivo = (finForm.motivo ? `Motivo: ${finForm.motivo}. ` : '') + finForm.notes.trim()
+    let payload: Record<string, unknown> = { type: finForm.type, result: finForm.result, notes: notesWithMotivo }
     if (needClient) {
       const name = capName(finForm.customerName.trim())
       if (!name) { flash('Informe o nome do cliente.', false); return }
@@ -250,6 +251,9 @@ export default function MinhaFilaPage() {
               )}
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={finForm.type} onChange={(e) => setFinForm((f) => ({ ...f, type: e.target.value }))}>{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Resultado</label><select className={inputCls} value={finForm.result} onChange={(e) => setFinForm((f) => ({ ...f, result: e.target.value }))}>{RESULTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+              {(data?.closeReasons?.length ?? 0) > 0 && (
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Motivo</label><select className={inputCls} value={finForm.motivo} onChange={(e) => setFinForm((f) => ({ ...f, motivo: e.target.value }))}><option value="">— selecione —</option>{data!.closeReasons!.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
+              )}
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações *</label><textarea rows={2} className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Obrigatório — resumo do atendimento" /></div>
             </div>
             <div className="mt-4 flex justify-end gap-2"><button onClick={() => setFinishOpen(false)} className="btn-secondary text-sm">Cancelar</button><button onClick={finish} disabled={busy} className="btn-primary text-sm"><CheckCircle2 size={15} />Finalizar</button></div>

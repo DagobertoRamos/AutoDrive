@@ -99,6 +99,9 @@ export const configSchema = z.object({
   allowChooseSeller:             z.boolean().optional(),
   // Quem pode finalizar o atendimento: se false, só a gestão (líder/gerente).
   allowSellerFinish: z.boolean().optional(),
+  // Motivos cadastrados pela gestão (encerrar lead/atendimento e negociação).
+  leadCloseReasons:   z.array(z.string().trim().min(1).max(80)).max(60).optional(),
+  negotiationReasons: z.array(z.string().trim().min(1).max(80)).max(60).optional(),
   // Estratégia anti-abuso (bloqueio por reincidência de timeouts no dia).
   autoBlock: z.object({
     enabled:              z.boolean(),

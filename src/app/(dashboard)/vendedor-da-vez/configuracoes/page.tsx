@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert, Unlock, RefreshCw } from 'lucide-react'
+import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 
@@ -20,10 +20,36 @@ interface Cfg {
   recurringCustomerRule: string; requestByNameRequiresApproval: boolean;
   alertSound: boolean; alertSoundType: string; alertBrowserPush: boolean; alertWhatsapp: boolean; alertWhatsappManagers: boolean; alertRepeatSeconds: number; allowChooseSeller: boolean;
   allowSellerFinish: boolean;
+  leadCloseReasons: string[]; negotiationReasons: string[];
   autoBlock: AutoBlock
 }
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, autoBlock: DEFAULT_AUTO_BLOCK }
+
+// Editor de lista de motivos (chips). Usado para encerrar lead e negociação.
+function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: string; items: string[]; onChange: (v: string[]) => void }) {
+  const [val, setVal] = useState('')
+  const add = () => { const t = val.trim(); if (t && !items.includes(t)) { onChange([...items, t]); setVal('') } }
+  return (
+    <div>
+      <p className="text-sm font-semibold text-gray-800">{title}</p>
+      <p className="mb-2 text-[11px] text-gray-400">{hint}</p>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {items.length === 0 && <span className="text-xs text-gray-400">Nenhum motivo cadastrado.</span>}
+        {items.map((m) => (
+          <span key={m} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+            {m}
+            <button type="button" onClick={() => onChange(items.filter((x) => x !== m))} className="text-brand-400 hover:text-red-600"><X size={12} /></button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }} placeholder="Novo motivo…" className={inputCls} />
+        <button type="button" onClick={add} className="btn-secondary shrink-0 text-xs"><Plus size={14} />Adicionar</button>
+      </div>
+    </div>
+  )
+}
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], autoBlock: DEFAULT_AUTO_BLOCK }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -52,7 +78,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -195,6 +221,23 @@ export default function ConfiguracoesFilaPage() {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><ListChecks size={16} className="text-brand-600" />Motivos cadastrados</h2>
+        <ReasonsEditor
+          title="Encerrar lead / atendimento"
+          hint="Aparecem como opção ao finalizar o atendimento/lead."
+          items={cfg.leadCloseReasons}
+          onChange={(v) => set('leadCloseReasons', v)}
+        />
+        <div className="border-t border-gray-100" />
+        <ReasonsEditor
+          title="Negociação"
+          hint="Aparecem como opção na negociação (ex.: motivo de perda)."
+          items={cfg.negotiationReasons}
+          onChange={(v) => set('negotiationReasons', v)}
+        />
       </div>
 
       <div className="flex items-center justify-end gap-3">
