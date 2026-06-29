@@ -46,13 +46,16 @@ export async function POST(req: Request) {
       const u = await prisma.user.findUnique({ where: { id: ringing.sellerId }, select: { name: true } }).catch(() => null)
       return NextResponse.json({ success: true, data: { arrivalId: ringing.arrivalId, alreadyInProgress: true, sellerName: u?.name ?? null, call: { ok: true, attendanceId: ringing.id, sellerId: ringing.sellerId } } })
     }
+    // Cooldown fixo de 10s após qualquer chamada rápida (independente do status).
+    const COOLDOWN_MS = 10_000
     const recent = await prisma.sellerQueueCustomerArrival.findFirst({
-      where: { queueId: queue.id, customerName: null, status: { in: ['PENDING', 'CALLING'] }, createdAt: { gt: new Date(now.getTime() - 8000) } },
+      where: { queueId: queue.id, customerName: null, createdAt: { gt: new Date(now.getTime() - COOLDOWN_MS) } },
       orderBy: { createdAt: 'desc' },
-      select: { id: true },
+      select: { id: true, createdAt: true },
     })
     if (recent) {
-      return NextResponse.json({ success: true, data: { arrivalId: recent.id, alreadyInProgress: true, sellerName: null, call: { ok: false, reason: 'Chamada já em andamento.' } } })
+      const wait = Math.max(1, Math.ceil((COOLDOWN_MS - (now.getTime() - recent.createdAt.getTime())) / 1000))
+      return NextResponse.json({ success: true, data: { arrivalId: recent.id, alreadyInProgress: true, cooldownSeconds: wait, sellerName: null, call: { ok: false, reason: `Aguarde ${wait}s para chamar de novo.` } } })
     }
 
     // Chegada mínima, sem dados de cliente (o vendedor que aceitar cadastra depois).
