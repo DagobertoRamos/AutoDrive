@@ -95,36 +95,36 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 interface ModFeature { key: string; label: string; tenantDisabled: boolean; enabled: boolean }
 interface ModGroup { area: string; features: ModFeature[] }
 
-function ModulesEditor({ userId }: { userId: string }) {
+// Seletor de módulos CONTROLADO — funciona para colaborador NOVO (catálogo do
+// cargo, por positionId) e EDIÇÃO (estado real, por userId). Não salva sozinho:
+// reporta a lista de "denied" ao formulário, que salva tudo junto.
+function ModulesPicker({ positionId, userId, onChange }: { positionId: string | null; userId?: string | null; onChange: (denied: string[]) => void }) {
   const [groups, setGroups] = useState<ModGroup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
+    if (!userId && !positionId) { setGroups([]); return }
+    setLoading(true)
     ;(async () => {
       try {
-        const r = await fetch(`/api/users/${userId}/modules`, { credentials: 'include' })
+        const url = userId ? `/api/users/${userId}/modules` : `/api/modules/catalog?positionId=${positionId}`
+        const r = await fetch(url, { credentials: 'include' })
         const j = await r.json()
         if (!cancelled && j?.success) setGroups(j.data.groups ?? [])
       } catch { /* noop */ } finally { if (!cancelled) setLoading(false) }
     })()
     return () => { cancelled = true }
-  }, [userId])
+  }, [positionId, userId])
+
+  useEffect(() => {
+    onChange(groups.flatMap((g) => g.features).filter((f) => !f.enabled).map((f) => f.key))
+  }, [groups, onChange])
 
   const toggle = (key: string) => setGroups((gs) => gs.map((g) => ({ ...g, features: g.features.map((f) => (f.key === key ? { ...f, enabled: !f.enabled } : f)) })))
-  const save = async () => {
-    setSaving(true); setMsg(null)
-    try {
-      const denied = groups.flatMap((g) => g.features).filter((f) => !f.enabled).map((f) => f.key)
-      const r = await fetch(`/api/users/${userId}/modules`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ denied }) })
-      setMsg(r.ok ? 'Módulos salvos.' : 'Falha ao salvar.')
-    } catch { setMsg('Erro de rede.') } finally { setSaving(false); setTimeout(() => setMsg(null), 2500) }
-  }
 
   if (loading) return <p className="text-xs text-gray-400">Carregando módulos…</p>
-  if (!groups.length) return <p className="text-xs text-gray-400">Este cargo não dá acesso a módulos configuráveis.</p>
+  if (!groups.length) return <p className="text-xs text-gray-400">Selecione um cargo para ver os módulos.</p>
   return (
     <div className="space-y-3">
       {groups.map((g) => (
@@ -140,10 +140,6 @@ function ModulesEditor({ userId }: { userId: string }) {
           </div>
         </div>
       ))}
-      <div className="flex items-center gap-3">
-        <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? 'Salvando…' : 'Salvar módulos'}</button>
-        {msg && <span className={cn('text-xs', /salvos/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
-      </div>
     </div>
   )
 }
@@ -157,7 +153,7 @@ function Modal({
 }: {
   open: boolean
   onClose: () => void
-  onSave: (data: SellerForm) => Promise<void>
+  onSave: (data: SellerForm, denied: string[]) => Promise<void>
   initial?: Seller | null
   saving: boolean
   error: string | null
@@ -165,6 +161,7 @@ function Modal({
   positions: Position[]
 }) {
   const [form, setForm] = useState<SellerForm>(emptyForm)
+  const [denied, setDenied] = useState<string[]>([])
 
   useEffect(() => {
     if (open) {
@@ -204,7 +201,7 @@ function Modal({
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); onSave(form) }}
+          onSubmit={(e) => { e.preventDefault(); onSave(form, denied) }}
           className="px-6 py-5 space-y-4"
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -257,13 +254,11 @@ function Modal({
             <Toggle label="Recebe cobranças" checked={form.receivesCharge} onChange={(v) => set('receivesCharge', v)} />
           </div>
 
-          {initial?.userId && (
-            <div className="rounded-lg border border-gray-200 p-3">
-              <p className="mb-2 text-xs font-semibold text-gray-700">Módulos liberados (acesso deste colaborador)</p>
-              <p className="-mt-1 mb-2 text-[11px] text-gray-400">Desmarque para remover o acesso. A lista mostra só o que o cargo permite. Salva separadamente.</p>
-              <ModulesEditor userId={initial.userId} />
-            </div>
-          )}
+          <div className="rounded-lg border border-gray-200 p-3">
+            <p className="mb-2 text-xs font-semibold text-gray-700">Módulos e serviços liberados</p>
+            <p className="-mt-1 mb-2 text-[11px] text-gray-400">Desmarque para remover o acesso deste colaborador. A lista mostra só o que o cargo permite. Salva junto com o cadastro.</p>
+            <ModulesPicker positionId={form.positionId} userId={initial?.userId} onChange={setDenied} />
+          </div>
 
           {!initial && (
             <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-700">
@@ -348,7 +343,7 @@ export default function VendedoresPage() {
   const openCreate = () => { setEditing(null); setSaveError(null); setModalOpen(true) }
   const openEdit = (s: Seller) => { setEditing(s); setSaveError(null); setModalOpen(true) }
 
-  const handleSave = async (data: SellerForm) => {
+  const handleSave = async (data: SellerForm, denied: string[]) => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -358,6 +353,11 @@ export default function VendedoresPage() {
       const json = await res.json()
       if (!res.ok) {
         throw new Error(json?.error ?? 'Erro ao salvar.')
+      }
+      // Salva os módulos (ativação/desativação) JUNTO com o cadastro.
+      const targetUserId = editing ? editing.userId : json?.data?.userId
+      if (targetUserId) {
+        await fetch(`/api/users/${targetUserId}/modules`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ denied }) }).catch(() => {})
       }
       setModalOpen(false)
       if (!editing && json.userCreated) {
