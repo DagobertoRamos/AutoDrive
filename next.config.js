@@ -62,8 +62,9 @@ const nextConfig = {
   webpack: (config, { isServer, dev }) => {
     // No build de produção, limita o paralelismo do webpack: processa menos
     // módulos ao mesmo tempo → reduz o PICO de RAM e evita o OOM (SIGKILL) no
-    // container Hobby da Vercel. Não afeta o dev (HMR).
-    if (!dev) config.parallelism = 2
+    // container Hobby da Vercel. Não afeta o dev (HMR). Reduzido p/ 1 quando o
+    // app cresceu e o pico voltou a estourar o container (deploy 238fc7f OOM).
+    if (!dev) config.parallelism = 1
 
     if (!isServer) {
       config.resolve.fallback = {
