@@ -32,6 +32,29 @@ export async function POST(req: Request) {
   try {
     const queue = await getOrCreateQueue(tenantId, unitId)
 
+    // ── ANTI-DUPLICAÇÃO ───────────────────────────────────────────────────────
+    // Vários toques ao mesmo tempo (Luciana, Jessé...) para o MESMO cliente não
+    // podem chamar 2 vendedores. Se já há uma chamada rápida em andamento (tocando)
+    // ou criada nos últimos segundos, devolvemos a MESMA chamada (idempotente).
+    const now = new Date()
+    const ringing = await prisma.sellerQueueAttendance.findFirst({
+      where: { queueId: queue.id, status: 'CALLED', acceptDeadline: { gt: now }, arrival: { customerName: null } },
+      orderBy: { calledAt: 'desc' },
+      select: { id: true, sellerId: true, arrivalId: true },
+    })
+    if (ringing) {
+      const u = await prisma.user.findUnique({ where: { id: ringing.sellerId }, select: { name: true } }).catch(() => null)
+      return NextResponse.json({ success: true, data: { arrivalId: ringing.arrivalId, alreadyInProgress: true, sellerName: u?.name ?? null, call: { ok: true, attendanceId: ringing.id, sellerId: ringing.sellerId } } })
+    }
+    const recent = await prisma.sellerQueueCustomerArrival.findFirst({
+      where: { queueId: queue.id, customerName: null, status: { in: ['PENDING', 'CALLING'] }, createdAt: { gt: new Date(now.getTime() - 8000) } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    })
+    if (recent) {
+      return NextResponse.json({ success: true, data: { arrivalId: recent.id, alreadyInProgress: true, sellerName: null, call: { ok: false, reason: 'Chamada já em andamento.' } } })
+    }
+
     // Chegada mínima, sem dados de cliente (o vendedor que aceitar cadastra depois).
     const arrival = await prisma.sellerQueueCustomerArrival.create({
       data: {

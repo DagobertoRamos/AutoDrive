@@ -65,6 +65,7 @@ export default function FilaOverviewPage() {
       const res = await fetch('/api/seller-queue/quick-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { flash(j?.error ?? 'Falha ao chamar.', false) }
+      else if (j?.data?.alreadyInProgress) { flash(j?.data?.sellerName ? `Chamada já em andamento: ${j.data.sellerName} foi chamado.` : 'Chamada já em andamento — aguarde.', false) }
       else if (j?.data?.call?.ok) { flash('Vendedor da vez chamado! 🔔', true) }
       else { flash(j?.data?.call?.reason ?? 'Nenhum vendedor disponível na fila.', false) }
       await load()
