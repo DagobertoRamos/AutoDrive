@@ -22,7 +22,7 @@ interface Me { status: string; position: number }
 interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; customerEmail: string | null; recurring: boolean } | null }
 interface Alerts { sound: boolean; soundType?: string; browserPush: boolean; repeatSeconds: number }
 interface Block { type: 'COOLDOWN' | 'DAILY_BLOCK'; endsAt: string }
-interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts; myBlock?: Block | null; myPosVenda?: { status: string } | null; closeReasons?: string[] }
+interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; entries: unknown[]; queue: unknown; alerts?: Alerts; myBlock?: Block | null; myPosVenda?: { status: string } | null; closeReasons?: string[]; autoRemovedNotice?: string | null; queueOpen?: boolean }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -139,6 +139,14 @@ export default function MinhaFilaPage() {
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
 
       <AlertSetupBanner />
+
+      {/* Aviso: foi removido automaticamente por pausa/ausência prolongada */}
+      {data?.autoRemovedNotice && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">⏱️ {data.autoRemovedNotice}</div>
+      )}
+      {data?.queueOpen === false && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">🔒 A fila está fechada agora (fora do horário de funcionamento).</div>
+      )}
 
       {/* Pós-vendas — pausado, pede para voltar à fila (autorização do gestor) */}
       {data?.myPosVenda && (

@@ -102,6 +102,10 @@ export const configSchema = z.object({
   // Motivos cadastrados pela gestão (encerrar lead/atendimento e negociação).
   leadCloseReasons:   z.array(z.string().trim().min(1).max(80)).max(60).optional(),
   negotiationReasons: z.array(z.string().trim().min(1).max(80)).max(60).optional(),
+  // Auto-saída por pausa/ausência prolongada (minutos). 0/ausente = desligado.
+  maxPauseMinutes:    z.number().int().min(0).max(480).optional(),
+  // Liga/desliga a fila automaticamente pelo horário (openTime/closeTime/allowedDays).
+  autoSchedule:       z.boolean().optional(),
   // Estratégia anti-abuso (bloqueio por reincidência de timeouts no dia).
   autoBlock: z.object({
     enabled:              z.boolean(),

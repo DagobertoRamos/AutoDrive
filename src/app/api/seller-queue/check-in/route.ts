@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { checkInSchema } from '@/lib/validators/seller-queue'
 import { getUnitConfig, toPresenceConfig, getOrCreateQueue, nextPosition, recordPresence, logQueueEvent } from '@/lib/seller-queue/queue'
+import { isQueueOpenNow } from '@/lib/seller-queue/automation'
 import { getActiveQueueBlock, blockMessage } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -46,6 +47,11 @@ export async function POST(req: Request) {
     }
 
     const cfg = await getUnitConfig(tenantId, unitId)
+    // Fila com horário automático: barra check-in fora do expediente.
+    const cfgX = (cfg?.config as Record<string, unknown> | undefined) ?? {}
+    if (cfgX.autoSchedule && !isQueueOpenNow(cfg?.openTime, cfg?.closeTime, cfg?.allowedDays)) {
+      return NextResponse.json({ success: false, error: 'A fila está fechada agora (fora do horário de funcionamento).' }, { status: 409 })
+    }
     const presence = await recordPresence({ tenantId, unitId, sellerId, context: 'CHECK_IN', cfg: toPresenceConfig(cfg), input: d, override })
     if (!presence.ok) {
       return NextResponse.json({ success: false, error: presence.reason ?? 'Presença não validada.', presence }, { status: 422 })

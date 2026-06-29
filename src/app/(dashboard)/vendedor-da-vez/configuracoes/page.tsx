@@ -6,7 +6,9 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks } from 'lucide-react'
+import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock } from 'lucide-react'
+
+const DAYS: [string, string][] = [['MON', 'Seg'], ['TUE', 'Ter'], ['WED', 'Qua'], ['THU', 'Qui'], ['FRI', 'Sex'], ['SAT', 'Sáb'], ['SUN', 'Dom']]
 import { cn } from '@/lib/utils'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 
@@ -21,6 +23,8 @@ interface Cfg {
   alertSound: boolean; alertSoundType: string; alertBrowserPush: boolean; alertWhatsapp: boolean; alertWhatsappManagers: boolean; alertRepeatSeconds: number; allowChooseSeller: boolean;
   allowSellerFinish: boolean;
   leadCloseReasons: string[]; negotiationReasons: string[];
+  openTime: string | null; closeTime: string | null; allowedDays: string[];
+  maxPauseMinutes: number; autoSchedule: boolean;
   autoBlock: AutoBlock
 }
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
@@ -49,7 +53,7 @@ function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: 
     </div>
   )
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], autoBlock: DEFAULT_AUTO_BLOCK }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, autoBlock: DEFAULT_AUTO_BLOCK }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -78,7 +82,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -108,7 +112,7 @@ export default function ConfiguracoesFilaPage() {
   const save = async () => {
     setSaving(true); setMsg(null)
     try {
-      const body = { ...cfg, qrSecret: cfg.qrSecret || null }
+      const body = { ...cfg, qrSecret: cfg.qrSecret || null, openTime: cfg.openTime || null, closeTime: cfg.closeTime || null }
       const res = await fetch('/api/seller-queue/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       const j = await res.json().catch(() => ({}))
       setMsg(res.ok ? 'Configurações salvas.' : (j?.error ?? 'Erro ao salvar.')); setTimeout(() => setMsg(null), 3000)
@@ -221,6 +225,31 @@ export default function ConfiguracoesFilaPage() {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><Clock size={16} className="text-brand-600" />Automação da fila</h2>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.autoSchedule} onChange={(e) => set('autoSchedule', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Abrir/fechar a fila automaticamente por horário</label>
+        <div className={cn('grid grid-cols-2 gap-3', !cfg.autoSchedule && 'pointer-events-none opacity-50')}>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Abre às</label><input type="time" className={inputCls} value={cfg.openTime ?? ''} onChange={(e) => set('openTime', e.target.value || null)} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Fecha às</label><input type="time" className={inputCls} value={cfg.closeTime ?? ''} onChange={(e) => set('closeTime', e.target.value || null)} /></div>
+        </div>
+        <div className={cn(!cfg.autoSchedule && 'pointer-events-none opacity-50')}>
+          <p className="mb-1 text-xs font-medium text-gray-700">Dias de funcionamento</p>
+          <div className="flex flex-wrap gap-1.5">
+            {DAYS.map(([v, l]) => (
+              <button type="button" key={v} onClick={() => set('allowedDays', cfg.allowedDays.includes(v) ? cfg.allowedDays.filter((x) => x !== v) : [...cfg.allowedDays, v])} className={cn('rounded-lg border px-2.5 py-1 text-xs font-semibold', cfg.allowedDays.includes(v) ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-500')}>{l}</button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-gray-400">Sem dias marcados = todos os dias.</p>
+        </div>
+
+        <div className="border-t border-gray-100 pt-3">
+          <label className="mb-1 block text-sm font-medium text-gray-700">Sair da fila após pausado/ausente por (minutos)</label>
+          <input type="number" min={0} max={480} className={cn(inputCls, 'max-w-[140px]')} value={cfg.maxPauseMinutes} onChange={(e) => set('maxPauseMinutes', Number(e.target.value) || 0)} />
+          <p className="mt-1 text-[11px] text-gray-400">0 = desligado. Ex.: 30 → quem ficar pausado/fora por 30 min sai da fila automaticamente; ao tentar voltar, recebe o aviso de que foi removido.</p>
+        </div>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">

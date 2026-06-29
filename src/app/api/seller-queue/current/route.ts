@@ -15,6 +15,7 @@ import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/q
 import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
 import { assertModuleEnabled, getDisabledModules } from '@/lib/tenant-modules'
+import { autoCheckoutStalePauses, isQueueOpenNow, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -35,6 +36,10 @@ export async function GET(req: Request) {
       repeatSeconds: ucfg?.alertRepeatSeconds ?? 10,
     }
     const allowChooseSeller = ucfg?.allowChooseSeller ?? true
+    // Automações: auto-saída por pausa longa + abre/fecha por horário.
+    const cfgExtras = (ucfg?.config as Record<string, unknown> | undefined) ?? {}
+    const maxPauseMinutes = typeof cfgExtras.maxPauseMinutes === 'number' ? cfgExtras.maxPauseMinutes : 0
+    const queueOpen = cfgExtras.autoSchedule ? isQueueOpenNow(ucfg?.openTime, ucfg?.closeTime, ucfg?.allowedDays) : true
     const myBlockRaw = await getActiveQueueBlock(tenantId, unitId, user.id)
     const myBlock = myBlockRaw ? { type: myBlockRaw.type, endsAt: myBlockRaw.endsAt } : null
     const myPosVendaRaw = await getActivePosVenda(tenantId, unitId, user.id)
@@ -52,8 +57,11 @@ export async function GET(req: Request) {
     }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen } })
     }
+
+    // Remove quem ficou pausado/fora por muito tempo (antes de ler a fila).
+    await autoCheckoutStalePauses({ tenantId, unitId, queueId: queue.id, maxPauseMinutes })
 
     const [entries, arrivalsPending] = await Promise.all([
       prisma.sellerQueueEntry.findMany({
@@ -84,6 +92,15 @@ export async function GET(req: Request) {
     // (a UI mostra a situação, não o contador interno, que confundia como "14º").
     const me = meRaw ? { ...meRaw, position: myRank > 0 ? myRank : 0 } : null
 
+    // Aviso: o vendedor foi removido automaticamente (pausa/ausência prolongada)?
+    let autoRemovedNotice: string | null = null
+    if (!meRaw) {
+      const lastEv = await prisma.sellerQueueEvent.findFirst({ where: { queueId: queue.id, sellerId: user.id }, orderBy: { createdAt: 'desc' }, select: { type: true, reason: true } })
+      if (lastEv?.type === 'CHECK_OUT' && lastEv.reason?.startsWith(AUTO_PAUSE_REASON)) {
+        autoRemovedNotice = 'Você saiu da fila automaticamente porque ficou pausado/fora por muito tempo. Entre novamente para voltar à fila.'
+      }
+    }
+
     // Atendimento ativo do próprio solicitante (p/ aceitar/recusar/finalizar).
     const myAtt = await prisma.sellerQueueAttendance.findFirst({
       where: { queueId: queue.id, sellerId: user.id, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
@@ -104,7 +121,9 @@ export async function GET(req: Request) {
         myBlock,
         myPosVenda,
         canCheckIn,
-        closeReasons: ((ucfg?.config as Record<string, unknown> | undefined)?.leadCloseReasons as string[] | undefined) ?? [],
+        queueOpen,
+        autoRemovedNotice,
+        closeReasons: (cfgExtras.leadCloseReasons as string[] | undefined) ?? [],
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
       },
     })
