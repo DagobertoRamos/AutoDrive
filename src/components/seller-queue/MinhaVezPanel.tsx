@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LogOut, Pause, Play, Check, X, CheckCircle2, Hand, Clock, QrCode, DoorOpen, Bell } from 'lucide-react'
+import { LogOut, Pause, Play, Check, X, CheckCircle2, Hand, Clock, QrCode, DoorOpen, Bell, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
 import AlertSetupBanner from '@/components/seller-queue/AlertSetupBanner'
@@ -95,6 +95,23 @@ export default function MinhaVezPanel() {
 
   const [scanOpen, setScanOpen] = useState(false)
   const [customerOpen, setCustomerOpen] = useState(false)
+  const [calling, setCalling] = useState(false)
+  // Chamar o vendedor da vez (1 toque). Trava anti-duplicidade: o botão fica
+  // travado enquanto chama (front) e o backend devolve "alreadyInProgress" se já
+  // há chamada tocando ou dentro do cooldown de 10s.
+  const callDaVez = async () => {
+    if (calling) return
+    setCalling(true)
+    try {
+      const res = await fetch('/api/seller-queue/quick-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) flash(j?.error ?? 'Falha ao chamar.', false)
+      else if (j?.data?.alreadyInProgress) flash(j?.data?.sellerName ? `Chamada já em andamento — ${j.data.sellerName} foi chamado.` : (j?.data?.cooldownSeconds ? `Aguarde ${j.data.cooldownSeconds}s para chamar de novo.` : 'Chamada já em andamento — aguarde.'), false)
+      else if (j?.data?.call?.ok) flash('Vendedor da vez chamado! 🔔', true)
+      else flash(j?.data?.call?.reason ?? 'Nenhum vendedor disponível na fila.', false)
+      await load()
+    } catch { flash('Erro de rede.', false) } finally { setCalling(false) }
+  }
   const checkIn = async () => { unlockAudio(); void ensureNotifyPermission(); const pos = await getPosition(); await post('check-in', pos, 'Você entrou na fila!') }
   const checkInQr = async (token: string) => { unlockAudio(); void ensureNotifyPermission(); setScanOpen(false); await post('check-in', { qrToken: token }, 'Você entrou na fila!') }
   const resume = async () => { const pos = await getPosition(); await post('resume', pos, 'De volta à fila!') }
@@ -193,8 +210,8 @@ export default function MinhaVezPanel() {
         </div>
       )}
 
-      {/* Ações rápidas — 3 cards animados: Entrar na fila · Ler QR · Atender cliente */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      {/* Ações rápidas — cards animados: Entrar · Chamar da vez · Atender · QR */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* Card 1 — Entrar na fila / seu status */}
         {showStatusCard && (
           <div className="mv-card relative overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4 shadow-card" style={{ animationDelay: '0ms' }}>
@@ -223,7 +240,15 @@ export default function MinhaVezPanel() {
           </div>
         )}
 
-        {/* Card 2 — Ler QR da loja */}
+        {/* Card 2 — Chamar vendedor da vez (1 toque, com trava anti-duplicidade) */}
+        <button onClick={callDaVez} disabled={calling} className="mv-card group relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '60ms' }}>
+          <Crown size={22} className="mv-float text-amber-500" />
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-amber-600">Vendedor da vez</p>
+          <p className="truncate text-lg font-bold leading-tight text-gray-900" title={data?.vendedorDaVez?.sellerName}>{data?.vendedorDaVez?.sellerName ?? '— ninguém'}</p>
+          <span className="relative z-10 mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm"><Hand size={13} />{calling ? 'Chamando…' : 'Chamar da vez'}</span>
+        </button>
+
+        {/* Card 3 — Ler QR da loja */}
         {showStatusCard && (
           <button onClick={() => setScanOpen(true)} disabled={busy} className="mv-card group relative overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '90ms' }}>
             <QrCode size={22} className="mv-float text-gray-700" />
@@ -233,8 +258,8 @@ export default function MinhaVezPanel() {
           </button>
         )}
 
-        {/* Card 3 — Atender cliente (chamar responsável / registrar chegada) */}
-        <button onClick={() => setCustomerOpen(true)} className={cn('mv-card group relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg', !showStatusCard && 'sm:col-span-3')} style={{ animationDelay: '180ms' }}>
+        {/* Card 4 — Atender cliente (chamar responsável / registrar chegada) */}
+        <button onClick={() => setCustomerOpen(true)} className="mv-card group relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg" style={{ animationDelay: '180ms' }}>
           <Bell size={22} className="mv-float text-blue-500" />
           <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">Atender cliente</p>
           <p className="text-lg font-bold leading-tight text-gray-900">Registrar / chamar</p>
