@@ -6,10 +6,13 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Settings, Save, MapPin, Bell, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { Settings, Save, MapPin, Bell, BellRing, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock, Palmtree } from 'lucide-react'
 
 const DAYS: [string, string][] = [['MON', 'Seg'], ['TUE', 'Ter'], ['WED', 'Qua'], ['THU', 'Qui'], ['FRI', 'Sex'], ['SAT', 'Sáb'], ['SUN', 'Dom']]
 import { cn } from '@/lib/utils'
+import { canAccessModule } from '@/lib/permissions'
+import AlertSetup from '@/components/seller-queue/AlertSetup'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -67,6 +70,10 @@ function untilText(b: BlockedSeller): string {
 }
 
 export default function ConfiguracoesFilaPage() {
+  const { data: session } = useSession()
+  const role = (session?.user as { role?: string })?.role
+  // Vendedor comum vê só Alertas + Modo Férias. Gestão (settings) vê tudo.
+  const canSettings = !!role && canAccessModule(role, 'sellerQueue.settings')
   const [cfg, setCfg] = useState<Cfg>(DEFAULTS)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
@@ -74,6 +81,8 @@ export default function ConfiguracoesFilaPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [blocks, setBlocks] = useState<BlockedSeller[]>([])
   const [blocksBusy, setBlocksBusy] = useState<string | null>(null)
+  const [onVacation, setOnVacation] = useState(false)
+  const [vacBusy, setVacBusy] = useState(false)
   const set = <K extends keyof Cfg>(k: K, v: Cfg[K]) => setCfg((c) => ({ ...c, [k]: v }))
   const toggleMethod = (m: string) => setCfg((c) => ({ ...c, presenceMethods: c.presenceMethods.includes(m) ? c.presenceMethods.filter((x) => x !== m) : [...c.presenceMethods, m] }))
 
@@ -91,7 +100,22 @@ export default function ConfiguracoesFilaPage() {
       if (res.ok) setBlocks((await res.json())?.data ?? [])
     } catch { /* noop */ }
   }, [])
-  useEffect(() => { load(); loadBlocks() }, [load, loadBlocks])
+  useEffect(() => { if (canSettings) { load(); loadBlocks() } else { setLoading(false) } }, [canSettings, load, loadBlocks])
+
+  // Modo férias (auto-serviço — todos).
+  useEffect(() => {
+    fetch('/api/seller-queue/vacation', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setOnVacation(!!j.data.onVacation) }).catch(() => {})
+  }, [])
+  const toggleVacation = async () => {
+    setVacBusy(true)
+    try {
+      const res = await fetch('/api/seller-queue/vacation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ on: !onVacation }) })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok) { setOnVacation(!!j.data.onVacation); setMsg(j.data.onVacation ? 'Modo férias ativado — você está fora da fila.' : 'Modo férias desativado.') }
+      else setMsg(j?.error ?? 'Falha ao atualizar.')
+      setTimeout(() => setMsg(null), 3000)
+    } catch { setMsg('Erro de rede.') } finally { setVacBusy(false) }
+  }
 
   const release = async (sellerId?: string) => {
     setBlocksBusy(sellerId ?? 'ALL')
@@ -119,12 +143,33 @@ export default function ConfiguracoesFilaPage() {
     } catch { setMsg('Erro de rede.') } finally { setSaving(false) }
   }
 
-  if (denied) return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
-
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Settings size={20} className="text-brand-600" />Configurações da Fila</h1>
 
+      {/* ── Pessoal (todos) — Alertas neste aparelho ───────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><BellRing size={16} className="text-brand-600" />Meus alertas neste aparelho</h2>
+        <AlertSetup />
+      </div>
+
+      {/* ── Pessoal (todos) — Modo Férias ──────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><Palmtree size={16} className="text-brand-600" />Modo férias</h2>
+        <p className="text-xs text-gray-500">Quando ativado, você fica <strong>fora da fila</strong> e não é chamado como vendedor da vez. Ao desativar, é só entrar na fila de novo.</p>
+        {onVacation && <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">🏖️ Você está em modo férias.</div>}
+        <button onClick={toggleVacation} disabled={vacBusy} className={cn('rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60', onVacation ? 'bg-gray-500 hover:bg-gray-600' : 'bg-brand-600 hover:bg-brand-700')}>
+          {vacBusy ? '...' : onVacation ? 'Sair do modo férias' : 'Entrar em modo férias'}
+        </button>
+      </div>
+
+      {!canSettings && (
+        <p className="text-center text-xs text-gray-400">As demais configurações da fila são gerenciadas pela gestão.</p>
+      )}
+
+      {canSettings && denied && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>}
+
+      {canSettings && !denied && (<>
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
         <label className="flex items-center gap-2 text-sm font-medium text-gray-800"><input type="checkbox" checked={cfg.active} onChange={(e) => set('active', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Validação de presença ativa nesta unidade</label>
 
@@ -270,9 +315,13 @@ export default function ConfiguracoesFilaPage() {
       </div>
 
       <div className="flex items-center justify-end gap-3">
-        {msg && <span className={cn('text-sm', /salvas|liberad/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
+        {msg && <span className={cn('text-sm', /salvas|liberad|ativado|desativado/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
         <button onClick={save} disabled={saving || loading} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar configurações'}</button>
       </div>
+      </>)}
+
+      {/* mensagem fora do bloco de gestão (toggle de férias) */}
+      {!canSettings && msg && <p className={cn('text-center text-sm', /ativado|desativado/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</p>}
     </div>
   )
 }

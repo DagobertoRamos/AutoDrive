@@ -28,6 +28,22 @@ export async function autoCheckoutStalePauses(opts: { tenantId: string; unitId: 
   }
 }
 
+// ── Modo Férias (auto-serviço do vendedor) ───────────────────────────────────
+// Persistido em SellerQueueUnitConfig.config.vacations[sellerId] = { since } (sem
+// migration). Vendedor de férias fica fora da fila e não é chamado.
+
+type VacationMap = Record<string, { since?: string }>
+
+export function getVacations(config: unknown): VacationMap {
+  const c = (config as Record<string, unknown> | null | undefined) ?? {}
+  const v = c.vacations
+  return (v && typeof v === 'object') ? (v as VacationMap) : {}
+}
+
+export function isOnVacation(config: unknown, sellerId: string): boolean {
+  return !!getVacations(config)[sellerId]
+}
+
 const WD = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
 
 /** A fila está aberta agora? (horário de Brasília). Sem horário → sempre aberta. */

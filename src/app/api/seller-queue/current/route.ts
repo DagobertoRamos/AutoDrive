@@ -15,7 +15,7 @@ import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/q
 import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
 import { assertModuleEnabled, getDisabledModules } from '@/lib/tenant-modules'
-import { autoCheckoutStalePauses, isQueueOpenNow, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
+import { autoCheckoutStalePauses, isQueueOpenNow, isOnVacation, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -40,6 +40,7 @@ export async function GET(req: Request) {
     const cfgExtras = (ucfg?.config as Record<string, unknown> | undefined) ?? {}
     const maxPauseMinutes = typeof cfgExtras.maxPauseMinutes === 'number' ? cfgExtras.maxPauseMinutes : 0
     const queueOpen = cfgExtras.autoSchedule ? isQueueOpenNow(ucfg?.openTime, ucfg?.closeTime, ucfg?.allowedDays) : true
+    const onVacation = isOnVacation(ucfg?.config, user.id)
     const myBlockRaw = await getActiveQueueBlock(tenantId, unitId, user.id)
     const myBlock = myBlockRaw ? { type: myBlockRaw.type, endsAt: myBlockRaw.endsAt } : null
     const myPosVendaRaw = await getActivePosVenda(tenantId, unitId, user.id)
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
     }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation } })
     }
 
     // Remove quem ficou pausado/fora por muito tempo (antes de ler a fila).
@@ -122,6 +123,7 @@ export async function GET(req: Request) {
         myPosVenda,
         canCheckIn,
         queueOpen,
+        onVacation,
         autoRemovedNotice,
         closeReasons: (cfgExtras.leadCloseReasons as string[] | undefined) ?? [],
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
