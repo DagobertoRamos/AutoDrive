@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, User, X, Save, CheckCircle, AlertCircle, KeyRound } from 'lucide-react'
+import { Plus, Pencil, User, X, Save, CheckCircle, AlertCircle, KeyRound, Search } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import { maskCPF, maskPhone } from '@/lib/masks'
 
@@ -101,6 +101,7 @@ interface ModGroup { area: string; features: ModFeature[] }
 function ModulesPicker({ positionId, userId, onChange }: { positionId: string | null; userId?: string | null; onChange: (denied: string[]) => void }) {
   const [groups, setGroups] = useState<ModGroup[]>([])
   const [loading, setLoading] = useState(false)
+  const [q, setQ] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -125,17 +126,34 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
 
   if (loading) return <p className="text-xs text-gray-400">Carregando módulos…</p>
   if (!groups.length) return <p className="text-xs text-gray-400">Selecione um cargo para ver os módulos.</p>
+
+  const all = groups.flatMap((g) => g.features)
+  const onCount = all.filter((f) => f.enabled).length
+  const ql = q.trim().toLowerCase()
+  const filtered = ql
+    ? groups.map((g) => ({ ...g, features: g.features.filter((f) => f.label.toLowerCase().includes(ql) || g.area.toLowerCase().includes(ql)) })).filter((g) => g.features.length)
+    : groups
+
   return (
-    <div className="space-y-3">
-      {groups.map((g) => (
-        <div key={g.area}>
-          <p className="mb-1 text-xs font-semibold text-gray-600">{g.area}</p>
-          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar módulo ou serviço…" className="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+        </div>
+        <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">{onCount}/{all.length} ativos</span>
+      </div>
+      {filtered.map((g) => (
+        <div key={g.area} className="overflow-hidden rounded-lg border border-gray-200">
+          <p className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{g.area}</p>
+          <div className="divide-y divide-gray-100">
             {g.features.map((f) => (
-              <label key={f.key} className={cn('flex items-center gap-2 text-sm', f.tenantDisabled && 'opacity-50')}>
-                <input type="checkbox" checked={f.enabled} disabled={f.tenantDisabled} onChange={() => toggle(f.key)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-                <span className={f.enabled ? 'text-gray-800' : 'text-gray-400 line-through'}>{f.label}{f.tenantDisabled ? ' (desligado p/ loja)' : ''}</span>
-              </label>
+              <button type="button" key={f.key} disabled={f.tenantDisabled} onClick={() => toggle(f.key)} className={cn('flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50')}>
+                <span className={cn('text-sm', f.enabled ? 'font-medium text-gray-800' : 'text-gray-400')}>{f.label}{f.tenantDisabled ? ' (desligado p/ loja)' : ''}</span>
+                <span className={cn('relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors', f.enabled ? 'bg-brand-600' : 'bg-gray-300')}>
+                  <span className={cn('inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform', f.enabled ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+                </span>
+              </button>
             ))}
           </div>
         </div>

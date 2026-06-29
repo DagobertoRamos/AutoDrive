@@ -14,7 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/queue'
 import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, getDisabledModules } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -39,9 +39,17 @@ export async function GET(req: Request) {
     const myBlock = myBlockRaw ? { type: myBlockRaw.type, endsAt: myBlockRaw.endsAt } : null
     const myPosVendaRaw = await getActivePosVenda(tenantId, unitId, user.id)
     const myPosVenda = myPosVendaRaw ? { status: myPosVendaRaw.status } : null
-    // O usuário é um vendedor ativo? (define se mostramos "Entrar na fila").
-    const sellerRec = await prisma.seller.findFirst({ where: { userId: user.id, active: true, unit: { tenantId } }, select: { id: true } })
-    const canCheckIn = !!sellerRec
+    // Pode entrar na fila? = módulo sellerQueue.checkIn EFETIVO (cargo permite +
+    // não removido do colaborador + não desligado p/ a loja). Quem não pode, não
+    // vê "Entrar na fila" — mas continua vendo "Chamar vendedor da vez".
+    let canCheckIn = canAccessModule(user.role, 'sellerQueue.checkIn')
+    if (canCheckIn) {
+      const [denied, tenantDisabled] = await Promise.all([
+        prisma.userModule.findFirst({ where: { userId: user.id, moduleKey: 'sellerQueue.checkIn', allowed: false }, select: { id: true } }),
+        getDisabledModules(tenantId),
+      ])
+      if (denied || tenantDisabled.includes('sellerQueue.checkIn')) canCheckIn = false
+    }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
       return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn } })
