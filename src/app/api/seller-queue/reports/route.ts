@@ -25,14 +25,23 @@ export async function GET(req: Request) {
   const unitId = unitFromRequest(req, user.unitId)
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
   const days = Math.min(Math.max(Number(sp.get('days')) || 7, 1), 90)
-  const since = new Date(Date.now() - days * 86400000)
+  // Período custom (from/to ISO) tem prioridade sobre days.
+  const fromParam = sp.get('from'), toParam = sp.get('to')
+  const since = fromParam ? new Date(fromParam) : new Date(Date.now() - days * 86400000)
+  const until = toParam ? new Date(new Date(toParam).getTime() + 86400000 - 1) : null // fim do dia
+  const dateRange = until ? { gte: since, lte: until } : { gte: since }
+  // Filtro opcional por vendedor.
+  const sellerFilter = sp.get('sellerId') || null
+  // Quem enxerga a loja inteira pode ver o consolidado por unidade.
+  const tenantWide = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'].includes(user.role)
 
   try {
+    const attWhere = { tenantId, unitId, calledAt: dateRange, ...(sellerFilter ? { sellerId: sellerFilter } : {}) }
     const [attendances, arrivals, fraud, penalties] = await Promise.all([
-      prisma.sellerQueueAttendance.findMany({ where: { tenantId, unitId, calledAt: { gte: since } }, select: { sellerId: true, status: true, calledAt: true, acceptedAt: true }, take: 5000 }),
-      prisma.sellerQueueCustomerArrival.findMany({ where: { tenantId, unitId, createdAt: { gte: since } }, select: { recurring: true, createdAt: true }, take: 5000 }),
-      prisma.sellerQueueFraudFlag.findMany({ where: { tenantId, unitId, status: 'OPEN', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 200 }),
-      prisma.sellerQueuePenalty.findMany({ where: { tenantId, unitId, active: true, createdAt: { gte: since } }, take: 500 }),
+      prisma.sellerQueueAttendance.findMany({ where: attWhere, select: { sellerId: true, status: true, calledAt: true, acceptedAt: true }, take: 5000 }),
+      prisma.sellerQueueCustomerArrival.findMany({ where: { tenantId, unitId, createdAt: dateRange }, select: { recurring: true, createdAt: true }, take: 5000 }),
+      prisma.sellerQueueFraudFlag.findMany({ where: { tenantId, unitId, status: 'OPEN', createdAt: dateRange }, orderBy: { createdAt: 'desc' }, take: 200 }),
+      prisma.sellerQueuePenalty.findMany({ where: { tenantId, unitId, active: true, createdAt: dateRange }, take: 500 }),
     ])
 
     // Agrega por vendedor.
@@ -57,10 +66,32 @@ export async function GET(req: Request) {
       return { sellerId: id, sellerName: names.get(id) ?? id, finished: a.finished, timeouts: a.timeouts, rejected: a.rejected, called: a.called, avgAcceptSeconds: a.acceptN ? Math.round(a.acceptMs / a.acceptN / 1000) : null }
     }).sort((x, y) => y.finished - x.finished)
 
+    // Consolidado por unidade (loja inteira) — só para quem enxerga o tenant.
+    let byUnit: { unitId: string; unitName: string; called: number; finished: number; timeouts: number }[] = []
+    if (tenantWide) {
+      const all = await prisma.sellerQueueAttendance.findMany({ where: { tenantId, calledAt: dateRange, ...(sellerFilter ? { sellerId: sellerFilter } : {}) }, select: { unitId: true, status: true }, take: 20000 })
+      const um = new Map<string, { called: number; finished: number; timeouts: number }>()
+      for (const a of all) {
+        let u = um.get(a.unitId); if (!u) { u = { called: 0, finished: 0, timeouts: 0 }; um.set(a.unitId, u) }
+        u.called++
+        if (a.status === 'FINISHED') u.finished++
+        else if (a.status === 'EXPIRED') u.timeouts++
+      }
+      const unitIds = [...um.keys()]
+      const unitNames = new Map<string, string>()
+      if (unitIds.length) {
+        const us = await prisma.unit.findMany({ where: { id: { in: unitIds } }, select: { id: true, name: true } })
+        us.forEach((u) => unitNames.set(u.id, u.name))
+      }
+      byUnit = unitIds.map((id) => ({ unitId: id, unitName: unitNames.get(id) ?? id, ...um.get(id)! })).sort((x, y) => y.finished - x.finished)
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         days,
+        tenantWide,
+        byUnit,
         totals: {
           arrivals: arrivals.length,
           recurring: arrivals.filter((a) => a.recurring).length,
