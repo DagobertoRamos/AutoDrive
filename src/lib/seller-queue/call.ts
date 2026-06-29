@@ -9,6 +9,7 @@
 import { prisma } from '@/lib/prisma'
 import { getUnitConfig, logQueueEvent } from './queue'
 import { notifySellerCalled, notifyNoSellerAvailable } from './notify'
+import { escalateAfterTimeout } from './penalty'
 
 export interface CallResult {
   ok: boolean
@@ -98,6 +99,52 @@ export async function callForArrival(opts: {
   // 3) Ninguém disponível (nem gerente) → avisa a gestão.
   await notifyNoSellerAvailable({ tenantId: opts.tenantId, unitId: opts.unitId, arrivalId: opts.arrivalId, whatsapp: cfg?.alertWhatsappManagers ?? false })
   return { ok: false, reason: 'Nenhum vendedor nem gerente disponível na fila.' }
+}
+
+/**
+ * Expiração NO SERVIDOR dos chamados vencidos (não depende do navegador do
+ * vendedor disparar o /timeout). Varre os atendimentos CALLED com prazo vencido
+ * e, para cada um (de forma atômica): marca EXPIRED, move o vendedor ao fim,
+ * registra a perda, escala (avisa/cooldown/bloqueia) e CHAMA O PRÓXIMO (ou o
+ * gerente no fallback). Idempotente e seguro p/ concorrência (compare-and-set).
+ * Chamado "lazy" no /current — toda tela aberta cura a fila e PARA o alarme do
+ * vendedor que perdeu (a tela dele vê o atendimento sair de CALLED).
+ */
+export async function sweepExpiredCalls(opts: { tenantId: string; unitId: string; queueId: string; actorId: string }): Promise<void> {
+  const now = new Date()
+  const stale = await prisma.sellerQueueAttendance.findMany({
+    where: { queueId: opts.queueId, status: 'CALLED', acceptDeadline: { lt: now } },
+    select: { id: true, sellerId: true, unitId: true, arrivalId: true },
+  })
+  if (!stale.length) return
+  const cfg = await getUnitConfig(opts.tenantId, opts.unitId)
+  for (const att of stale) {
+    let claimed = false
+    await prisma.$transaction(async (tx) => {
+      // Compare-and-set: só processa se AINDA estiver CALLED (evita corrida).
+      const upd = await tx.sellerQueueAttendance.updateMany({ where: { id: att.id, status: 'CALLED' }, data: { status: 'EXPIRED' } })
+      if (upd.count !== 1) return
+      claimed = true
+      // Move o vendedor para o fim da fila (se ainda estiver na fila).
+      const agg = await tx.sellerQueueEntry.aggregate({ where: { queueId: opts.queueId }, _max: { position: true } })
+      await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId: att.sellerId, status: { in: ['CALLED', 'NEXT'] } }, data: { status: 'WAITING', position: (agg._max.position ?? 0) + 1, lastActiveAt: now } })
+      await tx.sellerQueuePenalty.create({ data: { tenantId: opts.tenantId, unitId: att.unitId, sellerId: att.sellerId, type: 'TIMEOUT', reason: 'Não aceitou no prazo (auto)', points: 1, appliedById: opts.actorId } })
+      if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'PENDING' } })
+    })
+    if (!claimed) continue
+    await logQueueEvent({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, type: 'TIMEOUT', sellerId: att.sellerId, actorId: opts.actorId, arrivalId: att.arrivalId, attendanceId: att.id, reason: 'auto-expiração (servidor)' })
+    await logQueueEvent({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: opts.actorId, attendanceId: att.id })
+    // Escala (avisa/cooldown/bloqueia conforme as perdas do dia) — pode remover
+    // o vendedor da fila (ex.: 1 perda já bloqueia, conforme a config da loja).
+    await escalateAfterTimeout({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, sellerId: att.sellerId, whatsapp: cfg?.alertWhatsappManagers ?? false }).catch(() => {})
+    // Avança a fila: chama o próximo (ou o gerente no fallback) para o cliente.
+    if (att.arrivalId) {
+      const arrival = await prisma.sellerQueueCustomerArrival.findUnique({ where: { id: att.arrivalId }, select: { customerName: true, recurring: true, status: true } })
+      if (arrival && arrival.status === 'PENDING') {
+        await callForArrival({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, arrivalId: att.arrivalId, actorId: opts.actorId, reason: 'timeout (auto)', customerName: arrival.customerName, recurring: arrival.recurring }).catch(() => {})
+      }
+    }
+  }
 }
 
 /**

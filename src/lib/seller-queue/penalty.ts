@@ -103,10 +103,14 @@ export async function escalateAfterTimeout(opts: {
     return { action: 'DAILY_BLOCK', strikes }
   }
 
-  // Bloqueio temporário (cooldown) — ao cruzar exatamente o limiar.
-  if (strikes === ab.strikesForCooldown) {
+  // Bloqueio temporário (cooldown) — ao atingir o limiar (>=, robusto: ex.: 1
+  // perda já bloqueia). Guarda anti-duplicata: não cria 2 cooldowns ativos.
+  if (strikes >= ab.strikesForCooldown) {
+    const already = await prisma.sellerQueuePenalty.findFirst({ where: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'COOLDOWN', active: true, endsAt: { gt: now } } })
     const endsAt = new Date(now.getTime() + ab.cooldownHours * 3600_000)
-    await prisma.sellerQueuePenalty.create({ data: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'COOLDOWN', startsAt: now, endsAt, points: 2, reason: `${strikes} perdas no dia` } }).catch(() => {})
+    if (!already) {
+      await prisma.sellerQueuePenalty.create({ data: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'COOLDOWN', startsAt: now, endsAt, points: 2, reason: `${strikes} perda(s) no dia` } }).catch(() => {})
+    }
     await removeFromQueue(opts.queueId, opts.sellerId)
     await notifySellerBlocked({ tenantId: opts.tenantId, sellerId: opts.sellerId, type: 'COOLDOWN', strikes, hours: ab.cooldownHours })
     await notifyBlockManagers({ tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'COOLDOWN', strikes, whatsapp: opts.whatsapp })

@@ -1,6 +1,7 @@
 // =============================================================================
 // POST /api/seller-queue/attendances/:id/reject — vendedor recusa (com motivo).
-// Gate: sellerQueue.attend. Move o vendedor ao fim da fila e chama o próximo.
+// Gate: sellerQueue.attend. Quem recusa está OCUPADO → fica PAUSADO automatica-
+// mente (sai do rodízio até voltar manualmente) e o próximo é chamado.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -15,7 +16,6 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { rejectSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
-import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { callForArrival } from '@/lib/seller-queue/call'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -39,10 +39,12 @@ export async function POST(req: Request, { params }: Ctx) {
     const d = rejectSchema.parse(await req.json())
     await prisma.$transaction(async (tx) => {
       await tx.sellerQueueAttendance.update({ where: { id: att.id }, data: { status: 'REJECTED', rejectedAt: new Date(), rejectReason: d.reason } })
-      await moveEntryToEnd(tx, att.queueId, user.id)
+      // Recusou = está ocupado → PAUSA automática (sai do rodízio até voltar).
+      await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: user.id, status: { in: ['CALLED', 'NEXT', 'WAITING'] } }, data: { status: 'PAUSED', pausedAt: new Date() } })
       if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'PENDING' } })
     })
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'REJECTED', sellerId: user.id, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id, reason: d.reason })
+    await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'PAUSE', sellerId: user.id, actorId: user.id, attendanceId: att.id, reason: 'recusou (ocupado) — pausado automaticamente' })
 
     // Chama o próximo para o mesmo cliente.
     const call = att.arrivalId

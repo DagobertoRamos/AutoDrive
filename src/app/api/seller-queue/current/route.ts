@@ -16,6 +16,7 @@ import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
 import { assertModuleEnabled, getDisabledModules } from '@/lib/tenant-modules'
 import { autoCheckoutStalePauses, isQueueOpenNow, isOnVacation, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
+import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -63,6 +64,9 @@ export async function GET(req: Request) {
 
     // Remove quem ficou pausado/fora por muito tempo (antes de ler a fila).
     await autoCheckoutStalePauses({ tenantId, unitId, queueId: queue.id, maxPauseMinutes })
+    // Expira no servidor os chamados vencidos (não depende do navegador do
+    // vendedor): marca EXPIRED, penaliza/bloqueia e chama o próximo/gerente.
+    await sweepExpiredCalls({ tenantId, unitId, queueId: queue.id, actorId: user.id }).catch(() => {})
 
     const [entries, arrivalsPending] = await Promise.all([
       prisma.sellerQueueEntry.findMany({
