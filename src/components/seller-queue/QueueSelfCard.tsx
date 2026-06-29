@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { LogOut, Pause, Play, Hand, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 interface Me { status: string; position: number }
 interface Current { me: Me | null; myAttendance: { id: string; status: string } | null; canCheckIn?: boolean }
@@ -24,9 +25,7 @@ function getPosition(): Promise<{ latitude?: number; longitude?: number; accurac
     )
   })
 }
-function statusLabel(s: string): string {
-  return ({ WAITING: 'Aguardando', NEXT: 'Próximo', CALLED: 'Sua vez!', ACCEPTED: 'Aceito', IN_ATTENDANCE: 'Em atendimento', PAUSED: 'Pausado' } as Record<string, string>)[s] ?? s
-}
+const statusLabel = (s: string) => queueStatusLabel(s)
 
 export default function QueueSelfCard() {
   const [data, setData] = useState<Current | null>(null)

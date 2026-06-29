@@ -11,6 +11,7 @@ import { DoorOpen, LogOut, Pause, Play, Check, X, CheckCircle2, RefreshCw, Hand,
 import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
 import AlertSetupBanner from '@/components/seller-queue/AlertSetupBanner'
+import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { unlockAudio, ensureNotifyPermission, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -33,10 +34,8 @@ function getPosition(): Promise<{ latitude?: number; longitude?: number; accurac
   })
 }
 
-// Rótulo amigável do status do vendedor na fila.
-function statusLabel(s: string): string {
-  return ({ WAITING: 'Aguardando', NEXT: 'Próximo', CALLED: 'Sua vez!', ACCEPTED: 'Aceito', IN_ATTENDANCE: 'Em atendimento', PAUSED: 'Pausado' } as Record<string, string>)[s] ?? s
-}
+// Rótulo amigável do status do vendedor na fila (compartilhado, em português).
+const statusLabel = (s: string) => queueStatusLabel(s)
 
 // Helpers de cliente (máscara/nome/email) — para o encerramento sem cliente.
 function maskPhoneBR(v: string): string {

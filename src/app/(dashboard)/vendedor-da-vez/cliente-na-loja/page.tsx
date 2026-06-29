@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Bell, Send, RefreshCw, UserCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import QueueSelfCard from '@/components/seller-queue/QueueSelfCard'
+import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const dt = (s: string) => new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -135,7 +136,7 @@ export default function ClienteNaLojaPage() {
                   <p className="truncate font-medium text-gray-900">{a.customerName || a.customerPhone || 'Cliente'}{a.recurring && <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] text-brand-700"><UserCheck size={10} />recorrente</span>}</p>
                   <p className="text-xs text-gray-400">{dt(a.createdAt)}{a.customerPhone && a.customerName ? ` · ${a.customerPhone}` : ''}</p>
                 </div>
-                <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', a.status === 'DONE' ? 'bg-green-100 text-green-700' : a.status === 'ASSIGNED' ? 'bg-blue-100 text-blue-700' : a.status === 'CALLING' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500')}>{a.status}</span>
+                <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', a.status === 'DONE' ? 'bg-green-100 text-green-700' : a.status === 'ASSIGNED' ? 'bg-blue-100 text-blue-700' : a.status === 'CALLING' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500')}>{queueStatusLabel(a.status)}</span>
               </li>
             ))}
           </ul>

@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { ListOrdered, DoorOpen, Bell, RefreshCw, Crown, Hand, Clock, UserSearch, X, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import QueueSelfCard from '@/components/seller-queue/QueueSelfCard'
+import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number }
 interface Data { entries: Entry[]; vendedorDaVez: { sellerName: string } | null; arrivalsPending: number; queue: unknown | null }
@@ -178,7 +179,7 @@ export default function FilaOverviewPage() {
               <tr key={e.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2.5 tabular-nums text-gray-500">{i + 1}</td>
                 <td className="px-4 py-2.5 font-medium text-gray-900">{e.sellerName}</td>
-                <td className="px-4 py-2.5"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[e.status] ?? 'bg-gray-100 text-gray-500')}>{e.status}</span></td>
+                <td className="px-4 py-2.5"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[e.status] ?? 'bg-gray-100 text-gray-500')}>{queueStatusLabel(e.status)}</span></td>
                 <td className="px-4 py-2.5 tabular-nums text-gray-500">{e.attendanceCount}</td>
               </tr>
             ))}

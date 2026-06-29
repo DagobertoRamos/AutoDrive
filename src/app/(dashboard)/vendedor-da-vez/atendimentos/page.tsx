@@ -9,6 +9,7 @@ import { useSession } from 'next-auth/react'
 import { ClipboardList, RefreshCw, RotateCcw, XCircle, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import QueueSelfCard from '@/components/seller-queue/QueueSelfCard'
+import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const dt = (s: string | null) => (s ? new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—')
@@ -78,7 +79,7 @@ export default function AtendimentosPage() {
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">{dt(a.calledAt)}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{a.sellerName}</td>
                   <td className="px-4 py-3 text-gray-600">{a.arrival?.customerName ?? '—'}{a.arrival?.recurring && <span className="ml-1 text-[10px] text-brand-600">(rec.)</span>}</td>
-                  <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[a.status] ?? 'bg-gray-100 text-gray-500')}>{a.status}</span>{a.leadId && <span className="ml-1 text-[10px] text-brand-600" title="Lead vinculado">· lead</span>}</td>
+                  <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[a.status] ?? 'bg-gray-100 text-gray-500')}>{queueStatusLabel(a.status)}</span>{a.leadId && <span className="ml-1 text-[10px] text-brand-600" title="Lead vinculado">· lead</span>}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{a.type ? (TYPE_LBL[a.type] ?? a.type) : '—'}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{a.result ? (RESULT_LBL[a.result] ?? a.result) : '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">{dt(a.finishedAt)}</td>

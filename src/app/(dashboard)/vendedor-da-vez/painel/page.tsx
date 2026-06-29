@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock, Pause, Play, UserMinus, UserPlus } from 'lucide-react'
+import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { cn } from '@/lib/utils'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -140,7 +141,7 @@ export default function PainelUnidadePage() {
             <ul className="divide-y divide-gray-100">
               {arrivals.map((a) => (
                 <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                  <div className="min-w-0"><p className="truncate font-medium text-gray-900">{a.customerName || a.customerPhone || 'Cliente'}{a.recurring && <span className="ml-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] text-brand-700">recorrente / retorno</span>}</p><p className="text-xs text-gray-400">{dt(a.createdAt)} · {a.status}</p></div>
+                  <div className="min-w-0"><p className="truncate font-medium text-gray-900">{a.customerName || a.customerPhone || 'Cliente'}{a.recurring && <span className="ml-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] text-brand-700">recorrente / retorno</span>}</p><p className="text-xs text-gray-400">{dt(a.createdAt)} · {queueStatusLabel(a.status)}</p></div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {canChoose && (
                       <select value={pick[a.id] ?? ''} onChange={(e) => setPick((p) => ({ ...p, [a.id]: e.target.value }))} disabled={busy === a.id} className="max-w-[9rem] rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" title="Escolher o vendedor (opcional)">
@@ -162,7 +163,7 @@ export default function PainelUnidadePage() {
             <ul className="divide-y divide-gray-100">
               {active.map((att) => (
                 <li key={att.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                  <div className="min-w-0"><p className="truncate font-medium text-gray-900">{att.sellerName}</p><p className="text-xs text-gray-400">{att.status} · {att.arrival?.customerName ?? 'cliente'}</p></div>
+                  <div className="min-w-0"><p className="truncate font-medium text-gray-900">{att.sellerName}</p><p className="text-xs text-gray-400">{queueStatusLabel(att.status)} · {att.arrival?.customerName ?? 'cliente'}</p></div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {canManage && callable.length > 0 && (
                       <select value="" onChange={(e) => { if (e.target.value) void transferAtt(att.id, e.target.value) }} disabled={busy === att.id} className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600" title="Transferir atendimento">
@@ -223,7 +224,7 @@ export default function PainelUnidadePage() {
               <tr key={e.id} className={cn('hover:bg-gray-50', e.blocked && 'opacity-60')}>
                 <td className="px-4 py-2 tabular-nums text-gray-500">{i + 1}</td>
                 <td className="px-4 py-2 font-medium text-gray-900">{e.sellerName}{e.blocked && <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600"><Lock size={10} />bloqueado</span>}</td>
-                <td className="px-4 py-2 text-xs text-gray-500">{e.status}</td>
+                <td className="px-4 py-2 text-xs text-gray-500">{queueStatusLabel(e.status)}</td>
                 <td className="whitespace-nowrap px-4 py-2 text-right">
                   {canManage && <>
                     <button onClick={() => reorder(e, 'up')} disabled={busy === e.id || i === 0} className="inline-flex rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30" title="Subir"><ChevronUp size={14} /></button>
