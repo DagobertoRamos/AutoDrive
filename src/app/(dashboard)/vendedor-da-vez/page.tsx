@@ -8,14 +8,15 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ListOrdered, RefreshCw, Crown, Hand, Clock, UserSearch, X, Search } from 'lucide-react'
+import { ListOrdered, RefreshCw, Crown, Hand, Clock, UserSearch, X, Search, DoorOpen, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MinhaVezPanel from '@/components/seller-queue/MinhaVezPanel'
 import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
+import QueueRanking from '@/components/seller-queue/QueueRanking'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number }
-interface Data { entries: Entry[]; vendedorDaVez: { sellerName: string } | null; arrivalsPending: number; queue: unknown | null }
+interface Data { entries: Entry[]; vendedorDaVez: { sellerName: string } | null; arrivalsPending: number; queue: unknown | null; me: { status: string; position: number } | null }
 interface Att { id: string; sellerName: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null } | null }
 interface Callable { sellerId: string; name: string; role: string; positionName: string | null; queueStatus: string | null; inQueue: boolean }
 
@@ -120,24 +121,48 @@ export default function FilaOverviewPage() {
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
 
-      <MinhaVezPanel />
+      {/* Cards animados — entrar na fila · vendedor da vez · cliente na loja */}
+      <style>{`
+        @keyframes vg-rise { from { opacity:0; transform: translateY(12px) } to { opacity:1; transform:none } }
+        @keyframes vg-shine { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes vg-float { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-4px) } }
+        @keyframes vg-pulse { 0%,100%{ transform: scale(1); opacity:1 } 50%{ transform: scale(1.06); opacity:.85 } }
+        .vg-card { animation: vg-rise .5s cubic-bezier(.2,.7,.3,1) both }
+        .vg-card::after { content:''; position:absolute; inset:0; background-image:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%); background-size:200% 100%; animation: vg-shine 3s linear infinite; pointer-events:none }
+        .vg-float { animation: vg-float 2.6s ease-in-out infinite }
+        .vg-pulse { animation: vg-pulse 1.8s ease-in-out infinite }
+      `}</style>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <a href="#minha-vez" className="vg-card group relative overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-lg" style={{ animationDelay: '0ms' }}>
+          <DoorOpen size={22} className="vg-float text-brand-600" />
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-500">Sua vez</p>
+          <p className="text-2xl font-bold leading-tight text-gray-900">{data?.me && data.me.status !== 'LEFT' ? (data.me.position > 0 ? `${data.me.position}º na fila` : queueStatusLabel(data.me.status)) : 'Fora da fila'}</p>
+          <p className="mt-1 text-xs font-medium text-brand-600">Entrar / gerenciar →</p>
+        </a>
+
+        <div className="vg-card relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 shadow-card" style={{ animationDelay: '90ms' }}>
+          <Crown size={22} className="vg-float text-amber-500" />
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-amber-600">Vendedor da vez</p>
+          <p className="truncate text-xl font-bold leading-tight text-gray-900" title={data?.vendedorDaVez?.sellerName}>{data?.vendedorDaVez?.sellerName ?? '— ninguém'}</p>
+          <button onClick={callDaVez} disabled={calling || !data?.vendedorDaVez} className="relative z-10 mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"><Hand size={13} />{calling ? 'Chamando…' : 'Chamar'}</button>
+        </div>
+
+        <a href="#cliente-na-loja" className="vg-card group relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-lg" style={{ animationDelay: '180ms' }}>
+          <Bell size={22} className={cn('text-blue-500', (data?.arrivalsPending ?? 0) > 0 && 'vg-pulse')} />
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">Cliente na loja</p>
+          <p className="text-2xl font-bold leading-tight text-gray-900">{data?.arrivalsPending ?? 0} <span className="text-sm font-medium text-gray-400">aguardando</span></p>
+          <p className="mt-1 text-xs font-medium text-blue-600">Registrar chegada →</p>
+        </a>
+      </div>
+
+      <div id="minha-vez" className="scroll-mt-20"><MinhaVezPanel /></div>
 
       {/* Chamar vendedor da vez — 1 toque, qualquer pessoa com acesso à fila */}
       {!denied && (
         <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 shadow-card">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-700">Vendedor da vez: {data?.vendedorDaVez ? <span className="inline-flex items-center gap-1 text-brand-700"><Crown size={14} />{data.vendedorDaVez.sellerName}</span> : <span className="text-gray-400">— ninguém na fila</span>}</p>
-          </div>
-          <button
-            onClick={callDaVez}
-            disabled={calling}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
-          >
-            <Hand size={20} />{calling ? 'Chamando...' : 'Chamar vendedor da vez'}
-          </button>
           <button
             onClick={openPicker}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50"
           >
             <UserSearch size={16} />Chamar responsável / específico
           </button>
@@ -159,7 +184,9 @@ export default function FilaOverviewPage() {
         </div>
       )}
 
-      {!denied && <ClienteNaLojaPanel />}
+      <div id="cliente-na-loja" className="scroll-mt-20">{!denied && <ClienteNaLojaPanel />}</div>
+
+      {!denied && <QueueRanking />}
 
       {denied ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
