@@ -28,20 +28,28 @@ export async function GET(req: Request) {
     const orC: Record<string, unknown>[] = [
       { name: { contains: q, mode: 'insensitive' } },
       { email: { contains: q, mode: 'insensitive' } },
-      { phone: { contains: q } },
     ]
-    if (digits.length >= 4) orC.push({ phone: { contains: digits.slice(-8) } }, { cpf: { contains: digits } })
-
+    if (digits.length >= 4) orC.push({ cpf: { contains: digits } })
     const orL: Record<string, unknown>[] = [
       { name: { contains: q, mode: 'insensitive' } },
       { email: { contains: q, mode: 'insensitive' } },
-      { phone: { contains: q } },
     ]
-    if (digits.length >= 4) orL.push({ phone: { contains: digits.slice(-8) } })
+
+    // Telefone: match por dígitos normalizados (ignora máscara) via SQL.
+    const phoneCustIds: string[] = []
+    const phoneLeadIds: string[] = []
+    if (digits.length >= 4) {
+      const suffix = `%${digits.slice(-8)}`
+      const [pc, pl] = await Promise.all([
+        prisma.$queryRaw<{ id: string }[]>`SELECT id FROM customers WHERE "tenantId" = ${tenantId} AND regexp_replace(coalesce(phone,''),'[^0-9]','','g') LIKE ${suffix} LIMIT 8`.catch(() => [] as { id: string }[]),
+        prisma.$queryRaw<{ id: string }[]>`SELECT id FROM marketing_leads WHERE "tenantId" = ${tenantId} AND regexp_replace(coalesce(phone,''),'[^0-9]','','g') LIKE ${suffix} LIMIT 8`.catch(() => [] as { id: string }[]),
+      ])
+      pc.forEach((r) => phoneCustIds.push(r.id)); pl.forEach((r) => phoneLeadIds.push(r.id))
+    }
 
     const [customers, leads] = await Promise.all([
-      prisma.customer.findMany({ where: { tenantId, OR: orC }, select: { id: true, name: true, phone: true, email: true }, take: 8, orderBy: { updatedAt: 'desc' } }),
-      prisma.marketingLead.findMany({ where: { tenantId, OR: orL }, select: { id: true, name: true, phone: true, email: true, customerId: true, status: true }, take: 8, orderBy: { lastContactAt: 'desc' } }),
+      prisma.customer.findMany({ where: { tenantId, OR: [...orC, ...(phoneCustIds.length ? [{ id: { in: phoneCustIds } }] : [])] }, select: { id: true, name: true, phone: true, email: true }, take: 8, orderBy: { updatedAt: 'desc' } }),
+      prisma.marketingLead.findMany({ where: { tenantId, OR: [...orL, ...(phoneLeadIds.length ? [{ id: { in: phoneLeadIds } }] : [])] }, select: { id: true, name: true, phone: true, email: true, customerId: true, status: true }, take: 8, orderBy: { lastContactAt: 'desc' } }),
     ])
 
     // Unifica: cliente tem prioridade; lead já vinculado a um cliente listado é omitido.

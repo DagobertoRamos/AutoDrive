@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const dt = (s: string | null) => (s ? new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—')
 
-interface Entry { id: string; sellerId: string; sellerName: string; status: string; blocked: boolean }
+interface Entry { id: string; sellerId: string; sellerName: string; status: string; blocked: boolean; hasDevice?: boolean }
 interface Arrival { id: string; customerName: string | null; customerPhone: string | null; recurring: boolean; status: string; createdAt: string }
 interface Att { id: string; sellerName: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null } | null }
 interface PosVenda { sellerId: string; name: string; status: string; returnRequestedAt: string | null; since: string }
@@ -248,7 +248,7 @@ export default function PainelUnidadePage() {
             : cur!.entries.map((e, i) => (
               <tr key={e.id} className={cn('hover:bg-gray-50', e.blocked && 'opacity-60')}>
                 <td className="px-4 py-2 tabular-nums text-gray-500">{i + 1}</td>
-                <td className="px-4 py-2 font-medium text-gray-900">{e.sellerName}{e.blocked && <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600"><Lock size={10} />bloqueado</span>}</td>
+                <td className="px-4 py-2 font-medium text-gray-900">{e.sellerName}{e.blocked && <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600"><Lock size={10} />bloqueado</span>}{e.hasDevice === false && <span className="ml-2 inline-flex items-center gap-0.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700" title="Este colaborador não tem aparelho com alertas ativos — não vai tocar pra ele.">⚠️ sem alerta</span>}</td>
                 <td className="px-4 py-2 text-xs text-gray-500">{queueStatusLabel(e.status)}</td>
                 <td className="whitespace-nowrap px-4 py-2 text-right">
                   {canManage && <>

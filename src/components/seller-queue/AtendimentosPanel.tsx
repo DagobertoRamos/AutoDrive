@@ -19,7 +19,7 @@ const STATUS_CLS: Record<string, string> = { FINISHED: 'bg-green-100 text-green-
 
 interface Att { id: string; sellerName: string; status: string; type: string | null; result: string | null; calledAt: string; acceptedAt: string | null; finishedAt: string | null; leadId?: string | null; arrival: { customerName: string | null; recurring: boolean } | null }
 
-export default function AtendimentosPanel() {
+export default function AtendimentosPanel({ from, to }: { from?: string; to?: string } = {}) {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role
   const canManage = !!role && MANAGE_ROLES.includes(role)
@@ -33,11 +33,13 @@ export default function AtendimentosPanel() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/seller-queue/attendances', { credentials: 'include' })
+      const qs = new URLSearchParams()
+      if (from && to) { qs.set('from', from); qs.set('to', to) }
+      const res = await fetch(`/api/seller-queue/attendances${qs.toString() ? `?${qs}` : ''}`, { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
       setDenied(null); setItems((await res.json())?.data ?? [])
     } catch { /* noop */ } finally { setLoading(false) }
-  }, [])
+  }, [from, to])
   useEffect(() => { load() }, [load])
 
   const manage = async (id: string, action: 'reopen' | 'cancel' | 'delete' | 'finish') => {
@@ -57,7 +59,7 @@ export default function AtendimentosPanel() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} atendimento(s) hoje`}</p>
+        <p className="text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} atendimento(s) ${from && to ? 'no período' : 'hoje'}`}</p>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}

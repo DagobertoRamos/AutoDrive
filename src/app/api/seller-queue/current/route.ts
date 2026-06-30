@@ -78,14 +78,21 @@ export async function GET(req: Request) {
 
     // Nomes dos vendedores (User não tem relação direta no model da fila).
     const names = new Map<string, string>()
+    const hasDev = new Set<string>()
     if (entries.length) {
-      const us = await prisma.user.findMany({ where: { id: { in: entries.map((e) => e.sellerId) } }, select: { id: true, name: true } })
+      const ids = entries.map((e) => e.sellerId)
+      const [us, devs] = await Promise.all([
+        prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
+        prisma.mobileDevice.findMany({ where: { userId: { in: ids }, isActive: true }, select: { userId: true } }),
+      ])
       us.forEach((u) => names.set(u.id, u.name))
+      devs.forEach((d) => hasDev.add(d.userId))
     }
 
     const list = entries.map((e) => ({
       id: e.id, sellerId: e.sellerId, sellerName: names.get(e.sellerId) ?? e.sellerId,
       status: e.status, position: e.position, joinedAt: e.joinedAt, blocked: e.blocked, attendanceCount: e.attendanceCount,
+      hasDevice: hasDev.has(e.sellerId),
     }))
     const vencedor = list.find((e) => e.status === 'WAITING' && !e.blocked) ?? null
     const meRaw = list.find((e) => e.sellerId === user.id) ?? null

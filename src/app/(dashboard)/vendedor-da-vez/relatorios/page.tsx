@@ -171,7 +171,10 @@ export default function RelatoriosPage() {
           </div>
         </>
       ) : (
-        <AtendimentosPanel />
+        <AtendimentosPanel
+          from={period === 'custom' ? (from || undefined) : new Date(Date.now() - Number(period) * 86400000).toISOString().slice(0, 10)}
+          to={period === 'custom' ? (to || undefined) : new Date().toISOString().slice(0, 10)}
+        />
       )}
     </div>
   )

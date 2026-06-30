@@ -14,7 +14,7 @@ import MinhaVezPanel from '@/components/seller-queue/MinhaVezPanel'
 import QueueRanking from '@/components/seller-queue/QueueRanking'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
-interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number }
+interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number; hasDevice?: boolean }
 interface Data { entries: Entry[]; arrivalsPending: number }
 interface Att { id: string; status: string; acceptDeadline: string | null }
 
@@ -82,7 +82,7 @@ export default function FilaOverviewPage() {
               : data!.entries.map((e, i) => (
                 <tr key={e.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2.5 tabular-nums text-gray-500">{i + 1}</td>
-                  <td className="px-4 py-2.5 font-medium text-gray-900">{e.sellerName}</td>
+                  <td className="px-4 py-2.5 font-medium text-gray-900">{e.sellerName}{e.hasDevice === false && <span className="ml-2 inline-flex rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700" title="Sem aparelho com alertas ativos — não vai tocar pra ele.">⚠️ sem alerta</span>}</td>
                   <td className="px-4 py-2.5"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[e.status] ?? 'bg-gray-100 text-gray-500')}>{queueStatusLabel(e.status)}</span></td>
                   <td className="px-4 py-2.5 tabular-nums text-gray-500">{e.attendanceCount}</td>
                 </tr>

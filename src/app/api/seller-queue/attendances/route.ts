@@ -24,12 +24,24 @@ export async function GET(req: Request) {
   const unitId = unitFromRequest(req, user.unitId)
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
   const active = sp.get('active') === 'true'
+  // Período opcional (from/to ISO): histórico além do dia (relatórios).
+  const fromParam = sp.get('from'), toParam = sp.get('to')
   try {
-    const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } }, select: { id: true } })
-    if (!queue) return NextResponse.json({ success: true, data: [] })
+    let where: Record<string, unknown>
+    if (fromParam && toParam) {
+      const since = new Date(fromParam)
+      const until = new Date(new Date(toParam).getTime() + 86400000 - 1)
+      where = { tenantId, unitId, calledAt: { gte: since, lte: until } }
+    } else if (fromParam) {
+      where = { tenantId, unitId, calledAt: { gte: new Date(fromParam) } }
+    } else {
+      const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } }, select: { id: true } })
+      if (!queue) return NextResponse.json({ success: true, data: [] })
+      where = { queueId: queue.id }
+    }
+    if (active) where.status = { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] }
     const rows = await prisma.sellerQueueAttendance.findMany({
-      where: { queueId: queue.id, ...(active ? { status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } } : {}) },
-      orderBy: { calledAt: 'desc' }, take: 300,
+      where, orderBy: { calledAt: 'desc' }, take: 500,
       include: { arrival: { select: { customerName: true, customerPhone: true, recurring: true } } },
     })
     const names = new Map<string, string>()

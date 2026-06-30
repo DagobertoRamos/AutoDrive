@@ -65,7 +65,7 @@ export async function POST(req: Request, { params }: Ctx) {
     // virou negociação — cria a negociação (Deal RASCUNHO) e linka tudo.
     const out = await ensureAttendanceLead({
       tenantId, unitId: att.unitId, sellerId: att.sellerId, actorId: user.id,
-      attendanceId: att.id, arrivalId: att.arrivalId, result: d.result,
+      attendanceId: att.id, arrivalId: att.arrivalId, result: d.result, attendanceType: d.type,
       dealId: d.dealId ?? null, notes: d.notes ?? null,
       existingLeadId: d.leadId ?? null, existingCustomerId: d.customerId ?? null,
       customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null, customerEmail: d.customerEmail ?? null,

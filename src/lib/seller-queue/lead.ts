@@ -35,9 +35,27 @@ export interface AttendanceLeadInput {
   notes?: string | null
   existingLeadId?: string | null
   existingCustomerId?: string | null
+  attendanceType?: string | null
   customerName?: string | null
   customerPhone?: string | null
   customerEmail?: string | null
+}
+
+// Tipo do atendimento → tipo da negociação (Deal). Default VENDA.
+const TYPE_TO_DEAL: Record<string, 'VENDA' | 'COMPRA' | 'TROCA' | 'CONSIGNACAO'> = {
+  SALE: 'VENDA', PURCHASE: 'COMPRA', EXCHANGE: 'TROCA', CONSIGNMENT: 'CONSIGNACAO',
+}
+
+// Telefone NORMALIZADO (só dígitos) p/ dedup robusta, independente da máscara.
+async function customerIdByPhone(tenantId: string, digits: string): Promise<string | null> {
+  if (digits.length < 10) return null
+  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM customers WHERE "tenantId" = ${tenantId} AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') = ${digits} ORDER BY "createdAt" DESC LIMIT 1`.catch(() => [] as { id: string }[])
+  return rows[0]?.id ?? null
+}
+async function leadIdByPhone(tenantId: string, digits: string): Promise<string | null> {
+  if (digits.length < 10) return null
+  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM marketing_leads WHERE "tenantId" = ${tenantId} AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') = ${digits} ORDER BY "createdAt" DESC LIMIT 1`.catch(() => [] as { id: string }[])
+  return rows[0]?.id ?? null
 }
 
 export interface AttendanceLeadResult {
@@ -46,28 +64,28 @@ export interface AttendanceLeadResult {
   customerId: string | null
 }
 
-/** Acha um Cliente existente por e-mail ou telefone (anti-duplicação). */
+/** Acha um Cliente existente por e-mail (insensitive) ou telefone normalizado. */
 async function findCustomer(tenantId: string, phone: string | null, email: string | null): Promise<string | null> {
-  const or: Record<string, unknown>[] = []
-  if (email) or.push({ email: { equals: email, mode: 'insensitive' } })
-  if (phone) { or.push({ phone }); const d = onlyDigits(phone); if (d.length >= 8) or.push({ phone: { contains: d.slice(-8) } }) }
-  if (!or.length) return null
-  const c = await prisma.customer.findFirst({ where: { tenantId, OR: or }, select: { id: true }, orderBy: { createdAt: 'desc' } }).catch(() => null)
-  return c?.id ?? null
+  if (email) {
+    const c = await prisma.customer.findFirst({ where: { tenantId, email: { equals: email, mode: 'insensitive' } }, select: { id: true }, orderBy: { createdAt: 'desc' } }).catch(() => null)
+    if (c) return c.id
+  }
+  if (phone) { const id = await customerIdByPhone(tenantId, onlyDigits(phone)); if (id) return id }
+  return null
 }
 
-/** Acha um Lead existente por cliente, e-mail ou telefone (reuso de histórico). */
+/** Acha um Lead existente por cliente, e-mail ou telefone normalizado (reuso). */
 async function findLead(tenantId: string, customerId: string | null, phone: string | null, email: string | null): Promise<string | null> {
   if (customerId) {
     const byCust = await prisma.marketingLead.findFirst({ where: { tenantId, customerId }, orderBy: { createdAt: 'desc' }, select: { id: true } }).catch(() => null)
     if (byCust) return byCust.id
   }
-  const or: Record<string, unknown>[] = []
-  if (email) or.push({ email: { equals: email, mode: 'insensitive' } })
-  if (phone) { or.push({ phone }); const d = onlyDigits(phone); if (d.length >= 8) or.push({ phone: { contains: d.slice(-8) } }) }
-  if (!or.length) return null
-  const l = await prisma.marketingLead.findFirst({ where: { tenantId, OR: or }, orderBy: { createdAt: 'desc' }, select: { id: true } }).catch(() => null)
-  return l?.id ?? null
+  if (email) {
+    const l = await prisma.marketingLead.findFirst({ where: { tenantId, email: { equals: email, mode: 'insensitive' } }, select: { id: true }, orderBy: { createdAt: 'desc' } }).catch(() => null)
+    if (l) return l.id
+  }
+  if (phone) { const id = await leadIdByPhone(tenantId, onlyDigits(phone)); if (id) return id }
+  return null
 }
 
 export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<AttendanceLeadResult> {
@@ -105,7 +123,7 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<A
     const deal = await prisma.deal.create({
       data: {
         dealNumber, tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId,
-        customerId, type: 'VENDA', status: 'RASCUNHO', source: 'FILA_ATENDIMENTO',
+        customerId, type: TYPE_TO_DEAL[opts.attendanceType ?? ''] ?? 'VENDA', status: 'RASCUNHO', source: 'FILA_ATENDIMENTO',
       },
     }).catch(() => null)
     dealId = deal?.id ?? null
