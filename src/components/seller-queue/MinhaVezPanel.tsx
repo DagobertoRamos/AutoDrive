@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
 import AlertSetupBanner from '@/components/seller-queue/AlertSetupBanner'
 import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
+import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { unlockAudio, ensureNotifyPermission, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 
@@ -64,6 +65,13 @@ export default function MinhaVezPanel() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [finishOpen, setFinishOpen] = useState(false)
   const [finForm, setFinForm] = useState({ type: 'SALE', result: 'CONVERTED_TO_NEGOTIATION', motivo: '', notes: '', customerName: '', customerPhone: '', customerEmail: '' })
+  // Cliente/lead reaproveitado da busca (anti-duplicação). Limpa ao digitar manual.
+  const [pickedCustomerId, setPickedCustomerId] = useState<string | null>(null)
+  const [pickedLeadId, setPickedLeadId] = useState<string | null>(null)
+  const pickMatch = (m: CustomerMatch) => {
+    setFinForm((f) => ({ ...f, customerName: m.name ?? f.customerName, customerPhone: m.phone ?? f.customerPhone, customerEmail: m.email ?? f.customerEmail }))
+    setPickedCustomerId(m.customerId); setPickedLeadId(m.leadId)
+  }
   const [now, setNow] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const flash = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3500) }
@@ -130,9 +138,17 @@ export default function MinhaVezPanel() {
     if (!isEmail(finForm.customerEmail)) { flash('Informe um e-mail válido.', false); return }
     if (!finForm.notes.trim()) { flash('As observações são obrigatórias.', false); return }
     const notesWithMotivo = (finForm.motivo ? `Motivo: ${finForm.motivo}. ` : '') + finForm.notes.trim()
-    const payload: Record<string, unknown> = { type: finForm.type, result: finForm.result, notes: notesWithMotivo, customerName: name, customerPhone: finForm.customerPhone, customerEmail: finForm.customerEmail.trim() }
-    const ok = await post(`attendances/${att.id}/finish`, payload, 'Atendimento finalizado!')
-    if (ok) setFinishOpen(false)
+    const payload: Record<string, unknown> = { type: finForm.type, result: finForm.result, notes: notesWithMotivo, customerName: name, customerPhone: finForm.customerPhone, customerEmail: finForm.customerEmail.trim(), customerId: pickedCustomerId || undefined, leadId: pickedLeadId || undefined }
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/seller-queue/attendances/${att.id}/finish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { flash(j?.error ?? 'Não foi possível finalizar.', false); return }
+      flash('Atendimento finalizado!', true)
+      setFinishOpen(false); await load()
+      // Virou negociação → abre a negociação criada para o vendedor completar.
+      if (j?.data?.dealId) window.location.assign(`/negociacoes/${j.data.dealId}`)
+    } catch { flash('Erro de rede.', false) } finally { setBusy(false) }
   }
 
   // O bloco de status só aparece para quem pode entrar na fila (ou já está nela).
@@ -288,9 +304,10 @@ export default function MinhaVezPanel() {
             <h2 className="mb-1 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
             <p className="mb-3 text-xs text-gray-500">Registre os dados do cliente e o resultado. Gera um lead de atendimento no seu nome.</p>
             <div className="space-y-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={finForm.customerName} onChange={(e) => setFinForm((f) => ({ ...f, customerName: e.target.value }))} onBlur={() => setFinForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Ex.: Dagoberto Ramos de Francisco" /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={finForm.customerPhone} onChange={(e) => setFinForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) }))} placeholder="(11)9.9999-9999" /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={finForm.customerEmail} onChange={(e) => setFinForm((f) => ({ ...f, customerEmail: e.target.value }))} placeholder="cliente@email.com" /></div>
+              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={finForm.customerName} onChange={(e) => { setFinForm((f) => ({ ...f, customerName: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} onBlur={() => setFinForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Ex.: Dagoberto Ramos de Francisco" /><CustomerLookup query={finForm.customerName} onPick={pickMatch} /></div>
+              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={finForm.customerPhone} onChange={(e) => { setFinForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="(11)9.9999-9999" /><CustomerLookup query={finForm.customerPhone} onPick={pickMatch} /></div>
+              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={finForm.customerEmail} onChange={(e) => { setFinForm((f) => ({ ...f, customerEmail: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="cliente@email.com" /><CustomerLookup query={finForm.customerEmail} onPick={pickMatch} /></div>
+              {pickedCustomerId && <p className="-mt-1 text-[11px] font-medium text-green-600">✓ Cliente existente selecionado — não vai duplicar.</p>}
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={finForm.type} onChange={(e) => setFinForm((f) => ({ ...f, type: e.target.value }))}>{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Resultado</label><select className={inputCls} value={finForm.result} onChange={(e) => setFinForm((f) => ({ ...f, result: e.target.value }))}>{RESULTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               {(data?.closeReasons?.length ?? 0) > 0 && (

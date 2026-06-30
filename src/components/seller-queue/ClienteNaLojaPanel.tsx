@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bell, Send, RefreshCw, UserCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -44,6 +45,14 @@ export default function ClienteNaLojaPanel() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const set = (k: 'customerName' | 'customerPhone' | 'customerEmail' | 'notes', v: string) => setForm((f) => ({ ...f, [k]: v }))
   const flash = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 5000) }
+  // Cliente/lead reaproveitado da busca (anti-duplicação). Limpa ao digitar manual.
+  const [pickedCustomerId, setPickedCustomerId] = useState<string | null>(null)
+  const [pickedLeadId, setPickedLeadId] = useState<string | null>(null)
+  const typeField = (k: 'customerName' | 'customerPhone' | 'customerEmail', v: string) => { set(k, v); setPickedCustomerId(null); setPickedLeadId(null) }
+  const pickMatch = (m: CustomerMatch) => {
+    setForm((f) => ({ ...f, customerName: m.name ?? f.customerName, customerPhone: m.phone ?? f.customerPhone, customerEmail: m.email ?? f.customerEmail }))
+    setPickedCustomerId(m.customerId); setPickedLeadId(m.leadId)
+  }
 
   useEffect(() => {
     if (mode === 'NORMAL' || callable.length) return
@@ -74,14 +83,14 @@ export default function ClienteNaLojaPanel() {
     try {
       const res = await fetch('/api/seller-queue/customer-arrivals', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ customerName: name, customerPhone: form.customerPhone, customerEmail: form.customerEmail.trim(), customerIsWhatsapp: form.isWhatsapp, notes: form.notes || null, mode, targetSellerId: mode === 'NORMAL' ? null : targetSellerId }),
+        body: JSON.stringify({ customerName: name, customerPhone: form.customerPhone, customerEmail: form.customerEmail.trim(), customerIsWhatsapp: form.isWhatsapp, notes: form.notes || null, mode, targetSellerId: mode === 'NORMAL' ? null : targetSellerId, customerId: pickedCustomerId || undefined, leadId: pickedLeadId || undefined }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { flash(j?.error ?? 'Não foi possível registrar.', false); return }
       const call = j?.data?.call
       const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'AGENDAMENTO' ? 'Agendamento iniciado — colaborador em atendimento.' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
       flash(call?.ok ? okMsg : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, !!call?.ok)
-      setForm({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false }); setTargetSellerId(''); await load()
+      setForm({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false }); setTargetSellerId(''); setPickedCustomerId(null); setPickedLeadId(null); await load()
     } catch { flash('Erro de rede.', false) } finally { setSaving(false) }
   }
 
@@ -110,9 +119,10 @@ export default function ClienteNaLojaPanel() {
               </select>
             </div>
           )}
-          <div className="sm:col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={form.customerName} onChange={(e) => set('customerName', e.target.value)} onBlur={() => set('customerName', capitalizeName(form.customerName))} placeholder="Ex.: Dagoberto Ramos de Francisco" /></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => set('customerPhone', maskPhoneBR(e.target.value))} placeholder="(11)9.9999-9999" /></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => set('customerEmail', e.target.value)} placeholder="cliente@email.com" /></div>
+          <div className="relative sm:col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={form.customerName} onChange={(e) => typeField('customerName', e.target.value)} onBlur={() => set('customerName', capitalizeName(form.customerName))} placeholder="Ex.: Dagoberto Ramos de Francisco" /><CustomerLookup query={form.customerName} onPick={pickMatch} /></div>
+          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => typeField('customerPhone', maskPhoneBR(e.target.value))} placeholder="(11)9.9999-9999" /><CustomerLookup query={form.customerPhone} onPick={pickMatch} /></div>
+          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => typeField('customerEmail', e.target.value)} placeholder="cliente@email.com" /><CustomerLookup query={form.customerEmail} onPick={pickMatch} /></div>
+          {pickedCustomerId && <p className="text-[11px] font-medium text-green-600 sm:col-span-2">✓ Cliente existente selecionado — não vai duplicar.</p>}
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.isWhatsapp} onChange={(e) => setForm((f) => ({ ...f, isWhatsapp: e.target.checked }))} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />É WhatsApp?</label>
           <div className="sm:col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>

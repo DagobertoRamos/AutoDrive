@@ -75,8 +75,8 @@ export async function POST(req: Request) {
         tenantId, unitId, queueId: queue.id, registeredById: user.id,
         customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null,
         customerEmail: d.customerEmail ?? null, customerIsWhatsapp: d.customerIsWhatsapp ?? false,
-        customerId: recurring.customerId ?? null, leadId: recurring.leadId ?? null,
-        recurring: recurring.recurring, suggestedSellerId: recurring.suggestedSellerId ?? null,
+        customerId: d.customerId ?? recurring.customerId ?? null, leadId: d.leadId ?? recurring.leadId ?? null,
+        recurring: recurring.recurring || !!d.customerId || !!d.leadId, suggestedSellerId: recurring.suggestedSellerId ?? null,
         requestedSellerId: d.requestedSellerId ?? null, status: 'PENDING', notes: d.notes ?? null,
       },
     })

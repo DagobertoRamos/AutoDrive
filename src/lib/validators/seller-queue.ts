@@ -31,6 +31,8 @@ export const createArrivalSchema = z.object({
   customerEmail:     z.string().trim().email('E-mail inválido').max(200).nullish(),
   customerIsWhatsapp: z.boolean().optional(),
   requestedSellerId: optStr, // cliente pediu por um vendedor (exige regra/aprovação)
+  customerId:        optStr, // cliente existente selecionado na busca (anti-duplicação)
+  leadId:            optStr, // lead existente selecionado na busca (anti-duplicação)
   notes:             optStr,
   // Modo de atendimento ao registrar a chegada.
   mode:              z.enum(['NORMAL', 'SPECIFIC', 'POS_VENDAS', 'AGENDAMENTO']).optional(),
@@ -55,6 +57,7 @@ export const finishSchema = z.object({
   result: z.enum(attendanceResults),
   dealId: optStr,
   leadId: optStr,
+  customerId: optStr, // cliente já existente selecionado na busca (anti-duplicação)
   notes:  optStr,
   // Cliente registrado pelo vendedor que atendeu (gera o lead de atendimento).
   customerName:  z.string().trim().max(200).nullish(),

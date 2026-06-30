@@ -61,19 +61,20 @@ export async function POST(req: Request, { params }: Ctx) {
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'FINISH', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
 
-    // Gera o "lead de atendimento" no sistema de leads, creditando o vendedor.
-    // Se virou negociação, marca o lead como convertido (o Deal segue o fluxo).
-    const leadId = await ensureAttendanceLead({
+    // Gera/reaproveita o lead (sem duplicar), acha-ou-cria o cliente e — se
+    // virou negociação — cria a negociação (Deal RASCUNHO) e linka tudo.
+    const out = await ensureAttendanceLead({
       tenantId, unitId: att.unitId, sellerId: att.sellerId, actorId: user.id,
       attendanceId: att.id, arrivalId: att.arrivalId, result: d.result,
-      dealId: d.dealId ?? null, notes: d.notes ?? null, existingLeadId: d.leadId ?? null,
+      dealId: d.dealId ?? null, notes: d.notes ?? null,
+      existingLeadId: d.leadId ?? null, existingCustomerId: d.customerId ?? null,
       customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null, customerEmail: d.customerEmail ?? null,
     }).catch(() => null)
-    if (leadId && leadId !== (d.leadId ?? null)) {
-      await prisma.sellerQueueAttendance.update({ where: { id: att.id }, data: { leadId } }).catch(() => {})
+    if (out) {
+      await prisma.sellerQueueAttendance.update({ where: { id: att.id }, data: { leadId: out.leadId, dealId: out.dealId, customerId: out.customerId } }).catch(() => {})
     }
 
-    return NextResponse.json({ success: true, data: { leadId } })
+    return NextResponse.json({ success: true, data: { leadId: out?.leadId ?? null, dealId: out?.dealId ?? null, customerId: out?.customerId ?? null } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
     return handlePrismaError(err)
