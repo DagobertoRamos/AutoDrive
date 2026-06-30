@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma }              from '@/lib/prisma'
 import { runCoreImport, computeNextRunAt } from '@/lib/sheets-core-import'
+import { sendDuePendencyReminders } from '@/lib/pendencies/reminders'
 
 // ── Autenticação do cron ──────────────────────────────────────────────────────
 
@@ -223,11 +224,17 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Baseline diário dos lembretes de pendência (Hobby limita a 2 crons, então
+    // pegamos carona neste cron já existente). Para cadência por hora, use um
+    // pinger externo apontando para /api/internal/pendencies/reminders/run.
+    const pend = await sendDuePendencyReminders().catch(() => ({ processed: 0, sent: 0, skipped: 0 }))
+
     return NextResponse.json({
       success:    true,
       message:    `Cron executado. ${results.filter(r => r.success).length} importadores processados.`,
       cronDurationMs: Date.now() - cronStartedAt.getTime(),
       results,
+      pendencyReminders: pend,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

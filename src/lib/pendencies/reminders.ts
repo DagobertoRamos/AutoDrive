@@ -104,6 +104,14 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
     let interval = FREQ_MS[freq] ?? FREQ_MS.DAILY
     if (sendsPerDay > 0) interval = Math.max(interval, Math.floor(86_400_000 / sendsPerDay))
 
+    // CLAIM atômico: avança nextSendAt + conta o envio ANTES de mandar. Se dois
+    // disparos (cron + pinger) competirem, só um "ganha" (count===1) e envia.
+    const claim = await prisma.pendency.updateMany({
+      where: { id: p.id, automaticSend: true, OR: [{ nextSendAt: null }, { nextSendAt: { lte: now } }] },
+      data: { nextSendAt: new Date(now.getTime() + interval), lastSentAt: now, totalSent: { increment: 1 } },
+    }).catch(() => ({ count: 0 }))
+    if (claim.count !== 1) { skipped++; continue }
+
     const userId = await responsibleUserId(p.responsibleId)
     if (userId) {
       const devs = await prisma.mobileDevice.findMany({ where: { userId, isActive: true, platform: { in: ['ANDROID', 'IOS'] } }, select: { deviceToken: true } })
@@ -117,7 +125,6 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
       ])
       sent += fcm.sent + web.sent
     }
-    await prisma.pendency.update({ where: { id: p.id }, data: { lastSentAt: now, totalSent: { increment: 1 }, nextSendAt: new Date(now.getTime() + interval) } }).catch(() => {})
     processed++
   }
   return { processed, sent, skipped }
