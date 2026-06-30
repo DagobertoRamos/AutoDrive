@@ -143,6 +143,10 @@ const createSchema = z.object({
   originRecordId: z.string().optional(),
   notes:          z.string().optional(),
   source:         z.string().optional().default('MANUAL'),
+  // Lembrete automático por push até a pendência ser baixada (gerente+).
+  remind:          z.boolean().optional(),
+  remindFrequency: z.enum(['HOURLY', 'DAILY', 'WEEKLY']).optional(),
+  remindMaxSends:  z.number().int().min(1).max(100).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -166,7 +170,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { dueDate, slaMinutes, ...rest } = parsed.data
+    const { dueDate, slaMinutes, remind, remindFrequency, remindMaxSends, ...rest } = parsed.data
 
     const slaDeadline = slaMinutes
       ? new Date(Date.now() + slaMinutes * 60 * 1000)
@@ -180,6 +184,11 @@ export async function POST(req: NextRequest) {
         slaDeadline,
         status:      'ABERTA',
         allowedDays: [],
+        // Lembrete automático: começa a cobrar já no próximo ciclo do cron.
+        automaticSend: !!remind,
+        nextSendAt:    remind ? new Date() : null,
+        frequency:     remind ? (remindFrequency ?? null) : null,
+        maxSends:      remind ? (remindMaxSends ?? null) : null,
       },
       include: PENDENCY_INCLUDE,
     })

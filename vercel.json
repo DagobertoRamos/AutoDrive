@@ -7,6 +7,10 @@
     {
       "path": "/api/internal/marketing/telephony/recordings/archive-run",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/internal/pendencies/reminders/run",
+      "schedule": "0 * * * *"
     }
   ]
 }

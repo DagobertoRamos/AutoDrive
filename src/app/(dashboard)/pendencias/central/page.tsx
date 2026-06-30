@@ -11,10 +11,11 @@ import { useSession } from 'next-auth/react'
 import {
   RefreshCw, Search, Eye, Filter, AlertTriangle, Activity,
   BarChart2, UserCheck, Clock, Zap, PlayCircle, ArrowUpCircle, UserCog, ShieldAlert,
-  CheckCircle2, XCircle, Timer, Inbox,
+  CheckCircle2, XCircle, Timer, Inbox, Plus,
 } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from '@/components/pendencies/PendencyStatusBadge'
 import { PendencyModal } from '@/components/pendencies/PendencyModal'
+import { CreatePendencyModal } from '@/components/pendencies/CreatePendencyModal'
 import { cn, formatDate } from '@/lib/utils'
 import type { PendencyWithRelations } from '@/types'
 
@@ -129,6 +130,7 @@ export default function CentralAvisosPage() {
   const [pendencies,   setPendencies]   = useState<PendencyWithRelations[]>([])
   const [loading,      setLoading]      = useState(true)
   const [selected,     setSelected]     = useState<PendencyWithRelations | null>(null)
+  const [creating,     setCreating]     = useState(false)
   const [page,         setPage]         = useState(1)
   const [total,        setTotal]        = useState(0)
   const [scanning,     setScanning]     = useState(false)
@@ -276,6 +278,11 @@ export default function CentralAvisosPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {isManager && (
+            <button onClick={() => setCreating(true)} className="btn-primary text-xs">
+              <Plus size={13} />Nova pendência
+            </button>
+          )}
           {isManager && (
             <button
               onClick={handleScan}
@@ -628,6 +635,11 @@ export default function CentralAvisosPage() {
           onClose={() => setSelected(null)}
           onRefresh={() => { setSelected(null); fetchPendencies() }}
         />
+      )}
+
+      {/* ── Nova pendência (com lembrete por push) ───────────────────────────── */}
+      {creating && (
+        <CreatePendencyModal onClose={() => setCreating(false)} onCreated={fetchPendencies} />
       )}
     </div>
   )
