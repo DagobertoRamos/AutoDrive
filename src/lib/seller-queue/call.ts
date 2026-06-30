@@ -192,7 +192,7 @@ export async function callSpecificSeller(opts: {
   })
 
   await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId: opts.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.att.id, reason: opts.reason ?? (result.fromQueue ? 'chamada específica' : 'chamada específica (fora da fila)') })
-  await notifySellerCalled({ tenantId: opts.tenantId, sellerId: opts.sellerId, timeoutSeconds: timeout, attendanceId: result.att.id, arrivalId: opts.arrivalId, customerName: opts.customerName ?? null, recurring: false, whatsapp: cfg?.alertWhatsapp ?? false })
+  await notifySellerCalled({ tenantId: opts.tenantId, sellerId: opts.sellerId, timeoutSeconds: timeout, attendanceId: result.att.id, arrivalId: opts.arrivalId, customerName: opts.customerName ?? null, recurring: true, whatsapp: cfg?.alertWhatsapp ?? false })
 
   return { ok: true, attendanceId: result.att.id, sellerId: opts.sellerId }
 }

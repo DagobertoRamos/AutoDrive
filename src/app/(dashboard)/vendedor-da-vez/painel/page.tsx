@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock, Pause, Play, UserMinus, UserPlus, CheckCircle2, PlayCircle } from 'lucide-react'
+import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock, Pause, Play, UserMinus, UserPlus, CheckCircle2, PlayCircle, Trash2 } from 'lucide-react'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { cn } from '@/lib/utils'
 
@@ -130,6 +130,16 @@ export default function PainelUnidadePage() {
     try { const res = await fetch('/api/seller-queue/manage-seller', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId, action }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? label : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
 
+  // Reiniciar a fila pela tela (gerente+/ADM = dia; MASTER = tudo).
+  const resetQueue = async (action: 'resetToday' | 'wipe') => {
+    const msg = action === 'wipe'
+      ? '⚠️ APAGAR TODO o histórico da fila desta unidade? Não dá para desfazer.'
+      : 'Reiniciar a fila de hoje? Tira todos da fila, cancela os clientes pendentes e apaga o log/atendimentos/penalidades de hoje.'
+    if (!confirm(msg)) return
+    setBusy('reset')
+    try { const res = await fetch('/api/seller-queue/admin-reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? (action === 'wipe' ? 'Histórico apagado.' : 'Fila reiniciada.') : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+  }
+
   const waiting = (cur?.entries ?? []).filter((e) => e.status === 'WAITING' && !e.blocked)
   const canChoose = canManage && cur?.allowChooseSeller !== false && waiting.length > 0
 
@@ -142,7 +152,15 @@ export default function PainelUnidadePage() {
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><LayoutDashboard size={20} className="text-brand-600" />Painel da Unidade</h1>
           <p className="mt-0.5 text-sm text-gray-500">Vendedor da vez: {cur?.vendedorDaVez ? <span className="inline-flex items-center gap-1 text-brand-700"><Crown size={13} />{cur.vendedorDaVez.sellerName}</span> : '—'}</p>
         </div>
-        <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
+        <div className="flex items-center gap-2">
+          {canManage && (
+            <button onClick={() => resetQueue('resetToday')} disabled={busy === 'reset'} className="btn-secondary text-xs text-red-600" title="Tira todos da fila, cancela clientes pendentes e apaga o log/atendimentos de hoje"><Trash2 size={13} />{busy === 'reset' ? '...' : 'Reiniciar fila'}</button>
+          )}
+          {role === 'MASTER' && (
+            <button onClick={() => resetQueue('wipe')} disabled={busy === 'reset'} className="btn-secondary text-xs text-red-700" title="Apaga TODO o histórico da fila desta unidade (MASTER)"><Trash2 size={13} />Apagar tudo</button>
+          )}
+          <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
+        </div>
       </div>
       {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
 

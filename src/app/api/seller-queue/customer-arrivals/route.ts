@@ -19,8 +19,7 @@ import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { createArrivalSchema } from '@/lib/validators/seller-queue'
 import { queueDate, getOrCreateQueue, getUnitConfig, logQueueEvent , unitFromRequest } from '@/lib/seller-queue/queue'
 import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
-import { callForArrival, callSpecificSeller, startAgendamento } from '@/lib/seller-queue/call'
-import { startPosVenda } from '@/lib/seller-queue/pos-vendas'
+import { callForArrival, callSpecificSeller } from '@/lib/seller-queue/call'
 import { flagFraud } from '@/lib/seller-queue/fraud'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -103,15 +102,13 @@ export async function POST(req: Request) {
       if (!target || target.tenantId !== tenantId || target.unitId !== unitId || target.status !== 'ATIVO') {
         return NextResponse.json({ success: false, error: 'Colaborador inválido para esta unidade.' }, { status: 400 })
       }
-      if (mode === 'POS_VENDAS') {
-        const pv = await startPosVenda({ tenantId, unitId, sellerId: d.targetSellerId, startedById: user.id })
-        if (pv.ok) await prisma.sellerQueueCustomerArrival.update({ where: { id: arrival.id }, data: { status: 'ASSIGNED' } }).catch(() => {})
-        call = pv.ok ? { ok: true } : { ok: false, reason: pv.reason }
-      } else if (mode === 'AGENDAMENTO') {
-        call = await startAgendamento({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId: d.targetSellerId, customerName: d.customerName ?? null })
-      } else {
-        call = await callSpecificSeller({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId: d.targetSellerId, customerName: d.customerName ?? null })
-      }
+      // Agendamento / pós-vendas / responsável: SEMPRE CHAMA (toca) o colaborador
+      // escolhido, com aceite + prazo. Se ele não estiver na loja e não aceitar,
+      // vira timeout → perda → bloqueio (fica registrado o no-show). Antes o
+      // agendamento ia direto pra atendimento e o pós-vendas só pausava — sem
+      // tocar e sem registrar o não-comparecimento.
+      const reason = mode === 'POS_VENDAS' ? 'pós-vendas' : mode === 'AGENDAMENTO' ? 'agendamento' : 'responsável'
+      call = await callSpecificSeller({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId: d.targetSellerId, customerName: d.customerName ?? null, reason })
     } else {
       // NORMAL: cliente pediu por nome (se a regra permitir) > responsável (recorrente) > vendedor da vez.
       let preferSellerId: string | null = null
