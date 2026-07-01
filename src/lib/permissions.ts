@@ -42,6 +42,7 @@ export type Module =
   | 'pendencies'
   | 'pendencies.manage'         // gerenciar pendências da equipe
   | 'pendencies.central'        // visão central de todas
+  | 'pendencies.settings'       // configurações gerais da Central (GERENTE_GERAL+)
   | 'negotiations'              // módulo negociações
   | 'negotiations.approve'      // liberar negociações
   | 'negotiations.manage'       // gerenciar todas negociações
@@ -184,6 +185,10 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'pendencies.central': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
     actions: ['read', 'create', 'update', 'finalize', 'reactivate', 'delete', 'export'],
+  },
+  'pendencies.settings': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
+    actions: ['read', 'update', 'configure'],
   },
   commissions: {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER'],

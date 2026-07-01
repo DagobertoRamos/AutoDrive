@@ -53,7 +53,13 @@ export async function POST(_req: Request, ctxArg: { params: { id: string } | Pro
         where: { id: params.id },
         // resolvedByUserId marca "resolvido" (aguardando conferência quando não
         // é gerente); pausa os lembretes automáticos enquanto isso.
-        data:  { status: newStatus, resolvedAt: now, resolvedByUserId: session.user.id, automaticSend: false },
+        data:  {
+          status: newStatus,
+          resolvedAt: now,
+          resolvedByUserId: session.user.id,
+          automaticSend: false,
+          ...(isManager ? { validatedAt: now, validatedByUserId: session.user.id } : {}),
+        },
       }),
       prisma.pendencyStatusHistory.create({
         data: {

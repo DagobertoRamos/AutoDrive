@@ -1,12 +1,14 @@
 // =============================================================================
 // /api/internal/pendencies/reminders/run — cron dos lembretes de pendência.
 // Dispara push (FCM Android + Web Push iPhone/PWA) das pendências com lembrete
-// automático vencidas. Protegido por CRON_SECRET (Authorization: Bearer <secret>
-// ou x-cron-secret). Chamado pelo Vercel Cron (ver vercel.json) ou manualmente.
+// automático vencidas e executa o arquivamento automático das resolvidas.
+// Protegido por CRON_SECRET (Authorization: Bearer <secret> ou x-cron-secret).
+// Chamado pelo pinger agendado ou manualmente.
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { sendDuePendencyReminders } from '@/lib/pendencies/reminders'
+import { archiveResolvedPendenciesJob } from '@/lib/pendencies/auto-archive'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -37,7 +39,15 @@ async function run(req: NextRequest) {
   }
   try {
     const r = await sendDuePendencyReminders()
-    return NextResponse.json({ success: true, ...r })
+    let autoArchive: Awaited<ReturnType<typeof archiveResolvedPendenciesJob>> | { success: false; error: string }
+    try {
+      autoArchive = await archiveResolvedPendenciesJob()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[pendencies/reminders/run] auto-archive falhou:', msg)
+      autoArchive = { success: false, error: msg }
+    }
+    return NextResponse.json({ success: true, ...r, autoArchive })
   } catch (e) {
     return NextResponse.json({ success: false, error: (e as Error).message }, { status: 500 })
   }

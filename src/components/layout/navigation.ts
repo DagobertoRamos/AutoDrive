@@ -216,6 +216,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Gerência',              href: '/pendencias/gerencia',       icon: UserCog,       module: 'pendencies.manage' },
       { label: 'Vendedor',              href: '/pendencias/vendedor',       icon: UserSquare,    module: 'pendencies' },
       { label: 'Configurações',         href: '/pendencias/configuracoes', icon: Settings,      module: 'stock.pendencies.configure' },
+      { label: 'Configurações Gerais',  href: '/pendencias/configuracoes/gerais', icon: ShieldCheck, module: 'pendencies.settings' },
     ],
   },
 

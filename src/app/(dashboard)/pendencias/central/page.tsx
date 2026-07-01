@@ -557,6 +557,7 @@ export default function CentralAvisosPage() {
                   const overdue = p.dueDate && new Date(p.dueDate) < new Date()
                   const isEscalated = Boolean(ext.escalatedAt)
                   const archived = ext.statusHistory?.[0]
+                  const archivedBy = archived?.changedByUser?.name ?? (archived?.reason?.includes('automaticamente') ? 'Sistema' : '—')
 
                   if (isArchiveView) {
                     return (
@@ -590,7 +591,7 @@ export default function CentralAvisosPage() {
                           {archived?.createdAt ? formatDate(new Date(archived.createdAt)) : '—'}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">
-                          {archived?.changedByUser?.name ?? '—'}
+                          {archivedBy}
                         </td>
                         <td className="px-4 py-3">
                           <button

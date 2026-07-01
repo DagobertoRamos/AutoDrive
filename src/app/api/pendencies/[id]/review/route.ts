@@ -59,9 +59,9 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       prisma.pendency.update({
         where: { id: params.id },
         data: action === 'approve'
-          ? { status: 'FINALIZADA', resolvedAt: pendency.resolvedAt ?? now }
+          ? { status: 'FINALIZADA', resolvedAt: pendency.resolvedAt ?? now, validatedAt: now, validatedByUserId: session.user.id }
           // reprovado: volta pro responsável e RETOMA os lembretes.
-          : { status: 'REATIVADA', resolvedByUserId: null, resolvedAt: null, automaticSend: true, nextSendAt: now },
+          : { status: 'REATIVADA', resolvedByUserId: null, resolvedAt: null, validatedAt: null, validatedByUserId: null, reopenedAt: now, automaticSend: true, nextSendAt: now },
       }),
       prisma.pendencyStatusHistory.create({
         data: { pendencyId: params.id, previousStatus: pendency.status, newStatus, changedByUserId: session.user.id, reason: action === 'reject' ? reason : null },

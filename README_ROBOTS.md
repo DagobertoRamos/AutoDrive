@@ -1511,3 +1511,64 @@
 - **Pendências futuras:**
   - Quando puder criar migration coordenada, adicionar campos próprios `archivedAt`, `archivedById`, `deletedAt`, `deletedById` e migrar o marcador `[EXCLUIDA]` de `cancelReason`.
   - Fazer QA visual em browser real nas larguras 360/375/390/414/430 px após liberar os locks locais de `.next`/Prisma.
+
+### LOG 0123 — 2026-07-01 18:59:46 -03:00 — Codex (GPT-5) — Central de Pendências: Configurações Gerais + arquivo automático
+- **Branch:** `main` (worktree local). Sem migration nova.
+- **Tarefa executada:** criar área restrita de **Configurações Gerais da Central** para GERENTE_GERAL+ e implementar arquivamento automático de pendências finalizadas/resolvidas.
+- **Arquivos alterados/criados:**
+  - `src/app/(dashboard)/pendencias/configuracoes/gerais/page.tsx` (novo)
+  - `src/components/pendencies/PendencyGeneralSettings.tsx` (novo)
+  - `src/app/api/pendencies/settings/route.ts` (novo)
+  - `src/lib/pendencies/settings.ts` (novo)
+  - `src/lib/pendencies/settings.test.ts` (novo)
+  - `src/lib/pendencies/auto-archive.ts` (novo)
+  - `src/app/api/internal/pendencies/auto-archive/run/route.ts` (novo)
+  - `src/app/api/internal/pendencies/reminders/run/route.ts`
+  - `.github/workflows/pendency-reminders.yml`
+  - `src/app/api/settings/pendencies/route.ts`
+  - `src/app/api/pendencies/[id]/resolve/route.ts`
+  - `src/app/api/pendencies/[id]/review/route.ts`
+  - `src/app/(dashboard)/pendencias/central/page.tsx`
+  - `src/components/layout/navigation.ts`
+  - `src/lib/permissions.ts`
+  - `src/lib/modules-catalog.ts`
+- **Resumo técnico:**
+  - Novo módulo `pendencies.settings`, visível apenas para `MASTER`, `ADM` e `GERENTE_GERAL`; a página também faz gate server-side e a API bloqueia acesso direto sem permissão.
+  - A tela `/pendencias/configuracoes/gerais` organiza as seções gerais da Central e entrega controle funcional de arquivamento automático: liga/desliga, prazo (`minutos`/`horas`/`dias`), somente após aprovação da gerência e ignorar pendências reabertas.
+  - A configuração é salva em `SystemSetting` na chave já existente `t:{tenantId}:pendency_settings`, preservando SLA e lembretes automáticos. A API antiga `/api/settings/pendencies` foi ajustada para não apagar `autoArchive` ao salvar.
+  - Novo job `archiveResolvedPendenciesJob` varre lojas configuradas, sem misturar tenants, e só arquiva `FINALIZADA` com `resolvedAt` vencido; por padrão exige aprovação por `validatedAt` ou histórico de finalização por gerente+ e `reopenedAt = null`. Nunca arquiva abertas, aguardando conferência, vencidas, canceladas/arquivadas ou excluídas logicamente.
+  - Arquivamento automático usa o status existente `CANCELADA` como arquivo, desliga lembretes, grava `PendencyStatusHistory` com responsável sistêmico e `AuditLog` com ação `AUTO_ARCHIVE`. A aba Arquivo mostra `Sistema` quando a origem foi automática.
+  - O endpoint protegido dedicado é `GET/POST /api/internal/pendencies/auto-archive/run`, aceitando `CRON_SECRET` (padrão atual) ou `PENDENCIES_JOB_SECRET` se configurado. A rota horária existente `/api/internal/pendencies/reminders/run` agora executa lembretes + arquivo automático no mesmo disparo do GitHub Actions.
+  - `resolve` por gerente e `review approve` agora registram `validatedAt/validatedByUserId`; `review reject` marca `reopenedAt`, permitindo cumprir a regra "somente após aprovação" e "não reaberta".
+- **Validações:**
+  - `npx vitest run src/lib/pendencies/settings.test.ts src/lib/pendencies/access.test.ts` — verde, 8 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx eslint ...arquivos alterados... --quiet` — verde.
+  - `npm test` — verde, 29 arquivos e 213 testes.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.d.ts` durante `prisma generate`.
+  - `node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbopack` — bloqueado localmente por `EPERM open .next/trace`.
+  - `npm run dev -- --port 3000` — iniciou e caiu em seguida por `EPERM mkdir .next/dev`.
+- **Deploy manual desta entrega:**
+  1. Entrar no worktree:
+     ```
+     cd "D:\Sistema de avisos\Robo\.claude\worktrees\distracted-dhawan-fd8ce5"
+     ```
+  2. Conferir, commitar e enviar:
+     ```
+     git status
+     git add -A
+     git commit -m "Adicionar configuracoes gerais de pendencias"
+     git push origin main
+     ```
+  3. Na Vercel, se o GitHub estiver conectado, o push para `main` inicia o deploy. Se não iniciar, abrir **Deployments > Redeploy** no commit mais recente da `main`.
+  4. Não há migration nova. Rodar `npx prisma migrate deploy` apenas se existirem migrations antigas pendentes e já aprovadas.
+  5. Conferir variáveis: `CRON_SECRET` deve existir na Vercel e no GitHub Actions. `PENDENCIES_JOB_SECRET` é opcional; só use se quiser um segredo separado para `/api/internal/pendencies/auto-archive/run`.
+  6. Smoke pós-deploy: logar como GERENTE_GERAL/ADM, abrir `/pendencias/configuracoes/gerais`, ativar com prazo curto de teste, finalizar/aprovar uma pendência e disparar manualmente:
+     ```
+     curl -X POST "https://SEU-DOMINIO/api/internal/pendencies/auto-archive/run" -H "x-cron-secret: SEU_CRON_SECRET"
+     ```
+     Confirmar que a pendência foi para a aba **Arquivo** e aparece como arquivada por `Sistema`.
+- **Riscos/observações:**
+  - Sem migration, o arquivo automático segue usando o padrão atual `status=CANCELADA` + histórico/auditoria. Uma migration futura com `archivedAt/archivedById` deixaria isso mais explícito.
+  - O job só roda para tenants com `pendency_settings` salvo. Como o default é desativado, isso evita varredura desnecessária em lojas que nunca habilitaram a automação.

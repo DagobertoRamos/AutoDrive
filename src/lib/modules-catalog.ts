@@ -41,6 +41,7 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'pendencies', label: 'Pendências' },
     { key: 'pendencies.central', label: 'Central de pendências' },
     { key: 'pendencies.manage', label: 'Gerência de pendências' },
+    { key: 'pendencies.settings', label: 'Configurações gerais da Central' },
   ] },
   { area: 'Comunicações', features: [
     { key: 'communication', label: 'Comunicação' },

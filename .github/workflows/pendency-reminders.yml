@@ -1,7 +1,8 @@
 # =============================================================================
-# Lembretes de pendência — pinger horário.
+# Lembretes de pendência + arquivamento automático — pinger horário.
 # O Vercel Hobby limita cron a 2 jobs (já usados), então usamos o GitHub Actions
-# (grátis) para disparar os lembretes de pendência de hora em hora. A rota é
+# (grátis) para disparar os lembretes de pendência e o arquivamento automático
+# de resolvidas de hora em hora. A rota é
 # protegida por CRON_SECRET; a JANELA de horário/dias (BRT) é respeitada DENTRO
 # do dispatcher, então pode disparar 24/7 sem incomodar fora do expediente.
 #
@@ -10,7 +11,7 @@
 #   na Vercel (Settings → Environment Variables → CRON_SECRET).
 # =============================================================================
 
-name: Lembretes de pendência (horário)
+name: Pendências: lembretes e arquivo automático
 
 on:
   schedule:
@@ -21,7 +22,7 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Disparar lembretes de pendência
+      - name: Disparar automações de pendência
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
