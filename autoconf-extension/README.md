@@ -1,14 +1,19 @@
-# AutoConf → AutoDrive — extensão de importação (v0.1, modo teste)
+# AutoConf → AutoDrive — extensão de importação (v0.2)
 
-Lê as negociações do **AutoConf** (usando a sua sessão já logada) e prepara a
-importação no AutoDrive para gerar comissão. **Esta versão 0.1 é só leitura
-(dry-run): não grava nada no AutoDrive** — serve para validar a extração.
+Lê as negociações do **AutoConf** (usando a sua sessão já logada) e **importa no
+AutoDrive** (cria/atualiza as negociações, base para a comissão).
 
-## O que ela faz (v0.1)
+## O que ela faz (v0.2)
 - Varre `GET /api/ui/v1/negociacoes` do **mês atual**.
 - Filtra os status **Finalizada, Pendente Contrato, Pendente NFe**.
 - Abre o **resumo** de cada negociação e pega o **vendedor que realizou** (campo real da comissão).
-- Mostra a contagem por tipo/status e deixa **baixar um JSON** com tudo normalizado.
+- Envia ao AutoDrive (`POST /api/integrations/autoconf/deals`) com o **token** — em **Prévia** (não grava, só mostra o que faria) ou **Importar** (grava).
+- Dedup por `AC-<id>` (reimportar atualiza, não duplica).
+
+## Fluxo de uso (3 passos)
+1. **Salvar o token** do AutoDrive (campo no topo → Salvar). Peça o token ao suporte/admin.
+2. **Ler negociações do mês** (passo 1).
+3. **Prévia no AutoDrive** (passo 2 — confere unidade/vendedor sem gravar) → **Importar** (passo 3 — grava).
 
 ## Como instalar (carregar sem empacotar)
 1. No Chrome, abra `chrome://extensions`.

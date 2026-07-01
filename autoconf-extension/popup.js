@@ -78,3 +78,36 @@ $('sample').addEventListener('click', () => {
     veiculosSaida: r.veiculosSaida, veiculosEntrada: r.veiculosEntrada,
   }, null, 1))
 })
+
+// ── Token + envio ao AutoDrive ───────────────────────────────────────────────
+const AUTODRIVE = 'https://auto-drive-mocha.vercel.app'
+
+chrome.storage.local.get('autoconfToken', (r) => { if (r.autoconfToken) $('token').value = r.autoconfToken })
+$('saveToken').addEventListener('click', () => {
+  chrome.storage.local.set({ autoconfToken: $('token').value.trim() }, () => log('✅ Token salvo.'))
+})
+
+async function sendToAutodrive(dryRun) {
+  if (!lastResult?.rows?.length) { log('⚠️ Rode a leitura (passo 1) primeiro.'); return }
+  const token = $('token').value.trim()
+  if (!token) { log('⚠️ Informe o token do AutoDrive e clique em Salvar.'); return }
+  const label = dryRun ? 'Prévia' : 'Importação'
+  log(`${label}: enviando ${lastResult.rows.length} negociações…`)
+  try {
+    const res = await fetch(`${AUTODRIVE}/api/integrations/autoconf/deals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-autoconf-token': token },
+      body: JSON.stringify({ rows: lastResult.rows, dryRun }),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) { log(`❌ ${j?.error || ('HTTP ' + res.status)}`); return }
+    log(`${label} OK — criadas ${j.created}, atualizadas ${j.updated}, puladas ${j.skipped}, vendedor não achado ${j.unmatchedSeller || 0}.`)
+    ;(j.results || []).filter((r) => r.action === 'skipped').slice(0, 6).forEach((r) => log(`  • pulada ${r.externalId}: ${r.reason}`))
+    ;(j.results || []).filter((r) => typeof r.seller === 'string' && r.seller.startsWith('(NÃO')).slice(0, 6).forEach((r) => log(`  • ${r.externalId} ${r.unit}: ${r.seller}`))
+  } catch (e) { log('❌ Erro de rede: ' + (e?.message || e)) }
+}
+
+$('preview').addEventListener('click', () => sendToAutodrive(true))
+$('import').addEventListener('click', () => {
+  if (confirm('Importar de verdade no AutoDrive? Isso cria/atualiza as negociações.')) sendToAutodrive(false)
+})

@@ -23,9 +23,17 @@
 </head>
 <body>
   <h1>AutoConf → AutoDrive</h1>
-  <p class="sub">Lê as negociações do <b>mês atual</b> (Finalizada / Pendente Contrato / Pendente NFe) e o vendedor de cada uma. Modo teste — não grava nada ainda.</p>
+  <p class="sub">Lê as negociações do <b>mês atual</b> (Finalizada / Pendente Contrato / Pendente NFe) e o vendedor de cada uma, e importa no AutoDrive.</p>
 
-  <button id="scan" class="primary">Ler negociações do mês (teste)</button>
+  <div style="margin-bottom:10px">
+    <label style="font-size:11px;color:var(--muted)">Token do AutoDrive</label>
+    <div class="row" style="margin-top:4px">
+      <input id="token" type="password" placeholder="acd_..." style="flex:1;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px" />
+      <button id="saveToken" class="ghost">Salvar</button>
+    </div>
+  </div>
+
+  <button id="scan" class="primary">1) Ler negociações do mês</button>
 
   <div id="stats">
     <div class="card">
@@ -38,6 +46,10 @@
     <div class="row">
       <button id="download" class="ghost" style="flex:1">Baixar JSON</button>
       <button id="sample" class="ghost" style="flex:1">Ver 1 exemplo</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="preview" class="ghost" style="flex:1">2) Prévia no AutoDrive</button>
+      <button id="import" class="primary" style="flex:1">3) Importar</button>
     </div>
   </div>
 
