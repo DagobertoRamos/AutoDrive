@@ -16,6 +16,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import bcrypt from 'bcryptjs'
 
 // ── GET — Listar gerentes ────────────────────────────────────────────────────
 
@@ -82,12 +83,13 @@ export async function POST(req: Request) {
     // Valida que a unidade pertence ao tenant do usuário
     await assertUnitBelongsToTenant(String(unitId), tenantId, user.role)
 
-    // Valida cargo (positionId)
+    // Valida cargo (positionId) e deriva o papel (baseRole → role do User).
     let validatedPositionId: string | null = null
+    let positionBaseRole: string | null = null
     if (positionId) {
       const pos = await prisma.position.findUnique({
         where:  { id: String(positionId) },
-        select: { id: true, tenantId: true },
+        select: { id: true, tenantId: true, baseRole: true },
       })
       if (!pos || (pos.tenantId !== null && pos.tenantId !== tenantId)) {
         return NextResponse.json(
@@ -96,28 +98,78 @@ export async function POST(req: Request) {
         )
       }
       validatedPositionId = pos.id
+      positionBaseRole = pos.baseRole ?? null
     }
+    // Papel do gerente vem do cargo (baseRole); sem cargo → GERENTE. MASTER nunca aqui.
+    const managerRole = (positionBaseRole && positionBaseRole !== 'MASTER')
+      ? (positionBaseRole as 'ADM' | 'GERENTE_GERAL' | 'GERENTE_ADMINISTRATIVO' | 'GERENTE' | 'VENDEDOR_LIDER' | 'VENDEDOR' | 'FINANCEIRO' | 'USUARIO_LIDER' | 'USUARIO')
+      : 'GERENTE'
 
-    // NOTE: Manager exige userId (relação 1:1 com User). Este endpoint legado
-    // não cria o User correspondente — é responsabilidade do consumidor já
-    // ter o User criado. Usamos cast `as never` para tipagem; runtime falha
-    // se userId não vier do body, mas o validador já garante isso adiante.
-    const manager = await prisma.manager.create({
-      data: ({
-        // Manager não tem tenantId direto — é derivado via unitId → unit.tenantId.
-        // (tenantId já foi validado acima via assertUnitBelongsToTenant.)
-        userId:                String(body.userId ?? ''),
-        fullName:              String(fullName),
-        cpf:                   cpf            ? String(cpf)           : null,
-        whatsapp:              String(whatsapp),
-        email:                 email          ? String(email)         : null,
-        unitId:                String(unitId),
-        accessProfile:         accessProfile  ? String(accessProfile) : 'GERENTE',
-        active:                active                !== undefined ? Boolean(active)                : true,
-        receivesNotifications: receivesNotifications !== undefined ? Boolean(receivesNotifications) : true,
-        positionId:            validatedPositionId,
-      }) as never,
-    })
+    const cpfDigits = cpf ? String(cpf).replace(/\D/g, '') : null
+    const whatsappDigits = String(whatsapp).replace(/\D/g, '')
+    const emailNorm = email ? String(email).toLowerCase().trim() : ''
+
+    let manager
+    if (body.userId) {
+      // Promoção de um usuário já existente a gerente (1:1 com User).
+      manager = await prisma.manager.create({
+        data: {
+          userId:                String(body.userId),
+          fullName:              String(fullName),
+          cpf:                   cpfDigits,
+          whatsapp:              whatsappDigits,
+          email:                 emailNorm || null,
+          unitId:                String(unitId),
+          accessProfile:         accessProfile ? String(accessProfile) : 'GERENTE',
+          active:                active                !== undefined ? Boolean(active)                : true,
+          receivesNotifications: receivesNotifications !== undefined ? Boolean(receivesNotifications) : true,
+          positionId:            validatedPositionId,
+        },
+      })
+    } else {
+      // Cria o ACESSO (User) + Manager, como no cadastro de vendedores.
+      if (!emailNorm) {
+        return NextResponse.json({ success: false, error: 'E-mail é obrigatório para criar o acesso do gerente.' }, { status: 400 })
+      }
+      const dup = await prisma.user.findUnique({ where: { email: emailNorm } })
+      if (dup) {
+        return NextResponse.json({ success: false, error: 'Já existe um usuário cadastrado com este e-mail.' }, { status: 409 })
+      }
+      const initialPassword = cpfDigits || whatsappDigits
+      if (!initialPassword) {
+        return NextResponse.json({ success: false, error: 'Informe CPF ou WhatsApp para gerar a senha inicial.' }, { status: 400 })
+      }
+      const passwordHash = await bcrypt.hash(initialPassword, 12)
+      manager = await prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            tenantId,
+            unitId:             String(unitId),
+            name:               String(fullName).trim(),
+            email:              emailNorm,
+            passwordHash,
+            role:               managerRole,
+            positionId:         validatedPositionId,
+            status:             'ATIVO',
+            mustChangePassword: true,
+          },
+        })
+        return tx.manager.create({
+          data: {
+            userId:                newUser.id,
+            fullName:              String(fullName).trim(),
+            cpf:                   cpfDigits,
+            whatsapp:              whatsappDigits,
+            email:                 emailNorm,
+            unitId:                String(unitId),
+            accessProfile:         accessProfile ? String(accessProfile) : 'GERENTE',
+            active:                active                !== undefined ? Boolean(active)                : true,
+            receivesNotifications: receivesNotifications !== undefined ? Boolean(receivesNotifications) : true,
+            positionId:            validatedPositionId,
+          },
+        })
+      })
+    }
 
     await createSafeAuditLog({
       userId:   user.id,

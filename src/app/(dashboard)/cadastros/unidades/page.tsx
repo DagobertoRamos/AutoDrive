@@ -96,7 +96,20 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
 
   useEffect(() => {
     if (!open) return
-    setForm(initial ? { ...initial } : { ...emptyForm })
+    // A API devolve null em campos opcionais; sem coerção, maskCNPJ/maskPhone
+    // fazem null.replace(...) e o modal quebra (ex.: unidade sem telefone).
+    setForm(initial ? {
+      name:        initial.name        ?? '',
+      razaoSocial: initial.razaoSocial ?? '',
+      cnpj:        initial.cnpj         ?? '',
+      address:     initial.address      ?? '',
+      city:        initial.city         ?? '',
+      state:       initial.state        ?? '',
+      phone:       initial.phone        ?? '',
+      email:       initial.email        ?? '',
+      responsavel: initial.responsavel  ?? '',
+      active:      initial.active        ?? true,
+    } : { ...emptyForm })
     // Carrega a config de comissão da unidade (só quando editando; nova = padrão).
     if (initial?.id) {
       setCommEnabled(true); setCommRoles([])
