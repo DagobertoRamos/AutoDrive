@@ -12,6 +12,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import Link from 'next/link'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { clearSidebarMenuState } from '@/lib/sidebar-menu-state'
 
 // ── Schema ─────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,10 @@ export default function LoginPage() {
     formState: { errors },
   } = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) })
 
+  useEffect(() => {
+    clearSidebarMenuState()
+  }, [])
+
   // Redireciona se já autenticado
   useEffect(() => {
     if (status === 'authenticated' && session) {
@@ -83,6 +88,7 @@ export default function LoginPage() {
             'Credenciais inválidas. Verifique e tente novamente.',
         )
       } else if (result?.ok) {
+        clearSidebarMenuState()
         router.replace('/dashboard')
       }
     } catch {

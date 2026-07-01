@@ -7,7 +7,7 @@
 //
 // Persistência:
 //   - localStorage: 'autodrive:sidebar:collapsed' (boolean) — via zustand store
-//   - sessionStorage: 'autodrive:sidebar:openGroups' (Record<string, boolean>)
+//   - submenus abertos NÃO são persistidos entre sessões/logins
 // =============================================================================
 
 import { useState, useEffect, useMemo } from 'react'
@@ -17,6 +17,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/store/sidebarStore'
 import { canAccessModule } from '@/lib/permissions'
+import { clearSidebarMenuState, isSidebarMenuKeyOpen, nextSidebarMenuPath } from '@/lib/sidebar-menu-state'
 import {
   ChevronDown,
   ChevronRight,
@@ -104,23 +105,6 @@ function filterTree(items: NavItem[], role: string | undefined, socials: Record<
   return out
 }
 
-// ── Open-groups (sessionStorage) ──────────────────────────────────────────────
-
-const OPEN_GROUPS_KEY = 'autodrive:sidebar:openGroups'
-
-function readOpenGroups(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {}
-  try {
-    const raw = sessionStorage.getItem(OPEN_GROUPS_KEY)
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
-  } catch { return {} }
-}
-
-function writeOpenGroups(state: Record<string, boolean>) {
-  if (typeof window === 'undefined') return
-  try { sessionStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(state)) } catch { /* ignore */ }
-}
-
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
 interface RenderItemProps {
@@ -128,12 +112,12 @@ interface RenderItemProps {
   depth:         number
   collapsed:     boolean
   pathname:      string
-  openMap:       Record<string, boolean>
-  setOpen:       (key: string, val: boolean) => void
+  openPath:      string[]
+  toggleOpen:    (key: string, depth: number) => void
   onNavigate:    () => void
 }
 
-function NavLeaf({ item, depth, collapsed, pathname, onNavigate }: Omit<RenderItemProps, 'openMap' | 'setOpen'>) {
+function NavLeaf({ item, depth, collapsed, pathname, onNavigate }: Omit<RenderItemProps, 'openPath' | 'toggleOpen'>) {
   const active = isActive(pathname, item.href)
   const Icon   = item.icon
   const target = item.external ? '_blank' : undefined
@@ -178,12 +162,12 @@ function NavLeaf({ item, depth, collapsed, pathname, onNavigate }: Omit<RenderIt
 }
 
 function NavGroup(props: RenderItemProps) {
-  const { item, depth, collapsed, pathname, openMap, setOpen, onNavigate } = props
+  const { item, depth, collapsed, pathname, openPath, toggleOpen, onNavigate } = props
   const key      = `${depth}:${item.label}`
   const childAct = anyChildActive(pathname, item)
-  // Auto-abre se algum filho ativo
-  const open     = openMap[key] ?? childAct
+  const open     = isSidebarMenuKeyOpen(openPath, key, depth)
   const Icon     = item.icon
+  const controlsId = `sidebar-group-${key.replace(/[^a-zA-Z0-9_-]+/g, '-')}`
 
   const labelClass = cn(
     'w-full flex items-center rounded-lg text-[13px] font-medium transition-all duration-150',
@@ -200,8 +184,10 @@ function NavGroup(props: RenderItemProps) {
         type="button"
         onClick={() => {
           if (collapsed && depth === 0) { expand(); return }
-          setOpen(key, !open)
+          toggleOpen(key, depth)
         }}
+        aria-expanded={open}
+        aria-controls={item.children?.length ? controlsId : undefined}
         title={collapsed ? item.label : undefined}
         style={childAct ? { backgroundColor: 'var(--sb-active)', color: 'var(--sb-accent)' } : {}}
         className={labelClass}
@@ -227,6 +213,7 @@ function NavGroup(props: RenderItemProps) {
 
       {!collapsed && open && item.children && (
         <ul
+          id={controlsId}
           className={cn('mt-0.5 space-y-px', depth === 0 ? 'ml-3 pl-2 border-l' : 'ml-2 pl-2 border-l')}
           style={{ borderColor: 'var(--sb-border)' }}
         >
@@ -237,8 +224,8 @@ function NavGroup(props: RenderItemProps) {
               depth={depth + 1}
               collapsed={collapsed}
               pathname={pathname}
-              openMap={openMap}
-              setOpen={setOpen}
+              openPath={openPath}
+              toggleOpen={toggleOpen}
               onNavigate={onNavigate}
             />
           ))}
@@ -287,17 +274,21 @@ export function Sidebar() {
   const userRole  = session?.user?.role as string | undefined
 
   const { isCollapsed, toggle, isMobileOpen, closeMobile } = useSidebarStore()
-  const [openMap, setOpenMap] = useState<Record<string, boolean>>({})
+  const [openPath, setOpenPath] = useState<string[]>([])
   const [socials, setSocials] = useState<Record<string, string>>({})
   const [disabledModules, setDisabledModules] = useState<string[]>([])
   const [openModules, setOpenModules] = useState<string[]>([])
   const [mounted, setMounted] = useState(false)
 
-  // Hidrata open-groups e marca como montado (evita SSR mismatch)
+  // Limpa persistência legada de submenus e marca como montado (evita SSR mismatch)
   useEffect(() => {
-    setOpenMap(readOpenGroups())
+    clearSidebarMenuState()
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (!isMobileOpen) setOpenPath([])
+  }, [isMobileOpen])
 
   // Busca URLs sociais dinamicamente
   useEffect(() => {
@@ -334,12 +325,18 @@ export function Sidebar() {
     return () => { cancelled = true }
   }, [userRole])
 
-  const setOpen = (key: string, val: boolean) => {
-    setOpenMap((prev) => {
-      const next = { ...prev, [key]: val }
-      writeOpenGroups(next)
-      return next
-    })
+  const toggleOpen = (key: string, depth: number) => {
+    setOpenPath((current) => nextSidebarMenuPath(current, key, depth))
+  }
+
+  const handleCloseMobile = () => {
+    setOpenPath([])
+    closeMobile()
+  }
+
+  const handleNavigate = () => {
+    setOpenPath([])
+    closeMobile()
   }
 
   const filteredTree = useMemo(
@@ -349,6 +346,9 @@ export function Sidebar() {
 
   const handleSignOut = () => {
     if (typeof window !== 'undefined' && !window.confirm('Deseja realmente sair do sistema?')) return
+    clearSidebarMenuState()
+    setOpenPath([])
+    closeMobile()
     signOut({ callbackUrl: '/login' })
   }
 
@@ -362,7 +362,7 @@ export function Sidebar() {
       {isMobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-          onClick={closeMobile}
+          onClick={handleCloseMobile}
         />
       )}
 
@@ -424,9 +424,9 @@ export function Sidebar() {
                 depth={0}
                 collapsed={collapsed}
                 pathname={pathname}
-                openMap={openMap}
-                setOpen={setOpen}
-                onNavigate={closeMobile}
+                openPath={openPath}
+                toggleOpen={toggleOpen}
+                onNavigate={handleNavigate}
               />
             ))}
           </ul>

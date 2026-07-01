@@ -14,6 +14,7 @@ import { useSidebarStore } from '@/store/sidebarStore'
 import { useIdentityStore } from '@/store/identityStore'
 import { NotificationCenter } from '@/components/notifications/NotificationCenter'
 import { ROLE_LABELS } from '@/lib/permissions'
+import { clearSidebarMenuState } from '@/lib/sidebar-menu-state'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/lib/permissions'
 
@@ -21,7 +22,7 @@ export function Topbar() {
   const { data: session } = useSession()
   const router = useRouter()
   const { unreadCount } = useNotificationStore()
-  const { toggleMobile } = useSidebarStore()
+  const { toggleMobile, closeMobile } = useSidebarStore()
   const { appName, appTagline } = useIdentityStore()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -39,6 +40,8 @@ export function Topbar() {
   }, [])
 
   const handleSignOut = async () => {
+    clearSidebarMenuState()
+    closeMobile()
     await signOut({ redirect: false })
     router.replace('/login')
   }

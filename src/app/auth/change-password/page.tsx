@@ -14,6 +14,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSession, signOut } from 'next-auth/react'
+import { clearSidebarMenuState } from '@/lib/sidebar-menu-state'
 import { useRouter } from 'next/navigation'
 import {
   Lock, CheckCircle2, XCircle, Eye, EyeOff,
@@ -302,7 +303,10 @@ export default function ChangePasswordPage() {
               {/* Logout */}
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => {
+                  clearSidebarMenuState()
+                  signOut({ callbackUrl: '/login' })
+                }}
                 className="text-xs text-gray-400 hover:text-gray-600 text-center"
               >
                 Sair e entrar com outra conta

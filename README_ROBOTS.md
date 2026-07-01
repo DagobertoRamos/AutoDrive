@@ -1573,6 +1573,39 @@
   - Sem migration, o arquivo automático segue usando o padrão atual `status=CANCELADA` + histórico/auditoria. Uma migration futura com `archivedAt/archivedById` deixaria isso mais explícito.
   - O job só roda para tenants com `pendency_settings` salvo. Como o default é desativado, isso evita varredura desnecessária em lojas que nunca habilitaram a automação.
 
+### LOG 0124 — 2026-07-01 19:56:38 -03:00 — Codex (GPT-5) — Sidebar em accordion e limpeza de estado visual no login/logout
+- **Branch:** `main` (worktree local). Sem migration.
+- **Tarefa executada:** corrigir o comportamento do menu lateral para funcionar como accordion: apenas um grupo/submenu aberto por vez, sem restauração de submenu aberto após logout/login.
+- **Arquivos alterados/criados:**
+  - `src/components/layout/Sidebar.tsx`
+  - `src/components/layout/Topbar.tsx`
+  - `src/app/(auth)/login/page.tsx`
+  - `src/app/auth/change-password/page.tsx`
+  - `src/lib/sidebar-menu-state.ts` (novo)
+  - `src/lib/sidebar-menu-state.test.ts` (novo)
+- **Resumo técnico:**
+  - Removida a leitura/gravação de submenus abertos em `sessionStorage` (`autodrive:sidebar:openGroups`) dentro do `Sidebar`.
+  - O estado de abertura passou de mapa de múltiplos booleans para um único `openPath: string[]`, permitindo no máximo um grupo por nível aberto. Abrir outro grupo no mesmo nível fecha o anterior; clicar no grupo aberto fecha ele e seus filhos.
+  - O grupo da rota atual continua destacado por `anyChildActive`, mas não é autoaberto no primeiro carregamento/login.
+  - Qualquer navegação por item do menu fecha os submenus abertos; no mobile, fechar a sidebar também limpa o caminho aberto.
+  - Criado helper `clearSidebarMenuState` para limpar chaves legadas/visuais de submenus em `sessionStorage/localStorage`, sem apagar tokens nem a preferência separada de sidebar recolhida (`autodrive-sidebar`).
+  - Logout pelo `Sidebar`, logout pelo `Topbar`, logout da tela de troca de senha e carregamento/sucesso de login agora limpam explicitamente o estado visual legado do menu.
+  - Permissões, filtragem por tenant/módulo (`/api/me/modules`), rotas, labels, ícones e identidade visual foram preservados.
+- **Riscos observados:**
+  - O menu de Relatórios possui grupos aninhados; por isso foi usado um único caminho aberto (`openPath`) em vez de um único boolean/global que fecharia o pai ao abrir um filho.
+  - QA visual real desktop/mobile não foi possível porque o ambiente local continua com locks em `.next`/Prisma.
+  - Havia alterações não relacionadas no worktree (`autoconf-extension/`) antes desta tarefa; foram deixadas intactas.
+- **Testes realizados:**
+  - `npx vitest run src/lib/sidebar-menu-state.test.ts` — verde, 4 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx eslint "src/components/layout/Sidebar.tsx" "src/components/layout/Topbar.tsx" "src/app/(auth)/login/page.tsx" "src/app/auth/change-password/page.tsx" "src/lib/sidebar-menu-state.ts" "src/lib/sidebar-menu-state.test.ts" --quiet` — verde.
+  - `npm test` — verde, 30 arquivos e 217 testes.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`.
+  - `node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbopack` — bloqueado localmente por `EPERM open .next/trace`.
+- **Pendências futuras:**
+  - Fazer QA manual em navegador real após liberar os locks locais: login limpo, abrir/fechar grupos em sequência, logout/login, perfis Vendedor/Gerente/Gerente Geral/ADM/Master e mobile/desktop.
+
 ### LOG 0124 — 2026-07-01 — Claude (Opus 4.8) — Comissão: gerente no cadastro + chave de comissão por unidade (galpão não paga)
 - **Branch:** `main`. Sem migration (config em `SystemSetting`).
 - **Contexto:** preparação para importar negociações do AutoConf → Deal → comissão (ver memória `autoconf-integration`). Levantamento revelou: 0 regras de comissão, 0 Managers cadastrados, Galpão inexistente como unidade. EasyCar tem 3 locais (Matriz=ger. Dagoberto, Loja 1=ger. Luciano, Galpão=sem gerente, **não comissiona**).
