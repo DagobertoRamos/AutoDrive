@@ -1619,3 +1619,23 @@
   - **Enforcement no gerador** (`commission-generator.ts`): antes de compor itens, lê a config da unidade do Deal — **desligada → retorna 0 (ninguém recebe)**; ligada → remove earners (vendedor/gerente) cujo cargo não é elegível. Assim o galpão não paga a ninguém e o ranking/comissão não saem errados.
 - **Validações:** `tsc --noEmit` verde.
 - **Pendências (próximos passos, com o usuário):** criar a unidade **Galpão** (comissão desligada) e o de-para de loja AutoConf→unidade; cadastrar **Luciano** (gerente Loja 1) e vendedores por unidade; definir a **tabela de regras de comissão** (Matriz/Loja 1) e o que conta no **ranking** (compras? galpão fora). Só então ligar a importação do AutoConf.
+
+### LOG 0125 — 2026-07-01 20:16:12 -03:00 — Codex (GPT-5) — Configurações Gerais: cards superiores viram abas clicáveis
+- **Branch:** `main` (worktree local). Sem migration.
+- **Tarefa executada:** corrigir a percepção de "botões que não funcionam" na tela `/pendencias/configuracoes/gerais`.
+- **Arquivos alterados:**
+  - `src/components/pendencies/PendencyGeneralSettings.tsx`
+  - `README_ROBOTS.md`
+- **Resumo técnico:**
+  - Os cards superiores (`Geral`, `Notificações`, `Exibição`, `Permissões`, `Automações`) eram apenas cards estáticos de resumo, mas visualmente pareciam botões.
+  - Transformei esses cards em abas reais com `role="tab"`, `aria-selected`, estado ativo e foco visível.
+  - A aba `Automações` mantém o formulário funcional de arquivamento automático.
+  - As demais abas agora respondem ao clique trocando a área principal para o resumo correspondente, sem criar configurações falsas e sem alterar rotas/permissões.
+- **Riscos observados:**
+  - As seções `Geral`, `Notificações`, `Exibição` e `Permissões` ainda não têm controles editáveis próprios; agora deixam de parecer quebradas porque a seleção muda a área principal.
+  - Havia alterações não relacionadas no worktree (`cadastros/unidades`, `api/managers`, `autoconf-extension`) antes desta tarefa; foram deixadas intactas.
+- **Testes realizados:**
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx eslint "src/components/pendencies/PendencyGeneralSettings.tsx" --quiet` — verde.
+- **Pendências futuras:**
+  - Fazer QA visual no navegador após deploy para validar clique nas cinco abas em desktop/mobile.

@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import type { PendencyAutoArchiveUnit, PendencySettings } from '@/lib/pendencies/settings'
 
 type AutoArchive = PendencySettings['autoArchive']
+type SettingsSection = 'general' | 'notifications' | 'display' | 'permissions' | 'automations'
 
 const UNIT_OPTIONS: Array<{ value: PendencyAutoArchiveUnit; label: string }> = [
   { value: 'minutes', label: 'minutos' },
@@ -30,35 +31,61 @@ const UNIT_OPTIONS: Array<{ value: PendencyAutoArchiveUnit; label: string }> = [
 const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400'
 
 interface SectionSummaryProps {
+  id: SettingsSection
   icon: LucideIcon
   label: string
   value: string
   active?: boolean
+  onSelect: (section: SettingsSection) => void
 }
 
-function SectionSummary({ icon: Icon, label, value, active = false }: SectionSummaryProps) {
+function SectionSummary({ id, icon: Icon, label, value, active = false, onSelect }: SectionSummaryProps) {
   return (
-    <div className={cn(
-      'rounded-lg border bg-white px-3 py-3',
-      active ? 'border-brand-200 ring-1 ring-brand-100' : 'border-gray-200',
-    )}>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={() => onSelect(id)}
+      className={cn(
+        'rounded-lg border bg-white px-3 py-3 text-left transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-200',
+        active ? 'border-brand-200 ring-1 ring-brand-100' : 'border-gray-200',
+      )}
+    >
       <div className="flex items-center gap-2">
         <Icon size={16} className={active ? 'text-brand-600' : 'text-gray-400'} />
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</span>
       </div>
       <p className="mt-2 text-sm font-medium text-gray-800">{value}</p>
-    </div>
+    </button>
+  )
+}
+
+function EmptySection({ icon: Icon, label, value }: Omit<SectionSummaryProps, 'id' | 'active' | 'onSelect'>) {
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white shadow-card">
+      <div className="border-b border-gray-100 px-5 py-4">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+          <Icon size={18} className="text-brand-600" />
+          {label}
+        </h2>
+      </div>
+      <div className="p-5">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          {value}
+        </div>
+      </div>
+    </section>
   )
 }
 
 export function PendencyGeneralSettings() {
+  const [activeSection, setActiveSection] = useState<SettingsSection>('automations')
   const [settings, setSettings] = useState<PendencySettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const autoArchive = settings?.autoArchive
-  const isEnabled = Boolean(autoArchive?.enabled)
 
   const summary = useMemo(() => {
     if (!autoArchive) return 'Carregando'
@@ -66,6 +93,15 @@ export function PendencyGeneralSettings() {
     const unit = UNIT_OPTIONS.find((option) => option.value === autoArchive.afterUnit)?.label ?? 'dias'
     return `${autoArchive.afterValue} ${unit}`
   }, [autoArchive])
+
+  const sections = useMemo<Array<Omit<SectionSummaryProps, 'active' | 'onSelect'>>>(() => [
+    { id: 'general', icon: Settings, label: 'Geral', value: 'Padrão da loja' },
+    { id: 'notifications', icon: Bell, label: 'Notificações', value: 'Padrões atuais' },
+    { id: 'display', icon: Columns3, label: 'Exibição', value: 'Colunas atuais' },
+    { id: 'permissions', icon: Lock, label: 'Permissões', value: 'Gerente Geral+' },
+    { id: 'automations', icon: Archive, label: 'Automações', value: summary },
+  ], [summary])
+  const selectedSection = sections.find((section) => section.id === activeSection) ?? sections[0]
 
   const loadSettings = useCallback(async () => {
     setLoading(true)
@@ -135,15 +171,25 @@ export function PendencyGeneralSettings() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <SectionSummary icon={Settings} label="Geral" value="Padrão da loja" />
-        <SectionSummary icon={Bell} label="Notificações" value="Padrões atuais" />
-        <SectionSummary icon={Columns3} label="Exibição" value="Colunas atuais" />
-        <SectionSummary icon={Lock} label="Permissões" value="Gerente Geral+" />
-        <SectionSummary icon={Archive} label="Automações" value={summary} active={isEnabled} />
+      <div role="tablist" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {sections.map((section) => (
+          <SectionSummary
+            key={section.id}
+            {...section}
+            active={activeSection === section.id}
+            onSelect={setActiveSection}
+          />
+        ))}
       </div>
 
-      <section className="rounded-xl border border-gray-200 bg-white shadow-card">
+      {activeSection !== 'automations' ? (
+        <EmptySection
+          icon={selectedSection.icon}
+          label={selectedSection.label}
+          value={selectedSection.value}
+        />
+      ) : (
+        <section className="rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="border-b border-gray-100 px-5 py-4">
           <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
             <Archive size={18} className="text-brand-600" />
@@ -262,6 +308,7 @@ export function PendencyGeneralSettings() {
           </button>
         </div>
       </section>
+      )}
     </div>
   )
 }
