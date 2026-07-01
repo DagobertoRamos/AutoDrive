@@ -36,10 +36,12 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(LoudAlertPlugin.class);
     registerPlugin(PushBridgePlugin.class);
     super.onCreate(savedInstanceState);
+    ensureNotificationChannels();
     requestRequiredPermissions();
     ensureFullScreenIntentAccess();
     PresenceService.start(getApplicationContext()); // mantém o app ativo p/ chamadas
     handleCallIntent(getIntent());
+    handleGenericPushIntent(getIntent());
   }
 
   @Override
@@ -47,6 +49,7 @@ public class MainActivity extends BridgeActivity {
     super.onNewIntent(intent);
     setIntent(intent);
     handleCallIntent(intent);
+    handleGenericPushIntent(intent);
   }
 
   // Abriu por uma CHAMADA da fila (toque na notificação ou botão Aceitar/Recusar):
@@ -76,6 +79,34 @@ public class MainActivity extends BridgeActivity {
     if (action != null) PushBridgePlugin.setPending(action, attId);
   }
 
+  // Push genérico (avisos/notificações comuns): abre a rota indicada sem tela
+  // cheia, sem alarme e sem ações de chamada. QUEUE_CALL continua separado.
+  private void handleGenericPushIntent(Intent intent) {
+    if (intent == null) return;
+    String url = intent.getStringExtra("pushUrl");
+    if (url == null || url.trim().isEmpty()) return;
+    intent.removeExtra("pushUrl");
+
+    String target = resolvePushUrl(url);
+    if (target == null || getBridge() == null || getBridge().getWebView() == null) return;
+    getBridge().getWebView().post(() -> getBridge().getWebView().loadUrl(target));
+  }
+
+  private String resolvePushUrl(String rawUrl) {
+    if (getBridge() == null) return null;
+    String server = getBridge().getServerUrl();
+    if (server == null || server.trim().isEmpty()) return null;
+
+    String url = rawUrl.trim();
+    if (url.startsWith("https://") || url.startsWith("http://")) {
+      return url.startsWith(server) ? url : null;
+    }
+
+    while (server.endsWith("/")) server = server.substring(0, server.length() - 1);
+    if (!url.startsWith("/")) url = "/" + url;
+    return server + url;
+  }
+
   // Faz a Activity aparecer sobre a tela bloqueada e acende a tela (estilo
   // chamada recebida). Pede ao sistema para dispensar o cadeado não seguro.
   private void showOverLockScreen() {
@@ -90,6 +121,28 @@ public class MainActivity extends BridgeActivity {
             android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
           | android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
           | android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+      }
+    } catch (Exception ignored) {}
+  }
+
+  // Cria os canais de notificação já na ABERTURA do app (não só quando chega um
+  // push). Sem isso, um aviso (pendência/cobrança) enviado com o app fechado
+  // cai num canal que ainda não existe e o Android 8+ o DESCARTA em silêncio.
+  // O canal "general_alerts" é o padrão do manifesto → recebe os avisos comuns.
+  private void ensureNotificationChannels() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+    try {
+      NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+      if (nm == null) return;
+      if (nm.getNotificationChannel(AutoDriveFcmService.GENERAL_CHANNEL_ID) == null) {
+        android.app.NotificationChannel ch = new android.app.NotificationChannel(
+            AutoDriveFcmService.GENERAL_CHANNEL_ID, "Avisos do AutoDrive",
+            NotificationManager.IMPORTANCE_HIGH);
+        ch.setDescription("Notificações gerais, pendências, cobranças e alertas administrativos");
+        ch.enableVibration(true);
+        ch.setVibrationPattern(new long[]{0, 400, 200, 400});
+        ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+        nm.createNotificationChannel(ch);
       }
     } catch (Exception ignored) {}
   }

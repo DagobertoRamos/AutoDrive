@@ -1351,3 +1351,16 @@
   - UI: switch **"Liberar p/ todos"** no cabeçalho de `/pendencias/central` (só aparece p/ quem tem `canToggle`).
 - **Validações:** `tsc --noEmit` verde.
 - **Escopo respeitado:** só ampliei papel de `pendencies.central` (menu) e criei flag por tenant; nenhuma outra permissão/rota mexida; sem schema novo.
+
+### LOG 0118 — 2026-07-01 — Claude (Opus 4.8) — Pendências: FIX push não chegava (canal Android inexistente) + menu Configurações p/ gerente+
+- **Branch:** `main`. Sem migration.
+- **Sintomas relatados:** "enviei uma cobrança manual e não chegou"; "cadastrei uma teste e não foi"; "não está aparecendo o menu Configuração na central".
+- **CAUSA RAIZ do push (bug real):** `fcm.ts` mandava `android.notification.channelId = 'default'`, mas o app SÓ cria os canais `queue_calls`, `general_alerts`, `loud_alerts`, `presence`. No **Android 8+**, notificação em canal INEXISTENTE é **descartada em silêncio** → o FCM retornava `sent:1` (HTTP 200) e nada aparecia. Confirmado nos logs: 2 envios MANUAL `SENT n=1`, mas o responsável (o próprio beto1910, GERENTE) tinha 1 Android ATIVO e não recebeu.
+- **Correções do push:**
+  - `fcm.ts`: **removido o channelId fixo `'default'`**. Sem channelId, o FCM usa o canal padrão do manifesto (`default_notification_channel_id`), que o SDK do Firebase garante existir → o aviso passa a chegar **já no APK instalado hoje** (pelo canal padrão atual). Adicionado campo opcional `channelId` em `PushMessage` (só use canal que o app realmente cria).
+  - `AndroidManifest.xml`: canal padrão `queue_calls` → **`general_alerts`** (avisos/cobranças com som próprio; chamadas da fila continuam em `queue_calls`, fixado no código).
+  - `MainActivity.onCreate`: novo `ensureNotificationChannels()` cria `general_alerts` (IMPORTANCE_HIGH, som+vibra) **já na abertura do app** — antes só era criado ao chegar um push. Alinhado com `AutoDriveFcmService.ensureGeneralChannel` (subido p/ IMPORTANCE_HIGH).
+  - ⚠️ **Ação p/ SOM:** no APK instalado hoje a cobrança já **chega** (vibra, pelo canal padrão atual `queue_calls`). Para chegar **com som** pelo canal `general_alerts`, instalar o **novo APK** (mudanças de manifest/canais só valem em nova build). "teste" não sumiu — foi salva; era só o push que não aparecia.
+- **Correção do menu Configurações:** o item exige `stock.pendencies.configure`, que era só `MASTER/ADM` → oculto p/ GERENTE. Ampliado para **gerente+** (`+ GERENTE_GERAL, GERENTE_ADMINISTRATIVO, GERENTE`) em `permissions.ts` **e** no `CONFIG_ROLES` da página `configuracoes/page.tsx` (menu + página + API alinhados). Opções globais do MASTER seguem protegidas (não-MASTER não edita `createdByMaster`).
+- **Validações:** `tsc --noEmit` verde.
+- **Escopo:** correção de bug de push (server + app) + ampliação de 1 permissão de config (pedido explícito). Sem schema.

@@ -50,6 +50,10 @@ export interface PushMessage {
   // avisos comuns (ex.: pendência). O QUEUE_CALL fica DATA-ONLY (app desenha a
   // tela de chamada). Sem isso, um data-only de outro tipo não aparece no app.
   notification?: boolean
+  // Canal Android EXPLÍCITO (opcional). Só passe um canal que o app REALMENTE
+  // cria (ex.: 'general_alerts'); um canal inexistente faz o Android descartar
+  // a notificação. Omitido → usa o canal padrão do manifesto (sempre existe).
+  channelId?: string
 }
 
 /**
@@ -75,8 +79,11 @@ export async function sendToTokens(tokens: string[], msg: PushMessage): Promise<
         android: {
           priority: 'HIGH',
           ttl: `${msg.ttlSeconds ?? 120}s`,
-          // Bloco de notificação → o Android exibe sozinho (avisos comuns).
-          ...(msg.notification ? { notification: { channelId: 'default' } } : {}),
+          // NÃO fixamos channelId aqui: em Android 8+ uma notificação num canal
+          // INEXISTENTE é DESCARTADA em silêncio. Sem channelId, o FCM usa o canal
+          // padrão declarado no manifesto do app (default_notification_channel_id),
+          // que o SDK do Firebase garante existir — então o aviso sempre aparece.
+          ...(msg.notification && msg.channelId ? { notification: { channelId: msg.channelId } } : {}),
         },
         // DATA-ONLY (sem este bloco) = app desenha (tela de chamada da fila).
         ...(msg.notification ? { notification: { title: msg.title, body: msg.body } } : {}),

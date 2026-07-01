@@ -163,7 +163,10 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'create', 'update', 'delete'],
   },
   'stock.pendencies.configure': {
-    roles: ['MASTER', 'ADM'],
+    // Gerente+ configura os tipos/cobranças da PRÓPRIA loja (opções globais do
+    // MASTER seguem protegidas: não-MASTER não edita createdByMaster). Alinhado
+    // com o acesso à Central de Pendências.
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
     actions: ['read', 'create', 'update', 'delete', 'configure'],
   },
   dashboard: {

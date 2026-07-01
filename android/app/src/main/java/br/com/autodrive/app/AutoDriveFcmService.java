@@ -27,6 +27,7 @@ import java.util.Map;
 public class AutoDriveFcmService extends FirebaseMessagingService {
 
     public static final String CHANNEL_ID = "queue_calls";
+    public static final String GENERAL_CHANNEL_ID = "general_alerts";
     public static final int NOTIFICATION_ID = 7001;
     public static final String PREFS = "autodrive_push";
     public static final String KEY_TOKEN = "fcm_token";
@@ -42,7 +43,10 @@ public class AutoDriveFcmService extends FirebaseMessagingService {
     public void onMessageReceived(RemoteMessage remoteMessage) {
         Map<String, String> d = remoteMessage.getData();
         String type = d.get("type");
-        if (!"QUEUE_CALL".equals(type)) return;
+        if (!"QUEUE_CALL".equals(type)) {
+            showGenericNotification(d);
+            return;
+        }
 
         String title = d.getOrDefault("title", "Você é o vendedor da vez 🔔");
         String body = d.getOrDefault("body", "Cliente aguardando — aceite ou recuse.");
@@ -117,5 +121,63 @@ public class AutoDriveFcmService extends FirebaseMessagingService {
         }
 
         nm.notify(NOTIFICATION_ID, b.build());
+    }
+
+    private void ensureGeneralChannel(NotificationManager nm) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel ch = nm.getNotificationChannel(GENERAL_CHANNEL_ID);
+            if (ch == null) {
+                // IMPORTANCE_HIGH → heads-up + som (pendências/cobranças precisam
+                // ser notadas). Alinhado com MainActivity.ensureNotificationChannels().
+                ch = new NotificationChannel(GENERAL_CHANNEL_ID, "Avisos do AutoDrive", NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("Notificações gerais, pendências, cobranças e alertas administrativos");
+                ch.enableVibration(true);
+                ch.setVibrationPattern(new long[]{0, 400, 200, 400});
+                ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                nm.createNotificationChannel(ch);
+            }
+        }
+    }
+
+    private PendingIntent openGeneric(String url, int reqCode) {
+        Intent i = new Intent(this, MainActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        i.putExtra("pushUrl", url == null || url.trim().isEmpty() ? "/dashboard" : url.trim());
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+        return PendingIntent.getActivity(this, reqCode, i, flags);
+    }
+
+    private int genericNotificationId(Map<String, String> d) {
+        String id = d.get("notificationId");
+        if (id == null || id.isEmpty()) id = d.get("entityId");
+        if (id == null || id.isEmpty()) return (int) (System.currentTimeMillis() % 100000);
+        return 8000 + Math.abs(id.hashCode() % 90000);
+    }
+
+    private void showGenericNotification(Map<String, String> d) {
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        ensureGeneralChannel(nm);
+
+        String title = d.getOrDefault("title", "AutoDrive");
+        String body = d.getOrDefault("body", "Você recebeu uma nova notificação.");
+        String url = d.getOrDefault("url", "/dashboard");
+        int notificationId = genericNotificationId(d);
+
+        int smallIcon = getResources().getIdentifier("ic_notification", "drawable", getPackageName());
+        if (smallIcon == 0) smallIcon = android.R.drawable.ic_dialog_info;
+
+        NotificationCompat.Builder b = new NotificationCompat.Builder(this, GENERAL_CHANNEL_ID)
+                .setSmallIcon(smallIcon)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setAutoCancel(true)
+                .setContentIntent(openGeneric(url, notificationId));
+
+        nm.notify(notificationId, b.build());
     }
 }

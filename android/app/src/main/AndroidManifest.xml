@@ -44,7 +44,7 @@
         </service>
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="queue_calls" />
+            android:value="general_alerts" />
 
         <!-- Serviço persistente: mantém o app ativo p/ receber chamadas na bateria -->
         <service

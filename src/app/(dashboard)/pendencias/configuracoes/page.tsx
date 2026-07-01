@@ -6,7 +6,8 @@
 //     (opções globais do MASTER são somente-leitura para a loja).
 // (B) Padrões automáticos — SLA por prioridade + janela de envio automático,
 //     persistidos via /api/settings/pendencies.
-// Gate: stock.pendencies.configure (MASTER/ADM). Tenant-scoped.
+// Gate: stock.pendencies.configure (gerente+: MASTER/ADM/GERENTE_GERAL/
+// GERENTE_ADMINISTRATIVO/GERENTE). Tenant-scoped.
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
@@ -14,7 +15,7 @@ import { useSession } from 'next-auth/react'
 import { Settings, Plus, Pencil, Trash2, X, Save, Lock, Power, Clock, Send, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const CONFIG_ROLES = ['MASTER', 'ADM']
+const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 
 const CATEGORIES = ['DOCUMENTACAO', 'PREPARACAO', 'AVALIACAO', 'FINANCEIRO', 'OUTROS'] as const
 const CAT_LABEL: Record<string, string> = { DOCUMENTACAO: 'Documentação', PREPARACAO: 'Preparação', AVALIACAO: 'Avaliação', FINANCEIRO: 'Financeiro', OUTROS: 'Outros' }
