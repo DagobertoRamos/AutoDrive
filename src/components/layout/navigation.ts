@@ -207,11 +207,11 @@ export const NAV_GROUPS: NavItem[] = [
 
   // ── PENDÊNCIAS ────────────────────────────────────────────────────────────
   {
-    label: 'Pendências',
+    label: 'Central de Pendências',
     icon:  ClipboardList,
     module: 'pendencies',
     children: [
-      { label: 'Central de Pendências', href: '/pendencias/central',        icon: Inbox,         module: 'pendencies.central' },
+      { label: 'Painel', href: '/pendencias/central',        icon: Inbox,         module: 'pendencies.central' },
       { label: 'Minhas Pendências',     href: '/pendencias/minhas',         icon: ClipboardList, module: 'pendencies' },
       { label: 'Gerência',              href: '/pendencias/gerencia',       icon: UserCog,       module: 'pendencies.manage' },
       { label: 'Vendedor',              href: '/pendencias/vendedor',       icon: UserSquare,    module: 'pendencies' },

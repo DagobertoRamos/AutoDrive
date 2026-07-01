@@ -1278,3 +1278,21 @@
 ### Base — DÍVIDA TÉCNICA
 - [x] Lint: 0 ERROS (`npm run lint` passa); artefato eslint-report.json removido; auto-fixes aplicados (LOG 0010).
 - [~] WARNINGS legados — sweeps mecânicos seguros CONCLUÍDOS (entidades=0 LOG 0011; imports mortos+plugin LOG 0012; anonymous-export LOG 0015). Restam 372 sem sweep seguro: 186 `no-explicit-any` (tipagem manual por arquivo), 105 `set-state-in-effect` (intencional/advisory), 75 unused-vars (julgamento), 6 exhaustive-deps (arriscado). Tratar oportunisticamente — ver LOG 0015.
+
+---
+
+### LOG 0113 — 2026-07-01 — Claude (Opus 4.8) — Central de Pendências: lembretes por push + correções + Fase 1a
+- **Branch:** `main` (worktree). Deployado em produção (build Turbopack).
+- **Tarefa:** Lembretes automáticos de pendência por push (reusando a infra da fila) + correção de bugs + início da evolução "Central de Pendências" (Fase 1a). Contexto: nesta sessão longa também houve trabalho grande na Fila/Vendedor da Vez e migração do build para Turbopack (rastreado no chat; a fila NÃO foi tocada por esta tarefa de pendências).
+- **Entregue:**
+  - **Lembretes por push (Android FCM + Web Push iPhone/PWA):** `src/lib/pendencies/reminders.ts` (`sendDuePendencyReminders` — claim atômico anti-corrida, janela de horário/dias BRT, respeita frequência/máximo por pendência; reusa `fcm.sendToTokens` + `web-push.sendWebPushToUser`). Rota cron `src/app/api/internal/pendencies/reminders/run/route.ts` (protegida por `CRON_SECRET`, GET+POST, `?diag=1` mostra só tamanhos). Cobra o **colaborador responsável** (Seller.id → userId) até baixar (status sai de aberto) ou atingir o máximo.
+  - **Criação com lembrete:** `src/app/api/pendencies/route.ts` aceita `remind/remindFrequency/remindMaxSends`. Modal `CreatePendencyModal.tsx` + botão "Nova pendência" na Central.
+  - **BUG CRÍTICO:** create manual **não setava `tenantId`** → pendências órfãs (`tenantId: null`) sumiam da lista. Corrigido + backfill das órfãs.
+  - **BUG push:** lembrete era data-only e o app nativo (só desenha QUEUE_CALL) não exibia. `fcm.sendToTokens` ganhou `notification:true` (o OS exibe); dispatcher usa. QUEUE_CALL da fila **segue data-only** (não mexido).
+  - **Middleware `src/proxy.ts`:** exclui `/api/internal` do auth (rotas internas se protegem por `CRON_SECRET`; antes davam 307→login e barravam cron/pinger).
+  - **Cron externo:** `.github/workflows/pendency-reminders.yml` (Hobby limita a 2 crons Vercel). Baseline diário pega carona no cron de sheets.
+  - **Fase 1a:** menu "Pendências" → **"Central de Pendências"**; modal com **Placa** (obrigatória, uppercase), **Tipo** = lista de `/api/stock/pendency-options` (fallback texto), e Tipo/Vencimento/Descrição obrigatórios.
+- **Arquivos:** `src/lib/pendencies/reminders.ts` (novo), `src/app/api/internal/pendencies/reminders/run/route.ts` (novo), `src/app/api/pendencies/route.ts`, `src/components/pendencies/CreatePendencyModal.tsx` (novo), `src/app/(dashboard)/pendencias/central/page.tsx`, `src/lib/push/fcm.ts`, `src/proxy.ts`, `src/components/layout/navigation.ts`, `vercel.json`, `.github/workflows/pendency-reminders.yml`.
+- **Validações:** `tsc --noEmit` verde; deploy OK; push real `sent:1` confirmado no aparelho; workflow HTTP 200; create testado no banco.
+- **Riscos:** SEM migration (reusa colunas do `Pendency`). Cron horário depende do secret `CRON_SECRET` no GitHub Actions (= valor da Vercel). Janela padrão 08–18 seg–sáb (BRT), configurável.
+- **Pendências futuras (spec grande do usuário — Fase 1b/2/3):** (1b) fluxo "resolvido → aguardando conferência do gerente → aprova/reprova com motivo → reativa lembrete" + busca automática por placa/negociação (prefill). (2) UI de config de push (intervalo em segundos, janelas por dia com múltiplas faixas, anti-spam, escalonamento) + logs de push. (3) Dashboard, SLA por tipo, métricas. Várias precisam de novos models — alinhar migration com o usuário.

@@ -21,7 +21,8 @@ const PRIORITIES = [['BAIXA', 'Baixa'], ['MEDIA', 'Média'], ['ALTA', 'Alta'], [
 export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [sellers, setSellers] = useState<Seller[]>([])
   const [units, setUnits] = useState<Unit[]>([])
-  const [f, setF] = useState({ customerName: '', type: '', description: '', priority: 'MEDIA', unitId: '', responsibleId: '', dueDate: '' })
+  const [types, setTypes] = useState<{ id: string; label: string }[]>([])
+  const [f, setF] = useState({ plate: '', customerName: '', type: '', description: '', priority: 'MEDIA', unitId: '', responsibleId: '', dueDate: '' })
   const [remind, setRemind] = useState(true)
   const [remindFrequency, setRemindFrequency] = useState('DAILY')
   const [remindMaxSends, setRemindMaxSends] = useState(10)
@@ -32,20 +33,27 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
   useEffect(() => {
     fetch('/api/units', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { const u = j?.data ?? j ?? []; setUnits(u); if (u.length === 1) setF((p) => ({ ...p, unitId: u[0].id })) }).catch(() => {})
     fetch('/api/sellers', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => setSellers(j?.data ?? [])).catch(() => {})
+    // Tipos de pendência cadastrados (Configurações). Se não houver, o campo vira texto livre.
+    fetch('/api/stock/pendency-options', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => setTypes(j?.data ?? [])).catch(() => {})
   }, [])
 
   const sellersOfUnit = f.unitId ? sellers.filter((s) => s.unit?.id === f.unitId) : sellers
 
   const submit = async () => {
-    if (!f.customerName.trim()) { setError('Informe o nome do cliente/assunto.'); return }
+    const plate = f.plate.trim().toUpperCase().replace(/\s+/g, '')
+    if (!plate) { setError('Informe a placa.'); return }
+    if (!f.customerName.trim()) { setError('Informe o cliente/assunto.'); return }
+    if (!f.type.trim()) { setError('Selecione o tipo da pendência.'); return }
+    if (!f.dueDate) { setError('Informe a data de vencimento.'); return }
     if (!f.unitId) { setError('Selecione a unidade.'); return }
     if (!f.responsibleId) { setError('Selecione o responsável.'); return }
+    if (!f.description.trim()) { setError('Descreva o que precisa ser resolvido.'); return }
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/pendencies', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({
-          customerName: f.customerName.trim(), type: f.type.trim() || undefined, description: f.description.trim() || undefined,
+          plate, customerName: f.customerName.trim(), type: f.type.trim(), description: f.description.trim(),
           priority: f.priority, unitId: f.unitId, responsibleId: f.responsibleId, dueDate: f.dueDate || undefined,
           remind, remindFrequency: remind ? remindFrequency : undefined, remindMaxSends: remind ? remindMaxSends : undefined,
         }),
@@ -66,15 +74,23 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Cliente / Assunto *</label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Ex.: João da Silva — documento do veículo" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><input className={inputCls} value={f.type} onChange={(e) => set('type', e.target.value)} placeholder="Documento, Financeira, Processo…" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Placa *</label><input className={cn(inputCls, 'uppercase')} value={f.plate} onChange={(e) => set('plate', e.target.value.toUpperCase())} placeholder="ABC1D23" maxLength={8} /></div>
             <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade</label><select className={inputCls} value={f.priority} onChange={(e) => set('priority', e.target.value)}>{PRIORITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
           </div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Descrição</label><textarea rows={2} className={inputCls} value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="O que precisa ser resolvido" /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Cliente / Assunto *</label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Ex.: João da Silva — documento do veículo" /></div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Tipo *</label>
+            {types.length > 0 ? (
+              <select className={inputCls} value={f.type} onChange={(e) => set('type', e.target.value)}><option value="">— selecione —</option>{types.map((t) => <option key={t.id} value={t.label}>{t.label}</option>)}</select>
+            ) : (
+              <input className={inputCls} value={f.type} onChange={(e) => set('type', e.target.value)} placeholder="Documento, Financeira, Processo… (cadastre em Configurações)" />
+            )}
+          </div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Descrição *</label><textarea rows={2} className={inputCls} value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="O que precisa ser resolvido" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="mb-1 block text-xs font-medium text-gray-700">Unidade *</label><select className={inputCls} value={f.unitId} onChange={(e) => { set('unitId', e.target.value); set('responsibleId', '') }}><option value="">— selecione —</option>{units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Vencimento</label><input type="date" className={inputCls} value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Vencimento *</label><input type="date" className={inputCls} value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></div>
           </div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Responsável *</label><select className={inputCls} value={f.responsibleId} onChange={(e) => set('responsibleId', e.target.value)}><option value="">— selecione o colaborador —</option>{sellersOfUnit.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}</select></div>
 
