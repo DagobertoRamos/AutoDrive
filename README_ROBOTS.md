@@ -1334,3 +1334,20 @@
 - **DECISÃO DE SEGURANÇA:** removi de propósito as colunas `defaultPriority/defaultSlaMinutes` em `stock_pendency_options` (ALTER em tabela existente + consultas sem `select` → quebraria o endpoint de tipos e o estoque ANTES da migration). SLA/prioridade por tipo fica para uma migration coordenada. **Só adicionei TABELA NOVA (seguro deployar antes da migration).**
 - **Validações:** `prisma generate` OK; `tsc --noEmit` verde; deploy OK.
 - **Pendências futuras:** aplicar a migration acima; depois (com nova migration coordenada) defaults por tipo, janelas múltiplas por dia, anti-spam por usuário, dashboard completo/SLA por tipo.
+
+### LOG 0117 — 2026-07-01 — Claude (Opus 4.8) — Central de Pendências: painel só p/ gerente+ com chavinha "liberar p/ todos"
+- **Branch:** `main`. Sem migration (usa `SystemSetting`, tabela já existente).
+- **Tarefa:** "o painel de pendências tem que aparecer para o gerente +, e poderá ser liberado para qualquer pessoa se o gerente geral + liberar o modulo ativando a chavinha."
+- **Regra final:**
+  - **Menu/painel** (`pendencies.central`) → visível por padrão a **gerente+** (`MASTER, ADM, GERENTE_GERAL, GERENTE_ADMINISTRATIVO, GERENTE`).
+  - **Chavinha "Liberar p/ todos"** → só o **gerente geral+** (`MASTER, ADM, GERENTE_GERAL`) liga/desliga; ligada, o painel aparece para **qualquer papel** da loja.
+- **Entregue:**
+  - `permissions.ts`: `pendencies.central` roles = gerente+. As rotas de pendência base (`pendencies`) seguem amplas (fluxo de lembrete/resolver do vendedor não quebra).
+  - `navigation.ts`: grupo "Central de Pendências" + filho "Painel" gated por `pendencies.central`.
+  - `tenant-modules.ts`: `getOpenModules()` + `setModuleOpenToAll()` — flag por tenant em `SystemSetting` (`t:{tenantId}:open_modules`, JSON array).
+  - `/api/me/modules`: passa a devolver `open: string[]` (módulos liberados pela chavinha).
+  - `Sidebar.tsx`: `hasAccess`/`filterTree` agora liberam item se `canAccessModule(role, module) || open.has(module)`; novo estado `openModules` alimentado por `/api/me/modules`.
+  - Endpoint **`/api/pendencies/open-to-all`** (GET estado + `canToggle`; POST liga/desliga) — POST restrito a `MASTER/ADM/GERENTE_GERAL` via `setModuleOpenToAll(tenantId, 'pendencies.central', open)`.
+  - UI: switch **"Liberar p/ todos"** no cabeçalho de `/pendencias/central` (só aparece p/ quem tem `canToggle`).
+- **Validações:** `tsc --noEmit` verde.
+- **Escopo respeitado:** só ampliei papel de `pendencies.central` (menu) e criei flag por tenant; nenhuma outra permissão/rota mexida; sem schema novo.

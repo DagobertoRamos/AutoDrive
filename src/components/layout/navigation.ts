@@ -209,7 +209,7 @@ export const NAV_GROUPS: NavItem[] = [
   {
     label: 'Central de Pendências',
     icon:  ClipboardList,
-    module: 'pendencies',
+    module: 'pendencies.central',
     children: [
       { label: 'Painel', href: '/pendencias/central',        icon: Inbox,         module: 'pendencies.central' },
       { label: 'Minhas Pendências',     href: '/pendencias/minhas',         icon: ClipboardList, module: 'pendencies' },

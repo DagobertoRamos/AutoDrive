@@ -179,7 +179,7 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read', 'create', 'update', 'finalize', 'reactivate', 'delete'],
   },
   'pendencies.central': {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
     actions: ['read', 'create', 'update', 'finalize', 'reactivate', 'delete', 'export'],
   },
   commissions: {

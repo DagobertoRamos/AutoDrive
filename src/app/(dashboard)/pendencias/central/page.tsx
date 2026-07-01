@@ -138,6 +138,11 @@ export default function CentralAvisosPage() {
   const [assigningId,  setAssigningId]  = useState<string | null>(null)
   const [escalatingId, setEscalatingId] = useState<string | null>(null)
 
+  // Chavinha "liberar a Central para todos os colaboradores" (gerente geral+).
+  const [openToAll,     setOpenToAll]     = useState(false)
+  const [canToggleOpen, setCanToggleOpen] = useState(false)
+  const [togglingOpen,  setTogglingOpen]  = useState(false)
+
   const [filters, setFilters] = useState<Filters>({
     search: '', status: '', priority: '', severity: '',
     unitId: '', originModule: '', assignedOnly: false, slaVencida: false,
@@ -176,6 +181,41 @@ export default function CentralAvisosPage() {
   }, [filters, page])
 
   useEffect(() => { fetchPendencies() }, [fetchPendencies])
+
+  // Estado da chavinha (só o gerente geral+ recebe canToggle=true).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/pendencies/open-to-all', { credentials: 'include' })
+        const j   = await res.json()
+        if (cancelled || !j?.success) return
+        setOpenToAll(!!j.open)
+        setCanToggleOpen(!!j.canToggle)
+      } catch { /* silencioso */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const handleToggleOpen = async () => {
+    const next = !openToAll
+    setTogglingOpen(true)
+    setOpenToAll(next) // otimista
+    try {
+      const res = await fetch('/api/pendencies/open-to-all', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ open: next }),
+        credentials: 'include',
+      })
+      const j = await res.json()
+      if (!j?.success) setOpenToAll(!next) // reverte em falha
+    } catch {
+      setOpenToAll(!next)
+    } finally {
+      setTogglingOpen(false)
+    }
+  }
 
   const setFilter = (key: keyof Filters, value: string | boolean) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
@@ -292,6 +332,38 @@ export default function CentralAvisosPage() {
             >
               <PlayCircle size={13} className={cn(scanning && 'animate-pulse text-brand-500')} />
               {scanning ? 'Varrendo…' : 'Varredura automática'}
+            </button>
+          )}
+          {canToggleOpen && (
+            <button
+              type="button"
+              onClick={handleToggleOpen}
+              disabled={togglingOpen}
+              title={openToAll
+                ? 'A Central está liberada para todos os colaboradores. Clique para restringir ao gerente+.'
+                : 'A Central aparece só para o gerente+. Clique para liberar a todos os colaboradores.'}
+              className={cn(
+                'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition',
+                openToAll
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
+                togglingOpen && 'opacity-60',
+              )}
+            >
+              <span
+                className={cn(
+                  'relative h-4 w-7 rounded-full transition-colors',
+                  openToAll ? 'bg-emerald-500' : 'bg-gray-300',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all',
+                    openToAll ? 'left-3.5' : 'left-0.5',
+                  )}
+                />
+              </span>
+              Liberar p/ todos
             </button>
           )}
           <button onClick={fetchPendencies} disabled={loading} className="btn-secondary text-xs">

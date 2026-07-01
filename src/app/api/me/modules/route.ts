@@ -6,21 +6,22 @@
 
 import { NextResponse } from 'next/server'
 import { getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
-import { getDisabledModules, getUserDeniedModules } from '@/lib/tenant-modules'
+import { getDisabledModules, getUserDeniedModules, getOpenModules } from '@/lib/tenant-modules'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
 export async function GET() {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (user.role === 'MASTER' || !user.tenantId) return NextResponse.json({ success: true, disabled: [] })
+  if (user.role === 'MASTER' || !user.tenantId) return NextResponse.json({ success: true, disabled: [], open: [] })
   try {
-    // Esconde do menu: módulos desligados para a loja UNIÃO módulos removidos
-    // deste colaborador (override por usuário).
-    const [tenantDisabled, userDenied] = await Promise.all([
+    // Esconde do menu: módulos desligados p/ a loja UNIÃO removidos do colaborador.
+    // `open` = módulos LIBERADOS p/ todos (chavinha), mesmo sem o papel.
+    const [tenantDisabled, userDenied, open] = await Promise.all([
       getDisabledModules(user.tenantId),
       getUserDeniedModules(user.id),
+      getOpenModules(user.tenantId),
     ])
-    return NextResponse.json({ success: true, disabled: [...new Set([...tenantDisabled, ...userDenied])] })
+    return NextResponse.json({ success: true, disabled: [...new Set([...tenantDisabled, ...userDenied])], open })
   } catch (err) {
     return handlePrismaError(err)
   }

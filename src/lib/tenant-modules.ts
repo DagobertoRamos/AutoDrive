@@ -21,6 +21,28 @@ export async function getDisabledModules(tenantId: string): Promise<string[]> {
   }
 }
 
+/** Módulos LIBERADOS para todos os colaboradores do tenant (chavinha) — mesmo
+ *  para quem o papel normalmente não teria. Guardado em SystemSetting. */
+export async function getOpenModules(tenantId: string): Promise<string[]> {
+  try {
+    const row = await prisma.systemSetting.findFirst({ where: { key: `t:${tenantId}:open_modules` }, select: { value: true } })
+    if (!row?.value) return []
+    const arr = JSON.parse(row.value)
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : []
+  } catch { return [] }
+}
+
+/** Liga/desliga a chavinha "liberar para todos" de um módulo (merge no JSON). */
+export async function setModuleOpenToAll(tenantId: string, moduleKey: string, open: boolean): Promise<void> {
+  const key = `t:${tenantId}:open_modules`
+  const current = await getOpenModules(tenantId)
+  const next = open ? [...new Set([...current, moduleKey])] : current.filter((m) => m !== moduleKey)
+  const value = JSON.stringify(next)
+  const existing = await prisma.systemSetting.findFirst({ where: { key }, select: { id: true } })
+  if (existing) await prisma.systemSetting.update({ where: { id: existing.id }, data: { value } })
+  else await prisma.systemSetting.create({ data: { key, value, group: 'modules' } })
+}
+
 /** Módulos REMOVIDOS de um colaborador (override allowed=false por usuário). */
 export async function getUserDeniedModules(userId: string): Promise<string[]> {
   try {
