@@ -5,9 +5,15 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Building2, X, Save, CheckCircle, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Building2, X, Save, CheckCircle, AlertCircle, Coins } from 'lucide-react'
 import { cn, formatCNPJ } from '@/lib/utils'
 import { maskCNPJ, maskPhone } from '@/lib/masks'
+import { ROLE_LABELS } from '@/lib/permissions'
+
+// Cargos que podem receber comissão (para a chave da unidade).
+const COMMISSION_ROLES = ['GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'] as const
+
+interface CommissionCfg { enabled: boolean; roles: string[] }
 
 // -----------------------------------------------------------------------------
 // Types
@@ -77,7 +83,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 interface ModalProps {
   open: boolean
   onClose: () => void
-  onSave: (data: UnitForm) => Promise<void>
+  onSave: (data: UnitForm, commission: CommissionCfg) => Promise<void>
   initial?: Unit | null
   saving: boolean
   error: string | null
@@ -85,10 +91,21 @@ interface ModalProps {
 
 function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
   const [form, setForm] = useState<UnitForm>(emptyForm)
+  const [commEnabled, setCommEnabled] = useState(true)
+  const [commRoles, setCommRoles] = useState<string[]>([])
 
   useEffect(() => {
-    if (open) {
-      setForm(initial ? { ...initial } : { ...emptyForm })
+    if (!open) return
+    setForm(initial ? { ...initial } : { ...emptyForm })
+    // Carrega a config de comissão da unidade (só quando editando; nova = padrão).
+    if (initial?.id) {
+      setCommEnabled(true); setCommRoles([])
+      fetch(`/api/units/${initial.id}/commission`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (j?.data) { setCommEnabled(j.data.enabled !== false); setCommRoles(Array.isArray(j.data.roles) ? j.data.roles : []) } })
+        .catch(() => {})
+    } else {
+      setCommEnabled(true); setCommRoles([])
     }
   }, [open, initial])
 
@@ -98,9 +115,13 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
+  const toggleRole = (role: string) => {
+    setCommRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]))
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave(form)
+    onSave(form, { enabled: commEnabled, roles: commEnabled ? commRoles : [] })
   }
 
   return (
@@ -171,6 +192,35 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
             <Toggle checked={form.active} onChange={(v) => set('active', v)} />
           </div>
 
+          {/* ── Comissões da unidade ─────────────────────────────────────── */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Coins className="h-4 w-4 text-amber-500" />
+                Comissões nesta unidade
+              </span>
+              <Toggle checked={commEnabled} onChange={setCommEnabled} />
+            </div>
+            {commEnabled ? (
+              <div>
+                <p className="mb-2 text-xs text-gray-500">Selecione os <b>cargos que recebem comissão</b> nesta unidade (o gerente vende, mas a comissão dele segue as regras do cargo dele).</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {COMMISSION_ROLES.map((role) => (
+                    <label key={role} className={cn('flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs', commRoles.includes(role) ? 'border-brand-300 bg-brand-50 text-brand-800' : 'border-gray-200 bg-white text-gray-600')}>
+                      <input type="checkbox" checked={commRoles.includes(role)} onChange={() => toggleRole(role)} className="rounded" />
+                      {ROLE_LABELS[role] ?? role}
+                    </label>
+                  ))}
+                </div>
+                {commRoles.length === 0 && (
+                  <p className="mt-2 text-xs text-amber-600">Nenhum cargo marcado = <b>todos os cargos elegíveis</b> recebem. Marque para restringir.</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-red-600">Comissões <b>desligadas</b>: nenhum vendedor ou gerente recebe comissão nesta unidade (ex.: galpão).</p>
+            )}
+          </div>
+
           {error && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -239,7 +289,7 @@ export default function UnidadesPage() {
     setModalOpen(true)
   }
 
-  const handleSave = async (data: UnitForm) => {
+  const handleSave = async (data: UnitForm, commission: CommissionCfg) => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -253,6 +303,17 @@ export default function UnidadesPage() {
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         throw new Error(json?.error ?? json?.message ?? 'Erro ao salvar unidade')
+      }
+      // Salva a chave de comissão da unidade (recém-criada ou editada).
+      const saved = await res.json().catch(() => ({}))
+      const unitId = editing ? editing.id : saved?.data?.id
+      if (unitId) {
+        await fetch(`/api/units/${unitId}/commission`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(commission),
+        }).catch(() => {})
       }
       setModalOpen(false)
       setSuccessMsg(editing ? 'Unidade atualizada com sucesso!' : 'Unidade criada com sucesso!')

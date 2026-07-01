@@ -1572,3 +1572,17 @@
 - **Riscos/observações:**
   - Sem migration, o arquivo automático segue usando o padrão atual `status=CANCELADA` + histórico/auditoria. Uma migration futura com `archivedAt/archivedById` deixaria isso mais explícito.
   - O job só roda para tenants com `pendency_settings` salvo. Como o default é desativado, isso evita varredura desnecessária em lojas que nunca habilitaram a automação.
+
+### LOG 0124 — 2026-07-01 — Claude (Opus 4.8) — Comissão: gerente no cadastro + chave de comissão por unidade (galpão não paga)
+- **Branch:** `main`. Sem migration (config em `SystemSetting`).
+- **Contexto:** preparação para importar negociações do AutoConf → Deal → comissão (ver memória `autoconf-integration`). Levantamento revelou: 0 regras de comissão, 0 Managers cadastrados, Galpão inexistente como unidade. EasyCar tem 3 locais (Matriz=ger. Dagoberto, Loja 1=ger. Luciano, Galpão=sem gerente, **não comissiona**).
+- **Tarefa:** "dagoberto está como gerente mas não está no cadastro de gerente, transfira ele; gerente vende mas comissão diferente; coloque no cadastro da unidade uma chave liga/desliga de comissões, ligada exige os cargos que recebem."
+- **Entregue:**
+  - **Dagoberto registrado como Manager** (Matriz) — antes existia só como User(GERENTE)+Seller; agora aparece no cadastro de gerentes. (op de dados; `Manager.userId` 1:1).
+  - **Chave de comissão por unidade** (cadastro de unidade → `SystemSetting` `t:{tenantId}:unit_commission:{unitId}` = `{enabled, roles[]}`; sem migration):
+    - `lib/commission/unit-config.ts`: get/set/getAll + `isRoleCommissionEligible` (desligada→ninguém; ligada s/ cargos→todos elegíveis; ligada c/ cargos→só eles).
+    - `GET/PUT /api/units/[id]/commission` (gate `registrations.units` + MASTER/ADM/GERENTE; valida cargos contra ELIGIBLE_ROLES).
+    - UI no modal de `cadastros/unidades`: Toggle "Comissões nesta unidade" + checkboxes dos cargos que recebem (Galpão = desligar). Salva junto ao salvar a unidade.
+  - **Enforcement no gerador** (`commission-generator.ts`): antes de compor itens, lê a config da unidade do Deal — **desligada → retorna 0 (ninguém recebe)**; ligada → remove earners (vendedor/gerente) cujo cargo não é elegível. Assim o galpão não paga a ninguém e o ranking/comissão não saem errados.
+- **Validações:** `tsc --noEmit` verde.
+- **Pendências (próximos passos, com o usuário):** criar a unidade **Galpão** (comissão desligada) e o de-para de loja AutoConf→unidade; cadastrar **Luciano** (gerente Loja 1) e vendedores por unidade; definir a **tabela de regras de comissão** (Matriz/Loja 1) e o que conta no **ranking** (compras? galpão fora). Só então ligar a importação do AutoConf.

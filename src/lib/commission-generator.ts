@@ -24,6 +24,7 @@ import {
   type EmployeeKind,
 } from '@/lib/commission-matcher'
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
+import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
 import type { CommissionRuleType, Prisma, UserRole } from '@prisma/client'
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
@@ -132,7 +133,7 @@ export async function generateCommissionsForDeal(
   const items: GenerationItem[] = []
 
   // Identificação dos earners
-  const sellerEarner = d.seller
+  let sellerEarner = d.seller
     ? {
         kind:        'SELLER' as const,
         id:          d.seller.id,
@@ -143,7 +144,7 @@ export async function generateCommissionsForDeal(
     : null
 
   // deal.managerId aponta para User.id (não Manager.id). Tratamos como USER no matcher.
-  const managerEarner = d.manager
+  let managerEarner = d.manager
     ? {
         kind:        'USER' as const,
         id:          d.manager.id,
@@ -152,6 +153,18 @@ export async function generateCommissionsForDeal(
         label:       d.manager.name,
       }
     : null
+
+  // ── Chave de comissão da UNIDADE (cadastro da unidade) ─────────────────────
+  // Unidade com comissão DESLIGADA (ex.: galpão) → ninguém recebe. Ligada com
+  // cargos definidos → só os cargos elegíveis recebem. Sem config = compat (paga).
+  if (tenantId && unitId) {
+    const cfg = await getUnitCommissionConfig(tenantId, unitId)
+    if (!cfg.enabled) {
+      return { dealId: opts.dealId, created: 0, matched: 0, unmatched: 0, items: [] }
+    }
+    if (sellerEarner && !isRoleCommissionEligible(cfg, sellerEarner.role ?? '')) sellerEarner = null
+    if (managerEarner && !isRoleCommissionEligible(cfg, managerEarner.role ?? '')) managerEarner = null
+  }
 
   function addForVehicle(dv: typeof d.vehicles[number]) {
     const isTrade = dv.role === 'TROCA'
