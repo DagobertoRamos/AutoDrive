@@ -19,6 +19,7 @@ import { NotificationToastContainer } from '@/components/notifications/Notificat
 import { useNotifications } from '@/hooks/useNotifications'
 import HelpChatLauncher from '@/components/ai/HelpChatLauncher'
 import QueueAlertWatcher from '@/components/seller-queue/QueueAlertWatcher'
+import PendencyAckWatcher from '@/components/pendencies/PendencyAckWatcher'
 
 export default function DashboardShell({
   children,
@@ -67,6 +68,7 @@ export default function DashboardShell({
         <NotificationToastContainer />
       </div>
       <QueueAlertWatcher />
+      <PendencyAckWatcher />
       <HelpChatLauncher />
     </>
   )

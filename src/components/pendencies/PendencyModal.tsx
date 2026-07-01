@@ -21,6 +21,17 @@ interface PendencyModalProps {
 type Tab = 'detalhes' | 'historico' | 'respostas' | 'envios'
 interface PushLog { id: string; channel: string; status: string; sentCount: number; detail: string | null; createdAt: string }
 
+// Rótulos em PT dos status (para a linha do tempo do histórico).
+const STATUS_PT: Record<string, string> = {
+  ABERTA: 'Aberta', EM_ANDAMENTO: 'Em andamento', AGUARDANDO_RESPOSTA: 'Aguardando resposta',
+  PAUSADA: 'Pausada', FINALIZADA: 'Finalizada', REATIVADA: 'Reativada', CANCELADA: 'Arquivada/Cancelada',
+  VENCIDA: 'Vencida',
+}
+const stPt = (s?: string | null) => (s ? (STATUS_PT[s] ?? s) : '—')
+
+// Item unificado da linha do tempo (transição de status OU comentário/ciente).
+interface TimelineItem { kind: 'status' | 'comment'; createdAt: string; by?: string | null; previousStatus?: string | null; newStatus?: string; reason?: string | null; content?: string }
+
 export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalProps) {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role as UserRole | undefined
@@ -36,12 +47,37 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
   const [rejectReason, setRejectReason] = useState('')
   const [remindMsg, setRemindMsg] = useState('')
   const [pushLogs, setPushLogs] = useState<PushLog[]>([])
+  const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (tab !== 'envios') return
     fetch(`/api/pendencies/${pendency.id}/logs`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => setPushLogs(j?.data ?? [])).catch(() => {})
   }, [tab, pendency.id])
+
+  // O objeto vindo da LISTA não traz o histórico. Buscamos o DETALHE (transições
+  // de status + observações) e os COMENTÁRIOS, e juntamos tudo numa só linha do
+  // tempo — do cadastro até a resolução/arquivamento.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [detRes, comRes] = await Promise.all([
+          fetch(`/api/pendencies/${pendency.id}`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).catch(() => null),
+          fetch(`/api/pendencies/${pendency.id}/comment`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).catch(() => null),
+        ])
+        if (cancelled) return
+        const hist = (detRes?.data?.statusHistory ?? []) as Array<{ previousStatus?: string | null; newStatus: string; reason?: string | null; createdAt: string; changedByUser?: { name?: string | null } | null }>
+        const coms = (comRes?.data ?? []) as Array<{ content: string; createdAt: string; user?: { name?: string | null } | null }>
+        const items: TimelineItem[] = [
+          ...hist.map((h) => ({ kind: 'status' as const, createdAt: h.createdAt, by: h.changedByUser?.name ?? null, previousStatus: h.previousStatus, newStatus: h.newStatus, reason: h.reason ?? null })),
+          ...coms.map((c) => ({ kind: 'comment' as const, createdAt: c.createdAt, by: c.user?.name ?? null, content: c.content })),
+        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        setTimeline(items)
+      } catch { /* silencioso */ }
+    })()
+    return () => { cancelled = true }
+  }, [pendency.id])
 
   const handleRemindNow = async () => {
     setLoading(true); setError('')
@@ -184,25 +220,32 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
 
           {tab === 'historico' && (
             <div className="space-y-3">
-              {(pendency.statusHistory ?? []).length === 0 ? (
+              {timeline.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">Nenhum histórico registrado.</p>
               ) : (
-                (pendency.statusHistory ?? []).map((h: any, i: number) => (
+                timeline.map((it, i) => (
                   <div key={i} className="flex gap-3">
                     <div className="flex flex-col items-center">
-                      <div className="h-2.5 w-2.5 rounded-full bg-brand-400 mt-1 shrink-0" />
-                      {i < (pendency.statusHistory?.length ?? 0) - 1 && (
-                        <div className="w-0.5 flex-1 bg-gray-200 my-1" />
-                      )}
+                      <div className={cn('h-2.5 w-2.5 rounded-full mt-1 shrink-0', it.kind === 'comment' ? 'bg-gray-300' : 'bg-brand-400')} />
+                      {i < timeline.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 my-1" />}
                     </div>
-                    <div className="pb-3">
-                      <p className="text-xs text-gray-400">{formatRelativeTime(new Date(h.createdAt))}</p>
-                      <p className="text-sm text-gray-700">
-                        <span className="font-medium">{h.previousStatus ?? '—'}</span>
-                        {' → '}
-                        <span className="font-medium text-brand-700">{h.newStatus}</span>
+                    <div className="pb-3 min-w-0">
+                      <p className="text-xs text-gray-400">
+                        {formatRelativeTime(new Date(it.createdAt))}
+                        {it.by && <span className="text-gray-400"> · {it.by}</span>}
                       </p>
-                      {h.reason && <p className="text-xs text-gray-500 mt-0.5 italic">&quot;{h.reason}&quot;</p>}
+                      {it.kind === 'status' ? (
+                        <>
+                          <p className="text-sm text-gray-700">
+                            <span className="font-medium">{stPt(it.previousStatus)}</span>
+                            {' → '}
+                            <span className="font-medium text-brand-700">{stPt(it.newStatus)}</span>
+                          </p>
+                          {it.reason && <p className="text-xs text-gray-500 mt-0.5 italic">&quot;{it.reason}&quot;</p>}
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-700"><span className="text-gray-400 mr-1">💬</span>{it.content}</p>
+                      )}
                     </div>
                   </div>
                 ))

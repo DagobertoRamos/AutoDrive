@@ -108,10 +108,17 @@ export async function DELETE(req: Request, ctxArg: { params: { id: string } | Pr
       return NextResponse.json({ success: false, error: 'Sem permissão para cancelar esta pendência.' }, { status: 403 })
     }
 
+    const before = await prisma.pendency.findUnique({ where: { id: params.id }, select: { status: true } })
     await prisma.pendency.update({
       where: { id: params.id },
       data: { status: 'CANCELADA' },
     })
+
+    // Registra o arquivamento na linha do tempo (o histórico precisa cobrir tudo,
+    // do cadastro até a resolução/arquivamento).
+    await prisma.pendencyStatusHistory.create({
+      data: { pendencyId: params.id, previousStatus: before?.status ?? null, newStatus: 'CANCELADA', changedByUserId: session.user.id },
+    }).catch(() => {})
 
     return NextResponse.json({ success: true, message: 'Pendência cancelada.' })
   } catch {

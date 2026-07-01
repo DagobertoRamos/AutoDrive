@@ -1398,3 +1398,18 @@
   - Fazer QA visual/login real por perfis simulados (Vendedor, Gerente, Gerente Geral, ADM/Master, Financeiro, Marketing, F&I, SDR, Compras, Auxiliar/Documentação) quando o ambiente permitir rodar servidor/build sem locks.
   - Evoluir models/campos para métricas finas: custo por lead, tempo médio de resposta SDR, campanhas/anúncios, jobs/cron, integrações, atividade de usuários e documentação com SLA próprio.
   - Considerar configuração futura por tenant para habilitar/ordenar widgets por cargo sem criar complexidade agora.
+
+### LOG 0120 — 2026-07-01 — Claude (Opus 4.8) — Pendências: sininho na criação + histórico completo + popup "Ciente" ao entrar
+- **Branch:** `main`. Sem migration (usa models já existentes: Notification, PendencyStatusHistory, PendencyComment).
+- **Sintomas relatados:** "não aparece as mensagens de pendências no sininho"; "não abre popup ao entrar + botão ciente registra a leitura no histórico"; "a observação do 'não resolvido' não está sendo gravada"; "no histórico tem que aparecer tudo, do cadastro à resolução/arquivamento".
+- **Diagnóstico:**
+  1. `POST /api/pendencies` **não criava Notification** p/ o responsável → sininho vazio na criação.
+  2. O `PendencyModal` renderizava `pendency.statusHistory`, mas o objeto vem da **LISTA** (`/api/pendencies`), que **não inclui** histórico → aba Histórico sempre vazia; a observação do "não resolvido" **era gravada** (`unresolved` grava `reason` em `PendencyStatusHistory`), só não aparecia. Havia ainda `PendencyComment` ignorado pelo modal.
+  3. `DELETE` (cancelar/arquivar) mudava status p/ CANCELADA **sem** gravar `PendencyStatusHistory`.
+- **Correções:**
+  - `pendencies/route.ts` (POST): cria `Notification` (type `NOVA_PENDENCIA`) p/ o responsável (map Seller.id→userId) → aparece no sininho (poll global já existente).
+  - `PendencyModal.tsx`: busca o **detalhe** (`/api/pendencies/[id]`) + **comentários** (`/[id]/comment`) ao abrir e monta uma **linha do tempo unificada** (transições de status + observações + comentários/Ciente), ordenada; rótulos de status em PT; mostra quem fez.
+  - `pendencies/[id]/route.ts` (DELETE): grava `PendencyStatusHistory` (→ CANCELADA) → arquivamento entra no histórico.
+  - **Popup "Ciente" ao entrar** (novo): `GET /api/pendencies/mine/pending-ack` (pendências abertas do responsável sem Ciente), `POST /api/pendencies/[id]/acknowledge` (grava comentário marcador `✅ Ciente` na linha do tempo + marca notificação lida), `lib/pendencies/ack.ts` (marcador), componente `PendencyAckWatcher` montado no `DashboardShell` (abre 1x/sessão, botões "Ciente"/"Ciente em todas").
+- **Validações:** `tsc --noEmit` — meus arquivos verdes (0 erros). ⚠️ Há **1 erro pré-existente FORA do meu escopo** em `src/lib/dashboard/getDashboardData.ts:1265` (`Property 'services' is missing`), do trabalho **não-commitado** do LOG 0119 (dashboard por cargo). NÃO commitei esse arquivo — só meus 8 arquivos de pendência. **Atenção:** esse arquivo do dashboard precisa ser corrigido antes de ser commitado/deployado.
+- **Escopo:** só pendências (sininho/histórico/popup). Sem schema, sem permissões alteradas.

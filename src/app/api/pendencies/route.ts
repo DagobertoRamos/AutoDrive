@@ -216,6 +216,24 @@ export async function POST(req: NextRequest) {
       },
     }).catch(() => {})
 
+    // Sininho: avisa o RESPONSÁVEL (responsibleId = Seller.id → mapeia p/ userId)
+    // que uma nova pendência foi aberta para ele. Sem isso, nada aparecia no sino.
+    try {
+      const seller = await prisma.seller.findUnique({ where: { id: pendency.responsibleId }, select: { userId: true } })
+      if (seller?.userId) {
+        await prisma.notification.create({
+          data: {
+            userId:    seller.userId,
+            tenantId:  pendency.tenantId ?? undefined,
+            type:      'NOVA_PENDENCIA',
+            title:     `Nova pendência: ${pendency.type ?? 'pendência'}`,
+            message:   `${pendency.customerName}${pendency.plate ? ' — ' + pendency.plate : ''}${pendency.description ? ': ' + pendency.description : ''}`,
+            actionUrl: '/pendencias/central',
+          },
+        })
+      }
+    } catch { /* não bloqueia a criação */ }
+
     return NextResponse.json({ success: true, data: pendency }, { status: 201 })
   } catch (err) {
     console.error('[POST /api/pendencies]', err)
