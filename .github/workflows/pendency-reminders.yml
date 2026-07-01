@@ -37,8 +37,13 @@ jobs:
           cat /tmp/out.json || true
           if [ "$code" = "401" ]; then
             echo ""
-            echo ">> 401 = o valor do CRON_SECRET aqui no GitHub NÃO bate com o da Vercel,"
-            echo "   ou a Vercel não foi redeployada depois de definir o CRON_SECRET."
-            echo "   Confira: mesmo valor nos dois + redeploy na Vercel."
+            echo ">> Diagnóstico (não revela o segredo, só tamanhos):"
+            curl -sS -X POST \
+              "https://auto-drive-mocha.vercel.app/api/internal/pendencies/reminders/run?diag=1" \
+              -H "x-cron-secret: $CRON_SECRET" | tr ',' '\n'
+            echo ""
+            echo ">> Leitura: envSet=false → CRON_SECRET NÃO está em Production na Vercel (ou faltou redeploy)."
+            echo "            envLen≠gotLen → tem espaço/quebra sobrando em algum dos lados."
+            echo "            envLen=gotLen mas match=false → valores diferentes."
           fi
           test "$code" = "200"
