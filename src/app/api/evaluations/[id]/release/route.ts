@@ -202,7 +202,7 @@ export async function POST(
           message:  `${desc} foi precificada e liberada. Confira os valores.`,
           actionUrl: `/estoque/avaliacao/${params.id}/inspecao`,
           metadata:  { evaluationId: params.id },
-          channels:  ['APP_WEB', 'EMAIL', 'WHATSAPP'],
+          channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH', 'EMAIL', 'WHATSAPP'],
         })
       }
     } catch (e) {

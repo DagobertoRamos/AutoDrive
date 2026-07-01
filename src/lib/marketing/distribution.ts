@@ -197,6 +197,7 @@ export async function processSlaBreaches(tenantId: string, limit = 100): Promise
       message: `${breaches.length} lead(s) sem atendimento dentro do SLA${recycled > 0 ? ` — ${recycled} devolvido(s) à fila para redistribuição` : ''}.`,
       actionUrl: '/marketing/sdr/inbox',
       metadata: { kind: 'sla_breach', breached: breaches.length, recycled },
+      channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
     }).catch(() => {})
   }
 

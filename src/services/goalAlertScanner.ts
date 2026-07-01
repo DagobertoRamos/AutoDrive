@@ -58,7 +58,7 @@ async function dispatchAlert(goal: {
   const metadata = { goalId: goal.id, type: 'GOAL_BELOW', scope: goal.scope, percent: Math.round(percent) }
 
   if (goal.scope === 'USER' && goal.userId) {
-    await notify({ userId: goal.userId, tenantId: goal.tenantId, type: 'SISTEMA', title, message, actionUrl: '/dashboard', metadata })
+    await notify({ userId: goal.userId, tenantId: goal.tenantId, type: 'SISTEMA', title, message, actionUrl: '/dashboard', metadata, channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'] })
     return true
   }
   if (goal.tenantId && (goal.scope === 'UNIT' || goal.scope === 'TENANT')) {
@@ -66,7 +66,7 @@ async function dispatchAlert(goal: {
       tenantId: goal.tenantId,
       roles: ['ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
       ...(goal.scope === 'UNIT' && goal.unitId ? { unitId: goal.unitId } : {}),
-      type: 'SISTEMA', title, message, actionUrl: '/desempenho', metadata,
+      type: 'SISTEMA', title, message, actionUrl: '/desempenho', metadata, channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
     })
     return true
   }

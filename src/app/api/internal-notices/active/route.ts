@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { buildInternalNoticeUserAudienceWhere } from '@/lib/internal-notices/targeting'
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,6 +19,23 @@ export async function GET(req: NextRequest) {
     const displayType = searchParams.get('displayType') || undefined // BELL | BANNER | MODAL
 
     const now = new Date()
+    const user = session.user as {
+      id: string
+      role?: string | null
+      tenantId?: string | null
+      unitId?: string | null
+    }
+    const andFilters = [
+      buildInternalNoticeUserAudienceWhere(user),
+      ...(displayType
+        ? [{
+            OR: [
+              { displayType },
+              { displayChannels: { array_contains: [displayType] } },
+            ],
+          }]
+        : []),
+    ]
 
     // Busca avisos ativos que se aplicam ao usuário
     const notices = await prisma.internalNotice.findMany({
@@ -25,28 +43,14 @@ export async function GET(req: NextRequest) {
         active:   true,
         startsAt: { lte: now },
         OR: [{ endsAt: null }, { endsAt: { gte: now } }],
-        // Filtro por displayType se especificado
-        ...(displayType ? { displayType } : {}),
         // Exclui os que o usuário já leu/dispensou
         reads: {
           none: {
-            userId:    session.user.id,
+            userId:    user.id,
             dismissed: true,
           },
         },
-        // Aplica targetType
-        AND: [
-          {
-            OR: [
-              { targetType: 'ALL' },
-              { targetType: 'ROLE',   targetId: session.user.role },
-              { targetType: 'USER',   targetId: session.user.id },
-              ...(session.user.tenantId
-                ? [{ targetType: 'TENANT', targetId: session.user.tenantId }]
-                : []),
-            ],
-          },
-        ],
+        AND: andFilters,
       },
       select: {
         id:          true,

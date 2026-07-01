@@ -93,7 +93,7 @@ export async function POST(
         message:  `${desc} aguardando precificação e liberação.`,
         actionUrl: `/estoque/avaliacao/${params.id}/inspecao`,
         metadata:  { evaluationId: params.id },
-        channels:  ['APP_WEB', 'EMAIL', 'WHATSAPP'],
+        channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH', 'EMAIL', 'WHATSAPP'],
       }).catch((e) => { console.error('[submit-for-approval] notify failed', e) })
     }
 

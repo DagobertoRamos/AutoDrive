@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
 import { handlePrismaError }              from '@/lib/prisma-errors'
 import { prisma }                         from '@/lib/prisma'
+import { dispatchInternalNoticeNotifications } from '@/lib/internal-notices/dispatch'
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,21 @@ export async function POST(req: NextRequest) {
     await logMasterAction(session, 'CREATE_NOTICE', 'InternalNotice', notice.id, {
       afterData: { title: notice.title, type: notice.type, status: notice.status, targetType: notice.targetType }, req,
     })
+
+    const dispatchResult = await dispatchInternalNoticeNotifications(notice).catch((err) => {
+      console.warn('[internal-notices] push dispatch failed:', err instanceof Error ? err.message : err)
+      return { recipients: 0 }
+    })
+    if (dispatchResult.recipients > 0) {
+      await prisma.internalNoticeLog.create({
+        data: {
+          noticeId: notice.id,
+          userId:   session.id,
+          action:   'PUSH_DISPATCHED',
+          details:  { recipients: dispatchResult.recipients },
+        },
+      }).catch(() => {})
+    }
 
     return NextResponse.json({ success: true, data: notice, message: 'Aviso criado com sucesso.' }, { status: 201 })
   } catch (err) {

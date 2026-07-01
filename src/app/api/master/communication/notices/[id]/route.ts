@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
 import { handlePrismaError }              from '@/lib/prisma-errors'
 import { prisma }                         from '@/lib/prisma'
+import { dispatchInternalNoticeNotifications } from '@/lib/internal-notices/dispatch'
 
 // ── PATCH ─────────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,23 @@ export async function PATCH(req: NextRequest, ctxArg: { params: { id: string } |
       afterData:  { title: updated.title,  status: updated.status  },
       req,
     })
+
+    if (status === 'ACTIVE' && existing.status !== 'ACTIVE') {
+      const dispatchResult = await dispatchInternalNoticeNotifications(updated).catch((err) => {
+        console.warn('[internal-notices] push dispatch failed:', err instanceof Error ? err.message : err)
+        return { recipients: 0 }
+      })
+      if (dispatchResult.recipients > 0) {
+        await prisma.internalNoticeLog.create({
+          data: {
+            noticeId: params.id,
+            userId:   session.id,
+            action:   'PUSH_DISPATCHED',
+            details:  { recipients: dispatchResult.recipients },
+          },
+        }).catch(() => {})
+      }
+    }
 
     return NextResponse.json({ success: true, data: updated })
   } catch (err) {

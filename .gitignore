@@ -177,3 +177,4 @@ google-credentials.json
 .vercel
 .env*.local
 eslint-report.json
+.env*

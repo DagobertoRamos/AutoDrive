@@ -5,7 +5,7 @@
 // Header fixo da área de conteúdo com notificações e menu de usuário
 // =============================================================================
 
-import { Bell, ChevronDown, Menu, Settings, User, LogOut } from 'lucide-react'
+import { Bell, BellRing, ChevronDown, Menu, Settings, User, LogOut } from 'lucide-react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
@@ -148,6 +148,18 @@ export function Topbar() {
                 >
                   <User size={14} className="text-gray-400" />
                   Meu perfil
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false)
+                    router.push('/notificacoes/ativar')
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <BellRing size={14} className="text-gray-400" />
+                  Ativar notificações
                 </button>
 
                 <button

@@ -56,7 +56,7 @@ function Item({ ok, icon, title, desc, cta, onClick }: ItemProps) {
   )
 }
 
-export default function AlertSetup() {
+export default function AlertSetup({ scope = 'queue' }: { scope?: 'queue' | 'general' }) {
   const [status, setStatus] = useState<AlertStatus | null>(null)
   const [native, setNative] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
@@ -97,7 +97,7 @@ export default function AlertSetup() {
   }
 
   if (!native) {
-    return <WebPushSetup testarAlerta={testarAlerta} testing={testing} testMsg={testMsg} />
+    return <WebPushSetup scope={scope} testarAlerta={testarAlerta} testing={testing} testMsg={testMsg} />
   }
 
   const allOk = status ? status.notifications && status.batteryUnrestricted && status.fullScreen : false
@@ -105,7 +105,11 @@ export default function AlertSetup() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-gray-500">Para você tocar e receber a chamada do &quot;vendedor da vez&quot; mesmo com o celular bloqueado, libere os 3 itens abaixo.</p>
+      <p className="text-sm text-gray-500">
+        {scope === 'general'
+          ? 'Para receber avisos importantes mesmo com o celular bloqueado, libere os itens abaixo.'
+          : 'Para você tocar e receber a chamada do "vendedor da vez" mesmo com o celular bloqueado, libere os 3 itens abaixo.'}
+      </p>
 
       {allOk && (
         <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
@@ -113,7 +117,7 @@ export default function AlertSetup() {
         </div>
       )}
 
-      <Item ok={!!status?.notifications} icon={<BellRing size={20} />} title="Notificações" desc="Permite mostrar o aviso de chamada com Aceitar e Recusar." cta="Permitir notificações" onClick={() => void openNotificationSettings()} />
+      <Item ok={!!status?.notifications} icon={<BellRing size={20} />} title="Notificações" desc={scope === 'general' ? 'Permite mostrar avisos importantes do AutoDrive.' : 'Permite mostrar o aviso de chamada com Aceitar e Recusar.'} cta="Permitir notificações" onClick={() => void openNotificationSettings()} />
       <Item ok={!!status?.batteryUnrestricted} icon={<BatteryCharging size={20} />} title="Bateria sem restrição" desc="Impede o celular de adormecer o app e bloquear a chamada na bateria." cta="Liberar bateria" onClick={() => void openBatterySettings()} />
       <Item ok={!!status?.fullScreen} icon={<Maximize size={20} />} title="Notificação em tela cheia" desc="Faz a chamada abrir por cima da tela bloqueada (Android 14+)." cta="Permitir tela cheia" onClick={() => void openFullScreenSettings()} />
 
@@ -140,7 +144,7 @@ export default function AlertSetup() {
   )
 }
 
-function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => Promise<void>; testing: boolean; testMsg: string | null }) {
+function WebPushSetup({ scope, testarAlerta, testing, testMsg }: { scope: 'queue' | 'general'; testarAlerta: () => Promise<void>; testing: boolean; testMsg: string | null }) {
   const [perm, setPerm] = useState<string>('default')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -167,7 +171,11 @@ function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => 
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-gray-500">Receba a chamada do &quot;vendedor da vez&quot; mesmo com a tela bloqueada.</p>
+      <p className="text-sm text-gray-500">
+        {scope === 'general'
+          ? 'Receba avisos importantes do AutoDrive mesmo com o navegador fechado ou em segundo plano, quando o aparelho permitir.'
+          : 'Receba a chamada do "vendedor da vez" mesmo com a tela bloqueada.'}
+      </p>
 
       {!env.supported && !precisaInstalar && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -194,7 +202,7 @@ function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => 
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="font-semibold text-gray-900">Notificações {perm === 'granted' && <span className="ml-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">Ativado</span>}</h3>
-              <p className="mt-0.5 text-sm text-gray-500">Permite tocar e mostrar a chamada na tela bloqueada.</p>
+              <p className="mt-0.5 text-sm text-gray-500">{scope === 'general' ? 'Permite mostrar avisos importantes neste aparelho.' : 'Permite tocar e mostrar a chamada na tela bloqueada.'}</p>
               <button onClick={() => void ativar()} disabled={busy} className="mt-2 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <BellRing size={15} />} {perm === 'granted' ? 'Reativar notificações' : 'Ativar notificações'}
               </button>
@@ -215,7 +223,7 @@ function WebPushSetup({ testarAlerta, testing, testMsg }: { testarAlerta: () => 
 
       <div className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
         <Smartphone size={16} className="mt-0.5 shrink-0" />
-        <span>No iPhone, o alerta toca uma vez com som e aparece na tela bloqueada. O alarme contínuo e a tela de chamada cheia são exclusivos do app Android (limitação da Apple).</span>
+        <span>{scope === 'general' ? 'No iPhone, as notificações funcionam quando o AutoDrive está instalado na Tela de Início e a permissão foi concedida.' : 'No iPhone, o alerta toca uma vez com som e aparece na tela bloqueada. O alarme contínuo e a tela de chamada cheia são exclusivos do app Android (limitação da Apple).'}</span>
       </div>
     </div>
   )

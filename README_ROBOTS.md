@@ -1364,3 +1364,37 @@
 - **Correção do menu Configurações:** o item exige `stock.pendencies.configure`, que era só `MASTER/ADM` → oculto p/ GERENTE. Ampliado para **gerente+** (`+ GERENTE_GERAL, GERENTE_ADMINISTRATIVO, GERENTE`) em `permissions.ts` **e** no `CONFIG_ROLES` da página `configuracoes/page.tsx` (menu + página + API alinhados). Opções globais do MASTER seguem protegidas (não-MASTER não edita `createdByMaster`).
 - **Validações:** `tsc --noEmit` verde.
 - **Escopo:** correção de bug de push (server + app) + ampliação de 1 permissão de config (pedido explícito). Sem schema.
+
+### LOG 0119 — 2026-07-01 16:11:50 -03:00 — Codex (GPT-5) — Dashboard por cargo/função
+- **Branch:** `main` (worktree local).
+- **Tarefa executada:** Fase segura de separação do dashboard principal por função/cargo, mantendo `/dashboard`, identidade visual, menu, autenticação, permissões, tenant/unidade e widgets já existentes.
+- **Arquivos alterados/criados:**
+  - `src/app/(dashboard)/dashboard/page.tsx`
+  - `src/app/api/dashboard/summary/route.ts` (novo)
+  - `src/components/dashboard/DashboardRouter.tsx` (novo)
+  - `src/lib/dashboard/types.ts` (novo)
+  - `src/lib/dashboard/dashboardProfiles.ts` (novo)
+  - `src/lib/dashboard/dashboardProfiles.test.ts` (novo)
+  - `src/lib/dashboard/getDashboardData.ts` (novo)
+- **Resumo técnico:**
+  - Criada API server-side `/api/dashboard/summary`, protegida por sessão, `canAccessModule('dashboard')`, `assertModuleEnabled`, `assertTenantId` e escopos por tenant/unidade/vendedor.
+  - Criado normalizador de função que mapeia roles reais (`VENDEDOR`, `GERENTE`, `GERENTE_GERAL`, `ADM`, `MASTER`, `FINANCEIRO`, etc.) e cargo/posição/vínculo SDR para os dashboards: Vendedor, Gerente, Gerente Geral, Admin, Financeiro, Marketing, F&I, SDR, Compras e Auxiliar/Documentação.
+  - `/dashboard` passou a consumir o resumo seguro e renderizar blocos por perfil via `DashboardRouter`, preservando `GoalsPanel`, `RankingPositionCard`, cards, `section-header`, classes visuais existentes e o padrão de loading/erro controlado.
+  - O bloco comum **Resumo Comercial** foi incluído para todos os perfis, com vendas/metas/ranking/pendências conforme escopo.
+  - Dados sensíveis financeiros só são agregados quando o perfil tem permissão `finance`; vendedor e auxiliares recebem apenas resumo comercial não sensível.
+- **Riscos observados:**
+  - Marketing, SDR, Compras e Documentação ainda dependem muito do nome do cargo/posição porque o schema atual não possui roles nativas separadas para todos esses departamentos.
+  - Algumas métricas pedidas no prompt ainda não têm model/campo completo ou confiável (ex.: custo por lead, tempo médio de resposta, usuários sem atividade, integrações/jobs), então a UI mostra mensagem controlada em vez de erro bruto.
+  - Build local não pôde ser concluído por bloqueios de arquivo no Windows: `prisma generate` falhou com `EPERM unlink node_modules/.prisma/client/index.js`; build direto do Next falhou com `EPERM open .next/trace`. A tentativa de remover `.next/trace` foi recusada pela política de permissões do ambiente.
+  - `npm run lint -- --quiet` global ainda aponta erros pré-existentes em `src/app/(dashboard)/vendedor-da-vez/page.tsx` e `src/app/(dashboard)/vendedor-da-vez/relatorios/page.tsx`, fora do escopo deste trabalho.
+- **Testes realizados:**
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx eslint "src/app/(dashboard)/dashboard/page.tsx" "src/components/dashboard/DashboardRouter.tsx" "src/lib/dashboard/dashboardProfiles.ts" "src/lib/dashboard/dashboardProfiles.test.ts" "src/lib/dashboard/getDashboardData.ts" "src/lib/dashboard/types.ts" "src/app/api/dashboard/summary/route.ts" --quiet` — verde.
+  - `npm test` — verde, 25 arquivos e 197 testes.
+  - `npm run build` — bloqueado antes do build por `EPERM` no `prisma generate`.
+  - `node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbopack` — bloqueado por `EPERM` em `.next/trace`.
+  - `npm run dev -- --port 3000` — iniciou o Next, mas caiu em seguida por `EPERM mkdir .next/dev`.
+- **Pendências futuras:**
+  - Fazer QA visual/login real por perfis simulados (Vendedor, Gerente, Gerente Geral, ADM/Master, Financeiro, Marketing, F&I, SDR, Compras, Auxiliar/Documentação) quando o ambiente permitir rodar servidor/build sem locks.
+  - Evoluir models/campos para métricas finas: custo por lead, tempo médio de resposta SDR, campanhas/anúncios, jobs/cron, integrações, atividade de usuários e documentação com SLA próprio.
+  - Considerar configuração futura por tenant para habilitar/ordenar widgets por cargo sem criar complexidade agora.

@@ -5,7 +5,7 @@
 //   • APP_WEB   — persiste no banco (tabela Notification) → polling/SSE
 //   • WHATSAPP  — delega ao meta-whatsapp.service
 //   • EMAIL     — placeholder (implementar com nodemailer quando necessário)
-//   • APP_MOBILE / PUSH — placeholder para FCM futuro
+//   • APP_MOBILE / PUSH — push genérico via FCM nativo e Web Push/VAPID
 //
 // Uso:
 //   await NotificationService.notify({
@@ -22,10 +22,13 @@
 import { prisma } from '@/lib/prisma'
 import { getTenantWhatsappConfig } from '@/lib/whatsapp/credentials'
 import { getWhatsappAdapter } from '@/lib/whatsapp/registry'
+import { sendGenericPush, type GenericPushChannel } from '@/lib/push/notification-push'
+import type { NotificationPreference } from '@prisma/client'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 export type NotifyChannel = 'APP_WEB' | 'APP_MOBILE' | 'WHATSAPP' | 'EMAIL' | 'PUSH'
+const REALTIME_CHANNELS: NotifyChannel[] = ['APP_WEB', 'APP_MOBILE', 'PUSH']
 
 export interface NotifyPayload {
   userId:    string
@@ -170,6 +173,48 @@ async function createWebNotification(payload: NotifyPayload): Promise<string | n
   }
 }
 
+async function loadPreference(userId: string): Promise<NotificationPreference | null> {
+  return prisma.notificationPreference.findUnique({ where: { userId } }).catch(() => null)
+}
+
+function typeAllowed(pref: NotificationPreference | null, type: string): boolean {
+  if (!pref) return true
+  if (type === 'NOVA_PENDENCIA') return pref.newPendency
+  if (type === 'PENDENCIA_CRITICA' || type === 'ESCALONAMENTO') return pref.pendencyUrgent
+  if (type === 'COMISSAO_APROVADA' || type === 'COMISSAO_PAGA') return pref.commissionPaid
+  return pref.systemAlerts
+}
+
+function channelAllowed(pref: NotificationPreference | null, channel: NotifyChannel, type: string): boolean {
+  if (!typeAllowed(pref, type)) return false
+  if (!pref) return true
+  switch (channel) {
+    case 'APP_WEB':    return pref.appWeb
+    case 'APP_MOBILE': return pref.appMobile
+    case 'PUSH':       return pref.push
+    case 'WHATSAPP':   return pref.whatsapp
+    case 'EMAIL':      return pref.email
+  }
+}
+
+async function createSkippedDelivery(
+  notificationId: string | null,
+  userId: string,
+  channel: NotifyChannel,
+  reason: string,
+): Promise<void> {
+  if (!notificationId) return
+  await prisma.notificationDelivery.create({
+    data: {
+      notificationId,
+      userId,
+      channel,
+      status: 'CANCELADO',
+      errorMessage: reason,
+    },
+  }).catch(() => {})
+}
+
 // ── API pública ───────────────────────────────────────────────────────────────
 
 /**
@@ -177,11 +222,12 @@ async function createWebNotification(payload: NotifyPayload): Promise<string | n
  */
 export async function notify(payload: NotifyPayload): Promise<void> {
   const channels = payload.channels ?? ['APP_WEB']
+  const preference = await loadPreference(payload.userId)
 
   // Cria a notification APP_WEB primeiro (se solicitada) — outros canais
   // referenciam o id pra registrar delivery.
   let notificationId: string | null = null
-  if (channels.includes('APP_WEB')) {
+  if (channels.includes('APP_WEB') && channelAllowed(preference, 'APP_WEB', payload.type)) {
     notificationId = await createWebNotification(payload)
   }
 
@@ -190,10 +236,17 @@ export async function notify(payload: NotifyPayload): Promise<void> {
     channels.map(async (ch) => {
       switch (ch) {
         case 'APP_WEB':
-          // já criado acima
+          if (!channelAllowed(preference, ch, payload.type)) {
+            await createSkippedDelivery(notificationId, payload.userId, ch, 'Preferência do usuário desativou este canal.')
+          }
+          // já criado acima quando permitido
           break
 
         case 'WHATSAPP': {
+          if (!channelAllowed(preference, ch, payload.type)) {
+            await createSkippedDelivery(notificationId, payload.userId, ch, 'Preferência do usuário desativou este canal.')
+            break
+          }
           const contact = await loadUserContact(payload.userId)
           await sendWhatsappBestEffort(
             notificationId,
@@ -206,6 +259,10 @@ export async function notify(payload: NotifyPayload): Promise<void> {
         }
 
         case 'EMAIL':
+          if (!channelAllowed(preference, ch, payload.type)) {
+            await createSkippedDelivery(notificationId, payload.userId, ch, 'Preferência do usuário desativou este canal.')
+            break
+          }
           await sendEmailBestEffort(
             notificationId,
             payload.userId,
@@ -216,9 +273,28 @@ export async function notify(payload: NotifyPayload): Promise<void> {
           break
 
         case 'APP_MOBILE':
-        case 'PUSH':
-          // TODO: FCM via MobileDevice tokens
+        case 'PUSH': {
+          if (!channelAllowed(preference, ch, payload.type)) {
+            await createSkippedDelivery(notificationId, payload.userId, ch, 'Preferência do usuário desativou este canal.')
+            break
+          }
+          await sendGenericPush({
+            userId:         payload.userId,
+            notificationId,
+            type:           (payload.metadata?.pushType as string | undefined) ?? 'NOTIFICATION',
+            title:          payload.title,
+            body:           payload.message,
+            url:            payload.actionUrl ?? '/dashboard',
+            entityType:     payload.metadata?.entityType as string | undefined,
+            entityId:       payload.metadata?.entityId as string | undefined,
+            priority:       payload.metadata?.priority as never,
+            data:           {
+              notificationType: payload.type,
+              ...(payload.metadata?.pushData as Record<string, string> | undefined ?? {}),
+            },
+          }, [ch as GenericPushChannel])
           break
+        }
       }
     }),
   )
@@ -295,7 +371,7 @@ export async function notifyPendency(params: {
     message:   params.message,
     actionUrl: params.actionUrl ?? `/pendencias/central`,
     metadata:  { pendencyId: params.pendencyId },
-    channels:  ['APP_WEB'],
+    channels:  REALTIME_CHANNELS,
   })
 }
 
@@ -328,7 +404,7 @@ export async function notifyAllTenant(params: {
     message:   params.message,
     actionUrl: params.actionUrl,
     metadata:  params.metadata,
-    channels:  params.channels ?? ['APP_WEB'],
+    channels:  params.channels ?? REALTIME_CHANNELS,
   })
 }
 
@@ -363,7 +439,7 @@ export async function notifyDealApproved(ctx: DealNotifContext): Promise<void> {
     message,
     actionUrl: `/negociacoes/${ctx.dealId}`,
     metadata:  { dealId: ctx.dealId, dealNumber: ctx.dealNumber, dealType: ctx.dealType },
-    channels:  ['APP_WEB', 'WHATSAPP', 'EMAIL'],
+    channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH', 'WHATSAPP', 'EMAIL'],
   })
 }
 
@@ -396,7 +472,7 @@ export async function notifyDealSubmittedForApproval(params: {
       message,
       actionUrl,
       metadata:  { dealId: params.dealId, dealNumber: params.dealNumber },
-      channels:  ['APP_WEB', 'WHATSAPP'],
+      channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH', 'WHATSAPP'],
     })
   }
 
@@ -410,7 +486,7 @@ export async function notifyDealSubmittedForApproval(params: {
     message,
     actionUrl,
     metadata:  { dealId: params.dealId, dealNumber: params.dealNumber },
-    channels:  ['APP_WEB', 'WHATSAPP'],
+    channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH', 'WHATSAPP'],
   }).catch((e) => console.warn('[notifyDealSubmittedForApproval] role broadcast failed:', e))
 }
 
