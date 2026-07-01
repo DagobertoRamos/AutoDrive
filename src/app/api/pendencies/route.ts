@@ -179,6 +179,7 @@ export async function POST(req: NextRequest) {
     const pendency = await prisma.pendency.create({
       data: {
         ...rest,
+        tenantId:    session.user.tenantId ?? null, // sem isso a pendência fica órfã e some da lista
         dueDate:     dueDate ? new Date(dueDate) : null,
         slaMinutes:  slaMinutes,
         slaDeadline,
