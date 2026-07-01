@@ -269,8 +269,8 @@ export default function GerentesPage() {
       const method = editing ? 'PUT' : 'POST'
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
       if (!res.ok) {
-        const json = await res.json()
-        throw new Error(json?.message ?? 'Erro ao salvar')
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error ?? json?.message ?? `Erro ao salvar (HTTP ${res.status}).`)
       }
       setModalOpen(false)
       setSuccessMsg(editing ? 'Gerente atualizado!' : 'Gerente criado!')

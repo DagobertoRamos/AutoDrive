@@ -81,3 +81,8 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
     return handlePrismaError(err)
   }
 }
+
+// A tela de cadastro de gerentes edita via PUT; a rota implementa PATCH (update
+// parcial). Sem este alias, o PUT caía em 405 com corpo VAZIO → o cliente
+// quebrava com "Unexpected end of JSON input" ao ler res.json().
+export const PUT = PATCH
