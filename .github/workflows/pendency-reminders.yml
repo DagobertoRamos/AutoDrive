@@ -22,10 +22,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Disparar lembretes de pendência
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          # Falha cedo (e claro) se o segredo do GitHub não estiver configurado.
+          if [ -z "$CRON_SECRET" ]; then
+            echo "ERRO: o secret CRON_SECRET NÃO está definido neste repositório (GitHub → Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
           code=$(curl -sS -o /tmp/out.json -w "%{http_code}" -X POST \
             "https://auto-drive-mocha.vercel.app/api/internal/pendencies/reminders/run" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}")
+            -H "x-cron-secret: $CRON_SECRET")
           echo "HTTP $code"
           cat /tmp/out.json || true
+          if [ "$code" = "401" ]; then
+            echo ""
+            echo ">> 401 = o valor do CRON_SECRET aqui no GitHub NÃO bate com o da Vercel,"
+            echo "   ou a Vercel não foi redeployada depois de definir o CRON_SECRET."
+            echo "   Confira: mesmo valor nos dois + redeploy na Vercel."
+          fi
           test "$code" = "200"
