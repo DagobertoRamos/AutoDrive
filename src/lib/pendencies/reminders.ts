@@ -85,7 +85,9 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
     const tid = p.tenantId ?? ''
     let cfg = cfgCache.get(tid)
     if (!cfg) { cfg = await loadAutoSend(tid); cfgCache.set(tid, cfg) }
-    if (!cfg.enabled) { skipped++; continue }
+    // A pendência com "Lembrar" ligado (automaticSend) já basta — a config da
+    // loja só define os PADRÕES de janela/frequência/máximo (não é interruptor
+    // que desliga o lembrete individual). A janela de horário/dias é respeitada.
 
     const maxSends = p.maxSends ?? cfg.maxSends
     if (maxSends && p.totalSent >= maxSends) {
