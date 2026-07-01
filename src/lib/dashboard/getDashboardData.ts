@@ -5,13 +5,19 @@ import type {
   Prisma,
 } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { canAccessModule, type UserRole } from '@/lib/permissions'
+import type { UserRole } from '@/lib/permissions'
 import type { SessionUser } from '@/lib/auth-guards'
 import { assertTenantId } from '@/lib/auth-guards'
 import { aggregateAchieved, type AggregationScope } from '@/lib/goals/aggregators'
 import { computeRanking } from '@/lib/ranking/service'
 import { num } from '@/lib/finance/finance-service'
 import { resolveDashboardProfile } from '@/lib/dashboard/dashboardProfiles'
+import {
+  filterDashboardMetrics,
+  filterDashboardSection,
+  filterDashboardSections,
+  resolveDashboardDataLoadPlan,
+} from '@/lib/dashboard/dashboardWidgets'
 import type {
   DashboardListItem,
   DashboardMetric,
@@ -19,6 +25,8 @@ import type {
   DashboardSection,
   DashboardSummary,
 } from '@/lib/dashboard/types'
+import { getTenantServicesForUser } from '@/lib/tenant-services/resolveTenantServices'
+import type { TenantServiceKey } from '@/lib/tenant-services/types'
 
 const NO_MATCH = '__dashboard_no_match__'
 
@@ -162,6 +170,97 @@ interface RawDashboardMetrics {
   units: DashboardListItem[]
 }
 
+function emptyRawDashboardMetrics(): RawDashboardMetrics {
+  return {
+    commercial: {
+      vendasTrocas: 0,
+      compras: 0,
+      consignacoes: 0,
+      propostasAbertas: 0,
+      propostasAprovadas: 0,
+      propostasPerdidas: 0,
+      aguardandoAprovacao: 0,
+      aguardandoFinanceiro: 0,
+      aguardandoDocumentacao: 0,
+      retornos: 0,
+      garantias: 0,
+      servicos: 0,
+      valorVendido: 0,
+    },
+    pendencies: {
+      abertas: 0,
+      minhas: 0,
+      atribuidas: 0,
+      vencidas: 0,
+      vencendoHoje: 0,
+      criticas: 0,
+      aguardandoGerente: 0,
+      financeiras: 0,
+      documentacao: 0,
+      porResponsavel: [],
+    },
+    goals: {
+      minhas: 0,
+      unidade: 0,
+      tenant: 0,
+    },
+    ranking: {
+      unitTop: [],
+      tenantTop: [],
+      myUnitRank: null,
+      myTenantRank: null,
+    },
+    leads: {
+      total: 0,
+      novos: 0,
+      semAtendimento: 0,
+      emAtendimento: 0,
+      perdidos: 0,
+      convertidos: 0,
+      meus: 0,
+      porOrigem: [],
+    },
+    financing: {
+      total: 0,
+      simulacoes: 0,
+      enviadas: 0,
+      aprovadas: 0,
+      recusadas: 0,
+      pendentes: 0,
+      docsPendentes: 0,
+      produtos: 0,
+      porBanco: [],
+      retornoEstimado: null,
+    },
+    finance: null,
+    purchases: {
+      avaliados: 0,
+      emAndamento: 0,
+      aprovados: 0,
+      pendentes: 0,
+      comprados: 0,
+      trocas: 0,
+      estoquePrevisto: 0,
+      aguardandoDocumentacao: 0,
+    },
+    documents: {
+      pendentes: 0,
+      contratos: 0,
+      assinaturas: 0,
+      entregas: 0,
+      vistorias: 0,
+      transferencias: 0,
+    },
+    system: {
+      usuariosAtivos: 0,
+      unidades: 0,
+      pendenciasCriticas: 0,
+      alertasSistema: 0,
+    },
+    units: [],
+  }
+}
+
 function monthRange(now: Date) {
   return {
     start: new Date(now.getFullYear(), now.getMonth(), 1),
@@ -287,6 +386,13 @@ function aggregationScope(ctx: DashboardContext): AggregationScope {
   }
 }
 
+type WidgetServices = TenantServiceKey | TenantServiceKey[]
+
+function normalizeServices(services?: WidgetServices): TenantServiceKey[] | undefined {
+  if (!services) return undefined
+  return Array.isArray(services) ? services : [services]
+}
+
 function metric(
   id: string,
   label: string,
@@ -295,8 +401,9 @@ function metric(
   tone: DashboardMetric['tone'] = 'gray',
   icon: DashboardMetric['icon'] = 'activity',
   href?: string,
+  services?: WidgetServices,
 ): DashboardMetric {
-  return { id, label, value, helper, tone, icon, href }
+  return { id, label, value, helper, tone, icon, href, services: normalizeServices(services) }
 }
 
 function item(
@@ -306,8 +413,9 @@ function item(
   helper?: string,
   tone: DashboardListItem['tone'] = 'gray',
   href?: string,
+  services?: WidgetServices,
 ): DashboardListItem {
-  return { id, label, value, helper, tone, href }
+  return { id, label, value, helper, tone, href, services: normalizeServices(services) }
 }
 
 function section(
@@ -316,6 +424,7 @@ function section(
   items: DashboardListItem[],
   description?: string,
   icon: DashboardSection['icon'] = 'activity',
+  services?: WidgetServices,
 ): DashboardSection {
   return {
     id,
@@ -324,6 +433,7 @@ function section(
     icon,
     items,
     emptyText: 'Dados ainda não disponíveis para este módulo.',
+    services: normalizeServices(services),
   }
 }
 
@@ -871,7 +981,7 @@ function commonSection(raw: RawDashboardMetrics, profile: DashboardProfile): Das
         : 'Ranking disponível conforme permissão'
 
   return section('resumo-comercial', 'Resumo Comercial', [
-    item('vendas-mes', 'Vendas e trocas do mês', raw.commercial.vendasTrocas, profile.scopeLabel, 'brand', '/ranking/geral'),
+    item('vendas-mes', 'Vendas e trocas do mês', raw.commercial.vendasTrocas, profile.scopeLabel, 'brand', '/negociacoes', 'negociacoes'),
     item('meta-mes', 'Metas ativas', raw.goals.minhas + raw.goals.unidade + raw.goals.tenant, 'Individuais, unidade e tenant', 'green', '/metas'),
     item('ranking-resumo', 'Ranking resumido', raw.ranking.unitTop[0]?.label ?? 'Sem ranking calculado', rankingHint, 'amber', '/ranking/geral'),
     item('pendencias-criticas', 'Pendências críticas', raw.pendencies.criticas, 'Abertas no escopo permitido', raw.pendencies.criticas > 0 ? 'red' : 'gray', '/pendencias/central'),
@@ -910,7 +1020,7 @@ function buildSeller(raw: RawDashboardMetrics): { highlights: DashboardMetric[];
 function buildManager(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
   return {
     highlights: [
-      metric('vendas-unidade', 'Vendas da unidade', raw.commercial.vendasTrocas, 'Mês atual', 'brand', 'sales', '/ranking/unidade'),
+      metric('vendas-unidade', 'Vendas da unidade', raw.commercial.vendasTrocas, 'Mês atual', 'brand', 'sales', '/negociacoes'),
       metric('propostas-andamento', 'Negociações em andamento', raw.commercial.propostasAbertas, 'Abertas na unidade', 'blue', 'activity', '/negociacoes'),
       metric('pendencias-criticas', 'Pendências críticas', raw.pendencies.criticas, 'Unidade', raw.pendencies.criticas > 0 ? 'red' : 'gray', 'alert', '/pendencias/gerencia'),
       metric('ranking-equipe', 'Equipe no ranking', raw.ranking.unitTop.length, 'Vendedores ranqueados', 'amber', 'ranking', '/ranking/unidade'),
@@ -951,7 +1061,7 @@ function buildManager(raw: RawDashboardMetrics): { highlights: DashboardMetric[]
 function buildGeneralManager(raw: RawDashboardMetrics): { highlights: DashboardMetric[]; sections: DashboardSection[] } {
   return {
     highlights: [
-      metric('vendas-tenant', 'Vendas totais', raw.commercial.vendasTrocas, 'Tenant no mês', 'brand', 'sales', '/relatorios/negociacoes/vendas'),
+      metric('vendas-tenant', 'Vendas totais', raw.commercial.vendasTrocas, 'Tenant no mês', 'brand', 'sales', '/negociacoes'),
       metric('unidades', 'Unidades ativas', raw.system.unidades, 'Tenant', 'blue', 'users', '/cadastros/unidades'),
       metric('pendencias-vencidas', 'Pendências vencidas', raw.pendencies.vencidas, 'Tenant', raw.pendencies.vencidas > 0 ? 'red' : 'gray', 'alert', '/relatorios/pendencias/sla'),
       metric('valor-vendido', 'Valor vendido', fmtCurrency(raw.commercial.valorVendido), 'Mês atual', 'green', 'money', '/relatorios/financeiro/visao-geral'),
@@ -1169,9 +1279,12 @@ function buildDashboard(raw: RawDashboardMetrics, profile: DashboardProfile): { 
 
 export async function getDashboardData(user: SessionUser): Promise<DashboardSummary> {
   const tenantId = assertTenantId(user.tenantId, user.role)
-  const actor = await loadActorContext(user)
+  const [actor, tenantServices] = await Promise.all([
+    loadActorContext(user),
+    getTenantServicesForUser(user),
+  ])
   const effectiveUnitId = user.unitId ?? actor.dbUser?.seller?.unitId ?? actor.dbUser?.manager?.unitId ?? null
-  const profile = resolveDashboardProfile({
+  const baseProfile = resolveDashboardProfile({
     role: user.role as UserRole,
     positionName: actor.positionName,
     positionSlug: actor.positionSlug,
@@ -1180,6 +1293,12 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardSumm
     unitName: actor.dbUser?.unit?.name ?? null,
     isSdrMember: actor.isSdrMember,
   })
+  const services = tenantServices.flags
+  const profile: DashboardProfile = {
+    ...baseProfile,
+    canSeeFinancial: baseProfile.canSeeFinancial && services.financeiro,
+    canSeeRanking: baseProfile.canSeeRanking && services.ranking,
+  }
 
   const ctx: DashboardContext = {
     user,
@@ -1197,10 +1316,15 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardSumm
   if (profile.scope === 'SELF' && !ctx.sellerId) {
     warnings.push('Usuário sem cadastro de vendedor vinculado. Métricas individuais podem ficar zeradas.')
   }
+  if (!Object.values(services).some(Boolean)) {
+    warnings.push('Nenhum serviço ativo foi encontrado para este usuário. O dashboard foi mantido sem blocos de módulos.')
+  }
 
   const now = new Date()
   const { start, end } = monthRange(now)
   const today = todayRange(now)
+  const empty = emptyRawDashboardMetrics()
+  const loadPlan = resolveDashboardDataLoadPlan(services)
 
   const [
     commercial,
@@ -1215,17 +1339,17 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardSumm
     system,
     units,
   ] = await Promise.all([
-    loadCommercial(ctx, start, end),
-    loadPendencies(ctx, now, today.start, today.end),
-    loadGoals(ctx),
-    loadRanking(ctx),
-    loadLeads(ctx, start, end),
-    loadFinancing(ctx, start, end),
-    loadFinance(ctx, start, end),
-    loadPurchases(ctx, start, end),
-    loadDocuments(ctx),
-    loadSystem(ctx),
-    loadUnits(ctx, start, end),
+    loadPlan.commercial ? loadCommercial(ctx, start, end) : Promise.resolve(empty.commercial),
+    loadPlan.pendencies ? loadPendencies(ctx, now, today.start, today.end) : Promise.resolve(empty.pendencies),
+    loadPlan.goals ? loadGoals(ctx) : Promise.resolve(empty.goals),
+    loadPlan.ranking && profile.canSeeRanking ? loadRanking(ctx) : Promise.resolve(empty.ranking),
+    loadPlan.leads ? loadLeads(ctx, start, end) : Promise.resolve(empty.leads),
+    loadPlan.financing ? loadFinancing(ctx, start, end) : Promise.resolve(empty.financing),
+    loadPlan.finance && profile.canSeeFinancial ? loadFinance(ctx, start, end) : Promise.resolve(empty.finance),
+    loadPlan.purchases ? loadPurchases(ctx, start, end) : Promise.resolve(empty.purchases),
+    loadPlan.documents ? loadDocuments(ctx) : Promise.resolve(empty.documents),
+    loadPlan.system ? loadSystem(ctx) : Promise.resolve(empty.system),
+    loadPlan.units ? loadUnits(ctx, start, end) : Promise.resolve(empty.units),
   ])
 
   const raw: RawDashboardMetrics = {
@@ -1242,17 +1366,25 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardSumm
     units,
   }
   const roleDashboard = buildDashboard(raw, profile)
+  const common = filterDashboardSection(commonSection(raw, profile), services) ?? section(
+    'servicos-indisponiveis',
+    'Serviços disponíveis',
+    [],
+    'Nenhum widget ativo para os serviços habilitados neste perfil.',
+    'system',
+  )
 
   return {
     profile,
+    services,
     period: {
       label: 'Mês atual',
       start: start.toISOString(),
       end: end.toISOString(),
     },
-    highlights: roleDashboard.highlights,
-    sections: roleDashboard.sections,
-    commonSection: commonSection(raw, profile),
+    highlights: filterDashboardMetrics(roleDashboard.highlights, services),
+    sections: filterDashboardSections(roleDashboard.sections, services),
+    commonSection: common,
     warnings,
   }
 }

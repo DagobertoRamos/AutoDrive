@@ -168,6 +168,16 @@ function RoleDashboardView({
   refreshing,
   onRefresh,
 }: DashboardRouterProps) {
+  const showGoalsPanel = summary.services.metas
+  const showRankingPanel = summary.profile.canSeeRanking && summary.services.ranking
+  const showCommonSection = summary.commonSection.items.length > 0
+  const hasContent =
+    summary.highlights.length > 0 ||
+    summary.sections.length > 0 ||
+    showGoalsPanel ||
+    showRankingPanel ||
+    showCommonSection
+
   return (
     <div className="max-w-screen-2xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -198,22 +208,41 @@ function RoleDashboardView({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {summary.highlights.map((metric) => <MetricCard key={metric.id} metric={metric} />)}
-      </div>
+      {!hasContent && (
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-card">
+          <h2 className="text-sm font-semibold text-gray-800">Nenhum bloco ativo para este perfil.</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Os módulos disponíveis para este usuário ainda não possuem widgets habilitados no dashboard.
+          </p>
+        </div>
+      )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
-        <GoalsPanel />
-        {summary.profile.canSeeRanking ? <RankingPositionCard /> : <SectionCard section={summary.commonSection} />}
-      </div>
+      {summary.highlights.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {summary.highlights.map((metric) => <MetricCard key={metric.id} metric={metric} />)}
+        </div>
+      )}
 
-      {summary.profile.canSeeRanking && <SectionCard section={summary.commonSection} />}
+      {(showGoalsPanel || showRankingPanel || showCommonSection) && (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
+          {showGoalsPanel && <GoalsPanel />}
+          {showRankingPanel
+            ? <RankingPositionCard />
+            : showCommonSection
+              ? <SectionCard section={summary.commonSection} />
+              : null}
+        </div>
+      )}
 
-      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-        {summary.sections.map((dashboardSection) => (
-          <SectionCard key={dashboardSection.id} section={dashboardSection} />
-        ))}
-      </div>
+      {showRankingPanel && showCommonSection && <SectionCard section={summary.commonSection} />}
+
+      {summary.sections.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+          {summary.sections.map((dashboardSection) => (
+            <SectionCard key={dashboardSection.id} section={dashboardSection} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

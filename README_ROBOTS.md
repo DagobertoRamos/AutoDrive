@@ -1413,3 +1413,47 @@
   - **Popup "Ciente" ao entrar** (novo): `GET /api/pendencies/mine/pending-ack` (pendências abertas do responsável sem Ciente), `POST /api/pendencies/[id]/acknowledge` (grava comentário marcador `✅ Ciente` na linha do tempo + marca notificação lida), `lib/pendencies/ack.ts` (marcador), componente `PendencyAckWatcher` montado no `DashboardShell` (abre 1x/sessão, botões "Ciente"/"Ciente em todas").
 - **Validações:** `tsc --noEmit` — meus arquivos verdes (0 erros). ⚠️ Há **1 erro pré-existente FORA do meu escopo** em `src/lib/dashboard/getDashboardData.ts:1265` (`Property 'services' is missing`), do trabalho **não-commitado** do LOG 0119 (dashboard por cargo). NÃO commitei esse arquivo — só meus 8 arquivos de pendência. **Atenção:** esse arquivo do dashboard precisa ser corrigido antes de ser commitado/deployado.
 - **Escopo:** só pendências (sininho/histórico/popup). Sem schema, sem permissões alteradas.
+
+### LOG 0121 — 2026-07-01 16:55:41 -03:00 — Codex (GPT-5) — Dashboard respeita serviços ativos do tenant
+- **Branch:** `main` (worktree local). Sem migration nova.
+- **Tarefa executada:** aplicar o prompt de serviços ativos no dashboard: cada bloco agora respeita cargo/permissão, tenant, unidade, bloqueios por colaborador e módulos contratados/ativos do tenant. Também corrige o aviso do LOG 0120 sobre `DashboardSummary.services`.
+- **Entregue:**
+  - Nova camada central `src/lib/tenant-services/*`, reaproveitando `TenantModule`, `UserModule`, `open_modules`, `canAccessModule` e o padrão do menu. Serviço desligado no tenant ou removido do colaborador não fica disponível no dashboard.
+  - Novo decisor central `src/lib/dashboard/dashboardWidgets.ts`, com mapa de serviços por widget e plano de carregamento de dados. Quando um serviço está desligado, o dashboard não renderiza o widget e não chama o loader daquela área.
+  - `getDashboardData` agora devolve `services`, aplica `canSeeFinancial/canSeeRanking` com os serviços efetivos e substitui loaders desativados por métricas vazias sem tocar banco.
+  - `DashboardRouter` não monta `GoalsPanel` nem `RankingPositionCard` quando Metas/Ranking estiverem indisponíveis, evitando fetch client-side de módulo desligado.
+  - Atalhos comerciais antigos que apontavam para ranking/relatórios foram ajustados para `/negociacoes` quando o card é de vendas.
+  - Testes unitários novos para resolução de serviços e filtro/plano de widgets.
+- **Arquivos alterados/criados:**
+  - `src/lib/tenant-services/types.ts` (novo)
+  - `src/lib/tenant-services/resolveTenantServices.ts` (novo)
+  - `src/lib/tenant-services/resolveTenantServices.test.ts` (novo)
+  - `src/lib/dashboard/dashboardWidgets.ts` (novo)
+  - `src/lib/dashboard/dashboardWidgets.test.ts` (novo)
+  - `src/lib/dashboard/types.ts`
+  - `src/lib/dashboard/getDashboardData.ts`
+  - `src/components/dashboard/DashboardRouter.tsx`
+- **Validações:**
+  - `npx vitest run src/lib/tenant-services/resolveTenantServices.test.ts src/lib/dashboard/dashboardWidgets.test.ts` — verde, 8 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx eslint src/lib/tenant-services/types.ts src/lib/tenant-services/resolveTenantServices.ts src/lib/tenant-services/resolveTenantServices.test.ts src/lib/dashboard/dashboardWidgets.ts src/lib/dashboard/dashboardWidgets.test.ts src/lib/dashboard/types.ts src/lib/dashboard/getDashboardData.ts src/components/dashboard/DashboardRouter.tsx` — verde.
+  - `npm test` — verde, 27 arquivos e 205 testes.
+  - `npm run build` — bloqueado localmente no Windows por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate` (mesmo tipo de lock já observado no LOG 0119).
+- **Deploy manual desta entrega:**
+  1. No terminal, entrar no worktree:
+     ```
+     cd "D:\Sistema de avisos\Robo\.claude\worktrees\distracted-dhawan-fd8ce5"
+     ```
+  2. Conferir, commitar e enviar:
+     ```
+     git status
+     git add -A
+     git commit -m "Respeitar servicos ativos no dashboard"
+     git push origin main
+     ```
+  3. Se a Vercel estiver conectada ao GitHub, o push para `main` deve iniciar o deploy automaticamente. Se não iniciar, abrir o projeto na Vercel > **Deployments** > **Redeploy** no commit mais recente da `main`.
+  4. Esta entrega não cria migration. Rodar `npx prisma migrate deploy` apenas se houver migrations antigas pendentes já aprovadas para produção.
+  5. Smoke pós-deploy: logar com perfis diferentes, desativar um módulo em Master > Módulos, confirmar que menu e dashboard escondem o mesmo serviço e que Metas/Ranking não fazem chamada quando desligados.
+- **Riscos/observações:**
+  - O mapeamento usa os módulos reais já existentes. Serviços sem domínio próprio no schema atual (ex.: portais/pós-venda) foram associados aos módulos operacionais mais próximos para não criar uma segunda fonte de verdade.
+  - Alguns blocos mistos ficam visíveis se pelo menos um serviço do bloco estiver ativo, mas os itens internos são filtrados por serviço quando identificáveis.

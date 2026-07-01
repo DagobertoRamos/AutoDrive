@@ -1,3 +1,5 @@
+import type { TenantServiceFlags, TenantServiceKey } from '@/lib/tenant-services/types'
+
 export type DashboardRoleKind =
   | 'VENDEDOR'
   | 'GERENTE'
@@ -63,6 +65,7 @@ export interface DashboardMetric {
   tone?: DashboardTone
   icon?: DashboardIcon
   href?: string
+  services?: TenantServiceKey[]
 }
 
 export interface DashboardListItem {
@@ -72,6 +75,7 @@ export interface DashboardListItem {
   helper?: string
   tone?: DashboardTone
   href?: string
+  services?: TenantServiceKey[]
 }
 
 export interface DashboardSection {
@@ -81,10 +85,12 @@ export interface DashboardSection {
   icon?: DashboardIcon
   items: DashboardListItem[]
   emptyText?: string
+  services?: TenantServiceKey[]
 }
 
 export interface DashboardSummary {
   profile: DashboardProfile
+  services: TenantServiceFlags
   period: {
     label: string
     start: string
