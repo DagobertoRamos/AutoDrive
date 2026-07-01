@@ -84,7 +84,7 @@ export const STATUS_CONFIG: Record<
     borderClass: 'border-violet-200',
   },
   CANCELADA: {
-    label:       'Cancelada',
+    label:       'Arquivada',
     bgClass:     'bg-gray-200',
     textClass:   'text-gray-700',
     borderClass: 'border-gray-300',

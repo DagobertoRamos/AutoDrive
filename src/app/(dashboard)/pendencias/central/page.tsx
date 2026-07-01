@@ -11,7 +11,7 @@ import { useSession } from 'next-auth/react'
 import {
   RefreshCw, Search, Eye, Filter, AlertTriangle, Activity,
   BarChart2, UserCheck, Clock, Zap, PlayCircle, ArrowUpCircle, UserCog, ShieldAlert,
-  CheckCircle2, XCircle, Timer, Inbox, Plus,
+  CheckCircle2, XCircle, Timer, Inbox, Plus, Archive,
 } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from '@/components/pendencies/PendencyStatusBadge'
 import { PendencyModal } from '@/components/pendencies/PendencyModal'
@@ -118,6 +118,7 @@ const STATUS_TABS = [
   { key: 'EM_ANDAMENTO', label: 'Em Andamento', icon: Activity },
   { key: 'VENCIDA',      label: 'Vencidas',     icon: XCircle },
   { key: 'FINALIZADA',   label: 'Finalizadas',  icon: CheckCircle2 },
+  { key: 'CANCELADA',    label: 'Arquivo',      icon: Archive },
 ]
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ const STATUS_TABS = [
 export default function CentralAvisosPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role ?? ''
-  const isManager= ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role)
+  const isManager= ['MASTER', 'ADM', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'].includes(role)
 
   const [pendencies,   setPendencies]   = useState<PendencyWithRelations[]>([])
   const [loading,      setLoading]      = useState(true)
@@ -300,6 +301,11 @@ export default function CentralAvisosPage() {
 
   const hasActiveFilters = filters.search || filters.priority || filters.severity
     || filters.unitId || filters.originModule || filters.assignedOnly || filters.slaVencida
+  const isArchiveView = filters.status === 'CANCELADA'
+  const tableHeaders = isArchiveView
+    ? ['Prioridade', 'Status', 'Cliente', 'Tipo / Módulo', 'Responsável', 'Unidade', 'Vencimento', 'Resolvida', 'Arquivada', 'Arquivou', 'Ações']
+    : ['Prioridade / Severidade', 'Status', 'Cliente', 'Módulo', 'Vendedor', 'Unidade', 'SLA', 'Vencimento', 'Atribuído', 'Ações']
+  const colSpan = tableHeaders.length
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -434,7 +440,7 @@ export default function CentralAvisosPage() {
           <input
             value={filters.search}
             onChange={(e) => setFilter('search', e.target.value)}
-            placeholder="Buscar cliente, placa, veículo..."
+            placeholder="Buscar cliente, placa, assunto, responsável..."
             className="input pl-9"
           />
         </div>
@@ -503,9 +509,7 @@ export default function CentralAvisosPage() {
             <thead className="bg-gray-50">
               <tr>
                 {[
-                  'Prioridade / Severidade', 'Status', 'Cliente',
-                  'Módulo', 'Vendedor', 'Unidade',
-                  'SLA', 'Vencimento', 'Atribuído', 'Ações',
+                  ...tableHeaders,
                 ].map((h) => (
                   <th
                     key={h}
@@ -520,7 +524,7 @@ export default function CentralAvisosPage() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 10 }).map((_, j) => (
+                    {Array.from({ length: colSpan }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 animate-pulse rounded bg-gray-200" />
                       </td>
@@ -529,12 +533,12 @@ export default function CentralAvisosPage() {
                 ))
               ) : pendencies.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-14 text-center">
+                  <td colSpan={colSpan} className="py-14 text-center">
                     <Filter size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} />
-                    <p className="text-sm text-gray-400">Nenhuma pendência encontrada</p>
+                    <p className="text-sm text-gray-400">{isArchiveView ? 'Nenhuma pendência arquivada' : 'Nenhuma pendência encontrada'}</p>
                     {isManager && (
                       <p className="mt-1 text-xs text-gray-400">
-                        Tente executar uma varredura automática para detectar novas pendências.
+                        {isArchiveView ? 'Pendências arquivadas aparecerão aqui para consulta.' : 'Tente executar uma varredura automática para detectar novas pendências.'}
                       </p>
                     )}
                   </td>
@@ -547,9 +551,59 @@ export default function CentralAvisosPage() {
                     escalatedAt?:    string | null
                     assignedUser?:   { name: string } | null
                     originModule?:   string | null
+                    cancelReason?:   string | null
+                    statusHistory?:  Array<{ createdAt: string; reason?: string | null; changedByUser?: { name?: string | null } | null }>
                   }
                   const overdue = p.dueDate && new Date(p.dueDate) < new Date()
                   const isEscalated = Boolean(ext.escalatedAt)
+                  const archived = ext.statusHistory?.[0]
+
+                  if (isArchiveView) {
+                    return (
+                      <tr key={p.id} className="transition-colors hover:bg-gray-50">
+                        <td className="px-4 py-3"><PriorityBadge priority={p.priority} size="sm" /></td>
+                        <td className="px-4 py-3"><StatusBadge status={p.status} size="sm" /></td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <p className="font-medium text-gray-800">{p.customerName}</p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {p.plate && <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-600">{p.plate}</span>}
+                            {p.description && <span className="max-w-[220px] truncate text-xs text-gray-400">{p.description}</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-gray-700">{p.type ?? '—'}</span>
+                            <ModuleBadge module={ext.originModule} />
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">
+                          {p.responsible?.shortName ?? p.responsible?.fullName ?? '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">{p.unit?.name ?? '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
+                          {p.dueDate ? formatDate(new Date(p.dueDate)) : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
+                          {p.resolvedAt ? formatDate(new Date(p.resolvedAt)) : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
+                          {archived?.createdAt ? formatDate(new Date(archived.createdAt)) : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">
+                          {archived?.changedByUser?.name ?? '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setSelected(p)}
+                            title="Ver detalhes"
+                            className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  }
 
                   return (
                     <tr
@@ -627,7 +681,7 @@ export default function CentralAvisosPage() {
 
                       {/* Ações */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
+                        <div className="flex max-w-[120px] flex-wrap items-center gap-1">
                           <button
                             onClick={() => setSelected(p)}
                             title="Ver detalhes"

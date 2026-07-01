@@ -10,6 +10,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canAccessPendencyScope, isDeletedPendencyReason } from '@/lib/pendencies/access'
 
 export async function POST(_req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
@@ -23,12 +24,18 @@ export async function POST(_req: Request, ctxArg: { params: { id: string } | Pro
     const pendency = await prisma.pendency.findUnique({
       where:   { id: params.id },
       include: {
-        responsible: { select: { fullName: true } },
+        responsible: { select: { fullName: true, userId: true } },
         manager:     { select: { id: true, userId: true } },
       },
     })
 
     if (!pendency) {
+      return NextResponse.json({ success: false, error: 'Pendência não encontrada' }, { status: 404 })
+    }
+    if (!canAccessPendencyScope(session.user, pendency)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
+    if (isDeletedPendencyReason(pendency.cancelReason)) {
       return NextResponse.json({ success: false, error: 'Pendência não encontrada' }, { status: 404 })
     }
 

@@ -4,12 +4,19 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canActOn } from '@/lib/role-hierarchy'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import {
+  canAccessPendencyScope,
+  deletedPendencyReason,
+  isDeletedPendencyReason,
+  isPendencyGeneralManagerPlus,
+} from '@/lib/pendencies/access'
 
 const PENDENCY_INCLUDE = {
-  responsible: { select: { id: true, fullName: true, shortName: true, whatsapp: true } },
-  manager: { select: { id: true, fullName: true, whatsapp: true } },
+  responsible: { select: { id: true, fullName: true, shortName: true, whatsapp: true, userId: true } },
+  manager: { select: { id: true, fullName: true, whatsapp: true, userId: true } },
   unit: { select: { id: true, name: true } },
   resolvedByUser: { select: { id: true, name: true } },
+  assignedUser: { select: { id: true, name: true, role: true } },
   statusHistory: {
     orderBy: { createdAt: 'desc' as const },
     take: 20,
@@ -26,7 +33,17 @@ const PENDENCY_INCLUDE = {
 async function loadPendencyAndTargetRole(id: string) {
   const pendency = await prisma.pendency.findUnique({
     where: { id },
-    select: { id: true, tenantId: true, assignedUserId: true, resolvedByUserId: true },
+    select: {
+      id: true,
+      tenantId: true,
+      unitId: true,
+      status: true,
+      cancelReason: true,
+      assignedUserId: true,
+      resolvedByUserId: true,
+      responsible: { select: { userId: true } },
+      manager: { select: { userId: true } },
+    },
   })
   if (!pendency) return { pendency: null, targetRole: null }
   const targetUserId = pendency.assignedUserId ?? pendency.resolvedByUserId
@@ -51,6 +68,12 @@ export async function GET(req: Request, ctxArg: { params: { id: string } | Promi
     })
 
     if (!pendency) return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
+    if (isDeletedPendencyReason(pendency.cancelReason)) {
+      return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
+    }
+    if (!canAccessPendencyScope(session.user, pendency)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
 
     return NextResponse.json({ success: true, data: pendency })
   } catch {
@@ -67,6 +90,12 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
 
     const { pendency: target, targetRole } = await loadPendencyAndTargetRole(params.id)
     if (!target) return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
+    if (!canAccessPendencyScope(session.user, target)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
+    if (target.status === 'CANCELADA' || isDeletedPendencyReason(target.cancelReason)) {
+      return NextResponse.json({ success: false, error: 'Pendência arquivada ou excluída não pode ser editada.' }, { status: 409 })
+    }
 
     if (!canActOn(session.user.role, targetRole)) {
       return NextResponse.json({ success: false, error: 'Sem permissão para alterar esta pendência.' }, { status: 403 })
@@ -96,31 +125,64 @@ export async function DELETE(req: Request, ctxArg: { params: { id: string } | Pr
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
     { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
-    const allowed = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE']
-    if (!allowed.includes(session.user.role)) {
+    if (!isPendencyGeneralManagerPlus(session.user.role)) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
     }
 
     const { pendency: target, targetRole } = await loadPendencyAndTargetRole(params.id)
     if (!target) return NextResponse.json({ success: false, error: 'Não encontrada' }, { status: 404 })
-
-    if (!canActOn(session.user.role, targetRole)) {
-      return NextResponse.json({ success: false, error: 'Sem permissão para cancelar esta pendência.' }, { status: 403 })
+    if (!canAccessPendencyScope(session.user, target)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
     }
 
-    const before = await prisma.pendency.findUnique({ where: { id: params.id }, select: { status: true } })
+    if (!canActOn(session.user.role, targetRole)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão para excluir esta pendência.' }, { status: 403 })
+    }
+
+    if (!['FINALIZADA', 'CANCELADA'].includes(target.status)) {
+      return NextResponse.json({ success: false, error: 'Somente pendências resolvidas ou arquivadas podem ser excluídas.' }, { status: 409 })
+    }
+
+    const body = await req.json().catch(() => ({})) as { reason?: string }
+    const reason = body.reason?.trim() ?? ''
+    if (reason.length < 5) {
+      return NextResponse.json({ success: false, error: 'Informe o motivo da exclusão.' }, { status: 400 })
+    }
+
     await prisma.pendency.update({
       where: { id: params.id },
-      data: { status: 'CANCELADA' },
+      data: {
+        status: 'CANCELADA',
+        cancelReason: deletedPendencyReason(reason),
+        automaticSend: false,
+        nextSendAt: null,
+      },
     })
 
-    // Registra o arquivamento na linha do tempo (o histórico precisa cobrir tudo,
-    // do cadastro até a resolução/arquivamento).
+    // Exclusão lógica: mantém o registro e a auditoria, mas esconde das listagens.
     await prisma.pendencyStatusHistory.create({
-      data: { pendencyId: params.id, previousStatus: before?.status ?? null, newStatus: 'CANCELADA', changedByUserId: session.user.id },
+      data: {
+        pendencyId: params.id,
+        previousStatus: target.status,
+        newStatus: 'CANCELADA',
+        changedByUserId: session.user.id,
+        reason: `Excluída: ${reason}`,
+      },
+    }).catch(() => {})
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        userName: session.user.name,
+        userRole: session.user.role,
+        action: 'DELETE',
+        entity: 'Pendency',
+        entityId: params.id,
+        beforeData: { status: target.status, cancelReason: target.cancelReason },
+        afterData: { status: 'CANCELADA', deleted: true, reason },
+      },
     }).catch(() => {})
 
-    return NextResponse.json({ success: true, message: 'Pendência cancelada.' })
+    return NextResponse.json({ success: true, message: 'Pendência excluída.' })
   } catch {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }

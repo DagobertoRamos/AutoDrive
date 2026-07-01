@@ -8,6 +8,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canAccessPendencyScope, isDeletedPendencyReason } from '@/lib/pendencies/access'
 
 const schema = z.object({
   reason: z.string().min(1, 'Informe o motivo'),
@@ -32,13 +33,19 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     const pendency = await prisma.pendency.findUnique({
       where:   { id: params.id },
       include: {
-        responsible: { select: { fullName: true } },
+        responsible: { select: { fullName: true, userId: true } },
         manager:     { select: { userId: true } },
       },
     })
 
     if (!pendency) {
       return NextResponse.json({ success: false, error: 'Pendência não encontrada' }, { status: 404 })
+    }
+    if (!canAccessPendencyScope(session.user, pendency)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
+    if (pendency.status === 'CANCELADA' || isDeletedPendencyReason(pendency.cancelReason)) {
+      return NextResponse.json({ success: false, error: 'Pendência arquivada ou excluída não pode ser alterada.' }, { status: 409 })
     }
 
     await Promise.all([

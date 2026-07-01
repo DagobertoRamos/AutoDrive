@@ -1457,3 +1457,57 @@
 - **Riscos/observações:**
   - O mapeamento usa os módulos reais já existentes. Serviços sem domínio próprio no schema atual (ex.: portais/pós-venda) foram associados aos módulos operacionais mais próximos para não criar uma segunda fonte de verdade.
   - Alguns blocos mistos ficam visíveis se pelo menos um serviço do bloco estiver ativo, mas os itens internos são filtrados por serviço quando identificáveis.
+
+### LOG 0122 — 2026-07-01 18:23:45 -03:00 — Codex (GPT-5) — Central de Pendências: mobile Resolver + Arquivo + exclusão lógica
+- **Branch:** `main` (worktree local). Sem migration nova.
+- **Tarefa executada:** ajustes pontuais na Central de Pendências: corrigir ações do modal no mobile, adicionar aba **Arquivo**, permitir arquivamento de pendências resolvidas para gerente+ e exclusão lógica para gerente geral+.
+- **Arquivos alterados/criados:**
+  - `src/app/(dashboard)/pendencias/central/page.tsx`
+  - `src/components/pendencies/PendencyModal.tsx`
+  - `src/components/pendencies/PendencyStatusBadge.tsx`
+  - `src/app/api/pendencies/route.ts`
+  - `src/app/api/pendencies/[id]/route.ts`
+  - `src/app/api/pendencies/[id]/archive/route.ts` (novo)
+  - `src/app/api/pendencies/[id]/remind-now/route.ts`
+  - `src/app/api/pendencies/[id]/resolve/route.ts`
+  - `src/app/api/pendencies/[id]/review/route.ts`
+  - `src/app/api/pendencies/[id]/unresolved/route.ts`
+  - `src/app/api/reports/pendencies/route.ts`
+  - `src/lib/pendencies/access.ts` (novo)
+  - `src/lib/pendencies/access.test.ts` (novo)
+- **Resumo técnico:**
+  - O modal agora usa largura/padding responsivos (`max-w-[calc(100vw-1rem)]`, `90dvh`, `flex-col` no rodapé e botões `w-full` no mobile), evitando corte do botão **Resolvido** e scroll horizontal em telas estreitas.
+  - A Central ganhou aba **Arquivo** (`status=CANCELADA`) com colunas de dados principais, data de resolução, data de arquivamento e usuário que arquivou.
+  - Arquivamento usa rota dedicada `POST /api/pendencies/[id]/archive`, só para gerente+, somente quando a pendência está `FINALIZADA`, pausando lembretes (`automaticSend=false`, `nextSendAt=null`) e registrando histórico/auditoria.
+  - Exclusão é lógica, sem schema novo: gerente geral+/ADM/Master marca a pendência como `CANCELADA` com `cancelReason` prefixado por `[EXCLUIDA]`. Listagens e relatórios filtram esse marcador, mantendo o registro/auditoria no banco.
+  - Backend passou a validar escopo por tenant/unidade/usuário em detalhe, edição, resolução, revisão, cobrança manual, arquivamento e exclusão.
+  - A listagem principal esconde arquivadas por padrão; arquivadas aparecem apenas na aba Arquivo; excluídas não aparecem em listagens nem relatórios.
+- **Riscos observados:**
+  - Como não foi criada migration, o campo existente `cancelReason` foi usado como marcador interno para exclusão lógica. Se futuramente houver coluna própria (`deletedAt/deletedBy/archivedAt/archivedBy`), este marcador deve ser migrado.
+  - `CANCELADA` passa a ser exibida como **Arquivada** nas pendências para alinhar com a Central. Negociações e outros módulos mantêm seus próprios rótulos.
+  - QA visual real em navegador/mobile não foi possível porque o ambiente local segue com locks do Windows em `.next`/Prisma.
+- **Testes realizados:**
+  - `npx vitest run src/lib/pendencies/access.test.ts` — verde, 4 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx eslint ...arquivos alterados...` — 0 erros; 1 warning pré-existente em `central/page.tsx` (`react-hooks/set-state-in-effect` no carregamento inicial).
+  - `npm test` — verde, 28 arquivos e 209 testes.
+  - `git diff --check` — verde.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` no `prisma generate`.
+  - `node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbopack` — bloqueado localmente por `EPERM open .next/trace`.
+- **Deploy manual desta entrega:**
+  1. Entrar no worktree:
+     ```
+     cd "D:\Sistema de avisos\Robo\.claude\worktrees\distracted-dhawan-fd8ce5"
+     ```
+  2. Conferir, commitar e enviar:
+     ```
+     git status
+     git add -A
+     git commit -m "Ajustar arquivo e exclusao de pendencias"
+     git push origin main
+     ```
+  3. Se a Vercel estiver conectada ao GitHub, o push para `main` inicia o deploy automaticamente. Se não iniciar, usar **Deployments > Redeploy** no commit mais recente.
+  4. Esta entrega não cria migration. Rodar `npx prisma migrate deploy` apenas se houver migrations antigas pendentes já aprovadas.
+- **Pendências futuras:**
+  - Quando puder criar migration coordenada, adicionar campos próprios `archivedAt`, `archivedById`, `deletedAt`, `deletedById` e migrar o marcador `[EXCLUIDA]` de `cancelReason`.
+  - Fazer QA visual em browser real nas larguras 360/375/390/414/430 px após liberar os locks locais de `.next`/Prisma.

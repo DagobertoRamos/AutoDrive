@@ -7,10 +7,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
+import type { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { isPendencyManagerPlus, notDeletedPendencyWhere } from '@/lib/pendencies/access'
 
-const SELLER_ROLES   = ['VENDEDOR', 'USUARIO_LIDER', 'USUARIO']
+const NO_MATCH = '__pendency_no_match__'
 
 const PENDENCY_INCLUDE = {
   responsible:    { select: { id: true, fullName: true, shortName: true, whatsapp: true } },
@@ -18,6 +20,12 @@ const PENDENCY_INCLUDE = {
   unit:           { select: { id: true, name: true } },
   resolvedByUser: { select: { id: true, name: true } },
   assignedUser:   { select: { id: true, name: true, role: true } },
+  statusHistory: {
+    where: { newStatus: 'CANCELADA' },
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    include: { changedByUser: { select: { name: true } } },
+  },
 } as const
 
 // ── GET ───────────────────────────────────────────────────────────────────────
@@ -27,6 +35,10 @@ export async function GET(req: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
     }
+    if (!canAccessModule(session.user.role, 'pendencies') && !canAccessModule(session.user.role, 'pendencies.central')) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
+    { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
     const { searchParams } = new URL(req.url)
     const status        = searchParams.get('status')       || undefined
@@ -42,53 +54,60 @@ export async function GET(req: NextRequest) {
     const page          = Math.max(1, Number(searchParams.get('page')    ?? 1))
     const perPage       = Math.min(100, Number(searchParams.get('perPage') ?? 50))
 
-    const where: Record<string, unknown> = {}
+    const where: Prisma.PendencyWhereInput = {}
+    const and: Prisma.PendencyWhereInput[] = [notDeletedPendencyWhere()]
 
-    if (status)       where.status       = status
-    if (priority)     where.priority     = priority
+    if (status)       where.status       = status as never
+    else              where.status       = { not: 'CANCELADA' }
+    if (priority)     where.priority     = priority as never
     if (severity)     where.severity     = severity
     if (unitId)       where.unitId       = unitId
     if (managerId)    where.managerId    = managerId
     if (originModule) where.originModule = originModule
     if (assignedOnly) where.assignedUserId = { not: null }
-    if (slaVencida)   where.AND = [
+    if (slaVencida)   and.push(
       { slaDeadline: { lt: new Date() } },
       { status: { notIn: ['FINALIZADA', 'CANCELADA'] } },
-    ]
+    )
 
     if (search) {
-      where.OR = [
+      and.push({ OR: [
         { customerName: { contains: search, mode: 'insensitive' } },
         { plate:        { contains: search, mode: 'insensitive' } },
         { vehicle:      { contains: search, mode: 'insensitive' } },
         { negotiation:  { contains: search, mode: 'insensitive' } },
         { description:  { contains: search, mode: 'insensitive' } },
+        { type:         { contains: search, mode: 'insensitive' } },
+        { responsible:  { is: { fullName: { contains: search, mode: 'insensitive' } } } },
+        { responsible:  { is: { shortName: { contains: search, mode: 'insensitive' } } } },
+        { unit:         { is: { name: { contains: search, mode: 'insensitive' } } } },
+      ] })
+    }
+
+    // Restrições de escopo por tenant/unidade/usuário.
+    if (session.user.role !== 'MASTER') {
+      where.tenantId = session.user.tenantId ?? NO_MATCH
+    }
+
+    if (isPendencyManagerPlus(session.user.role)) {
+      if (session.user.role === 'GERENTE') {
+        where.unitId = session.user.unitId ?? NO_MATCH
+      }
+      if (sellerId) where.responsibleId = sellerId
+    } else {
+      const seller = await prisma.seller.findFirst({ where: { userId: session.user.id } })
+      where.OR = [
+        { assignedUserId: session.user.id },
+        { resolvedByUserId: session.user.id },
+        ...(seller ? [{ responsibleId: seller.id }] : []),
       ]
     }
-
-    // Restrições de escopo por role
-    if (SELLER_ROLES.includes(session.user.role)) {
-      // Vendedor/usuário vê apenas suas próprias pendências
-      const seller = await prisma.seller.findFirst({ where: { userId: session.user.id } })
-      if (seller) where.responsibleId = seller.id
-    } else if (sellerId) {
-      where.responsibleId = sellerId
-    }
-
-    // Gerente vê apenas pendências da sua unidade
-    if (session.user.role === 'GERENTE' && session.user.unitId) {
-      where.unitId = session.user.unitId
-    }
-
-    // ADM vê apenas pendências do seu tenant
-    if (session.user.role === 'ADM' && session.user.tenantId) {
-      where.tenantId = session.user.tenantId
-    }
+    if (and.length) where.AND = and
 
     const [total, pendencies] = await Promise.all([
-      prisma.pendency.count({ where: where as never }),
+      prisma.pendency.count({ where }),
       prisma.pendency.findMany({
-        where:   where as never,
+        where,
         include: PENDENCY_INCLUDE,
         orderBy: [
           { priority: 'desc' },    // enum: URGENTE > MEDIA > BAIXA > ALTA (desc alphabetical)

@@ -15,6 +15,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { notDeletedPendencyWhere } from '@/lib/pendencies/access'
 
 const VIEWS = ['abertas', 'resolvidas', 'sla', 'responsavel', 'unidade'] as const
 type View = (typeof VIEWS)[number]
@@ -41,7 +42,7 @@ export async function GET(req: Request) {
 
     // ---- Agregados por responsável / unidade ----------------------------
     if (view === 'responsavel' || view === 'unidade') {
-      const where = tenantWhere(user.role, tenantId, {})
+      const where = tenantWhere(user.role, tenantId, { AND: [notDeletedPendencyWhere()] })
       const rows = await prisma.pendency.findMany({
         where: where as never,
         take: 5000,
@@ -80,7 +81,7 @@ export async function GET(req: Request) {
     if (view === 'abertas') extra.status = { notIn: CLOSED }
     if (view === 'resolvidas') extra.status = 'FINALIZADA'
     if (view === 'sla') { extra.status = { notIn: CLOSED }; extra.OR = [{ slaDeadline: { not: null } }, { dueDate: { not: null } }] }
-    const where = tenantWhere(user.role, tenantId, extra)
+    const where = tenantWhere(user.role, tenantId, { ...extra, AND: [notDeletedPendencyWhere()] })
 
     const [pends, byStatus, byPriority] = await Promise.all([
       prisma.pendency.findMany({
