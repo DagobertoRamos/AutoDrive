@@ -1296,3 +1296,16 @@
 - **Validações:** `tsc --noEmit` verde; deploy OK; push real `sent:1` confirmado no aparelho; workflow HTTP 200; create testado no banco.
 - **Riscos:** SEM migration (reusa colunas do `Pendency`). Cron horário depende do secret `CRON_SECRET` no GitHub Actions (= valor da Vercel). Janela padrão 08–18 seg–sáb (BRT), configurável.
 - **Pendências futuras (spec grande do usuário — Fase 1b/2/3):** (1b) fluxo "resolvido → aguardando conferência do gerente → aprova/reprova com motivo → reativa lembrete" + busca automática por placa/negociação (prefill). (2) UI de config de push (intervalo em segundos, janelas por dia com múltiplas faixas, anti-spam, escalonamento) + logs de push. (3) Dashboard, SLA por tipo, métricas. Várias precisam de novos models — alinhar migration com o usuário.
+
+### LOG 0114 — 2026-07-01 — Claude (Opus 4.8) — Central de Pendências Fase 1b: conferência do gerente + busca por placa/negociação
+- **Branch:** `main`. Deployado.
+- **Tarefa:** Fase 1b da Central de Pendências, SEM migration (reusa enum/colunas existentes).
+- **Entregue:**
+  - **Fluxo de conferência do gerente:** `resolve/route.ts` — vendedor/responsável "Resolvido" NÃO finaliza; vai para **AGUARDANDO_RESPOSTA + `resolvedByUserId`** (= aguardando conferência), pausa lembretes e avisa o gerente. Gerente+ (`pendencies.manage`) resolve direto (FINALIZADA). Novo `review/route.ts` (`{action:'approve'|'reject', reason}`): **approve→FINALIZADA**; **reject→REATIVADA** + motivo obrigatório + **reativa lembretes** (`automaticSend=true, nextSendAt=now`) + avisa o responsável. Tudo no `PendencyStatusHistory`/`auditLog`.
+  - **UI (`PendencyModal.tsx`):** quando resolvido-aguardando-conferência, gerente vê **Aprovar/Reprovar (motivo)**; responsável vê "🕒 Aguardando conferência do gerente".
+  - **Busca por placa/negociação:** `lookup/route.ts` (Deal por `dealNumber` → cliente/unidade/responsável; Vehicle por `plate` → cliente/unidade/veículo). Modal `CreatePendencyModal.tsx` com bloco "Buscar por placa ou negociação" (onBlur) que **pré-preenche** os campos.
+  - Convenção sem schema: "aguardando conferência" = `status=AGUARDANDO_RESPOSTA && resolvedByUserId != null` (distingue do "não resolvido", que fica sem `resolvedByUserId`).
+- **Arquivos:** `src/app/api/pendencies/[id]/resolve/route.ts`, `src/app/api/pendencies/[id]/review/route.ts` (novo), `src/app/api/pendencies/lookup/route.ts` (novo), `src/components/pendencies/PendencyModal.tsx`, `src/components/pendencies/CreatePendencyModal.tsx`.
+- **Validações:** `tsc --noEmit` verde; deploy OK.
+- **Riscos:** o badge de status ainda mostra "Aguardando resposta" (o modal esclarece o contexto). NotificationType reusa `PENDENCIA_RESOLVIDA/FINALIZADA/NAO_RESOLVIDA` (sem enum novo). Fila NÃO tocada.
+- **Pendências futuras:** Fase 2 (config de push: segundos/janelas por dia/anti-spam/escalonamento + logs) e Fase 3 (dashboard/SLA por tipo) — **pedem novos models → migration a alinhar com o usuário**. Badge dedicado "Aguardando conferência" também exigiria enum novo.

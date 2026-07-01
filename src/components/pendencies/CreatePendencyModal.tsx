@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react'
-import { X, BellRing, Save } from 'lucide-react'
+import { X, BellRing, Save, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Seller { id: string; fullName: string; unit?: { id: string; name: string } | null }
@@ -22,7 +22,31 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
   const [sellers, setSellers] = useState<Seller[]>([])
   const [units, setUnits] = useState<Unit[]>([])
   const [types, setTypes] = useState<{ id: string; label: string }[]>([])
-  const [f, setF] = useState({ plate: '', customerName: '', type: '', description: '', priority: 'MEDIA', unitId: '', responsibleId: '', dueDate: '' })
+  const [f, setF] = useState({ plate: '', negotiation: '', customerName: '', type: '', description: '', priority: 'MEDIA', unitId: '', responsibleId: '', dueDate: '' })
+  const [lookupMsg, setLookupMsg] = useState('')
+
+  // Busca por placa/negociação → pré-preenche cliente, unidade e responsável.
+  const doLookup = async (by: 'plate' | 'negotiation') => {
+    const val = by === 'plate' ? f.plate.trim() : f.negotiation.trim()
+    if (val.length < 3) return
+    setLookupMsg('Buscando…')
+    try {
+      const qs = by === 'plate' ? `plate=${encodeURIComponent(val)}` : `negotiation=${encodeURIComponent(val)}`
+      const r = await fetch(`/api/pendencies/lookup?${qs}`, { credentials: 'include' })
+      const j = await r.json().catch(() => ({}))
+      const d = j?.data
+      if (!d) { setLookupMsg('Nada encontrado — preencha manualmente.'); return }
+      setF((p) => ({
+        ...p,
+        customerName: d.customerName || p.customerName,
+        unitId: d.unitId || p.unitId,
+        responsibleId: d.responsibleId || p.responsibleId,
+        plate: d.plate || p.plate,
+        negotiation: d.negotiation || p.negotiation,
+      }))
+      setLookupMsg(`✓ ${d.source === 'deal' ? `Negociação ${d.negotiation ?? ''}` : `Veículo ${d.vehicle ?? ''}`}${d.customerName ? ` — ${d.customerName}` : ''} carregado.`)
+    } catch { setLookupMsg('') }
+  }
   const [remind, setRemind] = useState(true)
   const [remindFrequency, setRemindFrequency] = useState('DAILY')
   const [remindMaxSends, setRemindMaxSends] = useState(10)
@@ -74,10 +98,15 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Placa *</label><input className={cn(inputCls, 'uppercase')} value={f.plate} onChange={(e) => set('plate', e.target.value.toUpperCase())} placeholder="ABC1D23" maxLength={8} /></div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade</label><select className={inputCls} value={f.priority} onChange={(e) => set('priority', e.target.value)}>{PRIORITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+          <div className="rounded-lg border border-brand-100 bg-brand-50/40 p-2.5">
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-brand-600"><Search size={11} />Buscar por placa ou negociação (preenche automático)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="mb-0.5 block text-[10px] text-gray-500">Placa *</label><input className={cn(inputCls, 'uppercase')} value={f.plate} onChange={(e) => set('plate', e.target.value.toUpperCase())} onBlur={() => doLookup('plate')} placeholder="ABC1D23" maxLength={8} /></div>
+              <div><label className="mb-0.5 block text-[10px] text-gray-500">Negociação</label><input className={inputCls} value={f.negotiation} onChange={(e) => set('negotiation', e.target.value)} onBlur={() => doLookup('negotiation')} placeholder="NEG-2026-001" /></div>
+            </div>
+            {lookupMsg && <p className="mt-1 text-[11px] font-medium text-brand-700">{lookupMsg}</p>}
           </div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade</label><select className={inputCls} value={f.priority} onChange={(e) => set('priority', e.target.value)}>{PRIORITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Cliente / Assunto *</label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Ex.: João da Silva — documento do veículo" /></div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">Tipo *</label>

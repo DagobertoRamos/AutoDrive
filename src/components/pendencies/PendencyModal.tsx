@@ -5,9 +5,11 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react'
-import { X, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { X, CheckCircle2, XCircle, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from './PendencyStatusBadge'
 import { cn, formatDate, formatRelativeTime } from '@/lib/utils'
+import { canAccessModule, type UserRole } from '@/lib/permissions'
 import type { PendencyWithRelations } from '@/types'
 
 interface PendencyModalProps {
@@ -19,11 +21,32 @@ interface PendencyModalProps {
 type Tab = 'detalhes' | 'historico' | 'respostas'
 
 export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalProps) {
+  const { data: session } = useSession()
+  const role = (session?.user as { role?: string })?.role as UserRole | undefined
+  const canReview = !!role && canAccessModule(role, 'pendencies.manage')
+  // Resolvido pelo responsável, aguardando conferência do gerente.
+  const pendingReview = pendency.status === 'AGUARDANDO_RESPOSTA' && !!pendency.resolvedByUserId
+
   const [tab, setTab] = useState<Tab>('detalhes')
   const [loading, setLoading] = useState(false)
   const [unresolvedReason, setUnresolvedReason] = useState('')
   const [showUnresolved, setShowUnresolved] = useState(false)
+  const [rejectMode, setRejectMode] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
   const [error, setError] = useState('')
+
+  const handleReview = async (action: 'approve' | 'reject') => {
+    if (action === 'reject' && !rejectReason.trim()) { setError('Informe o motivo da reprovação.'); return }
+    setLoading(true); setError('')
+    try {
+      const res = await fetch(`/api/pendencies/${pendency.id}/review`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ action, reason: action === 'reject' ? rejectReason.trim() : undefined }),
+      })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j?.error ?? 'Falha ao conferir.'); return }
+      onRefresh()
+    } catch { setError('Erro de rede. Tente de novo.') } finally { setLoading(false) }
+  }
 
   // Fechar com Escape
   useEffect(() => {
@@ -212,12 +235,44 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
           </div>
         )}
 
+        {/* Aviso: aguardando conferência do gerente */}
+        {pendingReview && !rejectMode && (
+          <div className="mx-6 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            🕒 O responsável marcou como <strong>resolvido</strong>. {canReview ? 'Confira e aprove ou reprove abaixo.' : 'Aguardando a conferência do gerente.'}
+          </div>
+        )}
+
+        {/* Motivo da reprovação (gerente) */}
+        {pendingReview && rejectMode && (
+          <div className="mx-6 mb-3">
+            <label className="mb-1 block text-xs font-medium text-gray-700">Motivo da reprovação *</label>
+            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={2} placeholder="Explique o que precisa ser refeito..." className="input resize-none" />
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
           <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
             Fechar
           </button>
-          {!isResolved && (
+          {!isResolved && pendingReview ? (
+            // ── Conferência do gerente (resolvido pelo responsável) ──────────
+            canReview ? (
+              !rejectMode ? (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setRejectMode(true); setError('') }} disabled={loading} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"><XCircle size={15} />Reprovar</button>
+                  <button onClick={() => handleReview('approve')} disabled={loading} className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">{loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <ShieldCheck size={15} />}Aprovar resolução</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setRejectMode(false); setError('') }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+                  <button onClick={() => handleReview('reject')} disabled={loading} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">{loading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}Confirmar reprovação</button>
+                </div>
+              )
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600">🕒 Aguardando conferência do gerente</span>
+            )
+          ) : !isResolved ? (
             <div className="flex items-center gap-2">
               {!showUnresolved ? (
                 <>
@@ -258,7 +313,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                 </>
               )}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
