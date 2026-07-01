@@ -18,7 +18,8 @@ interface PendencyModalProps {
   onRefresh: () => void
 }
 
-type Tab = 'detalhes' | 'historico' | 'respostas'
+type Tab = 'detalhes' | 'historico' | 'respostas' | 'envios'
+interface PushLog { id: string; channel: string; status: string; sentCount: number; detail: string | null; createdAt: string }
 
 export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalProps) {
   const { data: session } = useSession()
@@ -34,7 +35,13 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
   const [rejectMode, setRejectMode] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [remindMsg, setRemindMsg] = useState('')
+  const [pushLogs, setPushLogs] = useState<PushLog[]>([])
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (tab !== 'envios') return
+    fetch(`/api/pendencies/${pendency.id}/logs`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => setPushLogs(j?.data ?? [])).catch(() => {})
+  }, [tab, pendency.id])
 
   const handleRemindNow = async () => {
     setLoading(true); setError('')
@@ -128,7 +135,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
 
         {/* Tabs */}
         <div className="flex border-b border-gray-200 px-6">
-          {(['detalhes', 'historico', 'respostas'] as Tab[]).map(t => (
+          {(['detalhes', 'historico', 'respostas', 'envios'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -139,7 +146,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               )}
             >
-              {t === 'detalhes' ? 'Detalhes' : t === 'historico' ? 'Histórico' : 'Respostas'}
+              {t === 'detalhes' ? 'Detalhes' : t === 'historico' ? 'Histórico' : t === 'respostas' ? 'Respostas' : 'Envios'}
             </button>
           ))}
         </div>
@@ -215,6 +222,25 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                       <span className="text-[11px] text-gray-400">{formatRelativeTime(new Date(r.createdAt))}</span>
                     </div>
                     <p className="text-sm text-gray-800">{r.messageBody}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {tab === 'envios' && (
+            <div className="space-y-2">
+              {pushLogs.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">Nenhum envio registrado ainda.</p>
+              ) : (
+                pushLogs.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm">
+                    <div>
+                      <span className={cn('mr-2 rounded px-1.5 py-0.5 text-[10px] font-semibold', l.channel === 'ESCALATION' ? 'bg-red-100 text-red-700' : l.channel === 'MANUAL' ? 'bg-brand-100 text-brand-700' : 'bg-gray-200 text-gray-600')}>{l.channel === 'ESCALATION' ? 'ESCALADO' : l.channel === 'MANUAL' ? 'MANUAL' : 'PUSH'}</span>
+                      <span className={l.status === 'SENT' ? 'text-green-700' : 'text-red-600'}>{l.status === 'SENT' ? `enviado (${l.sentCount})` : 'sem aparelho'}</span>
+                      {l.detail && <span className="text-xs text-gray-400"> · {l.detail}</span>}
+                    </div>
+                    <span className="text-[11px] tabular-nums text-gray-400">{formatRelativeTime(new Date(l.createdAt))}</span>
                   </div>
                 ))
               )}

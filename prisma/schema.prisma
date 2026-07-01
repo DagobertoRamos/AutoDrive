@@ -1832,6 +1832,7 @@ model Pendency {
   deal            Deal?                   @relation("DealPendencies", fields: [dealId], references: [id])
   template        WhatsappTemplate?       @relation(fields: [templateId], references: [id])
   statusHistory   PendencyStatusHistory[]
+  notificationLogs PendencyNotificationLog[]
   messages        PendencyMessage[]
   messageReturns  MessageReturn[]
   comments        PendencyComment[]
@@ -1866,6 +1867,25 @@ model PendencyStatusHistory {
 
   @@index([pendencyId])
   @@map("pendency_status_history")
+}
+
+// Log de cada ENVIO de lembrete de pendência (push/manual/escalonamento).
+model PendencyNotificationLog {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  pendencyId String
+  userId     String? // destinatário (responsável) ou alvo do escalonamento
+  channel    String // FCM | WEBPUSH | MANUAL | ESCALATION
+  status     String // SENT | FAILED | SKIPPED
+  sentCount  Int      @default(0)
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  pendency Pendency @relation(fields: [pendencyId], references: [id], onDelete: Cascade)
+
+  @@index([pendencyId])
+  @@index([tenantId])
+  @@map("pendency_notification_logs")
 }
 
 model PendencyMessage {

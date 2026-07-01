@@ -81,6 +81,14 @@ async function escalateToManager(p: EscalatePendency): Promise<void> {
   for (const uid of targets) {
     await prisma.notification.create({ data: { userId: uid, type: 'PENDENCIA_CRITICA', title, message, actionUrl: '/pendencias/central' } }).catch(() => {})
   }
+  await logNotif(p.tenantId, p.id, null, 'ESCALATION', 'SENT', targets.size, 'cobrança esgotada')
+}
+
+/** Registra o envio (best-effort). A tabela vem da migration
+ *  20260701120000_add_pendency_notification_log — antes de aplicada, o create
+ *  falha e é ignorado (não quebra o envio). */
+async function logNotif(tenantId: string | null, pendencyId: string, userId: string | null, channel: string, status: string, sentCount: number, detail?: string): Promise<void> {
+  await prisma.pendencyNotificationLog.create({ data: { tenantId, pendencyId, userId, channel, status, sentCount, detail: detail ?? null } }).catch(() => {})
 }
 
 export interface ReminderRunResult { processed: number; sent: number; skipped: number }
@@ -149,7 +157,9 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
         sendToTokens(devs.map((d) => d.deviceToken), { title, body, ttlSeconds: 3600, data, notification: true }).catch(() => ({ sent: 0, invalid: [] as string[] })),
         sendWebPushToUser(userId, { title, body, data }).catch(() => ({ sent: 0 })),
       ])
-      sent += fcm.sent + web.sent
+      const n = fcm.sent + web.sent
+      sent += n
+      await logNotif(p.tenantId, p.id, userId, 'PUSH', n > 0 ? 'SENT' : 'FAILED', n)
     }
     processed++
   }
@@ -161,7 +171,7 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
  * fora da régua/janela. Usado por um botão da gestão. Registra o envio.
  */
 export async function sendPendencyReminderNow(pendencyId: string): Promise<{ ok: boolean; sent: number; reason?: string }> {
-  const p = await prisma.pendency.findUnique({ where: { id: pendencyId }, select: { responsibleId: true, customerName: true, plate: true, type: true, description: true, status: true } })
+  const p = await prisma.pendency.findUnique({ where: { id: pendencyId }, select: { tenantId: true, responsibleId: true, customerName: true, plate: true, type: true, description: true, status: true } })
   if (!p) return { ok: false, sent: 0, reason: 'Pendência não encontrada.' }
   if (!OPEN.includes(p.status)) return { ok: false, sent: 0, reason: 'A pendência não está aberta.' }
   const userId = await responsibleUserId(p.responsibleId)
@@ -176,5 +186,7 @@ export async function sendPendencyReminderNow(pendencyId: string): Promise<{ ok:
     sendWebPushToUser(userId, { title, body, data }).catch(() => ({ sent: 0 })),
   ])
   await prisma.pendency.update({ where: { id: pendencyId }, data: { lastSentAt: new Date(), totalSent: { increment: 1 } } }).catch(() => {})
-  return { ok: true, sent: fcm.sent + web.sent }
+  const n = fcm.sent + web.sent
+  await logNotif(p.tenantId, pendencyId, userId, 'MANUAL', n > 0 ? 'SENT' : 'FAILED', n)
+  return { ok: true, sent: n }
 }

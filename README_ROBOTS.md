@@ -1318,3 +1318,19 @@
   - **"Cobrar agora" (envio manual):** `sendPendencyReminderNow()` + rota `src/app/api/pendencies/[id]/remind-now/route.ts` (gate `pendencies.manage`) + botão no `PendencyModal` — dispara o push na hora ao responsável, fora da régua/janela. Registra `lastSentAt`/`totalSent`.
 - **Validações:** `tsc --noEmit` verde; deploy OK.
 - **Riscos:** nenhum schema; reusa `Notification`/`Manager`/`User`. Sub-hora ("intervalo em segundos") NÃO implementado de propósito — o pinger é horário (GitHub Actions), então a menor granularidade honesta é 1h (spec: documentar limitação em vez de simular). Janelas múltiplas/anti-spam por usuário/logs detalhados ficam para quando o usuário autorizar migration.
+
+### LOG 0116 — 2026-07-01 — Claude (Opus 4.8) — Pendências: logs de envio de push (NOVA TABELA — migration a aplicar)
+- **Branch:** `main`. Deployado (código inerte até aplicar a migration).
+- **Tarefa:** "prepare" → preparar schema + migration + código para os **logs de envio** de push por pendência.
+- **⚠️ AÇÃO DO USUÁRIO (obrigatória p/ ativar):** aplicar a migration no Neon:
+  ```
+  npx prisma migrate deploy
+  ```
+  (migration `20260701120000_add_pendency_notification_log` — cria a tabela `pendency_notification_logs`). Enquanto NÃO aplicada, os inserts de log falham em silêncio (`.catch`) e a aba "Envios" fica vazia — nada mais quebra.
+- **Entregue:**
+  - Schema: novo model **`PendencyNotificationLog`** (tenantId, pendencyId, userId, channel [FCM/WEBPUSH/MANUAL/ESCALATION], status, sentCount, detail, createdAt) + relação em `Pendency.notificationLogs`. Migration SQL aditiva (só CREATE TABLE + índices + FK).
+  - `reminders.ts`: `logNotif()` registra cada envio (dispatcher `PUSH`, `sendPendencyReminderNow` `MANUAL`, `escalateToManager` `ESCALATION`).
+  - Endpoint `GET /api/pendencies/[id]/logs` (retorna `[]` se a tabela não existir) + **aba "Envios"** no `PendencyModal`.
+- **DECISÃO DE SEGURANÇA:** removi de propósito as colunas `defaultPriority/defaultSlaMinutes` em `stock_pendency_options` (ALTER em tabela existente + consultas sem `select` → quebraria o endpoint de tipos e o estoque ANTES da migration). SLA/prioridade por tipo fica para uma migration coordenada. **Só adicionei TABELA NOVA (seguro deployar antes da migration).**
+- **Validações:** `prisma generate` OK; `tsc --noEmit` verde; deploy OK.
+- **Pendências futuras:** aplicar a migration acima; depois (com nova migration coordenada) defaults por tipo, janelas múltiplas por dia, anti-spam por usuário, dashboard completo/SLA por tipo.
