@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-import { X, CheckCircle2, XCircle, AlertTriangle, ShieldCheck } from 'lucide-react'
+import { X, CheckCircle2, XCircle, AlertTriangle, ShieldCheck, BellRing } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from './PendencyStatusBadge'
 import { cn, formatDate, formatRelativeTime } from '@/lib/utils'
 import { canAccessModule, type UserRole } from '@/lib/permissions'
@@ -33,7 +33,18 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
   const [showUnresolved, setShowUnresolved] = useState(false)
   const [rejectMode, setRejectMode] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [remindMsg, setRemindMsg] = useState('')
   const [error, setError] = useState('')
+
+  const handleRemindNow = async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch(`/api/pendencies/${pendency.id}/remind-now`, { method: 'POST', credentials: 'include' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(j?.error ?? 'Falha ao cobrar.'); return }
+      setError(''); setRemindMsg(j?.message ?? 'Lembrete enviado.'); setTimeout(() => setRemindMsg(''), 4000)
+    } catch { setError('Erro de rede.') } finally { setLoading(false) }
+  }
 
   const handleReview = async (action: 'approve' | 'reject') => {
     if (action === 'reject' && !rejectReason.trim()) { setError('Informe o motivo da reprovação.'); return }
@@ -250,11 +261,18 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
           </div>
         )}
 
+        {remindMsg && <div className="mx-6 mb-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{remindMsg}</div>}
+
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
-          <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-            Fechar
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              Fechar
+            </button>
+            {canReview && !isResolved && !pendingReview && (
+              <button onClick={handleRemindNow} disabled={loading} className="flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50" title="Enviar o lembrete por push agora ao responsável"><BellRing size={14} />Cobrar agora</button>
+            )}
+          </div>
           {!isResolved && pendingReview ? (
             // ── Conferência do gerente (resolvido pelo responsável) ──────────
             canReview ? (

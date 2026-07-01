@@ -61,6 +61,28 @@ async function responsibleUserId(responsibleId: string): Promise<string | null> 
   return u?.id ?? null
 }
 
+interface EscalatePendency { id: string; tenantId: string | null; unitId: string; managerId: string | null; customerName: string; plate: string | null; type: string | null }
+
+/** Escala pro gerente: cobrança esgotada sem resolver. Avisa o gerente vinculado
+ *  (ou, se não houver, os gerentes/ADM da unidade). Best-effort, uma vez. */
+async function escalateToManager(p: EscalatePendency): Promise<void> {
+  const targets = new Set<string>()
+  if (p.managerId) {
+    const m = await prisma.manager.findUnique({ where: { id: p.managerId }, select: { userId: true } }).catch(() => null)
+    if (m?.userId) targets.add(m.userId)
+  }
+  if (targets.size === 0 && p.tenantId) {
+    const gers = await prisma.user.findMany({ where: { tenantId: p.tenantId, unitId: p.unitId, role: { in: ['GERENTE', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'ADM'] }, status: 'ATIVO' }, select: { id: true }, take: 10 }).catch(() => [])
+    gers.forEach((g) => targets.add(g.id))
+  }
+  if (targets.size === 0) return
+  const title = '⚠️ Pendência não resolvida — cobrança esgotada'
+  const message = `${p.type ? p.type + ': ' : ''}${p.customerName}${p.plate ? ' — ' + p.plate : ''} não foi resolvida após os lembretes. Confira.`
+  for (const uid of targets) {
+    await prisma.notification.create({ data: { userId: uid, type: 'PENDENCIA_CRITICA', title, message, actionUrl: '/pendencias/central' } }).catch(() => {})
+  }
+}
+
 export interface ReminderRunResult { processed: number; sent: number; skipped: number }
 
 /**
@@ -76,7 +98,7 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
       ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}),
     },
     take: 500,
-    select: { id: true, tenantId: true, responsibleId: true, customerName: true, description: true, type: true, priority: true, totalSent: true, maxSends: true, sendsPerDay: true, frequency: true },
+    select: { id: true, tenantId: true, unitId: true, responsibleId: true, managerId: true, customerName: true, plate: true, description: true, type: true, priority: true, totalSent: true, maxSends: true, sendsPerDay: true, frequency: true },
   })
 
   const cfgCache = new Map<string, AutoSend>()
@@ -91,7 +113,9 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
 
     const maxSends = p.maxSends ?? cfg.maxSends
     if (maxSends && p.totalSent >= maxSends) {
+      // Esgotou os lembretes sem resolver → para de cobrar e ESCALA pro gerente.
       await prisma.pendency.update({ where: { id: p.id }, data: { automaticSend: false } }).catch(() => {})
+      await escalateToManager(p).catch(() => {})
       skipped++; continue
     }
     // Fora da janela (dias/horário): adia ~30min sem enviar.
@@ -130,4 +154,27 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
     processed++
   }
   return { processed, sent, skipped }
+}
+
+/**
+ * Envio MANUAL ("cobrar agora"): dispara o lembrete na hora para o responsável,
+ * fora da régua/janela. Usado por um botão da gestão. Registra o envio.
+ */
+export async function sendPendencyReminderNow(pendencyId: string): Promise<{ ok: boolean; sent: number; reason?: string }> {
+  const p = await prisma.pendency.findUnique({ where: { id: pendencyId }, select: { responsibleId: true, customerName: true, plate: true, type: true, description: true, status: true } })
+  if (!p) return { ok: false, sent: 0, reason: 'Pendência não encontrada.' }
+  if (!OPEN.includes(p.status)) return { ok: false, sent: 0, reason: 'A pendência não está aberta.' }
+  const userId = await responsibleUserId(p.responsibleId)
+  if (!userId) return { ok: false, sent: 0, reason: 'Sem responsável definido.' }
+  const devs = await prisma.mobileDevice.findMany({ where: { userId, isActive: true, platform: { in: ['ANDROID', 'IOS'] } }, select: { deviceToken: true } })
+  const tipo = p.type || 'Pendência'
+  const title = `🔔 ${tipo} pendente`
+  const body = `${p.plate ? p.plate + ' — ' : ''}${p.customerName || ''}${p.description ? ': ' + p.description : ''}`.trim() || 'Você tem uma pendência para resolver.'
+  const data = { type: 'PENDENCY', pendencyId, url: '/pendencias/central' }
+  const [fcm, web] = await Promise.all([
+    sendToTokens(devs.map((d) => d.deviceToken), { title, body, ttlSeconds: 3600, data, notification: true }).catch(() => ({ sent: 0, invalid: [] as string[] })),
+    sendWebPushToUser(userId, { title, body, data }).catch(() => ({ sent: 0 })),
+  ])
+  await prisma.pendency.update({ where: { id: pendencyId }, data: { lastSentAt: new Date(), totalSent: { increment: 1 } } }).catch(() => {})
+  return { ok: true, sent: fcm.sent + web.sent }
 }

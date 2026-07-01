@@ -1309,3 +1309,12 @@
 - **Validações:** `tsc --noEmit` verde; deploy OK.
 - **Riscos:** o badge de status ainda mostra "Aguardando resposta" (o modal esclarece o contexto). NotificationType reusa `PENDENCIA_RESOLVIDA/FINALIZADA/NAO_RESOLVIDA` (sem enum novo). Fila NÃO tocada.
 - **Pendências futuras:** Fase 2 (config de push: segundos/janelas por dia/anti-spam/escalonamento + logs) e Fase 3 (dashboard/SLA por tipo) — **pedem novos models → migration a alinhar com o usuário**. Badge dedicado "Aguardando conferência" também exigiria enum novo.
+
+### LOG 0115 — 2026-07-01 — Claude (Opus 4.8) — Pendências: escalonamento automático ao gerente (Fase 2, sem migration)
+- **Branch:** `main`. Deployado.
+- **Tarefa:** "faça a prioridade" → item de maior valor da Fase 2 sem schema novo.
+- **Entregue:**
+  - **Escalonamento:** `src/lib/pendencies/reminders.ts` — quando os lembretes **esgotam** (`totalSent >= maxSends`) sem resolver, além de parar de cobrar, **escala pro gerente** (`escalateToManager`): avisa o gerente vinculado (`Pendency.managerId → Manager.userId`) ou, se não houver, os GERENTE*/ADM ativos da unidade (`PENDENCIA_CRITICA`). Uma vez.
+  - **"Cobrar agora" (envio manual):** `sendPendencyReminderNow()` + rota `src/app/api/pendencies/[id]/remind-now/route.ts` (gate `pendencies.manage`) + botão no `PendencyModal` — dispara o push na hora ao responsável, fora da régua/janela. Registra `lastSentAt`/`totalSent`.
+- **Validações:** `tsc --noEmit` verde; deploy OK.
+- **Riscos:** nenhum schema; reusa `Notification`/`Manager`/`User`. Sub-hora ("intervalo em segundos") NÃO implementado de propósito — o pinger é horário (GitHub Actions), então a menor granularidade honesta é 1h (spec: documentar limitação em vez de simular). Janelas múltiplas/anti-spam por usuário/logs detalhados ficam para quando o usuário autorizar migration.
