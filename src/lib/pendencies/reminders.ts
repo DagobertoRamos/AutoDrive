@@ -122,7 +122,7 @@ export async function sendDuePendencyReminders(opts?: { tenantId?: string }): Pr
       const body = `${p.customerName ? p.customerName + ' — ' : ''}${p.description || 'Você tem uma pendência para resolver.'}`
       const data = { type: 'PENDENCY', pendencyId: p.id, url: '/pendencias/minhas' }
       const [fcm, web] = await Promise.all([
-        sendToTokens(devs.map((d) => d.deviceToken), { title, body, ttlSeconds: 3600, data }).catch(() => ({ sent: 0, invalid: [] as string[] })),
+        sendToTokens(devs.map((d) => d.deviceToken), { title, body, ttlSeconds: 3600, data, notification: true }).catch(() => ({ sent: 0, invalid: [] as string[] })),
         sendWebPushToUser(userId, { title, body, data }).catch(() => ({ sent: 0 })),
       ])
       sent += fcm.sent + web.sent

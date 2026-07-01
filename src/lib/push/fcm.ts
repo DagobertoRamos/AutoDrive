@@ -46,6 +46,10 @@ export interface PushMessage {
   body: string
   data?: Record<string, string> // payload extra lido pelo app nativo (type, attendanceId, etc.)
   ttlSeconds?: number
+  // true = envia com bloco "notification" (o Android exibe sozinho). Use para
+  // avisos comuns (ex.: pendência). O QUEUE_CALL fica DATA-ONLY (app desenha a
+  // tela de chamada). Sem isso, um data-only de outro tipo não aparece no app.
+  notification?: boolean
 }
 
 /**
@@ -66,9 +70,16 @@ export async function sendToTokens(tokens: string[], msg: PushMessage): Promise<
     const message = {
       message: {
         token,
-        // DATA-ONLY: o app nativo decide como exibir (full-screen call).
+        // Payload lido pelo app nativo (type, ids, etc.).
         data: { title: msg.title, body: msg.body, ...(msg.data ?? {}) },
-        android: { priority: 'HIGH', ttl: `${msg.ttlSeconds ?? 120}s` },
+        android: {
+          priority: 'HIGH',
+          ttl: `${msg.ttlSeconds ?? 120}s`,
+          // Bloco de notificação → o Android exibe sozinho (avisos comuns).
+          ...(msg.notification ? { notification: { channelId: 'default' } } : {}),
+        },
+        // DATA-ONLY (sem este bloco) = app desenha (tela de chamada da fila).
+        ...(msg.notification ? { notification: { title: msg.title, body: msg.body } } : {}),
       },
     }
     try {
