@@ -3,45 +3,183 @@
 <head>
   <meta charset="UTF-8" />
   <style>
-    :root { --brand: #1e40af; --ink: #1f2937; --muted: #6b7280; --line: #e5e7eb; }
+    :root {
+      --brand: #1e40af;
+      --brand-soft: #eff6ff;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --warn: #b45309;
+      --bg: #f9fafb;
+    }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { width: 360px; margin: 0; padding: 14px; color: var(--ink); }
-    h1 { font-size: 14px; margin: 0 0 2px; }
-    p.sub { font-size: 11px; color: var(--muted); margin: 0 0 12px; }
+    body { width: 420px; margin: 0; padding: 14px; color: var(--ink); background: #fff; }
+    h1 { font-size: 15px; margin: 0 0 2px; }
+    h2 { font-size: 12px; margin: 0 0 8px; color: #111827; }
+    p.sub { font-size: 11px; color: var(--muted); margin: 0 0 12px; line-height: 1.35; }
+    label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    input, select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 12px; color: var(--ink); background: #fff; }
+    input[type="checkbox"] { width: auto; margin: 0; }
     button { border: 0; border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
     .primary { background: var(--brand); color: #fff; width: 100%; }
-    .primary:disabled { opacity: .5; cursor: default; }
     .ghost { background: #f3f4f6; color: var(--ink); }
+    .section { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-top: 10px; background: #fff; }
+    .section.soft { background: var(--bg); }
     .row { display: flex; gap: 8px; margin-top: 8px; }
-    #log { margin-top: 12px; font-size: 11px; color: var(--muted); max-height: 120px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 8px; white-space: pre-wrap; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .field { margin-top: 8px; }
+    .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+    .check { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--ink); }
+    .check span { line-height: 1.2; }
+    .hidden { display: none !important; }
+    #log { margin-top: 12px; font-size: 11px; color: var(--muted); max-height: 150px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 8px; white-space: pre-wrap; }
     #stats { margin-top: 10px; display: none; }
-    .card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+    .card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; background: #fff; }
     .big { font-size: 22px; font-weight: 700; color: var(--brand); }
-    .kv { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
-    .warn { color: #b45309; }
+    .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .kv span:last-child { text-align: right; color: #374151; }
+    .warn { color: var(--warn); }
+    .mini { font-size: 10px; color: var(--muted); line-height: 1.35; }
   </style>
 </head>
 <body>
   <h1>AutoConf → AutoDrive</h1>
-  <p class="sub">Lê as negociações do <b>mês atual</b> (Finalizada / Pendente Contrato / Pendente NFe) e o vendedor de cada uma, e importa no AutoDrive.</p>
+  <p class="sub">Busque negociações filtradas no AutoConf logado, confira a prévia e importe para o AutoDrive sem duplicar.</p>
 
-  <div style="margin-bottom:10px">
-    <label style="font-size:11px;color:var(--muted)">Token do AutoDrive</label>
+  <div class="section">
+    <h2>Token do AutoDrive</h2>
     <div class="row" style="margin-top:4px">
-      <input id="token" type="password" placeholder="acd_..." style="flex:1;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px" />
+      <input id="token" type="password" placeholder="acd_..." />
       <button id="saveToken" class="ghost">Salvar</button>
     </div>
   </div>
 
-  <button id="scan" class="primary">1) Ler negociações do mês</button>
+  <div class="section soft">
+    <h2>Filtros de busca</h2>
+
+    <div class="field">
+      <label for="mode">Tipo de busca</label>
+      <select id="mode">
+        <option value="current_month">Mês atual</option>
+        <option value="month">Mês/Ano</option>
+        <option value="year">Ano completo</option>
+        <option value="range">Período personalizado</option>
+      </select>
+    </div>
+
+    <div id="monthFields" class="grid2 field hidden">
+      <div>
+        <label for="monthSelect">Mês</label>
+        <select id="monthSelect">
+          <option value="01">Janeiro</option>
+          <option value="02">Fevereiro</option>
+          <option value="03">Março</option>
+          <option value="04">Abril</option>
+          <option value="05">Maio</option>
+          <option value="06">Junho</option>
+          <option value="07">Julho</option>
+          <option value="08">Agosto</option>
+          <option value="09">Setembro</option>
+          <option value="10">Outubro</option>
+          <option value="11">Novembro</option>
+          <option value="12">Dezembro</option>
+        </select>
+      </div>
+      <div>
+        <label for="monthYear">Ano</label>
+        <input id="monthYear" inputmode="numeric" placeholder="2026" />
+      </div>
+    </div>
+
+    <div id="yearFields" class="field hidden">
+      <label for="yearOnly">Ano</label>
+      <input id="yearOnly" inputmode="numeric" placeholder="2026" />
+    </div>
+
+    <div id="rangeFields" class="grid2 field hidden">
+      <div>
+        <label for="dateFrom">Data inicial</label>
+        <input id="dateFrom" placeholder="dd/mm/aaaa" />
+      </div>
+      <div>
+        <label for="dateTo">Data final</label>
+        <input id="dateTo" placeholder="dd/mm/aaaa" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Status</label>
+      <div class="checks">
+        <label class="check"><input id="statusAll" type="checkbox" /><span>Todos</span></label>
+        <label class="check"><input class="statusOpt" type="checkbox" value="Finalizada" checked /><span>Finalizada</span></label>
+        <label class="check"><input class="statusOpt" type="checkbox" value="Pendente Contrato" checked /><span>Pendente Contrato</span></label>
+        <label class="check"><input class="statusOpt" type="checkbox" value="Pendente NFe" checked /><span>Pendente NFe</span></label>
+      </div>
+    </div>
+
+    <div class="grid2 field">
+      <div>
+        <label for="tipoSelect">Tipo</label>
+        <select id="tipoSelect">
+          <option value="">Todos</option>
+          <option value="Venda">Venda</option>
+          <option value="Troca">Troca</option>
+          <option value="Compra">Compra</option>
+          <option value="Consignação">Consignação</option>
+        </select>
+      </div>
+      <div>
+        <label for="tipoExtra">Outro tipo</label>
+        <input id="tipoExtra" placeholder="opcional" />
+      </div>
+    </div>
+
+    <div class="grid2 field">
+      <div>
+        <label for="lojaFilter">Loja/unidade</label>
+        <input id="lojaFilter" placeholder="todas" />
+      </div>
+      <div>
+        <label for="vendedorFilter">Vendedor</label>
+        <input id="vendedorFilter" placeholder="todos" />
+      </div>
+    </div>
+
+    <div class="grid2 field">
+      <div>
+        <label for="clienteFilter">Cliente</label>
+        <input id="clienteFilter" placeholder="opcional" />
+      </div>
+      <div>
+        <label for="placaFilter">Placa</label>
+        <input id="placaFilter" placeholder="ABC1D23" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="check"><input id="includeWithoutSeller" type="checkbox" checked /><span>Incluir negociações sem vendedor detectado</span></label>
+      <div class="mini">Períodos grandes podem demorar porque a extensão lê página por página do AutoConf.</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="scan" class="primary">1) Buscar negociações filtradas</button>
+  </div>
 
   <div id="stats">
     <div class="card">
       <div class="big" id="count">0</div>
-      <div>negociações do mês <span id="month"></span></div>
+      <div>negociações encontradas</div>
+      <div class="kv"><span>Período</span><span id="periodLabel">—</span></div>
+      <div class="kv"><span>Páginas lidas</span><span id="pagesRead">0</span></div>
+      <div class="kv"><span>Total varrido</span><span id="totalScanned">0</span></div>
       <div class="kv"><span>Por tipo</span><span id="byTipo">—</span></div>
       <div class="kv"><span>Por status</span><span id="byStatus">—</span></div>
+      <div class="kv"><span>Por loja</span><span id="byLoja">—</span></div>
       <div class="kv warn" id="semVendedorLine" style="display:none"><span>Sem vendedor detectado</span><span id="semVendedor">0</span></div>
+      <div class="kv"><span>Filtros</span><span id="filtersApplied">—</span></div>
     </div>
     <div class="row">
       <button id="download" class="ghost" style="flex:1">Baixar JSON</button>
@@ -49,11 +187,11 @@
     </div>
     <div class="row" style="margin-top:8px">
       <button id="preview" class="ghost" style="flex:1">2) Prévia no AutoDrive</button>
-      <button id="import" class="primary" style="flex:1">3) Importar</button>
+      <button id="import" class="primary" style="flex:1">3) Importar tudo</button>
     </div>
   </div>
 
-  <div id="log">Abra o AutoConf em uma aba, logado, e clique acima.</div>
+  <div id="log">Abra o AutoConf em uma aba, logado, escolha o filtro e clique em buscar.</div>
 
   <script src="popup.js"></script>
 </body>
