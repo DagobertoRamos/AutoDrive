@@ -2104,3 +2104,68 @@
   - **FASE 3 — Bônus dezenal** (Parte 4): `getDecendPeriod(date)` (1ª/2ª/3ª dezena respeitando 28–31 dias) + geração somando com mensal/garantia.
   - **FASE 4 — UI em abas** (Parte 10): reorganizar `/comissoes/regras` em abas por família.
   - Revisão de bugs (Parte 13) itens 1–10,14–20: a maior parte já coberta (dedup troca/reprocessamento ✅, gerente-não-vendedor ✅, garantia-abaixo-do-mínimo ✅ via `calculateWarrantyCommission`); recálculo-ao-mudar-faixa (#7) e recálculo-pós-cancelamento (#8) dependem da FASE 2.
+### LOG 0141 — 2026-07-02 19:05:46 -03:00 — Codex (GPT-5) — Motor profissional de filtros em Negociações
+- **Branch:** `main`. Sem migration e sem deploy.
+- **Tarefa executada:**
+  - Criado motor central de filtros server-side para `/api/negotiations`.
+  - Atualizada a tela `/negociacoes` para usar query params, filtros avançados e opções de loja/vendedor permitidas pelo backend.
+- **Arquivos alterados/criados nesta tarefa:**
+  - `src/lib/negotiation-filters.ts`
+  - `src/lib/negotiation-filters.test.ts`
+  - `src/app/api/negotiations/route.ts`
+  - `src/app/(dashboard)/negociacoes/page.tsx`
+  - `README_ROBOTS.md`
+- **Filtros implementados:**
+  - Busca geral por cliente, e-mail, telefone, documento, placa, veículo, ID, número da negociação, origem, banco e vendedor.
+  - Loja/unidade.
+  - Vendedor.
+  - Status multi-seleção.
+  - Tipo multi-seleção.
+  - Origem.
+  - Importação: manual, importada, AutoConf/extensão e vendedor provisório/não encontrado.
+  - Períodos: hoje, ontem, semana, mês atual, data específica, mês específico, ano específico e período personalizado.
+  - Comissão: com comissão, sem comissão e por status de comissão (`PREVISTO`, `PAGO`, `ESTORNADO`).
+  - Pendências: abertas, vencidas e sem pendência aberta.
+  - Paginação server-side em 20, 50 ou 100 itens.
+  - Ordenação por criação, atualização, aprovação, venda, cliente, vendedor, status, tipo e valor.
+- **Regra de permissão aplicada:**
+  - O endpoint monta primeiro os filtros escolhidos e depois aplica `buildNegotiationAccessWhere`, preservando o escopo obrigatório do usuário.
+  - `VENDEDOR` e `VENDEDOR_LIDER` continuam restritos ao próprio `sellerId`, mesmo com `sellerId` de outro vendedor na URL.
+  - `GERENTE` continua restrito à própria unidade.
+  - `GERENTE_GERAL`, `GERENTE_ADMINISTRATIVO`, `ADM`, `FINANCEIRO` e `MASTER` seguem o escopo definido no helper existente.
+  - Lojas e vendedores disponíveis na UI vêm do backend já escopados por cargo.
+  - Multi-tenant continua server-side; tenant enviado pelo front não é usado.
+- **Performance e segurança:**
+  - Listagem continua paginada no banco.
+  - `pageSize` é limitado a 20/50/100.
+  - `status`, `type`, `sortBy`, mês, ano e datas são validados no backend.
+  - Busca por placa gera variações normalizadas (`ABC1D23` e `ABC-1D23`) sem SQL bruto.
+  - Filtro de pendência usa relação Prisma direta `Deal.pendencies`.
+  - Filtro de comissão usa `CommissionCalculation.ruleDetails.dealId` respeitando `buildCommissionAccessWhere`.
+- **Testes realizados:**
+  - `npx vitest run src/lib/negotiation-filters.test.ts src/lib/negotiation-access.test.ts` — verde, 2 arquivos e 13 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - ESLint direcionado nos arquivos alterados — verde.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`, mesmo bloqueio já observado antes.
+- **Riscos observados:**
+  - O filtro de comissão depende do `dealId` persistido em `ruleDetails`; se houver comissões históricas sem esse JSON, elas podem não aparecer nos filtros “com comissão”.
+  - Há alterações pendentes de outra tarefa em `src/lib/commission-generator.ts`, `src/lib/commission/sync.ts` e `src/lib/commission/retroactive.ts`; não foram alteradas nesta tarefa.
+- **Pendências futuras:**
+  - Evoluir para exportação filtrada caso a tela ganhe botão de exportação.
+  - Se o volume de comissões crescer muito, considerar materializar `dealId` em coluna física de comissão para filtros ainda mais rápidos.
+
+### LOG 0142 — 2026-07-02 — Claude (Opus 4.8) — Comissões FASE 2: motor de FAIXA RETROATIVA por período (Partes 1 e 6)
+- **Branch:** `main`. Sem migration (reaproveita `CommissionCalculation` + `CommissionRule` existentes; snapshot em `ruleDetails`).
+- **Tarefa:** implementar a regra comercial "bateu a faixa → TODOS os carros do período recebem o novo valor" (não só os próximos), com recálculo em venda nova e em cancelamento.
+- **Como o motor era (marginal/pontual):** o gerador já computava `quantityInPeriod` (nº de carros do vendedor no mês, via `DealVehicle`+período) e o matcher já escolhia a faixa por `fromQuantity/toQuantity`. Mas gerava por-deal: o carro pegava a faixa vigente NO MOMENTO e os anteriores NÃO eram atualizados. Não existia recálculo do período.
+- **O que fiz:**
+  - **Novo `src/lib/commission/retroactive.ts`** — `recalculateSellerMainForPeriod({tenantId, sellerId, period})`: carrega os `SELLER_MAIN_COMMISSION` (ruleType VENDA, scope no `ruleDetails`) do vendedor no período (não cancelados); a CONTAGEM = nº desses lançamentos (carros do período, inclui PAGO/APROVADO); acha a faixa da contagem atual via `findCommissionRule(quantityInPeriod=count)`; **reprecifica TODOS os PREVISTO** para o valor da faixa (`computeCommissionValue`, FIXO=valor/carro, PERCENTUAL=base×%). **Preserva PAGO/APROVADO/AJUSTADO** (não reprecifica); ignora CANCELADO. Idempotente (não altera o que já está certo). Grava snapshot no `ruleDetails` (`retroTierRuleId`, `quantitySnapshot`, `retroAt`). Também exporta `recalculateSellersMainForPeriods` (lote dedup).
+  - **Hook na GERAÇÃO** (`commission-generator.ts`, fim de `generateCommissionsForDeal`): após persistir, se há vendedor e não é dryRun, chama o recálculo do período → cada venda aprovada/importada reprecifica o mês inteiro do vendedor para a faixa atual (retroativo automático). Best-effort (`.catch`).
+  - **Hook no CANCELAMENTO** (`commission/sync.ts`, `cancelCommissionsForDeal`): captura os (vendedor, período) principais antes de cancelar; após cancelar, chama o recálculo → os carros restantes podem CAIR de faixa (ex.: de 10→9). Best-effort.
+- **Regras preservadas:** troca não duplica venda (o principal continua 1×/deal, normalizado VENDA); gerente/gerente-geral em escopos separados (o recálculo só toca `SELLER_MAIN_COMMISSION`); dedup e idempotência intactas; NÃO recalcula passado ao MUDAR uma regra (o recálculo só dispara em aprovação/importação/cancelamento de venda — Parte 15; recálculo manual autorizado fica para uma ação dedicada).
+- **Testes:** novo `src/lib/commission/retroactive.test.ts` (7 casos, integrando o matcher real): 5→R$300, 6→R$400 (retroativo), 10→R$500, 15→R$700, cancelou-e-caiu→R$300, PAGO/APROVADO preservados (só PREVISTO reprecifica), vazio→no-op. Suíte de comissão completa: `vitest run commission-generator.test.ts commission/ negotiation-access.test.ts` — **24/24 verdes**. `tsc --noEmit` verde.
+- **Riscos/observações:**
+  - **Performance:** o recálculo roda por-deal na geração; numa importação grande do mesmo vendedor no mesmo mês, é O(n²) LIMITADO ao volume MENSAL do vendedor (~15–30 carros) — aceitável. Otimização futura possível: durante import em lote, adiar o recálculo e rodar UMA passada por (vendedor, período) no fim.
+  - Faixas continuam sendo "uma regra por faixa" (`fromQuantity/toQuantity` + `fixedValue`/percentual). Não criei `CommissionTier` nem `tier_mode` — o modo RETROATIVO é o comportamento padrão do principal por faixa (mais simples, sem migration). Se quiserem também o modo marginal, aí sim um flag/tabela.
+- **Pendências futuras:** FASE 3 (bônus dezenal — `getDecendPeriod`), FASE 4 (UI em abas por família), e uma ação de "recálculo manual autorizado por período/unidade/tenant" (Parte 15) com prévia, restrita a ADM/MASTER/GERENTE_GERAL/FINANCEIRO.

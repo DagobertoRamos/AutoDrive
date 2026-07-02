@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
 import { COMMISSION_ELIGIBLE_DEAL_STATUSES } from '@/lib/commission/status'
+import { recalculateSellersMainForPeriods } from '@/lib/commission/retroactive'
 
 export interface SyncMissingCommissionsOptions {
   tenantId: string
@@ -112,6 +113,13 @@ export async function cancelCommissionsForDeal(params: {
     ruleDetails: { path: ['dealId'], equals: params.dealId } as never,
   }
 
+  // Captura os (vendedor, período) principais deste deal ANTES de cancelar, para
+  // reprecificar o período depois (o vendedor pode cair de faixa — Parte 6).
+  const affected = await prisma.commissionCalculation.findMany({
+    where: { ...whereBase, sellerId: { not: null }, ruleType: 'VENDA', status: { notIn: ['PAGO', 'CANCELADO'] } },
+    select: { sellerId: true, period: true },
+  }).catch(() => [] as Array<{ sellerId: string | null; period: string }>)
+
   const [paidPreserved, update] = await Promise.all([
     prisma.commissionCalculation.count({
       where: {
@@ -130,6 +138,15 @@ export async function cancelCommissionsForDeal(params: {
       },
     }).catch(() => ({ count: 0 })),
   ])
+
+  // Reprecifica os períodos afetados: cancelar uma venda pode reduzir a contagem
+  // e derrubar a faixa dos carros restantes (Parte 6). Best-effort.
+  if (update.count > 0) {
+    const pairs = affected
+      .filter((a): a is { sellerId: string; period: string } => !!a.sellerId)
+      .map((a) => ({ sellerId: a.sellerId, period: a.period }))
+    if (pairs.length) await recalculateSellersMainForPeriods(params.tenantId, pairs).catch(() => {})
+  }
 
   if (update.count > 0 || paidPreserved > 0) {
     await prisma.auditLog.create({

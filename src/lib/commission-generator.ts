@@ -25,6 +25,7 @@ import {
 } from '@/lib/commission-matcher'
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
+import { recalculateSellerMainForPeriod } from '@/lib/commission/retroactive'
 import {
   COMMISSION_ELIGIBLE_DEAL_STATUSES,
   commissionReferenceDate,
@@ -775,6 +776,14 @@ export async function generateCommissionsForDeal(
         } as never,
       },
     }).catch(() => {})
+  }
+
+  // Faixa RETROATIVA por período (Partes 1/6): após gerar/atualizar as comissões
+  // deste deal, reprecifica TODOS os SELLER_MAIN do vendedor no período para a
+  // faixa da contagem ATUAL — bater faixa nova faz todos os carros do período
+  // passarem ao novo valor (não só os próximos). Idempotente; best-effort.
+  if (!dryRun && d.seller?.id) {
+    await recalculateSellerMainForPeriod({ tenantId, sellerId: d.seller.id, period, date }).catch(() => {})
   }
 
   return {
