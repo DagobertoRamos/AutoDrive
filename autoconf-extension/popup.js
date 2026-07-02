@@ -460,14 +460,15 @@ $('sample').addEventListener('click', () => {
   }, null, 1))
 })
 
-// Tamanho do lote enviado por requisição. O AutoConf devolve, por negociação,
-// dumps brutos da página (tabelas, formulários, HTML, JSON embutido) que só
-// servem para o JSON local de debug — mandar tudo isso pro AutoDrive de uma vez
-// (ex.: 129 negociações) estourava o limite de tamanho de requisição da Vercel
-// (HTTP 413) e arriscava o timeout de 60s da função. Por isso: (1) enxugamos o
-// payload antes de enviar, mantendo só o que o endpoint realmente usa; (2)
-// enviamos em lotes pequenos e sequenciais, agregando os resultados.
-const BATCH_SIZE = 20
+// Tamanho do lote enviado por requisição. Dois limites da Vercel importam:
+// (1) tamanho do corpo → resolvido enxugando o payload (slimRowForApi); (2)
+// TEMPO da função (60s) → cada negociação, no servidor, faz upsert de cliente +
+// Deal + veículos + pagamentos + débitos + auditoria + RECÁLCULO DE COMISSÃO
+// (dezenas de queries no Neon). Com 20/lote isso estourava 60s → HTTP 504.
+// Lote pequeno mantém cada requisição bem abaixo do limite. A importação é
+// idempotente (dedup por AC-<id>), então lotes que falham podem ser reenviados
+// sem duplicar. Trade-off: mais requisições, importação mais lenta, porém confiável.
+const BATCH_SIZE = 5
 
 // Remove do payload os campos de diagnóstico (pesados e não usados pela API):
 // tabelas/formulários/campos/apiDetalhes/embeddedJson/resumoTexto (dump bruto
@@ -513,6 +514,59 @@ function chunkArray(arr, size) {
   return out
 }
 
+const acc = { created: 0, updated: 0, skipped: 0, unmatchedSeller: 0, commissionGenerated: 0, commissionErrors: 0, results: [], errors: [] }
+
+function resetAcc() {
+  acc.created = acc.updated = acc.skipped = acc.unmatchedSeller = acc.commissionGenerated = acc.commissionErrors = 0
+  acc.results = []; acc.errors = []
+}
+
+// Envia UM lote. Em timeout/erro do servidor (504/502/500) com mais de 1
+// negociação, quebra o lote na metade e reenvia cada parte (dedup por AC-<id>
+// torna isso seguro). Assim uma negociação pesada não derruba o lote inteiro.
+async function sendBatch(rows, token, dryRun, tag) {
+  try {
+    const res = await fetch(`${AUTODRIVE}/api/integrations/autoconf/deals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-autoconf-token': token },
+      body: JSON.stringify({ rows, dryRun, filters: lastResult.filters, period: lastResult.period }),
+    })
+    if (!res.ok) {
+      // 5xx = servidor demorou/estourou; se dá pra dividir, divide e tenta de novo.
+      if (res.status >= 500 && rows.length > 1) {
+        const mid = Math.ceil(rows.length / 2)
+        log(`Lote ${tag}: HTTP ${res.status}, dividindo em ${mid} + ${rows.length - mid}…`)
+        await sendBatch(rows.slice(0, mid), token, dryRun, tag + 'a')
+        await sendBatch(rows.slice(mid), token, dryRun, tag + 'b')
+        return
+      }
+      const j = await res.json().catch(() => ({}))
+      acc.errors.push(`Lote ${tag}: ${j?.error || ('HTTP ' + res.status)}`)
+      log(`Erro no lote ${tag}: ${j?.error || ('HTTP ' + res.status)}`)
+      return
+    }
+    const j = await res.json().catch(() => ({}))
+    acc.created += j.created ?? 0
+    acc.updated += j.updated ?? 0
+    acc.skipped += j.skipped ?? 0
+    acc.unmatchedSeller += j.unmatchedSeller ?? 0
+    acc.commissionGenerated += j.commissionGenerated ?? 0
+    acc.commissionErrors += j.commissionErrors ?? 0
+    acc.results.push(...(j.results || []))
+  } catch (e) {
+    // Rede caiu no meio (comum em timeout). Divide e tenta cada metade.
+    if (rows.length > 1) {
+      const mid = Math.ceil(rows.length / 2)
+      log(`Lote ${tag}: erro de rede, dividindo em ${mid} + ${rows.length - mid}…`)
+      await sendBatch(rows.slice(0, mid), token, dryRun, tag + 'a')
+      await sendBatch(rows.slice(mid), token, dryRun, tag + 'b')
+      return
+    }
+    acc.errors.push(`Lote ${tag}: erro de rede — ${e?.message || e}`)
+    log(`Erro de rede no lote ${tag}: ` + (e?.message || e))
+  }
+}
+
 async function sendToAutodrive(dryRun) {
   if (!lastResult?.rows?.length) { log('Rode a busca primeiro.'); return }
   const token = $('token').value.trim()
@@ -521,49 +575,18 @@ async function sendToAutodrive(dryRun) {
   const label = dryRun ? 'Prévia' : 'Importação'
   const slimRows = lastResult.rows.map(slimRowForApi)
   const batches = chunkArray(slimRows, BATCH_SIZE)
+  resetAcc()
   log(`${label}: enviando ${slimRows.length} negociações de ${lastResult.period?.periodLabel || 'período filtrado'} em ${batches.length} lote(s) de até ${BATCH_SIZE}...`)
 
-  let created = 0, updated = 0, skipped = 0, unmatchedSeller = 0, commissionGenerated = 0, commissionErrors = 0
-  const allResults = []
-  const batchErrors = []
-
   for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i]
-    if (batches.length > 1) log(`Lote ${i + 1}/${batches.length} (${batch.length} negociações)...`)
-    try {
-      const res = await fetch(`${AUTODRIVE}/api/integrations/autoconf/deals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-autoconf-token': token },
-        body: JSON.stringify({
-          rows: batch,
-          dryRun,
-          filters: lastResult.filters,
-          period: lastResult.period,
-        }),
-      })
-      const j = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        batchErrors.push(`Lote ${i + 1}: ${j?.error || ('HTTP ' + res.status)}`)
-        log(`Erro no lote ${i + 1}: ${j?.error || ('HTTP ' + res.status)}`)
-        continue
-      }
-      created += j.created ?? 0
-      updated += j.updated ?? 0
-      skipped += j.skipped ?? 0
-      unmatchedSeller += j.unmatchedSeller ?? 0
-      commissionGenerated += j.commissionGenerated ?? 0
-      commissionErrors += j.commissionErrors ?? 0
-      allResults.push(...(j.results || []))
-    } catch (e) {
-      batchErrors.push(`Lote ${i + 1}: erro de rede — ${e?.message || e}`)
-      log(`Erro de rede no lote ${i + 1}: ` + (e?.message || e))
-    }
+    if (batches.length > 1) log(`Lote ${i + 1}/${batches.length} (${batches[i].length} negociações)...`)
+    await sendBatch(batches[i], token, dryRun, String(i + 1))
   }
 
-  log(`${label} concluída — criadas ${created}, atualizadas ${updated}, puladas ${skipped}, vendedor não achado ${unmatchedSeller}, comissões geradas ${commissionGenerated}${commissionErrors ? `, erros de comissão ${commissionErrors}` : ''}.`)
-  allResults.filter((r) => r.action === 'skipped').slice(0, 10).forEach((r) => log(`  - pulada ${r.externalId}: ${r.reason}`))
-  allResults.filter((r) => typeof r.seller === 'string' && r.seller.startsWith('(NÃO')).slice(0, 10).forEach((r) => log(`  - ${r.externalId} ${r.unit}: ${r.seller}`))
-  if (batchErrors.length) log(`Atenção: ${batchErrors.length} lote(s) com erro. A importação é idempotente (dedup por AC-<id>) — pode rodar de novo com segurança.`)
+  log(`${label} concluída — criadas ${acc.created}, atualizadas ${acc.updated}, puladas ${acc.skipped}, vendedor não achado ${acc.unmatchedSeller}, comissões geradas ${acc.commissionGenerated}${acc.commissionErrors ? `, erros de comissão ${acc.commissionErrors}` : ''}.`)
+  acc.results.filter((r) => r.action === 'skipped').slice(0, 10).forEach((r) => log(`  - pulada ${r.externalId}: ${r.reason}`))
+  acc.results.filter((r) => typeof r.seller === 'string' && r.seller.startsWith('(NÃO')).slice(0, 10).forEach((r) => log(`  - ${r.externalId} ${r.unit}: ${r.seller}`))
+  if (acc.errors.length) log(`Atenção: ${acc.errors.length} lote(s) ainda com erro após dividir. Idempotente (dedup por AC-<id>) — pode rodar de novo.`)
 }
 
 $('preview').addEventListener('click', () => sendToAutodrive(true))

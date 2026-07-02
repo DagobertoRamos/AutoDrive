@@ -1779,3 +1779,14 @@
   - **UI**: toggle "Participa do ranking" no modal de colaborador (`cadastros/vendedores`, salva junto via PUT, mesmo padrão dos módulos por userId); toggle "Unidade participa do ranking" no modal de unidade (`cadastros/unidades`, junto da chave de comissão). `RankingTable`: nova coluna "Fila" (queuePoints) para transparência.
 - **Validações:** `tsc --noEmit` verde; `vitest run src/lib/ranking/ranking.test.ts` verde (7 testes; helper do teste ganhou `queuePoints: 0`).
 - **Escopo:** metas (goals) NÃO mudam de comportamento — `excludeUnitIds` é opt-in e só o ranking passa. Comissão intocada.
+
+### LOG 0132 — 2026-07-02 — Claude (Fable 5) — Extensão AutoConf v0.3.7: HTTP 504 (timeout) na importação
+- **Branch:** `main`. Extensão local (não deploya na Vercel).
+- **Sintoma:** "Erro no lote N: HTTP 504" em quase todos os lotes ao importar 129 negociações de 06/2026.
+- **Causa:** a loja passou a ter **21 regras de comissão ativas** (LOG 0126+). Agora cada negociação importada dispara, no servidor, o recálculo de comissão (`recalculateNegotiationCommissions`) além de upsert de cliente + Deal + veículos + pagamentos + débitos + auditoria — dezenas de queries no Neon por linha. 20 linhas/lote passava dos 60s da função da Vercel → 504.
+- **Correção (só `autoconf-extension/popup.js`, sem tocar no servidor):**
+  - `BATCH_SIZE` 20 → 5.
+  - `sendBatch()` recursivo: em 5xx (>=500) ou erro de rede com >1 linha, quebra o lote pela metade e reenvia cada parte (dedup por `AC-<id>` torna seguro) — adapta o tamanho até caber no tempo limite. Antes, um lote que falhava era só logado e pulado.
+  - Deal é criado ANTES da comissão (fora da transação de comissão), então mesmo com timeout parcial os deals já gravados persistem; reimportar converge.
+- **Validações:** `node --check popup.js` verde.
+- **Escopo:** só a extensão. Endpoint do servidor inalterado. Bump 0.3.6 → 0.3.7. Melhoria futura possível: desacoplar geração de comissão da importação (importar deals rápido, recalcular comissão em passo separado/chunked) para volumes grandes (ex.: ano inteiro).

@@ -1,4 +1,4 @@
-# AutoConf → AutoDrive — extensão de importação (v0.3.6)
+# AutoConf → AutoDrive — extensão de importação (v0.3.7)
 
 Lê negociações do **AutoConf** usando a sessão já logada no navegador e envia para o
 **AutoDrive** pelo endpoint `POST /api/integrations/autoconf/deals`.
@@ -277,6 +277,26 @@ Host permissions:
 - `https://auto-drive-mocha.vercel.app/*`
 
 ## Changelog
+
+### v0.3.7 — corrige HTTP 504 (timeout) na importação de muitas negociações
+
+- **Causa:** agora que a loja tem regras de comissão configuradas, cada
+  negociação importada faz, no servidor, muito trabalho (upsert de cliente +
+  Deal + veículos + pagamentos + débitos + auditoria + **recálculo de
+  comissão**, dezenas de queries no banco). Com 20 negociações por requisição,
+  isso passava dos 60 segundos da função da Vercel → **HTTP 504**.
+- **Correção:**
+  - Lote reduzido de 20 → **5** negociações por requisição (cada requisição
+    fica bem abaixo do tempo limite).
+  - **Divisão automática em caso de timeout:** se um lote ainda estourar
+    (5xx/rede), a extensão quebra o lote pela metade e reenvia cada parte,
+    repetindo até caber. Assim uma negociação pesada não derruba o lote inteiro
+    e não é preciso reimportar na mão.
+  - A importação continua idempotente (dedup por `AC-<id>`), então reenviar é
+    sempre seguro.
+- Trade-off: mais requisições, importação um pouco mais lenta, porém confiável.
+  A negociação (Deal) é criada antes do recálculo de comissão, então mesmo que
+  a comissão de uma linha falhe, o Deal já fica gravado.
 
 ### v0.3.6 — pagamentos/débitos reais (Títulos Financeiros) + histórico de auditoria
 
