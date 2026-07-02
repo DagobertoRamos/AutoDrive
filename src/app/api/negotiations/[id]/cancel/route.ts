@@ -10,6 +10,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canCancelDeal } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/negotiation-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { cancelCommissionsForDeal } from '@/lib/commission/sync'
 
 export async function POST(
   req: NextRequest,
@@ -112,7 +113,23 @@ export async function POST(
       return d
     })
 
-    return NextResponse.json({ data: updated })
+    let commissionCancelResult: Awaited<ReturnType<typeof cancelCommissionsForDeal>> | null = null
+    try {
+      commissionCancelResult = await cancelCommissionsForDeal({
+        tenantId:     deal.tenantId ?? null,
+        dealId:       params.id,
+        actorUserId:  session.user.id,
+        reason:       body.reason,
+      })
+    } catch (err) {
+      console.error('[cancel] commission cancel failed', {
+        tenantId: deal.tenantId,
+        dealId: params.id,
+        message: err instanceof Error ? err.message : 'Erro desconhecido',
+      })
+    }
+
+    return NextResponse.json({ data: updated, commissionCancelResult })
   } catch (err) {
     return handlePrismaError(err)
   }

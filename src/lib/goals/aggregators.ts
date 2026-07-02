@@ -3,13 +3,14 @@
 //
 // REGRA CENTRAL: toda agregação acontece aqui, no service layer — NUNCA no
 // front-end. Cada GoalType tem um agregador dedicado que conta os eventos
-// CONCLUÍDOS dentro da janela do período, respeitando o escopo (tenant/unidade/
-// vendedor). Os filtros de escopo são aplicados de forma aditiva: quanto mais
+// comercialmente elegíveis dentro da janela do período, respeitando o escopo
+// (tenant/unidade/vendedor). Os filtros de escopo são aplicados de forma aditiva: quanto mais
 // específico o escopo, mais restritiva a query.
 // =============================================================================
 
 import type { GoalType } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { commissionEligibleDealWindowWhere } from '@/lib/commission/status'
 
 /** Escopo de agregação já resolvido (sellerId derivado do userId no service). */
 export interface AggregationScope {
@@ -42,40 +43,33 @@ function dealScopeWhere(scope: AggregationScope): Record<string, unknown> {
 }
 
 /**
- * Negociação CONCLUÍDA dentro da janela.
- * Usa finalizedAt quando presente; cai para saleDate (deals importados de
- * planilha podem não ter finalizedAt) — ambos sob status FINALIZADA.
+ * Negociação comercialmente elegível dentro da janela. A mesma lista de status
+ * usada pelo motor de comissão mantém metas/ranking alinhados ao fluxo comercial.
  */
-function dealCompletedInWindow(w: AggregationWindow): Record<string, unknown> {
-  return {
-    status: 'FINALIZADA',
-    OR: [
-      { finalizedAt: { gte: w.start, lte: w.end } },
-      { finalizedAt: null, saleDate: { gte: w.start, lte: w.end } },
-    ],
-  }
+function dealEligibleInWindow(w: AggregationWindow): Record<string, unknown> {
+  return commissionEligibleDealWindowWhere(w)
 }
 
 // ── Agregadores por tipo ────────────────────────────────────────────────────────
 
 async function aggSalesExchange(scope: AggregationScope, w: AggregationWindow): Promise<AggregatorResult> {
   const value = await prisma.deal.count({
-    where: { ...dealScopeWhere(scope), type: { in: ['VENDA', 'TROCA'] }, ...dealCompletedInWindow(w) },
+    where: { ...dealScopeWhere(scope), type: { in: ['VENDA', 'TROCA'] }, ...dealEligibleInWindow(w) },
   })
   return { value }
 }
 
 async function aggPurchase(scope: AggregationScope, w: AggregationWindow): Promise<AggregatorResult> {
   const value = await prisma.deal.count({
-    where: { ...dealScopeWhere(scope), type: 'COMPRA', ...dealCompletedInWindow(w) },
+    where: { ...dealScopeWhere(scope), type: 'COMPRA', ...dealEligibleInWindow(w) },
   })
   return { value }
 }
 
 async function aggService(scope: AggregationScope, w: AggregationWindow): Promise<AggregatorResult> {
-  // Serviços vendidos em negociações concluídas no período.
+  // Serviços vendidos em negociações elegíveis no período.
   const value = await prisma.dealService.count({
-    where: { deal: { ...dealScopeWhere(scope), ...dealCompletedInWindow(w) } },
+    where: { deal: { ...dealScopeWhere(scope), ...dealEligibleInWindow(w) } },
   })
   return { value }
 }
@@ -96,25 +90,25 @@ async function aggDocumentation(scope: AggregationScope, w: AggregationWindow): 
 }
 
 async function aggExtendedWarranty(scope: AggregationScope, w: AggregationWindow): Promise<AggregatorResult> {
-  // Garantias estendidas vendidas = WarrantySale ATIVA em negociações concluídas
+  // Garantias estendidas vendidas = WarrantySale ATIVA em negociações elegíveis
   // no período (modelo dedicado, criado no módulo de Retorno/Garantia).
   const value = await prisma.warrantySale.count({
     where: {
       status: 'ATIVA',
-      deal: { ...dealScopeWhere(scope), ...dealCompletedInWindow(w) },
+      deal: { ...dealScopeWhere(scope), ...dealEligibleInWindow(w) },
     },
   })
   return { value }
 }
 
 async function aggReturn(scope: AggregationScope, w: AggregationWindow): Promise<AggregatorResult> {
-  // Retornos concluídos = negociações concluídas no período (no escopo) que
+  // Retornos elegíveis = negociações elegíveis no período (no escopo) que
   // tiveram retorno financeiro registrado (returnNetValue > 0).
   const value = await prisma.deal.count({
     where: {
       ...dealScopeWhere(scope),
       returnNetValue: { gt: 0 },
-      ...dealCompletedInWindow(w),
+      ...dealEligibleInWindow(w),
     },
   })
   return { value }

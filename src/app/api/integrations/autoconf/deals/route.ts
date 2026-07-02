@@ -14,6 +14,8 @@ import {
   resolveTenantByToken, resolveUnitId, resolveSellerId, mapType, mapStatus,
   type AutoconfRow, type AutoconfVehicle, type ProcessRowResult,
 } from '@/lib/integrations/autoconf'
+import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
+import { isCommissionEligibleStatus } from '@/lib/commission/status'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -66,6 +68,7 @@ export async function POST(req: Request) {
 
     const results: ProcessRowResult[] = []
     let created = 0, updated = 0, skipped = 0
+    let commissionGenerated = 0, commissionErrors = 0
 
     for (const row of rows) {
       const ext = String(row.externalId)
@@ -96,18 +99,52 @@ export async function POST(req: Request) {
       }
 
       if (existing) {
+        const savedDealId = existing.id
         await prisma.$transaction(async (tx) => {
-          await tx.deal.update({ where: { id: existing.id }, data: { ...dealData, ...(finalizedAt ? { finalizedAt } : {}) } })
-          await tx.dealVehicle.deleteMany({ where: { dealId: existing.id } })
-          if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: existing.id, ...v })) })
+          await tx.deal.update({ where: { id: savedDealId }, data: { ...dealData, ...(finalizedAt ? { finalizedAt } : {}) } })
+          await tx.dealVehicle.deleteMany({ where: { dealId: savedDealId } })
+          if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: savedDealId, ...v })) })
         })
+        if (isCommissionEligibleStatus(status)) {
+          try {
+            const commission = await recalculateNegotiationCommissions({
+              dealId: savedDealId,
+              tenantId,
+              triggeredBy: 'autoconf',
+            })
+            commissionGenerated += commission.created
+          } catch (err) {
+            commissionErrors++
+            console.error('[autoconf deals] commission generation failed', {
+              tenantId, dealId: savedDealId, dealNumber, status, unitId, sellerId,
+              message: err instanceof Error ? err.message : 'Erro desconhecido',
+            })
+          }
+        }
         updated++
         results.push({ externalId: ext, action: 'updated', unit: unitName.get(unitId), seller: row.vendedor ?? null, dealNumber })
       } else {
-        await prisma.$transaction(async (tx) => {
+        const savedDealId = await prisma.$transaction(async (tx) => {
           const deal = await tx.deal.create({ data: { ...dealData, ...(finalizedAt ? { finalizedAt } : {}) } })
           if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: deal.id, ...v })) })
+          return deal.id
         })
+        if (isCommissionEligibleStatus(status)) {
+          try {
+            const commission = await recalculateNegotiationCommissions({
+              dealId: savedDealId,
+              tenantId,
+              triggeredBy: 'autoconf',
+            })
+            commissionGenerated += commission.created
+          } catch (err) {
+            commissionErrors++
+            console.error('[autoconf deals] commission generation failed', {
+              tenantId, dealId: savedDealId, dealNumber, status, unitId, sellerId,
+              message: err instanceof Error ? err.message : 'Erro desconhecido',
+            })
+          }
+        }
         created++
         results.push({ externalId: ext, action: 'created', unit: unitName.get(unitId), seller: row.vendedor ?? null, dealNumber })
       }
@@ -116,6 +153,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true, dryRun, total: rows.length,
       created, updated, skipped,
+      commissionGenerated,
+      commissionErrors,
       unmatchedSeller: results.filter((r) => typeof r.seller === 'string' && r.seller.startsWith('(NÃO')).length,
       results,
     })

@@ -1677,3 +1677,50 @@
   - `node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbopack` — bloqueado localmente por `EPERM open .next/trace`.
 - **Deploy manual:**
   - Não fiz deploy. Para publicar: `git add -A`, `git commit -m "Evoluir regras e motor de comissoes"`, `git push origin main`. Na Vercel, o deploy deve disparar pelo push; se não disparar, usar **Deployments > Redeploy** no commit mais recente.
+
+### LOG 0127 — 2026-07-01 21:37:28 -03:00 — Codex (GPT-5) — Comissão para negociação em Aguardando Contrato
+- **Branch:** `main` (worktree local). Sem migration.
+- **Tarefa executada:** investigar e corrigir negociações em **Aguardando contrato** que não entravam em comissão, preservando multi-tenant, ranking/metas, financeiro e idempotência.
+- **Logs lidos/considerados:**
+  - LOG 0000/0001: criação de metas, ranking, retorno/garantia e motor inicial de comissões.
+  - LOG 0005/0013: `/comissoes/lancamentos` sobre `CommissionCalculation`, com status PREVISTO visível.
+  - LOG 0028/0030: financeiro sincroniza `CommissionCalculation` como despesa, sem depender de alteração nesta fase.
+  - LOG 0124 Claude: gerente/unidade e chave de comissão por unidade (`unit_commission`) no gerador.
+  - LOG 0126 Codex: regras simples, geração na aprovação, bônus e proteção contra duplicidade gerencial.
+- **Arquivos alterados/criados:**
+  - `src/lib/commission/status.ts` (novo)
+  - `src/lib/commission/status.test.ts` (novo)
+  - `src/lib/commission/sync.ts` (novo)
+  - `src/app/api/commissions/sync-missing/route.ts` (novo)
+  - `src/lib/commission-generator.ts`
+  - `src/lib/goals/aggregators.ts`
+  - `src/lib/integrations/autoconf.ts`
+  - `src/lib/integrations/autoconf.test.ts` (novo)
+  - `src/app/api/integrations/autoconf/deals/route.ts`
+  - `src/app/api/negotiations/[id]/cancel/route.ts`
+  - `src/app/api/commissions/calculations/route.ts`
+- **Causa encontrada:**
+  - O status interno exibido como "Aguardando contrato" é `AGUARDANDO_CONTRATO`.
+  - O AutoConf já mapeava `pendente contrato` para `AGUARDANDO_CONTRATO`, mas podia gravar/atualizar a negociação diretamente nesse status, sem passar pela rota `/approve` que passou a gerar comissão no LOG 0126.
+  - Ranking/metas usavam agregadores baseados em `status: FINALIZADA`, então não estavam alinhados com a regra comercial "aprovou/liberou, conta".
+  - Não existia uma função central única de status elegíveis para comissão.
+- **Correção aplicada:**
+  - Criado `isCommissionEligibleStatus(status)` e `COMMISSION_ELIGIBLE_DEAL_STATUSES`, incluindo `APROVADA`, `LIBERADA`, `AGUARDANDO_CONTRATO` e demais etapas posteriores aprovadas, sem incluir rascunho, aguardando aprovação, reprovada ou cancelada.
+  - `commission-generator.ts` agora recusa status inelegível e calcula a competência pela data comercial da negociação (`approvedAt`, `releasedAt`, `finalizedAt`, `saleDate`, `createdAt`).
+  - AutoConf agora reconhece também `contrato pendente` e `aguardando contrato`; ao salvar status elegível, recalcula comissões previstas do deal de forma idempotente.
+  - Criada rota protegida `POST /api/commissions/sync-missing` para varrer negociações elegíveis do tenant que ainda não possuem comissão e gerar as faltantes sem duplicar.
+  - Agregadores de metas/ranking agora usam a mesma janela/status elegível do motor de comissão.
+  - Cancelamento de negociação passa a marcar comissões não pagas como `CANCELADO`, preservando pagas e auditando.
+  - Listagem de comissões resolve nomes por `managerId`/`employeeUserId` para evitar responsável `—`.
+- **Riscos observados:**
+  - `EM_ANDAMENTO` não foi incluído como elegível para evitar comissão em importações/status genéricos que ainda não provam aprovação comercial.
+  - A sincronização de faltantes é conservadora: se a negociação já possui qualquer comissão vinculada, ela pula para evitar duplicidade em históricos/reimportações.
+  - Comissões já pagas em venda cancelada são preservadas; fluxo de estorno financeiro pago segue como pendência futura se necessário.
+- **Testes realizados:**
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx vitest run src/lib/commission/status.test.ts src/lib/commission/rule-validation.test.ts src/lib/integrations/autoconf.test.ts` — verde, 3 arquivos e 8 testes.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`, mesmo bloqueio já observado anteriormente.
+- **Pendências futuras:**
+  - Rodar a rota protegida de sincronização no tenant afetado após deploy para corrigir negociações antigas em `AGUARDANDO_CONTRATO` sem comissão.
+  - Se houver comissão já paga em venda cancelada, definir com o usuário a regra operacional de estorno/ajuste financeiro pago.

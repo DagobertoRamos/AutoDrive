@@ -61,7 +61,7 @@ export async function GET(req: Request) {
         take: 500,
         select: {
           id: true, ruleType: true, description: true, baseValue: true, commissionValue: true,
-          status: true, period: true, sellerId: true, managerId: true, createdAt: true,
+          status: true, period: true, sellerId: true, managerId: true, ruleDetails: true, createdAt: true,
         },
       }),
       prisma.commissionCalculation.groupBy({
@@ -75,12 +75,19 @@ export async function GET(req: Request) {
     // Resolve nomes (sellerId → Seller.fullName; managerId → User.name).
     const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter(Boolean))] as string[]
     const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[]
+    const employeeUserIds = [...new Set(rows
+      .map((r) => (r.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId)
+      .filter(Boolean))] as string[]
     const [sellers, managers] = await Promise.all([
       sellerIds.length ? prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, fullName: true, shortName: true } }) : [],
-      managerIds.length ? prisma.user.findMany({ where: { id: { in: managerIds } }, select: { id: true, name: true } }) : [],
+      managerIds.length ? prisma.manager.findMany({ where: { id: { in: managerIds } }, select: { id: true, fullName: true, user: { select: { name: true } } } }) : [],
     ])
+    const employeeUsers = employeeUserIds.length
+      ? await prisma.user.findMany({ where: { id: { in: employeeUserIds } }, select: { id: true, name: true } })
+      : []
     const sellerMap = Object.fromEntries(sellers.map((s) => [s.id, s.shortName || s.fullName]))
-    const userMap = Object.fromEntries(managers.map((m) => [m.id, m.name]))
+    const managerMap = Object.fromEntries(managers.map((m) => [m.id, m.fullName || m.user?.name || 'Gerente']))
+    const userMap = Object.fromEntries(employeeUsers.map((m) => [m.id, m.name]))
 
     const data = rows.map((r) => ({
       id: r.id,
@@ -91,7 +98,11 @@ export async function GET(req: Request) {
       status: r.status,
       period: r.period,
       createdAt: r.createdAt,
-      responsavel: r.sellerId ? (sellerMap[r.sellerId] ?? '—') : r.managerId ? (userMap[r.managerId] ?? '—') : '—',
+      responsavel: r.sellerId
+        ? (sellerMap[r.sellerId] ?? '—')
+        : r.managerId
+          ? (managerMap[r.managerId] ?? '—')
+          : userMap[(r.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId ?? ''] ?? '—',
     }))
 
     const totalsByType = byType.map((g) => ({

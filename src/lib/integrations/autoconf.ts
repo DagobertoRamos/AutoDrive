@@ -99,7 +99,10 @@ const TYPE_MAP: Record<string, string> = { venda: 'VENDA', compra: 'COMPRA', tro
 const STATUS_MAP: Record<string, string> = {
   finalizada: 'FINALIZADA',
   'pendente contrato': 'AGUARDANDO_CONTRATO',
+  'contrato pendente': 'AGUARDANDO_CONTRATO',
+  'aguardando contrato': 'AGUARDANDO_CONTRATO',
   'pendente nfe': 'AGUARDANDO_DOCUMENTACAO',
+  'aguardando documentacao': 'AGUARDANDO_DOCUMENTACAO',
   cancelada: 'CANCELADA',
   'aguardando aprovacao': 'AGUARDANDO_APROVACAO',
 }

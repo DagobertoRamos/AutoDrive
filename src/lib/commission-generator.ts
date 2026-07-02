@@ -26,6 +26,11 @@ import {
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
 import { DEFAULT_COMMISSION_BEHAVIOR, getCommissionBehaviorSettings } from '@/lib/commission/settings'
+import {
+  COMMISSION_ELIGIBLE_DEAL_STATUSES,
+  commissionReferenceDate,
+  isCommissionEligibleStatus,
+} from '@/lib/commission/status'
 import type { CommissionRule, CommissionRuleType, Prisma, UserRole } from '@prisma/client'
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
@@ -120,8 +125,6 @@ function refKey(ruleType: string, ref: GenerationItemRef): string {
 export async function generateCommissionsForDeal(
   opts: GenerateOptions,
 ): Promise<GenerationResult> {
-  const date    = opts.date ?? new Date()
-  const period  = periodOf(date)
   const dryRun  = !!opts.dryRun
 
   // 1. Carrega o Deal + relações relevantes
@@ -140,6 +143,12 @@ export async function generateCommissionsForDeal(
     return { dealId: opts.dealId, created: 0, matched: 0, unmatched: 0, items: [] }
   }
   const d = deal // alias para closures não precisarem reverificar nulidade
+  if (!isCommissionEligibleStatus(d.status)) {
+    return { dealId: opts.dealId, created: 0, matched: 0, unmatched: 0, items: [] }
+  }
+
+  const date    = opts.date ?? commissionReferenceDate(d)
+  const period  = periodOf(date)
 
   const tenantId = opts.tenantId ?? d.tenantId ?? null
   const unitId   = d.unitId ?? d.seller?.unitId ?? null
@@ -627,8 +636,6 @@ export async function generateCommissionsForDeal(
 
 // ── Faixas e bônus por quantidade ────────────────────────────────────────────
 
-const COUNTABLE_DEAL_STATUSES = ['APROVADA', 'LIBERADA', 'FINALIZADA'] as const
-
 function periodBounds(date: Date): { start: Date; end: Date } {
   return {
     start: new Date(date.getFullYear(), date.getMonth(), 1),
@@ -674,7 +681,7 @@ async function resolvePeriodQuantity(
 
   const { start, end } = periodBounds(date)
   const dealAnd: Array<Record<string, unknown>> = [
-    { status: { in: [...COUNTABLE_DEAL_STATUSES] } },
+    { status: { in: COMMISSION_ELIGIBLE_DEAL_STATUSES } },
     {
       OR: [
         { approvedAt:  { gte: start, lt: end } },
