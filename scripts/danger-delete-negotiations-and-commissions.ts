@@ -33,11 +33,15 @@ interface Args {
   execute: boolean
   dryRunFlag: boolean
   help: boolean
+  includeFiWarrantyRules: boolean
 }
 
 interface Scope {
   tenantId: string | null
   allTenants: boolean
+  // Por padrão NÃO apaga WarrantyRule/ReturnPercentRule: são catálogo de garantia
+  // e config de F&I/retorno, não `CommissionRule`. Só apaga com a flag explícita.
+  includeFiWarrantyRules: boolean
 }
 
 interface CountRow {
@@ -59,6 +63,7 @@ function parseArgs(argv: string[]): Args {
     execute: false,
     dryRunFlag: false,
     help: false,
+    includeFiWarrantyRules: false,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -67,6 +72,7 @@ function parseArgs(argv: string[]): Args {
     else if (arg === '--execute') out.execute = true
     else if (arg === '--dry-run') out.dryRunFlag = true
     else if (arg === '--all-tenants') out.allTenants = true
+    else if (arg === '--include-fi-warranty-rules') out.includeFiWarrantyRules = true
     else if (arg.startsWith('--tenantId=')) out.tenantId = arg.slice('--tenantId='.length).trim()
     else if (arg === '--tenantId') {
       const next = argv[i + 1]
@@ -93,6 +99,10 @@ Delete real em todos os tenants:
 
 Producao exige tambem:
   CONFIRM_PRODUCTION_DELETE="${PRODUCTION_CONFIRMATION}"
+
+Opcional (padrao NAO apaga): tambem apagar regras de garantia (WarrantyRule) e
+de retorno F&I (ReturnPercentRule) — nao sao CommissionRule, sao catalogo/F&I:
+  ... --include-fi-warranty-rules
 `)
 }
 
@@ -136,6 +146,7 @@ function validateArgs(args: Args): { dryRun: boolean; scope: Scope } {
     scope: {
       tenantId: args.tenantId,
       allTenants: args.allTenants,
+      includeFiWarrantyRules: args.includeFiWarrantyRules,
     },
   }
 }
@@ -186,8 +197,8 @@ async function countRows(db: Db, scope: Scope): Promise<CountRow[]> {
     { label: 'CommissionExtract', action: 'delete', count: await db.commissionExtract.count({ where: tenantWhere(scope) }) },
     { label: 'CommissionCalculation', action: 'delete', count: await db.commissionCalculation.count({ where: commissionCalculationWhere(scope) }) },
     { label: 'CommissionRule', action: 'delete', count: await db.commissionRule.count({ where: tenantWhere(scope) }) },
-    { label: 'WarrantyRule', action: 'delete', count: await db.warrantyRule.count({ where: tenantWhere(scope) }) },
-    { label: 'ReturnPercentRule', action: 'delete', count: await db.returnPercentRule.count({ where: tenantWhere(scope) }) },
+    { label: 'WarrantyRule (F&I/garantia)', action: scope.includeFiWarrantyRules ? 'delete' : 'preserve', count: await db.warrantyRule.count({ where: tenantWhere(scope) }) },
+    { label: 'ReturnPercentRule (F&I/retorno)', action: scope.includeFiWarrantyRules ? 'delete' : 'preserve', count: await db.returnPercentRule.count({ where: tenantWhere(scope) }) },
     { label: 'RankingScore', action: 'delete', count: await db.rankingScore.count({ where: tenantWhere(scope) }) },
     { label: 'GoalProgress', action: 'delete', count: await db.goalProgress.count({ where: tenantWhere(scope) }) },
     { label: 'Pendency.dealId', action: 'unlink', count: await db.pendency.count({ where: { ...tenantWhere(scope), dealId: { not: null } } }) },
@@ -212,7 +223,7 @@ async function countRows(db: Db, scope: Scope): Promise<CountRow[]> {
     { label: 'DealReleaseRequest', action: 'delete', count: await db.dealReleaseRequest.count({ where: { deal: dw } }) },
     { label: 'WarrantySale', action: 'delete', count: await db.warrantySale.count({ where: { deal: dw } }) },
     { label: 'Deal', action: 'delete', count: await db.deal.count({ where: dw }) },
-    { label: 'Tenant', action: 'preserve', count: await db.tenant.count({ where: tenantWhere(scope) }) },
+    { label: 'Tenant', action: 'preserve', count: await db.tenant.count({ where: scope.allTenants ? {} : { id: scope.tenantId as string } }) },
     { label: 'User', action: 'preserve', count: await db.user.count({ where: tenantWhere(scope) }) },
     { label: 'Unit', action: 'preserve', count: await db.unit.count({ where: tenantWhere(scope) }) },
     { label: 'Seller', action: 'preserve', count: await db.seller.count({ where: scope.allTenants ? {} : { unit: { tenantId: scope.tenantId } } }) },
@@ -240,8 +251,10 @@ async function runMutations(db: Db, scope: Scope): Promise<MutationResult[]> {
   await del('CommissionExtract', () => db.commissionExtract.deleteMany({ where: tenantWhere(scope) }))
   await del('CommissionCalculation', () => db.commissionCalculation.deleteMany({ where: commissionCalculationWhere(scope) }))
   await del('CommissionRule', () => db.commissionRule.deleteMany({ where: tenantWhere(scope) }))
-  await del('WarrantyRule', () => db.warrantyRule.deleteMany({ where: tenantWhere(scope) }))
-  await del('ReturnPercentRule', () => db.returnPercentRule.deleteMany({ where: tenantWhere(scope) }))
+  if (scope.includeFiWarrantyRules) {
+    await del('WarrantyRule (F&I/garantia)', () => db.warrantyRule.deleteMany({ where: tenantWhere(scope) }))
+    await del('ReturnPercentRule (F&I/retorno)', () => db.returnPercentRule.deleteMany({ where: tenantWhere(scope) }))
+  }
   await del('RankingScore', () => db.rankingScore.deleteMany({ where: tenantWhere(scope) }))
   await del('GoalProgress', () => db.goalProgress.deleteMany({ where: tenantWhere(scope) }))
 
