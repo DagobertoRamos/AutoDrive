@@ -216,36 +216,24 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
           returnNetValue:   calc.returnNetValue,
         },
       })
-      await tx.returnCalculationSnapshot.create({
-        data: {
-          tenantId: deal.tenantId,
-          negotiationId: id,
-          financingId,
-          baseAmount,
-          returnPercent: returnRatePercent,
-          returnMinPercent: resolved.range.minReturnPercent,
-          returnMaxPercent: resolved.range.maxReturnPercent,
-          grossReturnAmount: calc.returnGrossValue,
-          ilaSettingId: resolved.ila?.id ?? null,
-          ilaCompetenceMonth: resolved.competence.month,
-          ilaCompetenceYear: resolved.competence.year,
-          ilaPercent: ila.valueType === 'PERCENTUAL' ? ila.value : null,
-          ilaDiscountAmount: calc.ilaValue,
-          iofRuleId: resolved.iof?.id ?? null,
-          iofStartDate: dateOnlyToDate(iof.startsAt),
-          iofEndDate: dateOnlyToDate(iof.endsAt),
-          iofPercent: iof.valueType === 'PERCENTUAL' ? iof.value : null,
-          iofDiscountAmount: calc.iofValue,
-          netReturnAmount: calc.returnNetValue,
-          commissionBaseAmount: calc.commissionBaseValue,
-          operationDate,
-          status: 'CALCULADO',
-          calculatedBy: session.user.id,
-          calculatedAt,
-          settingsVersion: calculatedAt.toISOString(),
-          snapshotJson: snapshot,
-        },
-      })
+      await tx.$executeRaw`
+        INSERT INTO "return_calculation_snapshots" (
+          "id", "tenantId", "negotiationId", "financingId",
+          "baseAmount", "returnPercent", "returnMinPercent", "returnMaxPercent", "grossReturnAmount",
+          "ilaSettingId", "ilaCompetenceMonth", "ilaCompetenceYear", "ilaPercent", "ilaDiscountAmount",
+          "iofRuleId", "iofStartDate", "iofEndDate", "iofPercent", "iofDiscountAmount",
+          "netReturnAmount", "commissionBaseAmount", "operationDate", "status",
+          "calculatedBy", "calculatedAt", "settingsVersion", "snapshotJson", "createdAt", "updatedAt"
+        ) VALUES (
+          ${globalThis.crypto?.randomUUID?.() ?? `snap_${Date.now()}_${Math.random().toString(36).slice(2)}`},
+          ${deal.tenantId}, ${id}, ${financingId},
+          ${baseAmount}, ${returnRatePercent}, ${resolved.range.minReturnPercent}, ${resolved.range.maxReturnPercent}, ${calc.returnGrossValue},
+          ${resolved.ila?.id ?? null}, ${resolved.competence.month}, ${resolved.competence.year}, ${ila.valueType === 'PERCENTUAL' ? ila.value : null}, ${calc.ilaValue},
+          ${resolved.iof?.id ?? null}, ${dateOnlyToDate(iof.startsAt)}, ${dateOnlyToDate(iof.endsAt)}, ${iof.valueType === 'PERCENTUAL' ? iof.value : null}, ${calc.iofValue},
+          ${calc.returnNetValue}, ${calc.commissionBaseValue}, ${operationDate}, ${'CALCULADO'},
+          ${session.user.id}, ${calculatedAt}, ${calculatedAt.toISOString()}, ${JSON.stringify(snapshot)}::jsonb, ${calculatedAt}, ${calculatedAt}
+        )
+      `
       await createDealAudit(tx as never, {
         dealId:   id,
         tenantId: deal.tenantId,

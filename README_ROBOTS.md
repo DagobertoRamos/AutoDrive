@@ -2025,3 +2025,61 @@
 - **Pendências futuras:**
   - Criar teste de rota específico para URL direta `/api/negotiations/[id]` com Vendedor A/B quando houver fixture/mocks mais completos para o handler gigante.
   - Avaliar busca global fora do módulo de negociações, se ela for implementada/reativada, para forçar o mesmo helper.
+### LOG 0139 — 2026-07-02 17:03:50 -03:00 — Codex (GPT-5) — Retorno/F&I profissional com ILA mensal, IOF por vigência e snapshot
+- **Branch:** `main`. Sem deploy.
+- **Tarefa executada:**
+  - Profissionalizado o módulo de Retorno/F&I com configuração geral única por tenant, faixa configurável 0,01% a 20,00%, ILA mensal por competência e IOF periódico por vigência.
+  - Ajustado o cálculo central para retorno bruto, desconto de ILA e IOF sobre o retorno bruto, retorno líquido e base comissionável separada quando o líquido ficar negativo.
+  - Incluído snapshot persistente de cada cálculo definitivo de retorno da negociação.
+- **Arquivos alterados/criados:**
+  - `prisma/schema.prisma`
+  - `prisma/20260702173000_add_return_calculation_snapshots.sql`
+  - `src/app/api/negotiations/[id]/return/route.ts`
+  - `src/app/api/settings/financing/return-config/route.ts`
+  - `src/components/financing/ReturnProfessionalSettings.tsx`
+  - `src/lib/auth-guards.ts`
+  - `src/lib/finance/return-calc.ts`
+  - `src/lib/finance/return-calc.test.ts`
+  - `src/lib/finance/return-settings.ts`
+  - `src/lib/finance/return-settings.test.ts`
+  - `src/lib/validators/financing.ts`
+  - `src/lib/validators/return.ts`
+- **Regra implementada:**
+  - Configuração geral de retorno continua tenant-scoped em `SystemSetting` (`return_settings`, `ila_settings`, `iof_settings`), sem criar duplicidade de tabelas de configuração.
+  - ILA exige mês/ano e percentual.
+  - IOF exige data inicial, data final opcional e percentual; a API bloqueia regras ativas sobrepostas.
+  - Opções avançadas permitem ILA zero ou IOF zero quando faltar cadastro, ambas desligadas por padrão.
+  - Data de referência do cálculo: aprovação da negociação, depois proposta F&I vinculada, depois data da venda/finalização/criação.
+- **Fórmula aplicada:**
+  - `retornoBruto = baseAmount * (returnPercent / 100)`.
+  - `descontoILA = retornoBruto * (ilaPercent / 100)`.
+  - `descontoIOF = retornoBruto * (iofPercent / 100)`.
+  - `retornoLiquido = retornoBruto - descontoILA - descontoIOF`.
+  - Se o líquido ficar negativo, o snapshot registra o valor negativo e `commissionBaseAmount` fica zero.
+- **Snapshot:**
+  - Novo model `ReturnCalculationSnapshot` / tabela `return_calculation_snapshots`.
+  - Salva tenant, negociação, proposta F&I opcional, base, percentual, faixa usada, bruto, ILA, IOF, líquido, base comissionável, data da operação, usuário calculador, data do cálculo e `snapshotJson` completo.
+  - O snapshot também continua no metadata do `DealAuditLog` da negociação.
+- **Permissões e multi-tenant:**
+  - Configuração protegida por `financing.config` e pela permissão F&I da loja `alterarRetorno`.
+  - Vendedor não altera faixa, ILA ou IOF.
+  - A configuração e o cálculo usam sempre o tenant resolvido no servidor, não tenant enviado pelo front-end.
+- **Migration:**
+  - O schema Prisma foi atualizado.
+  - O sandbox local negou criar a pasta nova em `prisma/migrations` (`Access denied`), então o SQL foi salvo em `prisma/20260702173000_add_return_calculation_snapshots.sql` como fallback manual.
+  - Para deploy correto, criar `prisma/migrations/20260702173000_add_return_calculation_snapshots/migration.sql` com esse conteúdo ou aplicar o SQL manualmente antes de liberar o cálculo.
+- **Testes realizados:**
+  - `npx vitest run src/lib/finance/return-calc.test.ts src/lib/finance/return-settings.test.ts` — verde, 12 testes.
+  - `npx vitest run src/lib/finance/return-calc.test.ts src/lib/finance/return-settings.test.ts src/lib/negotiation-access.test.ts src/lib/dashboard/dashboardProfiles.test.ts src/app/api/routes-integration.test.ts` — verde, 5 arquivos e 30 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx prisma validate` — schema válido; apenas aviso de depreciação de `package.json#prisma`.
+  - ESLint direcionado nos arquivos alterados — verde.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`, mesmo bloqueio observado em tarefas anteriores.
+- **Riscos observados:**
+  - O deploy precisa aplicar a tabela `return_calculation_snapshots` antes de usar o novo cálculo definitivo.
+  - Cadastros antigos de IOF geral/mensal ainda são normalizados para compatibilidade, mas a tela nova passa a salvar IOF por vigência.
+  - O build local não concluiu por permissão de arquivo em `node_modules/.prisma`, não por erro de TypeScript.
+- **Pendências futuras:**
+  - Quando o ambiente permitir criar diretórios em `prisma/migrations`, mover o SQL fallback para uma migration Prisma formal.
+  - Evoluir relatórios para expor colunas do snapshot diretamente, se o usuário quiser detalhamento histórico por cálculo.

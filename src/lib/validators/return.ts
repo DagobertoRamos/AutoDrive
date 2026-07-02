@@ -1,7 +1,7 @@
 // =============================================================================
 // Zod validators — Retorno financeiro — AutoDrive
 //
-// O vendedor informa APENAS returnRatePercent (0–6). ILA/IOF são campos
+// O vendedor informa APENAS returnRatePercent. ILA/IOF são campos
 // administrativos: validados aqui, mas o controle de QUEM pode enviá-los é feito
 // na rota (permissão negotiations.financing). O vendedor nunca altera ILA/IOF.
 // =============================================================================
@@ -14,7 +14,7 @@ const pct = (max: number) =>
 
 /** Campo enviado pelo vendedor. */
 export const returnRateSchema = z.object({
-  returnRatePercent: pct(100).refine((v) => v >= RETURN_RATE_MIN, 'Percentual inválido.'),
+  returnRatePercent: pct(100).refine((v) => v >= RETURN_RATE_MIN, 'Retorno precisa ser maior ou igual a 0,01%.'),
 })
 
 /** Campos administrativos (ILA/IOF) — apenas perfis autorizados. */

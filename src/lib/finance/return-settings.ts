@@ -8,13 +8,18 @@ export interface ReturnRangeSettings {
   maxReturnPercent: number
   calculationBase: ReturnCalculationBase
   deductionBase: ReturnDeductionBase
+  allowMissingIlaAsZero: boolean
+  allowMissingIofAsZero: boolean
   active: boolean
 }
 
 export interface CompetenceValueSetting {
   id: string
+  name?: string | null
   month: number | null
   year: number | null
+  startsAt?: string | null
+  endsAt?: string | null
   value: number
   valueType: ReturnValueType
   active: boolean
@@ -38,6 +43,7 @@ export interface ReturnSettingsBundleInput {
 export interface ResolvedReturnSettings {
   range: ReturnRangeSettings
   competence: { month: number; year: number; label: string }
+  operationDate: Date
   ila: CompetenceValueSetting | null
   iof: CompetenceValueSetting | null
 }
@@ -47,10 +53,12 @@ const ILA_KEY = (tenantId: string) => `t:${tenantId}:ila_settings`
 const IOF_KEY = (tenantId: string) => `t:${tenantId}:iof_settings`
 
 export const DEFAULT_RETURN_RANGE: ReturnRangeSettings = {
-  minReturnPercent: 1,
-  maxReturnPercent: 6,
+  minReturnPercent: 0.01,
+  maxReturnPercent: 20,
   calculationBase: 'FINANCED_AMOUNT',
   deductionBase: 'GROSS_RETURN',
+  allowMissingIlaAsZero: false,
+  allowMissingIofAsZero: false,
   active: true,
 }
 
@@ -63,9 +71,13 @@ function id() {
   return globalThis.crypto?.randomUUID?.() ?? `cfg_${Date.now()}_${Math.random().toString(36).slice(2)}`
 }
 
-function cleanMoney(v: unknown): number {
+function cleanNumber(v: unknown): number {
   const n = Number(v)
   return Number.isFinite(n) && n >= 0 ? n : 0
+}
+
+function cleanPercent(v: unknown): number {
+  return Math.min(100, cleanNumber(v))
 }
 
 function cleanMonth(v: unknown): number | null {
@@ -78,12 +90,77 @@ function cleanYear(v: unknown): number | null {
   return Number.isInteger(n) && n >= 2000 && n <= 2100 ? n : null
 }
 
+function cleanDateString(v: unknown): string | null {
+  if (typeof v !== 'string' || !v.trim()) return null
+  const raw = v.trim().slice(0, 10)
+  const d = new Date(`${raw}T00:00:00.000Z`)
+  return Number.isNaN(d.getTime()) ? null : raw
+}
+
+function startOfMonth(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-01`
+}
+
+function endOfMonth(year: number, month: number): string {
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10)
+}
+
+function dayNumber(value: string | null | undefined): number | null {
+  if (!value) return null
+  const d = new Date(`${value.slice(0, 10)}T00:00:00.000Z`)
+  return Number.isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 86_400_000)
+}
+
+function effectiveStartsAt(row: Partial<CompetenceValueSetting>): string | null {
+  const explicit = cleanDateString(row.startsAt)
+  if (explicit) return explicit
+  const month = cleanMonth(row.month)
+  const year = cleanYear(row.year)
+  return month && year ? startOfMonth(year, month) : null
+}
+
+function effectiveEndsAt(row: Partial<CompetenceValueSetting>): string | null {
+  const explicit = cleanDateString(row.endsAt)
+  if (explicit) return explicit
+  const month = cleanMonth(row.month)
+  const year = cleanYear(row.year)
+  return month && year ? endOfMonth(year, month) : null
+}
+
+export function findActiveIofOverlap(rows: Array<Partial<CompetenceValueSetting>>): { firstIndex: number; secondIndex: number } | null {
+  const activePeriods = rows
+    .map((row, index) => {
+      if (row.active === false) return null
+      const startsAt = effectiveStartsAt(row)
+      if (!startsAt) return null
+      return {
+        index,
+        start: dayNumber(startsAt) ?? 0,
+        end: dayNumber(effectiveEndsAt(row)) ?? Number.MAX_SAFE_INTEGER,
+      }
+    })
+    .filter((row): row is { index: number; start: number; end: number } => Boolean(row))
+    .sort((a, b) => a.start - b.start)
+
+  for (let i = 1; i < activePeriods.length; i += 1) {
+    const previous = activePeriods[i - 1]
+    const current = activePeriods[i]
+    if (current.start <= previous.end) {
+      return { firstIndex: previous.index, secondIndex: current.index }
+    }
+  }
+  return null
+}
+
 export function normalizeCompetenceRows(rows: Array<Partial<CompetenceValueSetting>> | undefined, userId?: string | null): CompetenceValueSetting[] {
   return (rows ?? []).map((r) => ({
     id: r.id || id(),
+    name: r.name?.trim() || null,
     month: cleanMonth(r.month),
     year: cleanYear(r.year),
-    value: cleanMoney(r.value),
+    startsAt: cleanDateString(r.startsAt),
+    endsAt: cleanDateString(r.endsAt),
+    value: cleanPercent(r.value),
     valueType: r.valueType === 'FIXO' ? 'FIXO' : 'PERCENTUAL',
     active: r.active !== false,
     notes: r.notes?.trim() || null,
@@ -92,14 +169,40 @@ export function normalizeCompetenceRows(rows: Array<Partial<CompetenceValueSetti
   }))
 }
 
+export function normalizeIofRows(rows: Array<Partial<CompetenceValueSetting>> | undefined, userId?: string | null): CompetenceValueSetting[] {
+  return (rows ?? []).map((r) => {
+    const month = cleanMonth(r.month)
+    const year = cleanYear(r.year)
+    const startsAt = effectiveStartsAt(r)
+    return {
+      id: r.id || id(),
+      name: r.name?.trim() || null,
+      month,
+      year,
+      startsAt,
+      endsAt: effectiveEndsAt(r),
+      value: cleanPercent(r.value),
+      valueType: r.valueType === 'FIXO' ? 'FIXO' : 'PERCENTUAL',
+      active: r.active !== false,
+      notes: r.notes?.trim() || null,
+      updatedAt: new Date().toISOString(),
+      updatedById: userId ?? r.updatedById ?? null,
+    }
+  })
+}
+
 export function normalizeRange(input: Partial<ReturnRangeSettings> | undefined): ReturnRangeSettings {
-  const minReturnPercent = Math.max(0, Number(input?.minReturnPercent ?? DEFAULT_RETURN_RANGE.minReturnPercent) || 0)
-  const maxReturnPercent = Math.max(minReturnPercent + 0.01, Number(input?.maxReturnPercent ?? DEFAULT_RETURN_RANGE.maxReturnPercent) || DEFAULT_RETURN_RANGE.maxReturnPercent)
+  const min = Number(input?.minReturnPercent ?? DEFAULT_RETURN_RANGE.minReturnPercent)
+  const max = Number(input?.maxReturnPercent ?? DEFAULT_RETURN_RANGE.maxReturnPercent)
+  const minReturnPercent = Number.isFinite(min) ? Math.max(0.01, min) : DEFAULT_RETURN_RANGE.minReturnPercent
+  const maxReturnPercent = Number.isFinite(max) ? Math.min(20, Math.max(minReturnPercent + 0.01, max)) : DEFAULT_RETURN_RANGE.maxReturnPercent
   return {
     minReturnPercent,
     maxReturnPercent,
     calculationBase: 'FINANCED_AMOUNT',
-    deductionBase: input?.deductionBase === 'FINANCED_AMOUNT' ? 'FINANCED_AMOUNT' : 'GROSS_RETURN',
+    deductionBase: 'GROSS_RETURN',
+    allowMissingIlaAsZero: input?.allowMissingIlaAsZero === true,
+    allowMissingIofAsZero: input?.allowMissingIofAsZero === true,
     active: input?.active !== false,
   }
 }
@@ -113,7 +216,7 @@ export async function getReturnSettingsBundle(tenantId: string): Promise<ReturnS
   return {
     range: normalizeRange(parseJson<Partial<ReturnRangeSettings>>(map.get(RANGE_KEY(tenantId)), DEFAULT_RETURN_RANGE)),
     ila: normalizeCompetenceRows(parseJson<CompetenceValueSetting[]>(map.get(ILA_KEY(tenantId)), [])),
-    iof: normalizeCompetenceRows(parseJson<CompetenceValueSetting[]>(map.get(IOF_KEY(tenantId)), [])),
+    iof: normalizeIofRows(parseJson<CompetenceValueSetting[]>(map.get(IOF_KEY(tenantId)), [])),
   }
 }
 
@@ -136,7 +239,7 @@ export async function saveReturnSettingsBundle(tenantId: string, input: ReturnSe
   const bundle = {
     range: normalizeRange(input.range),
     ila: normalizeCompetenceRows(input.ila, userId),
-    iof: normalizeCompetenceRows(input.iof, userId),
+    iof: normalizeIofRows(input.iof, userId),
   }
   await Promise.all([
     upsertSetting(tenantId, RANGE_KEY(tenantId), bundle.range, userId),
@@ -150,8 +253,13 @@ function sameCompetence(row: CompetenceValueSetting, month: number, year: number
   return row.active && row.month === month && row.year === year
 }
 
-function globalIof(row: CompetenceValueSetting) {
-  return row.active && row.month == null && row.year == null
+function dateInIofPeriod(row: CompetenceValueSetting, date: Date) {
+  if (!row.active) return false
+  const day = Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000)
+  const start = dayNumber(effectiveStartsAt(row))
+  if (start == null) return row.month == null && row.year == null
+  const end = dayNumber(effectiveEndsAt(row)) ?? Number.MAX_SAFE_INTEGER
+  return day >= start && day <= end
 }
 
 export async function resolveReturnSettingsForDate(tenantId: string, date: Date): Promise<ResolvedReturnSettings> {
@@ -159,10 +267,11 @@ export async function resolveReturnSettingsForDate(tenantId: string, date: Date)
   const month = date.getMonth() + 1
   const year = date.getFullYear()
   const ila = bundle.ila.find((r) => sameCompetence(r, month, year)) ?? null
-  const iof = bundle.iof.find((r) => sameCompetence(r, month, year)) ?? bundle.iof.find(globalIof) ?? null
+  const iof = bundle.iof.find((r) => dateInIofPeriod(r, date)) ?? null
   return {
     range: bundle.range,
     competence: { month, year, label: `${String(month).padStart(2, '0')}/${year}` },
+    operationDate: date,
     ila,
     iof,
   }

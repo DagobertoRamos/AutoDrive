@@ -2,7 +2,7 @@
 // finance/return-calc.ts — Cálculo do RETORNO FINANCEIRO (AutoDrive)
 //
 // Regra (spec):
-//   returnGross = financedAmount * returnRatePercent / 100      (rate 0–6%)
+//   returnGross = financedAmount * returnRatePercent / 100
 //   ila         = returnGross   * ilaPercent / 100              (sobre o BRUTO)
 //   iof         = returnGross   * iofPercent / 100              (sobre o BRUTO)
 //   returnNet   = returnGross - ila - iof
@@ -13,8 +13,8 @@
 // retorno bruto.
 // =============================================================================
 
-export const RETURN_RATE_MIN = 0
-export const RETURN_RATE_MAX = 6
+export const RETURN_RATE_MIN = 0.01
+export const RETURN_RATE_MAX = 20
 export type ReturnValueType = 'PERCENTUAL' | 'FIXO'
 export type ReturnDeductionBase = 'GROSS_RETURN' | 'FINANCED_AMOUNT'
 
@@ -31,10 +31,6 @@ function num(v: unknown): number {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
-}
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.min(Math.max(n, min), max)
 }
 
 export interface ReturnInput {
@@ -58,6 +54,7 @@ export interface ReturnComputation {
   ilaValue:         number
   iofValue:         number
   returnNetValue:   number
+  commissionBaseValue: number
 }
 
 function deductionAmount(base: number, value: unknown, type: ReturnValueType | undefined): number {
@@ -71,7 +68,8 @@ export function calculateReturn(input: ReturnInput): ReturnComputation {
   const financed = Math.max(0, num(input.baseAmount ?? input.financedAmount))
   const minRate  = num(input.minReturnPercent ?? RETURN_RATE_MIN)
   const maxRate  = num(input.maxReturnPercent ?? RETURN_RATE_MAX)
-  const rate     = clamp(num(input.returnPercent ?? input.returnRatePercent), minRate, maxRate)
+  const rawRate  = num(input.returnPercent ?? input.returnRatePercent)
+  const rate     = validateReturnPercent(rawRate, minRate, maxRate).ok ? rawRate : 0
 
   const returnGrossValue = round2((financed * rate) / 100)
   const deductionBase = input.deductionBase === 'FINANCED_AMOUNT' ? financed : returnGrossValue
@@ -81,9 +79,10 @@ export function calculateReturn(input: ReturnInput): ReturnComputation {
   const iofValue = input.iofType
     ? deductionAmount(deductionBase, input.iofValue, input.iofType)
     : deductionAmount(returnGrossValue, input.iofPercent, 'PERCENTUAL')
-  const returnNetValue = Math.max(0, round2(returnGrossValue - ilaValue - iofValue))
+  const returnNetValue = round2(returnGrossValue - ilaValue - iofValue)
+  const commissionBaseValue = Math.max(0, returnNetValue)
 
-  return { returnGrossValue, ilaValue, iofValue, returnNetValue }
+  return { returnGrossValue, ilaValue, iofValue, returnNetValue, commissionBaseValue }
 }
 
 export function validateReturnPercent(returnPercent: unknown, minPercent: unknown, maxPercent: unknown): { ok: true; value: number } | { ok: false; message: string } {

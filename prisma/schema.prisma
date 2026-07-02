@@ -1244,6 +1244,7 @@ model Deal {
   attachments      DealAttachment[]
   documents        DealDocument[]
   financeProposals FinanceProposal[]     @relation("DealFinanceProposals")
+  returnSnapshots  ReturnCalculationSnapshot[]
 
   @@index([tenantId])
   @@index([unitId])
@@ -1331,6 +1332,45 @@ model DealAuditLog {
   @@index([tenantId])
   @@index([action])
   @@map("deal_audit_logs")
+}
+
+model ReturnCalculationSnapshot {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  negotiationId        String
+  financingId          String?
+  baseAmount           Decimal  @db.Decimal(14, 2)
+  returnPercent        Decimal  @db.Decimal(7, 4)
+  returnMinPercent     Decimal  @db.Decimal(7, 4)
+  returnMaxPercent     Decimal  @db.Decimal(7, 4)
+  grossReturnAmount    Decimal  @db.Decimal(14, 2)
+  ilaSettingId         String?
+  ilaCompetenceMonth   Int?
+  ilaCompetenceYear    Int?
+  ilaPercent           Decimal? @db.Decimal(7, 4)
+  ilaDiscountAmount    Decimal  @db.Decimal(14, 2)
+  iofRuleId            String?
+  iofStartDate         DateTime?
+  iofEndDate           DateTime?
+  iofPercent           Decimal? @db.Decimal(7, 4)
+  iofDiscountAmount    Decimal  @db.Decimal(14, 2)
+  netReturnAmount      Decimal  @db.Decimal(14, 2)
+  commissionBaseAmount Decimal  @db.Decimal(14, 2) @default(0)
+  operationDate        DateTime
+  status               String   @default("CALCULADO")
+  calculatedBy         String?
+  calculatedAt         DateTime @default(now())
+  settingsVersion      String?
+  snapshotJson         Json
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  deal Deal @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([negotiationId])
+  @@index([calculatedAt])
+  @@map("return_calculation_snapshots")
 }
 
 /// Débito do veículo envolvido na negociação

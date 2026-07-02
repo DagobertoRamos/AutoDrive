@@ -149,20 +149,31 @@ export const updateReturnRuleSchema = z.object({
 const returnValueType = z.enum(['PERCENTUAL', 'FIXO'], { errorMap: () => ({ message: 'Tipo inválido.' }) })
 const competenceValueSchema = z.object({
   id:        z.string().optional(),
+  name:      optStr,
   month:     z.number().int().min(1).max(12).nullable().optional(),
   year:      z.number().int().min(2000).max(2100).nullable().optional(),
-  value:     z.number({ invalid_type_error: 'Valor inválido.' }).nonnegative('Valor não pode ser negativo.'),
+  startsAt:  z.string().trim().nullable().optional(),
+  endsAt:    z.string().trim().nullable().optional(),
+  value:     z.number({ invalid_type_error: 'Valor inválido.' }).nonnegative('Valor não pode ser negativo.').max(100, 'Percentual não pode passar de 100%.'),
   valueType: returnValueType,
   active:    z.boolean().default(true),
   notes:     optStr,
 })
 
+function dateDay(value: string | null | undefined): number | null {
+  if (!value) return null
+  const d = new Date(`${value.slice(0, 10)}T00:00:00.000Z`)
+  return Number.isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 86_400_000)
+}
+
 export const returnSettingsSchema = z.object({
   range: z.object({
-    minReturnPercent: z.number({ invalid_type_error: 'Retorno mínimo inválido.' }).min(0, 'Retorno mínimo não pode ser negativo.'),
-    maxReturnPercent: z.number({ invalid_type_error: 'Retorno máximo inválido.' }).positive('Retorno máximo deve ser maior que zero.'),
+    minReturnPercent: z.number({ invalid_type_error: 'Retorno mínimo inválido.' }).min(0.01, 'Retorno mínimo deve ser no mínimo 0,01%.').max(20, 'Retorno mínimo não pode passar de 20%.'),
+    maxReturnPercent: z.number({ invalid_type_error: 'Retorno máximo inválido.' }).min(0.01, 'Retorno máximo deve ser maior que zero.').max(20, 'Retorno máximo não pode passar de 20%.'),
     calculationBase:  z.literal('FINANCED_AMOUNT').default('FINANCED_AMOUNT'),
     deductionBase:    z.enum(['GROSS_RETURN', 'FINANCED_AMOUNT']).default('GROSS_RETURN'),
+    allowMissingIlaAsZero: z.boolean().default(false),
+    allowMissingIofAsZero: z.boolean().default(false),
     active:           z.boolean().default(true),
   }),
   ila: z.array(competenceValueSchema).default([]),
@@ -177,12 +188,26 @@ export const returnSettingsSchema = z.object({
     }
   })
   d.iof.forEach((r, index) => {
-    const hasMonth = r.month != null
-    const hasYear = r.year != null
-    if (hasMonth !== hasYear) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['iof', index, 'month'], message: 'IOF mensal precisa de mês e ano; para IOF geral deixe ambos vazios.' })
+    const start = dateDay(r.startsAt)
+    const end = dateDay(r.endsAt)
+    if (start == null) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['iof', index, 'startsAt'], message: 'IOF precisa de data inicial de vigência.' })
+    }
+    if (start != null && end != null && end < start) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['iof', index, 'endsAt'], message: 'Data final do IOF deve ser maior ou igual à inicial.' })
     }
   })
+  const activeIof = d.iof
+    .map((r, index) => ({ index, start: dateDay(r.startsAt), end: dateDay(r.endsAt), active: r.active !== false }))
+    .filter((r): r is { index: number; start: number; end: number | null; active: true } => r.active && r.start != null)
+    .sort((a, b) => a.start - b.start)
+  for (let i = 1; i < activeIof.length; i += 1) {
+    const previous = activeIof[i - 1]
+    const current = activeIof[i]
+    if (current.start <= (previous.end ?? Number.MAX_SAFE_INTEGER)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['iof', current.index, 'startsAt'], message: 'Existe outra regra de IOF ativa sobreposta para este período.' })
+    }
+  }
 })
 
 // ── Simulação comparativa (F&I) ───────────────────────────────────────────────

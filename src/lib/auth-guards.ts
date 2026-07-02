@@ -152,6 +152,8 @@ export async function createSafeAuditLog(data: {
   action:   string
   entity:   string
   entityId?: string | null
+  beforeData?: unknown
+  afterData?: unknown
   userName?: string | null
   userRole?: string | null
   status?:  string
@@ -164,6 +166,8 @@ export async function createSafeAuditLog(data: {
         action:   data.action,
         entity:   data.entity,
         entityId: data.entityId ?? null,
+        beforeData: data.beforeData as never,
+        afterData: data.afterData as never,
         userName: data.userName ?? null,
         userRole: data.userRole ?? null,
         status:   data.status   ?? 'SUCCESS',
