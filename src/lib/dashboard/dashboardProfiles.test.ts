@@ -16,7 +16,7 @@ describe('resolveDashboardProfile', () => {
   it('maps native management and commercial roles to their dashboards', () => {
     expect(profile('VENDEDOR')).toBe('VENDEDOR')
     expect(profile('GERENTE')).toBe('GERENTE')
-    expect(profile('VENDEDOR_LIDER')).toBe('GERENTE')
+    expect(profile('VENDEDOR_LIDER')).toBe('VENDEDOR')
     expect(profile('GERENTE_GERAL')).toBe('GERENTE_GERAL')
     expect(profile('ADM')).toBe('ADMIN')
     expect(profile('MASTER')).toBe('ADMIN')

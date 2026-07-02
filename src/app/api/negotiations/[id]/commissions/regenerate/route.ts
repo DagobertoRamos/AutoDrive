@@ -13,6 +13,7 @@ import {
 } from '@/lib/auth-guards'
 import { prisma } from '@/lib/prisma'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,15 +27,11 @@ export async function POST(
   if (!user) return unauthorizedResponse()
   if (!ALLOWED.has(user.role)) return forbiddenResponse('Apenas MASTER, ADM ou Gerente Geral podem recalcular comissões.')
 
-  const deal = await prisma.deal.findUnique({
-    where:  { id: params.id },
+  const deal = await prisma.deal.findFirst({
+    where:  await buildNegotiationAccessWhere(user, { id: params.id }),
     select: { id: true, tenantId: true },
   })
   if (!deal) return NextResponse.json({ success: false, error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (user.tenantId && deal.tenantId !== user.tenantId) {
-    return forbiddenResponse('Acesso negado a esta negociação.')
-  }
 
   try {
     const result = await generateCommissionsForDeal({

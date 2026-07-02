@@ -17,6 +17,7 @@ import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { calculateWarrantyCommission, calculateWarrantySale, calculateWarrantySaleBySoldPrice } from '@/lib/warranty/warranty-calc'
 import { warrantySaleSchema } from '@/lib/validators/warranty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -26,11 +27,11 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params
 
   try {
-    const deal = await prisma.deal.findUnique({ where: { id }, select: { tenantId: true } })
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(session.user, { id }),
+      select: { tenantId: true },
+    })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
     const sales = await prisma.warrantySale.findMany({
       where: { dealId: id },
       include: { warranty: { select: { name: true, coverageType: true } } },
@@ -56,14 +57,11 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const input = warrantySaleSchema.parse(await req.json())
 
-    const deal = await prisma.deal.findUnique({
-      where: { id },
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(session.user, { id }),
       select: { id: true, tenantId: true, unitId: true, sellerId: true },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     const warranty = await prisma.warranty.findUnique({ where: { id: input.warrantyId } })
     if (!warranty || (deal.tenantId && warranty.tenantId && warranty.tenantId !== deal.tenantId)) {

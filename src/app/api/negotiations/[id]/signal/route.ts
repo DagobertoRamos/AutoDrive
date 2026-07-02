@@ -8,6 +8,7 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 const SIGNAL_ALLOWED_STATUSES = new Set([
   'APROVADA', 'LIBERADA', 'AGUARDANDO_SINAL', 'EM_ANDAMENTO', 'RESERVADA',
@@ -33,12 +34,10 @@ export async function POST(
       return NextResponse.json({ error: 'Valor do sinal deve ser maior que zero.' }, { status: 400 })
     }
 
-    const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
+    })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     if (!SIGNAL_ALLOWED_STATUSES.has(deal.status)) {
       return NextResponse.json(

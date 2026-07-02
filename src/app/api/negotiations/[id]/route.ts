@@ -11,6 +11,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canEditSensitiveFields, SENSITIVE_FIELDS, EDITABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { computeDealTotals, createDealAudit } from '@/lib/negotiation-service'
 import { canEditDeal, isDealLocked } from '@/lib/negotiation-rbac'
+import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,8 +39,9 @@ export async function GET(
   const dealId = params?.id
   if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
 
-  const deal = await prisma.deal.findUnique({
-    where:   { id: dealId },
+  const accessWhere = await buildNegotiationAccessWhere(session.user, { id: dealId })
+  const deal = await prisma.deal.findFirst({
+    where:   accessWhere,
     include: {
       person:   true,
       customer: true,
@@ -125,11 +127,6 @@ export async function GET(
     })),
   }
 
-  // Isolamento por tenant
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
-
   return NextResponse.json({ data: dealWithHistory })
 }
 
@@ -153,12 +150,9 @@ export async function PATCH(
   const dealId = params?.id
   if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
 
-  const deal = await prisma.deal.findUnique({ where: { id: dealId } })
+  const accessWhere = await buildNegotiationAccessWhere(session.user, { id: dealId })
+  const deal = await prisma.deal.findFirst({ where: accessWhere })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   if (isDealLocked(deal.status)) {
     return NextResponse.json(
@@ -167,7 +161,13 @@ export async function PATCH(
     )
   }
 
-  const actor = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId ?? null, sellerId: null }
+  const actorIds = await getNegotiationActorIds(session.user)
+  const actor = {
+    id:       session.user.id,
+    role:     session.user.role,
+    tenantId: session.user.tenantId ?? null,
+    sellerId: actorIds.sellerId,
+  }
   if (!canEditDeal(actor, deal)) {
     return NextResponse.json({ error: 'Sem permissão para editar esta negociação no status atual' }, { status: 403 })
   }

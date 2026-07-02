@@ -12,6 +12,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 const TYPES: DealType[] = ['VENDA', 'TROCA', 'COMPRA', 'CONSIGNACAO']
 const num = (v: unknown): number => {
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
     const type: DealType = TYPES.includes(typeParam) ? typeParam : 'VENDA'
     const isPurchase = type === 'COMPRA'
 
-    const where = tenantWhere(user.role, tenantId, { type })
+    const where = await buildNegotiationAccessWhere(user, tenantWhere(user.role, tenantId, { type }) as never)
 
     const [byStatusRaw, deals] = await Promise.all([
       prisma.deal.groupBy({ by: ['status'], where: where as never, _count: { _all: true } }),

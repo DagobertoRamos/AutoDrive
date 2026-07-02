@@ -10,6 +10,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { requireModule }        from '@/lib/permissions'
 import { deleteDealAttachment } from '@/lib/negotiation/storage'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export const runtime = 'nodejs'
 
@@ -24,12 +25,15 @@ export async function DELETE(
   { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
+    const deal = await prisma.deal.findFirst({
+      where:  await buildNegotiationAccessWhere(session.user, { id: params.id }),
+      select: { id: true },
+    })
+    if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
+
     const att = await prisma.dealAttachment.findUnique({ where: { id: params.attachmentId } })
     if (!att || att.dealId !== params.id) {
       return NextResponse.json({ error: 'Anexo não encontrado' }, { status: 404 })
-    }
-    if (session.user.tenantId && att.tenantId && att.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
     await deleteDealAttachment(att.storageKey).catch(() => { /* ignore */ })

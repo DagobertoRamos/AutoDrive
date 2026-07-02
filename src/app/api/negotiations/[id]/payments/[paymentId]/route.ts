@@ -10,12 +10,13 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { isDealLocked, canAddPayment } from '@/lib/negotiation-rbac'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export const dynamic = 'force-dynamic'
 
-async function loadContext(id: string, paymentId: string) {
-  const deal = await prisma.deal.findUnique({
-    where: { id },
+async function loadContext(id: string, paymentId: string, user: NonNullable<Awaited<ReturnType<typeof getServerAuthSession>>>['user']) {
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(user, { id }),
     select: { id: true, tenantId: true, status: true, sellerId: true },
   })
   if (!deal) return { error: 'Negociação não encontrada', status: 404 as const }
@@ -48,12 +49,9 @@ export async function PATCH(
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
   { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
-  const ctx = await loadContext(params.id, params.paymentId)
+  const ctx = await loadContext(params.id, params.paymentId, session.user)
   if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
   const { deal } = ctx
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
   if (isDealLocked(deal.status)) {
     return NextResponse.json({ error: 'Negociação finalizada. Reabra para alterar.' }, { status: 423 })
   }
@@ -100,12 +98,9 @@ export async function DELETE(
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
   { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
-  const ctx = await loadContext(params.id, params.paymentId)
+  const ctx = await loadContext(params.id, params.paymentId, session.user)
   if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
   const { deal } = ctx
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
   if (isDealLocked(deal.status)) {
     return NextResponse.json({ error: 'Negociação finalizada. Reabra para alterar.' }, { status: 423 })
   }

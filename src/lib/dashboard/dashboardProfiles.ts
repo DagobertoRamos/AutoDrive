@@ -61,8 +61,8 @@ function inferOperationalRole(input: DashboardProfileInput): DashboardRoleKind |
 function defaultRoleKind(role: UserRole): DashboardRoleKind {
   if (role === 'MASTER' || role === 'ADM' || role === 'GERENTE_ADMINISTRATIVO') return 'ADMIN'
   if (role === 'GERENTE_GERAL') return 'GERENTE_GERAL'
-  if (role === 'GERENTE' || role === 'VENDEDOR_LIDER') return 'GERENTE'
-  if (role === 'VENDEDOR') return 'VENDEDOR'
+  if (role === 'GERENTE') return 'GERENTE'
+  if (role === 'VENDEDOR' || role === 'VENDEDOR_LIDER') return 'VENDEDOR'
   if (role === 'FINANCEIRO') return 'FINANCEIRO'
   if (role === 'USUARIO' || role === 'USUARIO_LIDER') return 'AUXILIAR'
   return 'DEFAULT'

@@ -10,6 +10,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { isDealLocked, canAddPayment } from '@/lib/negotiation-rbac'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,11 +36,11 @@ export async function GET(
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
   { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
-  const deal = await prisma.deal.findUnique({ where: { id: params.id }, select: { tenantId: true } })
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
+    select: { tenantId: true },
+  })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   const changes = await prisma.dealChange.findMany({
     where: { dealId: params.id },
@@ -58,14 +59,11 @@ export async function POST(
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
   { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
-  const deal = await prisma.deal.findUnique({
-    where: { id: params.id },
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
     select: { id: true, tenantId: true, status: true, sellerId: true },
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
   if (isDealLocked(deal.status)) {
     return NextResponse.json({ error: 'Negociação finalizada. Reabra para alterar.' }, { status: 423 })
   }

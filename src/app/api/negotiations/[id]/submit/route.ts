@@ -9,6 +9,7 @@ import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { notifyDealSubmittedForApproval } from '@/services/notification.service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 const SUBMITTABLE_STATUSES = new Set([
   'RASCUNHO',
@@ -29,19 +30,14 @@ export async function POST(
   { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
   try {
-    const deal = await prisma.deal.findUnique({
-      where:   { id: params.id },
+    const deal = await prisma.deal.findFirst({
+      where:   await buildNegotiationAccessWhere(session.user, { id: params.id }),
       include: {
         vehicles: { take: 1, orderBy: { createdAt: 'asc' } },
         seller:   { select: { fullName: true, shortName: true } },
       },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-    // Isolamento de tenant
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     if (!SUBMITTABLE_STATUSES.has(deal.status)) {
       return NextResponse.json(

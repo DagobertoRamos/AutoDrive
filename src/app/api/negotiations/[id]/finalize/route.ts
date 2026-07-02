@@ -13,6 +13,7 @@ import { generateCommissionsForDeal } from '@/lib/commission-generator'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { canForceFinalize } from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,8 +39,8 @@ export async function POST(
   try { body = await req.json() } catch { /* sem body */ }
   const force = body?.force === true && canForceFinalize({ id: session.user.id, role: session.user.role } as any)
 
-  const deal = await prisma.deal.findUnique({
-    where: { id: params.id },
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
     include: {
       vehicles: { select: { id: true, vehicleId: true, role: true } },
       debts:    true,
@@ -50,10 +51,6 @@ export async function POST(
     },
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   if (!FINALIZABLE_STATUSES.has(deal.status)) {
     return NextResponse.json(

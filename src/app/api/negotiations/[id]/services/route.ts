@@ -9,6 +9,7 @@ import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export async function POST(
   req: NextRequest,
@@ -38,12 +39,10 @@ export async function POST(
     return NextResponse.json({ error: 'Valor do serviço deve ser maior que zero' }, { status: 400 })
   }
 
-  const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
+  })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {

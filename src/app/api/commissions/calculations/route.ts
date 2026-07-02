@@ -16,6 +16,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildCommissionAccessWhere } from '@/lib/negotiation-access'
 
 const num = (v: unknown): number => {
   if (v == null) return 0
@@ -63,13 +64,10 @@ export async function GET(req: Request) {
     if (status)   extra.status = status
     if (sellerId) extra.sellerId = sellerId
 
-    // VENDEDOR / usuário comum: apenas as próprias comissões.
-    if (['VENDEDOR', 'VENDEDOR_LIDER', 'USUARIO_LIDER', 'USUARIO', 'FINANCEIRO'].includes(user.role)) {
-      const seller = await prisma.seller.findFirst({ where: { userId: user.id }, select: { id: true } })
-      extra.sellerId = seller?.id ?? '__none__'
-    }
-
-    const where = tenantWhere(user.role, tenantId, extra)
+    const where = await buildCommissionAccessWhere(
+      user,
+      tenantWhere(user.role, tenantId, extra) as never,
+    )
 
     const [rows, byType] = await Promise.all([
       prisma.commissionCalculation.findMany({

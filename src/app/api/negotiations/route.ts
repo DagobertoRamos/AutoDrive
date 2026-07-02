@@ -8,6 +8,7 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { assertModuleEnabled }  from '@/lib/tenant-modules'
 import { handlePrismaError }    from '@/lib/prisma-errors'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
 
@@ -28,41 +29,23 @@ export async function GET(req: NextRequest) {
     const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
     const take   = 50
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {}
+    const extra: Record<string, unknown> = {}
 
-    // Isolamento por tenant
-    if (session.user.tenantId) where.tenantId = session.user.tenantId
-
-    // Filtro de unidade — opcional. VENDEDOR sempre limitado à própria unidade.
-    if (session.user.role === 'VENDEDOR' && session.user.unitId) {
-      where.unitId = session.user.unitId
-    } else if (unitId) {
-      where.unitId = unitId
-    }
-
-    // Vendedores veem apenas suas próprias negociações
-    if (session.user.role === 'VENDEDOR') {
-      const seller = await prisma.seller.findUnique({
-        where:  { userId: session.user.id },
-        select: { id: true },
-      })
-      // Sem cadastro de vendedor → nenhuma negociação própria
-      if (!seller) return NextResponse.json({ data: [], pagination: { page, total: 0, totalPages: 0, limit: take } })
-      where.sellerId = seller.id
-    }
-
-    if (type)   where.type   = type
-    if (status) where.status = status
+    if (unitId) extra.unitId = unitId
+    if (type)   extra.type   = type
+    if (status) extra.status = status
 
     if (search) {
-      where.OR = [
+      extra.OR = [
         { person: { nomeCompleto: { contains: search, mode: 'insensitive' } } },
         { customer: { name: { contains: search, mode: 'insensitive' } } },
         { dealNumber: { contains: search, mode: 'insensitive' } },
         { seller: { user: { name: { contains: search, mode: 'insensitive' } } } },
+        { vehicles: { some: { plate: { contains: search, mode: 'insensitive' } } } },
       ]
     }
+
+    const where = await buildNegotiationAccessWhere(session.user, extra)
 
     const [deals, total, typeCounts, statusCounts] = await Promise.all([
       prisma.deal.findMany({

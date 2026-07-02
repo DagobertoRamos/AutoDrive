@@ -11,6 +11,7 @@ import { APPROVABLE_STATUSES }  from '@/lib/negotiation-permissions'
 import { notifyDealApproved }   from '@/services/notification.service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export async function POST(
   req: NextRequest,
@@ -27,18 +28,14 @@ export async function POST(
     const body  = await req.json().catch(() => ({}))
     const notes = body?.notes as string | undefined
 
-    const deal = await prisma.deal.findUnique({
-      where:   { id: params.id },
+    const deal = await prisma.deal.findFirst({
+      where:   await buildNegotiationAccessWhere(session.user, { id: params.id }),
       include: {
         vehicles: { orderBy: { createdAt: 'asc' } },
         seller:   { select: { fullName: true, shortName: true } },
       },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     if (!APPROVABLE_STATUSES.has(deal.status)) {
       return NextResponse.json({ error: 'Apenas negociações aguardando aprovação podem ser aprovadas' }, { status: 409 })

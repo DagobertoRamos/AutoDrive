@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 type TimelineEvent = {
   type: 'STATUS' | 'AUDIT' | 'SERVICE' | 'VEHICLE' | 'PENDENCY'
@@ -62,15 +63,11 @@ export async function GET(
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
-  const deal = await prisma.deal.findUnique({
-    where: { id: params.id },
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
     select: { id: true, tenantId: true },
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   const [statusHistory, auditLogs, services, vehicles, pendencies] = await Promise.all([
     prisma.dealStatusHistory.findMany({

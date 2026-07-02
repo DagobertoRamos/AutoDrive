@@ -1953,3 +1953,75 @@
 - **Importação:** nada a mudar — o import do AutoConf cria o Deal como TROCA (correto p/ registro) e o gerador normaliza p/ VENDA na comissão. Uma regra "Venda / Troca" (VENDA) cobre vendas E trocas, calculando para vendedor + gerente da unidade + gerente geral conforme os escopos da regra e o cadastro do colaborador.
 - **Validações:** `tsc --noEmit` verde.
 - **Escopo:** só a unificação Venda/Troca na regra de comissão (UI + normalização no salvar). Não mexi na geração (que já normaliza) nem em outros tipos.
+
+### LOG 0138 — 2026-07-02 16:49:09 -03:00 — Codex (GPT-5) — Escopo seguro de visibilidade das negociações
+- **Branch:** `main`. Sem migration e sem deploy.
+- **Tarefa executada:**
+  - Criado helper central `src/lib/negotiation-access.ts` para montar filtros Prisma seguros de negociação e comissão por usuário autenticado.
+  - Aplicada a regra server-side em `/api/negotiations`, detalhe por ID, timeline, auditoria, anexos, documentos, pagamentos, débitos, troco, serviços, sinal, retorno/F&I, garantias, aprovação, reprovação, envio para aprovação, cancelamento, finalização, reabertura, devolução para correção e preview/regeneração de comissões da negociação.
+  - Aplicado o mesmo escopo em `/api/reports/negotiations` e `/api/commissions/calculations`.
+  - Ajustado dashboard para tratar `VENDEDOR_LIDER` como visão própria, não como visão de unidade.
+- **Regra de permissão aplicada:**
+  - `VENDEDOR` e `VENDEDOR_LIDER`: veem somente `Deal.sellerId` vinculado ao próprio cadastro `Seller.userId`.
+  - `GERENTE`: vê somente negociações da unidade resolvida pelo usuário/manager/seller.
+  - `GERENTE_GERAL`, `GERENTE_ADMINISTRATIVO`, `ADM` e `FINANCEIRO`: veem o tenant conforme permissão de módulo.
+  - `MASTER`: mantém escopo global da plataforma.
+  - Usuários sem escopo válido recebem filtro sem resultado; não há fallback para lista da loja.
+  - `tenantId`, `unitId` e `sellerId` vindos do front-end são sobrescritos pelo helper quando o cargo exige escopo mais restrito.
+- **Arquivos criados:**
+  - `src/lib/negotiation-access.ts`
+  - `src/lib/negotiation-access.test.ts`
+- **Arquivos alterados:**
+  - `src/app/api/negotiations/route.ts`
+  - `src/app/api/negotiations/[id]/route.ts`
+  - `src/app/api/negotiations/[id]/timeline/route.ts`
+  - `src/app/api/negotiations/[id]/audit/route.ts`
+  - `src/app/api/negotiations/[id]/approve/route.ts`
+  - `src/app/api/negotiations/[id]/reject/route.ts`
+  - `src/app/api/negotiations/[id]/submit/route.ts`
+  - `src/app/api/negotiations/[id]/cancel/route.ts`
+  - `src/app/api/negotiations/[id]/finalize/route.ts`
+  - `src/app/api/negotiations/[id]/reopen/route.ts`
+  - `src/app/api/negotiations/[id]/return-correction/route.ts`
+  - `src/app/api/negotiations/[id]/attachments/route.ts`
+  - `src/app/api/negotiations/[id]/attachments/[attachmentId]/route.ts`
+  - `src/app/api/negotiations/[id]/documents/route.ts`
+  - `src/app/api/negotiations/[id]/payments/route.ts`
+  - `src/app/api/negotiations/[id]/payments/[paymentId]/route.ts`
+  - `src/app/api/negotiations/[id]/debts/route.ts`
+  - `src/app/api/negotiations/[id]/debts/[debtId]/route.ts`
+  - `src/app/api/negotiations/[id]/changes/route.ts`
+  - `src/app/api/negotiations/[id]/services/route.ts`
+  - `src/app/api/negotiations/[id]/services/[serviceId]/route.ts`
+  - `src/app/api/negotiations/[id]/notes/route.ts`
+  - `src/app/api/negotiations/[id]/signal/route.ts`
+  - `src/app/api/negotiations/[id]/financing/route.ts`
+  - `src/app/api/negotiations/[id]/return/route.ts`
+  - `src/app/api/negotiations/[id]/warranty-sales/route.ts`
+  - `src/app/api/negotiations/[id]/discount-requests/route.ts`
+  - `src/app/api/negotiations/[id]/commissions/preview/route.ts`
+  - `src/app/api/negotiations/[id]/commissions/regenerate/route.ts`
+  - `src/app/api/reports/negotiations/route.ts`
+  - `src/app/api/commissions/calculations/route.ts`
+  - `src/lib/dashboard/dashboardProfiles.ts`
+  - `src/lib/dashboard/dashboardProfiles.test.ts`
+  - `src/app/api/routes-integration.test.ts`
+  - `README_ROBOTS.md`
+- **Correções de segurança observadas:**
+  - Detalhe da negociação e subrotas deixaram de buscar por `id` puro antes do escopo.
+  - Anotações (`notes`) agora validam acesso antes de listar `AuditLog` da negociação.
+  - Rotas de débitos e pagamentos filhos passaram a resolver o `sellerId` real do ator; antes havia checagem incompleta em caminhos de edição.
+  - Não restou `prisma.deal.findUnique()` dentro de `src/app/api/negotiations`.
+- **Testes realizados:**
+  - `npx vitest run src/lib/negotiation-access.test.ts src/lib/dashboard/dashboardProfiles.test.ts src/app/api/routes-integration.test.ts` — verde, 3 arquivos e 18 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - ESLint direcionado nos arquivos alterados — verde.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`.
+- **Riscos observados:**
+  - Alguns módulos fora de `/api/negotiations` podem ter buscas próprias indiretas por `dealId` no futuro; novas rotas devem obrigatoriamente usar `buildNegotiationAccessWhere`.
+  - `MASTER` continua global por desenho da plataforma; se houver impersonation/tenant ativo, esse escopo deve ser tratado em melhoria própria.
+  - Fluxos operacionais de F&I/Financeiro foram mantidos com visão de tenant conforme permissão atual do sistema.
+- **Pendências futuras:**
+  - Criar teste de rota específico para URL direta `/api/negotiations/[id]` com Vendedor A/B quando houver fixture/mocks mais completos para o handler gigante.
+  - Avaliar busca global fora do módulo de negociações, se ela for implementada/reativada, para forçar o mesmo helper.

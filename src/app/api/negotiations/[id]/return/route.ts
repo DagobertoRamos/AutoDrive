@@ -1,7 +1,7 @@
 // =============================================================================
 // /api/negotiations/[id]/return — Retorno financeiro da negociação
 //   GET : valores atuais do retorno
-//   PUT : vendedor informa returnRatePercent (0–6); ILA/IOF só com permissão
+//   PUT : vendedor informa returnRatePercent; ILA/IOF vêm da configuração do tenant
 //         'negotiations.financing'. Recalcula bruto/ILA/IOF/líquido e comissões.
 // =============================================================================
 
@@ -18,6 +18,7 @@ import { calculateReturn, validateReturnPercent } from '@/lib/finance/return-cal
 import { returnRateSchema } from '@/lib/validators/return'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { resolveReturnSettingsForDate } from '@/lib/finance/return-settings'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -28,8 +29,21 @@ function toNum(v: unknown): number {
   return Number(v) || 0
 }
 
-function returnCompetenceDate(deal: { saleDate?: Date | null; approvedAt?: Date | null; finalizedAt?: Date | null; createdAt?: Date | null }) {
-  return deal.saleDate ?? deal.approvedAt ?? deal.finalizedAt ?? deal.createdAt ?? new Date()
+function returnCompetenceDate(deal: {
+  saleDate?: Date | null
+  approvedAt?: Date | null
+  finalizedAt?: Date | null
+  createdAt?: Date | null
+  financeProposals?: Array<{ updatedAt?: Date | null; createdAt?: Date | null }> | null
+}) {
+  const financeDate = deal.financeProposals?.[0]?.updatedAt ?? deal.financeProposals?.[0]?.createdAt ?? null
+  return deal.approvedAt ?? financeDate ?? deal.saleDate ?? deal.finalizedAt ?? deal.createdAt ?? new Date()
+}
+
+function dateOnlyToDate(value: string | null | undefined): Date | null {
+  if (!value) return null
+  const date = new Date(`${value.slice(0, 10)}T00:00:00.000Z`)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
@@ -38,18 +52,16 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params
 
   try {
-    const deal = await prisma.deal.findUnique({
-      where: { id },
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(session.user, { id }),
       select: {
         tenantId: true, financedAmount: true, paymentBank: true, saleDate: true, approvedAt: true, finalizedAt: true, createdAt: true,
         returnRatePercent: true, returnGrossValue: true, ilaPercent: true, ilaValue: true,
         iofPercent: true, iofValue: true, returnNetValue: true, returnCommissionStatus: true,
+        financeProposals: { orderBy: { updatedAt: 'desc' }, take: 1, select: { id: true, updatedAt: true, createdAt: true } },
       },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
     const returnConfig = deal.tenantId
       ? await resolveReturnSettingsForDate(deal.tenantId, returnCompetenceDate(deal)).catch(() => null)
       : null
@@ -79,17 +91,15 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const raw = await req.json()
     const { returnRatePercent } = returnRateSchema.parse(raw)
 
-    const deal = await prisma.deal.findUnique({
-      where: { id },
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(session.user, { id }),
       select: {
         id: true, tenantId: true, unitId: true, financedAmount: true, returnRatePercent: true,
         saleDate: true, approvedAt: true, finalizedAt: true, createdAt: true,
+        financeProposals: { orderBy: { updatedAt: 'desc' }, take: 1, select: { id: true, updatedAt: true, createdAt: true } },
       },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     if (!deal.tenantId) {
       return NextResponse.json({ error: 'Negociação sem tenant não pode calcular retorno definitivo.' }, { status: 400 })
@@ -99,7 +109,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'Informe o valor financiado antes de calcular o retorno.' }, { status: 400 })
     }
 
-    const resolved = await resolveReturnSettingsForDate(deal.tenantId, returnCompetenceDate(deal))
+    const operationDate = returnCompetenceDate(deal)
+    const resolved = await resolveReturnSettingsForDate(deal.tenantId, operationDate)
     if (!resolved.range.active) {
       return NextResponse.json({ error: 'Configuração de retorno/F&I está inativa para este tenant.' }, { status: 400 })
     }
@@ -107,14 +118,33 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     if (!range.ok) {
       return NextResponse.json({ error: range.message }, { status: 400 })
     }
-    if (!resolved.ila) {
+    if (!resolved.ila && !resolved.range.allowMissingIlaAsZero) {
       return NextResponse.json({ error: `ILA não cadastrado para a competência ${resolved.competence.label}.` }, { status: 400 })
     }
-    if (!resolved.iof) {
-      return NextResponse.json({ error: `IOF não cadastrado para a competência ${resolved.competence.label}. Cadastre um IOF mensal ou um IOF geral com valor zero.` }, { status: 400 })
+    if (!resolved.iof && !resolved.range.allowMissingIofAsZero) {
+      return NextResponse.json({ error: 'IOF não cadastrado para a data/competência da operação.' }, { status: 400 })
     }
-    const ila = resolved.ila
-    const iof = resolved.iof
+    const ila = resolved.ila ?? {
+      id: 'ILA_ZERO_NAO_CADASTRADO',
+      month: resolved.competence.month,
+      year: resolved.competence.year,
+      value: 0,
+      valueType: 'PERCENTUAL' as const,
+      active: true,
+      notes: 'Calculado com ILA zerado por configuração avançada.',
+    }
+    const iof = resolved.iof ?? {
+      id: 'IOF_ZERO_NAO_CADASTRADO',
+      name: 'IOF zerado por configuração',
+      month: null,
+      year: null,
+      startsAt: null,
+      endsAt: null,
+      value: 0,
+      valueType: 'PERCENTUAL' as const,
+      active: true,
+      notes: 'Calculado com IOF zerado por configuração avançada.',
+    }
 
     const calc = calculateReturn({
       financedAmount: baseAmount,
@@ -129,14 +159,23 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       minReturnPercent: resolved.range.minReturnPercent,
       maxReturnPercent: resolved.range.maxReturnPercent,
     })
+    const calculatedAt = new Date()
+    const financingId = deal.financeProposals?.[0]?.id ?? null
     const snapshot = {
+      tenantId: deal.tenantId,
+      negotiationId: id,
+      financingId,
       baseAmount,
       calculationBase: resolved.range.calculationBase,
       deductionBase: resolved.range.deductionBase,
       returnPercent: returnRatePercent,
+      returnMinPercent: resolved.range.minReturnPercent,
+      returnMaxPercent: resolved.range.maxReturnPercent,
       grossReturnAmount: calc.returnGrossValue,
       ila: {
         settingId: ila.id,
+        competenceMonth: resolved.competence.month,
+        competenceYear: resolved.competence.year,
         competence: resolved.competence.label,
         value: ila.value,
         valueType: ila.valueType,
@@ -144,19 +183,24 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       },
       iof: {
         settingId: iof.id,
-        competence: iof.month && iof.year ? resolved.competence.label : 'GERAL',
+        name: iof.name ?? null,
+        startsAt: iof.startsAt ?? null,
+        endsAt: iof.endsAt ?? null,
         value: iof.value,
         valueType: iof.valueType,
         amount: calc.iofValue,
       },
       netReturnAmount: calc.returnNetValue,
+      commissionBaseAmount: calc.commissionBaseValue,
       range: {
         minReturnPercent: resolved.range.minReturnPercent,
         maxReturnPercent: resolved.range.maxReturnPercent,
       },
       calculatedBy: session.user.id,
-      calculatedAt: new Date().toISOString(),
-      tenantId: deal.tenantId,
+      calculatedAt: calculatedAt.toISOString(),
+      operationDate: operationDate.toISOString(),
+      settingsVersion: calculatedAt.toISOString(),
+      status: 'CALCULADO',
     }
 
     await prisma.$transaction(async (tx) => {
@@ -170,6 +214,36 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
           iofPercent: iof.valueType === 'PERCENTUAL' ? iof.value : null,
           iofValue:         calc.iofValue,
           returnNetValue:   calc.returnNetValue,
+        },
+      })
+      await tx.returnCalculationSnapshot.create({
+        data: {
+          tenantId: deal.tenantId,
+          negotiationId: id,
+          financingId,
+          baseAmount,
+          returnPercent: returnRatePercent,
+          returnMinPercent: resolved.range.minReturnPercent,
+          returnMaxPercent: resolved.range.maxReturnPercent,
+          grossReturnAmount: calc.returnGrossValue,
+          ilaSettingId: resolved.ila?.id ?? null,
+          ilaCompetenceMonth: resolved.competence.month,
+          ilaCompetenceYear: resolved.competence.year,
+          ilaPercent: ila.valueType === 'PERCENTUAL' ? ila.value : null,
+          ilaDiscountAmount: calc.ilaValue,
+          iofRuleId: resolved.iof?.id ?? null,
+          iofStartDate: dateOnlyToDate(iof.startsAt),
+          iofEndDate: dateOnlyToDate(iof.endsAt),
+          iofPercent: iof.valueType === 'PERCENTUAL' ? iof.value : null,
+          iofDiscountAmount: calc.iofValue,
+          netReturnAmount: calc.returnNetValue,
+          commissionBaseAmount: calc.commissionBaseValue,
+          operationDate,
+          status: 'CALCULADO',
+          calculatedBy: session.user.id,
+          calculatedAt,
+          settingsVersion: calculatedAt.toISOString(),
+          snapshotJson: snapshot,
         },
       })
       await createDealAudit(tx as never, {

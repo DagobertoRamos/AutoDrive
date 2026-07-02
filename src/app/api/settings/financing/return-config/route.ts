@@ -1,6 +1,6 @@
 // =============================================================================
-// /api/settings/financing/return-config — faixa, ILA mensal e IOF do F&I.
-// Tenant-scoped via SystemSetting. Snapshot do cálculo fica no DealAuditLog.
+// /api/settings/financing/return-config — faixa, ILA mensal e IOF por vigência.
+// Tenant-scoped via SystemSetting. Snapshot do cálculo fica em tabela própria.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -44,6 +44,7 @@ export async function PUT(req: Request) {
 
   try {
     const input = returnSettingsSchema.parse(await req.json())
+    const before = await getReturnSettingsBundle(tenantId)
     const data = await saveReturnSettingsBundle(tenantId, input, user.id)
     await createSafeAuditLog({
       userId: user.id,
@@ -51,6 +52,8 @@ export async function PUT(req: Request) {
       action: 'UPDATE',
       entity: 'ReturnSettings',
       entityId: tenantId,
+      beforeData: before,
+      afterData: data,
       userName: user.name,
       userRole: user.role,
     })

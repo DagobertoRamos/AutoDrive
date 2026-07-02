@@ -20,6 +20,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { requireModule }        from '@/lib/permissions'
 import { saveDealAttachment, validateDealUpload } from '@/lib/negotiation/storage'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export const runtime = 'nodejs'
 
@@ -35,9 +36,9 @@ const VALID_CATEGORIES = new Set([
   'OUTRO',
 ])
 
-async function loadDeal(id: string) {
-  return prisma.deal.findUnique({
-    where:  { id },
+async function loadDeal(id: string, user: NonNullable<Awaited<ReturnType<typeof getServerAuthSession>>>['user']) {
+  return prisma.deal.findFirst({
+    where:  await buildNegotiationAccessWhere(user, { id }),
     select: { id: true, tenantId: true, status: true },
   })
 }
@@ -64,11 +65,8 @@ export async function GET(
   const dealId = await resolveDealId(ctxArg)
   if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
 
-  const deal = await loadDeal(dealId)
+  const deal = await loadDeal(dealId, session.user)
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   const category = req.nextUrl.searchParams.get('category') ?? undefined
 
@@ -100,11 +98,8 @@ export async function POST(
   const dealId = await resolveDealId(ctxArg)
   if (!dealId) return NextResponse.json({ error: 'ID ausente na URL.' }, { status: 400 })
 
-  const deal = await loadDeal(dealId)
+  const deal = await loadDeal(dealId, session.user)
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   const formData = await req.formData().catch(() => null)
   if (!formData) return NextResponse.json({ error: 'Corpo inválido (multipart/form-data esperado).' }, { status: 400 })

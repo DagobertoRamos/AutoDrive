@@ -9,17 +9,16 @@ import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { canEditDeal }          from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 
-async function getDealAndCheck(dealId: string, session: { user: { tenantId?: string | null; role: string; id: string; name?: string | null } }) {
-  const deal = await prisma.deal.findUnique({
-    where:  { id: dealId },
+async function getDealAndCheck(dealId: string, session: NonNullable<Awaited<ReturnType<typeof getServerAuthSession>>>) {
+  const deal = await prisma.deal.findFirst({
+    where:  await buildNegotiationAccessWhere(session.user, { id: dealId }),
     select: { id: true, tenantId: true, status: true, sellerId: true },
   })
   if (!deal) return { deal: null, err: NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 }) }
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return { deal: null, err: NextResponse.json({ error: 'Acesso negado' }, { status: 403 }) }
-  }
-  const actor = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId ?? null, sellerId: deal.sellerId }
+  const actorIds = await getNegotiationActorIds(session.user)
+  const actor = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId ?? null, sellerId: actorIds.sellerId }
   if (!canEditDeal(actor, deal)) {
     return { deal: null, err: NextResponse.json({ error: 'Negociação não pode ser editada neste status.' }, { status: 409 }) }
   }

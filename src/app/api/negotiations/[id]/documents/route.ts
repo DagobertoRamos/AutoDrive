@@ -12,6 +12,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { requireModule }        from '@/lib/permissions'
 import { renderTemplate, buildDealContext } from '@/lib/negotiation/document-merge'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 const VALID_TYPES = new Set([
   'CONTRATO_COMPRA', 'CONTRATO_VENDA', 'CONTRATO_TROCA', 'CONTRATO_CONSIGNACAO',
@@ -26,14 +27,11 @@ export async function GET(_req: NextRequest, ctxArg: { params: { id: string } | 
   catch { return NextResponse.json({ error: 'Sem permissão' }, { status: 403 }) }
   { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
 
-  const deal = await prisma.deal.findUnique({
-    where:  { id: params.id },
+  const deal = await prisma.deal.findFirst({
+    where:  await buildNegotiationAccessWhere(session.user, { id: params.id }),
     select: { id: true, tenantId: true },
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   try {
     const data = await prisma.dealDocument.findMany({
@@ -61,8 +59,8 @@ export async function POST(req: NextRequest, ctxArg: { params: { id: string } | 
     const customHtml: string | undefined = body?.bodyHtml
 
     // Carrega deal com tudo necessário pro contexto de merge
-    const deal = await prisma.deal.findUnique({
-      where:   { id: params.id },
+    const deal = await prisma.deal.findFirst({
+      where:   await buildNegotiationAccessWhere(session.user, { id: params.id }),
       include: {
         person:   true,
         customer: true,
@@ -70,9 +68,6 @@ export async function POST(req: NextRequest, ctxArg: { params: { id: string } | 
       },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     let html  = customHtml ?? ''
     let name  = customName ?? 'Documento'

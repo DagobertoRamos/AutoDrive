@@ -15,7 +15,10 @@ const { prismaMock, authMock } = vi.hoisted(() => ({
     unit: { findFirst: vi.fn() },
     auditLog: { create: vi.fn() },
     seller: { findMany: vi.fn(), findFirst: vi.fn() },
-    user: { findMany: vi.fn() },
+    user: { findMany: vi.fn(), findUnique: vi.fn() },
+    tenantModule: { findUnique: vi.fn() },
+    userModule: { findUnique: vi.fn() },
+    sellerQueueAttendance: { findMany: vi.fn() },
     rankingRule: { findFirst: vi.fn() },
     commissionCalculation: { findMany: vi.fn(), groupBy: vi.fn() },
   },
@@ -49,6 +52,14 @@ beforeEach(() => {
   prismaMock.seller.findMany.mockResolvedValue([])
   prismaMock.seller.findFirst.mockResolvedValue({ id: 'seller1' })
   prismaMock.user.findMany.mockResolvedValue([])
+  prismaMock.user.findUnique.mockResolvedValue({
+    unitId: 'unitA',
+    seller: { id: 'seller1', unitId: 'unitA' },
+    manager: null,
+  })
+  prismaMock.tenantModule.findUnique.mockResolvedValue(null)
+  prismaMock.userModule.findUnique.mockResolvedValue(null)
+  prismaMock.sellerQueueAttendance.findMany.mockResolvedValue([])
   prismaMock.rankingRule.findFirst.mockResolvedValue(null)
   prismaMock.commissionCalculation.findMany.mockResolvedValue([])
   prismaMock.commissionCalculation.groupBy.mockResolvedValue([])
@@ -107,7 +118,10 @@ describe('/api/warranties', () => {
   it('POST (FINANCEIRO) cria garantia com tenantId da sessão', async () => {
     authMock.mockResolvedValue(session('FINANCEIRO', 't1'))
     const res = await warrPOST(jsonReq('http://x/api/warranties', 'POST', {
-      name: 'Garantia X', fullPrice: 1000, reducedPrice: 600,
+      name: 'Garantia X',
+      durationYears: 1,
+      fullPrice: 1000,
+      reducedPrice: 600,
     }))
     expect(res.status).toBe(201)
     expect(prismaMock.warranty.create.mock.calls[0][0].data.tenantId).toBe('t1')

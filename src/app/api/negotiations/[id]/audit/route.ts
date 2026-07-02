@@ -5,8 +5,9 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireModule, canAccessModule } from '@/lib/permissions'
+import { requireModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export async function GET(
   req: NextRequest,
@@ -22,24 +23,11 @@ export async function GET(
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
-  const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
+    select: { id: true },
+  })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
-
-  // Vendedor só vê auditoria da própria negociação
-  const isManager = canAccessModule(session.user.role, 'negotiations.manage')
-  if (!isManager) {
-    const seller = await prisma.seller.findUnique({
-      where: { userId: session.user.id },
-      select: { id: true },
-    })
-    if (!seller || deal.sellerId !== seller.id) {
-      return NextResponse.json({ error: 'Sem permissão para ver auditoria desta negociação' }, { status: 403 })
-    }
-  }
 
   const { searchParams } = req.nextUrl
   const page  = Math.max(1, Number(searchParams.get('page')  ?? 1))

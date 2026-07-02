@@ -10,6 +10,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canReturnForCorrection } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory } from '@/lib/negotiation-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 const RETURNABLE_STATUSES = ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO']
 
@@ -40,12 +41,10 @@ export async function POST(
     return NextResponse.json({ error: 'Motivo é obrigatório ao devolver para correção' }, { status: 400 })
   }
 
-  const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
+  })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   if (!RETURNABLE_STATUSES.includes(deal.status)) {
     return NextResponse.json(

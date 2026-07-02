@@ -8,6 +8,7 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 const REJECTABLE_STATUSES = new Set(['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'])
 
@@ -29,12 +30,10 @@ export async function POST(
       return NextResponse.json({ error: 'Motivo da desaprovação é obrigatório.' }, { status: 400 })
     }
 
-    const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
+    })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     if (!REJECTABLE_STATUSES.has(deal.status)) {
       return NextResponse.json({ error: 'Apenas negociações aguardando aprovação podem ser desaprovadas' }, { status: 409 })

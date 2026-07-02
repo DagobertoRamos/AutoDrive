@@ -11,6 +11,7 @@ import { canCancelDeal } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/negotiation-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { cancelCommissionsForDeal } from '@/lib/commission/sync'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export async function POST(
   req: NextRequest,
@@ -35,15 +36,11 @@ export async function POST(
     return NextResponse.json({ error: 'Motivo de cancelamento é obrigatório' }, { status: 400 })
   }
 
-  const deal = await prisma.deal.findUnique({
-    where: { id: params.id },
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
     include: { vehicles: { select: { id: true, vehicleId: true, role: true } } },
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   if (!canCancelDeal(session.user.role, deal.status)) {
     return NextResponse.json({ error: 'Sem permissão para cancelar esta negociação no status atual' }, { status: 403 })

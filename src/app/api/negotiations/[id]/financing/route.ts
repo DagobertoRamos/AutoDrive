@@ -17,6 +17,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { linkedProposalSchema, applyProposalSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Negociação não encontrada.' }, { status: 404 })
@@ -29,7 +30,10 @@ export async function GET(_req: Request, { params }: Ctx) {
   { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
   try {
-    const deal = await prisma.deal.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true, financedAmount: true, signalAmount: true, paymentBank: true } })
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(user, { id }),
+      select: { id: true, tenantId: true, status: true, financedAmount: true, signalAmount: true, paymentBank: true },
+    })
     if (!deal) return notFound()
     if (!ownsTenant(user.role, user.tenantId, deal.tenantId)) return forbiddenResponse('Negociação de outro tenant.')
 
@@ -61,7 +65,10 @@ export async function POST(req: Request, { params }: Ctx) {
   { const gate = await assertModuleEnabled(user, 'financing'); if (gate) return gate }
   const { id } = await params
   try {
-    const deal = await prisma.deal.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true, financedAmount: true, signalAmount: true } })
+    const deal = await prisma.deal.findFirst({
+      where: await buildNegotiationAccessWhere(user, { id }),
+      select: { id: true, tenantId: true, status: true, financedAmount: true, signalAmount: true },
+    })
     if (!deal) return notFound()
     if (!ownsTenant(user.role, user.tenantId, deal.tenantId)) return forbiddenResponse('Negociação de outro tenant.')
     const tenantId = deal.tenantId ?? user.tenantId

@@ -9,6 +9,7 @@ import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export async function DELETE(
   _req: NextRequest,
@@ -24,12 +25,10 @@ export async function DELETE(
     return NextResponse.json({ error: 'Sem permissão para remover serviços' }, { status: 403 })
   }
 
-  const deal = await prisma.deal.findUnique({ where: { id: params.id } })
+  const deal = await prisma.deal.findFirst({
+    where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
+  })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-
-  if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  }
 
   const service = await (prisma.dealService as any).findUnique({ where: { id: params.serviceId } })
   if (!service || service.dealId !== params.id) {

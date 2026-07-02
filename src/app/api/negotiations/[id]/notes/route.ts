@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,12 @@ export async function GET(
   if (!dealId) return NextResponse.json({ error: 'ID ausente' }, { status: 400 })
 
   try {
+    const deal = await prisma.deal.findFirst({
+      where:  await buildNegotiationAccessWhere(session.user, { id: dealId }),
+      select: { id: true },
+    })
+    if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
+
     const rows = await prisma.auditLog.findMany({
       where:   { entity: 'Deal', entityId: dealId, action: 'NOTE' },
       orderBy: { createdAt: 'desc' },
@@ -92,14 +99,11 @@ export async function POST(
   if (!ALLOWED_CATEGORIES.has(category))  return NextResponse.json({ error: 'Categoria inválida.' }, { status: 400 })
 
   try {
-    const deal = await prisma.deal.findUnique({
-      where:  { id: dealId },
+    const deal = await prisma.deal.findFirst({
+      where:  await buildNegotiationAccessWhere(session.user, { id: dealId }),
       select: { id: true, tenantId: true },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-    if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    }
 
     const row = await prisma.auditLog.create({
       data: {
