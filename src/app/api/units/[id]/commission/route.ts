@@ -13,7 +13,8 @@ import { createSafeAuditLog } from '@/lib/auth-guards'
 import { getUnitCommissionConfig, setUnitCommissionConfig } from '@/lib/commission/unit-config'
 
 // Cargos que podem receber comissão (para validar o que vier do form).
-const ELIGIBLE_ROLES = ['GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO']
+// ADM incluído: ADM também pode vender (em qualquer unidade) e receber comissão.
+const ELIGIBLE_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO']
 
 async function unitTenant(unitId: string): Promise<string | null> {
   const u = await prisma.unit.findUnique({ where: { id: unitId }, select: { tenantId: true } }).catch(() => null)

@@ -261,7 +261,7 @@ export async function POST(req: Request) {
       const ext = String(row.externalId)
       const unitId = await unitInfo(row.loja)
       if (!unitId) { skipped++; results.push({ externalId: ext, action: 'skipped', reason: `Loja não mapeada: "${row.loja ?? ''}"` }); continue }
-      const sellerId = await resolveSellerId(unitId, row.vendedor)
+      const sellerId = await resolveSellerId(unitId, row.vendedor, tenantId)
       const dealNumber = `AC-${ext}`
       const type = mapType(row.tipo)
       const status = mapStatus(row.status)

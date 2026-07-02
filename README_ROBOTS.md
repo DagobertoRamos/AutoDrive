@@ -1724,3 +1724,16 @@
 - **Pendências futuras:**
   - Rodar a rota protegida de sincronização no tenant afetado após deploy para corrigir negociações antigas em `AGUARDANDO_CONTRATO` sem comissão.
   - Se houver comissão já paga em venda cancelada, definir com o usuário a regra operacional de estorno/ajuste financeiro pago.
+
+### LOG 0128 — 2026-07-02 — Claude (Opus 4.8) — Gerente/ADM/Gerente Geral também vendem (Seller ausente + resolução cross-unit)
+- **Branch:** `main`. Sem migration (dado + lógica).
+- **Sintoma relatado:** "o gerente também pode vender, o adm pode vender em qualquer unidade, gerente geral também, thiago cadastrado, arrume isso no sistema." Contexto: importação AutoConf reportava `(NÃO ACHADO: Marcelo B Rodrigues)` para uma negociação do Galpão — Marcelo é ADM da Matriz.
+- **Diagnóstico:** `Deal.sellerId` referencia `Seller.id` (não `User.id`). Dagoberto e Luciano (GERENTE, já cadastrados como `Manager`) e Marcelo (ADM) **não tinham registro de `Seller`** — por isso não eram encontrados nem na importação do AutoConf (`resolveSellerId`, busca só dentro da unidade) nem no cadastro manual de negociação (`ownSeller` via `userId`). Thiago (VENDEDOR) já estava correto — só ele tinha `Seller`, daí a referência do usuário a ele como exemplo do que "cadastrado" deveria parecer. `Seller.userId` é `@unique` → uma pessoa só pode ter UM registro de vendedor no total, então ADM/GERENTE_GERAL (que vendem em QUALQUER unidade) não podem ter um Seller por unidade — precisam de resolução cross-unit por papel.
+- **Correções:**
+  - **Dados:** criado registro de `Seller` para Dagoberto (Matriz), Luciano (Loja 1) e Marcelo (ADM, Matriz) — mesmo padrão do cadastro normal de vendedor, vinculado ao `User` já existente.
+  - **`lib/integrations/autoconf.ts` — `resolveSellerId`:** agora aceita `tenantId` opcional; se não achar o vendedor DENTRO da unidade da negociação, busca entre os `Seller` do tenant inteiro cujo `User` vinculado tem papel `ADM` ou `GERENTE_GERAL` (`CROSS_UNIT_SELLER_ROLES`) — cobre "ADM/gerente geral vendem em qualquer unidade". `GERENTE` fica de fora de propósito (vende só na própria unidade — já resolvido só com o Seller na unidade dele).
+  - `deals/route.ts`: repassa `tenantId` para `resolveSellerId`.
+  - `ELIGIBLE_ROLES`/`COMMISSION_ROLES` (config de comissão da unidade, `/api/units/[id]/commission` + tela de cadastro de unidade): adicionado `ADM` (faltava na lista de cargos selecionáveis para receber comissão).
+  - Cadastro manual de negociação (`/api/negotiations` POST) **não precisou de mudança de código** — `ownSeller` já resolve por `userId` sem filtro de unidade; só faltava o registro de `Seller` (feito acima).
+- **Validações:** `tsc --noEmit` verde; `vitest run src/lib/integrations/autoconf.test.ts` verde (2 testes); teste manual local confirmou `resolveSellerId(Galpão, 'Marcelo B Rodrigues', tenantId)` → acha o Seller de Marcelo (cadastrado na Matriz) via busca cross-unit.
+- **Escopo:** só a resolução de vendedor (Seller) + cargos elegíveis a comissão. Não mexi em `bodySellerId` (atribuição de OUTRO vendedor por um gerente) nem em regras de comissão em si.

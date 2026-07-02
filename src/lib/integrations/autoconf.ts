@@ -81,17 +81,41 @@ export async function resolveUnitId(tenantId: string, loja: string | null | unde
   return null
 }
 
-/** Resolve o vendedor por nome DENTRO da unidade (normalizado). Tenta igualdade,
- *  depois "todas as palavras do nome batem". Retorna null se ambíguo/ausente. */
-export async function resolveSellerId(unitId: string, name: string | null | undefined): Promise<string | null> {
-  const n = norm(name)
-  if (!n) return null
-  const sellers = await prisma.seller.findMany({ where: { unitId, active: true }, select: { id: true, fullName: true } })
+function matchByName(sellers: Array<{ id: string; fullName: string }>, n: string): string | null {
   const exact = sellers.find((s) => norm(s.fullName) === n)
   if (exact) return exact.id
   const words = n.split(' ').filter((w) => w.length >= 3)
   const matches = sellers.filter((s) => { const sn = norm(s.fullName); return words.every((w) => sn.includes(w)) })
   return matches.length === 1 ? matches[0].id : null
+}
+
+// Papéis que vendem em QUALQUER unidade da loja (não ficam presos à unidade
+// "casa" do próprio cadastro). GERENTE fica de fora de propósito: gerente
+// vende só na própria unidade — por isso basta ter Seller na sua unidade.
+const CROSS_UNIT_SELLER_ROLES = ['ADM', 'GERENTE_GERAL'] as const
+
+/** Resolve o vendedor por nome DENTRO da unidade (normalizado). Se não achar
+ *  ali e um `tenantId` for informado, procura também entre os vendedores cujo
+ *  usuário vinculado é ADM ou GERENTE_GERAL — esses papéis podem vender em
+ *  qualquer unidade da loja, então o Seller.unitId "casa" deles pode ser
+ *  diferente da unidade da negociação em si. */
+export async function resolveSellerId(unitId: string, name: string | null | undefined, tenantId?: string): Promise<string | null> {
+  const n = norm(name)
+  if (!n) return null
+  const sellers = await prisma.seller.findMany({ where: { unitId, active: true }, select: { id: true, fullName: true } })
+  const found = matchByName(sellers, n)
+  if (found) return found
+
+  if (tenantId) {
+    const crossUnit = await prisma.seller.findMany({
+      where: { unit: { tenantId }, active: true, user: { role: { in: [...CROSS_UNIT_SELLER_ROLES] } } },
+      select: { id: true, fullName: true },
+    })
+    const foundCross = matchByName(crossUnit, n)
+    if (foundCross) return foundCross
+  }
+
+  return null
 }
 
 // ── Mapas de tipo/status AutoConf → AutoDrive ────────────────────────────────

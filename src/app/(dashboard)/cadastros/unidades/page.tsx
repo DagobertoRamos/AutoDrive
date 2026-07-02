@@ -10,8 +10,9 @@ import { cn, formatCNPJ } from '@/lib/utils'
 import { maskCNPJ, maskPhone } from '@/lib/masks'
 import { ROLE_LABELS } from '@/lib/permissions'
 
-// Cargos que podem receber comissão (para a chave da unidade).
-const COMMISSION_ROLES = ['GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'] as const
+// Cargos que podem receber comissão (para a chave da unidade). ADM incluído:
+// ADM também pode vender (em qualquer unidade) e receber comissão.
+const COMMISSION_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO'] as const
 
 interface CommissionCfg { enabled: boolean; roles: string[] }
 
