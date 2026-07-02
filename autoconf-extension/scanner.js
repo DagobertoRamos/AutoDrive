@@ -566,6 +566,88 @@ async function fetchDetalhesNegociacao(row) {
   }
 }
 
+// Lê as linhas de uma célula <td> preservando as quebras de <br> (o AutoConf
+// empilha data/CNPJ/nome ou descrição/categoria assim, sem "chave: valor").
+function cellLines(td) {
+  if (!td) return []
+  return td.innerHTML.split(/<br\s*\/?>/i).map((h) => {
+    const d = document.createElement('div')
+    d.innerHTML = h
+    return cleanText(d.textContent)
+  }).filter(Boolean)
+}
+
+// "Visualizar títulos financeiros" — ledger REAL da negociação (aba do menu
+// "..."). Cada linha: data/CNPJ+nome da contraparte, descrição+categoria,
+// valor com sinal (+receita/-despesa), ícone de confirmado, link que revela
+// se é a-receber (pagamento) ou a-pagar (débito). Muito mais confiável que
+// adivinhar tabelas soltas do resumo — é ESTA a fonte real de pagamentos/débitos.
+async function fetchTitulosFinanceiros(externalId) {
+  const empty = { pagamentos: [], debitos: [] }
+  try {
+    const r = await fetch(`/negociacao/${externalId}/visualizacao-titulos-financeiros`, { headers: { Accept: 'text/html' }, credentials: 'include' })
+    if (!r.ok) return empty
+    const html = await r.text()
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const rows = [...doc.querySelectorAll('table tbody tr')]
+    const pagamentos = [], debitos = []
+
+    for (const tr of rows) {
+      const tds = [...tr.children]
+      if (tds.length < 5) continue
+      const col0 = cellLines(tds[0]) // [data, cpfCnpjContraparte, nomeContraparte]
+      const col1 = cellLines(tds[1]) // [descricao, categoria]
+      const value = parseMoney(cleanText(tds[2].textContent))
+      if (value === null || value === 0) continue
+      const confirmado = !!tds[2].querySelector('i.fa-check, .text-success')
+      const href = tds[4]?.querySelector('a')?.getAttribute('href') || ''
+      const isReceita = /\/a-receber\//.test(href) || (!/\/a-pagar\//.test(href) && value >= 0)
+      const dataStr = col0[0] || null
+      const descricao = col1[0] || null
+      const categoria = col1[1] || null
+      const notes = [descricao, categoria].filter(Boolean).join(' — ').slice(0, 500)
+      const absValue = Math.abs(value)
+
+      if (isReceita) {
+        pagamentos.push({
+          type: paymentTypeFromText(descricao || categoria || ''),
+          status: confirmado ? 'CONFIRMADO' : 'PENDENTE',
+          value: absValue,
+          paidAt: confirmado ? dataStr : null,
+          dueDate: confirmado ? null : dataStr,
+          notes,
+        })
+      } else {
+        debitos.push({
+          type: debtTypeFromText(descricao || categoria || ''),
+          description: (descricao || categoria || '').slice(0, 180),
+          value: absValue,
+          responsavel: /loja/i.test(categoria || '') ? 'LOJA' : (/client|comprador/i.test(categoria || '') ? 'COMPRADOR' : 'LOJA'),
+          dueDate: dataStr,
+          notes,
+        })
+      }
+    }
+    return { pagamentos, debitos }
+  } catch (e) { return empty }
+}
+
+// "Visualizar histórico" — trilha de auditoria (quem alterou o quê, quando).
+// Endpoint JSON leve; guardamos só um resumo em texto puro (sem HTML) — é
+// informativo/auditoria, não vai pro AutoDrive (fica só no JSON local).
+async function fetchHistorico(externalId) {
+  try {
+    const r = await fetch(`/api/ui/v1/negociacoes/${externalId}/historico`, { headers: { Accept: 'application/json' }, credentials: 'include' })
+    if (!r.ok) return []
+    const j = await r.json()
+    return (j?.entries || []).slice(0, 60).map((e) => {
+      const d = document.createElement('div')
+      d.innerHTML = e.changeHtml || ''
+      return { data: e.dataLabel || null, usuario: e.usuarioNome || null, resumo: cleanText(d.textContent).slice(0, 400) }
+    })
+  } catch (e) { return [] }
+}
+
 function mapVeiculos(arr) {
   return (arr || []).map((v) => ({
     modelo: [v.titulo, v.subtitulo].filter(Boolean).join(' ').trim(),
@@ -728,11 +810,20 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
     preliminaryRows[i].finalizadoEm = detalhes?.finalizadoEm || null
     preliminaryRows[i].finalizadoEmIso = detalhes?.finalizadoEmIso || isoDate(preliminaryRows[i].finalizadoEm)
     preliminaryRows[i].clienteDetalhes = detalhes?.clienteDetalhes || null
-    preliminaryRows[i].pagamentos = detalhes?.pagamentos || []
-    preliminaryRows[i].debitos = detalhes?.debitos || []
+
+    // "Visualizar títulos financeiros" — ledger real (data/CNPJ/valor/status
+    // confirmado), muito mais confiável que adivinhar tabelas soltas do resumo.
+    // Usa como fonte PRIMÁRIA; o scrape do resumo vira fallback se vier vazio.
+    const titulos = await fetchTitulosFinanceiros(preliminaryRows[i].externalId)
+    preliminaryRows[i].pagamentos = titulos.pagamentos.length ? titulos.pagamentos : (detalhes?.pagamentos || [])
+    preliminaryRows[i].debitos = titulos.debitos.length ? titulos.debitos : (detalhes?.debitos || [])
     preliminaryRows[i].totalPagamentosDetalhe = preliminaryRows[i].pagamentos.reduce((s, p) => s + (Number(p.value) || 0), 0) || null
     preliminaryRows[i].totalDebitosDetalhe = preliminaryRows[i].debitos.reduce((s, d) => s + (Number(d.value) || 0), 0) || null
     preliminaryRows[i].autoconfDetalhes = detalhes || null
+
+    // "Visualizar histórico" — trilha de auditoria (quem cadastrou o quê).
+    // Só informativa (fica no JSON local; não vai pro AutoDrive).
+    preliminaryRows[i].historico = await fetchHistorico(preliminaryRows[i].externalId)
 
     if (i % 5 === 0 || i === preliminaryRows.length - 1) progress(`Detalhes: ${i + 1}/${preliminaryRows.length}.`, { partial: i + 1 })
     await sleep(150)

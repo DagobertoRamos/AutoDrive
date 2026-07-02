@@ -1,4 +1,4 @@
-# AutoConf → AutoDrive — extensão de importação (v0.3.5)
+# AutoConf → AutoDrive — extensão de importação (v0.3.6)
 
 Lê negociações do **AutoConf** usando a sessão já logada no navegador e envia para o
 **AutoDrive** pelo endpoint `POST /api/integrations/autoconf/deals`.
@@ -277,6 +277,26 @@ Host permissions:
 - `https://auto-drive-mocha.vercel.app/*`
 
 ## Changelog
+
+### v0.3.6 — pagamentos/débitos reais (Títulos Financeiros) + histórico de auditoria
+
+- **Nova fonte de pagamentos/débitos:** a extensão agora abre "Visualizar
+  títulos financeiros" de cada negociação (mesmo menu "..." do AutoConf) e lê
+  o **ledger real** — data, contraparte (CPF/CNPJ + nome), descrição,
+  categoria, valor com sinal, status confirmado/pendente. É a fonte oficial de
+  pagamentos e débitos (receita = `/a-receber/`, despesa = `/a-pagar/`, dá pra
+  ver pelo link "Ver" de cada linha), muito mais confiável que adivinhar
+  tabelas soltas do resumo (que geralmente vinham vazias: `pagamentos: []`,
+  `debitos: []`). Essa fonte agora tem prioridade; o scrape antigo do resumo
+  vira só um fallback se a página de títulos vier vazia.
+- **Novo campo `historico`:** lê "Visualizar histórico" (trilha de auditoria:
+  quem cadastrou/alterou o quê, quando — até 60 registros por negociação) e
+  guarda um resumo em texto puro. É só informativo — fica no JSON baixado
+  localmente, **não é enviado ao AutoDrive** (mantém o payload enxuto).
+- Testado ao vivo contra uma negociação real com 2 recebimentos (Pix +
+  Pix-sinal, ambos confirmados) e débitos de veículo (Gestauto, Documentação)
+  — todos os valores/datas/status bateram exatamente com o que aparece na
+  tela do AutoConf.
 
 ### v0.3.5 — CPF/CNPJ, endereço, cidade, estado e CEP do cliente vinham `null`
 

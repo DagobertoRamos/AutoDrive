@@ -1751,3 +1751,17 @@
   - CEP dobrado dentro do campo `endereco` (o `Customer` do AutoDrive não tem coluna própria de CEP — evita migration).
 - **Validações:** `node --check scanner.js` verde; testado ao vivo contra 2 negociações reais (uma PJ/CNPJ, uma PF/CPF) via sessão do Chrome do usuário — todos os campos (nome, cpfCnpj, endereço, cidade, estado="SP", CEP) vieram corretos nas duas.
 - **Escopo:** só a extração de dados do cliente na extensão (local, sem deploy Vercel). Bump de versão 0.3.4 → 0.3.5.
+
+### LOG 0130 — 2026-07-02 — Claude (Opus 4.8) — Extensão AutoConf v0.3.6: pagamentos/débitos reais (Títulos Financeiros) + histórico
+- **Branch:** `main`. Extensão local (não deploya na Vercel).
+- **Pedido do usuário:** apontou que o menu "..." da negociação (no AutoConf) tem "Visualizar títulos financeiros" (todos os pagamentos da negociação) e "Visualizar histórico" (tudo que vai sendo cadastrado) — pediu pra aproveitar essas fontes.
+- **Investigação (sessão do Chrome do usuário, mascarando dados sensíveis):**
+  - `/negociacao/{id}/visualizacao-titulos-financeiros` é uma página com uma **tabela real e estruturada** (não texto solto): data | CPF/CNPJ+nome da contraparte | descrição+categoria | valor com sinal | ícone de confirmado | link "Ver". O link revela se é receita (`/financeiro/a-receber/...`) ou despesa (`/financeiro/a-pagar/...`). Essa é a fonte OFICIAL de pagamentos/débitos — o scrape antigo (tabelas soltas do resumo) quase sempre vinha vazio (`pagamentos: [], debitos: []`).
+  - `/api/ui/v1/negociacoes/{id}/historico` é um endpoint JSON (não documentado, achado pelos nomes dos chunks JS `NegotiationHistorySideModal`/`negociacaoHistorico`) com `entries: [{usuarioNome, dataLabel, changeHtml}]` — a trilha de auditoria completa (32 registros na negociação testada).
+- **Implementado (`autoconf-extension/scanner.js`):**
+  - `cellLines(td)`: lê célula de tabela preservando quebras de `<br>` (mesmo padrão "linhas soltas sem chave:valor" do LOG 0129).
+  - `fetchTitulosFinanceiros(externalId)`: busca a página de títulos, classifica cada linha em `pagamentos`/`debitos` (formato `AutoconfPayment`/`AutoconfDebt` já existente e já consumido pelo servidor — **nenhuma mudança no backend foi necessária**), com `status` (CONFIRMADO/PENDENTE via ícone) e `paidAt`/`dueDate` corretos.
+  - `fetchHistorico(externalId)`: busca o JSON e guarda um resumo em texto puro (HTML de `changeHtml` convertido pra texto) — só informativo, fica no JSON local, **não é enviado ao AutoDrive** (fora da whitelist de `slimRowForApi`, mantém o payload enxuto).
+  - No loop de detalhes: títulos financeiros vira a fonte PRIMÁRIA de pagamentos/débitos; o scrape antigo do resumo agora só é usado como fallback se a página de títulos vier vazia.
+- **Validações:** `node --check scanner.js` verde; testado ao vivo contra negociação real — 2 recebimentos (Pix + Pix-sinal, confirmados) e débitos de veículo (Gestauto, Documentação) todos batendo com os valores/datas exibidos na tela do AutoConf.
+- **Escopo:** só a extensão (captura de dados), sem mudança no schema/API do AutoDrive — os campos já eram aceitos pelo endpoint de importação. Bump de versão 0.3.5 → 0.3.6.
