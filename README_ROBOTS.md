@@ -1868,3 +1868,59 @@
 - **Pendências futuras:**
   - Criar relatório/script seguro para listar duplicidades históricas por `tenantId + dealId + employeeUserId + commissionScope/legado + period`, sem hard delete.
   - Se o negócio quiser manter comissão de compra/troca separada, criar fluxo explícito de compra avulsa separado da negociação de venda com troca.
+
+### LOG 0135 - 2026-07-02 12:22:06 -03:00 - Codex (GPT-5) - Script seguro para hard delete de negociacoes e comissoes
+- **Branch:** `main`. Sem migration.
+- **Tarefa executada:**
+  - Criado script administrativo para apagar, de forma transacional e com dry-run por padrao, negociacoes, comissoes, regras de comissao e dados derivados/materializados.
+  - O script exige escopo explicito por tenant (`--tenantId=<tenant-id>`) ou todos os tenants (`--all-tenants`) e nao executa hard delete sem confirmacoes por variavel de ambiente.
+- **Arquivos alterados/criados:**
+  - `scripts/danger-delete-negotiations-and-commissions.ts`
+  - `package.json`
+  - `README_ROBOTS.md`
+- **Tabelas afetadas por delete:**
+  - `FinancialEntry` derivada de negociacao/comissao (`dealId`, `commissionCalculationId` ou fontes `VENDA`, `COMISSAO`, `RETORNO`, `GARANTIA`).
+  - `CommissionAdjustment`, `CommissionExtract`, `CommissionCalculation`, `CommissionRule`.
+  - `WarrantyRule`, `ReturnPercentRule`.
+  - `RankingScore`, `GoalProgress`.
+  - `SheetImportRow` vinculada a negociacao selecionada.
+  - `ContractParseResult` e `Contract` vinculados a negociacao selecionada.
+  - Filhos de `Deal`: `DealVehicle`, `DealService`, `DealAuditLog`, `DealDebt`, `DealPayment`, `DealDiscountRequest`, `DealChange`, `DealReopenLog`, `DealAttachment`, `DealDocument`, `DealStatusHistory`, `DealReleaseRequest`, `WarrantySale`.
+  - `Deal`.
+- **Tabelas afetadas por unlink, sem apagar o registro principal:**
+  - `Pendency.dealId` e `Pendency.contractId`.
+  - `Appointment.dealId`.
+  - `FinanceProposal.dealId`.
+  - `MarketingLead.convertedDealId` e `MarketingLead.convertedAt`.
+- **Preservados intencionalmente:**
+  - `Tenant`, `User`, `Unit`, `Seller`, `Manager` e permissoes.
+  - Clientes, veiculos/estoque independente, catalogos de servicos, garantias, produtos financeiros, bancos, proponentes, contas/categorias financeiras e configuracoes (`SystemSetting`).
+  - Regras de ranking/metas (`RankingRule`, `Goal`, `GoalLevel`), pois o reset pedido remove apenas os resultados/materializacoes.
+- **Ordem segura de limpeza:**
+  - Primeiro remove lancamentos financeiros derivados e comissoes.
+  - Depois remove regras/calculos/materializacoes.
+  - Em seguida desvincula entidades preservadas.
+  - Por fim remove contratos vinculados, filhos de negociacao e a propria negociacao.
+- **Travas de seguranca:**
+  - Dry-run por padrao.
+  - Execucao real exige `--execute` e `CONFIRM_DELETE_NEGOTIATIONS_AND_COMMISSIONS=DELETE_REAL_NEGOTIATIONS_COMMISSIONS`.
+  - Escopo obrigatorio: `--tenantId=<tenant-id>` ou `--all-tenants`.
+  - `--all-tenants` exige tambem `CONFIRM_ALL_TENANTS=YES_DELETE_ALL_TENANTS`.
+  - Ambiente de producao (`NODE_ENV=production` ou `VERCEL_ENV=production`) exige tambem `CONFIRM_PRODUCTION_DELETE=YES_I_UNDERSTAND_THIS_IS_PRODUCTION`.
+  - O script imprime aviso de backup, contagens antes/depois, resumo do que sera apagado/preservado e sempre desconecta o Prisma no final.
+- **Comandos de uso documentados:**
+  - Dry-run por tenant: `npm run danger:delete-negotiations-commissions -- --dry-run --tenantId=<tenant-id>`
+  - Delete real por tenant: `CONFIRM_DELETE_NEGOTIATIONS_AND_COMMISSIONS="DELETE_REAL_NEGOTIATIONS_COMMISSIONS" npm run danger:delete-negotiations-commissions -- --execute --tenantId=<tenant-id>`
+  - Delete real em todos os tenants: `CONFIRM_DELETE_NEGOTIATIONS_AND_COMMISSIONS="DELETE_REAL_NEGOTIATIONS_COMMISSIONS" CONFIRM_ALL_TENANTS="YES_DELETE_ALL_TENANTS" npm run danger:delete-negotiations-commissions -- --execute --all-tenants`
+- **Testes realizados:**
+  - `npx eslint scripts/danger-delete-negotiations-and-commissions.ts --quiet` - verde.
+  - `npx tsc --noEmit --pretty false` - verde.
+  - `npx prisma validate` - schema valido; apenas aviso de deprecacao do bloco `package.json#prisma`.
+  - `npm run danger:delete-negotiations-commissions -- --help` - verde.
+  - `npm run danger:delete-negotiations-commissions -- --dry-run` sem escopo - bloqueou corretamente antes de conectar/apagar.
+  - `npm run build` - bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`.
+- **Riscos e observacoes:**
+  - Nenhum delete real foi executado nesta tarefa.
+  - Fazer backup do banco antes de usar com `--execute`.
+  - Em bases grandes, a transacao pode precisar de janela controlada ou aumento de timeout.
+  - Configuracoes em `SystemSetting` foram preservadas por serem configuracoes do tenant/unidade, nao registros gerados por negociacao/comissao.
