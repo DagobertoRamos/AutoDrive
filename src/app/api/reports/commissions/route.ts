@@ -20,6 +20,12 @@ const num = (v: unknown): number => {
   return Number(v) || 0
 }
 
+const employeeUserIdFrom = (details: unknown): string | null => {
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return null
+  const value = (details as { employeeUserId?: unknown }).employeeUserId
+  return typeof value === 'string' && value ? value : null
+}
+
 const VIEWS = ['geral', 'garantias', 'retornos', 'vendedor'] as const
 type View = (typeof VIEWS)[number]
 
@@ -42,34 +48,70 @@ export async function GET(req: Request) {
 
     // ---- Vendedor: agregado por vendedor + tipo --------------------------
     if (view === 'vendedor') {
-      const grouped = await prisma.commissionCalculation.groupBy({
-        by: ['sellerId', 'ruleType'],
+      const rows = await prisma.commissionCalculation.findMany({
         where: where as never,
-        _sum: { commissionValue: true },
-        _count: { _all: true },
+        take: 5000,
+        select: {
+          sellerId: true,
+          managerId: true,
+          ruleDetails: true,
+          ruleType: true,
+          commissionValue: true,
+        },
       })
-      const sellerIds = [...new Set(grouped.map((g) => g.sellerId).filter(Boolean))] as string[]
-      const sellers = sellerIds.length
-        ? await prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, fullName: true, shortName: true } })
-        : []
+
+      const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter(Boolean))] as string[]
+      const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[]
+      const employeeUserIds = [...new Set(rows.map((r) => employeeUserIdFrom(r.ruleDetails)).filter(Boolean))] as string[]
+      const userIds = [...new Set([...managerIds, ...employeeUserIds])]
+
+      const [sellers, managers, users] = await Promise.all([
+        sellerIds.length
+          ? prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, fullName: true, shortName: true } })
+          : [],
+        managerIds.length
+          ? prisma.manager.findMany({ where: { id: { in: managerIds } }, select: { id: true, fullName: true, user: { select: { name: true } } } })
+          : [],
+        userIds.length
+          ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+          : [],
+      ])
+
       const nameMap = Object.fromEntries(sellers.map((s) => [s.id, s.shortName || s.fullName]))
+      const managerMap = Object.fromEntries(managers.map((m) => [m.id, m.fullName || m.user?.name || 'Gerente']))
+      const userMap = Object.fromEntries(users.map((u) => [u.id, u.name]))
 
       const bySellerMap = new Map<string, { seller: string; total: number; count: number; byType: Record<string, number> }>()
-      for (const g of grouped) {
-        const key = g.sellerId ?? '__sem__'
-        const entry = bySellerMap.get(key) ?? { seller: g.sellerId ? (nameMap[g.sellerId] ?? '—') : 'Sem vendedor', total: 0, count: 0, byType: {} }
-        const val = num(g._sum.commissionValue)
+      for (const r of rows) {
+        const employeeUserId = employeeUserIdFrom(r.ruleDetails)
+        const key = r.sellerId
+          ? `seller:${r.sellerId}`
+          : r.managerId
+            ? `manager:${r.managerId}`
+            : employeeUserId
+              ? `user:${employeeUserId}`
+              : '__sem__'
+        const seller = r.sellerId
+          ? (nameMap[r.sellerId] ?? '—')
+          : r.managerId
+            ? (managerMap[r.managerId] ?? userMap[r.managerId] ?? '—')
+            : employeeUserId
+              ? (userMap[employeeUserId] ?? '—')
+              : 'Sem responsável'
+        const entry = bySellerMap.get(key) ?? { seller, total: 0, count: 0, byType: {} }
+        const val = num(r.commissionValue)
         entry.total += val
-        entry.count += g._count._all
-        entry.byType[g.ruleType] = (entry.byType[g.ruleType] ?? 0) + val
+        entry.count += 1
+        entry.byType[r.ruleType] = (entry.byType[r.ruleType] ?? 0) + val
         bySellerMap.set(key, entry)
       }
       const bySeller = [...bySellerMap.values()].sort((a, b) => b.total - a.total)
       return NextResponse.json({
         success: true,
         view,
-        summary: { sellers: bySeller.length, total: bySeller.reduce((s, x) => s + x.total, 0), count: bySeller.reduce((s, x) => s + x.count, 0) },
+        summary: { sellers: bySeller.length, responsaveis: bySeller.length, total: bySeller.reduce((s, x) => s + x.total, 0), count: bySeller.reduce((s, x) => s + x.count, 0) },
         bySeller,
+        byResponsible: bySeller,
       })
     }
 
@@ -81,7 +123,7 @@ export async function GET(req: Request) {
         take: 500,
         select: {
           id: true, ruleType: true, description: true, baseValue: true, commissionValue: true,
-          status: true, period: true, sellerId: true, managerId: true, createdAt: true,
+          status: true, period: true, sellerId: true, managerId: true, ruleDetails: true, createdAt: true,
         },
       }),
       prisma.commissionCalculation.groupBy({ by: ['ruleType'], where: where as never, _sum: { commissionValue: true }, _count: { _all: true } }),
@@ -90,18 +132,26 @@ export async function GET(req: Request) {
 
     const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter(Boolean))] as string[]
     const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[]
-    const [sellers, managers] = await Promise.all([
+    const employeeUserIds = [...new Set(rows.map((r) => employeeUserIdFrom(r.ruleDetails)).filter(Boolean))] as string[]
+    const userIds = [...new Set([...managerIds, ...employeeUserIds])]
+    const [sellers, managers, users] = await Promise.all([
       sellerIds.length ? prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, fullName: true, shortName: true } }) : [],
-      managerIds.length ? prisma.user.findMany({ where: { id: { in: managerIds } }, select: { id: true, name: true } }) : [],
+      managerIds.length ? prisma.manager.findMany({ where: { id: { in: managerIds } }, select: { id: true, fullName: true, user: { select: { name: true } } } }) : [],
+      userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [],
     ])
     const sellerMap = Object.fromEntries(sellers.map((s) => [s.id, s.shortName || s.fullName]))
-    const userMap = Object.fromEntries(managers.map((m) => [m.id, m.name]))
+    const managerMap = Object.fromEntries(managers.map((m) => [m.id, m.fullName || m.user?.name || 'Gerente']))
+    const userMap = Object.fromEntries(users.map((m) => [m.id, m.name]))
 
     const data = rows.map((r) => ({
       id: r.id, ruleType: r.ruleType, description: r.description,
       baseValue: num(r.baseValue), commissionValue: num(r.commissionValue),
       status: r.status, period: r.period, createdAt: r.createdAt,
-      responsavel: r.sellerId ? (sellerMap[r.sellerId] ?? '—') : r.managerId ? (userMap[r.managerId] ?? '—') : '—',
+      responsavel: r.sellerId
+        ? (sellerMap[r.sellerId] ?? '—')
+        : r.managerId
+          ? (managerMap[r.managerId] ?? userMap[r.managerId] ?? '—')
+          : userMap[employeeUserIdFrom(r.ruleDetails) ?? ''] ?? '—',
     }))
 
     const totalsByType = byType.map((g) => ({ ruleType: g.ruleType, total: num(g._sum.commissionValue), count: g._count._all })).sort((a, b) => b.total - a.total)

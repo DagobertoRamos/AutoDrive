@@ -1,8 +1,8 @@
 'use client'
 
 // =============================================================================
-// Relatório — Comissões por Vendedor (AutoDrive)
-// Agregado por vendedor (total + quebra por tipo). Consome
+// Relatório — Comissões por Responsável (AutoDrive)
+// Agregado por responsável (total + quebra por tipo). Consome
 // /api/reports/commissions?view=vendedor.
 // =============================================================================
 
@@ -35,22 +35,22 @@ export default function ComissoesVendedorReportPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Comissões por Vendedor</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${summary?.sellers ?? 0} vendedores`}</p>
+          <h1 className="text-xl font-bold text-gray-900">Comissões por Responsável</h1>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${summary?.sellers ?? 0} responsáveis`}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div className="rounded-xl border border-brand-200 bg-brand-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-brand-700">Total comissões</p><p className="mt-1 text-xl font-bold tabular-nums text-brand-800">{loading ? '—' : fmt(summary?.total ?? 0)}</p></div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-xs font-medium uppercase tracking-wide text-gray-500">Vendedores</p><p className="mt-1 text-xl font-bold tabular-nums text-gray-900">{loading ? '—' : summary?.sellers ?? 0}</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-xs font-medium uppercase tracking-wide text-gray-500">Responsáveis</p><p className="mt-1 text-xl font-bold tabular-nums text-gray-900">{loading ? '—' : summary?.sellers ?? 0}</p></div>
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4"><p className="text-xs font-medium uppercase tracking-wide text-gray-500">Lançamentos</p><p className="mt-1 text-xl font-bold tabular-nums text-gray-900">{loading ? '—' : summary?.count ?? 0}</p></div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr>{['Vendedor', 'Venda', 'Retorno', 'Garantia', 'Lançamentos', 'Total'].map((h) => (<th key={h} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Vendedor' ? 'text-left' : 'text-right')}>{h}</th>))}</tr></thead>
+            <thead className="bg-gray-50"><tr>{['Responsável', 'Venda', 'Retorno', 'Garantia', 'Lançamentos', 'Total'].map((h) => (<th key={h} className={cn('whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Responsável' ? 'text-left' : 'text-right')}>{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))

@@ -58,6 +58,7 @@ export interface GenerationItem {
   ruleType:      string
   employeeKind:  EmployeeKind
   employeeId:    string
+  employeeUserId?: string | null
   employeeLabel: string
   baseValue:     number
   description:   string
@@ -177,7 +178,8 @@ export async function generateCommissionsForDeal(
       }
     : null
 
-  // deal.managerId aponta para User.id (não Manager.id). Tratamos como USER no matcher.
+  // deal.managerId aponta para User.id. Quando esse usuário também possui
+  // cadastro de Manager, usamos o Manager.id para gravar/relatar corretamente.
   let managerEarner: LocalEarner | null = d.manager
     ? {
         kind:        'USER',
@@ -188,6 +190,38 @@ export async function generateCommissionsForDeal(
         label:       d.manager.name,
       }
     : null
+
+  if (managerEarner && d.manager && tenantId) {
+    const managerWhere: Prisma.ManagerWhereInput = {
+      userId: d.manager.id,
+      active: true,
+      unit:   { tenantId },
+    }
+    if (unitId) managerWhere.unitId = unitId
+
+    const linkedManager = await prisma.manager.findFirst({
+      where: managerWhere,
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        userId: true,
+        fullName: true,
+        positionId: true,
+        user: { select: { role: true, name: true } },
+      },
+    }).catch(() => null)
+
+    if (linkedManager) {
+      managerEarner = {
+        kind:       'MANAGER',
+        id:         linkedManager.id,
+        userId:     linkedManager.userId,
+        positionId: linkedManager.positionId ?? d.manager.positionId,
+        role:       linkedManager.user?.role ?? d.manager.role,
+        label:      linkedManager.fullName || linkedManager.user?.name || d.manager.name,
+      }
+    }
+  }
 
   // Quando a negociação não gravou managerId, usa o gerente ativo da unidade.
   // Isso cobre o caso comum "vendedor da loja vendeu, gerente da loja recebe".
@@ -257,6 +291,7 @@ export async function generateCommissionsForDeal(
         ruleType,
         employeeKind:  sellerEarner.kind,
         employeeId:    sellerEarner.id,
+        employeeUserId: sellerEarner.userId,
         employeeLabel: sellerEarner.label,
         baseValue,
         description:   `${baseDesc} — vendedor ${sellerEarner.label}`,
@@ -268,6 +303,7 @@ export async function generateCommissionsForDeal(
         ruleType,
         employeeKind:  managerEarner.kind,
         employeeId:    managerEarner.id,
+        employeeUserId: managerEarner.userId,
         employeeLabel: managerEarner.label,
         baseValue,
         description:   `${baseDesc} — gerente ${managerEarner.label}`,
@@ -290,6 +326,7 @@ export async function generateCommissionsForDeal(
         ruleType,
         employeeKind:  sellerEarner.kind,
         employeeId:    sellerEarner.id,
+        employeeUserId: sellerEarner.userId,
         employeeLabel: sellerEarner.label,
         baseValue,
         description:   `${baseDesc} — vendedor ${sellerEarner.label}`,
@@ -301,6 +338,7 @@ export async function generateCommissionsForDeal(
         ruleType,
         employeeKind:  managerEarner.kind,
         employeeId:    managerEarner.id,
+        employeeUserId: managerEarner.userId,
         employeeLabel: managerEarner.label,
         baseValue,
         description:   `${baseDesc} — gerente ${managerEarner.label}`,
@@ -341,6 +379,7 @@ export async function generateCommissionsForDeal(
         ruleType:      'DOCUMENTO',
         employeeKind:  'USER',
         employeeId:    u.id,
+        employeeUserId: u.id,
         employeeLabel: u.name,
         baseValue:     docBase,
         description:   `DOCUMENTO — ${u.name}`,
@@ -359,6 +398,7 @@ export async function generateCommissionsForDeal(
         ruleType:      'RETORNO',
         employeeKind:  sellerEarner.kind,
         employeeId:    sellerEarner.id,
+        employeeUserId: sellerEarner.userId,
         employeeLabel: sellerEarner.label,
         baseValue:     returnNet,
         description:   `RETORNO financeiro — vendedor ${sellerEarner.label}`,
@@ -370,6 +410,7 @@ export async function generateCommissionsForDeal(
         ruleType:      'RETORNO',
         employeeKind:  managerEarner.kind,
         employeeId:    managerEarner.id,
+        employeeUserId: managerEarner.userId,
         employeeLabel: managerEarner.label,
         baseValue:     returnNet,
         description:   `RETORNO financeiro — gerente ${managerEarner.label}`,
@@ -449,14 +490,19 @@ export async function generateCommissionsForDeal(
 
   function isDuplicate(it: GenerationItem): boolean {
     const k = refKey(it.ruleType, it.reference)
+    const itemEmployeeUserId = it.employeeUserId ?? (it.employeeKind === 'USER' ? it.employeeId : null)
     return existing.some((e) => {
       if (e.ruleType !== it.ruleType) return false
+      const existingEmployeeUserId = (e.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId
       // Por employee
       const empMatches =
         (it.employeeKind === 'SELLER' && e.sellerId === it.employeeId) ||
-        (it.employeeKind === 'MANAGER' && e.managerId === it.employeeId) ||
+        (it.employeeKind === 'MANAGER' && (
+          e.managerId === it.employeeId ||
+          (!!itemEmployeeUserId && existingEmployeeUserId === itemEmployeeUserId)
+        )) ||
         (it.employeeKind === 'USER' && (
-          (e.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId === it.employeeId
+          existingEmployeeUserId === it.employeeId
         ))
       if (!empMatches) return false
       const rd = e.ruleDetails as GenerationItemRef | null
@@ -510,7 +556,7 @@ export async function generateCommissionsForDeal(
           employeeKind:  item.employeeKind,
           employeeId:    item.employeeId,
           employeeLabel: item.employeeLabel,
-          employeeUserId: item.employeeKind === 'USER' ? item.employeeId : null,
+          employeeUserId: item.employeeUserId ?? (item.employeeKind === 'USER' ? item.employeeId : null),
           matchedBy:     matched.matchedBy,
           rulePriority:  matched.rule.priority ?? 0,
           commissionType: matched.rule.commissionType ?? null,
@@ -594,6 +640,7 @@ export async function generateCommissionsForDeal(
                 premiumCommission: comm.premiumCommissionValue,
                 employeeKind:     'SELLER',
                 employeeId:       sellerEarner.id,
+                employeeUserId:   sellerEarner.userId,
                 employeeLabel:    sellerEarner.label,
                 triggeredBy:      opts.triggeredBy,
               } as Prisma.JsonObject,
@@ -757,6 +804,7 @@ async function resolveQuantityBonuses(
         ruleType:      it.ruleType,
         employeeKind:  it.employeeKind,
         employeeId:    it.employeeId,
+        employeeUserId: it.employeeUserId ?? null,
         employeeLabel: it.employeeLabel,
         baseValue:     0,
         description:   `BÔNUS ${it.ruleType} — ${quantityInPeriod} no período — ${it.employeeLabel}`,
