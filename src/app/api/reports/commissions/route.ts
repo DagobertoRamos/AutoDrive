@@ -7,11 +7,13 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
+import type { Prisma } from '@prisma/client'
+import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildCommissionAccessWhere } from '@/lib/negotiation-access'
 
 const num = (v: unknown): number => {
   if (v == null) return 0
@@ -52,15 +54,17 @@ export async function GET(req: Request) {
   { const gate = await assertModuleEnabled(user, 'logs'); if (gate) return gate }
 
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const { searchParams } = new URL(req.url)
     const viewParam = (searchParams.get('view') ?? 'geral') as View
     const view: View = VIEWS.includes(viewParam) ? viewParam : 'geral'
 
-    const extra: Record<string, unknown> = {}
+    const extra: Prisma.CommissionCalculationWhereInput = {}
     if (view === 'garantias') extra.ruleType = 'GARANTIA'
     if (view === 'retornos') extra.ruleType = 'RETORNO'
-    const where = tenantWhere(user.role, tenantId, extra)
+    // Visibilidade central (Parte 9): o relatório é liberado por `logs`
+    // (MASTER/ADM/GERENTE_GERAL/GERENTE). GERENTE fica escopado à PRÓPRIA
+    // unidade; os demais veem o tenant. Não basta o gate — o where filtra.
+    const where = await buildCommissionAccessWhere(user, extra)
 
     // ---- Vendedor: agregado por vendedor + tipo --------------------------
     if (view === 'vendedor') {

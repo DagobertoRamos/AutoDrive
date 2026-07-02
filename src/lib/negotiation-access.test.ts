@@ -8,7 +8,7 @@ const { prismaMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 
-import { buildCommissionAccessWhere, buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { buildCommissionAccessWhere, buildCommissionExtractAccessWhere, buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import type { SessionUser } from '@/lib/auth-guards'
 
 function user(role: SessionUser['role'], extras: Partial<SessionUser> = {}): SessionUser {
@@ -58,6 +58,34 @@ describe('negotiation-access', () => {
 
   it('aplica o mesmo escopo em comissões', async () => {
     await expect(buildCommissionAccessWhere(user('GERENTE'))).resolves.toEqual({
+      tenantId: 'tenant-1',
+      unitId: 'unit-1',
+    })
+  })
+
+  it('extrato: VENDEDOR só vê o próprio (sobrescreve ?sellerId= alheio)', async () => {
+    await expect(buildCommissionExtractAccessWhere(user('VENDEDOR'), { sellerId: 'outro-seller' })).resolves.toEqual({
+      tenantId: 'tenant-1',
+      sellerId: 'seller-1',
+    })
+  })
+
+  it('extrato: VENDEDOR_LIDER também é restrito ao próprio (era vazamento)', async () => {
+    await expect(buildCommissionExtractAccessWhere(user('VENDEDOR_LIDER'))).resolves.toEqual({
+      tenantId: 'tenant-1',
+      sellerId: 'seller-1',
+    })
+  })
+
+  it('extrato: FINANCEIRO vê o tenant inteiro (conferir/pagar)', async () => {
+    await expect(buildCommissionExtractAccessWhere(user('FINANCEIRO'), { period: '2026-07' })).resolves.toEqual({
+      tenantId: 'tenant-1',
+      period: '2026-07',
+    })
+  })
+
+  it('extrato: GERENTE fica escopado à unidade', async () => {
+    await expect(buildCommissionExtractAccessWhere(user('GERENTE'))).resolves.toEqual({
       tenantId: 'tenant-1',
       unitId: 'unit-1',
     })

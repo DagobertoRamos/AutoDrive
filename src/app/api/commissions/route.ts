@@ -8,6 +8,8 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { buildCommissionExtractAccessWhere } from '@/lib/negotiation-access'
+import type { Prisma } from '@prisma/client'
 
 // ── GET — lista extratos ──────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -26,24 +28,20 @@ export async function GET(req: NextRequest) {
     const period  = searchParams.get('period')  || undefined
     const seller  = searchParams.get('sellerId')|| undefined
 
-    const where: Record<string, unknown> = {}
-    if (status) where.status   = status
-    if (period) where.period   = period
-    if (seller) where.sellerId = seller
+    const extra: Prisma.CommissionExtractWhereInput = {}
+    if (status) extra.status   = status as Prisma.CommissionExtractWhereInput['status']
+    if (period) extra.period   = period
+    if (seller) extra.sellerId = seller
 
-    // VENDEDOR vê apenas as próprias comissões
-    if (['VENDEDOR', 'USUARIO_LIDER', 'USUARIO'].includes(session.user.role)) {
-      const s = await prisma.seller.findFirst({ where: { userId: session.user.id } })
-      if (s) {
-        where.sellerId = s.id
-        where.userId   = session.user.id
-      }
-    }
+    // Visibilidade central (Parte 9): OWN=próprias, UNIT=unidade do gerente,
+    // ALL=tenant. O escopo é aplicado por último e sobrescreve qualquer
+    // ?sellerId= alheio — vendedor/vendedor-líder só veem as próprias.
+    const where = await buildCommissionExtractAccessWhere(session.user, extra)
 
     const [total, data] = await Promise.all([
-      prisma.commissionExtract.count({ where: where as any }),
+      prisma.commissionExtract.count({ where }),
       prisma.commissionExtract.findMany({
-        where:   where as any,
+        where,
         include: { seller: { select: { fullName: true, shortName: true } } },
         orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
         skip:    (page - 1) * perPage,
