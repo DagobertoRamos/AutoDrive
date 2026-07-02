@@ -8,7 +8,12 @@ import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
 import { assertModuleEnabled }  from '@/lib/tenant-modules'
 import { handlePrismaError }    from '@/lib/prisma-errors'
-import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { buildCommissionAccessWhere, buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
+import {
+  buildNegotiationFilterWhere,
+  buildNegotiationOrderBy,
+  parseNegotiationFilters,
+} from '@/lib/negotiation-filters'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
 
@@ -22,35 +27,60 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = req.nextUrl
-    const search = searchParams.get('search') ?? ''
-    const type   = searchParams.get('type')   ?? ''
-    const status = searchParams.get('status') ?? ''
-    const unitId = searchParams.get('unitId') ?? ''
-    const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
-    const take   = 50
+    const parsed = parseNegotiationFilters(searchParams)
+    if (parsed.errors.length) {
+      return NextResponse.json({ error: parsed.errors[0], errors: parsed.errors }, { status: 400 })
+    }
 
-    const extra: Record<string, unknown> = {}
+    const filters = parsed.filters
+    const extra = buildNegotiationFilterWhere(filters)
 
-    if (unitId) extra.unitId = unitId
-    if (type)   extra.type   = type
-    if (status) extra.status = status
+    if (filters.commission !== 'any') {
+      const commissionStatus = ['PREVISTO', 'APROVADO', 'PAGO', 'ESTORNADO'].includes(filters.commission)
+        ? filters.commission
+        : ''
+      const commissionWhere = await buildCommissionAccessWhere(session.user, {
+        ...(commissionStatus ? { status: commissionStatus as never } : {}),
+      })
+      const calculations = await prisma.commissionCalculation.findMany({
+        where: commissionWhere,
+        take: 50_000,
+        select: { ruleDetails: true },
+      })
+      const dealIds = [...new Set(calculations.map((row) => {
+        const details = row.ruleDetails as { dealId?: unknown } | null
+        return typeof details?.dealId === 'string' ? details.dealId : null
+      }).filter((id): id is string => Boolean(id)))]
 
-    if (search) {
-      extra.OR = [
-        { person: { nomeCompleto: { contains: search, mode: 'insensitive' } } },
-        { customer: { name: { contains: search, mode: 'insensitive' } } },
-        { dealNumber: { contains: search, mode: 'insensitive' } },
-        { seller: { user: { name: { contains: search, mode: 'insensitive' } } } },
-        { vehicles: { some: { plate: { contains: search, mode: 'insensitive' } } } },
-      ]
+      if (filters.commission === 'without') {
+        extra.AND = [...(Array.isArray(extra.AND) ? extra.AND : []), { id: { notIn: dealIds } }]
+      } else {
+        extra.AND = [...(Array.isArray(extra.AND) ? extra.AND : []), { id: { in: dealIds.length ? dealIds : ['__no_deal_with_commission__'] } }]
+      }
     }
 
     const where = await buildNegotiationAccessWhere(session.user, extra)
+    const take = filters.pageSize
+    const page = filters.page
+    const actor = await getNegotiationActorIds(session.user)
+    const tenantId = session.user.role === 'MASTER' ? undefined : session.user.tenantId ?? '__no_tenant__'
+    const unitWhere =
+      session.user.role === 'MASTER'
+        ? {}
+        : { tenantId }
+    const sellerWhere =
+      ['VENDEDOR', 'VENDEDOR_LIDER'].includes(session.user.role)
+        ? { id: actor.sellerId ?? '__no_seller__' }
+        : session.user.role === 'GERENTE'
+          ? { unitId: actor.unitId ?? '__no_unit__' }
+          : session.user.role === 'MASTER'
+            ? {}
+            : { unit: { tenantId } }
 
-    const [deals, total, typeCounts, statusCounts] = await Promise.all([
+    const [deals, total, typeCounts, statusCounts, units, sellers] = await Promise.all([
       prisma.deal.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: buildNegotiationOrderBy(filters),
         skip:    (page - 1) * take,
         take,
         select: {
@@ -64,6 +94,9 @@ export async function GET(req: NextRequest) {
           totalPayments:       true,
           vehicleValue:        true,
           createdAt:           true,
+          approvedAt:          true,
+          updatedAt:           true,
+          unitId:              true,
           person:   { select: { nomeCompleto: true } },
           customer: { select: { name: true } },
           seller:   { select: { fullName: true, user: { select: { name: true } } } },
@@ -86,6 +119,18 @@ export async function GET(req: NextRequest) {
         where,
         _count: { _all: true },
       }),
+      prisma.unit.findMany({
+        where: unitWhere,
+        orderBy: { name: 'asc' },
+        take: 300,
+        select: { id: true, name: true, active: true },
+      }),
+      prisma.seller.findMany({
+        where: sellerWhere,
+        orderBy: { fullName: 'asc' },
+        take: 500,
+        select: { id: true, fullName: true, shortName: true, unitId: true, active: true, user: { select: { name: true } } },
+      }),
     ])
 
     // Converte groupBy em mapa { VENDA: N, COMPRA: N, ... }
@@ -101,9 +146,20 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       data:       deals,
-      pagination: { page, total, totalPages: Math.ceil(total / take), limit: take },
+      pagination: { page, total, totalPages: Math.ceil(total / take), limit: take, pageSize: take },
       byType,
       byStatus,
+      appliedFilters: filters,
+      availableFilters: {
+        units,
+        sellers: sellers.map((seller) => ({
+          id: seller.id,
+          name: seller.user?.name ?? seller.fullName,
+          shortName: seller.shortName,
+          unitId: seller.unitId,
+          active: seller.active,
+        })),
+      },
     })
   } catch (err) {
     return handlePrismaError(err)

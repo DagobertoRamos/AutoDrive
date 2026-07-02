@@ -6,7 +6,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   Handshake,
@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   LayoutGrid,
   List as ListIcon,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 
@@ -66,8 +67,14 @@ interface Deal {
 interface Pagination {
   page:       number
   limit:      number
+  pageSize?:  number
   total:      number
   totalPages: number
+}
+
+interface AvailableFilters {
+  units: Array<{ id: string; name: string; active: boolean }>
+  sellers: Array<{ id: string; name: string; shortName: string | null; unitId: string; active: boolean }>
 }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -294,17 +301,36 @@ function RowSkeleton() {
 export default function NegociacoesPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const getParam = useCallback((key: string, fallback = '') => searchParams.get(key) ?? fallback, [searchParams])
+  const getListParam = useCallback((key: string) => searchParams.getAll(key).flatMap((v) => v.split(',')).filter(Boolean), [searchParams])
 
   const [deals, setDeals]           = useState<Deal[]>([])
   const [pagination, setPagination] = useState<Pagination | null>(null)
   const [byType, setByType]         = useState<Record<string, number>>({})
   const [byStatus, setByStatus]     = useState<Record<string, number>>({})
+  const [availableFilters, setAvailableFilters] = useState<AvailableFilters>({ units: [], sellers: [] })
   const [loading, setLoading]       = useState(false)
   const [fetchError, setFetchError] = useState('')
-  const [search, setSearch]         = useState('')
-  const [typeFilter, setTypeFilter]     = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [page, setPage]             = useState(1)
+  const [search, setSearch]         = useState(() => getParam('search'))
+  const [typeFilter, setTypeFilter] = useState<string[]>(() => getListParam('type'))
+  const [statusFilter, setStatusFilter] = useState<string[]>(() => getListParam('status'))
+  const [unitFilter, setUnitFilter] = useState(() => getParam('unitId'))
+  const [sellerFilter, setSellerFilter] = useState(() => getParam('sellerId'))
+  const [periodMode, setPeriodMode] = useState(() => getParam('periodMode', 'none'))
+  const [dateFrom, setDateFrom] = useState(() => getParam('dateFrom'))
+  const [dateTo, setDateTo] = useState(() => getParam('dateTo'))
+  const [monthFilter, setMonthFilter] = useState(() => getParam('month'))
+  const [yearFilter, setYearFilter] = useState(() => getParam('year'))
+  const [sourceFilter, setSourceFilter] = useState(() => getParam('source'))
+  const [importFilter, setImportFilter] = useState(() => getParam('importFilter', 'any'))
+  const [commissionFilter, setCommissionFilter] = useState(() => getParam('commission', 'any'))
+  const [pendencyFilter, setPendencyFilter] = useState(() => getParam('pendency', 'any'))
+  const [pageSize, setPageSize] = useState(() => getParam('pageSize', '50'))
+  const [sortBy, setSortBy] = useState(() => getParam('sortBy', 'createdAt'))
+  const [sortDirection, setSortDirection] = useState(() => getParam('sortDirection', 'desc'))
+  const [page, setPage] = useState(() => Math.max(1, Number(getParam('page', '1')) || 1))
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null)
 
   // Modo de exibição (lista | cards) — persiste em localStorage
@@ -322,12 +348,76 @@ export default function NegociacoesPage() {
 
   const role = session?.user?.role
 
+  const updateUrl = useCallback((patch: Record<string, string | string[] | number | null | undefined>) => {
+    const params = new URLSearchParams()
+    Object.entries(patch).forEach(([key, value]) => {
+      params.delete(key)
+      if (Array.isArray(value)) {
+        value.filter(Boolean).forEach((item) => params.append(key, item))
+      } else if (value != null && String(value).trim() !== '' && String(value) !== 'any' && String(value) !== 'none') {
+        params.set(key, String(value))
+      }
+    })
+    const qs = params.toString()
+    router.replace(qs ? `/negociacoes?${qs}` : '/negociacoes', { scroll: false })
+  }, [router])
+
+  const resetFilters = useCallback(() => {
+    setSearch('')
+    setDebouncedSearch('')
+    setTypeFilter([])
+    setStatusFilter([])
+    setUnitFilter('')
+    setSellerFilter('')
+    setPeriodMode('none')
+    setDateFrom('')
+    setDateTo('')
+    setMonthFilter('')
+    setYearFilter('')
+    setSourceFilter('')
+    setImportFilter('any')
+    setCommissionFilter('any')
+    setPendencyFilter('any')
+    setSortBy('createdAt')
+    setSortDirection('desc')
+    setPageSize('50')
+    setPage(1)
+    router.replace('/negociacoes', { scroll: false })
+  }, [router])
+
   // Debounce search
   useEffect(() => {
     if (searchRef.current) clearTimeout(searchRef.current)
     searchRef.current = setTimeout(() => { setDebouncedSearch(search); setPage(1) }, 400)
     return () => { if (searchRef.current) clearTimeout(searchRef.current) }
   }, [search])
+
+  useEffect(() => {
+    updateUrl({
+      page,
+      pageSize,
+      search: debouncedSearch,
+      type: typeFilter,
+      status: statusFilter,
+      unitId: unitFilter,
+      sellerId: sellerFilter,
+      periodMode,
+      dateFrom,
+      dateTo,
+      month: monthFilter,
+      year: yearFilter,
+      source: sourceFilter,
+      importFilter,
+      commission: commissionFilter,
+      pendency: pendencyFilter,
+      sortBy,
+      sortDirection,
+    })
+  }, [
+    page, pageSize, debouncedSearch, typeFilter, statusFilter, unitFilter, sellerFilter,
+    periodMode, dateFrom, dateTo, monthFilter, yearFilter, sourceFilter, importFilter,
+    commissionFilter, pendencyFilter, sortBy, sortDirection, updateUrl,
+  ])
 
   useEffect(() => {
     if (status === 'authenticated' && !canAccessModule(role, 'negotiations')) {
@@ -343,9 +433,23 @@ export default function NegociacoesPage() {
     try {
       const params = new URLSearchParams()
       params.set('page', String(page))
+      params.set('pageSize', pageSize)
       if (debouncedSearch) params.set('search', debouncedSearch)
-      if (typeFilter)      params.set('type',   typeFilter)
-      if (statusFilter)    params.set('status', statusFilter)
+      typeFilter.forEach((value) => params.append('type', value))
+      statusFilter.forEach((value) => params.append('status', value))
+      if (unitFilter) params.set('unitId', unitFilter)
+      if (sellerFilter) params.set('sellerId', sellerFilter)
+      if (periodMode && periodMode !== 'none') params.set('periodMode', periodMode)
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
+      if (monthFilter) params.set('month', monthFilter)
+      if (yearFilter) params.set('year', yearFilter)
+      if (sourceFilter) params.set('source', sourceFilter)
+      if (importFilter && importFilter !== 'any') params.set('importFilter', importFilter)
+      if (commissionFilter && commissionFilter !== 'any') params.set('commission', commissionFilter)
+      if (pendencyFilter && pendencyFilter !== 'any') params.set('pendency', pendencyFilter)
+      if (sortBy && sortBy !== 'createdAt') params.set('sortBy', sortBy)
+      if (sortDirection && sortDirection !== 'desc') params.set('sortDirection', sortDirection)
       const res  = await fetch(`/api/negotiations?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? `Erro ${res.status}`)
@@ -354,6 +458,7 @@ export default function NegociacoesPage() {
       setPagination(json.pagination ?? null)
       setByType(json.byType ?? {})
       setByStatus(json.byStatus ?? {})
+      setAvailableFilters(json.availableFilters ?? { units: [], sellers: [] })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Erro ao carregar negociações'
       console.error('[Motor de Negociações] Falha ao buscar negociações:', msg)
@@ -361,10 +466,11 @@ export default function NegociacoesPage() {
       setDeals([])
       setPagination(null)
       setByType({})
+      setByStatus({})
     } finally {
       setLoading(false)
     }
-  }, [status, page, debouncedSearch, typeFilter, statusFilter])
+  }, [status, page, pageSize, debouncedSearch, typeFilter, statusFilter, unitFilter, sellerFilter, periodMode, dateFrom, dateTo, monthFilter, yearFilter, sourceFilter, importFilter, commissionFilter, pendencyFilter, sortBy, sortDirection])
 
   useEffect(() => { load() }, [load])
 
@@ -397,6 +503,20 @@ export default function NegociacoesPage() {
     { label: 'Consignações', count: byType.CONSIGNACAO     ?? 0, icon: Package,        color: 'bg-amber-50  text-amber-700  border-amber-100'  },
     { label: 'Canceladas',   count: byStatus.CANCELADA     ?? 0, icon: XCircle,        color: 'bg-red-50    text-red-700    border-red-100'    },
   ]
+
+  const hasActiveFilters = Boolean(
+    debouncedSearch || typeFilter.length || statusFilter.length || unitFilter || sellerFilter ||
+    (periodMode && periodMode !== 'none') || sourceFilter || (importFilter && importFilter !== 'any') ||
+    (commissionFilter && commissionFilter !== 'any') || (pendencyFilter && pendencyFilter !== 'any') ||
+    sortBy !== 'createdAt' || sortDirection !== 'desc' || pageSize !== '50',
+  )
+  const setSelected = (values: string[], setter: (values: string[]) => void) => {
+    setter(values)
+    setPage(1)
+  }
+  const selectedFromOptions = (options: HTMLOptionsCollection) =>
+    Array.from(options).filter((option) => option.selected).map((option) => option.value)
+  const currentYear = new Date().getFullYear()
 
   return (
     <div className="flex flex-col gap-6">
@@ -473,12 +593,13 @@ export default function NegociacoesPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-52">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            placeholder="Buscar por cliente, número..."
+            placeholder="Buscar cliente, placa, veículo, ID, banco..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -491,29 +612,17 @@ export default function NegociacoesPage() {
             </button>
           )}
         </div>
-        <select
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          value={typeFilter}
-          onChange={(e) => { setTypeFilter(e.target.value); setPage(1) }}
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((open) => !open)}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
         >
-          <option value="">Todos os tipos</option>
-          {Object.entries(DEAL_TYPE_LABEL).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
-        </select>
-        <select
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 min-w-[180px]"
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-        >
-          <option value="">Todos os status</option>
-          {Object.entries(DEAL_STATUS_LABEL).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
-        </select>
-        {(typeFilter || statusFilter || debouncedSearch) && (
+          <SlidersHorizontal size={14} />
+          Filtros
+        </button>
+        {hasActiveFilters && (
           <button
-            onClick={() => { setSearch(''); setTypeFilter(''); setStatusFilter(''); setPage(1) }}
+            onClick={resetFilters}
             className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
           >
             <X size={13} /> Limpar
@@ -551,6 +660,151 @@ export default function NegociacoesPage() {
             <span className="hidden sm:inline">Cards</span>
           </button>
         </div>
+        </div>
+
+        {hasActiveFilters && (
+          <div className="flex flex-wrap gap-2">
+            {debouncedSearch && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Busca: {debouncedSearch}</span>}
+            {unitFilter && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Loja: {availableFilters.units.find((u) => u.id === unitFilter)?.name ?? unitFilter}</span>}
+            {sellerFilter && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Vendedor: {availableFilters.sellers.find((s) => s.id === sellerFilter)?.name ?? sellerFilter}</span>}
+            {typeFilter.map((type) => <span key={type} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Tipo: {DEAL_TYPE_LABEL[type] ?? type}</span>)}
+            {statusFilter.map((item) => <span key={item} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Status: {DEAL_STATUS_LABEL[item] ?? item}</span>)}
+            {periodMode !== 'none' && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Período: {periodMode}</span>}
+            {commissionFilter !== 'any' && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Comissão: {commissionFilter}</span>}
+            {pendencyFilter !== 'any' && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">Pendências: {pendencyFilter}</span>}
+          </div>
+        )}
+
+        {filtersOpen && (
+          <div className="grid gap-3 border-t border-gray-100 pt-3 md:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Loja</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={unitFilter} onChange={(e) => { setUnitFilter(e.target.value); setPage(1) }}>
+                <option value="">Todas permitidas</option>
+                {availableFilters.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}{unit.active ? '' : ' (inativa)'}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Vendedor</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={sellerFilter} onChange={(e) => { setSellerFilter(e.target.value); setPage(1) }}>
+                <option value="">Todos permitidos</option>
+                {availableFilters.sellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.name}{seller.active ? '' : ' (inativo)'}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Tipo</label>
+              <select multiple className="h-[86px] w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={typeFilter} onChange={(e) => setSelected(selectedFromOptions(e.currentTarget.options), setTypeFilter)}>
+                {Object.entries(DEAL_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
+              <select multiple className="h-[86px] w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={statusFilter} onChange={(e) => setSelected(selectedFromOptions(e.currentTarget.options), setStatusFilter)}>
+                {Object.entries(DEAL_STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Tipo de período</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={periodMode} onChange={(e) => { setPeriodMode(e.target.value); setPage(1) }}>
+                <option value="none">Sem filtro</option>
+                <option value="today">Hoje</option>
+                <option value="yesterday">Ontem</option>
+                <option value="week">Esta semana</option>
+                <option value="month">Este mês</option>
+                <option value="specificDate">Data específica</option>
+                <option value="specificMonth">Mês específico</option>
+                <option value="year">Ano específico</option>
+                <option value="custom">Período personalizado</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Data inicial</label>
+              <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1) }} disabled={!['specificDate', 'custom'].includes(periodMode)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Data final</label>
+              <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1) }} disabled={periodMode !== 'custom'} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Mês</label>
+                <input type="number" min={1} max={12} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={monthFilter} onChange={(e) => { setMonthFilter(e.target.value); setPage(1) }} disabled={periodMode !== 'specificMonth'} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Ano</label>
+                <input type="number" min={2000} max={2100} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={yearFilter || String(currentYear)} onChange={(e) => { setYearFilter(e.target.value); setPage(1) }} disabled={!['specificMonth', 'year'].includes(periodMode)} />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Origem</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setPage(1) }}>
+                <option value="">Todas</option>
+                {['MANUAL', 'PLANILHA', 'AUTOCONF', 'EXTENSAO', 'API', 'SITE', 'SDR', 'MARKETING', 'PORTAL'].map((source) => <option key={source} value={source}>{source}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Importação</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={importFilter} onChange={(e) => { setImportFilter(e.target.value); setPage(1) }}>
+                <option value="any">Todas</option>
+                <option value="manual">Manuais</option>
+                <option value="imported">Importadas</option>
+                <option value="autoconf">AutoConf/Extensão</option>
+                <option value="provisional">Vendedor não encontrado</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Comissão</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={commissionFilter} onChange={(e) => { setCommissionFilter(e.target.value); setPage(1) }}>
+                <option value="any">Todas</option>
+                <option value="with">Com comissão</option>
+                <option value="without">Sem comissão</option>
+                <option value="PREVISTO">Comissão pendente</option>
+                <option value="PAGO">Comissão paga</option>
+                <option value="ESTORNADO">Comissão estornada</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Pendências</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={pendencyFilter} onChange={(e) => { setPendencyFilter(e.target.value); setPage(1) }}>
+                <option value="any">Todas</option>
+                <option value="open">Com pendência aberta</option>
+                <option value="overdue">Com pendência vencida</option>
+                <option value="none">Sem pendência aberta</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Ordenar por</label>
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1) }}>
+                <option value="createdAt">Criação</option>
+                <option value="updatedAt">Atualização</option>
+                <option value="approvedAt">Aprovação</option>
+                <option value="saleDate">Data da venda</option>
+                <option value="client">Cliente</option>
+                <option value="seller">Vendedor</option>
+                <option value="status">Status</option>
+                <option value="type">Tipo</option>
+                <option value="value">Valor</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Direção</label>
+                <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={sortDirection} onChange={(e) => { setSortDirection(e.target.value); setPage(1) }}>
+                  <option value="desc">Decrescente</option>
+                  <option value="asc">Crescente</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Por página</label>
+                <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" value={pageSize} onChange={(e) => { setPageSize(e.target.value); setPage(1) }}>
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tabela */}
