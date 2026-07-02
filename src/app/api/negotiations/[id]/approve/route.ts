@@ -10,6 +10,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { APPROVABLE_STATUSES }  from '@/lib/negotiation-permissions'
 import { notifyDealApproved }   from '@/services/notification.service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { generateCommissionsForDeal } from '@/lib/commission-generator'
 
 export async function POST(
   req: NextRequest,
@@ -130,7 +131,27 @@ export async function POST(
       console.error('[approve] notifyDealApproved failed:', e instanceof Error ? e.message : e)
     }
 
-    return NextResponse.json({ data: updated })
+    let commissionResult: Awaited<ReturnType<typeof generateCommissionsForDeal>> | null = null
+    try {
+      commissionResult = await generateCommissionsForDeal({
+        dealId:      params.id,
+        tenantId:    deal.tenantId ?? null,
+        triggeredBy: session.user.id,
+      })
+    } catch (err) {
+      console.error('[approve] commission generation failed', err)
+    }
+
+    return NextResponse.json({
+      data: updated,
+      commissionResult: commissionResult
+        ? {
+            created:   commissionResult.created,
+            matched:   commissionResult.matched,
+            unmatched: commissionResult.unmatched,
+          }
+        : null,
+    })
   } catch (err) {
     return handlePrismaError(err)
   }

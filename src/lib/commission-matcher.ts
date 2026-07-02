@@ -26,6 +26,7 @@ export type EmployeeKind = 'SELLER' | 'MANAGER' | 'USER'
 export interface MatchContext {
   tenantId:   string | null
   ruleType:   string                  // VENDA | TROCA | COMPRA | GARANTIA | RETORNO | SERVICO | DOCUMENTO | BONUS_META | BONUS_DEZENA | EXCECAO
+  commissionKind?: 'REGULAR' | 'BONUS' | 'ALL'
   employee: {
     kind:        EmployeeKind
     id:          string
@@ -37,6 +38,7 @@ export interface MatchContext {
   warrantyId?: string | null
   bank?:       string | null
   baseValue?:  number                 // valor do negócio — para filtrar fromValue/toValue
+  quantityInPeriod?: number           // quantidade no período — para faixas por volume
   date?:       Date                   // default = now
 }
 
@@ -65,6 +67,18 @@ function withinValueRange(rule: CommissionRule, baseValue: number | undefined): 
   if (rule.fromValue != null && baseValue < toNumber(rule.fromValue)) return false
   if (rule.toValue   != null && baseValue > toNumber(rule.toValue))   return false
   return true
+}
+
+function withinQuantityRange(rule: CommissionRule, quantity: number | undefined): boolean {
+  if (rule.fromQuantity == null && rule.toQuantity == null) return true
+  if (quantity == null) return false
+  if (rule.fromQuantity != null && quantity < rule.fromQuantity) return false
+  if (rule.toQuantity   != null && quantity > rule.toQuantity)   return false
+  return true
+}
+
+function isBonusRule(rule: CommissionRule): boolean {
+  return String(rule.commissionType ?? '').toUpperCase() === 'BONUS_QTD'
 }
 
 function classifyRule(rule: CommissionRule, ctx: MatchContext): { matchedBy: MatchedBy; base: number } | null {
@@ -133,8 +147,13 @@ export async function findCommissionRule(ctx: MatchContext): Promise<MatchedRule
   let bestUpdatedAt = 0
 
   for (const rule of candidates) {
+    const commissionKind = ctx.commissionKind ?? 'ALL'
+    if (commissionKind === 'REGULAR' && isBonusRule(rule)) continue
+    if (commissionKind === 'BONUS' && !isBonusRule(rule)) continue
+
     // Filtro de valor
     if (!withinValueRange(rule, ctx.baseValue)) continue
+    if (!withinQuantityRange(rule, ctx.quantityInPeriod)) continue
 
     const cls = classifyRule(rule, ctx)
     if (!cls) continue
@@ -160,7 +179,12 @@ export function computeCommissionValue(rule: CommissionRule, baseValue: number):
     const pct = toNumber(rule.percentage)
     return baseValue * (pct / 100)
   }
-  if (type === 'VALOR_FIXO' || type === 'FIXED') {
+  if (type === 'VALOR_FIXO' || type === 'FIXED' || type === 'FIXO' || type === 'BONUS_QTD') {
+    return toNumber(rule.fixedValue)
+  }
+  if (type === 'ESCALONADA') {
+    const pct = toNumber(rule.percentage)
+    if (pct > 0) return baseValue * (pct / 100)
     return toNumber(rule.fixedValue)
   }
   return 0

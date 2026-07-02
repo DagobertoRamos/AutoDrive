@@ -1639,3 +1639,41 @@
   - `npx eslint "src/components/pendencies/PendencyGeneralSettings.tsx" --quiet` — verde.
 - **Pendências futuras:**
   - Fazer QA visual no navegador após deploy para validar clique nas cinco abas em desktop/mobile.
+
+### LOG 0126 — 2026-07-01 21:02:26 -03:00 — Codex (GPT-5) — Comissões: regras simples, faixas, bônus e proteção contra duplicidade gerencial
+- **Branch:** `main` (worktree local). Sem migration.
+- **Tarefa executada:** evoluir o módulo de regras de comissão para um fluxo mais simples e seguro, cobrindo venda/troca/compra, regras por cargo/perfil/unidade, faixas, bônus por quantidade e prevenção de comissão gerencial duplicada quando o gerente é o próprio vendedor.
+- **Arquivos alterados/criados:**
+  - `src/app/(dashboard)/comissoes/regras/page.tsx`
+  - `src/app/api/commissions/rules/route.ts`
+  - `src/app/api/commissions/rules/[id]/route.ts`
+  - `src/app/api/commissions/settings/route.ts` (novo)
+  - `src/app/api/commissions/calculate/route.ts`
+  - `src/app/api/negotiations/[id]/approve/route.ts`
+  - `src/lib/commission-generator.ts`
+  - `src/lib/commission-matcher.ts`
+  - `src/lib/commission/rule-validation.ts` (novo)
+  - `src/lib/commission/rule-validation.test.ts` (novo)
+  - `src/lib/commission/rule-scope.ts` (novo)
+  - `src/lib/commission/settings.ts` (novo)
+- **Resumo técnico:**
+  - Tela `/comissoes/regras` reorganizada em blocos: identificação, aplicação e valor/faixas.
+  - Formulário agora aceita unidade, cargo específico, perfil base, comissão percentual, valor fixo, escalonada por faixa e bônus por quantidade.
+  - API de regras ganhou validação centralizada para tipos, valores, percentuais, faixas, datas, vínculos de tenant e conflito vendedor/gerente.
+  - Exclusão de regra com histórico agora inativa a regra em vez de apagar o vínculo de auditoria.
+  - Novo `SystemSetting` `t:{tenantId}:commission_behavior` guarda `managerReceivesOnOwnSale`; padrão seguro é `false`.
+  - Gerador separa `TROCA` de `VENDA`, respeita faixas por quantidade/valor no matcher e cria bônus por quantidade como lançamento separado por funcionário + regra + período.
+  - Gerente da unidade é usado como fallback quando a negociação não possui `managerId`; se for o mesmo usuário do vendedor, a comissão gerencial é bloqueada salvo configuração explícita.
+  - Comissão passou a ser gerada best-effort na aprovação da negociação; a finalização continua chamando o motor, mas a idempotência evita duplicidade.
+  - `FIXO` agora calcula corretamente no matcher, mantendo compatibilidade com `VALOR_FIXO`/`FIXED`.
+- **Riscos observados:**
+  - Regras escalonadas usam uma regra por faixa, aproveitando os campos existentes (`fromQuantity/toQuantity/fromValue/toValue`), sem tabela nova.
+  - Bônus por quantidade é mensal pelo período `yyyy-MM` e só dispara uma vez por funcionário/regra/período.
+  - Build local completo ficou bloqueado por arquivos gerados com `EPERM` em `.prisma`/`.next`; não foi criada migration.
+- **Testes realizados:**
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx vitest run src/lib/commission/rule-validation.test.ts` — verde, 3 testes.
+  - `npm run build` — bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`.
+  - `node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbopack` — bloqueado localmente por `EPERM open .next/trace`.
+- **Deploy manual:**
+  - Não fiz deploy. Para publicar: `git add -A`, `git commit -m "Evoluir regras e motor de comissoes"`, `git push origin main`. Na Vercel, o deploy deve disparar pelo push; se não disparar, usar **Deployments > Redeploy** no commit mais recente.

@@ -26,6 +26,8 @@ interface CalculateItem {
   serviceId?:   string | null
   warrantyId?:  string | null
   bank?:        string | null
+  quantityInPeriod?: number | null
+  commissionKind?: 'REGULAR' | 'BONUS' | 'ALL'
 }
 
 export async function POST(req: NextRequest) {
@@ -92,6 +94,8 @@ export async function POST(req: NextRequest) {
         warrantyId: item.warrantyId ?? null,
         bank:       item.bank       ?? null,
         baseValue:  Number(item.baseValue ?? 0),
+        quantityInPeriod: item.quantityInPeriod != null ? Number(item.quantityInPeriod) : undefined,
+        commissionKind: item.commissionKind ?? 'ALL',
       })
 
       const commissionValue = matched

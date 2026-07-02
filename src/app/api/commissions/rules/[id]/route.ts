@@ -8,6 +8,11 @@ import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import {
+  CommissionRuleValidationError,
+  validateCommissionRulePayload,
+} from '@/lib/commission/rule-validation'
+import { validateCommissionRuleReferences } from '@/lib/commission/rule-scope'
 
 // ── PUT — Editar ──────────────────────────────────────────────────────────────
 
@@ -28,44 +33,14 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Acesso negado.' }, { status: 403 })
     }
 
-    const body = await req.json()
-    const {
-      name, description, ruleType, commissionType,
-      role, positionId, sellerId, managerId, unitId, serviceId, warrantyId, bank,
-      fromQuantity, toQuantity, fromValue, toValue,
-      fixedValue, percentage, priority, active,
-      validFrom, validUntil, notes,
-    } = body
-
-    if (!name?.trim())   return NextResponse.json({ success: false, error: 'Nome é obrigatório.' }, { status: 400 })
-    if (!ruleType)       return NextResponse.json({ success: false, error: 'Tipo da regra é obrigatório.' }, { status: 400 })
+    const data = validateCommissionRulePayload(await req.json())
+    const referenceError = await validateCommissionRuleReferences(data, session.user.tenantId ?? null)
+    if (referenceError) return NextResponse.json({ success: false, error: referenceError }, { status: 400 })
 
     const updated = await prisma.commissionRule.update({
       where: { id: params.id },
       data: {
-        name:           name.trim(),
-        description:    description?.trim() || null,
-        ruleType,
-        commissionType: commissionType ?? rule.commissionType,
-        role:           role           || null,
-        positionId:     positionId     || null,
-        sellerId:       sellerId       || null,
-        managerId:      managerId      || null,
-        unitId:         unitId         || null,
-        serviceId:      serviceId      || null,
-        warrantyId:     warrantyId     || null,
-        bank:           bank           || null,
-        fromQuantity:   fromQuantity != null ? Number(fromQuantity) : null,
-        toQuantity:     toQuantity   != null ? Number(toQuantity)   : null,
-        fromValue:      fromValue    != null ? Number(fromValue)    : null,
-        toValue:        toValue      != null ? Number(toValue)      : null,
-        fixedValue:     fixedValue   != null ? Number(fixedValue)   : null,
-        percentage:     percentage   != null ? Number(percentage)   : null,
-        priority:       priority     != null ? Number(priority)     : rule.priority,
-        active:         active !== false,
-        validFrom:      validFrom  ? new Date(validFrom)  : null,
-        validUntil:     validUntil ? new Date(validUntil) : null,
-        notes:          notes?.trim() || null,
+        ...data,
       } as any,
     })
 
@@ -79,12 +54,16 @@ export async function PUT(
         entity:   'CommissionRule',
         entityId: params.id,
         status:   'SUCCESS',
-        afterData: { name, ruleType } as never,
+        beforeData: { name: rule.name, ruleType: rule.ruleType, commissionType: rule.commissionType } as never,
+        afterData:  { name: data.name, ruleType: data.ruleType, commissionType: data.commissionType } as never,
       },
     }).catch(() => {})
 
     return NextResponse.json({ success: true, data: updated })
   } catch (err) {
+    if (err instanceof CommissionRuleValidationError) {
+      return NextResponse.json({ success: false, error: err.message }, { status: 400 })
+    }
     return handlePrismaError(err)
   }
 }
@@ -106,6 +85,37 @@ export async function DELETE(
 
     if (session.user.tenantId && rule.tenantId !== session.user.tenantId) {
       return NextResponse.json({ success: false, error: 'Acesso negado.' }, { status: 403 })
+    }
+
+    const linkedCalculations = await prisma.commissionCalculation.count({
+      where: { ruleId: params.id },
+    })
+
+    if (linkedCalculations > 0) {
+      await prisma.commissionRule.update({
+        where: { id: params.id },
+        data:  { active: false },
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          tenantId: session.user.tenantId ?? null,
+          userId:   session.user.id,
+          userName: session.user.name,
+          userRole: session.user.role,
+          action:   'DEACTIVATE',
+          entity:   'CommissionRule',
+          entityId: params.id,
+          status:   'SUCCESS',
+          afterData: { reason: 'Regra preservada por possuir comissões calculadas.', linkedCalculations } as never,
+        },
+      }).catch(() => {})
+
+      return NextResponse.json({
+        success: true,
+        deactivated: true,
+        message: 'A regra já tinha histórico de comissão e foi inativada.',
+      })
     }
 
     await prisma.commissionRule.delete({ where: { id: params.id } })

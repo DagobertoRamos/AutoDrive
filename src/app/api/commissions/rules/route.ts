@@ -8,6 +8,11 @@ import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import {
+  CommissionRuleValidationError,
+  validateCommissionRulePayload,
+} from '@/lib/commission/rule-validation'
+import { validateCommissionRuleReferences } from '@/lib/commission/rule-scope'
 
 // ── GET — Listar regras ───────────────────────────────────────────────────────
 
@@ -22,11 +27,12 @@ export async function GET(_req: NextRequest) {
       where:   { tenantId: session.user.tenantId ?? undefined },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
       include: {
-        unit:    { select: { name: true } },
+        unit:    { select: { id: true, name: true } },
         seller:  { select: { user: { select: { name: true } } } },
+        manager: { select: { id: true, fullName: true, user: { select: { name: true } } } },
         service: { select: { name: true } },
         warranty:{ select: { name: true } },
-        position:{ select: { id: true, name: true, slug: true } },
+        position:{ select: { id: true, name: true, slug: true, baseRole: true } },
       },
     })
 
@@ -45,45 +51,15 @@ export async function POST(req: NextRequest) {
     if (!canAccessModule(session.user.role, 'commissions.rules')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
     { const gate = await assertModuleEnabled(session.user, 'commissions.rules'); if (gate) return gate }
 
-    const body = await req.json()
-    const {
-      name, description, ruleType, commissionType,
-      role, positionId, sellerId, managerId, unitId, serviceId, warrantyId, bank,
-      fromQuantity, toQuantity, fromValue, toValue,
-      fixedValue, percentage, priority, active,
-      validFrom, validUntil, notes,
-    } = body
-
-    if (!name?.trim())    return NextResponse.json({ success: false, error: 'Nome é obrigatório.' }, { status: 400 })
-    if (!ruleType)        return NextResponse.json({ success: false, error: 'Tipo da regra é obrigatório.' }, { status: 400 })
-    if (!commissionType)  return NextResponse.json({ success: false, error: 'Tipo de comissão é obrigatório.' }, { status: 400 })
+    const data = validateCommissionRulePayload(await req.json())
+    const tenantId = session.user.tenantId ?? null
+    const referenceError = await validateCommissionRuleReferences(data, tenantId)
+    if (referenceError) return NextResponse.json({ success: false, error: referenceError }, { status: 400 })
 
     const rule = await prisma.commissionRule.create({
       data: {
-        tenantId:       session.user.tenantId ?? null,
-        name:           name.trim(),
-        description:    description?.trim() || null,
-        ruleType,
-        commissionType: commissionType ?? 'PERCENTUAL',
-        role:           role           || null,
-        positionId:     positionId     || null,
-        sellerId:       sellerId       || null,
-        managerId:      managerId      || null,
-        unitId:         unitId         || null,
-        serviceId:      serviceId      || null,
-        warrantyId:     warrantyId     || null,
-        bank:           bank           || null,
-        fromQuantity:   fromQuantity != null ? Number(fromQuantity) : null,
-        toQuantity:     toQuantity   != null ? Number(toQuantity)   : null,
-        fromValue:      fromValue    != null ? Number(fromValue)    : null,
-        toValue:        toValue      != null ? Number(toValue)      : null,
-        fixedValue:     fixedValue   != null ? Number(fixedValue)   : null,
-        percentage:     percentage   != null ? Number(percentage)   : null,
-        priority:       priority     != null ? Number(priority)     : 0,
-        active:         active !== false,
-        validFrom:      validFrom  ? new Date(validFrom)  : null,
-        validUntil:     validUntil ? new Date(validUntil) : null,
-        notes:          notes?.trim() || null,
+        tenantId,
+        ...data,
       } as any,
     })
 
@@ -97,12 +73,15 @@ export async function POST(req: NextRequest) {
         entity:   'CommissionRule',
         entityId: rule.id,
         status:   'SUCCESS',
-        afterData: { name, ruleType } as never,
+        afterData: { name: data.name, ruleType: data.ruleType, commissionType: data.commissionType } as never,
       },
     }).catch(() => {})
 
     return NextResponse.json({ success: true, data: rule }, { status: 201 })
   } catch (err) {
+    if (err instanceof CommissionRuleValidationError) {
+      return NextResponse.json({ success: false, error: err.message }, { status: 400 })
+    }
     return handlePrismaError(err)
   }
 }

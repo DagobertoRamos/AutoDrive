@@ -1,6 +1,6 @@
 // =============================================================================
 // commission-generator.ts — Geração automática de CommissionCalculation a partir
-// de um Deal finalizado.
+// de um Deal aprovado/finalizado.
 //
 // Estratégia:
 //   1. Carrega o Deal com vehicles + services + seller + manager.
@@ -25,7 +25,8 @@ import {
 } from '@/lib/commission-matcher'
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
-import type { CommissionRuleType, Prisma, UserRole } from '@prisma/client'
+import { DEFAULT_COMMISSION_BEHAVIOR, getCommissionBehaviorSettings } from '@/lib/commission/settings'
+import type { CommissionRule, CommissionRuleType, Prisma, UserRole } from '@prisma/client'
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
 
@@ -44,6 +45,8 @@ export interface GenerationItemRef {
   serviceId?:  string | null
   warrantyId?: string | null
   bank?:       string | null
+  bonusPeriod?: string | null
+  bonusRuleId?: string | null
 }
 
 export interface GenerationItem {
@@ -54,6 +57,7 @@ export interface GenerationItem {
   baseValue:     number
   description:   string
   reference:     GenerationItemRef
+  periodQuantity?: number | null
 }
 
 export interface GenerationResultItem extends GenerationItem {
@@ -75,6 +79,16 @@ export interface GenerationResult {
   items:     GenerationResultItem[]
 }
 
+interface ResolvedGenerationItem {
+  item: GenerationItem
+  matched: {
+    rule:            CommissionRule
+    matchedBy:       string
+    commissionValue: number
+    rateApplied:     number | null
+  } | null
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function toNum(v: unknown): number {
@@ -94,6 +108,7 @@ function periodOf(date: Date): string {
 
 // Compara o identificador de referência relevante para idempotência
 function refKey(ruleType: string, ref: GenerationItemRef): string {
+  if (ref.bonusPeriod && ref.bonusRuleId) return `bonus:${ref.bonusRuleId}:${ref.bonusPeriod}`
   if (ref.serviceId)  return `service:${ref.serviceId}`
   if (ref.warrantyId) return `warranty:${ref.warrantyId}`
   if (ref.vehicleId)  return `vehicle:${ref.vehicleId}`
@@ -133,10 +148,20 @@ export async function generateCommissionsForDeal(
   const items: GenerationItem[] = []
 
   // Identificação dos earners
-  let sellerEarner = d.seller
+  type LocalEarner = {
+    kind:       EmployeeKind
+    id:         string
+    userId:     string | null
+    positionId: string | null
+    role:       UserRole | null
+    label:      string
+  }
+
+  let sellerEarner: LocalEarner | null = d.seller
     ? {
-        kind:        'SELLER' as const,
+        kind:        'SELLER',
         id:          d.seller.id,
+        userId:      d.seller.userId,
         positionId:  d.seller.positionId,
         role:        d.seller.user?.role ?? null,
         label:       d.seller.fullName,
@@ -144,15 +169,47 @@ export async function generateCommissionsForDeal(
     : null
 
   // deal.managerId aponta para User.id (não Manager.id). Tratamos como USER no matcher.
-  let managerEarner = d.manager
+  let managerEarner: LocalEarner | null = d.manager
     ? {
-        kind:        'USER' as const,
+        kind:        'USER',
         id:          d.manager.id,
+        userId:      d.manager.id,
         positionId:  d.manager.positionId,
         role:        d.manager.role,
         label:       d.manager.name,
       }
     : null
+
+  // Quando a negociação não gravou managerId, usa o gerente ativo da unidade.
+  // Isso cobre o caso comum "vendedor da loja vendeu, gerente da loja recebe".
+  if (!managerEarner && tenantId && unitId) {
+    const unitManager = await prisma.manager.findFirst({
+      where: {
+        unitId,
+        active: true,
+        unit:   { tenantId },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        userId: true,
+        fullName: true,
+        positionId: true,
+        user: { select: { role: true, name: true } },
+      },
+    }).catch(() => null)
+
+    if (unitManager) {
+      managerEarner = {
+        kind:       'MANAGER',
+        id:         unitManager.id,
+        userId:     unitManager.userId,
+        positionId: unitManager.positionId,
+        role:       unitManager.user?.role ?? null,
+        label:      unitManager.fullName || unitManager.user?.name || 'Gerente',
+      }
+    }
+  }
 
   // ── Chave de comissão da UNIDADE (cadastro da unidade) ─────────────────────
   // Unidade com comissão DESLIGADA (ex.: galpão) → ninguém recebe. Ligada com
@@ -166,10 +223,21 @@ export async function generateCommissionsForDeal(
     if (managerEarner && !isRoleCommissionEligible(cfg, managerEarner.role ?? '')) managerEarner = null
   }
 
+  const behavior = tenantId
+    ? await getCommissionBehaviorSettings(tenantId)
+    : DEFAULT_COMMISSION_BEHAVIOR
+
+  const sameSellerAndManager =
+    sellerEarner?.userId &&
+    managerEarner?.userId &&
+    sellerEarner.userId === managerEarner.userId
+
+  if (sameSellerAndManager && !behavior.managerReceivesOnOwnSale) {
+    managerEarner = null
+  }
+
   function addForVehicle(dv: typeof d.vehicles[number]) {
-    const isTrade = dv.role === 'TROCA'
-    // TROCA usa a mesma regra de VENDA (cf. negotiation-service.normalizeCommissionType)
-    const ruleType: CommissionRuleType = isTrade ? 'VENDA' : (dv.role === 'COMPRADO' ? 'COMPRA' : 'VENDA')
+    const ruleType: CommissionRuleType = dv.role === 'TROCA' ? 'TROCA' : (dv.role === 'COMPRADO' ? 'COMPRA' : 'VENDA')
     const baseValue = toNum(dv.agreedValue) || toNum(d.saleAmount)
     if (baseValue <= 0) return
     if (!sellerEarner && !managerEarner) return
@@ -302,10 +370,14 @@ export async function generateCommissionsForDeal(
   }
 
   // 3. Para cada item: resolver a regra (em paralelo) + calcular o valor
-  const resolved = await Promise.all(items.map(async (it) => {
+  const resolved: ResolvedGenerationItem[] = await Promise.all(items.map(async (it) => {
+    const quantityInPeriod = await resolvePeriodQuantity(it, tenantId, date)
+    it.periodQuantity = quantityInPeriod ?? null
+
     const matched = await findCommissionRule({
       tenantId,
       ruleType:   it.ruleType,
+      commissionKind: 'REGULAR',
       employee: {
         kind:       it.employeeKind,
         id:         it.employeeId,
@@ -317,6 +389,7 @@ export async function generateCommissionsForDeal(
       warrantyId: it.reference.warrantyId ?? null,
       bank:       it.reference.bank       ?? null,
       baseValue:  it.baseValue,
+      quantityInPeriod: quantityInPeriod ?? undefined,
       date,
     })
 
@@ -341,15 +414,29 @@ export async function generateCommissionsForDeal(
     }
   }))
 
+  const bonusResolved = await resolveQuantityBonuses(items, tenantId, unitId, d.id, period, date)
+  const allResolved = [...resolved, ...bonusResolved]
+
   // 4. Idempotência: ler CommissionCalculation existentes deste deal
   // (ruleDetails contém { dealId, vehicleId, serviceId, warrantyId })
-  const existing = await prisma.commissionCalculation.findMany({
+  const existingDeal = await prisma.commissionCalculation.findMany({
     where: {
       tenantId: tenantId,
       ruleDetails: { path: ['dealId'], equals: d.id } as never,
     },
     select: { id: true, ruleType: true, sellerId: true, managerId: true, ruleDetails: true },
   }).catch(() => [] as Array<{ id: string; ruleType: string; sellerId: string | null; managerId: string | null; ruleDetails: unknown }>)
+
+  const existingBonus = await prisma.commissionCalculation.findMany({
+    where: {
+      tenantId,
+      period,
+      ruleDetails: { path: ['bonusPeriod'], equals: period } as never,
+    },
+    select: { id: true, ruleType: true, sellerId: true, managerId: true, ruleDetails: true },
+  }).catch(() => [] as Array<{ id: string; ruleType: string; sellerId: string | null; managerId: string | null; ruleDetails: unknown }>)
+
+  const existing = [...existingDeal, ...existingBonus]
 
   function isDuplicate(it: GenerationItem): boolean {
     const k = refKey(it.ruleType, it.reference)
@@ -375,9 +462,9 @@ export async function generateCommissionsForDeal(
   let matchedCount = 0
   let unmatchedCount = 0
 
-  const toCreate: Array<{ item: GenerationItem; matched: NonNullable<typeof resolved[number]['matched']> }> = []
+  const toCreate: Array<{ item: GenerationItem; matched: NonNullable<ResolvedGenerationItem['matched']> }> = []
 
-  for (const r of resolved) {
+  for (const r of allResolved) {
     const dup = isDuplicate(r.item)
     if (r.matched) matchedCount++
     else unmatchedCount++
@@ -409,6 +496,8 @@ export async function generateCommissionsForDeal(
           warrantyId:    item.reference.warrantyId ?? null,
           contractId:    item.reference.contractId ?? null,
           bank:          item.reference.bank       ?? null,
+          bonusPeriod:   item.reference.bonusPeriod ?? null,
+          bonusRuleId:   item.reference.bonusRuleId ?? null,
           employeeKind:  item.employeeKind,
           employeeId:    item.employeeId,
           employeeLabel: item.employeeLabel,
@@ -418,6 +507,7 @@ export async function generateCommissionsForDeal(
           commissionType: matched.rule.commissionType ?? null,
           percentage:    matched.rule.percentage != null ? toNum(matched.rule.percentage) : null,
           fixedValue:    matched.rule.fixedValue != null ? toNum(matched.rule.fixedValue) : null,
+          periodQuantity: item.periodQuantity ?? null,
           triggeredBy:   opts.triggeredBy,
         }
 
@@ -507,6 +597,25 @@ export async function generateCommissionsForDeal(
     }
   }
 
+  if (!dryRun && created > 0) {
+    await prisma.auditLog.create({
+      data: {
+        tenantId,
+        userId:   opts.triggeredBy,
+        action:   'COMMISSION_GENERATE',
+        entity:   'Deal',
+        entityId: d.id,
+        status:   'SUCCESS',
+        afterData: {
+          period,
+          created,
+          matched: matchedCount,
+          unmatched: unmatchedCount,
+        } as never,
+      },
+    }).catch(() => {})
+  }
+
   return {
     dealId:    d.id,
     created,
@@ -514,6 +623,149 @@ export async function generateCommissionsForDeal(
     unmatched: unmatchedCount,
     items:     resultItems,
   }
+}
+
+// ── Faixas e bônus por quantidade ────────────────────────────────────────────
+
+const COUNTABLE_DEAL_STATUSES = ['APROVADA', 'LIBERADA', 'FINALIZADA'] as const
+
+function periodBounds(date: Date): { start: Date; end: Date } {
+  return {
+    start: new Date(date.getFullYear(), date.getMonth(), 1),
+    end:   new Date(date.getFullYear(), date.getMonth() + 1, 1),
+  }
+}
+
+function vehicleRolesForRuleType(ruleType: string): string[] {
+  if (ruleType === 'TROCA') return ['TROCA']
+  if (ruleType === 'COMPRA') return ['COMPRADO']
+  if (ruleType === 'VENDA') return ['VENDIDO', 'CONSIGNADO']
+  return []
+}
+
+async function dealEmployeeQuantityFilter(it: GenerationItem): Promise<Record<string, unknown> | null> {
+  if (it.employeeKind === 'SELLER') return { sellerId: it.employeeId }
+  if (it.employeeKind === 'USER') return { managerId: it.employeeId }
+
+  const manager = await prisma.manager.findUnique({
+    where:  { id: it.employeeId },
+    select: { userId: true, unitId: true },
+  })
+  if (!manager) return null
+
+  return {
+    OR: [
+      { managerId: manager.userId },
+      { AND: [{ managerId: null }, { unitId: manager.unitId }] },
+    ],
+  }
+}
+
+async function resolvePeriodQuantity(
+  it: GenerationItem,
+  tenantId: string | null,
+  date: Date,
+): Promise<number | null> {
+  const roles = vehicleRolesForRuleType(it.ruleType)
+  if (!roles.length || !it.reference.vehicleId) return null
+
+  const employeeFilter = await dealEmployeeQuantityFilter(it)
+  if (!employeeFilter) return null
+
+  const { start, end } = periodBounds(date)
+  const dealAnd: Array<Record<string, unknown>> = [
+    { status: { in: [...COUNTABLE_DEAL_STATUSES] } },
+    {
+      OR: [
+        { approvedAt:  { gte: start, lt: end } },
+        { finalizedAt: { gte: start, lt: end } },
+        { saleDate:    { gte: start, lt: end } },
+        {
+          AND: [
+            { approvedAt: null },
+            { finalizedAt: null },
+            { saleDate: null },
+            { createdAt: { gte: start, lt: end } },
+          ],
+        },
+      ],
+    },
+    employeeFilter,
+  ]
+  if (tenantId) dealAnd.push({ tenantId })
+
+  const count = await prisma.dealVehicle.count({
+    where: {
+      role: roles.length === 1 ? roles[0] : { in: roles },
+      deal: { AND: dealAnd },
+    } as never,
+  }).catch(() => 0)
+
+  return count
+}
+
+async function resolveQuantityBonuses(
+  items: GenerationItem[],
+  tenantId: string | null,
+  unitId: string | null,
+  dealId: string,
+  period: string,
+  date: Date,
+): Promise<ResolvedGenerationItem[]> {
+  const representatives = new Map<string, GenerationItem>()
+
+  for (const it of items) {
+    if (!vehicleRolesForRuleType(it.ruleType).length || !it.reference.vehicleId) continue
+    const key = `${it.ruleType}:${it.employeeKind}:${it.employeeId}`
+    if (!representatives.has(key)) representatives.set(key, it)
+  }
+
+  const out: ResolvedGenerationItem[] = []
+  for (const it of representatives.values()) {
+    const quantityInPeriod = await resolvePeriodQuantity(it, tenantId, date)
+    if (!quantityInPeriod) continue
+
+    const matched = await findCommissionRule({
+      tenantId,
+      ruleType: it.ruleType,
+      commissionKind: 'BONUS',
+      employee: {
+        kind:       it.employeeKind,
+        id:         it.employeeId,
+        positionId: await resolvePositionId(it),
+        role:       await resolveRole(it),
+      },
+      unitId,
+      baseValue: 0,
+      quantityInPeriod,
+      date,
+    })
+    if (!matched) continue
+
+    const commissionValue = computeCommissionValue(matched.rule, 0)
+    if (commissionValue <= 0) continue
+
+    out.push({
+      item: {
+        ruleType:      it.ruleType,
+        employeeKind:  it.employeeKind,
+        employeeId:    it.employeeId,
+        employeeLabel: it.employeeLabel,
+        baseValue:     0,
+        description:   `BÔNUS ${it.ruleType} — ${quantityInPeriod} no período — ${it.employeeLabel}`,
+        reference:     { dealId, bonusPeriod: period, bonusRuleId: matched.rule.id },
+        periodQuantity: quantityInPeriod,
+      },
+      matched: {
+        rule:            matched.rule,
+        matchedBy:       matched.matchedBy,
+        commissionValue,
+        rateApplied:     null,
+      },
+    })
+  }
+
+  return out
 }
 
 // ── Recálculo de comissões da negociação ──────────────────────────────────────
