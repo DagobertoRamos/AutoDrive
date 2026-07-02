@@ -1,9 +1,9 @@
 // =============================================================================
 // GET /api/seller-queue/ranking — ranking de qualidade dos vendedores na fila.
 // Gate: sellerQueue.view (todos veem — é motivacional). Unit-scoped. ?days=30.
-// Métricas por vendedor: atendimentos, preenchimento (qualidade do cadastro),
-// reversões (cancelados/recusados), pós-vendas, conversões, tempo médio de
-// aceite → pontuação composta transparente.
+// A FÓRMULA vive em lib/seller-queue/quality.ts — a mesma usada pelo ranking
+// geral/da unidade (que soma estes pontos aos de venda). Colaboradores que não
+// participam do ranking (flag no cadastro) ficam fora daqui também.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -13,6 +13,8 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
+import { computeQueueScores } from '@/lib/seller-queue/quality'
+import { getRankingExcludedUsers, getRankingExcludedUnits } from '@/lib/ranking/participation'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -26,29 +28,19 @@ export async function GET(req: Request) {
   const since = new Date(Date.now() - days * 86400000)
 
   try {
-    const atts = await prisma.sellerQueueAttendance.findMany({
-      where: { tenantId, unitId, calledAt: { gte: since } },
-      select: { sellerId: true, status: true, type: true, result: true, notes: true, leadId: true, dealId: true, calledAt: true, acceptedAt: true },
-      take: 20000,
-    })
+    const [scores, excludedUsers, excludedUnits] = await Promise.all([
+      computeQueueScores({ tenantId, unitId, window: { start: since, end: new Date() } }),
+      getRankingExcludedUsers(tenantId),
+      getRankingExcludedUnits(tenantId),
+    ])
 
-    type Agg = { called: number; finished: number; reversoes: number; timeouts: number; posVendas: number; conversoes: number; fillComplete: number; acceptMs: number; acceptN: number }
-    const by = new Map<string, Agg>()
-    const g = (id: string) => { let a = by.get(id); if (!a) { a = { called: 0, finished: 0, reversoes: 0, timeouts: 0, posVendas: 0, conversoes: 0, fillComplete: 0, acceptMs: 0, acceptN: 0 }; by.set(id, a) } return a }
-    for (const a of atts) {
-      const x = g(a.sellerId); x.called++
-      if (a.status === 'FINISHED') {
-        x.finished++
-        if (a.type === 'AFTER_SALES') x.posVendas++
-        if (a.dealId || a.result === 'CONVERTED_TO_NEGOTIATION') x.conversoes++
-        // Preenchimento completo: tipo + resultado + observações + lead vinculado.
-        if (a.type && a.result && a.notes && a.notes.trim().length > 0 && a.leadId) x.fillComplete++
-      } else if (a.status === 'CANCELED' || a.status === 'REJECTED') x.reversoes++
-      else if (a.status === 'EXPIRED') x.timeouts++
-      if (a.acceptedAt) { x.acceptMs += a.acceptedAt.getTime() - a.calledAt.getTime(); x.acceptN++ }
+    // Unidade fora do ranking → o ranking da fila dela também não é exibido.
+    if (excludedUnits.includes(unitId)) {
+      return NextResponse.json({ success: true, data: { days, ranking: [], unitExcluded: true } })
     }
 
-    const ids = [...by.keys()]
+    const excluded = new Set(excludedUsers)
+    const ids = [...scores.keys()].filter((id) => !excluded.has(id))
     const names = new Map<string, string>()
     if (ids.length) {
       const us = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
@@ -56,18 +48,13 @@ export async function GET(req: Request) {
     }
 
     const rows = ids.map((id) => {
-      const a = by.get(id)!
-      const fillRate = a.finished ? a.fillComplete / a.finished : 0
-      const qualidade = Math.round(fillRate * 100)
-      // Pontuação composta (transparente): volume + conversão + pós-vendas +
-      // bônus de preenchimento − penalidades por reversão/timeout.
-      const points = Math.max(0, a.finished * 10 + a.conversoes * 8 + a.posVendas * 6 + Math.round(fillRate * 20) - a.reversoes * 5 - a.timeouts * 2)
+      const s = scores.get(id)!
       return {
         sellerId: id, sellerName: names.get(id) ?? id,
-        finished: a.finished, called: a.called, reversoes: a.reversoes, timeouts: a.timeouts,
-        posVendas: a.posVendas, conversoes: a.conversoes, qualidade,
-        avgAcceptSeconds: a.acceptN ? Math.round(a.acceptMs / a.acceptN / 1000) : null,
-        points,
+        finished: s.finished, called: s.called, reversoes: s.reversoes, timeouts: s.timeouts,
+        posVendas: s.posVendas, conversoes: s.conversoes, qualidade: s.qualidade,
+        avgAcceptSeconds: s.avgAcceptSeconds,
+        points: s.points,
       }
     }).sort((x, y) => y.points - x.points || y.finished - x.finished)
 

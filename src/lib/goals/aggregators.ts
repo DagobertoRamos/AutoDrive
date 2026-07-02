@@ -17,6 +17,9 @@ export interface AggregationScope {
   tenantId: string | null
   unitId?:  string | null
   sellerId?: string | null
+  /** Unidades cujas negociações NÃO contam (ex.: unidade fora do ranking).
+   *  Só se aplica quando unitId não está fixado — metas não usam. */
+  excludeUnitIds?: string[]
 }
 
 /** Janela temporal fechada [start, end]. */
@@ -38,6 +41,7 @@ function dealScopeWhere(scope: AggregationScope): Record<string, unknown> {
   return {
     ...(scope.tenantId ? { tenantId: scope.tenantId } : {}),
     ...(scope.unitId ? { unitId: scope.unitId } : {}),
+    ...(!scope.unitId && scope.excludeUnitIds?.length ? { unitId: { notIn: scope.excludeUnitIds } } : {}),
     ...(scope.sellerId ? { sellerId: scope.sellerId } : {}),
   }
 }

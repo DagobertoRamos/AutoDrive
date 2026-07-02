@@ -12,7 +12,7 @@ const zero: RankingMetrics = {
 const metrics = (p: Partial<RankingMetrics>): RankingMetrics => ({ ...zero, ...p })
 
 function entry(name: string, totalPoints: number, m: Partial<RankingMetrics>, qualityScore = 0): RankingEntry {
-  return { userId: name, sellerId: name, name, unitId: null, metrics: metrics(m), totalPoints, qualityScore, rank: 0, notes: [] }
+  return { userId: name, sellerId: name, name, unitId: null, metrics: metrics(m), queuePoints: 0, totalPoints, qualityScore, rank: 0, notes: [] }
 }
 
 describe('ranking — pontuação e qualidade', () => {

@@ -1765,3 +1765,17 @@
   - No loop de detalhes: títulos financeiros vira a fonte PRIMÁRIA de pagamentos/débitos; o scrape antigo do resumo agora só é usado como fallback se a página de títulos vier vazia.
 - **Validações:** `node --check scanner.js` verde; testado ao vivo contra negociação real — 2 recebimentos (Pix + Pix-sinal, confirmados) e débitos de veículo (Gestauto, Documentação) todos batendo com os valores/datas exibidos na tela do AutoConf.
 - **Escopo:** só a extensão (captura de dados), sem mudança no schema/API do AutoDrive — os campos já eram aceitos pelo endpoint de importação. Bump de versão 0.3.5 → 0.3.6.
+
+### LOG 0131 — 2026-07-02 — Claude (Fable 5) — Ranking unificado: fila somada ao geral/unidade + participação por colaborador e por unidade
+- **Branch:** `main`. Sem migration (participação em `SystemSetting`; totalPoints já existente absorve a soma).
+- **Pedido:** conectar o ranking da fila de atendimento ao ranking geral/da unidade (somar a pontuação de qualidade da fila aos pontos de venda — "o ranking tem que ser somado por tudo que o colaborador faz"); flag "participa do ranking" na edição do colaborador (qualquer cargo, inclusive ADM — quem não participa não aparece); flag "unidade participa do ranking" na edição da unidade (negociações de unidade excluída não contam).
+- **Entregue:**
+  - **`lib/seller-queue/quality.ts`** (novo): fórmula da pontuação da fila EXTRAÍDA para lib compartilhada (`computeQueueScores` + `queuePointsFor`) — a MESMA usada pelo ranking da fila (Visão Geral) e agora pelo ranking geral/unidade; nunca divergem. Chave = USER id (SellerQueueAttendance.sellerId guarda userId).
+  - **`lib/ranking/participation.ts`** (novo): exclusões por tenant em `SystemSetting` (`t:{tid}:ranking_excluded_users` / `ranking_excluded_units`, JSON arrays). Default = todos participam.
+  - **`lib/ranking/service.ts`**: `computeRanking` agora (a) filtra colaboradores excluídos e sellers de unidades excluídas; (b) ranking de unidade excluída → vazio com nota; (c) soma `queuePoints` (fila, mesma janela do período) ao `totalPoints`; `RankingEntry.queuePoints` exposto. `persistRanking` grava o total já somado (sem coluna nova).
+  - **`lib/goals/aggregators.ts`**: `AggregationScope.excludeUnitIds` (aditivo; metas não usam) → Deals de unidades fora do ranking não pontuam nem para ADM/GG cross-unit no ranking geral. `negativeMetrics` (canceladas) idem.
+  - **`/api/ranking/participation`** (novo): GET `{excludedUsers, excludedUnits}` + PUT `{userId?|unitId?, participates}` (gate MASTER/ADM/GERENTE_GERAL/GERENTE; valida tenant do alvo).
+  - **`/api/seller-queue/ranking`**: refatorado p/ usar a lib compartilhada; respeita exclusões (colaborador excluído some; unidade excluída → `ranking: [], unitExcluded: true`).
+  - **UI**: toggle "Participa do ranking" no modal de colaborador (`cadastros/vendedores`, salva junto via PUT, mesmo padrão dos módulos por userId); toggle "Unidade participa do ranking" no modal de unidade (`cadastros/unidades`, junto da chave de comissão). `RankingTable`: nova coluna "Fila" (queuePoints) para transparência.
+- **Validações:** `tsc --noEmit` verde; `vitest run src/lib/ranking/ranking.test.ts` verde (7 testes; helper do teste ganhou `queuePoints: 0`).
+- **Escopo:** metas (goals) NÃO mudam de comportamento — `excludeUnitIds` é opt-in e só o ranking passa. Comissão intocada.

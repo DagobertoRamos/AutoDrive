@@ -11,6 +11,8 @@ import type { GoalPeriod, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { MANAGEMENT_ROLES } from '@/lib/auth-guards'
 import { aggregateAchieved, type AggregationWindow } from '@/lib/goals/aggregators'
+import { computeQueueScores } from '@/lib/seller-queue/quality'
+import { getRankingExcludedUsers, getRankingExcludedUnits } from '@/lib/ranking/participation'
 
 // ── Defaults (espelham a especificação) ───────────────────────────────────────
 
@@ -69,6 +71,8 @@ export interface RankingEntry {
   name:         string
   unitId:       string | null
   metrics:      RankingMetrics
+  /** Pontos da fila de atendimento (qualidade), somados em totalPoints. */
+  queuePoints:  number
   totalPoints:  number
   qualityScore: number
   rank:         number
@@ -125,6 +129,7 @@ async function negativeMetrics(
   unitId: string | null,
   sellerId: string,
   w: AggregationWindow,
+  excludeUnitIds: string[] = [],
 ): Promise<{ canceledSales: number; overduePendencies: number; lateDocuments: number; notes: string[] }> {
   const notes: string[] = []
 
@@ -132,6 +137,7 @@ async function negativeMetrics(
     where: {
       tenantId,
       ...(unitId ? { unitId } : {}),
+      ...(!unitId && excludeUnitIds.length ? { unitId: { notIn: excludeUnitIds } } : {}),
       sellerId,
       type:        { in: ['VENDA', 'TROCA'] },
       status:      'CANCELADA',
@@ -165,8 +171,9 @@ async function computeSellerMetrics(
   unitId: string | null,
   sellerId: string,
   w: AggregationWindow,
+  excludeUnitIds: string[] = [],
 ): Promise<{ metrics: RankingMetrics; notes: string[] }> {
-  const scope = { tenantId, unitId, sellerId }
+  const scope = { tenantId, unitId, sellerId, excludeUnitIds }
   const notes: string[] = []
 
   const [sales, purchases, returns, documentations, warranties, services] = await Promise.all([
@@ -179,7 +186,7 @@ async function computeSellerMetrics(
   ])
   for (const r of [returns, warranties]) if (r.note) notes.push(r.note)
 
-  const neg = await negativeMetrics(tenantId, unitId, sellerId, w)
+  const neg = await negativeMetrics(tenantId, unitId, sellerId, w, excludeUnitIds)
   notes.push(...neg.notes)
 
   return {
@@ -282,24 +289,55 @@ export async function computeRanking(opts: {
   const window = resolvePeriodWindow(period, now, opts.start, opts.end)
   const rule = await getRankingRule(tenantId)
 
-  const sellers = await prisma.seller.findMany({
-    where: { active: true, unit: { tenantId }, ...(unitId ? { unitId } : {}) },
+  // Participação (editável no cadastro do colaborador e da unidade).
+  const [excludedUsers, excludedUnits] = await Promise.all([
+    getRankingExcludedUsers(tenantId),
+    getRankingExcludedUnits(tenantId),
+  ])
+
+  // Ranking de uma unidade que não participa → vazio (nada a exibir).
+  if (unitId && excludedUnits.includes(unitId)) {
+    return {
+      period,
+      window,
+      scope:   'UNIT',
+      unitId,
+      entries: [],
+      notes:   ['Esta unidade não participa do ranking (configurável no cadastro da unidade).'],
+    }
+  }
+
+  const excludedUserSet = new Set(excludedUsers)
+  const sellers = (await prisma.seller.findMany({
+    where: {
+      active: true,
+      unit: { tenantId },
+      ...(unitId ? { unitId } : {}),
+      ...(!unitId && excludedUnits.length ? { unitId: { notIn: excludedUnits } } : {}),
+    },
     select: { id: true, userId: true, fullName: true, shortName: true, unitId: true },
-  })
+  })).filter((s) => !excludedUserSet.has(s.userId))
+
+  // Pontuação de qualidade da fila de atendimento (por USER id), mesma janela.
+  const queueScores = await computeQueueScores({ tenantId, unitId, window, excludeUnitIds: excludedUnits })
 
   const allNotes = new Set<string>()
   const rawEntries: RankingEntry[] = []
 
   for (const s of sellers) {
-    const { metrics, notes } = await computeSellerMetrics(tenantId, unitId, s.id, window)
+    const { metrics, notes } = await computeSellerMetrics(tenantId, unitId, s.id, window, unitId ? [] : excludedUnits)
     notes.forEach((n) => allNotes.add(n))
+    const queuePoints = queueScores.get(s.userId)?.points ?? 0
     rawEntries.push({
       userId:       s.userId,
       sellerId:     s.id,
       name:         s.shortName || s.fullName,
       unitId:       s.unitId,
       metrics,
-      totalPoints:  pointsFor(metrics, rule),
+      queuePoints,
+      // O ranking soma TUDO que o colaborador faz: vendas/compras/serviços etc.
+      // (pesos da regra) + a pontuação de qualidade da fila de atendimento.
+      totalPoints:  pointsFor(metrics, rule) + queuePoints,
       qualityScore: qualityFor(metrics),
       rank:         0,
       notes:        [],

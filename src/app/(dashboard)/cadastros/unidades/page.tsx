@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Building2, X, Save, CheckCircle, AlertCircle, Coins } from 'lucide-react'
+import { Plus, Pencil, Building2, X, Save, CheckCircle, AlertCircle, Coins, Trophy } from 'lucide-react'
 import { cn, formatCNPJ } from '@/lib/utils'
 import { maskCNPJ, maskPhone } from '@/lib/masks'
 import { ROLE_LABELS } from '@/lib/permissions'
@@ -84,7 +84,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 interface ModalProps {
   open: boolean
   onClose: () => void
-  onSave: (data: UnitForm, commission: CommissionCfg) => Promise<void>
+  onSave: (data: UnitForm, commission: CommissionCfg, rankingParticipates: boolean) => Promise<void>
   initial?: Unit | null
   saving: boolean
   error: string | null
@@ -94,6 +94,7 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
   const [form, setForm] = useState<UnitForm>(emptyForm)
   const [commEnabled, setCommEnabled] = useState(true)
   const [commRoles, setCommRoles] = useState<string[]>([])
+  const [rankingOn, setRankingOn] = useState(true)
 
   useEffect(() => {
     if (!open) return
@@ -113,13 +114,18 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
     } : { ...emptyForm })
     // Carrega a config de comissão da unidade (só quando editando; nova = padrão).
     if (initial?.id) {
-      setCommEnabled(true); setCommRoles([])
+      setCommEnabled(true); setCommRoles([]); setRankingOn(true)
       fetch(`/api/units/${initial.id}/commission`, { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => { if (j?.data) { setCommEnabled(j.data.enabled !== false); setCommRoles(Array.isArray(j.data.roles) ? j.data.roles : []) } })
         .catch(() => {})
+      // Participação da unidade no ranking (default: participa).
+      fetch('/api/ranking/participation', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (j?.success && Array.isArray(j.excludedUnits)) setRankingOn(!j.excludedUnits.includes(initial.id)) })
+        .catch(() => {})
     } else {
-      setCommEnabled(true); setCommRoles([])
+      setCommEnabled(true); setCommRoles([]); setRankingOn(true)
     }
   }, [open, initial])
 
@@ -135,7 +141,7 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave(form, { enabled: commEnabled, roles: commEnabled ? commRoles : [] })
+    onSave(form, { enabled: commEnabled, roles: commEnabled ? commRoles : [] }, rankingOn)
   }
 
   return (
@@ -235,6 +241,22 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
             )}
           </div>
 
+          {/* ── Ranking da unidade ───────────────────────────────────────── */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Trophy className="h-4 w-4 text-amber-500" />
+                Unidade participa do ranking
+              </span>
+              <Toggle checked={rankingOn} onChange={setRankingOn} />
+            </div>
+            <p className="text-xs text-gray-500">
+              {rankingOn
+                ? 'As negociações e atendimentos desta unidade contam para o ranking geral e da unidade.'
+                : 'Fora do ranking: as negociações desta unidade não pontuam para ninguém e os colaboradores lotados nela não aparecem no ranking.'}
+            </p>
+          </div>
+
           {error && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -303,7 +325,7 @@ export default function UnidadesPage() {
     setModalOpen(true)
   }
 
-  const handleSave = async (data: UnitForm, commission: CommissionCfg) => {
+  const handleSave = async (data: UnitForm, commission: CommissionCfg, rankingParticipates: boolean) => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -327,6 +349,13 @@ export default function UnidadesPage() {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(commission),
+        }).catch(() => {})
+        // Participação da unidade no ranking (default: participa).
+        await fetch('/api/ranking/participation', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ unitId, participates: rankingParticipates }),
         }).catch(() => {})
       }
       setModalOpen(false)

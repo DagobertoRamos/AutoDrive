@@ -18,6 +18,8 @@ export interface RankingMetrics {
 export interface RankingEntry {
   userId: string; name: string; unitId: string | null; rank: number
   metrics: RankingMetrics; totalPoints: number; qualityScore: number
+  /** Pontos da fila de atendimento (qualidade), já somados em totalPoints. */
+  queuePoints?: number
 }
 interface RankingData {
   scope: 'GENERAL' | 'UNIT'
@@ -80,6 +82,7 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
                 <th className="px-4 py-3">Vendedor</th>
                 {COLS.map((c) => <th key={c.key} className="px-3 py-3 text-right">{c.label}</th>)}
                 <th className="px-3 py-3 text-right">Qualidade</th>
+                <th className="px-3 py-3 text-right" title="Pontuação de qualidade da fila de atendimento (somada nos pontos)">Fila</th>
                 <th className="px-4 py-3 text-right">Pontos</th>
               </tr>
             </thead>
@@ -87,13 +90,13 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100">
-                    {Array.from({ length: 11 }).map((_, j) => (
+                    {Array.from({ length: 12 }).map((_, j) => (
                       <td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>
                     ))}
                   </tr>
                 ))
               ) : !data || data.entries.length === 0 ? (
-                <tr><td colSpan={11} className="py-12 text-center text-sm text-gray-400">Sem dados de ranking no período.</td></tr>
+                <tr><td colSpan={12} className="py-12 text-center text-sm text-gray-400">Sem dados de ranking no período.</td></tr>
               ) : (
                 data.entries.map((e) => (
                   <tr key={e.userId} className={cn('border-b border-gray-100 hover:bg-gray-50', e.userId === highlightUserId && 'bg-brand-50/40')}>
@@ -113,6 +116,7 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
                       </td>
                     ))}
                     <td className="px-3 py-3 text-right tabular-nums text-gray-600">{e.qualityScore}%</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-gray-600">{e.queuePoints ?? 0}</td>
                     <td className="px-4 py-3 text-right font-bold tabular-nums text-brand-700">{e.totalPoints}</td>
                   </tr>
                 ))

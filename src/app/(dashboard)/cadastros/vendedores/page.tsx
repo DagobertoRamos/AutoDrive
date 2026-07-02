@@ -171,7 +171,7 @@ function Modal({
 }: {
   open: boolean
   onClose: () => void
-  onSave: (data: SellerForm, denied: string[]) => Promise<void>
+  onSave: (data: SellerForm, denied: string[], rankingParticipates: boolean) => Promise<void>
   initial?: Seller | null
   saving: boolean
   error: string | null
@@ -180,6 +180,7 @@ function Modal({
 }) {
   const [form, setForm] = useState<SellerForm>(emptyForm)
   const [denied, setDenied] = useState<string[]>([])
+  const [rankingOn, setRankingOn] = useState(true)
 
   useEffect(() => {
     if (open) {
@@ -190,6 +191,15 @@ function Modal({
         // default: cargo "Vendedor" do sistema
         const defaultPos = positions.find((p) => p.slug === 'vendedor')
         setForm({ ...emptyForm, positionId: defaultPos?.id ?? null })
+      }
+      // Participação no ranking (default: participa). Vale p/ qualquer cargo.
+      setRankingOn(true)
+      if (initial?.userId) {
+        const uid = initial.userId
+        fetch('/api/ranking/participation', { credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => { if (j?.success && Array.isArray(j.excludedUsers)) setRankingOn(!j.excludedUsers.includes(uid)) })
+          .catch(() => {})
       }
     }
   }, [open, initial, positions])
@@ -219,7 +229,7 @@ function Modal({
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); onSave(form, denied) }}
+          onSubmit={(e) => { e.preventDefault(); onSave(form, denied, rankingOn) }}
           className="px-6 py-5 space-y-4"
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -270,6 +280,10 @@ function Modal({
           <div className="space-y-2">
             <Toggle label="Colaborador ativo" checked={form.active} onChange={(v) => set('active', v)} />
             <Toggle label="Recebe cobranças" checked={form.receivesCharge} onChange={(v) => set('receivesCharge', v)} />
+            <Toggle label="Participa do ranking" checked={rankingOn} onChange={setRankingOn} />
+            {!rankingOn && (
+              <p className="text-[11px] text-amber-600">Fora do ranking: este colaborador não aparece no ranking geral nem no da unidade (vale para qualquer cargo, inclusive ADM).</p>
+            )}
           </div>
 
           <div className="rounded-lg border border-gray-200 p-3">
@@ -361,7 +375,7 @@ export default function VendedoresPage() {
   const openCreate = () => { setEditing(null); setSaveError(null); setModalOpen(true) }
   const openEdit = (s: Seller) => { setEditing(s); setSaveError(null); setModalOpen(true) }
 
-  const handleSave = async (data: SellerForm, denied: string[]) => {
+  const handleSave = async (data: SellerForm, denied: string[], rankingParticipates: boolean) => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -376,6 +390,8 @@ export default function VendedoresPage() {
       const targetUserId = editing ? editing.userId : json?.data?.userId
       if (targetUserId) {
         await fetch(`/api/users/${targetUserId}/modules`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ denied }) }).catch(() => {})
+        // Participação no ranking (default: participa) — salva junto.
+        await fetch('/api/ranking/participation', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ userId: targetUserId, participates: rankingParticipates }) }).catch(() => {})
       }
       setModalOpen(false)
       if (!editing && json.userCreated) {
