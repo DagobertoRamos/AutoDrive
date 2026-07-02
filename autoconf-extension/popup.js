@@ -6,9 +6,16 @@ const $ = (id) => document.getElementById(id)
 
 const AUTODRIVE = 'https://auto-drive-mocha.vercel.app'
 const FILTER_KEY = 'autoconfFilters'
+const AUTO_KEY = 'autoconfAutoRefresh'
+const TARGET_TAB_KEY = 'autoconfTargetTabId'
 const DEFAULT_STATUSES = ['Finalizada', 'Pendente Contrato', 'Pendente NFe']
 
 let lastResult = null
+let scanning = false
+let autoTimer = null
+let autoTicker = null
+let autoNextRunAt = null
+let autoRunning = false
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -17,6 +24,10 @@ function pad2(n) {
 function log(msg) {
   const el = $('log')
   el.textContent = msg + '\n' + el.textContent
+}
+
+function isAutoconfUrl(url) {
+  return /^https:\/\/app\.autoconf\.com\.br\//.test(url || '')
 }
 
 function fmtMap(m) {
@@ -194,15 +205,124 @@ function render(res) {
   if ((res.candidatas || 0) === 0) log('Nenhuma negociação encontrada para o filtro.')
 }
 
+async function activeAutoconfTab() {
+  const stored = await chrome.storage.local.get(TARGET_TAB_KEY)
+  const targetTabId = Number(stored[TARGET_TAB_KEY])
+
+  if (targetTabId) {
+    try {
+      const tab = await chrome.tabs.get(targetTabId)
+      if (tab?.id && isAutoconfUrl(tab.url)) return tab
+    } catch (e) {
+      // A aba alvo pode ter sido fechada; procuramos outra abaixo.
+    }
+  }
+
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://app.autoconf.com.br/*' })
+    const tab = tabs.find((t) => t.active) || tabs[0]
+    if (tab?.id) {
+      chrome.storage.local.set({ [TARGET_TAB_KEY]: tab.id })
+      return tab
+    }
+  } catch (e) {
+    // Fallback para o fluxo antigo, quando a tela ainda era popup do Chrome.
+  }
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab || !isAutoconfUrl(tab.url)) return null
+  chrome.storage.local.set({ [TARGET_TAB_KEY]: tab.id })
+  return tab
+}
+
 function resultFileName() {
   const label = lastResult?.period?.fileLabel || (lastResult?.monthLabel || 'resultado').replace('/', '-')
   return `autoconf-negociacoes-${label}.json`
 }
 
-async function activeAutoconfTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (!tab || !/^https:\/\/app\.autoconf\.com\.br\//.test(tab.url || '')) return null
-  return tab
+function parseAutoMinutes(value) {
+  const n = Math.floor(Number(String(value || '').replace(',', '.')))
+  if (!Number.isFinite(n)) return null
+  if (n < 1 || n > 1440) return null
+  return n
+}
+
+function autoSettingsFromForm() {
+  return {
+    enabled: $('autoRefresh').checked,
+    minutes: parseAutoMinutes($('autoMinutes').value) || 10,
+  }
+}
+
+function applyAutoSettings(settings) {
+  const cfg = settings && typeof settings === 'object' ? settings : {}
+  $('autoRefresh').checked = cfg.enabled === true
+  $('autoMinutes').value = parseAutoMinutes(cfg.minutes) || 10
+  scheduleAutoRefresh()
+}
+
+function saveAutoSettings() {
+  const settings = autoSettingsFromForm()
+  chrome.storage.local.set({ [AUTO_KEY]: settings })
+  return settings
+}
+
+function stopAutoTimers() {
+  if (autoTimer) clearTimeout(autoTimer)
+  if (autoTicker) clearInterval(autoTicker)
+  autoTimer = null
+  autoTicker = null
+  autoNextRunAt = null
+}
+
+function updateAutoStatus() {
+  const enabled = $('autoRefresh').checked
+  const minutes = parseAutoMinutes($('autoMinutes').value)
+  if (!enabled) {
+    $('autoStatus').textContent = 'Desligada. A atualização automática apenas busca novamente; não importa para o AutoDrive.'
+    return
+  }
+  if (!minutes) {
+    $('autoStatus').textContent = 'Informe um intervalo entre 1 e 1440 minutos.'
+    return
+  }
+  if (autoRunning) {
+    $('autoStatus').textContent = 'Atualizando agora...'
+    return
+  }
+  if (!autoNextRunAt) {
+    $('autoStatus').textContent = `Ligada. Intervalo: ${minutes} min.`
+    return
+  }
+  const remaining = Math.max(0, autoNextRunAt - Date.now())
+  const totalSeconds = Math.ceil(remaining / 1000)
+  const mm = Math.floor(totalSeconds / 60)
+  const ss = totalSeconds % 60
+  $('autoStatus').textContent = `Ligada. Próxima busca em ${mm}m ${String(ss).padStart(2, '0')}s.`
+}
+
+function scheduleAutoRefresh() {
+  stopAutoTimers()
+  const settings = saveAutoSettings()
+  const minutes = parseAutoMinutes(settings.minutes)
+  if (!settings.enabled || !minutes) {
+    updateAutoStatus()
+    return
+  }
+
+  autoNextRunAt = Date.now() + minutes * 60 * 1000
+  autoTicker = setInterval(updateAutoStatus, 1000)
+  autoTimer = setTimeout(async () => {
+    autoRunning = true
+    updateAutoStatus()
+    try {
+      await runScan({ source: 'auto' })
+    } finally {
+      autoRunning = false
+      scheduleAutoRefresh()
+    }
+  }, minutes * 60 * 1000)
+  updateAutoStatus()
 }
 
 // Progresso vindo do content script.
@@ -210,7 +330,7 @@ chrome.runtime.onMessage.addListener((req) => {
   if (req?.type === 'progress') log(req.msg)
 })
 
-chrome.storage.local.get(['autoconfToken', FILTER_KEY], (r) => {
+chrome.storage.local.get(['autoconfToken', FILTER_KEY, AUTO_KEY], (r) => {
   if (r.autoconfToken) $('token').value = r.autoconfToken
   const now = new Date()
   applyFiltersToForm(r[FILTER_KEY] || {
@@ -221,6 +341,7 @@ chrome.storage.local.get(['autoconfToken', FILTER_KEY], (r) => {
     tipos: [],
     includeWithoutSeller: true,
   })
+  applyAutoSettings(r[AUTO_KEY])
 })
 
 $('mode').addEventListener('change', () => {
@@ -236,7 +357,7 @@ $('statusAll').addEventListener('change', () => {
 })
 
 document.querySelectorAll('input, select').forEach((el) => {
-  if (el.id === 'token' || el.id === 'statusAll' || el.id === 'mode') return
+  if (['token', 'statusAll', 'mode', 'autoRefresh', 'autoMinutes'].includes(el.id)) return
   el.addEventListener('change', () => {
     if (el.classList.contains('statusOpt') && el.checked) $('statusAll').checked = false
     syncStatusControls()
@@ -245,28 +366,47 @@ document.querySelectorAll('input, select').forEach((el) => {
   })
 })
 
+$('autoRefresh').addEventListener('change', () => {
+  scheduleAutoRefresh()
+})
+
+$('autoMinutes').addEventListener('change', () => {
+  const minutes = parseAutoMinutes($('autoMinutes').value)
+  if (!minutes) {
+    log('Informe um intervalo de atualização entre 1 e 1440 minutos.')
+    $('autoMinutes').value = '10'
+  }
+  scheduleAutoRefresh()
+})
+
 $('saveToken').addEventListener('click', () => {
   chrome.storage.local.set({ autoconfToken: $('token').value.trim() }, () => log('Token salvo.'))
 })
 
-$('scan').addEventListener('click', async () => {
+async function runScan({ source = 'manual' } = {}) {
+  if (scanning) {
+    log('Já existe uma busca em andamento.')
+    return false
+  }
+
   const collected = collectFilters()
   if (!collected.ok) {
     log(collected.error)
-    return
+    return false
   }
 
   const tab = await activeAutoconfTab()
   if (!tab) {
-    log('Abra o AutoConf (app.autoconf.com.br), logado, na aba ativa e tente de novo.')
-    return
+    log('Abra ou mantenha uma aba do AutoConf (app.autoconf.com.br) logada e tente de novo.')
+    return false
   }
 
   chrome.storage.local.set({ [FILTER_KEY]: collected.filters })
+  scanning = true
   $('scan').disabled = true
   $('scan').textContent = 'Buscando...'
-  $('log').textContent = ''
-  log('Iniciando busca filtrada...')
+  if (source === 'manual') $('log').textContent = ''
+  log(source === 'auto' ? 'Atualização automática: iniciando busca...' : 'Iniciando busca filtrada...')
 
   try {
     const resp = await chrome.tabs.sendMessage(tab.id, {
@@ -277,13 +417,19 @@ $('scan').addEventListener('click', async () => {
     if (!resp?.ok) throw new Error(resp?.error || 'Falha na varredura.')
     lastResult = resp.res
     render(resp.res)
+    if (source === 'auto') log('Atualização automática concluída.')
+    return true
   } catch (e) {
     log('Erro: ' + (e?.message || e) + '\nSe a aba acabou de abrir, recarregue-a. O script é injetado no carregamento.')
+    return false
   } finally {
+    scanning = false
     $('scan').disabled = false
     $('scan').textContent = '1) Buscar negociações filtradas'
   }
-})
+}
+
+$('scan').addEventListener('click', () => runScan({ source: 'manual' }))
 
 $('download').addEventListener('click', () => {
   if (!lastResult) return
@@ -300,11 +446,15 @@ $('sample').addEventListener('click', () => {
     tipo: r.tipo,
     status: r.status,
     criadoEm: r.criadoEm,
+    dataNegociacao: r.dataNegociacao,
     vendedor: r.vendedor,
     loja: r.loja,
     cliente: r.cliente,
+    clienteDetalhes: r.clienteDetalhes,
     saleAmount: r.saleAmount,
     purchaseAmount: r.purchaseAmount,
+    pagamentos: r.pagamentos,
+    debitos: r.debitos,
     veiculosSaida: r.veiculosSaida,
     veiculosEntrada: r.veiculosEntrada,
   }, null, 1))

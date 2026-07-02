@@ -111,20 +111,73 @@ export function mapStatus(status: string | null | undefined): string { return ST
 
 // ── Tipos das linhas vindas da extensão ──────────────────────────────────────
 export interface AutoconfVehicle { modelo?: string | null; placa?: string | null; valor?: number | null }
+export interface AutoconfPayment {
+  type?: string | null
+  status?: string | null
+  value?: number | null
+  bank?: string | null
+  cardBrand?: string | null
+  pixKey?: string | null
+  agency?: string | null
+  account?: string | null
+  installments?: number | null
+  installmentValue?: number | null
+  returnPct?: number | null
+  vehiclePlate?: string | null
+  firstDueDate?: string | null
+  dueDate?: string | null
+  paidAt?: string | null
+  notes?: string | null
+  raw?: unknown
+}
+export interface AutoconfDebt {
+  vehicleRole?: string | null
+  type?: string | null
+  description?: string | null
+  value?: number | null
+  dueDate?: string | null
+  responsavel?: string | null
+  notes?: string | null
+  raw?: unknown
+}
+export interface AutoconfCustomerDetails {
+  nome?: string | null
+  cpfCnpj?: string | null
+  email?: string | null
+  telefone?: string | null
+  endereco?: string | null
+  cidade?: string | null
+  estado?: string | null
+}
 export interface AutoconfRow {
   externalId: number | string
   tipo: string
   status: string
   criadoEm?: string | null
+  criadoEmIso?: string | null
+  dataNegociacao?: string | null
+  dataNegociacaoIso?: string | null
+  aprovadoEm?: string | null
+  aprovadoEmIso?: string | null
+  finalizadoEm?: string | null
+  finalizadoEmIso?: string | null
   vendedor?: string | null
   loja?: string | null
   cliente?: string | null
   clienteEmail?: string | null
   clienteContato?: string | null
+  clienteDetalhes?: AutoconfCustomerDetails | null
   veiculosSaida?: AutoconfVehicle[]
   veiculosEntrada?: AutoconfVehicle[]
   saleAmount?: number | null
   purchaseAmount?: number | null
+  pagamentos?: AutoconfPayment[]
+  debitos?: AutoconfDebt[]
+  totalPagamentosDetalhe?: number | null
+  totalDebitosDetalhe?: number | null
+  sourceUrl?: string | null
+  autoconfDetalhes?: unknown
+  autoconfListaRaw?: unknown
 }
 
 export interface ProcessRowResult {

@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import {
   resolveTenantByToken, resolveUnitId, resolveSellerId, mapType, mapStatus,
-  type AutoconfRow, type AutoconfVehicle, type ProcessRowResult,
+  type AutoconfDebt, type AutoconfPayment, type AutoconfRow, type AutoconfVehicle, type ProcessRowResult,
 } from '@/lib/integrations/autoconf'
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
 import { isCommissionEligibleStatus } from '@/lib/commission/status'
@@ -36,6 +36,193 @@ function vehiclesFor(row: AutoconfRow): Array<{ role: string; plate: string | nu
   else if (t === 'CONSIGNACAO' && (saida ?? entrada)) out.push({ role: 'CONSIGNADO', ...vFrom((saida ?? entrada)!) })
   else { const v = saida ?? entrada; if (v) out.push({ role: t === 'COMPRA' ? 'COMPRADO' : 'VENDIDO', ...vFrom(v) }) }
   return out
+}
+
+function num(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string') {
+    const n = Number(v.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''))
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+function parseDateValue(v: unknown): Date | null {
+  if (!v || typeof v !== 'string') return null
+  const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    const d = new Date(v)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  const br = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})/)
+  if (br) {
+    const year = br[3].length === 2 ? 2000 + Number(br[3]) : Number(br[3])
+    const d = new Date(year, Number(br[2]) - 1, Number(br[1]))
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  return null
+}
+
+function normalizePaymentType(v: unknown): string {
+  const s = String(v ?? '').toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  if (s.includes('PIX')) return 'PIX'
+  if (s.includes('DINHEIRO') || s.includes('ESPECIE')) return 'DINHEIRO'
+  if (s.includes('DEBITO')) return 'CARTAO_DEBITO'
+  if (s.includes('CREDITO') || s.includes('CARTAO')) return 'CARTAO_CREDITO'
+  if (s.includes('FINANCI')) return 'FINANCIAMENTO'
+  if (s.includes('BOLETO')) return 'BOLETO'
+  if (s.includes('TRANSFER') || s.includes('TED') || s.includes('DOC')) return 'TRANSFERENCIA'
+  if (s.includes('SINAL') || s.includes('ENTRADA')) return 'SINAL'
+  if (s.includes('DUPLICATA')) return 'DUPLICATA'
+  return 'OUTROS'
+}
+
+function normalizePaymentStatus(v: unknown): string {
+  const s = String(v ?? '').toUpperCase()
+  if (s.includes('CONFIRM') || s.includes('PAGO') || s.includes('BAIX')) return 'CONFIRMADO'
+  if (s.includes('CANCEL')) return 'CANCELADO'
+  return 'PENDENTE'
+}
+
+function normalizeDebtType(v: unknown): string {
+  const s = String(v ?? '').toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  if (s.includes('MULTA')) return 'MULTA'
+  if (s.includes('IPVA')) return 'IPVA'
+  if (s.includes('LICENC')) return 'LICENCIAMENTO'
+  if (s.includes('FINANCI') || s.includes('QUITAC') || s.includes('ALIENAC')) return 'FINANCIAMENTO'
+  if (s.includes('DOC')) return 'DOCUMENTACAO'
+  return 'OUTROS'
+}
+
+function safeText(v: unknown, max = 500): string | null {
+  const s = typeof v === 'string' ? v.trim() : ''
+  return s ? s.slice(0, max) : null
+}
+
+function paymentsFor(row: AutoconfRow, tenantId: string, dealId: string) {
+  return (row.pagamentos ?? [])
+    .map((p: AutoconfPayment) => {
+      const value = num(p.value)
+      if (!value || value <= 0) return null
+      return {
+        dealId,
+        tenantId,
+        type: normalizePaymentType(p.type ?? p.notes),
+        status: normalizePaymentStatus(p.status ?? p.notes),
+        value,
+        bank: safeText(p.bank, 120),
+        cardBrand: safeText(p.cardBrand, 80),
+        pixKey: safeText(p.pixKey, 160),
+        agency: safeText(p.agency, 40),
+        account: safeText(p.account, 80),
+        installments: p.installments ? Number(p.installments) : null,
+        installmentValue: num(p.installmentValue),
+        returnPct: num(p.returnPct),
+        vehiclePlate: safeText(p.vehiclePlate, 16),
+        firstDueDate: parseDateValue(p.firstDueDate),
+        dueDate: parseDateValue(p.dueDate),
+        paidAt: parseDateValue(p.paidAt),
+        notes: safeText(p.notes ?? JSON.stringify(p.raw ?? null), 800),
+      }
+    })
+    .filter(Boolean)
+}
+
+function debtsFor(row: AutoconfRow, dealId: string) {
+  return (row.debitos ?? [])
+    .map((d: AutoconfDebt) => {
+      const value = num(d.value)
+      if (!value || value <= 0) return null
+      return {
+        dealId,
+        vehicleRole: safeText(d.vehicleRole, 40),
+        type: normalizeDebtType(d.type ?? d.description ?? d.notes),
+        description: safeText(d.description ?? d.notes, 180),
+        value,
+        dueDate: parseDateValue(d.dueDate),
+        responsavel: safeText(d.responsavel, 40) ?? 'LOJA',
+        notes: safeText(d.notes ?? JSON.stringify(d.raw ?? null), 800),
+      }
+    })
+    .filter(Boolean)
+}
+
+async function resolveCustomerId(tenantId: string, row: AutoconfRow): Promise<string | null> {
+  const details = row.clienteDetalhes ?? {}
+  const name = safeText(details.nome ?? row.cliente, 180)
+  if (!name) return null
+  const doc = safeText(String(details.cpfCnpj ?? '').replace(/\D/g, ''), 20)
+  const phone = safeText(String(details.telefone ?? row.clienteContato ?? '').replace(/\D/g, ''), 20)
+  const email = safeText(details.email ?? row.clienteEmail, 180)
+  const address = safeText(details.endereco, 240)
+  const city = safeText(details.cidade, 120)
+  const state = safeText(details.estado, 2)
+
+  const or: Array<Record<string, unknown>> = []
+  if (doc) or.push({ cpf: doc })
+  if (email) or.push({ email })
+  if (phone) or.push({ phone })
+  if (!or.length) or.push({ name })
+
+  const existing = await prisma.customer.findFirst({ where: { tenantId, OR: or as never }, select: { id: true } }).catch(() => null)
+  if (existing) {
+    await prisma.customer.update({
+      where: { id: existing.id },
+      data: { name, cpf: doc, phone, email, address, city, state },
+    }).catch(() => null)
+    return existing.id
+  }
+
+  const created = await prisma.customer.create({
+    data: {
+      tenantId,
+      name,
+      cpf: doc,
+      phone,
+      email,
+      address,
+      city,
+      state,
+      notes: 'Criado automaticamente pela integração AutoConf.',
+    },
+    select: { id: true },
+  }).catch(() => null)
+  return created?.id ?? null
+}
+
+function autoconfNotes(row: AutoconfRow): string {
+  const details = row.clienteDetalhes ?? {}
+  const lines = [
+    'Importado do AutoConf.',
+    `AutoConf ID: ${row.externalId}`,
+    row.dataNegociacao ? `Data real da negociação: ${row.dataNegociacao}` : null,
+    details.nome ? `Cliente: ${details.nome}` : (row.cliente ? `Cliente: ${row.cliente}` : null),
+    details.cpfCnpj ? `Documento cliente: ${details.cpfCnpj}` : null,
+    details.telefone ? `Telefone cliente: ${details.telefone}` : null,
+    details.email ? `E-mail cliente: ${details.email}` : null,
+    row.totalPagamentosDetalhe ? `Total pagamentos AutoConf: ${row.totalPagamentosDetalhe}` : null,
+    row.totalDebitosDetalhe ? `Total débitos AutoConf: ${row.totalDebitosDetalhe}` : null,
+    row.sourceUrl ? `Origem: ${row.sourceUrl}` : null,
+  ].filter(Boolean)
+  return lines.join('\n')
+}
+
+function auditMetadata(row: AutoconfRow) {
+  return {
+    externalId: row.externalId,
+    sourceUrl: row.sourceUrl,
+    dataNegociacao: row.dataNegociacao,
+    dataNegociacaoIso: row.dataNegociacaoIso,
+    clienteDetalhes: row.clienteDetalhes,
+    pagamentos: row.pagamentos,
+    debitos: row.debitos,
+    autoconfDetalhes: row.autoconfDetalhes,
+    autoconfListaRaw: row.autoconfListaRaw,
+  }
 }
 
 export async function POST(req: Request) {
@@ -79,21 +266,47 @@ export async function POST(req: Request) {
       const type = mapType(row.tipo)
       const status = mapStatus(row.status)
       const managerId = unitManager.get(unitId) ?? null
-      const finalizedAt = status === 'FINALIZADA' ? new Date() : null
+      const saleDate = parseDateValue(row.dataNegociacaoIso ?? row.dataNegociacao ?? row.aprovadoEmIso ?? row.aprovadoEm ?? row.criadoEmIso ?? row.criadoEm)
+      const approvedAt = parseDateValue(row.aprovadoEmIso ?? row.aprovadoEm ?? row.dataNegociacaoIso ?? row.dataNegociacao)
+      const finalizedAt = status === 'FINALIZADA'
+        ? (parseDateValue(row.finalizadoEmIso ?? row.finalizadoEm ?? row.dataNegociacaoIso ?? row.dataNegociacao ?? row.aprovadoEmIso ?? row.aprovadoEm) ?? new Date())
+        : null
+      const paymentRowsTotal = (row.pagamentos ?? []).reduce((s, p) => s + (num(p.value) ?? 0), 0)
+      const debtRowsTotal = (row.debitos ?? []).reduce((s, d) => s + (num(d.value) ?? 0), 0)
+      const firstPayment = (row.pagamentos ?? []).find((p) => (num(p.value) ?? 0) > 0)
+      const customerId = dryRun ? null : await resolveCustomerId(tenantId, row)
 
       const dealData = {
-        tenantId, unitId, sellerId, managerId,
+        tenantId, unitId, sellerId, managerId, customerId,
         type: type as never, status: status as never,
         saleAmount: typeof row.saleAmount === 'number' ? row.saleAmount : null,
         purchaseAmount: typeof row.purchaseAmount === 'number' ? row.purchaseAmount : null,
+        totalPayments: paymentRowsTotal || row.totalPagamentosDetalhe || null,
+        totalDebts: debtRowsTotal || row.totalDebitosDetalhe || null,
+        paymentType: firstPayment ? normalizePaymentType(firstPayment.type ?? firstPayment.notes) : null,
+        paymentBank: firstPayment?.bank ?? null,
+        saleDate,
+        approvedAt,
+        finalizedAt,
+        externalId: ext,
+        sellerNameFromSheet: row.vendedor ?? null,
+        notes: autoconfNotes(row),
         source: 'AUTOCONF',
         dealNumber,
       }
       const vehicles = vehiclesFor(row)
+      const paymentCreates = (savedDealId: string) => paymentsFor(row, tenantId, savedDealId)
+      const debtCreates = (savedDealId: string) => debtsFor(row, savedDealId)
       const existing = await prisma.deal.findFirst({ where: { tenantId, dealNumber }, select: { id: true } })
 
       if (dryRun) {
-        results.push({ externalId: ext, action: existing ? 'updated' : 'created', unit: unitName.get(unitId), seller: sellerId ? row.vendedor : `(NÃO ACHADO: ${row.vendedor ?? '—'})`, dealNumber })
+        results.push({
+          externalId: ext,
+          action: existing ? 'updated' : 'created',
+          unit: unitName.get(unitId),
+          seller: sellerId ? row.vendedor : `(NÃO ACHADO: ${row.vendedor ?? '—'})`,
+          dealNumber,
+        })
         existing ? updated++ : created++
         continue
       }
@@ -101,9 +314,30 @@ export async function POST(req: Request) {
       if (existing) {
         const savedDealId = existing.id
         await prisma.$transaction(async (tx) => {
-          await tx.deal.update({ where: { id: savedDealId }, data: { ...dealData, ...(finalizedAt ? { finalizedAt } : {}) } })
+          await tx.deal.update({ where: { id: savedDealId }, data: dealData })
           await tx.dealVehicle.deleteMany({ where: { dealId: savedDealId } })
           if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: savedDealId, ...v })) })
+          const payments = paymentCreates(savedDealId)
+          if (payments.length) {
+            await tx.dealPayment.deleteMany({ where: { dealId: savedDealId } })
+            await tx.dealPayment.createMany({ data: payments as never })
+          }
+          const debts = debtCreates(savedDealId)
+          if (debts.length) {
+            await tx.dealDebt.deleteMany({ where: { dealId: savedDealId } })
+            await tx.dealDebt.createMany({ data: debts as never })
+          }
+          await tx.dealAuditLog.create({
+            data: {
+              dealId: savedDealId,
+              tenantId,
+              unitId,
+              action: 'AUTOCONF_IMPORT',
+              field: 'autoconf',
+              newValue: `AutoConf ${ext}`,
+              metadata: auditMetadata(row) as never,
+            },
+          })
         })
         if (isCommissionEligibleStatus(status)) {
           try {
@@ -125,8 +359,23 @@ export async function POST(req: Request) {
         results.push({ externalId: ext, action: 'updated', unit: unitName.get(unitId), seller: row.vendedor ?? null, dealNumber })
       } else {
         const savedDealId = await prisma.$transaction(async (tx) => {
-          const deal = await tx.deal.create({ data: { ...dealData, ...(finalizedAt ? { finalizedAt } : {}) } })
+          const deal = await tx.deal.create({ data: dealData })
           if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: deal.id, ...v })) })
+          const payments = paymentCreates(deal.id)
+          if (payments.length) await tx.dealPayment.createMany({ data: payments as never })
+          const debts = debtCreates(deal.id)
+          if (debts.length) await tx.dealDebt.createMany({ data: debts as never })
+          await tx.dealAuditLog.create({
+            data: {
+              dealId: deal.id,
+              tenantId,
+              unitId,
+              action: 'AUTOCONF_IMPORT',
+              field: 'autoconf',
+              newValue: `AutoConf ${ext}`,
+              metadata: auditMetadata(row) as never,
+            },
+          })
           return deal.id
         })
         if (isCommissionEligibleStatus(status)) {

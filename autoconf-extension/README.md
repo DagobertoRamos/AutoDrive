@@ -1,10 +1,14 @@
-# AutoConf → AutoDrive — extensão de importação (v0.3)
+# AutoConf → AutoDrive — extensão de importação (v0.3.3)
 
 Lê negociações do **AutoConf** usando a sessão já logada no navegador e envia para o
 **AutoDrive** pelo endpoint `POST /api/integrations/autoconf/deals`.
 
 A importação cria ou atualiza negociações no AutoDrive e mantém deduplicação pelo
 identificador do AutoConf (`AC-<id>`), então reimportar o mesmo filtro não duplica.
+
+A partir da v0.3.3, a extensão também tenta capturar os detalhes reais do resumo
+da negociação no AutoConf: dados do cliente, data real da negociação, pagamentos,
+débitos, tabelas, campos do formulário e metadados estruturados disponíveis.
 
 ## Como instalar
 
@@ -13,6 +17,8 @@ identificador do AutoConf (`AC-<id>`), então reimportar o mesmo filtro não dup
 3. Clique em **Carregar sem compactação**.
 4. Selecione a pasta `autoconf-extension`.
 5. Fixe a extensão na barra do Chrome, se quiser.
+6. Ao clicar no ícone com o AutoConf aberto, a interface abre em uma nova aba na
+   mesma janela do Chrome.
 
 ## Pré-requisitos
 
@@ -30,6 +36,21 @@ identificador do AutoConf (`AC-<id>`), então reimportar o mesmo filtro não dup
 6. Confira o resumo e, se quiser, baixe o JSON ou veja um exemplo.
 7. Clique em **2) Prévia no AutoDrive** para validar sem gravar.
 8. Clique em **3) Importar tudo** para gravar no AutoDrive.
+
+## Aba própria
+
+A extensão não usa mais o popup padrão preso ao ícone do Chrome. O clique no
+ícone abre uma aba da extensão na mesma janela onde o AutoConf está aberto.
+
+Recomendado:
+
+1. Abra o AutoConf logado em uma aba.
+2. Com essa aba aberta, clique no ícone da extensão.
+3. Deixe a aba da extensão aberta enquanto busca, confere ou usa atualização
+   automática.
+
+Se a extensão não encontrar a aba do AutoConf, recarregue a aba do AutoConf e
+clique novamente no ícone.
 
 ## Tipos de busca
 
@@ -128,6 +149,46 @@ Ao terminar, a extensão mostra:
 
 O log mostra progresso por página e progresso da leitura de vendedor.
 
+## Dados completos da negociação
+
+Para cada negociação candidata, a extensão abre o resumo no AutoConf e tenta
+capturar:
+
+- vendedor real;
+- data real da negociação;
+- data de aprovação/finalização quando aparece;
+- dados do cliente: nome, CPF/CNPJ, telefone, e-mail e endereço;
+- pagamentos feitos ou previstos;
+- débitos pagos/assumidos;
+- veículos de entrada e saída;
+- campos, tabelas e textos estruturados do resumo.
+
+Esses dados entram no JSON baixado e também são enviados para o AutoDrive. No
+AutoDrive, quando presentes, são usados para preencher:
+
+- `saleDate`, `approvedAt` e `finalizedAt`;
+- `Customer`;
+- `DealPayment`;
+- `DealDebt`;
+- totais de pagamentos e débitos;
+- auditoria da negociação com o detalhe completo capturado do AutoConf.
+
+Como o AutoConf pode mudar o HTML do resumo, a leitura é defensiva: se algum
+campo não for encontrado, a importação continua com os dados disponíveis.
+
+## Atualização automática
+
+A seção **Atualização automática** permite buscar novamente conforme os filtros
+atuais a cada X minutos.
+
+- Marque **Atualizar sozinho**.
+- Informe o intervalo em minutos.
+- A aba mostra a contagem até a próxima busca.
+- A atualização automática apenas refaz a busca e atualiza o resumo.
+- Ela **não importa automaticamente** para o AutoDrive.
+
+Para parar, desmarque **Atualizar sozinho** ou feche a aba da extensão.
+
 ## Baixar JSON
 
 O arquivo baixado usa o período no nome:
@@ -199,6 +260,8 @@ não mudam a deduplicação.
 18. Importar definitivamente.
 19. Reimportar o mesmo resultado e confirmar que não duplica.
 20. Confirmar que o popup não quebra quando não encontra nada.
+21. Clicar em outra aba e confirmar que a aba da extensão continua aberta.
+22. Ativar atualização automática com intervalo curto e confirmar nova busca.
 
 ## Permissões
 

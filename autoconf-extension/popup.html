@@ -13,7 +13,7 @@
       --bg: #f9fafb;
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { width: 420px; margin: 0; padding: 14px; color: var(--ink); background: #fff; }
+    body { width: min(100vw, 460px); margin: 0 auto; padding: 14px; color: var(--ink); background: #fff; }
     h1 { font-size: 15px; margin: 0 0 2px; }
     h2 { font-size: 12px; margin: 0 0 8px; color: #111827; }
     p.sub { font-size: 11px; color: var(--muted); margin: 0 0 12px; line-height: 1.35; }
@@ -166,6 +166,18 @@
 
   <div class="row">
     <button id="scan" class="primary">1) Buscar negociações filtradas</button>
+  </div>
+
+  <div class="section">
+    <h2>Atualização automática</h2>
+    <div class="grid2">
+      <label class="check" style="margin-top:24px"><input id="autoRefresh" type="checkbox" /><span>Atualizar sozinho</span></label>
+      <div>
+        <label for="autoMinutes">A cada X minutos</label>
+        <input id="autoMinutes" inputmode="numeric" min="1" max="1440" value="10" />
+      </div>
+    </div>
+    <div class="mini" id="autoStatus">Desligada. A atualização automática apenas busca novamente; não importa para o AutoDrive.</div>
   </div>
 
   <div id="stats">

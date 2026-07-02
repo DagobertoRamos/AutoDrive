@@ -31,6 +31,38 @@ function normalizePlate(s) {
   return String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
+function cleanText(s) {
+  return String(s ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function parseMoney(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  const raw = String(value ?? '').trim()
+  if (!raw) return null
+  const m = raw.match(/(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*,\d{2}|(?:R\$\s*)?-?\d+(?:[.,]\d{2})?/)
+  if (!m) return null
+  const n = Number(m[0].replace(/R\$/i, '').trim().replace(/\./g, '').replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+function parseAnyDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value
+  if (typeof value !== 'string') return null
+  const br = parseCriadoEm(value)
+  if (br) return br
+  const iso = value.match(/(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  return null
+}
+
+function isoDate(value) {
+  const d = parseAnyDate(value)
+  return d ? d.toISOString() : null
+}
+
 function parseBrDateToDate(s) {
   const m = String(s || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
   if (!m) return null
@@ -163,32 +195,286 @@ function firstText(...values) {
   return null
 }
 
-// Lê o vendedor "que realizou a negociação" no HTML do resumo (server-side).
-async function fetchVendedor(id) {
+function selectedText(sel) {
+  const opt = sel.querySelector('option[selected]') || (sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null)
+  return cleanText(opt?.textContent)
+}
+
+function extractEmbeddedJson(doc) {
+  const out = []
+  for (const script of [...doc.querySelectorAll('script')]) {
+    const txt = script.textContent?.trim()
+    if (!txt) continue
+    if (script.type === 'application/json') {
+      try {
+        out.push({ source: script.id || 'application/json', data: JSON.parse(txt) })
+      } catch (e) {
+        out.push({ source: script.id || 'application/json', text: txt.slice(0, 2000) })
+      }
+      continue
+    }
+    const next = txt.match(/self\.__next_f\.push\(\[(?:\d+),\s*"(.*)"\]\)/)
+    if (next?.[1]) out.push({ source: 'next-flight', text: next[1].slice(0, 2000) })
+    const state = txt.match(/(?:__INITIAL_STATE__|__NUXT__|__APP_DATA__)\s*=\s*(\{[\s\S]*?\});?$/)
+    if (state?.[1]) {
+      try { out.push({ source: 'window-state', data: JSON.parse(state[1]) }) } catch (e) { /* best effort */ }
+    }
+  }
+  return out.slice(0, 12)
+}
+
+function extractFormFields(doc) {
+  return [...doc.querySelectorAll('input, select, textarea')].map((el) => {
+    const label = cleanText(doc.querySelector(`label[for="${el.id}"]`)?.textContent)
+      || cleanText(el.closest('label')?.textContent)
+      || cleanText(el.closest('div')?.querySelector('label')?.textContent)
+    return {
+      name: el.getAttribute('name') || null,
+      id: el.id || null,
+      label: label || null,
+      value: el.tagName === 'SELECT' ? selectedText(el) : cleanText(el.value || el.getAttribute('value') || ''),
+    }
+  }).filter((f) => f.name || f.id || f.label || f.value)
+}
+
+function extractTables(doc) {
+  return [...doc.querySelectorAll('table')].map((table, tableIndex) => {
+    const headers = [...table.querySelectorAll('thead th, thead td')].map((th) => cleanText(th.textContent))
+    const rows = [...table.querySelectorAll('tbody tr, tr')].map((tr) => {
+      const cells = [...tr.children].map((td) => cleanText(td.textContent))
+      if (headers.length && cells.length) {
+        return Object.fromEntries(cells.map((cell, i) => [headers[i] || `coluna_${i + 1}`, cell]))
+      }
+      return cells
+    }).filter((r) => Array.isArray(r) ? r.some(Boolean) : Object.values(r).some(Boolean))
+    return { tableIndex, headers, rows }
+  }).filter((t) => t.rows.length)
+}
+
+function extractLabelValues(doc) {
+  const pairs = {}
+
+  for (const dt of [...doc.querySelectorAll('dt')]) {
+    const key = cleanText(dt.textContent)
+    const value = cleanText(dt.nextElementSibling?.textContent)
+    if (key && value) pairs[key] = value
+  }
+
+  for (const row of [...doc.querySelectorAll('tr')]) {
+    const cells = [...row.children].map((c) => cleanText(c.textContent)).filter(Boolean)
+    if (cells.length === 2 && cells[0].length <= 80) pairs[cells[0]] = cells[1]
+  }
+
+  for (const el of [...doc.querySelectorAll('p, div, span, li')]) {
+    const text = cleanText(el.textContent)
+    if (!text || text.length > 180 || !text.includes(':')) continue
+    const [key, ...rest] = text.split(':')
+    const value = rest.join(':').trim()
+    if (key && value && key.length <= 60 && value.length <= 140) pairs[key.trim()] = value
+  }
+
+  for (const field of extractFormFields(doc)) {
+    const key = field.label || field.name || field.id
+    if (key && field.value) pairs[key] = field.value
+  }
+
+  return pairs
+}
+
+function valueByKeys(pairs, keys) {
+  const wanted = keys.map(normalizeText)
+  for (const [key, value] of Object.entries(pairs || {})) {
+    const nk = normalizeText(key)
+    if (wanted.some((w) => nk.includes(w))) return cleanText(value)
+  }
+  return null
+}
+
+function rowsFromTables(tables) {
+  const out = []
+  for (const table of tables) {
+    for (const row of table.rows) {
+      if (Array.isArray(row)) {
+        out.push({ texto: row.join(' | ') })
+      } else {
+        out.push(row)
+      }
+    }
+  }
+  return out
+}
+
+function paymentTypeFromText(text) {
+  const n = normalizeText(text)
+  if (/pix/.test(n)) return 'PIX'
+  if (/dinheiro|especie/.test(n)) return 'DINHEIRO'
+  if (/debito/.test(n)) return 'CARTAO_DEBITO'
+  if (/credito|cartao/.test(n)) return 'CARTAO_CREDITO'
+  if (/financi/.test(n)) return 'FINANCIAMENTO'
+  if (/boleto/.test(n)) return 'BOLETO'
+  if (/transfer|ted|doc/.test(n)) return 'TRANSFERENCIA'
+  if (/sinal|entrada/.test(n)) return 'SINAL'
+  return 'OUTROS'
+}
+
+function debtTypeFromText(text) {
+  const n = normalizeText(text)
+  if (/multa/.test(n)) return 'MULTA'
+  if (/ipva/.test(n)) return 'IPVA'
+  if (/licenc/.test(n)) return 'LICENCIAMENTO'
+  if (/financi|quitac|alienac/.test(n)) return 'FINANCIAMENTO'
+  if (/doc|document/.test(n)) return 'DOCUMENTACAO'
+  return 'OUTROS'
+}
+
+function objectText(obj) {
+  if (typeof obj === 'string') return obj
+  if (!obj || typeof obj !== 'object') return ''
+  return Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join(' | ')
+}
+
+function extractFinancialRows(tables, pairs, kind) {
+  const rows = []
+  const words = kind === 'payment'
+    ? /pagamento|forma|entrada|sinal|financi|pix|dinheiro|cart[aã]o|boleto|transfer/i
+    : /d[eé]bito|multa|ipva|licenciamento|quita[cç][aã]o|financiamento|despesa/i
+
+  for (const row of rowsFromTables(tables)) {
+    const text = objectText(row)
+    if (!words.test(text)) continue
+    const value = parseMoney(text)
+    if (!value || value <= 0) continue
+    if (kind === 'payment') {
+      rows.push({
+        type: paymentTypeFromText(text),
+        status: /confirmad|pago|baixad/i.test(text) ? 'CONFIRMADO' : 'PENDENTE',
+        value,
+        paidAt: isoDate(text),
+        notes: text.slice(0, 500),
+        raw: row,
+      })
+    } else {
+      rows.push({
+        type: debtTypeFromText(text),
+        description: text.slice(0, 180),
+        value,
+        responsavel: /cliente|comprador/i.test(text) ? 'COMPRADOR' : (/vendedor|propriet/i.test(text) ? 'VENDEDOR' : 'LOJA'),
+        dueDate: isoDate(text),
+        notes: text.slice(0, 500),
+        raw: row,
+      })
+    }
+  }
+
+  for (const [key, value] of Object.entries(pairs || {})) {
+    const text = `${key}: ${value}`
+    if (!words.test(text)) continue
+    const amount = parseMoney(value) ?? parseMoney(text)
+    if (!amount || amount <= 0) continue
+    if (kind === 'payment') rows.push({ type: paymentTypeFromText(text), status: 'PENDENTE', value: amount, notes: text.slice(0, 500) })
+    else rows.push({ type: debtTypeFromText(text), description: key, value: amount, responsavel: 'LOJA', notes: text.slice(0, 500) })
+  }
+
+  const seen = new Set()
+  return rows.filter((row) => {
+    const key = `${row.type}:${row.value}:${row.notes}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function extractCustomerDetails(row, pairs) {
+  return {
+    nome: valueByKeys(pairs, ['cliente', 'nome do cliente', 'comprador', 'proprietario']) || row.cliente || null,
+    cpfCnpj: valueByKeys(pairs, ['cpf', 'cnpj', 'documento']),
+    email: valueByKeys(pairs, ['email', 'e-mail']) || row.clienteEmail || null,
+    telefone: valueByKeys(pairs, ['telefone', 'celular', 'whatsapp', 'contato']) || row.clienteContato || null,
+    endereco: valueByKeys(pairs, ['endereco', 'endereço', 'logradouro']),
+    cidade: valueByKeys(pairs, ['cidade']),
+    estado: valueByKeys(pairs, ['estado', 'uf']),
+  }
+}
+
+async function fetchJsonCandidate(path) {
   try {
-    const r = await fetch(`/negociacao/${id}/resumo`, { headers: { Accept: 'text/html' }, credentials: 'include' })
+    const r = await fetch(path, { headers: { Accept: 'application/json' }, credentials: 'include' })
     if (!r.ok) return null
+    return await r.json()
+  } catch (e) {
+    return null
+  }
+}
+
+async function fetchDetalhesNegociacao(row) {
+  try {
+    const id = row.externalId
+    const apiDetalhes = []
+    const apiPaths = [
+      `/api/ui/v1/negociacoes/${id}`,
+      `/api/ui/v1/negociacoes/${id}/resumo`,
+      `/api/ui/v1/negociacao/${id}`,
+      `/api/ui/v1/negociacao/${id}/resumo`,
+    ]
+    for (const path of apiPaths) {
+      const data = await fetchJsonCandidate(path)
+      if (data) apiDetalhes.push({ path, data })
+    }
+
+    const r = await fetch(`/negociacao/${id}/resumo`, { headers: { Accept: 'text/html' }, credentials: 'include' })
+    if (!r.ok) return { vendedor: null, apiDetalhes, detalheStatus: `HTTP ${r.status}` }
     const html = await r.text()
     const doc = new DOMParser().parseFromString(html, 'text/html')
     const selects = [...doc.querySelectorAll('select')]
+    let vendedor = null
     // 1) select cuja vizinhança menciona "vendedor"
     for (const sel of selects) {
       const ctx = `${sel.getAttribute('name') || ''} ${sel.id || ''} ${(sel.closest('div')?.parentElement?.textContent || '').slice(0, 160)}`
       if (/vendedor/i.test(ctx)) {
-        const opt = sel.querySelector('option[selected]') || (sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null)
-        const t = opt && opt.textContent.trim()
-        if (t) return t
+        const t = selectedText(sel)
+        if (t) { vendedor = t; break }
       }
     }
     // 2) fallback: se só existe 1 select na página de resumo, é o do vendedor
-    if (selects.length === 1) {
-      const sel = selects[0]
-      const opt = sel.querySelector('option[selected]') || (sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null)
-      const t = opt && opt.textContent.trim()
-      if (t) return t
+    if (!vendedor && selects.length === 1) {
+      const t = selectedText(selects[0])
+      if (t) vendedor = t
     }
-    return null
-  } catch (e) { return null }
+
+    const tables = extractTables(doc)
+    const formFields = extractFormFields(doc)
+    const labelValues = extractLabelValues(doc)
+    const embeddedJson = extractEmbeddedJson(doc)
+    const dataNegociacao =
+      valueByKeys(labelValues, ['data da negociacao', 'data da negociação', 'data venda', 'data da venda', 'finalizada em', 'aprovada em'])
+      || row.aprovadoEm
+      || row.criadoEm
+      || null
+
+    const detalhes = {
+      vendedor,
+      dataNegociacao,
+      dataNegociacaoIso: isoDate(dataNegociacao),
+      aprovadoEm: valueByKeys(labelValues, ['aprovada em', 'data aprovacao', 'data aprovação']) || row.aprovadoEm || null,
+      aprovadoEmIso: isoDate(valueByKeys(labelValues, ['aprovada em', 'data aprovacao', 'data aprovação']) || row.aprovadoEm),
+      finalizadoEm: valueByKeys(labelValues, ['finalizada em', 'finalizado em', 'data finalizacao', 'data finalização']),
+      finalizadoEmIso: isoDate(valueByKeys(labelValues, ['finalizada em', 'finalizado em', 'data finalizacao', 'data finalização'])),
+      clienteDetalhes: extractCustomerDetails(row, labelValues),
+      pagamentos: extractFinancialRows(tables, labelValues, 'payment'),
+      debitos: extractFinancialRows(tables, labelValues, 'debt'),
+      campos: labelValues,
+      formularios: formFields,
+      tabelas: tables,
+      apiDetalhes,
+      embeddedJson,
+      resumoTexto: cleanText(doc.body?.innerText || '').slice(0, 30000),
+      sourceFetchedAt: new Date().toISOString(),
+    }
+
+    return detalhes
+  } catch (e) {
+    return { vendedor: null, detalheStatus: e?.message || String(e) }
+  }
 }
 
 function mapVeiculos(arr) {
@@ -234,6 +520,7 @@ function buildRow(n, criadoEmDate) {
     saleAmount: saida.reduce((s, v) => s + (v.valor || 0), 0) || null,
     purchaseAmount: entrada.reduce((s, v) => s + (v.valor || 0), 0) || null,
     sourceUrl: `https://app.autoconf.com.br/negociacao/${n.id}/resumo`,
+    autoconfListaRaw: n,
   }
 }
 
@@ -341,10 +628,24 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
 
   if (hitPageLimit) warnings.push('A busca atingiu o limite de páginas. Refine o filtro ou aumente MAX_PAGES com cuidado.')
 
-  progress(`Lendo vendedor de ${preliminaryRows.length} negociações candidatas...`)
+  progress(`Lendo detalhes reais de ${preliminaryRows.length} negociações candidatas...`)
   for (let i = 0; i < preliminaryRows.length; i++) {
-    preliminaryRows[i].vendedor = await fetchVendedor(preliminaryRows[i].externalId)
-    if (i % 5 === 0 || i === preliminaryRows.length - 1) progress(`Vendedor: ${i + 1}/${preliminaryRows.length}.`, { partial: i + 1 })
+    const detalhes = await fetchDetalhesNegociacao(preliminaryRows[i])
+    preliminaryRows[i].vendedor = detalhes?.vendedor || preliminaryRows[i].vendedor
+    preliminaryRows[i].dataNegociacao = detalhes?.dataNegociacao || preliminaryRows[i].aprovadoEm || preliminaryRows[i].criadoEm || null
+    preliminaryRows[i].dataNegociacaoIso = detalhes?.dataNegociacaoIso || isoDate(preliminaryRows[i].dataNegociacao) || preliminaryRows[i].criadoEmIso || null
+    preliminaryRows[i].aprovadoEm = detalhes?.aprovadoEm || preliminaryRows[i].aprovadoEm || null
+    preliminaryRows[i].aprovadoEmIso = detalhes?.aprovadoEmIso || isoDate(preliminaryRows[i].aprovadoEm)
+    preliminaryRows[i].finalizadoEm = detalhes?.finalizadoEm || null
+    preliminaryRows[i].finalizadoEmIso = detalhes?.finalizadoEmIso || isoDate(preliminaryRows[i].finalizadoEm)
+    preliminaryRows[i].clienteDetalhes = detalhes?.clienteDetalhes || null
+    preliminaryRows[i].pagamentos = detalhes?.pagamentos || []
+    preliminaryRows[i].debitos = detalhes?.debitos || []
+    preliminaryRows[i].totalPagamentosDetalhe = preliminaryRows[i].pagamentos.reduce((s, p) => s + (Number(p.value) || 0), 0) || null
+    preliminaryRows[i].totalDebitosDetalhe = preliminaryRows[i].debitos.reduce((s, d) => s + (Number(d.value) || 0), 0) || null
+    preliminaryRows[i].autoconfDetalhes = detalhes || null
+
+    if (i % 5 === 0 || i === preliminaryRows.length - 1) progress(`Detalhes: ${i + 1}/${preliminaryRows.length}.`, { partial: i + 1 })
     await sleep(150)
   }
 
