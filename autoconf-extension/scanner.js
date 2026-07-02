@@ -291,6 +291,18 @@ function valueByKeys(pairs, keys) {
   return null
 }
 
+// A raspagem de <p>/<div>/<span>/<li> em busca de "chave: valor" é heurística e
+// pode casar texto de UI não relacionado (ex.: "Limite reserva em: ...
+// Imprimir recibo Ver comprovante" quando a chave só precisa CONTER "cliente").
+// Filtra valores que claramente não são dado real antes de aceitar o scrape.
+function isJunkValue(text) {
+  const t = cleanText(text)
+  if (!t) return true
+  if (t.length > 120) return true
+  if (/imprimir|comprovante|recibo|limite reserva|reserva em|clique aqui|ver detalhes/i.test(t)) return true
+  return false
+}
+
 function rowsFromTables(tables) {
   const out = []
   for (const table of tables) {
@@ -386,14 +398,28 @@ function extractFinancialRows(tables, pairs, kind) {
 }
 
 function extractCustomerDetails(row, pairs) {
+  // row.cliente/clienteEmail/clienteContato vêm da API oficial de LISTA do
+  // AutoConf (/api/ui/v1/negociacoes) — são estruturados e confiáveis. O scrape
+  // do resumo (heurístico, texto solto da página) só complementa o que a lista
+  // não tem (CPF/CNPJ, endereço, cidade, estado) e só se não parecer lixo.
+  // Chave genérica "cliente" foi removida daqui de propósito: ela casava
+  // qualquer bloco de texto que mencionasse a palavra (ex.: aviso de reserva).
+  const scrapedNome     = valueByKeys(pairs, ['nome do cliente', 'nome completo', 'comprador'])
+  const scrapedCpf      = valueByKeys(pairs, ['cpf/cnpj', 'cpf', 'cnpj', 'documento'])
+  const scrapedEmail    = valueByKeys(pairs, ['e-mail', 'email'])
+  const scrapedTelefone = valueByKeys(pairs, ['telefone', 'celular', 'whatsapp'])
+  const scrapedEndereco = valueByKeys(pairs, ['endereco', 'endereço', 'logradouro'])
+  const scrapedCidade   = valueByKeys(pairs, ['cidade'])
+  const scrapedEstado   = valueByKeys(pairs, ['estado', 'uf'])
+
   return {
-    nome: valueByKeys(pairs, ['cliente', 'nome do cliente', 'comprador', 'proprietario']) || row.cliente || null,
-    cpfCnpj: valueByKeys(pairs, ['cpf', 'cnpj', 'documento']),
-    email: valueByKeys(pairs, ['email', 'e-mail']) || row.clienteEmail || null,
-    telefone: valueByKeys(pairs, ['telefone', 'celular', 'whatsapp', 'contato']) || row.clienteContato || null,
-    endereco: valueByKeys(pairs, ['endereco', 'endereço', 'logradouro']),
-    cidade: valueByKeys(pairs, ['cidade']),
-    estado: valueByKeys(pairs, ['estado', 'uf']),
+    nome:     row.cliente || (!isJunkValue(scrapedNome) ? scrapedNome : null),
+    cpfCnpj:  !isJunkValue(scrapedCpf) ? scrapedCpf : null,
+    email:    row.clienteEmail || (!isJunkValue(scrapedEmail) ? scrapedEmail : null),
+    telefone: row.clienteContato || (!isJunkValue(scrapedTelefone) ? scrapedTelefone : null),
+    endereco: !isJunkValue(scrapedEndereco) ? scrapedEndereco : null,
+    cidade:   !isJunkValue(scrapedCidade) ? scrapedCidade : null,
+    estado:   (!isJunkValue(scrapedEstado) && scrapedEstado && scrapedEstado.length <= 2) ? scrapedEstado.toUpperCase() : null,
   }
 }
 

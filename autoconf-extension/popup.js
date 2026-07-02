@@ -460,33 +460,110 @@ $('sample').addEventListener('click', () => {
   }, null, 1))
 })
 
+// Tamanho do lote enviado por requisição. O AutoConf devolve, por negociação,
+// dumps brutos da página (tabelas, formulários, HTML, JSON embutido) que só
+// servem para o JSON local de debug — mandar tudo isso pro AutoDrive de uma vez
+// (ex.: 129 negociações) estourava o limite de tamanho de requisição da Vercel
+// (HTTP 413) e arriscava o timeout de 60s da função. Por isso: (1) enxugamos o
+// payload antes de enviar, mantendo só o que o endpoint realmente usa; (2)
+// enviamos em lotes pequenos e sequenciais, agregando os resultados.
+const BATCH_SIZE = 20
+
+// Remove do payload os campos de diagnóstico (pesados e não usados pela API):
+// tabelas/formulários/campos/apiDetalhes/embeddedJson/resumoTexto (dump bruto
+// da página) e autoconfListaRaw/autoconfDetalhes (duplicam tudo isso de novo).
+// Mantém tudo que o endpoint /api/integrations/autoconf/deals realmente lê.
+function slimRowForApi(row) {
+  const stripRaw = (list) => (list || []).map(({ raw, ...rest }) => rest)
+  return {
+    externalId: row.externalId,
+    tipo: row.tipo,
+    status: row.status,
+    etapa: row.etapa,
+    criadoEm: row.criadoEm,
+    criadoEmIso: row.criadoEmIso,
+    aprovadoEm: row.aprovadoEm,
+    aprovadoEmIso: row.aprovadoEmIso,
+    finalizadoEm: row.finalizadoEm,
+    finalizadoEmIso: row.finalizadoEmIso,
+    dataNegociacao: row.dataNegociacao,
+    dataNegociacaoIso: row.dataNegociacaoIso,
+    vendedor: row.vendedor,
+    responsavelLista: row.responsavelLista,
+    loja: row.loja,
+    cliente: row.cliente,
+    clienteEmail: row.clienteEmail,
+    clienteContato: row.clienteContato,
+    clienteDetalhes: row.clienteDetalhes,
+    veiculosSaida: row.veiculosSaida,
+    veiculosEntrada: row.veiculosEntrada,
+    saleAmount: row.saleAmount,
+    purchaseAmount: row.purchaseAmount,
+    pagamentos: stripRaw(row.pagamentos),
+    debitos: stripRaw(row.debitos),
+    totalPagamentosDetalhe: row.totalPagamentosDetalhe,
+    totalDebitosDetalhe: row.totalDebitosDetalhe,
+    sourceUrl: row.sourceUrl,
+  }
+}
+
+function chunkArray(arr, size) {
+  const out = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+
 async function sendToAutodrive(dryRun) {
   if (!lastResult?.rows?.length) { log('Rode a busca primeiro.'); return }
   const token = $('token').value.trim()
   if (!token) { log('Informe o token do AutoDrive e clique em Salvar.'); return }
 
   const label = dryRun ? 'Prévia' : 'Importação'
-  log(`${label}: enviando ${lastResult.rows.length} negociações de ${lastResult.period?.periodLabel || 'período filtrado'}...`)
+  const slimRows = lastResult.rows.map(slimRowForApi)
+  const batches = chunkArray(slimRows, BATCH_SIZE)
+  log(`${label}: enviando ${slimRows.length} negociações de ${lastResult.period?.periodLabel || 'período filtrado'} em ${batches.length} lote(s) de até ${BATCH_SIZE}...`)
 
-  try {
-    const res = await fetch(`${AUTODRIVE}/api/integrations/autoconf/deals`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-autoconf-token': token },
-      body: JSON.stringify({
-        rows: lastResult.rows,
-        dryRun,
-        filters: lastResult.filters,
-        period: lastResult.period,
-      }),
-    })
-    const j = await res.json().catch(() => ({}))
-    if (!res.ok) { log(`Erro ao importar no AutoDrive: ${j?.error || ('HTTP ' + res.status)}`); return }
-    log(`${label} OK — criadas ${j.created ?? 0}, atualizadas ${j.updated ?? 0}, puladas ${j.skipped ?? 0}, vendedor não achado ${j.unmatchedSeller || 0}.`)
-    ;(j.results || []).filter((r) => r.action === 'skipped').slice(0, 6).forEach((r) => log(`  - pulada ${r.externalId}: ${r.reason}`))
-    ;(j.results || []).filter((r) => typeof r.seller === 'string' && r.seller.startsWith('(NÃO')).slice(0, 6).forEach((r) => log(`  - ${r.externalId} ${r.unit}: ${r.seller}`))
-  } catch (e) {
-    log('Erro de rede ao importar no AutoDrive: ' + (e?.message || e))
+  let created = 0, updated = 0, skipped = 0, unmatchedSeller = 0, commissionGenerated = 0, commissionErrors = 0
+  const allResults = []
+  const batchErrors = []
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i]
+    if (batches.length > 1) log(`Lote ${i + 1}/${batches.length} (${batch.length} negociações)...`)
+    try {
+      const res = await fetch(`${AUTODRIVE}/api/integrations/autoconf/deals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-autoconf-token': token },
+        body: JSON.stringify({
+          rows: batch,
+          dryRun,
+          filters: lastResult.filters,
+          period: lastResult.period,
+        }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        batchErrors.push(`Lote ${i + 1}: ${j?.error || ('HTTP ' + res.status)}`)
+        log(`Erro no lote ${i + 1}: ${j?.error || ('HTTP ' + res.status)}`)
+        continue
+      }
+      created += j.created ?? 0
+      updated += j.updated ?? 0
+      skipped += j.skipped ?? 0
+      unmatchedSeller += j.unmatchedSeller ?? 0
+      commissionGenerated += j.commissionGenerated ?? 0
+      commissionErrors += j.commissionErrors ?? 0
+      allResults.push(...(j.results || []))
+    } catch (e) {
+      batchErrors.push(`Lote ${i + 1}: erro de rede — ${e?.message || e}`)
+      log(`Erro de rede no lote ${i + 1}: ` + (e?.message || e))
+    }
   }
+
+  log(`${label} concluída — criadas ${created}, atualizadas ${updated}, puladas ${skipped}, vendedor não achado ${unmatchedSeller}, comissões geradas ${commissionGenerated}${commissionErrors ? `, erros de comissão ${commissionErrors}` : ''}.`)
+  allResults.filter((r) => r.action === 'skipped').slice(0, 10).forEach((r) => log(`  - pulada ${r.externalId}: ${r.reason}`))
+  allResults.filter((r) => typeof r.seller === 'string' && r.seller.startsWith('(NÃO')).slice(0, 10).forEach((r) => log(`  - ${r.externalId} ${r.unit}: ${r.seller}`))
+  if (batchErrors.length) log(`Atenção: ${batchErrors.length} lote(s) com erro. A importação é idempotente (dedup por AC-<id>) — pode rodar de novo com segurança.`)
 }
 
 $('preview').addEventListener('click', () => sendToAutodrive(true))

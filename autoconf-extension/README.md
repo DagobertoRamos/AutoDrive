@@ -1,4 +1,4 @@
-# AutoConf → AutoDrive — extensão de importação (v0.3.3)
+# AutoConf → AutoDrive — extensão de importação (v0.3.4)
 
 Lê negociações do **AutoConf** usando a sessão já logada no navegador e envia para o
 **AutoDrive** pelo endpoint `POST /api/integrations/autoconf/deals`.
@@ -275,3 +275,28 @@ Host permissions:
 
 - `https://app.autoconf.com.br/*`
 - `https://auto-drive-mocha.vercel.app/*`
+
+## Changelog
+
+### v0.3.4 — correção de HTTP 413 e nome de cliente incorreto
+
+- **HTTP 413 (payload grande demais) ao importar muitas negociações:** cada
+  negociação carregava, duplicado, o dump bruto da página do resumo (tabelas,
+  formulários, JSON embutido, até 30 mil caracteres de texto). Com dezenas/
+  centenas de negociações num único envio, o corpo da requisição estourava o
+  limite da Vercel. Corrigido em duas frentes:
+  - o envio ao AutoDrive agora manda só os campos que a API realmente usa
+    (remove os dumps de diagnóstico, que ficam só no JSON baixado localmente);
+  - o envio é feito em **lotes de até 20 negociações** por requisição, o que
+    também evita estourar o tempo máximo (60s) da função na Vercel em
+    importações grandes. A importação continua idempotente (dedup por
+    `AC-<id>`), então reenviar após um erro de lote é seguro.
+- **Nome do cliente incorreto** (ex.: aparecia um texto de "Limite reserva em:
+  ... Imprimir recibo Ver comprovante" no lugar do nome real): a raspagem do
+  resumo procurava qualquer bloco de texto que contivesse a palavra "cliente",
+  o que podia casar avisos e textos da interface sem relação com o cliente.
+  Corrigido: os campos `nome`/`email`/`telefone` do cliente agora vêm
+  **primeiro da API de lista do AutoConf** (já confiável e estruturada); o
+  scrape do resumo só complementa dados que a lista não tem (CPF/CNPJ,
+  endereço, cidade, estado) e passa por um filtro que rejeita textos que
+  parecem lixo de interface.
