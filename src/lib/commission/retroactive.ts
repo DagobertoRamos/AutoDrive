@@ -34,27 +34,41 @@ function scopeOf(ruleDetails: unknown): string | null {
   return null
 }
 
+export interface RetroChange {
+  id: string
+  oldValue: number
+  newValue: number
+  status: string
+}
+
 export interface RetroResult {
   sellerId: string
   period: string
   count: number
   tierRuleId: string | null
   repriced: number
+  /** Lançamentos que mudariam/mudaram de valor (antes → depois). */
+  changes: RetroChange[]
 }
 
 /**
  * Reprecifica os SELLER_MAIN_COMMISSION do vendedor no período para a faixa da
  * contagem atual de carros. Idempotente (não altera o que já está no valor
  * certo). Nunca toca em PAGO/APROVADO/AJUSTADO/CANCELADO.
+ *
+ * `dryRun`: quando true, calcula o que MUDARIA (retorna `changes`) sem gravar —
+ * usado pela prévia do recálculo manual autorizado (Parte 15).
  */
 export async function recalculateSellerMainForPeriod(opts: {
   tenantId: string | null
   sellerId: string
   period: string // yyyy-MM
   date?: Date
+  dryRun?: boolean
 }): Promise<RetroResult> {
   const { tenantId, sellerId, period } = opts
   const date = opts.date ?? new Date()
+  const dryRun = opts.dryRun === true
 
   // 1. Lançamentos principais do vendedor no período (não cancelados).
   const rows = await prisma.commissionCalculation.findMany({
@@ -65,7 +79,7 @@ export async function recalculateSellerMainForPeriod(opts: {
   const main = rows.filter((r) => scopeOf(r.ruleDetails) === MAIN_SCOPE)
   // Carros do período = todos os principais não cancelados (inclui PAGO/APROVADO).
   const count = main.length
-  if (count === 0) return { sellerId, period, count: 0, tierRuleId: null, repriced: 0 }
+  if (count === 0) return { sellerId, period, count: 0, tierRuleId: null, repriced: 0, changes: [] }
 
   // 2. Faixa aplicável para a contagem ATUAL.
   const seller = await prisma.seller.findUnique({
@@ -82,35 +96,40 @@ export async function recalculateSellerMainForPeriod(opts: {
     quantityInPeriod: count,
     date,
   })
-  if (!matched) return { sellerId, period, count, tierRuleId: null, repriced: 0 }
+  if (!matched) return { sellerId, period, count, tierRuleId: null, repriced: 0, changes: [] }
 
   // 3. Reprecifica TODAS as principais PREVISTAS para o valor da faixa atual.
   let repriced = 0
+  const changes: RetroChange[] = []
   for (const r of main) {
     if (r.status !== 'PREVISTO') continue // PAGO/APROVADO/AJUSTADO preservados
+    const oldValue = toNum(r.commissionValue)
     const newValue = computeCommissionValue(matched.rule, toNum(r.baseValue))
-    if (Math.abs(newValue - toNum(r.commissionValue)) < 0.005) continue // já está certo
-    const rd = (r.ruleDetails && typeof r.ruleDetails === 'object' && !Array.isArray(r.ruleDetails))
-      ? { ...(r.ruleDetails as Record<string, unknown>) }
-      : {}
-    await prisma.commissionCalculation.update({
-      where: { id: r.id },
-      data: {
-        commissionValue: newValue,
-        rateApplied: matched.rule.percentage != null ? matched.rule.percentage : null,
-        ruleDetails: {
-          ...rd,
-          retroTierRuleId: matched.rule.id,
-          retroTierMatchedBy: matched.matchedBy,
-          quantitySnapshot: count,
-          retroAt: date.toISOString(),
-        } as never,
-      },
-    }).catch(() => {})
+    if (Math.abs(newValue - oldValue) < 0.005) continue // já está certo
+    changes.push({ id: r.id, oldValue, newValue, status: r.status })
+    if (!dryRun) {
+      const rd = (r.ruleDetails && typeof r.ruleDetails === 'object' && !Array.isArray(r.ruleDetails))
+        ? { ...(r.ruleDetails as Record<string, unknown>) }
+        : {}
+      await prisma.commissionCalculation.update({
+        where: { id: r.id },
+        data: {
+          commissionValue: newValue,
+          rateApplied: matched.rule.percentage != null ? matched.rule.percentage : null,
+          ruleDetails: {
+            ...rd,
+            retroTierRuleId: matched.rule.id,
+            retroTierMatchedBy: matched.matchedBy,
+            quantitySnapshot: count,
+            retroAt: date.toISOString(),
+          } as never,
+        },
+      }).catch(() => {})
+    }
     repriced++
   }
 
-  return { sellerId, period, count, tierRuleId: matched.rule.id, repriced }
+  return { sellerId, period, count, tierRuleId: matched.rule.id, repriced, changes }
 }
 
 /** Reprecifica os períodos afetados por um conjunto de (sellerId, period). */

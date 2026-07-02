@@ -50,6 +50,7 @@ export type Module =
   | 'commissions'
   | 'commissions.rules'
   | 'commissions.calculate'
+  | 'commissions.recalc'          // recálculo manual autorizado de um período (ADM/gestão/financeiro)
   | 'commissions.approve'
   | 'commissions.adjust'
   | 'communication'
@@ -200,6 +201,12 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   },
   'commissions.calculate': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
+    actions: ['read', 'calculate'],
+  },
+  'commissions.recalc': {
+    // Recálculo manual do passado é sensível — só gestão sênior e financeiro.
+    // GERENTE de unidade fica de fora (o motor já reprecifica no automático).
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO'],
     actions: ['read', 'calculate'],
   },
   'commissions.approve': {

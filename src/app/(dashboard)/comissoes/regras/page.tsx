@@ -5,9 +5,13 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle, Settings, Building2 } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle, Settings, Building2, Calculator, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+
+// Papéis que podem recalcular um período (espelha commissions.recalc no back-end).
+const RECALC_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO']
 
 function brlInputValue(v: number | string | null | undefined): string {
   if (v == null) return ''
@@ -601,6 +605,190 @@ function DeleteModal({
   )
 }
 
+// ── Modal — Recálculo manual de período (Parte 15) ────────────────────────────
+
+interface RecalcSellerResult {
+  sellerId: string
+  sellerName: string | null
+  count: number
+  repriced: number
+  oldTotal: number
+  newTotal: number
+  delta: number
+}
+interface RecalcResult {
+  period: string
+  dryRun: boolean
+  sellers: RecalcSellerResult[]
+  totalSellers: number
+  totalRepriced: number
+  oldTotal: number
+  newTotal: number
+  delta: number
+}
+
+function currentPeriod(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+function RecalcModal({ units, onClose }: { units: UnitLite[]; onClose: () => void }) {
+  const [period, setPeriod]   = useState(currentPeriod())
+  const [unitId, setUnitId]   = useState('')
+  const [preview, setPreview] = useState<RecalcResult | null>(null)
+  const [applied, setApplied] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [error, setError]     = useState('')
+
+  const run = async (apply: boolean) => {
+    if (apply) setApplying(true); else setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/commissions/recalc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ period, unitId: unitId || null, apply }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao recalcular')
+      setPreview(data.data as RecalcResult)
+      if (apply) setApplied(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao recalcular')
+    } finally {
+      setLoading(false)
+      setApplying(false)
+    }
+  }
+
+  // Mudar período/unidade invalida a prévia anterior.
+  const resetPreview = () => { setPreview(null); setApplied(false) }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Calculator size={18} className="text-brand-600" />
+            <h2 className="text-base font-semibold text-gray-900">Recalcular comissões do período</h2>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={16} /></button>
+        </div>
+
+        <div className="max-h-[78vh] space-y-4 overflow-y-auto px-6 py-5">
+          <p className="text-sm text-gray-600">
+            Reajusta as comissões <strong>PREVISTAS</strong> dos vendedores para a faixa correta do período.
+            Comissões já pagas, aprovadas ou ajustadas <strong>não são tocadas</strong>. Veja a prévia antes de aplicar.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Período (mês) *">
+              <input
+                type="month"
+                className={inputCls()}
+                value={period}
+                onChange={(e) => { setPeriod(e.target.value); resetPreview() }}
+              />
+            </Field>
+            <Field label="Unidade">
+              <select
+                className={inputCls()}
+                value={unitId}
+                onChange={(e) => { setUnitId(e.target.value); resetPreview() }}
+              >
+                <option value="">Todas as unidades</option>
+                {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
+
+          {preview && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">Vendedores</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums">{preview.totalSellers}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">Lançamentos a ajustar</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums">{preview.totalRepriced}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">Diferença total</p>
+                  <p className={cn('text-lg font-semibold tabular-nums', preview.delta >= 0 ? 'text-green-700' : 'text-red-700')}>
+                    {preview.delta >= 0 ? '+' : ''}{formatCurrency(preview.delta)}
+                  </p>
+                </div>
+              </div>
+
+              {preview.totalRepriced === 0 ? (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  Tudo certo — nenhuma comissão prevista precisa de ajuste neste período.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {['Vendedor', 'Carros', 'Ajustes', 'Antes', 'Depois', 'Δ'].map((h) => (
+                          <th key={h} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {preview.sellers.filter((s) => s.repriced > 0).map((s) => (
+                        <tr key={s.sellerId}>
+                          <td className="px-3 py-2 text-gray-800">{s.sellerName ?? '—'}</td>
+                          <td className="px-3 py-2 tabular-nums text-gray-600">{s.count}</td>
+                          <td className="px-3 py-2 tabular-nums text-gray-600">{s.repriced}</td>
+                          <td className="px-3 py-2 tabular-nums text-gray-500">{formatCurrency(s.oldTotal)}</td>
+                          <td className="px-3 py-2 tabular-nums text-gray-800">{formatCurrency(s.newTotal)}</td>
+                          <td className={cn('px-3 py-2 tabular-nums font-medium', s.delta >= 0 ? 'text-green-700' : 'text-red-700')}>
+                            {s.delta >= 0 ? '+' : ''}{formatCurrency(s.delta)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {applied && (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <RefreshCw size={14} /> Recálculo aplicado com sucesso.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
+          {!applied && (
+            <button onClick={() => run(false)} disabled={loading || applying} className="btn-secondary text-sm">
+              {loading ? <RefreshCw size={13} className="animate-spin" /> : <Calculator size={13} />}
+              Ver prévia
+            </button>
+          )}
+          {preview && !applied && preview.totalRepriced > 0 && (
+            <button onClick={() => run(true)} disabled={applying} className="btn-primary text-sm">
+              {applying ? <RefreshCw size={13} className="animate-spin" /> : <ArrowRight size={13} />}
+              Aplicar recálculo ({preview.totalRepriced})
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RegrasComissoesPage() {
@@ -614,6 +802,9 @@ export default function RegrasComissoesPage() {
   const [deleting, setDeleting]   = useState<CommissionRule | null>(null)
   const [error, setError]         = useState('')
   const [activeFamily, setActiveFamily] = useState<FamilyKey | 'ALL'>('ALL')
+  const [recalcOpen, setRecalcOpen] = useState(false)
+  const { data: session } = useSession()
+  const canRecalc = RECALC_ROLES.includes(String(session?.user?.role ?? ''))
 
   // Contagem por família (para os badges das abas) e lista filtrada da aba ativa.
   const familyCounts = useMemo(() => {
@@ -724,6 +915,12 @@ export default function RegrasComissoesPage() {
             >
               <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
             </button>
+            {canRecalc && (
+              <button onClick={() => setRecalcOpen(true)} className="btn-secondary text-xs" title="Recalcular comissões de um período">
+                <Calculator size={13} />
+                Recalcular período
+              </button>
+            )}
             <button onClick={() => setEditing('new')} className="btn-primary text-xs">
               <Plus size={13} />
               Nova regra
@@ -909,6 +1106,9 @@ export default function RegrasComissoesPage() {
           onClose={() => setDeleting(null)}
           onDeleted={fetchRules}
         />
+      )}
+      {recalcOpen && (
+        <RecalcModal units={units} onClose={() => setRecalcOpen(false)} />
       )}
     </>
   )
