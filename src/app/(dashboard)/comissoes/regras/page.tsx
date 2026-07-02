@@ -78,14 +78,19 @@ const EMPTY_FORM: Omit<CommissionRule, 'id' | 'unit' | 'position'> = {
 }
 
 const RULE_TYPE_LABELS: Record<string, string> = {
-  VENDA:     'Venda',
-  TROCA:     'Troca',
+  // Venda e troca usam a MESMA comissão — uma regra "Venda / Troca" cobre os dois.
+  VENDA:     'Venda / Troca',
+  TROCA:     'Venda / Troca', // legado: regras antigas de TROCA aparecem como Venda / Troca
   COMPRA:    'Compra',
   GARANTIA:  'Garantia',
   RETORNO:   'Retorno',
   SERVICO:   'Serviço',
   DOCUMENTO: 'Documentação',
 }
+
+// Opções SELECIONÁVEIS no formulário: TROCA fora (é a mesma comissão de VENDA;
+// o backend normaliza TROCA→VENDA). Evita criar regra "morta" ou duplicada.
+const RULE_TYPE_OPTIONS: [string, string][] = Object.entries(RULE_TYPE_LABELS).filter(([v]) => v !== 'TROCA')
 
 const COMMISSION_TYPE_LABELS: Record<string, string> = {
   PERCENTUAL: 'Percentual (%)',
@@ -321,7 +326,7 @@ function RuleModal({
                   value={form.ruleType}
                   onChange={(e) => set('ruleType', e.target.value)}
                 >
-                  {Object.entries(RULE_TYPE_LABELS).map(([v, l]) => (
+                  {RULE_TYPE_OPTIONS.map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>

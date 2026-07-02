@@ -1942,3 +1942,14 @@
   - Dry-run: `npm run danger:delete-negotiations-commissions -- --dry-run --tenantId=<id>`
   - Delete real (tenant): `CONFIRM_DELETE_NEGOTIATIONS_AND_COMMISSIONS="DELETE_REAL_NEGOTIATIONS_COMMISSIONS" npm run danger:delete-negotiations-commissions -- --execute --tenantId=<id>` (+ `CONFIRM_PRODUCTION_DELETE=...` se for produção).
   - Também apagar regras de garantia/F&I: adicionar `--include-fi-warranty-rules`.
+
+### LOG 0137 — 2026-07-02 — Claude (Opus 4.8) — Comissão: "Venda / Troca" é a mesma regra (UI + backend)
+- **Branch:** `main`. Sem migration.
+- **Pedido:** "venda e troca são a mesma comissão, coloque a opção venda com troca, e interligue tudo mesmo quando é importada".
+- **Diagnóstico:** o sistema JÁ unificava na geração — `normalizeCommissionOperationType(dealType)` manda TROCA (e consignação) → VENDA; então a comissão principal de uma TROCA já procura uma regra VENDA. Uma regra criada com tipo TROCA ficava **morta** (nenhum item tem ruleType TROCA). O formulário, porém, ainda oferecia "Venda" e "Troca" separados — confuso e propenso a criar regra que nunca casa.
+- **Ajustes:**
+  - `lib/commission/rule-validation.ts` (`normalizeRuleType`): ao salvar/editar uma regra, **TROCA é normalizado para VENDA** (à prova de dados/API antigos — nenhuma regra "morta"). Ponto central usado por POST e PUT.
+  - `comissoes/regras/page.tsx`: rótulo `VENDA` → **"Venda / Troca"**; opção "Troca" **removida do dropdown** (nova `RULE_TYPE_OPTIONS` filtra TROCA); TROCA legado ainda EXIBE como "Venda / Troca" na tabela.
+- **Importação:** nada a mudar — o import do AutoConf cria o Deal como TROCA (correto p/ registro) e o gerador normaliza p/ VENDA na comissão. Uma regra "Venda / Troca" (VENDA) cobre vendas E trocas, calculando para vendedor + gerente da unidade + gerente geral conforme os escopos da regra e o cadastro do colaborador.
+- **Validações:** `tsc --noEmit` verde.
+- **Escopo:** só a unificação Venda/Troca na regra de comissão (UI + normalização no salvar). Não mexi na geração (que já normaliza) nem em outros tipos.

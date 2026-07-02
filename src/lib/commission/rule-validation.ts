@@ -124,6 +124,10 @@ function normalizeRuleType(value: unknown): CommissionRuleType {
   if (!type || !COMMISSION_RULE_TYPES.includes(type as typeof COMMISSION_RULE_TYPES[number])) {
     throw new CommissionRuleValidationError('Tipo da regra é obrigatório.')
   }
+  // VENDA e TROCA usam a MESMA comissão (o gerador normaliza TROCA→VENDA na hora
+  // de casar a regra). Guardamos sempre como VENDA para uma regra "Venda / Troca"
+  // cobrir os dois — assim uma regra TROCA (dado/API antigo) não fica "morta".
+  if (type === 'TROCA') return 'VENDA'
   return type as CommissionRuleType
 }
 
