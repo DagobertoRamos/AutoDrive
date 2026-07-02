@@ -397,13 +397,67 @@ function extractFinancialRows(tables, pairs, kind) {
   })
 }
 
-function extractCustomerDetails(row, pairs) {
-  // row.cliente/clienteEmail/clienteContato vêm da API oficial de LISTA do
-  // AutoConf (/api/ui/v1/negociacoes) — são estruturados e confiáveis. O scrape
-  // do resumo (heurístico, texto solto da página) só complementa o que a lista
-  // não tem (CPF/CNPJ, endereço, cidade, estado) e só se não parecer lixo.
-  // Chave genérica "cliente" foi removida daqui de propósito: ela casava
-  // qualquer bloco de texto que mencionasse a palavra (ex.: aviso de reserva).
+// O bloco "Cliente" do resumo NÃO usa "chave: valor" (por isso extractLabelValues
+// nunca achava CPF/CNPJ/endereço) — é uma pilha de linhas soltas, nesta ordem:
+//   Cliente
+//   Editar            (às vezes ausente, ex.: negociação já travada)
+//   <NOME>
+//   <CPF ou CNPJ>
+//   <ENDEREÇO — rua, número(, complemento)>
+//   <CIDADE-UF>
+//   <CEP>
+// Confirmado inspecionando o HTML bruto real (fetch, sem JS) do resumo — o DOM
+// já hidratado no navegador reestrutura esses nós, então o parse tem que ser
+// feito em cima do texto puro (innerText/textContent do documento parseado).
+function extractClientBlockFromText(bodyText) {
+  const lines = String(bodyText || '').split('\n').map(cleanText).filter(Boolean)
+  const candidates = []
+  lines.forEach((l, i) => { if (normalizeText(l) === 'cliente') candidates.push(i) })
+  if (!candidates.length) return null
+
+  // A página tem MAIS DE UMA linha que normaliza para "cliente" (ex.: um rótulo
+  // solto no menu lateral, sem relação com o cliente da negociação). A seção
+  // real do resumo tem "Cliente" seguido de "Editar" logo depois — usa isso
+  // pra desambiguar; sem esse par, cai pra ÚLTIMA ocorrência (menu/sidebar
+  // costuma vir ANTES do conteúdo principal no HTML).
+  let idx = candidates.find((c) => normalizeText(lines[c + 1] || '') === 'editar')
+  if (idx === undefined) idx = candidates[candidates.length - 1]
+
+  let i = idx + 1
+  if (normalizeText(lines[i] || '') === 'editar') i++
+  const nome = lines[i] || null
+  i++
+
+  const STOP = /^(aprovado em|itens da negocia|criado em|loja)/i
+  const CPF_RE = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/
+  const CNPJ_RE = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/
+  const CEP_RE = /^\d{5}-?\d{3}$/
+  const CITY_UF_RE = /^(.+)-([A-Za-z]{2})$/
+
+  let cpfCnpj = null, cep = null, cidade = null, estado = null
+  const enderecoParts = []
+  for (; i < lines.length && i < idx + 12; i++) {
+    const line = lines[i]
+    if (STOP.test(normalizeText(line))) break
+    if (CPF_RE.test(line) || CNPJ_RE.test(line)) { cpfCnpj = line; continue }
+    if (CEP_RE.test(line)) { cep = line; continue }
+    const cityMatch = !/\d/.test(line) ? line.match(CITY_UF_RE) : null
+    if (cityMatch) { cidade = cityMatch[1].trim(); estado = cityMatch[2].toUpperCase(); continue }
+    enderecoParts.push(line)
+  }
+
+  return { nome, cpfCnpj, cep, cidade, estado, endereco: enderecoParts.length ? enderecoParts.join(', ') : null }
+}
+
+function extractCustomerDetails(row, pairs, textBlock) {
+  // Prioridade: (1) API de LISTA do AutoConf (nome/email/telefone — sempre
+  // confiável e estruturada); (2) bloco "Cliente" extraído por POSIÇÃO/PADRÃO
+  // do texto puro do resumo (CPF/CNPJ, endereço, cidade, estado — a página não
+  // rotula esses campos com "chave: valor", só empilha as linhas); (3) scrape
+  // heurístico antigo (chave:valor) como último recurso, filtrando lixo.
+  // Chave genérica "cliente" foi removida do scrape heurístico de propósito:
+  // ela casava qualquer bloco de texto que mencionasse a palavra (ex.: aviso
+  // de reserva), daí o antigo bug do "nome" errado.
   const scrapedNome     = valueByKeys(pairs, ['nome do cliente', 'nome completo', 'comprador'])
   const scrapedCpf      = valueByKeys(pairs, ['cpf/cnpj', 'cpf', 'cnpj', 'documento'])
   const scrapedEmail    = valueByKeys(pairs, ['e-mail', 'email'])
@@ -412,14 +466,20 @@ function extractCustomerDetails(row, pairs) {
   const scrapedCidade   = valueByKeys(pairs, ['cidade'])
   const scrapedEstado   = valueByKeys(pairs, ['estado', 'uf'])
 
+  // Customer (AutoDrive) não tem coluna própria de CEP — dobra no endereço pra
+  // não perder o dado (schema sem migration).
+  const enderecoBase = textBlock?.endereco || (!isJunkValue(scrapedEndereco) ? scrapedEndereco : null)
+  const endereco = enderecoBase && textBlock?.cep ? `${enderecoBase} - CEP ${textBlock.cep}` : enderecoBase
+
   return {
-    nome:     row.cliente || (!isJunkValue(scrapedNome) ? scrapedNome : null),
-    cpfCnpj:  !isJunkValue(scrapedCpf) ? scrapedCpf : null,
+    nome:     row.cliente || textBlock?.nome || (!isJunkValue(scrapedNome) ? scrapedNome : null),
+    cpfCnpj:  textBlock?.cpfCnpj || (!isJunkValue(scrapedCpf) ? scrapedCpf : null),
     email:    row.clienteEmail || (!isJunkValue(scrapedEmail) ? scrapedEmail : null),
     telefone: row.clienteContato || (!isJunkValue(scrapedTelefone) ? scrapedTelefone : null),
-    endereco: !isJunkValue(scrapedEndereco) ? scrapedEndereco : null,
-    cidade:   !isJunkValue(scrapedCidade) ? scrapedCidade : null,
-    estado:   (!isJunkValue(scrapedEstado) && scrapedEstado && scrapedEstado.length <= 2) ? scrapedEstado.toUpperCase() : null,
+    endereco,
+    cidade:   textBlock?.cidade || (!isJunkValue(scrapedCidade) ? scrapedCidade : null),
+    estado:   textBlock?.estado || ((!isJunkValue(scrapedEstado) && scrapedEstado && scrapedEstado.length <= 2) ? scrapedEstado.toUpperCase() : null),
+    cep:      textBlock?.cep || null,
   }
 }
 
@@ -472,6 +532,8 @@ async function fetchDetalhesNegociacao(row) {
     const formFields = extractFormFields(doc)
     const labelValues = extractLabelValues(doc)
     const embeddedJson = extractEmbeddedJson(doc)
+    const bodyText = doc.body?.innerText || doc.body?.textContent || ''
+    const clientBlock = extractClientBlockFromText(bodyText)
     const dataNegociacao =
       valueByKeys(labelValues, ['data da negociacao', 'data da negociação', 'data venda', 'data da venda', 'finalizada em', 'aprovada em'])
       || row.aprovadoEm
@@ -486,7 +548,7 @@ async function fetchDetalhesNegociacao(row) {
       aprovadoEmIso: isoDate(valueByKeys(labelValues, ['aprovada em', 'data aprovacao', 'data aprovação']) || row.aprovadoEm),
       finalizadoEm: valueByKeys(labelValues, ['finalizada em', 'finalizado em', 'data finalizacao', 'data finalização']),
       finalizadoEmIso: isoDate(valueByKeys(labelValues, ['finalizada em', 'finalizado em', 'data finalizacao', 'data finalização'])),
-      clienteDetalhes: extractCustomerDetails(row, labelValues),
+      clienteDetalhes: extractCustomerDetails(row, labelValues, clientBlock),
       pagamentos: extractFinancialRows(tables, labelValues, 'payment'),
       debitos: extractFinancialRows(tables, labelValues, 'debt'),
       campos: labelValues,

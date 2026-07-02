@@ -1737,3 +1737,17 @@
   - Cadastro manual de negociação (`/api/negotiations` POST) **não precisou de mudança de código** — `ownSeller` já resolve por `userId` sem filtro de unidade; só faltava o registro de `Seller` (feito acima).
 - **Validações:** `tsc --noEmit` verde; `vitest run src/lib/integrations/autoconf.test.ts` verde (2 testes); teste manual local confirmou `resolveSellerId(Galpão, 'Marcelo B Rodrigues', tenantId)` → acha o Seller de Marcelo (cadastrado na Matriz) via busca cross-unit.
 - **Escopo:** só a resolução de vendedor (Seller) + cargos elegíveis a comissão. Não mexi em `bodySellerId` (atribuição de OUTRO vendedor por um gerente) nem em regras de comissão em si.
+
+### LOG 0129 — 2026-07-02 — Claude (Opus 4.8) — Extensão AutoConf v0.3.5: dados do cliente (CPF/CNPJ, endereço, cidade, estado, CEP) vinham `null`
+- **Branch:** `main`. Extensão local (não deploya na Vercel).
+- **Sintoma relatado:** "está vindo null alguns dados arrume" — `clienteDetalhes.cpfCnpj/endereco/cidade/estado` sempre `null` no JSON exportado/enviado. Também reportados vários "(NÃO ACHADO: ...)" de vendedor que pareciam regressão do fix anterior.
+- **Diagnóstico (feito inspecionando o HTML real do resumo do AutoConf, via sessão do usuário no Chrome, mascarando dados sensíveis na inspeção):**
+  - A seção "Cliente" do resumo **não usa "chave: valor"** — é uma pilha de linhas soltas: `Cliente` / `Editar` / NOME / CPF-ou-CNPJ / endereço / cidade-UF / CEP. O extrator antigo (`extractLabelValues`) só lia pares rotulados com `:` (dt/dd, tabela 2 colunas, texto com `:`) — nunca teria achado esses campos, mesmo a página TENDO os dados.
+  - A página tem **2 ocorrências** da palavra "Cliente" (uma solta no menu lateral, sem relação com o cliente da negociação) — achar a primeira ocorrência pegava a errada.
+  - Os "(NÃO ACHADO: ...)" de vendedor testados (Marcelo/Luciano/Thiago) **já resolviam certo** contra o endpoint em produção — era timing do deploy anterior (LOG 0128) no momento do teste do usuário, não regressão. Os casos "(NÃO ACHADO: —)" (vendedor vazio) são negociações **canceladas**, onde o próprio AutoConf mostra "---" no campo do vendedor — comportamento correto, não bug.
+- **Correção (`autoconf-extension/scanner.js`):**
+  - Novo `extractClientBlockFromText(bodyText)`: lê o texto puro do resumo, acha a seção certa do cliente (prioriza a ocorrência de "Cliente" seguida de "Editar"; fallback pra última ocorrência) e classifica as linhas seguintes por PADRÃO (regex de CPF/CNPJ/CEP/Cidade-UF), não por posição fixa — robusto a campos faltando.
+  - `extractCustomerDetails` agora prioriza: API de lista do AutoConf (nome/email/telefone) → bloco estrutural novo (CPF/CNPJ/endereço/cidade/estado/CEP) → scrape heurístico antigo (chave:valor, fallback).
+  - CEP dobrado dentro do campo `endereco` (o `Customer` do AutoDrive não tem coluna própria de CEP — evita migration).
+- **Validações:** `node --check scanner.js` verde; testado ao vivo contra 2 negociações reais (uma PJ/CNPJ, uma PF/CPF) via sessão do Chrome do usuário — todos os campos (nome, cpfCnpj, endereço, cidade, estado="SP", CEP) vieram corretos nas duas.
+- **Escopo:** só a extração de dados do cliente na extensão (local, sem deploy Vercel). Bump de versão 0.3.4 → 0.3.5.

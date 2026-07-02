@@ -1,4 +1,4 @@
-# AutoConf → AutoDrive — extensão de importação (v0.3.4)
+# AutoConf → AutoDrive — extensão de importação (v0.3.5)
 
 Lê negociações do **AutoConf** usando a sessão já logada no navegador e envia para o
 **AutoDrive** pelo endpoint `POST /api/integrations/autoconf/deals`.
@@ -277,6 +277,29 @@ Host permissions:
 - `https://auto-drive-mocha.vercel.app/*`
 
 ## Changelog
+
+### v0.3.5 — CPF/CNPJ, endereço, cidade, estado e CEP do cliente vinham `null`
+
+- **Causa:** a seção "Cliente" do resumo do AutoConf **não usa "chave: valor"**
+  — é uma pilha de linhas soltas (nome, CPF/CNPJ, endereço, cidade-UF, CEP,
+  cada um em uma linha, sem rótulo). O scraper antigo só sabia ler pares no
+  formato "chave: valor" (dt/dd, tabela de 2 colunas, texto com `:`), então
+  nunca encontrava esses campos.
+- **Correção:** novo extrator `extractClientBlockFromText()` que lê o **texto
+  puro** do resumo, localiza a seção do cliente pela posição real ("Cliente" /
+  "Editar") e classifica as linhas seguintes por **padrão** (CPF `000.000.000-00`,
+  CNPJ `00.000.000/0000-00`, CEP `00000-000`, "Cidade-UF"), robusto mesmo
+  quando algum campo falta. Testado com cliente pessoa física (CPF) e pessoa
+  jurídica (CNPJ) — todos os campos vieram corretos.
+  - A página tem **duas** ocorrências do rótulo "Cliente" (uma no menu lateral,
+    sem relação com o cliente da negociação); o extrator usa a que vem seguida
+    de "Editar" pra achar a seção certa, com fallback pra última ocorrência.
+  - CEP é dobrado dentro do campo `endereco` antes de enviar ao AutoDrive (o
+    `Customer` do AutoDrive não tem coluna própria de CEP).
+- **Sobre "(NÃO ACHADO: —)" no vendedor:** investigado e **não é bug** — são
+  negociações **canceladas**, onde o próprio AutoConf mostra literalmente
+  "**---**" no campo "Vendedor que realizou a negociação" (sem vendedor
+  atribuído). O extrator está reportando certo.
 
 ### v0.3.4 — correção de HTTP 413 e nome de cliente incorreto
 
