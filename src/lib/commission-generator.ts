@@ -4,10 +4,10 @@
 //
 // Estratégia:
 //   1. Carrega o Deal com vehicles + services + seller + manager.
-//   2. Compõe lista de itens (1 por par employee×tipo de comissionamento).
+//   2. Compõe lista de itens (1 por par employee×escopo de comissionamento).
 //   3. Para cada item, resolve a regra via `findCommissionRule` (matcher central)
 //      e calcula o valor com `computeCommissionValue`.
-//   4. Idempotência: pula o que já existe (mesmo dealId/ruleType/employee/refId
+//   4. Idempotência: pula o que já existe (mesmo dealId/escopo/employee/refId
 //      gravado em ruleDetails) — não duplica em chamadas repetidas.
 //   5. Em $transaction, insere uma CommissionCalculation (status PREVISTO) por
 //      item que casou regra. Itens sem regra são reportados como `matched: null`.
@@ -25,7 +25,6 @@ import {
 } from '@/lib/commission-matcher'
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
-import { DEFAULT_COMMISSION_BEHAVIOR, getCommissionBehaviorSettings } from '@/lib/commission/settings'
 import {
   COMMISSION_ELIGIBLE_DEAL_STATUSES,
   commissionReferenceDate,
@@ -43,6 +42,16 @@ export interface GenerateOptions {
   dryRun?:     boolean               // when true, return what WOULD be created without writing
 }
 
+export type CommissionScope =
+  | 'SELLER_MAIN_COMMISSION'
+  | 'UNIT_MANAGER_COMMISSION'
+  | 'GENERAL_MANAGER_COMMISSION'
+  | 'WARRANTY_COMMISSION'
+  | 'RETURN_COMMISSION'
+  | 'SERVICE_COMMISSION'
+  | 'DOCUMENT_COMMISSION'
+  | 'BONUS_COMMISSION'
+
 export interface GenerationItemRef {
   contractId?: string | null
   dealId?:     string | null
@@ -52,10 +61,13 @@ export interface GenerationItemRef {
   bank?:       string | null
   bonusPeriod?: string | null
   bonusRuleId?: string | null
+  originalOperationType?: string | null
+  commissionOperationType?: string | null
 }
 
 export interface GenerationItem {
   ruleType:      string
+  commissionScope: CommissionScope
   employeeKind:  EmployeeKind
   employeeId:    string
   employeeUserId?: string | null
@@ -112,13 +124,27 @@ function periodOf(date: Date): string {
   return `${y}-${m}`
 }
 
+export function normalizeCommissionOperationType(dealType: string | null | undefined): CommissionRuleType {
+  const type = String(dealType ?? '').toUpperCase()
+  if (type === 'COMPRA') return 'COMPRA'
+  return 'VENDA'
+}
+
+function isPrincipalScope(scope: CommissionScope): boolean {
+  return scope === 'SELLER_MAIN_COMMISSION' ||
+    scope === 'UNIT_MANAGER_COMMISSION' ||
+    scope === 'GENERAL_MANAGER_COMMISSION'
+}
+
 // Compara o identificador de referência relevante para idempotência
-function refKey(ruleType: string, ref: GenerationItemRef): string {
-  if (ref.bonusPeriod && ref.bonusRuleId) return `bonus:${ref.bonusRuleId}:${ref.bonusPeriod}`
-  if (ref.serviceId)  return `service:${ref.serviceId}`
-  if (ref.warrantyId) return `warranty:${ref.warrantyId}`
-  if (ref.vehicleId)  return `vehicle:${ref.vehicleId}`
-  return `deal:${ruleType}`
+function refKey(it: Pick<GenerationItem, 'ruleType' | 'commissionScope' | 'reference'>): string {
+  const ref = it.reference
+  if (ref.bonusPeriod && ref.bonusRuleId) return `bonus:${it.commissionScope}:${ref.bonusRuleId}:${ref.bonusPeriod}`
+  if (ref.serviceId)  return `service:${it.commissionScope}:${ref.serviceId}`
+  if (ref.warrantyId) return `warranty:${it.commissionScope}:${ref.warrantyId}`
+  if (isPrincipalScope(it.commissionScope)) return `deal:${it.commissionScope}`
+  if (ref.vehicleId)  return `vehicle:${it.commissionScope}:${ref.vehicleId}`
+  return `deal:${it.commissionScope}:${it.ruleType}`
 }
 
 // ── Função principal ─────────────────────────────────────────────────────────
@@ -254,6 +280,33 @@ export async function generateCommissionsForDeal(
     }
   }
 
+  let generalManagerEarners: LocalEarner[] = []
+  if (tenantId) {
+    const generalManagers = await prisma.user.findMany({
+      where: {
+        tenantId,
+        role:   'GERENTE_GERAL',
+        status: 'ATIVO',
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        positionId: true,
+        role: true,
+      },
+    }).catch(() => [])
+
+    generalManagerEarners = generalManagers.map((u) => ({
+      kind:       'USER',
+      id:         u.id,
+      userId:     u.id,
+      positionId: u.positionId,
+      role:       u.role,
+      label:      u.name,
+    }))
+  }
+
   // ── Chave de comissão da UNIDADE (cadastro da unidade) ─────────────────────
   // Unidade com comissão DESLIGADA (ex.: galpão) → ninguém recebe. Ligada com
   // cargos definidos → só os cargos elegíveis recebem. Sem config = compat (paga).
@@ -264,51 +317,69 @@ export async function generateCommissionsForDeal(
     }
     if (sellerEarner && !isRoleCommissionEligible(cfg, sellerEarner.role ?? '')) sellerEarner = null
     if (managerEarner && !isRoleCommissionEligible(cfg, managerEarner.role ?? '')) managerEarner = null
+    generalManagerEarners = generalManagerEarners.filter((g) => isRoleCommissionEligible(cfg, g.role ?? ''))
   }
 
-  const behavior = tenantId
-    ? await getCommissionBehaviorSettings(tenantId)
-    : DEFAULT_COMMISSION_BEHAVIOR
-
-  const sameSellerAndManager =
-    sellerEarner?.userId &&
-    managerEarner?.userId &&
-    sellerEarner.userId === managerEarner.userId
-
-  if (sameSellerAndManager && !behavior.managerReceivesOnOwnSale) {
-    managerEarner = null
+  function principalVehicleFor(ruleType: CommissionRuleType): typeof d.vehicles[number] | null {
+    if (ruleType === 'COMPRA') {
+      return d.vehicles.find((dv) => dv.role === 'COMPRADO') ?? d.vehicles[0] ?? null
+    }
+    return d.vehicles.find((dv) => dv.role === 'VENDIDO')
+      ?? d.vehicles.find((dv) => dv.role === 'CONSIGNADO')
+      ?? d.vehicles.find((dv) => dv.role === 'TROCA')
+      ?? d.vehicles[0]
+      ?? null
   }
 
-  function addForVehicle(dv: typeof d.vehicles[number]) {
-    const ruleType: CommissionRuleType = dv.role === 'TROCA' ? 'TROCA' : (dv.role === 'COMPRADO' ? 'COMPRA' : 'VENDA')
-    const baseValue = toNum(dv.agreedValue) || toNum(d.saleAmount)
+  function principalBaseValue(ruleType: CommissionRuleType, vehicle: typeof d.vehicles[number] | null): number {
+    if (ruleType === 'COMPRA') return toNum(d.purchaseAmount) || toNum(vehicle?.agreedValue)
+    return toNum(d.saleAmount) || toNum(d.vehicleValue) || toNum(vehicle?.agreedValue)
+  }
+
+  function addPrincipalFor(
+    earner: LocalEarner,
+    commissionScope: CommissionScope,
+    label: string,
+    ruleType: CommissionRuleType,
+    vehicle: typeof d.vehicles[number] | null,
+    baseValue: number,
+  ) {
+    const vehicleLabel = vehicle
+      ? ` veículo ${vehicle.brand ?? ''} ${vehicle.model ?? ''} ${vehicle.plate ? `(${vehicle.plate})` : ''}`.trimEnd()
+      : ''
+    const baseDesc = `${ruleType}${vehicleLabel}`.trim()
+    items.push({
+      ruleType,
+      commissionScope,
+      employeeKind:  earner.kind,
+      employeeId:    earner.id,
+      employeeUserId: earner.userId,
+      employeeLabel: earner.label,
+      baseValue,
+      description:   `${baseDesc} — ${label} ${earner.label}`,
+      reference: {
+        dealId: d.id,
+        vehicleId: vehicle?.id ?? null,
+        originalOperationType: d.type,
+        commissionOperationType: ruleType,
+      },
+    })
+  }
+
+  function addPrincipalCommissions() {
+    const ruleType = normalizeCommissionOperationType(d.type)
+    const vehicle = principalVehicleFor(ruleType)
+    const baseValue = principalBaseValue(ruleType, vehicle)
     if (baseValue <= 0) return
-    if (!sellerEarner && !managerEarner) return
-    const baseDesc = `${ruleType} veículo ${dv.brand ?? ''} ${dv.model ?? ''} ${dv.plate ? `(${dv.plate})` : ''}`.trim()
 
     if (sellerEarner) {
-      items.push({
-        ruleType,
-        employeeKind:  sellerEarner.kind,
-        employeeId:    sellerEarner.id,
-        employeeUserId: sellerEarner.userId,
-        employeeLabel: sellerEarner.label,
-        baseValue,
-        description:   `${baseDesc} — vendedor ${sellerEarner.label}`,
-        reference:     { dealId: d.id, vehicleId: dv.id },
-      })
+      addPrincipalFor(sellerEarner, 'SELLER_MAIN_COMMISSION', 'vendedor', ruleType, vehicle, baseValue)
     }
     if (managerEarner) {
-      items.push({
-        ruleType,
-        employeeKind:  managerEarner.kind,
-        employeeId:    managerEarner.id,
-        employeeUserId: managerEarner.userId,
-        employeeLabel: managerEarner.label,
-        baseValue,
-        description:   `${baseDesc} — gerente ${managerEarner.label}`,
-        reference:     { dealId: d.id, vehicleId: dv.id },
-      })
+      addPrincipalFor(managerEarner, 'UNIT_MANAGER_COMMISSION', 'gerente', ruleType, vehicle, baseValue)
+    }
+    for (const generalManager of generalManagerEarners) {
+      addPrincipalFor(generalManager, 'GENERAL_MANAGER_COMMISSION', 'gerente geral', ruleType, vehicle, baseValue)
     }
   }
 
@@ -324,6 +395,7 @@ export async function generateCommissionsForDeal(
     if (sellerEarner) {
       items.push({
         ruleType,
+        commissionScope: 'SERVICE_COMMISSION',
         employeeKind:  sellerEarner.kind,
         employeeId:    sellerEarner.id,
         employeeUserId: sellerEarner.userId,
@@ -336,6 +408,7 @@ export async function generateCommissionsForDeal(
     if (managerEarner) {
       items.push({
         ruleType,
+        commissionScope: 'SERVICE_COMMISSION',
         employeeKind:  managerEarner.kind,
         employeeId:    managerEarner.id,
         employeeUserId: managerEarner.userId,
@@ -347,12 +420,9 @@ export async function generateCommissionsForDeal(
     }
   }
 
-  // Veículos vendidos / trocados / comprados
-  for (const dv of d.vehicles) {
-    if (dv.role === 'VENDIDO' || dv.role === 'TROCA' || dv.role === 'COMPRADO') {
-      addForVehicle(dv)
-    }
-  }
+  // Comissão principal: uma por negociação e por escopo. TROCA vira VENDA para
+  // comissão principal; o tipo original segue em ruleDetails para relatório.
+  addPrincipalCommissions()
 
   // Serviços (incluindo "garantia" detectada pelo nome)
   for (const ds of d.services) {
@@ -377,6 +447,7 @@ export async function generateCommissionsForDeal(
     for (const u of eligible) {
       items.push({
         ruleType:      'DOCUMENTO',
+        commissionScope: 'DOCUMENT_COMMISSION',
         employeeKind:  'USER',
         employeeId:    u.id,
         employeeUserId: u.id,
@@ -396,6 +467,7 @@ export async function generateCommissionsForDeal(
     if (sellerEarner) {
       items.push({
         ruleType:      'RETORNO',
+        commissionScope: 'RETURN_COMMISSION',
         employeeKind:  sellerEarner.kind,
         employeeId:    sellerEarner.id,
         employeeUserId: sellerEarner.userId,
@@ -408,6 +480,7 @@ export async function generateCommissionsForDeal(
     if (managerEarner) {
       items.push({
         ruleType:      'RETORNO',
+        commissionScope: 'RETURN_COMMISSION',
         employeeKind:  managerEarner.kind,
         employeeId:    managerEarner.id,
         employeeUserId: managerEarner.userId,
@@ -489,24 +562,41 @@ export async function generateCommissionsForDeal(
   const existing = [...existingDeal, ...existingBonus]
 
   function isDuplicate(it: GenerationItem): boolean {
-    const k = refKey(it.ruleType, it.reference)
+    const k = refKey(it)
     const itemEmployeeUserId = it.employeeUserId ?? (it.employeeKind === 'USER' ? it.employeeId : null)
     return existing.some((e) => {
-      if (e.ruleType !== it.ruleType) return false
-      const existingEmployeeUserId = (e.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId
+      const rd = e.ruleDetails as (GenerationItemRef & { employeeUserId?: string; employeeKind?: EmployeeKind; commissionScope?: CommissionScope }) | null
+      const existingScope = rd?.commissionScope ?? null
+      if (!isPrincipalScope(it.commissionScope) && e.ruleType !== it.ruleType) return false
+      if (isPrincipalScope(it.commissionScope) && !['VENDA', 'TROCA', 'COMPRA'].includes(e.ruleType)) return false
+
+      const existingEmployeeUserId = rd?.employeeUserId
+      const existingEmployeeKind = rd?.employeeKind
       // Por employee
       const empMatches =
-        (it.employeeKind === 'SELLER' && e.sellerId === it.employeeId) ||
+        (it.employeeKind === 'SELLER' && (
+          e.sellerId === it.employeeId ||
+          (existingEmployeeKind === 'SELLER' && !!itemEmployeeUserId && existingEmployeeUserId === itemEmployeeUserId)
+        )) ||
         (it.employeeKind === 'MANAGER' && (
           e.managerId === it.employeeId ||
-          (!!itemEmployeeUserId && existingEmployeeUserId === itemEmployeeUserId)
+          (existingEmployeeKind === 'MANAGER' && !!itemEmployeeUserId && existingEmployeeUserId === itemEmployeeUserId)
         )) ||
         (it.employeeKind === 'USER' && (
-          existingEmployeeUserId === it.employeeId
+          existingEmployeeKind === 'USER' && existingEmployeeUserId === it.employeeId
         ))
       if (!empMatches) return false
-      const rd = e.ruleDetails as GenerationItemRef | null
-      const existingKey = refKey(it.ruleType, rd ?? {})
+
+      if (isPrincipalScope(it.commissionScope)) {
+        if (existingScope) return existingScope === it.commissionScope
+        return it.commissionScope !== 'GENERAL_MANAGER_COMMISSION'
+      }
+
+      const existingKey = refKey({
+        ruleType: e.ruleType,
+        commissionScope: existingScope ?? it.commissionScope,
+        reference: rd ?? {},
+      })
       return existingKey === k
     })
   }
@@ -553,6 +643,9 @@ export async function generateCommissionsForDeal(
           bank:          item.reference.bank       ?? null,
           bonusPeriod:   item.reference.bonusPeriod ?? null,
           bonusRuleId:   item.reference.bonusRuleId ?? null,
+          commissionScope: item.commissionScope,
+          originalOperationType: item.reference.originalOperationType ?? null,
+          commissionOperationType: item.reference.commissionOperationType ?? item.ruleType,
           employeeKind:  item.employeeKind,
           employeeId:    item.employeeId,
           employeeLabel: item.employeeLabel,
@@ -649,6 +742,7 @@ export async function generateCommissionsForDeal(
                 commissionStatus: comm.status,
                 baseCommission:   comm.baseCommissionValue,
                 premiumCommission: comm.premiumCommissionValue,
+                commissionScope:  'WARRANTY_COMMISSION',
                 employeeKind:     'SELLER',
                 employeeId:       sellerEarner.id,
                 employeeUserId:   sellerEarner.userId,
@@ -780,6 +874,7 @@ async function resolveQuantityBonuses(
   const representatives = new Map<string, GenerationItem>()
 
   for (const it of items) {
+    if (it.commissionScope === 'GENERAL_MANAGER_COMMISSION') continue
     if (!vehicleRolesForRuleType(it.ruleType).length || !it.reference.vehicleId) continue
     const key = `${it.ruleType}:${it.employeeKind}:${it.employeeId}`
     if (!representatives.has(key)) representatives.set(key, it)
@@ -813,6 +908,7 @@ async function resolveQuantityBonuses(
     out.push({
       item: {
         ruleType:      it.ruleType,
+        commissionScope: 'BONUS_COMMISSION',
         employeeKind:  it.employeeKind,
         employeeId:    it.employeeId,
         employeeUserId: it.employeeUserId ?? null,

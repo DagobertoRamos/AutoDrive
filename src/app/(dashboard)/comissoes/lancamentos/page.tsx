@@ -13,6 +13,9 @@ import { cn } from '@/lib/utils'
 interface Row {
   id: string
   ruleType: string
+  commissionScopeLabel?: string | null
+  originalOperationType?: string | null
+  dealId?: string | null
   description: string
   baseValue: number
   commissionValue: number
@@ -116,7 +119,7 @@ export default function LancamentosComissaoPage() {
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                {['Responsável', 'Tipo', 'Descrição', 'Base', 'Comissão', 'Status', 'Período'].map((h) => (
+                {['Responsável', 'Tipo', 'Escopo', 'Descrição', 'Base', 'Comissão', 'Status', 'Período'].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                 ))}
               </tr>
@@ -124,13 +127,13 @@ export default function LancamentosComissaoPage() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i}>{Array.from({ length: 7 }).map((_, j) => (
+                  <tr key={i}>{Array.from({ length: 8 }).map((_, j) => (
                     <td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>
                   ))}</tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-14 text-center">
+                  <td colSpan={8} className="py-14 text-center">
                     <DollarSign size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} />
                     <p className="text-sm text-gray-400">Nenhuma comissão lançada no filtro atual.</p>
                   </td>
@@ -141,6 +144,9 @@ export default function LancamentosComissaoPage() {
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800">{r.responsavel}</td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{TYPE_LABEL[r.ruleType] ?? r.ruleType}</span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{r.commissionScopeLabel ?? 'Principal'}</span>
                     </td>
                     <td className="max-w-xs truncate px-4 py-3 text-gray-600" title={r.description}>{r.description}</td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-gray-600">{fmt(r.baseValue)}</td>

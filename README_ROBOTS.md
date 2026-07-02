@@ -1823,3 +1823,48 @@
   - Deploy exige aplicar a migration em produção para a coluna `Warranty.durationYears` existir antes/ao subir a versão.
   - Configurações de ILA/IOF começam vazias por tenant; o cálculo de retorno vai bloquear competência sem ILA/IOF configurado até o usuário cadastrar.
   - Como `WarrantySale.saleType` ainda é enum legado (`FULL`/`REDUCED`), vendas abaixo do desconto são gravadas como `REDUCED` com comissão zero e `commissionStatus` no cálculo/auditoria; uma normalização futura poderia adicionar status próprio no schema.
+
+### LOG 0134 — 2026-07-02 10:51:46 -03:00 — Codex (GPT-5) — Comissão: troca não duplica venda + escopos de vendedor/gerência
+- **Branch:** `main`. Sem migration.
+- **Tarefa executada:** corrigir o motor de comissões para que negociação do tipo `TROCA`/venda com veículo de entrada gere somente uma comissão principal de venda por negociação, sem comissão extra de troca para o mesmo `Deal`.
+- **Causa encontrada:**
+  - `commission-generator.ts` percorria todos os `DealVehicle` com roles `VENDIDO`, `TROCA` e `COMPRADO`.
+  - Em uma negociação `TROCA`, a importação AutoConf cria um veículo `VENDIDO` e um veículo de entrada `TROCA`; o motor transformava isso em dois itens comissionáveis (`VENDA` + `TROCA`) para o mesmo vendedor/gerente.
+  - A idempotência antiga usava `ruleType + vehicleId`, então `VENDA` e `TROCA` passavam como referências diferentes dentro do mesmo `dealId`.
+- **Regra de comissão corrigida:**
+  - Comissão principal agora é por escopo e por negociação:
+    - `SELLER_MAIN_COMMISSION` para o vendedor real.
+    - `UNIT_MANAGER_COMMISSION` para o gerente da unidade.
+    - `GENERAL_MANAGER_COMMISSION` para gerente geral do tenant.
+  - `normalizeCommissionOperationType()` mantém `COMPRA` como compra separada, mas normaliza `TROCA`, `VENDA` e `CONSIGNACAO` para comissão principal `VENDA`.
+  - O tipo original da negociação continua salvo em `ruleDetails.originalOperationType`; o tipo usado para cálculo fica em `ruleDetails.commissionOperationType`.
+  - O veículo de entrada `TROCA` continua no cadastro/relatório da negociação, mas não gera comissão principal separada.
+  - Gerente que também é vendedor pode receber comissão de vendedor e comissão gerencial porque são escopos diferentes; gerente não vira vendedor em venda de outro colaborador.
+  - Gerente geral entra como recebedor próprio (`USER`/papel `GERENTE_GERAL`) e não como vendedor.
+- **Arquivos alterados/criados:**
+  - `src/lib/commission-generator.ts`
+  - `src/lib/commission-generator.test.ts`
+  - `src/app/api/commissions/calculations/route.ts`
+  - `src/app/api/reports/commissions/route.ts`
+  - `src/app/(dashboard)/comissoes/lancamentos/page.tsx`
+  - `README_ROBOTS.md`
+- **Tela/listagem:**
+  - `/comissoes/lancamentos` ganhou coluna `Escopo`, exibindo Vendedor, Gerente da unidade, Gerente geral, Retorno, Garantia, Serviço, Documento ou Bônus conforme `ruleDetails.commissionScope`.
+  - A API de relatórios de comissões também retorna `commissionScope`, `commissionScopeLabel`, `dealId` e `originalOperationType` quando disponíveis.
+- **Testes realizados:**
+  - `npx vitest run src/lib/commission-generator.test.ts` — verde, 3 testes.
+  - `npx vitest run src/lib/commission-generator.test.ts src/lib/commission/status.test.ts src/lib/commission/rule-validation.test.ts src/lib/ranking/ranking.test.ts` — verde, 4 arquivos e 16 testes.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - ESLint direcionado nos arquivos alterados — verde.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+- **Build:**
+  - `npm run build` ficou bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`.
+  - Build direto do Next também ficou bloqueado por `EPERM open .next/trace`.
+  - A tentativa de remover apenas `.next/trace` foi bloqueada pela política do ambiente, então não houve limpeza de artefato local.
+- **Riscos observados:**
+  - Comissões antigas duplicadas não foram apagadas, conforme regra de não remover sem auditoria. O novo motor impede novas duplicidades; duplicatas históricas devem ser listadas e canceladas/estornadas com confirmação.
+  - Não foi criada constraint única no banco porque o modelo atual guarda `dealId`/escopo em JSON (`ruleDetails`), sem colunas físicas para uma unique segura. A proteção ficou no motor/idempotência.
+  - Regras antigas do tipo `TROCA` deixam de casar para a comissão principal de venda com troca. A regra correta passa a ser `VENDA` para a comissão principal; `TROCA` só deve ser usada se existir fluxo separado real.
+- **Pendências futuras:**
+  - Criar relatório/script seguro para listar duplicidades históricas por `tenantId + dealId + employeeUserId + commissionScope/legado + period`, sem hard delete.
+  - Se o negócio quiser manter comissão de compra/troca separada, criar fluxo explícito de compra avulsa separado da negociação de venda com troca.

@@ -24,6 +24,23 @@ const num = (v: unknown): number => {
   return Number(v) || 0
 }
 
+function detailsOf(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function scopeLabel(scope: string | null, ruleType: string): string {
+  if (scope === 'SELLER_MAIN_COMMISSION') return 'Vendedor'
+  if (scope === 'UNIT_MANAGER_COMMISSION') return 'Gerente da unidade'
+  if (scope === 'GENERAL_MANAGER_COMMISSION') return 'Gerente geral'
+  if (scope === 'WARRANTY_COMMISSION') return 'Garantia'
+  if (scope === 'RETURN_COMMISSION') return 'Retorno'
+  if (scope === 'SERVICE_COMMISSION') return 'Serviço'
+  if (scope === 'DOCUMENT_COMMISSION') return 'Documento'
+  if (scope === 'BONUS_COMMISSION') return 'Bônus'
+  if (ruleType === 'VENDA' || ruleType === 'TROCA' || ruleType === 'COMPRA') return 'Principal'
+  return ruleType
+}
+
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
@@ -77,7 +94,7 @@ export async function GET(req: Request) {
     const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter(Boolean))] as string[]
     const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[]
     const employeeUserIds = [...new Set(rows
-      .map((r) => (r.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId)
+      .map((r) => detailsOf(r.ruleDetails).employeeUserId)
       .filter(Boolean))] as string[]
     const userIds = [...new Set([...managerIds, ...employeeUserIds])]
     const [sellers, managers, users] = await Promise.all([
@@ -89,21 +106,29 @@ export async function GET(req: Request) {
     const managerMap = Object.fromEntries(managers.map((m) => [m.id, m.fullName || m.user?.name || 'Gerente']))
     const userMap = Object.fromEntries(users.map((m) => [m.id, m.name]))
 
-    const data = rows.map((r) => ({
-      id: r.id,
-      ruleType: r.ruleType,
-      description: r.description,
-      baseValue: num(r.baseValue),
-      commissionValue: num(r.commissionValue),
-      status: r.status,
-      period: r.period,
-      createdAt: r.createdAt,
-      responsavel: r.sellerId
+    const data = rows.map((r) => {
+      const details = detailsOf(r.ruleDetails)
+      const commissionScope = typeof details.commissionScope === 'string' ? details.commissionScope : null
+      return {
+        id: r.id,
+        ruleType: r.ruleType,
+        commissionScope,
+        commissionScopeLabel: scopeLabel(commissionScope, r.ruleType),
+        originalOperationType: typeof details.originalOperationType === 'string' ? details.originalOperationType : null,
+        dealId: typeof details.dealId === 'string' ? details.dealId : null,
+        description: r.description,
+        baseValue: num(r.baseValue),
+        commissionValue: num(r.commissionValue),
+        status: r.status,
+        period: r.period,
+        createdAt: r.createdAt,
+        responsavel: r.sellerId
         ? (sellerMap[r.sellerId] ?? '—')
         : r.managerId
           ? (managerMap[r.managerId] ?? userMap[r.managerId] ?? '—')
-          : userMap[(r.ruleDetails as { employeeUserId?: string } | null)?.employeeUserId ?? ''] ?? '—',
-    }))
+          : userMap[String(details.employeeUserId ?? '')] ?? '—',
+      }
+    })
 
     const totalsByType = byType.map((g) => ({
       ruleType: g.ruleType,
