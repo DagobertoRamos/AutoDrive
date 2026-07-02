@@ -39,7 +39,8 @@ function parseMoney(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   const raw = String(value ?? '').trim()
   if (!raw) return null
-  const m = raw.match(/(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*,\d{2}|(?:R\$\s*)?-?\d+(?:[.,]\d{2})?/)
+  const m = raw.match(/R\$\s*-?\d{1,3}(?:\.\d{3})+(?:,\d{2})?|R\$\s*-?\d+(?:,\d{2})?|-?\d{1,3}(?:\.\d{3})+(?:,\d{2})?|-?\d+,\d{2}/)
+    ?? (raw.match(/^-?\d{4,}$/) ? [raw] : null)
   if (!m) return null
   const n = Number(m[0].replace(/R\$/i, '').trim().replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(n) ? n : null

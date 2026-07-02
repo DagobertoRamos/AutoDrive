@@ -277,7 +277,8 @@ export async function POST(req: Request) {
       const customerId = dryRun ? null : await resolveCustomerId(tenantId, row)
 
       const dealData = {
-        tenantId, unitId, sellerId, managerId, customerId,
+        tenantId, unitId, sellerId, managerId,
+        ...(customerId ? { customerId } : {}),
         type: type as never, status: status as never,
         saleAmount: typeof row.saleAmount === 'number' ? row.saleAmount : null,
         purchaseAmount: typeof row.purchaseAmount === 'number' ? row.purchaseAmount : null,
