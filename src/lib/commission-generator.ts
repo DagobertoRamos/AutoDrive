@@ -26,6 +26,7 @@ import {
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
 import { recalculateSellerMainForPeriod } from '@/lib/commission/retroactive'
+import { getDecendPeriod } from '@/lib/commission/decendial'
 import {
   COMMISSION_ELIGIBLE_DEAL_STATUSES,
   commissionReferenceDate,
@@ -539,7 +540,8 @@ export async function generateCommissionsForDeal(
   }))
 
   const bonusResolved = await resolveQuantityBonuses(items, tenantId, unitId, d.id, period, date)
-  const allResolved = [...resolved, ...bonusResolved]
+  const decendResolved = await resolveDecendialBonuses(items, tenantId, unitId, d.id, date)
+  const allResolved = [...resolved, ...bonusResolved, ...decendResolved]
 
   // 4. Idempotência: ler CommissionCalculation existentes deste deal
   // (ruleDetails contém { dealId, vehicleId, serviceId, warrantyId })
@@ -551,11 +553,17 @@ export async function generateCommissionsForDeal(
     select: { id: true, ruleType: true, sellerId: true, managerId: true, ruleDetails: true },
   }).catch(() => [] as Array<{ id: string; ruleType: string; sellerId: string | null; managerId: string | null; ruleDetails: unknown }>)
 
+  // Bônus já existentes no período: mensal (bonusPeriod == "yyyy-MM") e dezenal
+  // (bonusPeriod == "yyyy-MM-Dn"). Ambos vivem no mesmo mês (period == yyyy-MM).
+  const decendKey = getDecendPeriod(date).key
   const existingBonus = await prisma.commissionCalculation.findMany({
     where: {
       tenantId,
       period,
-      ruleDetails: { path: ['bonusPeriod'], equals: period } as never,
+      OR: [
+        { ruleDetails: { path: ['bonusPeriod'], equals: period } as never },
+        { ruleDetails: { path: ['bonusPeriod'], equals: decendKey } as never },
+      ],
     },
     select: { id: true, ruleType: true, sellerId: true, managerId: true, ruleDetails: true },
   }).catch(() => [] as Array<{ id: string; ruleType: string; sellerId: string | null; managerId: string | null; ruleDetails: unknown }>)
@@ -834,13 +842,24 @@ async function resolvePeriodQuantity(
   tenantId: string | null,
   date: Date,
 ): Promise<number | null> {
+  return countEmployeeVehiclesInWindow(it, tenantId, periodBounds(date))
+}
+
+// Conta os veículos do employee (mesmo tipo de operação) dentro de uma janela
+// de datas arbitrária [start, end). Usado tanto para a faixa/bônus MENSAL quanto
+// para o bônus DEZENAL (janela de ~10 dias).
+async function countEmployeeVehiclesInWindow(
+  it: GenerationItem,
+  tenantId: string | null,
+  window: { start: Date; end: Date },
+): Promise<number | null> {
   const roles = vehicleRolesForRuleType(it.ruleType)
   if (!roles.length || !it.reference.vehicleId) return null
 
   const employeeFilter = await dealEmployeeQuantityFilter(it)
   if (!employeeFilter) return null
 
-  const { start, end } = periodBounds(date)
+  const { start, end } = window
   const dealAnd: Array<Record<string, unknown>> = [
     { status: { in: COMMISSION_ELIGIBLE_DEAL_STATUSES } },
     {
@@ -926,6 +945,78 @@ async function resolveQuantityBonuses(
         description:   `BÔNUS ${it.ruleType} — ${quantityInPeriod} no período — ${it.employeeLabel}`,
         reference:     { dealId, bonusPeriod: period, bonusRuleId: matched.rule.id },
         periodQuantity: quantityInPeriod,
+      },
+      matched: {
+        rule:            matched.rule,
+        matchedBy:       matched.matchedBy,
+        commissionValue,
+        rateApplied:     null,
+      },
+    })
+  }
+
+  return out
+}
+
+// ── Bônus DEZENAL (Parte 4) ───────────────────────────────────────────────────
+// Conta as vendas do employee dentro da DEZENA (janela de ~10 dias) da data de
+// referência e aplica uma regra `BONUS_DEZENA` (faixas por quantidade). Soma com
+// o bônus mensal — cada um é um lançamento BONUS_COMMISSION independente, com
+// bonusPeriod distinto (mensal = "yyyy-MM"; dezenal = "yyyy-MM-D1|D2|D3").
+async function resolveDecendialBonuses(
+  items: GenerationItem[],
+  tenantId: string | null,
+  unitId: string | null,
+  dealId: string,
+  date: Date,
+): Promise<ResolvedGenerationItem[]> {
+  const decend = getDecendPeriod(date)
+
+  const representatives = new Map<string, GenerationItem>()
+  for (const it of items) {
+    if (it.commissionScope === 'GENERAL_MANAGER_COMMISSION') continue
+    if (!vehicleRolesForRuleType(it.ruleType).length || !it.reference.vehicleId) continue
+    const key = `${it.ruleType}:${it.employeeKind}:${it.employeeId}`
+    if (!representatives.has(key)) representatives.set(key, it)
+  }
+
+  const out: ResolvedGenerationItem[] = []
+  for (const it of representatives.values()) {
+    const quantityInDecend = await countEmployeeVehiclesInWindow(it, tenantId, { start: decend.start, end: decend.end })
+    if (!quantityInDecend) continue
+
+    const matched = await findCommissionRule({
+      tenantId,
+      ruleType: 'BONUS_DEZENA',
+      commissionKind: 'ALL',
+      employee: {
+        kind:       it.employeeKind,
+        id:         it.employeeId,
+        positionId: await resolvePositionId(it),
+        role:       await resolveRole(it),
+      },
+      unitId,
+      baseValue: 0,
+      quantityInPeriod: quantityInDecend,
+      date,
+    })
+    if (!matched) continue
+
+    const commissionValue = computeCommissionValue(matched.rule, 0)
+    if (commissionValue <= 0) continue
+
+    out.push({
+      item: {
+        ruleType:      'BONUS_DEZENA',
+        commissionScope: 'BONUS_COMMISSION',
+        employeeKind:  it.employeeKind,
+        employeeId:    it.employeeId,
+        employeeUserId: it.employeeUserId ?? null,
+        employeeLabel: it.employeeLabel,
+        baseValue:     0,
+        description:   `BÔNUS DEZENAL (${decend.label}) — ${quantityInDecend} no período — ${it.employeeLabel}`,
+        reference:     { dealId, bonusPeriod: decend.key, bonusRuleId: matched.rule.id },
+        periodQuantity: quantityInDecend,
       },
       matched: {
         rule:            matched.rule,
