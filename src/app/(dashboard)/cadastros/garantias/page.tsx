@@ -20,6 +20,7 @@ interface Warranty {
   name:                        string
   provider:                    string | null
   coverageType:                string | null
+  durationYears:               1 | 2
   fullPrice:                   number | string
   reducedPrice:                number | string
   hasPremiumAddon:             boolean
@@ -36,6 +37,7 @@ interface WarrantyForm {
   name:                        string
   provider:                    string
   coverageType:                string
+  durationYears:               1 | 2
   fullPrice:                   number
   reducedPrice:                number
   hasPremiumAddon:             boolean
@@ -52,6 +54,7 @@ const num = (v: unknown): number => (v == null ? 0 : Number(v) || 0)
 
 const emptyForm: WarrantyForm = {
   name: '', provider: '', coverageType: '',
+  durationYears: 1,
   fullPrice: 0, reducedPrice: 0,
   hasPremiumAddon: false, premiumAddonName: '', premiumAddonValue: 0,
   reducedSaleCommissionValue: 0, fullSaleCommissionValue: 0, premiumAddonCommissionValue: 0,
@@ -118,6 +121,7 @@ function Modal({
     if (initial) {
       setForm({
         name: initial.name, provider: initial.provider ?? '', coverageType: initial.coverageType ?? '',
+        durationYears: initial.durationYears === 2 ? 2 : 1,
         fullPrice: num(initial.fullPrice), reducedPrice: num(initial.reducedPrice),
         hasPremiumAddon: initial.hasPremiumAddon,
         premiumAddonName: initial.premiumAddonName ?? '', premiumAddonValue: num(initial.premiumAddonValue),
@@ -159,18 +163,25 @@ function Modal({
               <input required className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Garantia Excelente" />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cobertura</label>
-              <input className={inputClass()} value={form.coverageType} onChange={(e) => set('coverageType', e.target.value)} placeholder="Ex: 150 itens" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Tempo *</label>
+              <select className={inputClass()} value={form.durationYears} onChange={(e) => set('durationYears', Number(e.target.value) === 2 ? 2 : 1)}>
+                <option value={1}>01 ano</option>
+                <option value={2}>02 anos</option>
+              </select>
             </div>
             <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Descrição / cobertura</label>
+              <input className={inputClass()} value={form.coverageType} onChange={(e) => set('coverageType', e.target.value)} placeholder="Ex: 150 itens" />
+            </div>
+            <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Fornecedor / Seguradora</label>
               <input className={inputClass()} value={form.provider} onChange={(e) => set('provider', e.target.value)} placeholder="Nome do fornecedor" />
             </div>
 
             <MoneyField label="Valor cheio (R$) *" value={form.fullPrice} onChange={(v) => set('fullPrice', v)} />
-            <MoneyField label="Valor reduzido (R$) *" value={form.reducedPrice} onChange={(v) => set('reducedPrice', v)} />
-            <MoneyField label="Comissão venda cheia (R$)" value={form.fullSaleCommissionValue} onChange={(v) => set('fullSaleCommissionValue', v)} />
-            <MoneyField label="Comissão venda reduzida (R$)" value={form.reducedSaleCommissionValue} onChange={(v) => set('reducedSaleCommissionValue', v)} />
+            <MoneyField label="Valor com desconto (R$) *" value={form.reducedPrice} onChange={(v) => set('reducedPrice', v)} />
+            <MoneyField label="Comissão valor cheio (R$)" value={form.fullSaleCommissionValue} onChange={(v) => set('fullSaleCommissionValue', v)} />
+            <MoneyField label="Comissão valor com desconto (R$)" value={form.reducedSaleCommissionValue} onChange={(v) => set('reducedSaleCommissionValue', v)} />
           </div>
 
           {/* Adicional prêmio/luxo */}
@@ -278,7 +289,7 @@ export default function GarantiasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Garantias</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure garantias com valor cheio/reduzido, adicional prêmio e comissões.</p>
+          <p className="mt-1 text-sm text-gray-500">Configure garantias com tempo, valor cheio, valor com desconto e comissões fixas.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800">
           <Plus className="h-4 w-4" />Nova Garantia
@@ -296,7 +307,7 @@ export default function GarantiasPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                {['Nome', 'Cobertura', 'Cheio', 'Reduzido', 'Prêmio', 'Status', 'Ações'].map((h) => (
+                {['Nome', 'Tempo', 'Valor cheio', 'Valor desconto', 'Comissão cheia', 'Comissão desconto', 'Status', 'Ações'].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-3">{h}</th>
                 ))}
               </tr>
@@ -305,14 +316,14 @@ export default function GarantiasPage() {
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100">
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>
                     ))}
                   </tr>
                 ))
               ) : warranties.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
+                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
                     Nenhuma garantia cadastrada. <button onClick={openCreate} className="text-brand-600 hover:underline">Criar agora</button>
                   </td>
                 </tr>
@@ -327,10 +338,11 @@ export default function GarantiasPage() {
                         <p className="font-medium text-gray-900">{w.name}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{w.coverageType || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{w.durationYears === 2 ? '02 anos' : '01 ano'}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{formatMoney(num(w.fullPrice))}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{formatMoney(num(w.reducedPrice))}</td>
-                    <td className="px-4 py-3 text-gray-600">{w.hasPremiumAddon ? formatMoney(num(w.premiumAddonValue)) : '—'}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{formatMoney(num(w.fullSaleCommissionValue))}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{formatMoney(num(w.reducedSaleCommissionValue))}</td>
                     <td className="px-4 py-3">
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', w.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
                         {w.active ? 'Ativa' : 'Inativa'}

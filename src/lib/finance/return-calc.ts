@@ -15,6 +15,8 @@
 
 export const RETURN_RATE_MIN = 0
 export const RETURN_RATE_MAX = 6
+export type ReturnValueType = 'PERCENTUAL' | 'FIXO'
+export type ReturnDeductionBase = 'GROSS_RETURN' | 'FINANCED_AMOUNT'
 
 /** Aceita number ou Prisma.Decimal-like. */
 function num(v: unknown): number {
@@ -40,6 +42,15 @@ export interface ReturnInput {
   returnRatePercent: unknown
   ilaPercent:        unknown
   iofPercent:        unknown
+  baseAmount?:       unknown
+  returnPercent?:    unknown
+  ilaValue?:         unknown
+  ilaType?:          ReturnValueType
+  iofValue?:         unknown
+  iofType?:          ReturnValueType
+  deductionBase?:    ReturnDeductionBase
+  minReturnPercent?: unknown
+  maxReturnPercent?: unknown
 }
 
 export interface ReturnComputation {
@@ -49,19 +60,40 @@ export interface ReturnComputation {
   returnNetValue:   number
 }
 
+function deductionAmount(base: number, value: unknown, type: ReturnValueType | undefined): number {
+  const n = Math.max(0, num(value))
+  if (type === 'FIXO') return round2(n)
+  return round2((base * n) / 100)
+}
+
 /** Calcula bruto, ILA, IOF e líquido do retorno (sem comissão). */
 export function calculateReturn(input: ReturnInput): ReturnComputation {
-  const financed = Math.max(0, num(input.financedAmount))
-  const rate     = clamp(num(input.returnRatePercent), RETURN_RATE_MIN, RETURN_RATE_MAX)
-  const ilaPct   = Math.max(0, num(input.ilaPercent))
-  const iofPct   = Math.max(0, num(input.iofPercent))
+  const financed = Math.max(0, num(input.baseAmount ?? input.financedAmount))
+  const minRate  = num(input.minReturnPercent ?? RETURN_RATE_MIN)
+  const maxRate  = num(input.maxReturnPercent ?? RETURN_RATE_MAX)
+  const rate     = clamp(num(input.returnPercent ?? input.returnRatePercent), minRate, maxRate)
 
   const returnGrossValue = round2((financed * rate) / 100)
-  const ilaValue = round2((returnGrossValue * ilaPct) / 100)
-  const iofValue = round2((returnGrossValue * iofPct) / 100)
+  const deductionBase = input.deductionBase === 'FINANCED_AMOUNT' ? financed : returnGrossValue
+  const ilaValue = input.ilaType
+    ? deductionAmount(deductionBase, input.ilaValue, input.ilaType)
+    : deductionAmount(returnGrossValue, input.ilaPercent, 'PERCENTUAL')
+  const iofValue = input.iofType
+    ? deductionAmount(deductionBase, input.iofValue, input.iofType)
+    : deductionAmount(returnGrossValue, input.iofPercent, 'PERCENTUAL')
   const returnNetValue = Math.max(0, round2(returnGrossValue - ilaValue - iofValue))
 
   return { returnGrossValue, ilaValue, iofValue, returnNetValue }
+}
+
+export function validateReturnPercent(returnPercent: unknown, minPercent: unknown, maxPercent: unknown): { ok: true; value: number } | { ok: false; message: string } {
+  const value = num(returnPercent)
+  const min = num(minPercent)
+  const max = num(maxPercent)
+  if (!Number.isFinite(value) || value < min || value > max) {
+    return { ok: false, message: `O retorno informado está fora da faixa permitida para este tenant. Faixa permitida: ${min.toLocaleString('pt-BR')}% a ${max.toLocaleString('pt-BR')}%.` }
+  }
+  return { ok: true, value }
 }
 
 /** Comissão do retorno = retorno LÍQUIDO * percentual / 100. */

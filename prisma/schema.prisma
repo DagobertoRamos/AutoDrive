@@ -1693,6 +1693,7 @@ model Warranty {
   commissionType              String   @default("PERCENTUAL")
   // ── Precificação rica (valor cheio/reduzido + adicional prêmio/luxo) ───────
   coverageType                String? // ex: "150 itens"
+  durationYears               Int      @default(1)
   fullPrice                   Decimal  @default(0) @db.Decimal(12, 2)
   reducedPrice                Decimal  @default(0) @db.Decimal(12, 2)
   hasPremiumAddon             Boolean  @default(false)

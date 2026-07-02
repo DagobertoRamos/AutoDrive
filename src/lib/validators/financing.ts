@@ -145,6 +145,46 @@ export const updateReturnRuleSchema = z.object({
   active:          z.boolean().optional(),
 })
 
+// ── Configuração profissional de retorno / ILA / IOF ────────────────────────
+const returnValueType = z.enum(['PERCENTUAL', 'FIXO'], { errorMap: () => ({ message: 'Tipo inválido.' }) })
+const competenceValueSchema = z.object({
+  id:        z.string().optional(),
+  month:     z.number().int().min(1).max(12).nullable().optional(),
+  year:      z.number().int().min(2000).max(2100).nullable().optional(),
+  value:     z.number({ invalid_type_error: 'Valor inválido.' }).nonnegative('Valor não pode ser negativo.'),
+  valueType: returnValueType,
+  active:    z.boolean().default(true),
+  notes:     optStr,
+})
+
+export const returnSettingsSchema = z.object({
+  range: z.object({
+    minReturnPercent: z.number({ invalid_type_error: 'Retorno mínimo inválido.' }).min(0, 'Retorno mínimo não pode ser negativo.'),
+    maxReturnPercent: z.number({ invalid_type_error: 'Retorno máximo inválido.' }).positive('Retorno máximo deve ser maior que zero.'),
+    calculationBase:  z.literal('FINANCED_AMOUNT').default('FINANCED_AMOUNT'),
+    deductionBase:    z.enum(['GROSS_RETURN', 'FINANCED_AMOUNT']).default('GROSS_RETURN'),
+    active:           z.boolean().default(true),
+  }),
+  ila: z.array(competenceValueSchema).default([]),
+  iof: z.array(competenceValueSchema).default([]),
+}).superRefine((d, ctx) => {
+  if (d.range.maxReturnPercent <= d.range.minReturnPercent) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['range', 'maxReturnPercent'], message: 'Retorno máximo deve ser maior que o mínimo.' })
+  }
+  d.ila.forEach((r, index) => {
+    if (!r.month || !r.year) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ila', index, 'month'], message: 'ILA precisa de mês e ano de competência.' })
+    }
+  })
+  d.iof.forEach((r, index) => {
+    const hasMonth = r.month != null
+    const hasYear = r.year != null
+    if (hasMonth !== hasYear) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['iof', index, 'month'], message: 'IOF mensal precisa de mês e ano; para IOF geral deixe ambos vazios.' })
+    }
+  })
+})
+
 // ── Simulação comparativa (F&I) ───────────────────────────────────────────────
 export const createSimulationSchema = z.object({
   proponentId:  z.string().cuid().nullish(),

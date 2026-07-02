@@ -611,7 +611,17 @@ export async function generateCommissionsForDeal(
 
     const warrantyToCreate = d.warrantySales
       .filter((ws) => ws.status === 'ATIVA' && !doneSaleIds.has(ws.id))
-      .map((ws) => ({ ws, comm: calculateWarrantyCommission(ws.warranty, ws.saleType, ws.hasPremiumAddon) }))
+      .map((ws) => ({
+        ws,
+        comm: calculateWarrantyCommission({
+          warrantyFullPrice:       ws.warranty.fullPrice,
+          warrantyDiscountPrice:   ws.warranty.reducedPrice,
+          soldPrice:               ws.finalPrice,
+          fullPriceCommission:     ws.warranty.fullSaleCommissionValue,
+          discountPriceCommission: ws.warranty.reducedSaleCommissionValue,
+          premiumCommissionValue:  ws.hasPremiumAddon ? ws.warranty.premiumAddonCommissionValue : 0,
+        }),
+      }))
       .filter(({ comm }) => comm.totalCommissionValue > 0)
 
     matchedCount += warrantyToCreate.length
@@ -636,6 +646,7 @@ export async function generateCommissionsForDeal(
                 warrantyId:       ws.warrantyId,
                 saleType:         ws.saleType,
                 hasPremiumAddon:  ws.hasPremiumAddon,
+                commissionStatus: comm.status,
                 baseCommission:   comm.baseCommissionValue,
                 premiumCommission: comm.premiumCommissionValue,
                 employeeKind:     'SELLER',

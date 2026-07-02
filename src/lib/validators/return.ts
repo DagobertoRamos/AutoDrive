@@ -7,14 +7,14 @@
 // =============================================================================
 
 import { z } from 'zod'
-import { RETURN_RATE_MIN, RETURN_RATE_MAX } from '@/lib/finance/return-calc'
+import { RETURN_RATE_MIN } from '@/lib/finance/return-calc'
 
 const pct = (max: number) =>
   z.number({ invalid_type_error: 'Percentual inválido.' }).min(0, 'Percentual não pode ser negativo.').max(max, `Máximo ${max}%.`)
 
 /** Campo enviado pelo vendedor. */
 export const returnRateSchema = z.object({
-  returnRatePercent: pct(RETURN_RATE_MAX).refine((v) => v >= RETURN_RATE_MIN, 'Percentual inválido.'),
+  returnRatePercent: pct(100).refine((v) => v >= RETURN_RATE_MIN, 'Percentual inválido.'),
 })
 
 /** Campos administrativos (ILA/IOF) — apenas perfis autorizados. */

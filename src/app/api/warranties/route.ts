@@ -63,6 +63,7 @@ export async function POST(req: Request) {
         name:                        data.name,
         provider:                    data.provider ?? null,
         coverageType:                data.coverageType ?? null,
+        durationYears:               data.durationYears,
         fullPrice:                   data.fullPrice,
         reducedPrice:                data.reducedPrice,
         hasPremiumAddon:             premium,

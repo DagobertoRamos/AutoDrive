@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ShieldCheck, RefreshCw, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { maskBRL, parseBRL } from '@/lib/masks'
 
 interface Props {
   dealId:   string
@@ -19,7 +20,7 @@ interface Props {
 }
 
 interface Warranty {
-  id: string; name: string; coverageType: string | null
+  id: string; name: string; coverageType: string | null; durationYears: 1 | 2
   fullPrice: number | string; reducedPrice: number | string
   hasPremiumAddon: boolean; premiumAddonName: string | null; premiumAddonValue: number | string
   fullSaleCommissionValue: number | string; reducedSaleCommissionValue: number | string
@@ -39,7 +40,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [warrantyId, setWarrantyId] = useState('')
-  const [saleType, setSaleType] = useState<'FULL' | 'REDUCED'>('FULL')
+  const [soldPrice, setSoldPrice] = useState(0)
   const [premium, setPremium] = useState(false)
 
   const load = useCallback(async () => {
@@ -59,24 +60,44 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
   useEffect(() => { load() }, [load])
 
   const selected = catalog.find((w) => w.id === warrantyId) || null
-  const base = selected ? (saleType === 'FULL' ? num(selected.fullPrice) : num(selected.reducedPrice)) : 0
+  const fullPrice = selected ? num(selected.fullPrice) : 0
+  const discountPrice = selected ? num(selected.reducedPrice) : 0
   const premiumValue = selected && selected.hasPremiumAddon && premium ? num(selected.premiumAddonValue) : 0
-  const finalPrice = base + premiumValue
-  const commBase = selected ? (saleType === 'FULL' ? num(selected.fullSaleCommissionValue) : num(selected.reducedSaleCommissionValue)) : 0
-  const commPremium = selected && selected.hasPremiumAddon && premium ? num(selected.premiumAddonCommissionValue) : 0
+  const finalPrice = soldPrice
+  const commissionStatus = !selected
+    ? 'none'
+    : finalPrice >= fullPrice
+      ? 'full'
+      : finalPrice >= discountPrice
+        ? 'discount'
+        : 'zero'
+  const commBase = selected
+    ? commissionStatus === 'full'
+      ? num(selected.fullSaleCommissionValue)
+      : commissionStatus === 'discount'
+        ? num(selected.reducedSaleCommissionValue)
+        : 0
+    : 0
+  const commPremium = selected && commissionStatus !== 'zero' && selected.hasPremiumAddon && premium ? num(selected.premiumAddonCommissionValue) : 0
   const commTotal = commBase + commPremium
+  const commissionLabel = commissionStatus === 'full'
+    ? 'comissão cheia'
+    : commissionStatus === 'discount'
+      ? 'comissão com desconto'
+      : 'sem comissão'
 
   const add = async () => {
     if (!warrantyId) { onToast('Selecione uma garantia.', 'error'); return }
+    if (soldPrice <= 0) { onToast('Informe o valor vendido da garantia.', 'error'); return }
     setSaving(true)
     try {
       const res = await fetch(`/api/negotiations/${dealId}/warranty-sales`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ warrantyId, saleType, clientBoughtPremium: premium }),
+        body: JSON.stringify({ warrantyId, soldPrice, clientBoughtPremium: premium }),
       })
       if (!res.ok) throw new Error((await res.json())?.error ?? 'Erro ao vender garantia')
       onToast('Garantia vendida.', 'success')
-      setWarrantyId(''); setSaleType('FULL'); setPremium(false)
+      setWarrantyId(''); setSoldPrice(0); setPremium(false)
       await load(); onReload()
     } catch (err) {
       onToast(err instanceof Error ? err.message : 'Erro ao vender garantia.', 'error')
@@ -143,17 +164,27 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-700">Garantia</label>
-                <select className={inputCls} value={warrantyId} onChange={(e) => { setWarrantyId(e.target.value); setPremium(false) }}>
+                <select className={inputCls} value={warrantyId} onChange={(e) => {
+                  const id = e.target.value
+                  const next = catalog.find((w) => w.id === id)
+                  setWarrantyId(id)
+                  setSoldPrice(next ? num(next.fullPrice) : 0)
+                  setPremium(false)
+                }}>
                   <option value="">Selecione...</option>
-                  {catalog.map((w) => <option key={w.id} value={w.id}>{w.name}{w.coverageType ? ` (${w.coverageType})` : ''}</option>)}
+                  {catalog.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.durationYears === 2 ? '02 anos' : '01 ano'}{w.coverageType ? ` (${w.coverageType})` : ''}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Tipo de venda</label>
-                <select className={inputCls} value={saleType} onChange={(e) => setSaleType(e.target.value as 'FULL' | 'REDUCED')}>
-                  <option value="FULL">Valor cheio</option>
-                  <option value="REDUCED">Valor reduzido</option>
-                </select>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Valor vendido</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className={inputCls}
+                  value={maskBRL(soldPrice ? Math.round(soldPrice * 100).toString() : '')}
+                  onChange={(e) => setSoldPrice(parseBRL(maskBRL(e.target.value)) ?? 0)}
+                  placeholder="0,00"
+                />
               </div>
             </div>
 
@@ -165,14 +196,20 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
             )}
 
             {selected && (
-              <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm">
+              <div className={cn('flex items-center justify-between rounded-lg px-3 py-2 text-sm', commissionStatus === 'zero' ? 'bg-amber-50' : 'bg-white')}>
                 <span className="text-gray-600">
-                  Preço: <span className="font-semibold text-gray-900">{brl(finalPrice)}</span>
-                  <span className="text-gray-400"> · comissão prevista </span>
-                  <span className="font-semibold text-brand-700">{brl(commTotal)}</span>
+                  Cheio: <span className="font-medium text-gray-900">{brl(fullPrice)}</span>
+                  <span className="text-gray-400"> · desconto </span>
+                  <span className="font-medium text-gray-900">{brl(discountPrice)}</span>
+                  <span className="text-gray-400"> · vendido </span>
+                  <span className="font-semibold text-gray-900">{brl(finalPrice)}</span>
+                  <span className="text-gray-400"> · {commissionLabel} </span>
+                  <span className={cn('font-semibold', commissionStatus === 'zero' ? 'text-amber-700' : 'text-brand-700')}>{brl(commTotal)}</span>
+                  {premiumValue > 0 && <span className="text-gray-400"> · adicional {brl(premiumValue)}</span>}
+                  {commissionStatus === 'zero' && <span className="block text-xs text-amber-700">Valor vendido abaixo do valor com desconto. Esta garantia não gera comissão.</span>}
                 </span>
                 <button
-                  onClick={add} disabled={saving || !warrantyId}
+                  onClick={add} disabled={saving || !warrantyId || soldPrice <= 0}
                   className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
                 >
                   <Plus size={14} />{saving ? 'Vendendo...' : 'Vender garantia'}

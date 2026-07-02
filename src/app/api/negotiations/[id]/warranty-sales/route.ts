@@ -14,7 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
-import { calculateWarrantySale } from '@/lib/warranty/warranty-calc'
+import { calculateWarrantyCommission, calculateWarrantySale, calculateWarrantySaleBySoldPrice } from '@/lib/warranty/warranty-calc'
 import { warrantySaleSchema } from '@/lib/validators/warranty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -73,7 +73,19 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'Garantia inativa' }, { status: 400 })
     }
 
-    const calc = calculateWarrantySale(warranty, input.saleType, input.clientBoughtPremium)
+    const calc = input.soldPrice != null
+      ? calculateWarrantySaleBySoldPrice(warranty, input.soldPrice, input.clientBoughtPremium)
+      : calculateWarrantySale(warranty, input.saleType ?? 'FULL', input.clientBoughtPremium)
+    const commission = calculateWarrantyCommission({
+      warrantyFullPrice:       warranty.fullPrice,
+      warrantyDiscountPrice:   warranty.reducedPrice,
+      soldPrice:               calc.finalPrice,
+      fullPriceCommission:     warranty.fullSaleCommissionValue,
+      discountPriceCommission: warranty.reducedSaleCommissionValue,
+      premiumCommissionValue:  input.clientBoughtPremium && warranty.hasPremiumAddon ? warranty.premiumAddonCommissionValue : 0,
+    })
+    const persistedSaleType = input.saleType
+      ?? (commission.status === 'FULL_PRICE_COMMISSION' ? 'FULL' : 'REDUCED')
 
     const sale = await prisma.$transaction(async (tx) => {
       const created = await tx.warrantySale.create({
@@ -82,7 +94,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           dealId:            deal.id,
           warrantyId:        warranty.id,
           sellerId:          deal.sellerId,
-          saleType:          input.saleType,
+          saleType:          persistedSaleType,
           basePrice:         calc.basePrice,
           hasPremiumAddon:   input.clientBoughtPremium && warranty.hasPremiumAddon,
           premiumAddonValue: calc.premiumAddonValue,
@@ -99,8 +111,16 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         userRole: session.user.role,
         action:   'VENDER_GARANTIA',
         field:    'warrantySale',
-        newValue: { warranty: warranty.name, saleType: input.saleType, finalPrice: calc.finalPrice },
-        reason:   `Garantia vendida: ${warranty.name}`,
+        newValue: {
+          warranty: warranty.name,
+          saleType: persistedSaleType,
+          finalPrice: calc.finalPrice,
+          commissionStatus: commission.status,
+          commissionValue: commission.totalCommissionValue,
+        },
+        reason:   commission.commissionable
+          ? `Garantia vendida: ${warranty.name}`
+          : `Garantia vendida sem comissão: valor abaixo do desconto (${warranty.name})`,
       })
       return created
     })

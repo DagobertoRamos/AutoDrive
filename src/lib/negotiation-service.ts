@@ -33,6 +33,7 @@ export async function createDealAudit(
     oldValue?: unknown
     newValue?: unknown
     reason?: string
+    metadata?: unknown
   },
 ): Promise<void> {
   await (tx.dealAuditLog as any).create({
@@ -48,6 +49,7 @@ export async function createDealAudit(
       oldValue: params.oldValue != null ? String(params.oldValue) : null,
       newValue: params.newValue != null ? String(params.newValue) : null,
       reason:   params.reason   ?? null,
+      metadata: params.metadata as never,
     },
   })
 }

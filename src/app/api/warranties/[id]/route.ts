@@ -20,7 +20,7 @@ type Ctx = { params: Promise<{ id: string }> }
 
 // Campos auditáveis (spec 2.7)
 const AUDITED = [
-  'name', 'coverageType', 'fullPrice', 'reducedPrice', 'hasPremiumAddon',
+  'name', 'coverageType', 'durationYears', 'fullPrice', 'reducedPrice', 'hasPremiumAddon',
   'premiumAddonName', 'premiumAddonValue', 'reducedSaleCommissionValue',
   'fullSaleCommissionValue', 'premiumAddonCommissionValue', 'active',
 ] as const

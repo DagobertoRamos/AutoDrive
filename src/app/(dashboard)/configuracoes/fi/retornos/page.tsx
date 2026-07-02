@@ -13,6 +13,7 @@ import { Plus, Pencil, Trash2, Percent, X, Save, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { useFiPermissions } from '@/components/financing/useFiPermissions'
+import { ReturnProfessionalSettings } from '@/components/financing/ReturnProfessionalSettings'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 
@@ -116,8 +117,8 @@ export default function FiReturnsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Retornos por Banco</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} regra(s) de retorno`}</p>
+          <h1 className="text-xl font-bold text-gray-900">Retorno / F&amp;I</h1>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} regra(s) por banco · faixa, ILA e IOF configuráveis`}</p>
         </div>
         {canEdit && <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova regra</button>}
       </div>
@@ -125,6 +126,8 @@ export default function FiReturnsPage() {
       {!canEdit && (
         <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500"><Lock size={15} />Somente leitura: seu perfil não pode alterar retorno (Permissões F&amp;I da loja).</div>
       )}
+
+      <ReturnProfessionalSettings canEdit={canEdit} />
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
         <div className="overflow-x-auto">

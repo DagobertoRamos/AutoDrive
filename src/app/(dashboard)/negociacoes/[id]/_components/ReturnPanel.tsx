@@ -2,8 +2,8 @@
 
 // =============================================================================
 // ReturnPanel — Retorno financeiro da negociação (componente autocontido)
-// Vendedor informa % de retorno (0–6). ILA/IOF só editáveis com permissão
-// (negotiations.financing) — o backend é a fonte de verdade do cálculo.
+// Vendedor informa % de retorno. ILA/IOF vêm da configuração F&I do tenant
+// por competência — o backend é a fonte de verdade do cálculo e snapshot.
 // Consome /api/negotiations/[id]/return.
 // =============================================================================
 
@@ -20,20 +20,25 @@ interface Props {
 
 const num = (v: unknown): number => (v == null ? 0 : Number(v) || 0)
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-// % de retorno: dígitos preenchem 1 casa decimal, máx 6,0 (spec).
+interface ReturnConfig {
+  range: { minReturnPercent: number; maxReturnPercent: number; deductionBase: 'GROSS_RETURN' | 'FINANCED_AMOUNT' }
+  competence: { label: string }
+  ila: { value: number; valueType: 'PERCENTUAL' | 'FIXO' } | null
+  iof: { value: number; valueType: 'PERCENTUAL' | 'FIXO'; month?: number | null; year?: number | null } | null
+}
+
+// % de retorno: dígitos preenchem 1 casa decimal.
 const fmtRate = (v: number) => v.toFixed(1).replace('.', ',')
-function parseRateDigits(raw: string): number {
+function parseRateDigits(raw: string, max: number): number {
   const digits = raw.replace(/\D/g, '')
   if (!digits) return 0
-  return Math.min(parseInt(digits, 10) / 10, 6)
+  return Math.min(parseInt(digits, 10) / 10, max)
 }
 
 export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Props) {
   const [financed, setFinanced] = useState(0)
   const [rate, setRate] = useState(0)
-  const [ila, setIla] = useState(0)
-  const [iof, setIof] = useState(0)
-  const [canFinancing, setCanFinancing] = useState(false)
+  const [config, setConfig] = useState<ReturnConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -45,9 +50,7 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
       const d = json?.data ?? {}
       setFinanced(num(d.financedAmount))
       setRate(num(d.returnRatePercent))
-      setIla(num(d.ilaPercent))
-      setIof(num(d.iofPercent))
-      setCanFinancing(!!json?.canEditFinancing)
+      setConfig(json?.returnConfig ?? null)
     } catch {
       /* silencioso */
     } finally {
@@ -59,17 +62,24 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
 
   // Preview ao vivo (mesma fórmula do backend) — apenas visual.
   const gross = Math.round(financed * rate) / 100
-  const ilaValue = Math.round(gross * ila) / 100
-  const iofValue = Math.round(gross * iof) / 100
+  const deductionBase = config?.range.deductionBase === 'FINANCED_AMOUNT' ? financed : gross
+  const deduction = (entry: ReturnConfig['ila'] | ReturnConfig['iof']) => {
+    if (!entry) return 0
+    if (entry.valueType === 'FIXO') return Math.round(entry.value * 100) / 100
+    return Math.round(deductionBase * entry.value) / 100
+  }
+  const ilaValue = deduction(config?.ila ?? null)
+  const iofValue = deduction(config?.iof ?? null)
   const net = Math.max(0, Math.round((gross - ilaValue - iofValue) * 100) / 100)
+  const minRate = config?.range.minReturnPercent ?? 0
+  const maxRate = config?.range.maxReturnPercent ?? 6
+  const outOfRange = rate < minRate || rate > maxRate
 
   const save = async () => {
     setSaving(true)
     try {
-      const body: Record<string, number> = { returnRatePercent: rate }
-      if (canFinancing) { body.ilaPercent = ila; body.iofPercent = iof }
       const res = await fetch(`/api/negotiations/${dealId}/return`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ returnRatePercent: rate }),
       })
       if (!res.ok) throw new Error((await res.json())?.error ?? 'Erro ao salvar')
       onToast('Retorno atualizado.', 'success')
@@ -102,12 +112,12 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
             <input disabled className={inputCls} value={brl(financed)} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">% de retorno (0–6)</label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">% de retorno ({fmtRate(minRate)}–{fmtRate(maxRate)})</label>
             <input
               type="text" inputMode="numeric" disabled={!canEdit}
               className={inputCls}
               value={`${fmtRate(rate)}%`}
-              onChange={(e) => setRate(parseRateDigits(e.target.value))}
+              onChange={(e) => setRate(parseRateDigits(e.target.value, maxRate))}
             />
           </div>
           <div>
@@ -115,24 +125,12 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
             <input disabled className={inputCls} value={brl(gross)} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              ILA (%) {!canFinancing && <span className="text-gray-400">— restrito</span>}
-            </label>
-            <input
-              type="number" min={0} step="0.0001" disabled={!canEdit || !canFinancing}
-              className={inputCls} value={ila}
-              onChange={(e) => setIla(Math.max(0, Number(e.target.value)))}
-            />
+            <label className="mb-1 block text-xs font-medium text-gray-700">ILA {config?.competence.label ? `(${config.competence.label})` : ''}</label>
+            <input disabled className={inputCls} value={config?.ila ? `${config.ila.valueType === 'FIXO' ? brl(config.ila.value) : `${config.ila.value}%`} = ${brl(ilaValue)}` : 'Não cadastrado'} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">
-              IOF (%) {!canFinancing && <span className="text-gray-400">— restrito</span>}
-            </label>
-            <input
-              type="number" min={0} step="0.0001" disabled={!canEdit || !canFinancing}
-              className={inputCls} value={iof}
-              onChange={(e) => setIof(Math.max(0, Number(e.target.value)))}
-            />
+            <label className="mb-1 block text-xs font-medium text-gray-700">IOF</label>
+            <input disabled className={inputCls} value={config?.iof ? `${config.iof.valueType === 'FIXO' ? brl(config.iof.value) : `${config.iof.value}%`} = ${brl(iofValue)}` : 'Não cadastrado'} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">Retorno líquido</label>
@@ -141,10 +139,14 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
         </div>
 
         <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>ILA: {brl(ilaValue)} · IOF: {brl(iofValue)} · base da comissão = líquido</span>
+          <span>
+            ILA: {brl(ilaValue)} · IOF: {brl(iofValue)} · base da comissão = líquido
+            {outOfRange && <span className="ml-2 text-red-600">Retorno fora da faixa permitida.</span>}
+            {(!config?.ila || !config?.iof) && <span className="ml-2 text-amber-700">Configure ILA/IOF antes de salvar.</span>}
+          </span>
           {canEdit && (
             <button
-              onClick={save} disabled={saving}
+              onClick={save} disabled={saving || outOfRange || !config?.ila || !config?.iof}
               className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
             >
               <Save size={14} />{saving ? 'Salvando...' : 'Salvar retorno'}

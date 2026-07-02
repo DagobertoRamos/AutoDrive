@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateReturn, calculateReturnCommission } from '@/lib/finance/return-calc'
+import { calculateReturn, calculateReturnCommission, validateReturnPercent } from '@/lib/finance/return-calc'
 
 describe('return-calc (retorno financeiro)', () => {
   it('spec 1.3: financiado 100k @6%, ILA 25%, IOF 0 → bruto 6000 / ILA 1500 / líquido 4500', () => {
@@ -32,5 +32,24 @@ describe('return-calc (retorno financeiro)', () => {
 
   it('financiado nulo → tudo zero', () => {
     expect(calculateReturn({ financedAmount: null, returnRatePercent: 6, ilaPercent: 25, iofPercent: 0 }).returnNetValue).toBe(0)
+  })
+
+  it('calcula com configuração mensal de ILA/IOF por valor fixo sobre o bruto', () => {
+    expect(calculateReturn({
+      financedAmount: 100000,
+      returnRatePercent: 3.6,
+      ilaPercent: 0,
+      iofPercent: 0,
+      ilaType: 'FIXO',
+      ilaValue: 500,
+      iofType: 'FIXO',
+      iofValue: 300,
+    })).toEqual({ returnGrossValue: 3600, ilaValue: 500, iofValue: 300, returnNetValue: 2800 })
+  })
+
+  it('valida faixa configurada do tenant', () => {
+    expect(validateReturnPercent(3.6, 1, 6)).toEqual({ ok: true, value: 3.6 })
+    expect(validateReturnPercent(0.9, 1, 6).ok).toBe(false)
+    expect(validateReturnPercent(6.1, 1, 6).ok).toBe(false)
   })
 })

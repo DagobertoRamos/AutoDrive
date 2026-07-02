@@ -9,6 +9,43 @@ const w: WarrantyPricing = {
 }
 
 describe('warranty-calc (garantia)', () => {
+  it('valor cheio ou acima gera comissão cheia', () => {
+    const comm = calculateWarrantyCommission({
+      warrantyFullPrice: 3350,
+      warrantyDiscountPrice: 2250,
+      soldPrice: 3350,
+      fullPriceCommission: 700,
+      discountPriceCommission: 350,
+    })
+    expect(comm.totalCommissionValue).toBe(700)
+    expect(comm.status).toBe('FULL_PRICE_COMMISSION')
+  })
+
+  it('valor entre desconto e cheio gera comissão com desconto', () => {
+    const comm = calculateWarrantyCommission({
+      warrantyFullPrice: 3350,
+      warrantyDiscountPrice: 2250,
+      soldPrice: 2500,
+      fullPriceCommission: 700,
+      discountPriceCommission: 350,
+    })
+    expect(comm.totalCommissionValue).toBe(350)
+    expect(comm.status).toBe('DISCOUNT_PRICE_COMMISSION')
+  })
+
+  it('valor abaixo do desconto não comissiona', () => {
+    const comm = calculateWarrantyCommission({
+      warrantyFullPrice: 3350,
+      warrantyDiscountPrice: 2250,
+      soldPrice: 2249.99,
+      fullPriceCommission: 700,
+      discountPriceCommission: 350,
+    })
+    expect(comm.totalCommissionValue).toBe(0)
+    expect(comm.status).toBe('NO_COMMISSION')
+    expect(comm.commissionable).toBe(false)
+  })
+
   it('Venda 1 — reduzido sem prêmio: preço 2250, comissão 350', () => {
     expect(calculateWarrantySale(w, 'REDUCED', false).finalPrice).toBe(2250)
     expect(calculateWarrantyCommission(w, 'REDUCED', false).totalCommissionValue).toBe(350)

@@ -1790,3 +1790,36 @@
   - Deal é criado ANTES da comissão (fora da transação de comissão), então mesmo com timeout parcial os deals já gravados persistem; reimportar converge.
 - **Validações:** `node --check popup.js` verde.
 - **Escopo:** só a extensão. Endpoint do servidor inalterado. Bump 0.3.6 → 0.3.7. Melhoria futura possível: desacoplar geração de comissão da importação (importar deals rápido, recalcular comissão em passo separado/chunked) para volumes grandes (ex.: ano inteiro).
+
+### LOG 0133 — 2026-07-02 — Codex (GPT-5) — Garantias + Retorno/F&I profissional
+- **Branch:** `main`. Migration criada: `20260702120000_add_warranty_duration_years`.
+- **Pedido:** profissionalizar o cadastro/cálculo de Garantias e Retorno/F&I sem quebrar o fluxo existente: garantia com tempo de 1/2 anos, valor cheio/desconto, comissão cheia/desconto e sem comissão abaixo do desconto; retorno com percentual por competência, ILA mensal, IOF mensal ou global, validação mínima/máxima e memória/auditoria do cálculo.
+- **Garantias:**
+  - `Warranty.durationYears` adicionado com default `1`, persistido nas APIs de cadastro/edição e exibido no cadastro de garantias.
+  - Cálculo centralizado em `lib/warranty/warranty-calc.ts`: preço vendido >= valor cheio gera comissão cheia; preço vendido >= valor com desconto gera comissão de desconto; preço vendido abaixo do desconto gera `NO_COMMISSION`.
+  - Venda de garantia na negociação agora informa `soldPrice` livre, mostra preview de comissão e bloqueio visual de comissão zero; a API preserva compatibilidade com o `saleType` legado.
+  - Geração de comissão de garantia usa o `finalPrice` real da venda e ignora comissões de valor zero, evitando pagamento indevido quando a garantia foi vendida abaixo do desconto.
+- **Retorno/F&I:**
+  - Criado armazenamento tenant-scoped em `SystemSetting` para configurações de retorno, ILA e IOF (`return_settings`, `ila_settings`, `iof_settings`).
+  - Nova rota `/api/settings/financing/return-config` com GET/PUT, validação de permissão `financing.config` e regra `alterarRetorno`.
+  - Tela `/configuracoes/fi/retornos` ganhou painel profissional para mínimo/máximo de retorno, base padrão, base de abatimento, ILA mensal e IOF mensal/global.
+  - Negociação calcula retorno usando a competência da venda (`saleDate`, depois `approvedAt`, `finalizedAt`, `createdAt`), exige ILA da competência e IOF mensal/global cadastrado, valida faixa configurada e grava snapshot completo em `DealAuditLog.metadata`.
+  - Preservada a convenção histórica do AutoDrive documentada anteriormente: retorno sobre valor financiado; ILA/IOF por padrão sobre o retorno bruto. O exemplo do prompt abatia ILA/IOF sobre a base financiada, mas isso conflita com o padrão já registrado no projeto, então foi mantido o comportamento vigente.
+- **Arquivos principais alterados/criados:**
+  - `prisma/schema.prisma` e migration de garantias.
+  - `src/lib/warranty/warranty-calc.ts`, `src/lib/warranty/warranty-calc.test.ts`, validators e APIs de garantias.
+  - `src/lib/finance/return-calc.ts`, `src/lib/finance/return-settings.ts`, `src/lib/finance/return-calc.test.ts`.
+  - `src/app/api/negotiations/[id]/return/route.ts`, `src/app/api/settings/financing/return-config/route.ts`.
+  - `src/components/financing/ReturnProfessionalSettings.tsx`, `ReturnPanel.tsx`, `WarrantySalesPanel.tsx`.
+- **Validações realizadas:**
+  - `npx prisma generate` — verde após rerun com permissão elevada por `EPERM` local no Prisma Client.
+  - `npx prisma validate` — verde.
+  - `npx tsc --noEmit --pretty false` — verde.
+  - `npx vitest run src/lib/warranty/warranty-calc.test.ts src/lib/finance/return-calc.test.ts` — verde, 2 arquivos e 15 testes.
+  - ESLint direcionado nos arquivos alterados de UI/API/lib — verde.
+  - `git diff --check` — verde; apenas avisos LF→CRLF do Windows.
+  - `npm run build` — verde após rerun com permissão elevada por `EPERM` local no Prisma Client; Next emitiu aviso de chave `eslint` no `next.config.js`, mas o build terminou com sucesso.
+- **Pendências/riscos:**
+  - Deploy exige aplicar a migration em produção para a coluna `Warranty.durationYears` existir antes/ao subir a versão.
+  - Configurações de ILA/IOF começam vazias por tenant; o cálculo de retorno vai bloquear competência sem ILA/IOF configurado até o usuário cadastrar.
+  - Como `WarrantySale.saleType` ainda é enum legado (`FULL`/`REDUCED`), vendas abaixo do desconto são gravadas como `REDUCED` com comissão zero e `commissionStatus` no cálculo/auditoria; uma normalização futura poderia adicionar status próprio no schema.

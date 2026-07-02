@@ -14,9 +14,10 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
-import { calculateReturn } from '@/lib/finance/return-calc'
-import { returnRateSchema, returnFinancingSchema } from '@/lib/validators/return'
+import { calculateReturn, validateReturnPercent } from '@/lib/finance/return-calc'
+import { returnRateSchema } from '@/lib/validators/return'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { resolveReturnSettingsForDate } from '@/lib/finance/return-settings'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -25,6 +26,10 @@ function toNum(v: unknown): number {
   if (typeof v === 'number') return v
   if (typeof (v as { toNumber?: () => number }).toNumber === 'function') return (v as { toNumber: () => number }).toNumber()
   return Number(v) || 0
+}
+
+function returnCompetenceDate(deal: { saleDate?: Date | null; approvedAt?: Date | null; finalizedAt?: Date | null; createdAt?: Date | null }) {
+  return deal.saleDate ?? deal.approvedAt ?? deal.finalizedAt ?? deal.createdAt ?? new Date()
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
@@ -36,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     const deal = await prisma.deal.findUnique({
       where: { id },
       select: {
-        tenantId: true, financedAmount: true, paymentBank: true,
+        tenantId: true, financedAmount: true, paymentBank: true, saleDate: true, approvedAt: true, finalizedAt: true, createdAt: true,
         returnRatePercent: true, returnGrossValue: true, ilaPercent: true, ilaValue: true,
         iofPercent: true, iofValue: true, returnNetValue: true, returnCommissionStatus: true,
       },
@@ -45,9 +50,13 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
+    const returnConfig = deal.tenantId
+      ? await resolveReturnSettingsForDate(deal.tenantId, returnCompetenceDate(deal)).catch(() => null)
+      : null
     return NextResponse.json({
       success: true,
       data: deal,
+      returnConfig,
       canEditFinancing: canAccessModule(session.user.role, 'negotiations.financing'),
     })
   } catch (err) {
@@ -72,29 +81,83 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
     const deal = await prisma.deal.findUnique({
       where: { id },
-      select: { id: true, tenantId: true, unitId: true, financedAmount: true, ilaPercent: true, iofPercent: true, returnRatePercent: true },
+      select: {
+        id: true, tenantId: true, unitId: true, financedAmount: true, returnRatePercent: true,
+        saleDate: true, approvedAt: true, finalizedAt: true, createdAt: true,
+      },
     })
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
     if (session.user.tenantId && deal.tenantId !== session.user.tenantId) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
-    // ILA/IOF: somente perfis autorizados podem alterar; demais mantêm o atual.
-    const canFinancing = canAccessModule(session.user.role, 'negotiations.financing')
-    let ilaPercent = toNum(deal.ilaPercent)
-    let iofPercent = toNum(deal.iofPercent)
-    if (canFinancing) {
-      const fin = returnFinancingSchema.parse(raw)
-      if (fin.ilaPercent != null) ilaPercent = fin.ilaPercent
-      if (fin.iofPercent != null) iofPercent = fin.iofPercent
+    if (!deal.tenantId) {
+      return NextResponse.json({ error: 'Negociação sem tenant não pode calcular retorno definitivo.' }, { status: 400 })
+    }
+    const baseAmount = toNum(deal.financedAmount)
+    if (baseAmount <= 0) {
+      return NextResponse.json({ error: 'Informe o valor financiado antes de calcular o retorno.' }, { status: 400 })
     }
 
+    const resolved = await resolveReturnSettingsForDate(deal.tenantId, returnCompetenceDate(deal))
+    if (!resolved.range.active) {
+      return NextResponse.json({ error: 'Configuração de retorno/F&I está inativa para este tenant.' }, { status: 400 })
+    }
+    const range = validateReturnPercent(returnRatePercent, resolved.range.minReturnPercent, resolved.range.maxReturnPercent)
+    if (!range.ok) {
+      return NextResponse.json({ error: range.message }, { status: 400 })
+    }
+    if (!resolved.ila) {
+      return NextResponse.json({ error: `ILA não cadastrado para a competência ${resolved.competence.label}.` }, { status: 400 })
+    }
+    if (!resolved.iof) {
+      return NextResponse.json({ error: `IOF não cadastrado para a competência ${resolved.competence.label}. Cadastre um IOF mensal ou um IOF geral com valor zero.` }, { status: 400 })
+    }
+    const ila = resolved.ila
+    const iof = resolved.iof
+
     const calc = calculateReturn({
-      financedAmount: deal.financedAmount,
+      financedAmount: baseAmount,
       returnRatePercent,
-      ilaPercent,
-      iofPercent,
+      ilaPercent: 0,
+      iofPercent: 0,
+      ilaType: ila.valueType,
+      ilaValue: ila.value,
+      iofType: iof.valueType,
+      iofValue: iof.value,
+      deductionBase: resolved.range.deductionBase,
+      minReturnPercent: resolved.range.minReturnPercent,
+      maxReturnPercent: resolved.range.maxReturnPercent,
     })
+    const snapshot = {
+      baseAmount,
+      calculationBase: resolved.range.calculationBase,
+      deductionBase: resolved.range.deductionBase,
+      returnPercent: returnRatePercent,
+      grossReturnAmount: calc.returnGrossValue,
+      ila: {
+        settingId: ila.id,
+        competence: resolved.competence.label,
+        value: ila.value,
+        valueType: ila.valueType,
+        amount: calc.ilaValue,
+      },
+      iof: {
+        settingId: iof.id,
+        competence: iof.month && iof.year ? resolved.competence.label : 'GERAL',
+        value: iof.value,
+        valueType: iof.valueType,
+        amount: calc.iofValue,
+      },
+      netReturnAmount: calc.returnNetValue,
+      range: {
+        minReturnPercent: resolved.range.minReturnPercent,
+        maxReturnPercent: resolved.range.maxReturnPercent,
+      },
+      calculatedBy: session.user.id,
+      calculatedAt: new Date().toISOString(),
+      tenantId: deal.tenantId,
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.deal.update({
@@ -102,9 +165,9 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
         data: {
           returnRatePercent,
           returnGrossValue: calc.returnGrossValue,
-          ilaPercent,
+          ilaPercent: ila.valueType === 'PERCENTUAL' ? ila.value : null,
           ilaValue:         calc.ilaValue,
-          iofPercent,
+          iofPercent: iof.valueType === 'PERCENTUAL' ? iof.value : null,
           iofValue:         calc.iofValue,
           returnNetValue:   calc.returnNetValue,
         },
@@ -121,6 +184,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
         oldValue: toNum(deal.returnRatePercent),
         newValue: returnRatePercent,
         reason:   `Retorno ${returnRatePercent}% — líquido R$ ${calc.returnNetValue.toFixed(2)}`,
+        metadata: snapshot,
       })
     })
 
@@ -131,7 +195,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     }).catch(() => {})
     await syncTenantFinance(deal.tenantId ?? null).catch(() => {})
 
-    return NextResponse.json({ success: true, data: { returnRatePercent, ...calc } })
+    return NextResponse.json({ success: true, data: { returnRatePercent, ...calc, snapshot } })
   } catch (err) {
     if (err instanceof ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
