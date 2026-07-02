@@ -4,7 +4,7 @@
 // Regras de Comissão — AutoDrive
 // =============================================================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle, Settings, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
@@ -79,18 +79,50 @@ const EMPTY_FORM: Omit<CommissionRule, 'id' | 'unit' | 'position'> = {
 
 const RULE_TYPE_LABELS: Record<string, string> = {
   // Venda e troca usam a MESMA comissão — uma regra "Venda / Troca" cobre os dois.
-  VENDA:     'Venda / Troca',
-  TROCA:     'Venda / Troca', // legado: regras antigas de TROCA aparecem como Venda / Troca
-  COMPRA:    'Compra',
-  GARANTIA:  'Garantia',
-  RETORNO:   'Retorno',
-  SERVICO:   'Serviço',
-  DOCUMENTO: 'Documentação',
+  VENDA:        'Venda / Troca',
+  TROCA:        'Venda / Troca', // legado: regras antigas de TROCA aparecem como Venda / Troca
+  BONUS_DEZENA: 'Bônus dezenal',
+  BONUS_META:   'Bônus meta',
+  GARANTIA:     'Garantia',
+  RETORNO:      'Retorno',
+  SERVICO:      'Serviço',
+  DOCUMENTO:    'Documentação',
+  COMPRA:       'Compra',
 }
 
 // Opções SELECIONÁVEIS no formulário: TROCA fora (é a mesma comissão de VENDA;
 // o backend normaliza TROCA→VENDA). Evita criar regra "morta" ou duplicada.
 const RULE_TYPE_OPTIONS: [string, string][] = Object.entries(RULE_TYPE_LABELS).filter(([v]) => v !== 'TROCA')
+
+// ── Famílias de regra (abas) ───────────────────────────────────────────────────
+// Agrupa os tipos de regra por família para navegação em abas. Um bônus mensal é
+// uma regra VENDA com pagamento "Bônus por quantidade" (BONUS_QTD); por isso a
+// família olha ruleType E commissionType.
+type FamilyKey = 'VENDA' | 'BONUS' | 'GARANTIA' | 'SERVICO' | 'RETORNO' | 'COMPRA'
+
+const FAMILY_DEFS: { key: FamilyKey; label: string; defaultRuleType: string }[] = [
+  { key: 'VENDA',    label: 'Venda / Troca', defaultRuleType: 'VENDA' },
+  { key: 'BONUS',    label: 'Bônus',         defaultRuleType: 'BONUS_DEZENA' },
+  { key: 'GARANTIA', label: 'Garantia',      defaultRuleType: 'GARANTIA' },
+  { key: 'SERVICO',  label: 'Serviços',      defaultRuleType: 'SERVICO' },
+  { key: 'RETORNO',  label: 'Retorno',       defaultRuleType: 'RETORNO' },
+  { key: 'COMPRA',   label: 'Compra',        defaultRuleType: 'COMPRA' },
+]
+
+function familyOf(rule: Pick<CommissionRule, 'ruleType' | 'commissionType'>): FamilyKey {
+  switch (rule.ruleType) {
+    case 'BONUS_DEZENA':
+    case 'BONUS_META':  return 'BONUS'
+    case 'GARANTIA':    return 'GARANTIA'
+    case 'RETORNO':     return 'RETORNO'
+    case 'SERVICO':
+    case 'DOCUMENTO':   return 'SERVICO'
+    case 'COMPRA':      return 'COMPRA'
+    default:
+      // VENDA / TROCA — bônus mensal por quantidade cai na família Bônus.
+      return rule.commissionType === 'BONUS_QTD' ? 'BONUS' : 'VENDA'
+  }
+}
 
 const COMMISSION_TYPE_LABELS: Record<string, string> = {
   PERCENTUAL: 'Percentual (%)',
@@ -158,16 +190,18 @@ function formatRange(rule: Pick<CommissionRule, 'fromQuantity' | 'toQuantity' | 
 
 function RuleModal({
   initial,
+  defaultRuleType,
   positions,
   units,
   onClose,
   onSaved,
 }: {
-  initial:   CommissionRule | null
-  positions: PositionLite[]
-  units:     UnitLite[]
-  onClose:   () => void
-  onSaved:   () => void
+  initial:         CommissionRule | null
+  defaultRuleType?: string
+  positions:       PositionLite[]
+  units:           UnitLite[]
+  onClose:         () => void
+  onSaved:         () => void
 }) {
   const isEdit = !!initial
   const initialPayoutMode = initial?.percentage != null ? 'PERCENTUAL' : 'FIXO'
@@ -191,7 +225,7 @@ function RuleModal({
           role:           initial.role,
           notes:          initial.notes,
         }
-      : { ...EMPTY_FORM },
+      : { ...EMPTY_FORM, ruleType: defaultRuleType ?? EMPTY_FORM.ruleType },
   )
   const [payoutMode, setPayoutMode] = useState<'PERCENTUAL' | 'FIXO'>(initialPayoutMode)
   const [saving, setSaving] = useState(false)
@@ -579,6 +613,25 @@ export default function RegrasComissoesPage() {
   const [editing, setEditing]     = useState<CommissionRule | null | 'new'>(null)
   const [deleting, setDeleting]   = useState<CommissionRule | null>(null)
   const [error, setError]         = useState('')
+  const [activeFamily, setActiveFamily] = useState<FamilyKey | 'ALL'>('ALL')
+
+  // Contagem por família (para os badges das abas) e lista filtrada da aba ativa.
+  const familyCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: rules.length }
+    for (const r of rules) {
+      const f = familyOf(r)
+      counts[f] = (counts[f] ?? 0) + 1
+    }
+    return counts
+  }, [rules])
+
+  const visibleRules = useMemo(
+    () => (activeFamily === 'ALL' ? rules : rules.filter((r) => familyOf(r) === activeFamily)),
+    [rules, activeFamily],
+  )
+
+  // Ao criar uma regra dentro de uma aba, já sugere o tipo de operação da família.
+  const defaultRuleType = FAMILY_DEFS.find((f) => f.key === activeFamily)?.defaultRuleType
 
   const fetchRules = useCallback(async () => {
     setLoading(true)
@@ -697,6 +750,36 @@ export default function RegrasComissoesPage() {
           </label>
         </div>
 
+        {/* Abas por família de regra */}
+        {!loading && rules.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-b border-gray-200">
+            {[{ key: 'ALL' as const, label: 'Todas' }, ...FAMILY_DEFS].map((tab) => {
+              const count = familyCounts[tab.key] ?? 0
+              const isActive = activeFamily === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveFamily(tab.key)}
+                  className={cn(
+                    '-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition',
+                    isActive
+                      ? 'border-brand-600 text-brand-700'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700',
+                  )}
+                >
+                  {tab.label}
+                  <span className={cn(
+                    'rounded-full px-1.5 py-0.5 text-xs tabular-nums',
+                    isActive ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500',
+                  )}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -721,6 +804,18 @@ export default function RegrasComissoesPage() {
               Criar primeira regra
             </button>
           </div>
+        ) : visibleRules.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-14">
+            <Percent size={32} strokeWidth={1} className="text-gray-300" />
+            <p className="mt-3 text-sm font-medium text-gray-500">Nenhuma regra nesta família</p>
+            <p className="text-xs text-gray-400">
+              Crie uma regra de {FAMILY_DEFS.find((f) => f.key === activeFamily)?.label.toLowerCase() ?? 'comissão'} ou veja todas na aba “Todas”.
+            </p>
+            <button onClick={() => setEditing('new')} className="btn-primary mt-4 text-xs">
+              <Plus size={13} />
+              Nova regra
+            </button>
+          </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
             <div className="overflow-x-auto">
@@ -735,7 +830,7 @@ export default function RegrasComissoesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {rules.map((r) => (
+                  {visibleRules.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-800">
                         {r.name}
@@ -801,6 +896,7 @@ export default function RegrasComissoesPage() {
       {editing !== null && (
         <RuleModal
           initial={editing === 'new' ? null : editing}
+          defaultRuleType={editing === 'new' ? defaultRuleType : undefined}
           positions={positions}
           units={units}
           onClose={() => setEditing(null)}
