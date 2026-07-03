@@ -96,8 +96,10 @@ export default function LancamentosComissaoPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Destaque para os tipos pedidos na spec (venda/retorno/garantia) + demais.
-  const highlight = ['VENDA', 'RETORNO', 'GARANTIA', 'SERVICO']
+  // Cards por tipo. Mostra os que têm valor + os principais fixos (não some Documento).
+  const FIXED_CARDS = ['VENDA', 'RETORNO', 'GARANTIA', 'DOCUMENTO', 'SERVICO']
+  const extraTypes = totals.map((x) => x.ruleType).filter((t) => !FIXED_CARDS.includes(t) && (totals.find((x) => x.ruleType === t)?.total ?? 0) !== 0)
+  const highlight = [...FIXED_CARDS, ...extraTypes]
   const cards = highlight
     .map((t) => ({ ruleType: t, total: totals.find((x) => x.ruleType === t)?.total ?? 0 }))
 
@@ -114,7 +116,7 @@ export default function LancamentosComissaoPage() {
       </div>
 
       {/* Totais por tipo (destaque) + total geral */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {cards.map((c) => (
           <div key={c.ruleType} className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{TYPE_LABEL[c.ruleType] ?? c.ruleType}</p>
