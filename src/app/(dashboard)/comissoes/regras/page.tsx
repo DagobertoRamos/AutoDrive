@@ -110,6 +110,12 @@ const RULE_TYPE_LABELS: Record<string, string> = {
 // o backend normaliza TROCA→VENDA). Evita criar regra "morta" ou duplicada.
 const RULE_TYPE_OPTIONS: [string, string][] = Object.entries(RULE_TYPE_LABELS).filter(([v]) => v !== 'TROCA')
 
+// Tipos que NÃO usam faixa de quantidade/valor (a comissão é % /fixo por cargo,
+// e a base é derivada — retorno líquido, taxa de doc, preço do serviço/garantia).
+// Preencher faixa aqui BLOQUEIA o casamento da regra (bug histórico) → escondemos.
+const NO_RANGE_TYPES = new Set(['RETORNO', 'DOCUMENTO', 'SERVICO', 'GARANTIA'])
+const usesRanges = (ruleType: string) => !NO_RANGE_TYPES.has(ruleType)
+
 // ── Famílias de regra (abas) ───────────────────────────────────────────────────
 // Agrupa os tipos de regra por família para navegação em abas. Um bônus mensal é
 // uma regra VENDA com pagamento "Bônus por quantidade" (BONUS_QTD); por isso a
@@ -300,10 +306,12 @@ function RuleModal({
     try {
       const url    = isEdit ? `/api/commissions/rules/${initial!.id}` : '/api/commissions/rules'
       const method = isEdit ? 'PUT' : 'POST'
+      // Segurança: tipos sem faixa NUNCA enviam quantidade/valor (evita bloquear o casamento).
+      const payload = usesRanges(form.ruleType) ? form : { ...form, fromQuantity: null, toQuantity: null, fromValue: null, toValue: null }
       const res    = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(form),
+        body:    JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao salvar')
@@ -377,7 +385,16 @@ function RuleModal({
                 <select
                   className={inputCls()}
                   value={form.ruleType}
-                  onChange={(e) => set('ruleType', e.target.value)}
+                  onChange={(e) => {
+                    const rt = e.target.value
+                    // Ao trocar para um tipo sem faixa, limpa quantidade/valor
+                    // (senão ficariam gravados e bloqueariam o casamento).
+                    setForm((prev) => ({
+                      ...prev,
+                      ruleType: rt,
+                      ...(usesRanges(rt) ? {} : { fromQuantity: null, toQuantity: null, fromValue: null, toValue: null }),
+                    }))
+                  }}
                 >
                   {RULE_TYPE_OPTIONS.map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -500,44 +517,50 @@ function RuleModal({
               )}
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label={form.commissionType === 'BONUS_QTD' ? 'Quantidade mínima para bônus' : 'Quantidade mínima'}>
-                <input
-                  type="number" min={0}
-                  className={inputCls()}
-                  value={form.fromQuantity ?? ''}
-                  onChange={(e) => set('fromQuantity', e.target.value ? Number(e.target.value) : null)}
-                  placeholder="Ex: 1"
-                />
-              </Field>
-              <Field label="Quantidade máxima">
-                <input
-                  type="number" min={0}
-                  className={inputCls()}
-                  value={form.toQuantity ?? ''}
-                  onChange={(e) => set('toQuantity', e.target.value ? Number(e.target.value) : null)}
-                  placeholder="Sem limite"
-                />
-              </Field>
-              <Field label="Valor mínimo da venda">
-                <input
-                  inputMode="numeric"
-                  className={inputCls()}
-                  value={brlInputValue(form.fromValue)}
-                  onChange={(e) => set('fromValue', parseBRL(e.target.value))}
-                  placeholder="Ex: 50.000,00"
-                />
-              </Field>
-              <Field label="Valor máximo da venda">
-                <input
-                  inputMode="numeric"
-                  className={inputCls()}
-                  value={brlInputValue(form.toValue)}
-                  onChange={(e) => set('toValue', parseBRL(e.target.value))}
-                  placeholder="Sem teto"
-                />
-              </Field>
-            </div>
+            {usesRanges(form.ruleType) ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label={form.commissionType === 'BONUS_QTD' ? 'Quantidade mínima para bônus' : 'Quantidade mínima'}>
+                  <input
+                    type="number" min={0}
+                    className={inputCls()}
+                    value={form.fromQuantity ?? ''}
+                    onChange={(e) => set('fromQuantity', e.target.value ? Number(e.target.value) : null)}
+                    placeholder="Ex: 1"
+                  />
+                </Field>
+                <Field label="Quantidade máxima">
+                  <input
+                    type="number" min={0}
+                    className={inputCls()}
+                    value={form.toQuantity ?? ''}
+                    onChange={(e) => set('toQuantity', e.target.value ? Number(e.target.value) : null)}
+                    placeholder="Sem limite"
+                  />
+                </Field>
+                <Field label="Valor mínimo da venda">
+                  <input
+                    inputMode="numeric"
+                    className={inputCls()}
+                    value={brlInputValue(form.fromValue)}
+                    onChange={(e) => set('fromValue', parseBRL(e.target.value))}
+                    placeholder="Ex: 50.000,00"
+                  />
+                </Field>
+                <Field label="Valor máximo da venda">
+                  <input
+                    inputMode="numeric"
+                    className={inputCls()}
+                    value={brlInputValue(form.toValue)}
+                    onChange={(e) => set('toValue', parseBRL(e.target.value))}
+                    placeholder="Sem teto"
+                  />
+                </Field>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                {RULE_TYPE_LABELS[form.ruleType]} não usa faixa de quantidade/valor — a comissão vale por cargo/vendedor sobre a base ({form.ruleType === 'RETORNO' ? 'retorno líquido' : form.ruleType === 'DOCUMENTO' ? 'taxa de documentação' : form.ruleType === 'GARANTIA' ? 'preço da garantia' : 'valor do serviço'}).
+              </p>
+            )}
           </section>
 
           <label className="flex cursor-pointer items-center gap-2.5 border-t border-gray-100 pt-4">
