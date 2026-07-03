@@ -2300,3 +2300,10 @@ Feedback do usuário: cada colaborador deve ver SÓ o próprio lançamento (só 
   - Testes: 2 novos (consignação usa ruleType CONSIGNACAO; consignação sem regra não gera). Suíte 6/6 + commission/ verdes; `tsc` verde.
 - **Achado do "gerente 100 × 200" (dado, não código):** existem DUAS regras VENDA para o gerente com mesmo alvo/prioridade — `venda gerente` (FIXO R$200) e `comissão gestauto gerente` (FIXO R$100). O matcher desempata por `updatedAt` mais recente → a de R$100 venceu. A "gestauto gerente" é uma comissão de GARANTIA cadastrada como VENDA por engano. **Pendente decisão do usuário:** retipar para GARANTIA ou excluir (não alterei regra do usuário sem confirmação).
 - **Limpeza pendente:** os 12 lançamentos VENDA de consignação já gerados continuam no banco — cancelar os PREVISTO (feito em passo separado / a confirmar).
+
+### LOG 0156 — 2026-07-03 — Claude (Opus 4.8) — Correções de DADOS em produção (consignação + gerente 200)
+Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQuestion:
+- **Consignação:** apagados os **12 lançamentos VENDA PREVISTO** de deals CONSIGNACAO (R$1.200, todos PREVISTO) — gerados errado antes da correção de código (LOG 0155). Preservaria pagos/aprovados (não havia).
+- **Gerente 100→200:** regra `comissão gestauto gerente` retipada **VENDA → GARANTIA** (era comissão de garantia cadastrada como venda, vencendo o desempate contra `venda gerente` R$200). Depois, **reprecificados 426 lançamentos** de VENDA principal do gerente que estavam em R$100 → **R$200** (via matcher, só PREVISTO; pagos/aprovados intactos). Verificado: 426/426 agora em R$200.
+- **Código correlato (LOG deste dia):** garantia passou a poder pagar o gerente (se houver regra de gerente) — habilita a comissão de garantia do gerente da regra retipada.
+- **Nota:** os lançamentos de garantia do gerente (R$100/garantia) só aparecerão após reimportar as vendas com garantia (extensão recarregada), pois hoje as garantias ainda não estão como DealService nas vendas importadas.
