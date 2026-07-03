@@ -85,6 +85,15 @@ export default function LancamentosComissaoPage() {
     }
   }, [period, ruleType, status, unitId, collaborator])
 
+  // Filtros vindos por URL (ex.: "Ver lançamentos" do Extrato).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const q = new URLSearchParams(window.location.search)
+    const p = q.get('period'); const c = q.get('colab')
+    if (p) setPeriod(p)
+    if (c) setCollaborator(c)
+  }, [])
+
   useEffect(() => { fetchData() }, [fetchData])
 
   // Destaque para os tipos pedidos na spec (venda/retorno/garantia) + demais.

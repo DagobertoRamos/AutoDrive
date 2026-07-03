@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { DollarSign, RefreshCw, Download, TrendingUp, TrendingDown } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import ExtratoDetalheModal, { type ExtratoEntry } from '@/components/comissoes/ExtratoDetalheModal'
 
 interface CommissionEntry {
   id:           string
@@ -50,6 +51,7 @@ export default function ExtratoComisoesPage() {
   const [period, setPeriod]     = useState('')
   const [status, setStatus]     = useState('')
   const [colaborador, setColaborador] = useState('')
+  const [detalhe, setDetalhe] = useState<ExtratoEntry | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -163,8 +165,13 @@ export default function ExtratoComisoesPage() {
                 </tr>
               ) : (
                 visible.map((e) => (
-                  <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800">
+                  <tr
+                    key={e.id}
+                    onClick={() => setDetalhe({ sellerId: e.sellerId, responsavel: e.responsavel ?? e.seller?.shortName ?? e.seller?.fullName ?? '—', period: e.period, baseValue: e.baseValue, finalValue: e.finalValue, status: e.status })}
+                    className="cursor-pointer hover:bg-brand-50/50"
+                    title="Ver detalhes da comissão"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-brand-700 underline-offset-2 hover:underline">
                       {e.responsavel ?? e.seller?.shortName ?? e.seller?.fullName ?? '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-sm text-gray-600">{e.period}</td>
@@ -197,6 +204,8 @@ export default function ExtratoComisoesPage() {
           </div>
         )}
       </div>
+
+      {detalhe && <ExtratoDetalheModal entry={detalhe} onClose={() => setDetalhe(null)} />}
     </div>
   )
 }
