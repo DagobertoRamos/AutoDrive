@@ -583,7 +583,10 @@ function cellLines(td) {
 // se é a-receber (pagamento) ou a-pagar (débito). Muito mais confiável que
 // adivinhar tabelas soltas do resumo — é ESTA a fonte real de pagamentos/débitos.
 async function fetchTitulosFinanceiros(externalId) {
-  const empty = { pagamentos: [], debitos: [] }
+  // financeiro: totais classificados pela CATEGORIA da linha (mais confiável que a
+  // descrição). Financiamento = valor financiado; Retorno = receita de retorno do
+  // banco (bruto); Despachante = custo de documentação. Bancos vêm da contraparte.
+  const empty = { pagamentos: [], debitos: [], financeiro: { financiamentoValue: 0, financiamentoBank: null, retornoValue: 0, retornoBank: null, despachanteValue: 0 } }
   try {
     const r = await fetch(`/negociacao/${externalId}/visualizacao-titulos-financeiros`, { headers: { Accept: 'text/html' }, credentials: 'include' })
     if (!r.ok) return empty
@@ -591,6 +594,7 @@ async function fetchTitulosFinanceiros(externalId) {
     const doc = new DOMParser().parseFromString(html, 'text/html')
     const rows = [...doc.querySelectorAll('table tbody tr')]
     const pagamentos = [], debitos = []
+    const financeiro = { financiamentoValue: 0, financiamentoBank: null, retornoValue: 0, retornoBank: null, despachanteValue: 0 }
 
     for (const tr of rows) {
       const tds = [...tr.children]
@@ -607,6 +611,21 @@ async function fetchTitulosFinanceiros(externalId) {
       const categoria = col1[1] || null
       const notes = [descricao, categoria].filter(Boolean).join(' — ').slice(0, 500)
       const absValue = Math.abs(value)
+      // contraparte (fornecedor/banco) = última linha da col0 que não seja a data.
+      const contraparte = [...col0].reverse().find((l) => l && l !== dataStr && !/^[\d.\-\/]+$/.test(l)) || null
+      const catN = normalizeText(categoria || '')
+
+      // Classificação financeira por CATEGORIA (retorno antes de financiamento —
+      // a descrição do retorno também contém "financiamento").
+      if (/retorno/.test(catN)) {
+        financeiro.retornoValue += absValue
+        if (!financeiro.retornoBank) financeiro.retornoBank = contraparte
+      } else if (/financiamento/.test(catN)) {
+        financeiro.financiamentoValue += absValue
+        if (!financeiro.financiamentoBank) financeiro.financiamentoBank = contraparte
+      } else if (/despachante/.test(catN)) {
+        financeiro.despachanteValue += absValue
+      }
 
       if (isReceita) {
         pagamentos.push({
@@ -628,7 +647,7 @@ async function fetchTitulosFinanceiros(externalId) {
         })
       }
     }
-    return { pagamentos, debitos }
+    return { pagamentos, debitos, financeiro }
   } catch (e) { return empty }
 }
 
@@ -819,6 +838,9 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
     preliminaryRows[i].debitos = titulos.debitos.length ? titulos.debitos : (detalhes?.debitos || [])
     preliminaryRows[i].totalPagamentosDetalhe = preliminaryRows[i].pagamentos.reduce((s, p) => s + (Number(p.value) || 0), 0) || null
     preliminaryRows[i].totalDebitosDetalhe = preliminaryRows[i].debitos.reduce((s, d) => s + (Number(d.value) || 0), 0) || null
+    // Financeiro classificado (financiamento/retorno/despachante) para o AutoDrive
+    // calcular a comissão de retorno e a documentação.
+    preliminaryRows[i].financeiro = titulos.financeiro || null
     preliminaryRows[i].autoconfDetalhes = detalhes || null
 
     // "Visualizar histórico" — trilha de auditoria (quem cadastrou o quê).

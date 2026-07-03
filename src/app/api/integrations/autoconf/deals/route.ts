@@ -16,6 +16,7 @@ import {
 } from '@/lib/integrations/autoconf'
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
 import { isCommissionEligibleStatus } from '@/lib/commission/status'
+import { getRetornoConfig, computeReturnFromAutoconf, type RetornoConfig } from '@/lib/finance/retorno-config'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -194,6 +195,31 @@ async function resolveCustomerId(tenantId: string, row: AutoconfRow): Promise<st
   return created?.id ?? null
 }
 
+// Campos financeiros derivados dos títulos classificados (financiamento/retorno/
+// despachante) do AutoConf, aplicando o cadastro global de retorno.
+function financeFieldsFor(row: AutoconfRow, config: RetornoConfig): Record<string, unknown> {
+  const f = row.financeiro ?? {}
+  const financed = num(f.financiamentoValue) ?? 0
+  const retornoValue = num(f.retornoValue) ?? 0
+  const despachante = num(f.despachanteValue) ?? 0
+  const out: Record<string, unknown> = {}
+
+  const ret = computeReturnFromAutoconf({ config, financedAmount: financed, retornoValue })
+  if (ret) {
+    out.returnRatePercent = financed && financed > 0 ? Number(((ret.returnGrossValue / financed) * 100).toFixed(2)) : null
+    out.returnGrossValue = ret.returnGrossValue
+    out.ilaPercent = config.ilaPercent || null
+    out.ilaValue = ret.ilaValue
+    out.iofPercent = config.iofPercent || null
+    out.iofValue = ret.iofValue
+    out.returnNetValue = ret.returnNetValue
+  }
+  if (f.retornoBank) out.paymentBank = safeText(f.retornoBank, 120)
+  else if (f.financiamentoBank) out.paymentBank = safeText(f.financiamentoBank, 120)
+  if (despachante > 0) out.documentationFee = despachante
+  return out
+}
+
 function autoconfNotes(row: AutoconfRow): string {
   const details = row.clienteDetalhes ?? {}
   const lines = [
@@ -235,6 +261,9 @@ export async function POST(req: Request) {
     const rows: AutoconfRow[] = Array.isArray(body?.rows) ? body.rows : []
     const dryRun = body?.dryRun !== false // padrão TRUE
     if (!rows.length) return NextResponse.json({ success: false, error: 'Nenhuma linha recebida.' }, { status: 400 })
+
+    // Cadastro global de retorno (faixa + ILA + IOF) — aplica a todos financiamentos.
+    const retornoConfig = await getRetornoConfig(tenantId)
 
     // Caches por unidade (nome + gerente).
     const unitCache = new Map<string, string | null>()
@@ -294,6 +323,8 @@ export async function POST(req: Request) {
         notes: autoconfNotes(row),
         source: 'AUTOCONF',
         dealNumber,
+        // retorno (bruto/ILA/IOF/líquido) + banco + documentação, dos títulos.
+        ...financeFieldsFor(row, retornoConfig),
       }
       const vehicles = vehiclesFor(row)
       const paymentCreates = (savedDealId: string) => paymentsFor(row, tenantId, savedDealId)

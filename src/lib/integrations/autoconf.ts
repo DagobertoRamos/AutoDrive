@@ -164,6 +164,13 @@ export interface AutoconfDebt {
   notes?: string | null
   raw?: unknown
 }
+export interface AutoconfFinanceiro {
+  financiamentoValue?: number | null
+  financiamentoBank?: string | null
+  retornoValue?: number | null
+  retornoBank?: string | null
+  despachanteValue?: number | null
+}
 export interface AutoconfCustomerDetails {
   nome?: string | null
   cpfCnpj?: string | null
@@ -197,6 +204,7 @@ export interface AutoconfRow {
   purchaseAmount?: number | null
   pagamentos?: AutoconfPayment[]
   debitos?: AutoconfDebt[]
+  financeiro?: AutoconfFinanceiro | null
   totalPagamentosDetalhe?: number | null
   totalDebitosDetalhe?: number | null
   sourceUrl?: string | null

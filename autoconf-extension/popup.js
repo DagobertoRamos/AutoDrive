@@ -502,6 +502,7 @@ function slimRowForApi(row) {
     purchaseAmount: row.purchaseAmount,
     pagamentos: stripRaw(row.pagamentos),
     debitos: stripRaw(row.debitos),
+    financeiro: row.financeiro,
     totalPagamentosDetalhe: row.totalPagamentosDetalhe,
     totalDebitosDetalhe: row.totalDebitosDetalhe,
     sourceUrl: row.sourceUrl,

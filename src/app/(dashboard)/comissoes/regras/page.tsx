@@ -12,6 +12,8 @@ import { maskBRL, parseBRL } from '@/lib/masks'
 
 // Papéis que podem recalcular um período (espelha commissions.recalc no back-end).
 const RECALC_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO']
+// Papéis que configuram o retorno/ILA/IOF (espelha negotiations.financing).
+const RETORNO_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'FINANCEIRO']
 
 function brlInputValue(v: number | string | null | undefined): string {
   if (v == null) return ''
@@ -789,6 +791,136 @@ function RecalcModal({ units, onClose }: { units: UnitLite[]; onClose: () => voi
   )
 }
 
+// ── Modal — Cadastro de retorno (faixa + ILA + IOF) ───────────────────────────
+
+interface RetornoConfig {
+  active: boolean
+  ilaPercent: number
+  iofPercent: number
+  minReturnPercent: number
+  maxReturnPercent: number
+  defaultReturnPercent: number | null
+}
+
+function RetornoConfigModal({ onClose }: { onClose: () => void }) {
+  const [cfg, setCfg] = useState<RetornoConfig | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/commissions/retorno-config', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((d) => { if (alive) { if (d.data) setCfg(d.data); else setError(d.error ?? 'Erro ao carregar') } })
+      .catch(() => { if (alive) setError('Erro ao carregar') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const set = <K extends keyof RetornoConfig>(k: K, v: RetornoConfig[K]) =>
+    setCfg((p) => (p ? { ...p, [k]: v } : p))
+
+  const numOrNull = (s: string): number | null => (s.trim() === '' ? null : Number(s.replace(',', '.')))
+  const num = (s: string): number => Number(s.replace(',', '.')) || 0
+
+  const save = async () => {
+    if (!cfg) return
+    setSaving(true); setError(''); setSaved(false)
+    try {
+      const res = await fetch('/api/commissions/retorno-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao salvar')
+      setCfg(data.data); setSaved(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Percent size={18} className="text-brand-600" />
+            <h2 className="text-base font-semibold text-gray-900">Cadastro de retorno (ILA / IOF)</h2>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={16} /></button>
+        </div>
+
+        <div className="max-h-[78vh] space-y-4 overflow-y-auto px-6 py-5">
+          <p className="text-sm text-gray-600">
+            Vale para todos os financiamentos. O retorno bruto vem do AutoConf (ou financiado × % padrão);
+            o líquido = bruto − ILA − IOF. A <strong>comissão</strong> do retorno sai de uma regra do tipo <strong>Retorno</strong> (por cargo/vendedor).
+          </p>
+
+          {loading ? (
+            <div className="h-40 animate-pulse rounded-lg bg-gray-100" />
+          ) : cfg ? (
+            <>
+              <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                <input type="checkbox" checked={cfg.active} onChange={(e) => set('active', e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                <span className="text-sm font-medium text-gray-800">Ativar cálculo automático de retorno nas importações</span>
+              </label>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="ILA (%)">
+                  <input inputMode="decimal" className={inputCls()} value={cfg.ilaPercent}
+                    onChange={(e) => set('ilaPercent', num(e.target.value))} placeholder="Ex: 25" />
+                </Field>
+                <Field label="IOF (%)">
+                  <input inputMode="decimal" className={inputCls()} value={cfg.iofPercent}
+                    onChange={(e) => set('iofPercent', num(e.target.value))} placeholder="Ex: 0" />
+                </Field>
+                <Field label="Faixa de retorno — mínimo (%)">
+                  <input inputMode="decimal" className={inputCls()} value={cfg.minReturnPercent}
+                    onChange={(e) => set('minReturnPercent', num(e.target.value))} placeholder="Ex: 0,01" />
+                </Field>
+                <Field label="Faixa de retorno — máximo (%)">
+                  <input inputMode="decimal" className={inputCls()} value={cfg.maxReturnPercent}
+                    onChange={(e) => set('maxReturnPercent', num(e.target.value))} placeholder="Ex: 10" />
+                </Field>
+                <Field label="% padrão (quando o AutoConf não traz o valor)">
+                  <input inputMode="decimal" className={inputCls()} value={cfg.defaultReturnPercent ?? ''}
+                    onChange={(e) => set('defaultReturnPercent', numOrNull(e.target.value))} placeholder="Opcional. Ex: 6" />
+                </Field>
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <AlertCircle size={14} /> {error}
+                </div>
+              )}
+              {saved && (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <Save size={14} /> Cadastro salvo. Reimporte as vendas para aplicar o retorno.
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-sm text-red-700">{error || 'Não foi possível carregar.'}</div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
+          <button onClick={save} disabled={saving || !cfg} className="btn-primary text-sm">
+            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />} Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RegrasComissoesPage() {
@@ -803,8 +935,10 @@ export default function RegrasComissoesPage() {
   const [error, setError]         = useState('')
   const [activeFamily, setActiveFamily] = useState<FamilyKey | 'ALL'>('ALL')
   const [recalcOpen, setRecalcOpen] = useState(false)
+  const [retornoOpen, setRetornoOpen] = useState(false)
   const { data: session } = useSession()
   const canRecalc = RECALC_ROLES.includes(String(session?.user?.role ?? ''))
+  const canRetorno = RETORNO_ROLES.includes(String(session?.user?.role ?? ''))
 
   // Contagem por família (para os badges das abas) e lista filtrada da aba ativa.
   const familyCounts = useMemo(() => {
@@ -915,6 +1049,12 @@ export default function RegrasComissoesPage() {
             >
               <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
             </button>
+            {canRetorno && (
+              <button onClick={() => setRetornoOpen(true)} className="btn-secondary text-xs" title="Configurar retorno (ILA/IOF)">
+                <Percent size={13} />
+                Retorno (ILA/IOF)
+              </button>
+            )}
             {canRecalc && (
               <button onClick={() => setRecalcOpen(true)} className="btn-secondary text-xs" title="Recalcular comissões de um período">
                 <Calculator size={13} />
@@ -1109,6 +1249,9 @@ export default function RegrasComissoesPage() {
       )}
       {recalcOpen && (
         <RecalcModal units={units} onClose={() => setRecalcOpen(false)} />
+      )}
+      {retornoOpen && (
+        <RetornoConfigModal onClose={() => setRetornoOpen(false)} />
       )}
     </>
   )
