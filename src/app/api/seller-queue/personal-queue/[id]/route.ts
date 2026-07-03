@@ -13,7 +13,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
-import { startPersonalItem, transferPersonalItem, cancelPersonalItem } from '@/lib/seller-queue/personal-queue'
+import { startPersonalItem, transferPersonalItem, cancelPersonalItem, setPersonalItemPriority, reschedulePersonalItem } from '@/lib/seller-queue/personal-queue'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -54,7 +54,23 @@ export async function POST(req: Request, { params }: Ctx) {
       return NextResponse.json({ success: true })
     }
 
-    return NextResponse.json({ success: false, error: 'Ação inválida (start/transfer/cancel).' }, { status: 400 })
+    if (action === 'priority') {
+      const priority = Number(b?.priority)
+      if (!Number.isFinite(priority)) return NextResponse.json({ success: false, error: 'Prioridade inválida.' }, { status: 400 })
+      const r = await setPersonalItemPriority({ tenantId, itemId: id, priority, actorId: user.id, actorRole: user.role })
+      if (!r.ok) return NextResponse.json({ success: false, error: r.reason ?? 'Não foi possível alterar a prioridade.' }, { status: 409 })
+      await createSafeAuditLog({ userId: user.id, tenantId, action: 'PERSONAL_QUEUE_PRIORITY', entity: 'AgentPersonalQueueItem', entityId: id, userName: user.name, userRole: user.role })
+      return NextResponse.json({ success: true, data: { priority: r.priority } })
+    }
+
+    if (action === 'reschedule') {
+      const r = await reschedulePersonalItem({ tenantId, itemId: id, actorId: user.id, actorRole: user.role })
+      if (!r.ok) return NextResponse.json({ success: false, error: r.reason ?? 'Não foi possível reagendar.' }, { status: 409 })
+      await createSafeAuditLog({ userId: user.id, tenantId, action: 'PERSONAL_QUEUE_RESCHEDULE', entity: 'AgentPersonalQueueItem', entityId: id, userName: user.name, userRole: user.role })
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ success: false, error: 'Ação inválida (start/transfer/cancel/priority/reschedule).' }, { status: 400 })
   } catch (err) {
     return handlePrismaError(err)
   }

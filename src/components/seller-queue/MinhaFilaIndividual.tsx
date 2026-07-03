@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { ListChecks, Play, X, RefreshCw, Clock } from 'lucide-react'
+import { ListChecks, Play, X, RefreshCw, Clock, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Item {
@@ -51,7 +51,7 @@ export default function MinhaFilaIndividual({ onChanged }: { onChanged?: () => v
   }, [])
   useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i) }, [load])
 
-  const act = async (id: string, action: 'start' | 'cancel') => {
+  const act = async (id: string, action: 'start' | 'cancel' | 'reschedule') => {
     setBusyId(id); setError('')
     try {
       const res = await fetch(`/api/seller-queue/personal-queue/${id}`, {
@@ -89,6 +89,7 @@ export default function MinhaFilaIndividual({ onChanged }: { onChanged?: () => v
             >
               {busyId === it.id ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}{i === 0 ? 'Iniciar próximo' : 'Iniciar'}
             </button>
+            <button onClick={() => act(it.id, 'reschedule')} disabled={busyId === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Atender depois (manda para o fim da fila)"><History size={14} /></button>
             <button onClick={() => act(it.id, 'cancel')} disabled={busyId === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Cancelar"><X size={14} /></button>
           </li>
         ))}

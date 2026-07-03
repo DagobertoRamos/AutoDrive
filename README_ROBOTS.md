@@ -2340,3 +2340,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Segurança:** a API já restringe `?all=1` e `transfer` a `sellerQueue.manage`; o gate de UI é só cosmético (backend valida). Tenant/unit-scoped; auditado no backend.
 - **Verde:** `tsc` limpo; `eslint` **0 erros** (só warnings padrão de effect). Só adição — nada existente alterado além da inserção do card no painel.
 - **Pendências futuras:** reagendar item; prioridade editável; plugar aviso à gestão quando o responsável está fora/pausado (helper `notifyManagersPersonalUnavailable` pronto).
+
+### LOG 0160 — 2026-07-03 — Claude (Opus 4.8) — Fila individual: fecha pendências (aviso à gestão fora/pausado + prioridade editável + reagendar)
+- **Sem migration.** Fecha as 3 pendências da Fase 2/2.1.
+- **(1) Aviso à gestão (fora/pausado):** novo `getAgentQueueState(queueId, agentUserId)` → FREE/BUSY/PAUSED/AWAY. Em `customer-arrivals`, agendamento/retorno/pós-venda: **FREE → chama na hora**; **BUSY → fila individual (silencioso)**; **PAUSED/AWAY → fila individual + `notifyManagersPersonalUnavailable`** (a gestão é avisada que o responsável está fora/pausado). Antes só entrava na fila individual quando OCUPADO (em atendimento); agora cobre também pausado/fora (spec).
+- **(2) Prioridade editável:** `setPersonalItemPriority` (clamp 0–100; próprio responsável ou gestão) + ação `priority` na rota `[id]`. UI do gerente (`FilasIndividuaisUnidade`) ganhou ↑/↓ de prioridade por item (±10) e mostra a prioridade atual.
+- **(3) Reagendar ("atender depois"):** `reschedulePersonalItem` (reseta prioridade=0 e `queuedAt`=agora → vai para o fim da fila individual, sem perder o item) + ação `reschedule`. Botão na fila do vendedor (`MinhaFilaIndividual`) e no painel do gerente.
+- **Auditoria:** `PERSONAL_QUEUE_PRIORITY` / `PERSONAL_QUEUE_RESCHEDULE` no `createSafeAuditLog`.
+- **Testes:** +7 em `personal-queue.test.ts` (setPriority clamp/guarda, reschedule reset, getAgentQueueState BUSY/AWAY/PAUSED/FREE) → suíte seller-queue **34/34**. `tsc` verde; `eslint` **0 erros** (só warnings padrão de effect).
+- **Riscos:** o `getAgentQueueState` usa a fila do dia; sem entry = AWAY (avisa gestão) — comportamento desejado. Sem tempo real (polling 5s).

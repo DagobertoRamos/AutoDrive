@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { ListChecks, PlayCircle, ArrowRightLeft, X, RefreshCw, Clock } from 'lucide-react'
+import { ListChecks, PlayCircle, ArrowRightLeft, X, RefreshCw, Clock, ChevronUp, ChevronDown, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Item {
@@ -91,9 +91,13 @@ export default function FilasIndividuaisUnidade({ onChanged }: { onChanged?: () 
                     <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', TYPE_CLS[it.itemType] ?? 'bg-gray-100 text-gray-600')}>{it.itemTypeLabel}</span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-gray-900">{it.customerName ?? 'Cliente'}</p>
-                      <p className="flex items-center gap-1 text-xs text-gray-400"><Clock size={11} />{waitLabel(it.waitingSeconds)}</p>
+                      <p className="flex items-center gap-1 text-xs text-gray-400"><Clock size={11} />{waitLabel(it.waitingSeconds)} · prioridade {it.priority}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      <div className="flex flex-col">
+                        <button onClick={() => act(it.id, { action: 'priority', priority: it.priority + 10 })} disabled={busy === it.id} className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Subir prioridade"><ChevronUp size={13} /></button>
+                        <button onClick={() => act(it.id, { action: 'priority', priority: Math.max(0, it.priority - 10) })} disabled={busy === it.id} className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Baixar prioridade"><ChevronDown size={13} /></button>
+                      </div>
                       <select
                         value={pick[it.id] ?? ''}
                         onChange={(e) => setPick((p) => ({ ...p, [it.id]: e.target.value }))}
@@ -111,6 +115,7 @@ export default function FilasIndividuaisUnidade({ onChanged }: { onChanged?: () 
                         title="Transferir"
                       ><ArrowRightLeft size={13} /></button>
                       <button onClick={() => act(it.id, { action: 'start' })} disabled={busy === it.id} className="flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"><PlayCircle size={13} />Iniciar</button>
+                      <button onClick={() => act(it.id, { action: 'reschedule' })} disabled={busy === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Reagendar (manda para o fim)"><History size={14} /></button>
                       <button onClick={() => act(it.id, { action: 'cancel' })} disabled={busy === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Cancelar"><X size={14} /></button>
                     </div>
                   </li>

@@ -4,7 +4,7 @@ const { prismaMock, notifyMock } = vi.hoisted(() => ({
   prismaMock: {
     agentPersonalQueueItem: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     sellerQueueAttendance: { findFirst: vi.fn(), create: vi.fn() },
-    sellerQueueEntry: { updateMany: vi.fn() },
+    sellerQueueEntry: { updateMany: vi.fn(), findUnique: vi.fn() },
     user: { findUnique: vi.fn(), findMany: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prismaMockTx)),
   },
@@ -23,7 +23,7 @@ vi.mock('@/lib/seller-queue/queue', () => ({
 }))
 vi.mock('@/services/notification.service', () => ({ notify: notifyMock.notify, notifyByRole: notifyMock.notifyByRole }))
 
-import { enqueuePersonalItem, startPersonalItem, transferPersonalItem, listPersonalQueueForAgent } from '@/lib/seller-queue/personal-queue'
+import { enqueuePersonalItem, startPersonalItem, transferPersonalItem, listPersonalQueueForAgent, setPersonalItemPriority, reschedulePersonalItem, getAgentQueueState } from '@/lib/seller-queue/personal-queue'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -88,6 +88,54 @@ describe('transferPersonalItem', () => {
     expect(r.ok).toBe(true)
     expect(prismaMock.agentPersonalQueueItem.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ agentUserId: 'b1', status: 'AGUARDANDO' }) }))
     expect(notifyMock.notify).toHaveBeenCalledWith(expect.objectContaining({ userId: 'b1' }))
+  })
+})
+
+describe('setPersonalItemPriority', () => {
+  it('atualiza a prioridade (clampada 0–100) do próprio item', async () => {
+    prismaMock.agentPersonalQueueItem.findUnique.mockResolvedValue({ id: 'i1', tenantId: 't1', agentUserId: 'a1', status: 'AGUARDANDO' })
+    const r = await setPersonalItemPriority({ tenantId: 't1', itemId: 'i1', priority: 250, actorId: 'a1', actorRole: 'VENDEDOR' })
+    expect(r.ok).toBe(true)
+    expect(r.priority).toBe(100)
+    expect(prismaMock.agentPersonalQueueItem.update).toHaveBeenCalledWith(expect.objectContaining({ data: { priority: 100 } }))
+  })
+  it('bloqueia item de outro (sem ser gestão)', async () => {
+    prismaMock.agentPersonalQueueItem.findUnique.mockResolvedValue({ id: 'i1', tenantId: 't1', agentUserId: 'a2', status: 'AGUARDANDO' })
+    expect((await setPersonalItemPriority({ tenantId: 't1', itemId: 'i1', priority: 50, actorId: 'a1', actorRole: 'VENDEDOR' })).ok).toBe(false)
+  })
+})
+
+describe('reschedulePersonalItem', () => {
+  it('reseta prioridade e chegada (manda para o fim)', async () => {
+    prismaMock.agentPersonalQueueItem.findUnique.mockResolvedValue({ id: 'i1', tenantId: 't1', agentUserId: 'a1', status: 'AGUARDANDO' })
+    const r = await reschedulePersonalItem({ tenantId: 't1', itemId: 'i1', actorId: 'a1', actorRole: 'VENDEDOR' })
+    expect(r.ok).toBe(true)
+    const data = prismaMock.agentPersonalQueueItem.update.mock.calls[0][0].data
+    expect(data.priority).toBe(0)
+    expect(data.status).toBe('AGUARDANDO')
+    expect(data.queuedAt).toBeInstanceOf(Date)
+  })
+})
+
+describe('getAgentQueueState', () => {
+  it('em atendimento → BUSY', async () => {
+    prismaMock.sellerQueueAttendance.findFirst.mockResolvedValue({ id: 'att' })
+    expect(await getAgentQueueState('q1', 'a1')).toBe('BUSY')
+  })
+  it('sem entry → AWAY', async () => {
+    prismaMock.sellerQueueAttendance.findFirst.mockResolvedValue(null)
+    prismaMock.sellerQueueEntry.findUnique.mockResolvedValue(null)
+    expect(await getAgentQueueState('q1', 'a1')).toBe('AWAY')
+  })
+  it('pausado → PAUSED', async () => {
+    prismaMock.sellerQueueAttendance.findFirst.mockResolvedValue(null)
+    prismaMock.sellerQueueEntry.findUnique.mockResolvedValue({ status: 'PAUSED', blocked: false })
+    expect(await getAgentQueueState('q1', 'a1')).toBe('PAUSED')
+  })
+  it('aguardando → FREE', async () => {
+    prismaMock.sellerQueueAttendance.findFirst.mockResolvedValue(null)
+    prismaMock.sellerQueueEntry.findUnique.mockResolvedValue({ status: 'WAITING', blocked: false })
+    expect(await getAgentQueueState('q1', 'a1')).toBe('FREE')
   })
 })
 

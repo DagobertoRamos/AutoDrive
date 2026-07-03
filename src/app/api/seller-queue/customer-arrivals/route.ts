@@ -22,7 +22,7 @@ import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
 import { callForArrival, callSpecificSeller } from '@/lib/seller-queue/call'
 import { flagFraud } from '@/lib/seller-queue/fraud'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
-import { isAgentBusy, enqueuePersonalItem, type PersonalItemType } from '@/lib/seller-queue/personal-queue'
+import { getAgentQueueState, enqueuePersonalItem, notifyManagersPersonalUnavailable, type PersonalItemType } from '@/lib/seller-queue/personal-queue'
 
 const ACTIVE_ENTRY = ['WAITING', 'NEXT', 'CALLED', 'ACCEPTED', 'IN_ATTENDANCE', 'PAUSED']
 
@@ -103,10 +103,11 @@ export async function POST(req: Request) {
       if (!target || target.tenantId !== tenantId || target.unitId !== unitId || target.status !== 'ATIVO') {
         return NextResponse.json({ success: false, error: 'Colaborador inválido para esta unidade.' }, { status: 400 })
       }
-      // FILA INDIVIDUAL (Fase 2): se o responsável está OCUPADO (em atendimento),
-      // o cliente NÃO fura a fila principal nem some — entra na FILA INDIVIDUAL
-      // dele. Se está LIVRE, chama na hora (comportamento atual).
-      if (await isAgentBusy(tenantId, unitId, queue.id, d.targetSellerId)) {
+      // FILA INDIVIDUAL (Fase 2): responsável LIVRE → chama na hora. Se está
+      // OCUPADO/PAUSADO/FORA, o cliente NÃO fura a fila principal nem some —
+      // entra na FILA INDIVIDUAL dele. Pausado/fora também avisa a gestão.
+      const agentState = await getAgentQueueState(queue.id, d.targetSellerId)
+      if (agentState !== 'FREE') {
         const itemType: PersonalItemType = mode === 'POS_VENDAS' ? 'POS_VENDA' : mode === 'AGENDAMENTO' ? 'AGENDAMENTO' : 'RETORNO'
         const item = await enqueuePersonalItem({
           tenantId, unitId, agentUserId: d.targetSellerId, itemType, createdByUserId: user.id,
@@ -115,8 +116,13 @@ export async function POST(req: Request) {
         })
         // A chegada foi encaminhada para a fila individual → sai da lista de "aguardando".
         await prisma.sellerQueueCustomerArrival.update({ where: { id: arrival.id }, data: { status: 'ASSIGNED', notes: `Fila individual (${itemType})` } }).catch(() => {})
-        await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CUSTOMER_ARRIVED', sellerId: d.targetSellerId, actorId: user.id, arrivalId: arrival.id, reason: `fila individual (${itemType})` })
-        return NextResponse.json({ success: true, data: { arrivalId: arrival.id, recurring, personalQueued: true, itemId: item.id } }, { status: 201 })
+        await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CUSTOMER_ARRIVED', sellerId: d.targetSellerId, actorId: user.id, arrivalId: arrival.id, reason: `fila individual (${itemType}, ${agentState})` })
+        // Pausado/fora: o responsável talvez não veja logo — avisa a gestão.
+        if (agentState === 'PAUSED' || agentState === 'AWAY') {
+          const ag = await prisma.user.findUnique({ where: { id: d.targetSellerId }, select: { name: true } }).catch(() => null)
+          await notifyManagersPersonalUnavailable({ tenantId, unitId, agentName: ag?.name ?? 'o responsável', itemType })
+        }
+        return NextResponse.json({ success: true, data: { arrivalId: arrival.id, recurring, personalQueued: true, itemId: item.id, agentState } }, { status: 201 })
       }
       // Responsável livre → chama na hora (toca), com aceite + prazo.
       const reason = mode === 'POS_VENDAS' ? 'pós-vendas' : mode === 'AGENDAMENTO' ? 'agendamento' : 'responsável'

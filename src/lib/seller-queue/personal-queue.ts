@@ -138,6 +138,22 @@ export async function isAgentBusy(tenantId: string, unitId: string, queueId: str
   return !!active
 }
 
+export type AgentQueueState = 'FREE' | 'BUSY' | 'PAUSED' | 'AWAY'
+
+/** Estado do responsável na fila do dia — decide se chama na hora (FREE) ou
+ *  enfileira (BUSY/PAUSED/AWAY). PAUSED/AWAY também avisa a gestão. */
+export async function getAgentQueueState(queueId: string, agentUserId: string): Promise<AgentQueueState> {
+  if (await isAgentBusy('', '', queueId, agentUserId)) return 'BUSY'
+  const entry = await prisma.sellerQueueEntry.findUnique({
+    where: { queueId_sellerId: { queueId, sellerId: agentUserId } },
+    select: { status: true, blocked: true },
+  })
+  if (!entry || entry.status === 'LEFT') return 'AWAY'
+  if (entry.blocked || entry.status === 'PAUSED') return 'PAUSED'
+  if (entry.status === 'WAITING' || entry.status === 'NEXT') return 'FREE'
+  return 'BUSY'
+}
+
 /** Inicia o atendimento de um item da fila individual. Cria o atendimento e
  *  marca o responsável como IN_ATTENDANCE. Só o próprio responsável ou a gestão. */
 export async function startPersonalItem(opts: {
@@ -210,6 +226,28 @@ export async function cancelPersonalItem(opts: { tenantId: string; itemId: strin
   if (!ACTIVE_STATUSES.includes(item.status as typeof ACTIVE_STATUSES[number])) return { ok: false, reason: 'Este item não pode ser cancelado.' }
   if (item.agentUserId !== opts.actorId && !MANAGER_ROLES.includes(opts.actorRole)) return { ok: false, reason: 'Sem permissão.' }
   await prisma.agentPersonalQueueItem.update({ where: { id: item.id }, data: { status: 'CANCELADO', finishedAt: new Date() } })
+  return { ok: true }
+}
+
+/** Muda a prioridade de um item (o próprio responsável ou a gestão). */
+export async function setPersonalItemPriority(opts: { tenantId: string; itemId: string; priority: number; actorId: string; actorRole: string }): Promise<{ ok: boolean; reason?: string; priority?: number }> {
+  const item = await prisma.agentPersonalQueueItem.findUnique({ where: { id: opts.itemId } })
+  if (!item || item.tenantId !== opts.tenantId) return { ok: false, reason: 'Item não encontrado.' }
+  if (!ACTIVE_STATUSES.includes(item.status as typeof ACTIVE_STATUSES[number])) return { ok: false, reason: 'Este item não está aguardando.' }
+  if (item.agentUserId !== opts.actorId && !MANAGER_ROLES.includes(opts.actorRole)) return { ok: false, reason: 'Sem permissão.' }
+  const priority = Math.max(0, Math.min(100, Math.round(opts.priority)))
+  await prisma.agentPersonalQueueItem.update({ where: { id: item.id }, data: { priority } })
+  return { ok: true, priority }
+}
+
+/** Reagenda (atender depois): manda o item para o FIM da fila individual do
+ *  responsável, sem perdê-lo (reseta a chegada e zera a prioridade). */
+export async function reschedulePersonalItem(opts: { tenantId: string; itemId: string; actorId: string; actorRole: string }): Promise<{ ok: boolean; reason?: string }> {
+  const item = await prisma.agentPersonalQueueItem.findUnique({ where: { id: opts.itemId } })
+  if (!item || item.tenantId !== opts.tenantId) return { ok: false, reason: 'Item não encontrado.' }
+  if (!ACTIVE_STATUSES.includes(item.status as typeof ACTIVE_STATUSES[number])) return { ok: false, reason: 'Só é possível reagendar itens aguardando.' }
+  if (item.agentUserId !== opts.actorId && !MANAGER_ROLES.includes(opts.actorRole)) return { ok: false, reason: 'Sem permissão.' }
+  await prisma.agentPersonalQueueItem.update({ where: { id: item.id }, data: { status: 'AGUARDANDO', priority: 0, queuedAt: new Date() } })
   return { ok: true }
 }
 
