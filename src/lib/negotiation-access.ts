@@ -15,10 +15,10 @@ const TENANT_WIDE_ROLES = new Set([
 const UNIT_ROLES = new Set(['GERENTE'])
 const OWN_ROLES = new Set(['VENDEDOR', 'VENDEDOR_LIDER'])
 
-// Visibilidade de COMISSÃO (lançamentos/extrato/relatório): só MASTER/ADM/
-// FINANCEIRO veem tudo (para fechamento); TODO o resto — inclusive gerentes —
-// vê apenas a PRÓPRIA comissão. (Requisito do cliente.)
-const COMMISSION_ALL_ROLES = new Set(['MASTER', 'ADM', 'FINANCEIRO'])
+// Visibilidade de COMISSÃO (lançamentos/extrato/relatório): MASTER/ADM/
+// GERENTE_GERAL/FINANCEIRO veem tudo (fechamento; gerente-geral entra como adm);
+// os demais — gerente de unidade, vendedor, etc. — veem só a PRÓPRIA comissão.
+const COMMISSION_ALL_ROLES = new Set(['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO'])
 
 type ActorAccess = {
   sellerId: string | null

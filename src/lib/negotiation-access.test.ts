@@ -71,9 +71,9 @@ describe('negotiation-access', () => {
     })
   })
 
-  it('comissão: GERENTE_GERAL também vê só a própria (só fin/adm veem tudo)', async () => {
+  it('comissão: GERENTE_GERAL vê o tenant inteiro (entra como adm)', async () => {
     await expect(buildCommissionAccessWhere(user('GERENTE_GERAL'))).resolves.toEqual({
-      AND: [{ tenantId: 'tenant-1' }, OWN_CALC],
+      tenantId: 'tenant-1',
     })
   })
 

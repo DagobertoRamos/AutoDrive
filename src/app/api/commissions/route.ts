@@ -8,7 +8,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
-import { buildCommissionExtractAccessWhere } from '@/lib/negotiation-access'
+import { buildCommissionAccessWhere } from '@/lib/negotiation-access'
 import type { Prisma } from '@prisma/client'
 
 const num = (v: unknown): number => {
@@ -30,65 +30,83 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const page    = Math.max(1, Number(searchParams.get('page')    ?? 1))
-    const perPage = Math.min(100, Number(searchParams.get('perPage') ?? 50))
+    const perPage = Math.min(200, Number(searchParams.get('perPage') ?? 100))
     const status  = searchParams.get('status')  || undefined
     const period  = searchParams.get('period')  || undefined
     const seller  = searchParams.get('sellerId')|| undefined
 
-    const extra: Prisma.CommissionExtractWhereInput = {}
-    if (status) extra.status   = status as Prisma.CommissionExtractWhereInput['status']
-    if (period) extra.period   = period
+    // O extrato mostra a comissão REAL gerada (CommissionCalculation, os
+    // Lançamentos), agregada por COLABORADOR + período — não depende de nenhum
+    // "fechamento" manual. Visibilidade: MASTER/ADM/GERENTE_GERAL/FINANCEIRO veem
+    // todos; demais só o próprio.
+    const extra: Prisma.CommissionCalculationWhereInput = {}
+    if (status) extra.status = status as Prisma.CommissionCalculationWhereInput['status']
+    if (period) extra.period = period
     if (seller) extra.sellerId = seller
 
-    // Visibilidade: MASTER/ADM/FINANCEIRO veem tudo; demais só o próprio.
-    const where = await buildCommissionExtractAccessWhere(session.user, extra)
+    const where = await buildCommissionAccessWhere(session.user, extra)
 
-    // As linhas do extrato são BASE/AJUSTE por vendedor+período. Agrega em uma
-    // linha por (vendedor, período): baseValue = soma das BASE; adjustments =
-    // soma das AJUSTE/DESCONTO; finalValue = base + ajustes.
-    const rows = await prisma.commissionExtract.findMany({
+    const rows = await prisma.commissionCalculation.findMany({
       where,
-      include: { seller: { select: { fullName: true, shortName: true } } },
-      orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
-      take: 5000,
+      select: { sellerId: true, managerId: true, ruleDetails: true, period: true, commissionValue: true, status: true },
+      orderBy: [{ period: 'desc' }],
+      take: 20000,
     })
 
-    type Group = {
-      id: string; sellerId: string; period: string
-      baseValue: number; adjustments: number
-      status: string; paidAt: Date | null
-      seller: { fullName: string; shortName: string | null } | null
-    }
-    const STATUS_RANK: Record<string, number> = { PREVISTO: 0, APROVADO: 1, PAGO: 2, AJUSTADO: 1, CANCELADO: 3 }
+    // Resolve nomes dos colaboradores (vendedor/gerente/usuário-ganhador).
+    const detailsOf = (v: unknown): Record<string, unknown> =>
+      v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
+    const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter(Boolean))] as string[]
+    const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[]
+    const userIds = [...new Set(rows.map((r) => detailsOf(r.ruleDetails).employeeUserId).filter(Boolean))] as string[]
+    const [sellers, managers, users] = await Promise.all([
+      sellerIds.length ? prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, fullName: true, shortName: true } }) : [],
+      managerIds.length ? prisma.manager.findMany({ where: { id: { in: managerIds } }, select: { id: true, fullName: true, user: { select: { name: true } } } }) : [],
+      userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [],
+    ])
+    const sellerMap = Object.fromEntries(sellers.map((s) => [s.id, s.shortName || s.fullName]))
+    const managerMap = Object.fromEntries(managers.map((m) => [m.id, m.fullName || m.user?.name || 'Gerente']))
+    const userMap = Object.fromEntries(users.map((u) => [u.id, u.name]))
+
+    type Group = { id: string; earnerId: string; responsavel: string; period: string; baseValue: number; status: string }
+    const STATUS_RANK: Record<string, number> = { PREVISTO: 0, AJUSTADO: 1, APROVADO: 1, PAGO: 2, CANCELADO: 3 }
     const groups = new Map<string, Group>()
     for (const r of rows) {
-      const sid = r.sellerId ?? r.userId
-      const key = `${sid}::${r.period}`
-      const g = groups.get(key) ?? {
-        id: key, sellerId: sid, period: r.period,
-        baseValue: 0, adjustments: 0, status: r.status, paidAt: r.paidAt,
-        seller: r.seller ?? null,
+      if (r.status === 'CANCELADO') continue
+      let earnerId = ''
+      let responsavel = '—'
+      if (r.sellerId) { earnerId = `s:${r.sellerId}`; responsavel = sellerMap[r.sellerId] ?? '—' }
+      else if (r.managerId) { earnerId = `m:${r.managerId}`; responsavel = managerMap[r.managerId] ?? '—' }
+      else {
+        const uid = String(detailsOf(r.ruleDetails).employeeUserId ?? '')
+        earnerId = `u:${uid}`; responsavel = userMap[uid] ?? '—'
       }
-      const v = num(r.value)
-      if (r.type === 'AJUSTE' || r.type === 'DESCONTO') g.adjustments += v
-      else g.baseValue += v
-      // status "menos avançado" do grupo (o que falta liberar/pagar aparece).
+      const key = `${earnerId}::${r.period}`
+      const g = groups.get(key) ?? { id: key, earnerId, responsavel, period: r.period, baseValue: 0, status: r.status }
+      g.baseValue += num(r.commissionValue)
       if ((STATUS_RANK[r.status] ?? 0) < (STATUS_RANK[g.status] ?? 0)) g.status = r.status
-      if (r.paidAt && !g.paidAt) g.paidAt = r.paidAt
       groups.set(key, g)
     }
 
-    const all = [...groups.values()].map((g) => ({
-      id: g.id,
-      sellerId: g.sellerId,
-      period: g.period,
-      baseValue: g.baseValue,
-      adjustments: g.adjustments,
-      finalValue: g.baseValue + g.adjustments,
-      status: g.status,
-      paidAt: g.paidAt,
-      seller: g.seller,
-    }))
+    const all = [...groups.values()]
+      .map((g) => ({
+        id: g.id,
+        sellerId: g.earnerId,
+        responsavel: g.responsavel,
+        period: g.period,
+        baseValue: g.baseValue,
+        adjustments: 0,
+        finalValue: g.baseValue,
+        status: g.status,
+        paidAt: null as Date | null,
+        seller: { fullName: g.responsavel, shortName: g.responsavel },
+      }))
+      .sort((a, b) => (a.period === b.period ? b.finalValue - a.finalValue : a.period < b.period ? 1 : -1))
+
+    // Lista de colaboradores (para o filtro), sempre completa dentro da visibilidade.
+    const colaboradores = [...new Map(all.map((r) => [r.sellerId, r.responsavel])).entries()]
+      .map(([id, nome]) => ({ id, nome }))
+      .sort((a, b) => a.nome.localeCompare(b.nome))
 
     const total = all.length
     const data = all.slice((page - 1) * perPage, (page - 1) * perPage + perPage)
@@ -96,6 +114,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data,
+      colaboradores,
       meta: { total, page, perPage, totalPages: Math.max(1, Math.ceil(total / perPage)) },
     })
   } catch (err) {

@@ -12,24 +12,29 @@ import { cn, formatDate } from '@/lib/utils'
 interface CommissionEntry {
   id:           string
   sellerId:     string
+  responsavel?: string
   period:       string
   baseValue:    number
   adjustments:  number
   finalValue:   number
   status:       string
   paidAt:       string | null
-  createdAt:    string
+  createdAt?:   string
   seller?: { fullName: string; shortName: string | null }
 }
 
+interface Colaborador { id: string; nome: string }
 interface Meta { total: number; page: number; totalPages: number }
 
 const STATUS_COLOR: Record<string, string> = {
-  PENDENTE:  'bg-amber-100 text-amber-700',
+  PREVISTO:  'bg-amber-100 text-amber-700',
   APROVADO:  'bg-blue-100 text-blue-700',
   PAGO:      'bg-green-100 text-green-700',
+  AJUSTADO:  'bg-purple-100 text-purple-700',
   CANCELADO: 'bg-red-100 text-red-600',
-  REVISAO:   'bg-purple-100 text-purple-700',
+}
+const STATUS_LABEL: Record<string, string> = {
+  PREVISTO: 'Prevista', APROVADO: 'Liberada', PAGO: 'Paga', AJUSTADO: 'Ajustada', CANCELADO: 'Estornada',
 }
 
 function fmt(n: number) {
@@ -38,33 +43,39 @@ function fmt(n: number) {
 
 export default function ExtratoComisoesPage() {
   const [entries, setEntries]   = useState<CommissionEntry[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [meta, setMeta]         = useState<Meta>({ total: 0, page: 1, totalPages: 1 })
   const [loading, setLoading]   = useState(true)
   const [page, setPage]         = useState(1)
   const [period, setPeriod]     = useState('')
   const [status, setStatus]     = useState('')
+  const [colaborador, setColaborador] = useState('')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(page), perPage: '50' })
+      const params = new URLSearchParams({ page: String(page), perPage: '200' })
       if (period) params.set('period', period)
       if (status) params.set('status', status)
       const res  = await fetch(`/api/commissions?${params}`, { credentials: 'include' })
       const data = await res.json()
       if (data.success) {
         setEntries(data.data ?? [])
+        setColaboradores(data.colaboradores ?? [])
         setMeta(data.meta ?? meta)
       }
     } catch { /* silent */ }
     finally { setLoading(false) }
   }, [page, period, status])
 
+  // Filtro por colaborador é aplicado no cliente (a lista já vem escopada pela visibilidade).
+  const visible = colaborador ? entries.filter((e) => e.sellerId === colaborador) : entries
+
   useEffect(() => { fetchData() }, [fetchData])
 
-  const totalValue = entries.reduce((s, e) => s + e.finalValue, 0)
-  const totalBase  = entries.reduce((s, e) => s + e.baseValue, 0)
-  const totalAdj   = entries.reduce((s, e) => s + e.adjustments, 0)
+  const totalValue = visible.reduce((s, e) => s + e.finalValue, 0)
+  const totalBase  = visible.reduce((s, e) => s + e.baseValue, 0)
+  const totalAdj   = visible.reduce((s, e) => s + e.adjustments, 0)
 
   return (
     <div className="space-y-5">
@@ -109,12 +120,18 @@ export default function ExtratoComisoesPage() {
         />
         <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} className="input w-auto">
           <option value="">Todos os status</option>
-          <option value="PENDENTE">Pendente</option>
-          <option value="APROVADO">Aprovado</option>
-          <option value="PAGO">Pago</option>
-          <option value="CANCELADO">Cancelado</option>
-          <option value="REVISAO">Em revisão</option>
+          <option value="PREVISTO">Prevista</option>
+          <option value="APROVADO">Liberada</option>
+          <option value="PAGO">Paga</option>
+          <option value="AJUSTADO">Ajustada</option>
+          <option value="CANCELADO">Estornada</option>
         </select>
+        {colaboradores.length > 1 && (
+          <select value={colaborador} onChange={(e) => setColaborador(e.target.value)} className="input w-auto">
+            <option value="">Todos os colaboradores</option>
+            {colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Table */}
@@ -137,7 +154,7 @@ export default function ExtratoComisoesPage() {
                     ))}
                   </tr>
                 ))
-              ) : entries.length === 0 ? (
+              ) : visible.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-14 text-center">
                     <DollarSign size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} />
@@ -145,10 +162,10 @@ export default function ExtratoComisoesPage() {
                   </td>
                 </tr>
               ) : (
-                entries.map((e) => (
+                visible.map((e) => (
                   <tr key={e.id} className="hover:bg-gray-50">
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800">
-                      {e.seller?.shortName ?? e.seller?.fullName ?? e.sellerId.slice(0, 8)}
+                      {e.responsavel ?? e.seller?.shortName ?? e.seller?.fullName ?? '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-sm text-gray-600">{e.period}</td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-gray-700">{fmt(e.baseValue)}</td>
@@ -158,7 +175,7 @@ export default function ExtratoComisoesPage() {
                     <td className="whitespace-nowrap px-4 py-3 font-bold tabular-nums text-brand-700">{fmt(e.finalValue)}</td>
                     <td className="px-4 py-3">
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_COLOR[e.status] ?? 'bg-gray-100 text-gray-600')}>
-                        {e.status}
+                        {STATUS_LABEL[e.status] ?? e.status}
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
