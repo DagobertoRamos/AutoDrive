@@ -8,10 +8,11 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ListOrdered, RefreshCw } from 'lucide-react'
+import { ListOrdered, RefreshCw, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MinhaVezPanel from '@/components/seller-queue/MinhaVezPanel'
 import QueueRanking from '@/components/seller-queue/QueueRanking'
+import VerificarVezModal from '@/components/seller-queue/VerificarVezModal'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 interface Entry { id: string; sellerName: string; status: string; position: number; attendanceCount: number; hasDevice?: boolean }
@@ -24,6 +25,7 @@ export default function FilaOverviewPage() {
   const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
+  const [checkTurnOpen, setCheckTurnOpen] = useState(false)
   const firedTimeouts = useRef<Set<string>>(new Set())
 
   const load = useCallback(async () => {
@@ -60,6 +62,15 @@ export default function FilaOverviewPage() {
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
+
+      {/* Verificar vez — botão grande (cliente de porta): quem é o da vez + ação */}
+      <button
+        onClick={() => setCheckTurnOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-4 text-base font-semibold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.99]"
+      >
+        <Crown size={20} />Verificar vez
+      </button>
+      {checkTurnOpen && <VerificarVezModal onClose={() => setCheckTurnOpen(false)} onChanged={load} />}
 
       {/* Ações (entrar na fila / QR / atender cliente) + aceitar/finalizar */}
       <MinhaVezPanel />
