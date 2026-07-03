@@ -60,6 +60,7 @@ export async function GET(req: Request) {
     const status       = searchParams.get('status') || ''
     const unitId       = searchParams.get('unitId') || ''
     const collaborator = searchParams.get('collaborator') || '' // "s:<id>" | "m:<id>" | "u:<id>"
+    const includeCancelled = searchParams.get('includeCancelled') === '1'
 
     // Filtros de linha (tipo/período/status) vão no where; unidade e colaborador
     // são aplicados DEPOIS, para que as listas dos dropdowns fiquem completas.
@@ -115,8 +116,10 @@ export async function GET(req: Request) {
     const colaboradores = [...new Map(rows.map((r) => { const e = earnerOf(r); return [e.key, e.nome] })).entries()]
       .map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
 
-    // Aplica unidade + colaborador.
+    // Aplica unidade + colaborador. Canceladas ficam fora por padrão (só entram
+    // com ?includeCancelled=1 — usado pelo detalhe do extrato p/ mostrar riscado).
     const filtered = rows.filter((r) => {
+      if (!includeCancelled && r.status === 'CANCELADO') return false
       if (unitId && r.unitId !== unitId) return false
       if (collaborator && earnerOf(r).key !== collaborator) return false
       return true
@@ -136,15 +139,18 @@ export async function GET(req: Request) {
         baseValue: num(r.baseValue),
         commissionValue: num(r.commissionValue),
         status: r.status,
+        cancelReason: typeof details.cancelReason === 'string' ? details.cancelReason : null,
+        manualKind: typeof details.manualKind === 'string' ? details.manualKind : null,
         period: r.period,
         createdAt: r.createdAt,
         responsavel: earnerOf(r).nome,
       }
     })
 
-    // Totais por tipo (do conjunto FILTRADO).
+    // Totais por tipo (do conjunto FILTRADO, ignorando canceladas).
     const totalsMap = new Map<string, { total: number; count: number }>()
     for (const r of filtered) {
+      if (r.status === 'CANCELADO') continue
       const t = totalsMap.get(r.ruleType) ?? { total: 0, count: 0 }
       t.total += num(r.commissionValue); t.count += 1
       totalsMap.set(r.ruleType, t)

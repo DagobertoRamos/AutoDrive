@@ -205,7 +205,7 @@ export default function ExtratoComisoesPage() {
         )}
       </div>
 
-      {detalhe && <ExtratoDetalheModal entry={detalhe} onClose={() => setDetalhe(null)} />}
+      {detalhe && <ExtratoDetalheModal entry={detalhe} onClose={() => setDetalhe(null)} onChanged={fetchData} />}
     </div>
   )
 }

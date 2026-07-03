@@ -2395,3 +2395,14 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **`comissoes/extrato/page.tsx`:** linhas viraram clicáveis (nome em destaque, cursor/hover) → abre o modal com a `ExtratoEntry` (chave do colaborador, responsável, período, base, total, status).
 - **`comissoes/lancamentos/page.tsx`:** lê `?period=` e `?colab=` da URL no mount e pré-seleciona os filtros → "Ver lançamentos" já cai filtrado por colaborador+período.
 - **Reuso/segurança:** nenhum endpoint novo; o detalhe usa o mesmo `calculations` com `collaborator` (chave "s:"/"m:"/"u:") já suportado e escopado pela visibilidade (fin/adm/GG veem todos; demais só o próprio). `tsc` verde; `eslint` 0 erros. Só front-end.
+
+### LOG 0166 — 2026-07-03 — Claude (Opus 4.8) — Extrato: ajuste manual de comissão (cancelar c/ motivo + crédito/débito) + detalhe
+- **Contexto:** folha do gerente (PDF) vs sistema — precisa cancelar comissões indevidas (ex.: garantia GestAuto cortesia, custo cobrado) com motivo, e lançar manualmente o que faltou (crédito) ou descontar (débito), tudo no Extrato.
+- **Endpoints novos:**
+  - `POST /api/commissions/calculations/:id/cancel` (gate `commissions.adjust` = MASTER/ADM): marca o lançamento **CANCELADO + motivo** (não apaga, fica riscado/registrado). Bloqueia PAGO. Auditado (`COMMISSION_CANCEL_MANUAL`).
+  - `POST /api/commissions/manual` (gate `commissions.adjust`): cria um `CommissionCalculation` avulso (`ruleType EXCECAO`, escopo `MANUAL_ADJUSTMENT`) para o colaborador+período, **valor + (crédito) / − (débito)**, descrição e motivo. Resolve sellerId/managerId/employeeUserId pela chave do colaborador ("s:/m:/u:"). Auditado (`COMMISSION_MANUAL`).
+  - `GET /api/commissions/calculations`: novo `?includeCancelled=1` (detalhe do extrato mostra canceladas riscadas); resposta agora traz `cancelReason` e `manualKind`; **totais ignoram canceladas**.
+- **UI (`ExtratoDetalheModal`):** cada lançamento (para gestão) tem botão **Cancelar** (pede motivo) → fica riscado com o motivo; botão **"Lançar crédito/débito manual"** (tipo, valor, descrição, motivo). Grupo "Ajuste manual". Total e subtotais **desconsideram canceladas** e somam os manuais. O resumo impresso/PDF mostra as canceladas riscadas. Extrato atrás do modal recarrega (`onChanged`).
+- **Fluxo do usuário (gestauto cortesia + faltante):** abrir o detalhe do vendedor → **Cancelar** a garantia cortesia (motivo "cortesia — custo cobrado") → **Lançar crédito** para a garantia que faltou. Extrato/impressão refletem na hora.
+- **Comparação Dagoberto jun/26 (sistema):** 44× gerente (R$8.800), retorno R$1.877,82, **6 garantias** (R$600), bônus R$500 → ~R$11.777,82. Bate com o PDF (6 GestAuto). Divergências pontuais agora tratáveis pelo ajuste manual.
+- **Verde:** `tsc` limpo; `eslint` 0 erros; suíte de comissão 28/28. Sem migration (reusa `CommissionCalculation`; ajuste é `EXCECAO`/`MANUAL_ADJUSTMENT` + `CANCELADO`). Visibilidade e tenant preservados.
