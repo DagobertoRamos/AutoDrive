@@ -129,6 +129,9 @@ function periodOf(date: Date): string {
 export function normalizeCommissionOperationType(dealType: string | null | undefined): CommissionRuleType {
   const type = String(dealType ?? '').toUpperCase()
   if (type === 'COMPRA') return 'COMPRA'
+  // Consignação é uma operação PRÓPRIA: só paga se houver regra CONSIGNACAO
+  // cadastrada (não empresta a regra de VENDA). Venda e Troca continuam iguais.
+  if (type === 'CONSIGNACAO') return 'CONSIGNACAO'
   return 'VENDA'
 }
 
@@ -613,7 +616,7 @@ export async function generateCommissionsForDeal(
       const rd = e.ruleDetails as (GenerationItemRef & { employeeUserId?: string; employeeKind?: EmployeeKind; commissionScope?: CommissionScope }) | null
       const existingScope = rd?.commissionScope ?? null
       if (!isPrincipalScope(it.commissionScope) && e.ruleType !== it.ruleType) return false
-      if (isPrincipalScope(it.commissionScope) && !['VENDA', 'TROCA', 'COMPRA'].includes(e.ruleType)) return false
+      if (isPrincipalScope(it.commissionScope) && !['VENDA', 'TROCA', 'COMPRA', 'CONSIGNACAO'].includes(e.ruleType)) return false
 
       const existingEmployeeUserId = rd?.employeeUserId
       const existingEmployeeKind = rd?.employeeKind
@@ -851,7 +854,8 @@ function periodBounds(date: Date): { start: Date; end: Date } {
 function vehicleRolesForRuleType(ruleType: string): string[] {
   if (ruleType === 'TROCA') return ['TROCA']
   if (ruleType === 'COMPRA') return ['COMPRADO']
-  if (ruleType === 'VENDA') return ['VENDIDO', 'CONSIGNADO']
+  if (ruleType === 'CONSIGNACAO') return ['CONSIGNADO']
+  if (ruleType === 'VENDA') return ['VENDIDO']
   return []
 }
 

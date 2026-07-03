@@ -163,6 +163,33 @@ describe('generateCommissionsForDeal', () => {
     expect(dagoberto.some((it) => it.commissionScope === 'UNIT_MANAGER_COMMISSION')).toBe(true)
   })
 
+  it('consignacao usa ruleType CONSIGNACAO (nao empresta a regra de VENDA)', async () => {
+    prismaMock.deal.findUnique.mockResolvedValue(makeDeal({
+      type: 'CONSIGNACAO',
+      vehicles: [{ id: 'dvCons', role: 'CONSIGNADO', brand: 'VW', model: 'Gol', plate: 'CCC1C11', agreedValue: 50000 }],
+    }))
+
+    const result = await generateCommissionsForDeal({ dealId: 'deal1', tenantId: 'tenant1', triggeredBy: 'tester', dryRun: true })
+    const principal = result.items.filter((it) => [
+      'SELLER_MAIN_COMMISSION', 'UNIT_MANAGER_COMMISSION', 'GENERAL_MANAGER_COMMISSION',
+    ].includes(it.commissionScope))
+
+    expect(principal.length).toBeGreaterThan(0)
+    expect(principal.every((it) => it.ruleType === 'CONSIGNACAO')).toBe(true)
+    expect(result.items.some((it) => it.ruleType === 'VENDA')).toBe(false)
+  })
+
+  it('consignacao SEM regra cadastrada nao gera lancamento (so paga se cadastrado)', async () => {
+    prismaMock.deal.findUnique.mockResolvedValue(makeDeal({
+      type: 'CONSIGNACAO',
+      vehicles: [{ id: 'dvCons', role: 'CONSIGNADO', brand: 'VW', model: 'Gol', plate: 'CCC1C11', agreedValue: 50000 }],
+    }))
+    matcherMock.findCommissionRule.mockResolvedValue(null) // nenhuma regra casa
+
+    const result = await generateCommissionsForDeal({ dealId: 'deal1', tenantId: 'tenant1', triggeredBy: 'tester', dryRun: true })
+    expect(result.items.filter((it) => it.matched !== null)).toHaveLength(0)
+  })
+
   it('gera RETORNO, GARANTIA e DOCUMENTO quando a negociacao traz os dados', async () => {
     prismaMock.deal.findUnique.mockResolvedValue(makeDeal({
       type: 'VENDA',

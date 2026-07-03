@@ -96,6 +96,7 @@ const RULE_TYPE_LABELS: Record<string, string> = {
   // Venda e troca usam a MESMA comissão — uma regra "Venda / Troca" cobre os dois.
   VENDA:        'Venda / Troca',
   TROCA:        'Venda / Troca', // legado: regras antigas de TROCA aparecem como Venda / Troca
+  CONSIGNACAO:  'Consignação',
   BONUS_DEZENA: 'Bônus dezenal',
   BONUS_META:   'Bônus meta',
   GARANTIA:     'Garantia',

@@ -176,6 +176,7 @@ enum CommissionRuleType {
   VENDA
   TROCA
   COMPRA
+  CONSIGNACAO
   GARANTIA
   RETORNO
   SERVICO

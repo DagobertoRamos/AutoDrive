@@ -2289,3 +2289,14 @@ Feedback do usuário: cada colaborador deve ver SÓ o próprio lançamento (só 
 - **Tabela:** a coluna Aplicação mostra "Vendedor: {nome}" quando a regra é por colaborador (usa `seller.user.name`, que o GET de regras já retorna).
 - **Uso p/ RETORNO:** agora dá pra criar a regra de Retorno por cargo (Perfil base = VENDEDOR/GERENTE) e/ou por vendedor específico (% sobre o líquido).
 - **Verde:** `tsc` 0 erros; sem novos erros de lint.
+
+### LOG 0155 — 2026-07-03 — Claude (Opus 4.8) — Comissão: CONSIGNAÇÃO é operação própria (só paga se cadastrada) + achado do gerente 100×200
+- **Bug relatado:** consignação estava pagando sem regra (13 deals CONSIGNACAO → 12 lançamentos VENDA). Causa: `normalizeCommissionOperationType(CONSIGNACAO)` retornava `VENDA`, então a consignação "emprestava" a regra de venda.
+- **Correção (com migration NÃO destrutiva):**
+  - Enum `CommissionRuleType` ganhou `CONSIGNACAO` (migration `20260703130000_add_consignacao_rule_type` = `ALTER TYPE ... ADD VALUE IF NOT EXISTS`). **Aplicada em produção manualmente** (build não roda migrate); enum confirmado.
+  - `normalizeCommissionOperationType`: CONSIGNACAO → `CONSIGNACAO` (VENDA/TROCA seguem iguais; COMPRA idem). Agora consignação só casa regra `CONSIGNACAO` — **sem regra, não paga** (princípio "só paga se cadastrado").
+  - `vehicleRolesForRuleType`: `CONSIGNACAO`→`[CONSIGNADO]`; **VENDA passou a contar só `[VENDIDO]`** (consignação sai da faixa de venda — separação limpa). `isDuplicate` (escopo principal) inclui CONSIGNACAO.
+  - UI: `CONSIGNACAO: 'Consignação'` em RULE_TYPE_LABELS → selecionável no formulário de Regras.
+  - Testes: 2 novos (consignação usa ruleType CONSIGNACAO; consignação sem regra não gera). Suíte 6/6 + commission/ verdes; `tsc` verde.
+- **Achado do "gerente 100 × 200" (dado, não código):** existem DUAS regras VENDA para o gerente com mesmo alvo/prioridade — `venda gerente` (FIXO R$200) e `comissão gestauto gerente` (FIXO R$100). O matcher desempata por `updatedAt` mais recente → a de R$100 venceu. A "gestauto gerente" é uma comissão de GARANTIA cadastrada como VENDA por engano. **Pendente decisão do usuário:** retipar para GARANTIA ou excluir (não alterei regra do usuário sem confirmação).
+- **Limpeza pendente:** os 12 lançamentos VENDA de consignação já gerados continuam no banco — cancelar os PREVISTO (feito em passo separado / a confirmar).
