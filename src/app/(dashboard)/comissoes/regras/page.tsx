@@ -802,41 +802,59 @@ interface RetornoConfig {
   defaultReturnPercent: number | null
 }
 
+// Aceita decimais quebrados com vírgula OU ponto (ex.: "26,1", "1.5").
+function pnum(s: string): number { const n = Number(String(s).replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+function pnumOrNull(s: string): number | null { const t = String(s).trim(); if (!t) return null; const n = Number(t.replace(',', '.')); return Number.isFinite(n) ? n : null }
+const asText = (v: number | null | undefined) => (v == null ? '' : String(v))
+
 function RetornoConfigModal({ onClose }: { onClose: () => void }) {
   const [cfg, setCfg] = useState<RetornoConfig | null>(null)
+  // Campos de % ficam como TEXTO enquanto edita (para não engolir a vírgula do decimal).
+  const [text, setText] = useState({ ila: '', iof: '', min: '', max: '', def: '' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
 
+  const syncText = (c: RetornoConfig) => setText({
+    ila: asText(c.ilaPercent), iof: asText(c.iofPercent),
+    min: asText(c.minReturnPercent), max: asText(c.maxReturnPercent),
+    def: asText(c.defaultReturnPercent),
+  })
+
   useEffect(() => {
     let alive = true
     fetch('/api/commissions/retorno-config', { credentials: 'include' })
       .then((r) => r.json())
-      .then((d) => { if (alive) { if (d.data) setCfg(d.data); else setError(d.error ?? 'Erro ao carregar') } })
+      .then((d) => { if (alive) { if (d.data) { setCfg(d.data); syncText(d.data) } else setError(d.error ?? 'Erro ao carregar') } })
       .catch(() => { if (alive) setError('Erro ao carregar') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [])
 
-  const set = <K extends keyof RetornoConfig>(k: K, v: RetornoConfig[K]) =>
-    setCfg((p) => (p ? { ...p, [k]: v } : p))
-
-  const numOrNull = (s: string): number | null => (s.trim() === '' ? null : Number(s.replace(',', '.')))
-  const num = (s: string): number => Number(s.replace(',', '.')) || 0
+  const setField = (k: keyof typeof text, v: string) => { setText((p) => ({ ...p, [k]: v })); setSaved(false) }
+  const setActive = (v: boolean) => { setCfg((p) => (p ? { ...p, active: v } : p)); setSaved(false) }
 
   const save = async () => {
     if (!cfg) return
     setSaving(true); setError(''); setSaved(false)
     try {
+      const payload = {
+        active: cfg.active,
+        ilaPercent: pnum(text.ila),
+        iofPercent: pnum(text.iof),
+        minReturnPercent: pnum(text.min),
+        maxReturnPercent: pnum(text.max),
+        defaultReturnPercent: pnumOrNull(text.def),
+      }
       const res = await fetch('/api/commissions/retorno-config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao salvar')
-      setCfg(data.data); setSaved(true)
+      setCfg(data.data); syncText(data.data); setSaved(true)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar')
     } finally {
@@ -866,31 +884,31 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
           ) : cfg ? (
             <>
               <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-                <input type="checkbox" checked={cfg.active} onChange={(e) => set('active', e.target.checked)}
+                <input type="checkbox" checked={cfg.active} onChange={(e) => setActive(e.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
                 <span className="text-sm font-medium text-gray-800">Ativar cálculo automático de retorno nas importações</span>
               </label>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="ILA (%)">
-                  <input inputMode="decimal" className={inputCls()} value={cfg.ilaPercent}
-                    onChange={(e) => set('ilaPercent', num(e.target.value))} placeholder="Ex: 25" />
+                  <input inputMode="decimal" className={inputCls()} value={text.ila}
+                    onChange={(e) => setField('ila', e.target.value)} placeholder="Ex: 26,1" />
                 </Field>
                 <Field label="IOF (%)">
-                  <input inputMode="decimal" className={inputCls()} value={cfg.iofPercent}
-                    onChange={(e) => set('iofPercent', num(e.target.value))} placeholder="Ex: 0" />
+                  <input inputMode="decimal" className={inputCls()} value={text.iof}
+                    onChange={(e) => setField('iof', e.target.value)} placeholder="Ex: 1,5" />
                 </Field>
                 <Field label="Faixa de retorno — mínimo (%)">
-                  <input inputMode="decimal" className={inputCls()} value={cfg.minReturnPercent}
-                    onChange={(e) => set('minReturnPercent', num(e.target.value))} placeholder="Ex: 0,01" />
+                  <input inputMode="decimal" className={inputCls()} value={text.min}
+                    onChange={(e) => setField('min', e.target.value)} placeholder="Ex: 0,01" />
                 </Field>
                 <Field label="Faixa de retorno — máximo (%)">
-                  <input inputMode="decimal" className={inputCls()} value={cfg.maxReturnPercent}
-                    onChange={(e) => set('maxReturnPercent', num(e.target.value))} placeholder="Ex: 10" />
+                  <input inputMode="decimal" className={inputCls()} value={text.max}
+                    onChange={(e) => setField('max', e.target.value)} placeholder="Ex: 20" />
                 </Field>
                 <Field label="% padrão (quando o AutoConf não traz o valor)">
-                  <input inputMode="decimal" className={inputCls()} value={cfg.defaultReturnPercent ?? ''}
-                    onChange={(e) => set('defaultReturnPercent', numOrNull(e.target.value))} placeholder="Opcional. Ex: 6" />
+                  <input inputMode="decimal" className={inputCls()} value={text.def}
+                    onChange={(e) => setField('def', e.target.value)} placeholder="Opcional. Ex: 6" />
                 </Field>
               </div>
 

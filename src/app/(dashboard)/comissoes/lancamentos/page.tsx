@@ -26,9 +26,18 @@ interface Row {
 interface TypeTotal { ruleType: string; total: number; count: number }
 
 const TYPE_LABEL: Record<string, string> = {
-  VENDA: 'Venda', TROCA: 'Troca', COMPRA: 'Compra', GARANTIA: 'Garantia',
+  VENDA: 'Venda', TROCA: 'Troca', COMPRA: 'Compra', CONSIGNACAO: 'Consignação', GARANTIA: 'Garantia',
   RETORNO: 'Retorno', SERVICO: 'Serviço', DOCUMENTO: 'Documento',
   BONUS_META: 'Bônus meta', BONUS_DEZENA: 'Bônus dezena', EXCECAO: 'Exceção',
+}
+
+// TIPO exibido: para a comissão principal (VENDA/COMPRA) mostra a operação ORIGINAL
+// da negociação (Venda/Troca/Compra/Consignação); para as demais, o próprio tipo.
+function displayType(r: Pick<Row, 'ruleType' | 'originalOperationType'>): string {
+  const isPrincipal = r.ruleType === 'VENDA' || r.ruleType === 'COMPRA'
+  const op = (r.originalOperationType ?? '').toUpperCase()
+  if (isPrincipal && op && TYPE_LABEL[op]) return TYPE_LABEL[op]
+  return TYPE_LABEL[r.ruleType] ?? r.ruleType
 }
 const STATUS_LABEL: Record<string, string> = {
   PREVISTO: 'Prevista', APROVADO: 'Liberada', PAGO: 'Paga', CANCELADO: 'Estornada', AJUSTADO: 'Ajustada',
@@ -143,7 +152,7 @@ export default function LancamentosComissaoPage() {
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800">{r.responsavel}</td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{TYPE_LABEL[r.ruleType] ?? r.ruleType}</span>
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{displayType(r)}</span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{r.commissionScopeLabel ?? 'Principal'}</span>
