@@ -210,11 +210,12 @@ describe('generateCommissionsForDeal', () => {
     expect(scopes.has('WARRANTY_COMMISSION')).toBe(true)
     expect(scopes.has('DOCUMENT_COMMISSION')).toBe(true)
 
-    // Garantia = comissão do VENDEDOR (só 1 lançamento; gerente fora), tipo GARANTIA.
+    // Garantia: tipo GARANTIA, base = valor da garantia; inclui o vendedor
+    // (gerente também, se houver regra de gerente — matcher decide).
     const warr = result.items.filter((it) => it.commissionScope === 'WARRANTY_COMMISSION')
-    expect(warr).toHaveLength(1)
-    expect(warr[0].ruleType).toBe('GARANTIA')
-    expect(warr[0].baseValue).toBe(1650)
+    expect(warr.length).toBeGreaterThanOrEqual(1)
+    expect(warr.every((it) => it.ruleType === 'GARANTIA' && it.baseValue === 1650)).toBe(true)
+    expect(warr.some((it) => it.employeeLabel === 'Anderson')).toBe(true)
 
     // Retorno usa o líquido como base; documento usa a taxa de documentação.
     expect(result.items.find((it) => it.commissionScope === 'RETURN_COMMISSION')?.baseValue).toBe(1000)

@@ -414,8 +414,10 @@ export async function generateCommissionsForDeal(
         reference:     { dealId: d.id, ...refKind },
       })
     }
-    if (managerEarner && !isWarranty) {
-      // Garantia é comissão do VENDEDOR (não do gerente) — evita pagar em dobro.
+    if (managerEarner) {
+      // Serviço e garantia: o gerente só recebe se houver uma regra que case com
+      // ele (por cargo/perfil). Sem regra de gerente, o matcher não paga — logo
+      // não há pagamento em dobro (vendedor e gerente casam regras distintas).
       items.push({
         ruleType,
         commissionScope,
