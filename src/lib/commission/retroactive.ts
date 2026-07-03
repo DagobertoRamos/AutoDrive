@@ -81,30 +81,32 @@ export async function recalculateSellerMainForPeriod(opts: {
   const count = main.length
   if (count === 0) return { sellerId, period, count: 0, tierRuleId: null, repriced: 0, changes: [] }
 
-  // 2. Faixa aplicável para a contagem ATUAL.
+  // 2. Dados do vendedor (posição/cargo/unidade) para casar a regra.
   const seller = await prisma.seller.findUnique({
     where: { id: sellerId },
     select: { positionId: true, unitId: true, user: { select: { role: true } } },
   }).catch(() => null)
+  const employee = { kind: 'SELLER' as const, id: sellerId, positionId: seller?.positionId ?? null, role: seller?.user?.role ?? null }
+  const unitId = seller?.unitId ?? null
 
-  const matched = await findCommissionRule({
-    tenantId,
-    ruleType: 'VENDA',
-    commissionKind: 'REGULAR',
-    employee: { kind: 'SELLER', id: sellerId, positionId: seller?.positionId ?? null, role: seller?.user?.role ?? null },
-    unitId: seller?.unitId ?? null,
-    quantityInPeriod: count,
-    date,
-  })
-  if (!matched) return { sellerId, period, count, tierRuleId: null, repriced: 0, changes: [] }
-
-  // 3. Reprecifica TODAS as principais PREVISTAS para o valor da faixa atual.
+  // 3. Reprecifica TODAS as principais PREVISTAS para a faixa da contagem ATUAL.
+  // IMPORTANTE: casa a regra POR LANÇAMENTO passando o `baseValue` do carro — assim
+  // regras com teto/piso de valor (ex.: "venda acima de 100 mil" = % ) só se aplicam
+  // ao carro cujo valor entra na faixa; os demais pegam a faixa por quantidade.
   let repriced = 0
+  let tierRuleId: string | null = null
   const changes: RetroChange[] = []
   for (const r of main) {
     if (r.status !== 'PREVISTO') continue // PAGO/APROVADO/AJUSTADO preservados
+    const base = toNum(r.baseValue)
+    const matched = await findCommissionRule({
+      tenantId, ruleType: 'VENDA', commissionKind: 'REGULAR',
+      employee, unitId, quantityInPeriod: count, baseValue: base, date,
+    })
+    if (!matched) continue
+    if (!tierRuleId) tierRuleId = matched.rule.id
     const oldValue = toNum(r.commissionValue)
-    const newValue = computeCommissionValue(matched.rule, toNum(r.baseValue))
+    const newValue = computeCommissionValue(matched.rule, base)
     if (Math.abs(newValue - oldValue) < 0.005) continue // já está certo
     changes.push({ id: r.id, oldValue, newValue, status: r.status })
     if (!dryRun) {
@@ -129,7 +131,7 @@ export async function recalculateSellerMainForPeriod(opts: {
     repriced++
   }
 
-  return { sellerId, period, count, tierRuleId: matched.rule.id, repriced, changes }
+  return { sellerId, period, count, tierRuleId, repriced, changes }
 }
 
 /** Reprecifica os períodos afetados por um conjunto de (sellerId, period). */
