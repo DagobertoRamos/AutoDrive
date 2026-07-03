@@ -2219,3 +2219,13 @@
 - **Seguro por padrão:** config nasce `active:false` → nada muda até o financeiro ativar e reimportar. `tsc` verde; `eslint` sem novos erros (1 warning pré-existente); **86/86** testes (finance+commission).
 - **Falta (mesmo chamado):** **B. Documento** (definir quem recebe — 0 Position cadastrada hoje); **C. Garantia** (preciso de 1 negociação com garantia Gestauto p/ ver o formato — catálogo AutoDrive vazio → provável regra GARANTIA por %); **D. Serviços** ("SERVIÇOS ADICIONAIS"). **Tipo** já sai certo no banco (VENDA/COMPRA/TROCA/CONSIGNAÇÃO) — "só venda" nos lançamentos é porque só VENDA/COMPRA geram hoje; resolve quando B/C/D gerarem.
 - **Extensão NÃO é auto-deploy:** o usuário precisa **recarregar a extensão** (chrome://extensions → Atualizar) para capturar o `financeiro`.
+
+### LOG 0147 — 2026-07-03 — Claude (Opus 4.8) — Comissões: DOCUMENTO das vendas importadas (Parte B)
+- **Depende da Parte A** (LOG 0146): o `documentationFee` passou a ser capturado do "DESPACHANTE" dos títulos do AutoConf. Antes, o DOCUMENTO só saía para usuários com `Position.slug=='documentacao'` — e o tenant EasyCar tem **0 Position cadastrada**, então nunca gerava.
+- **Mudança (`commission-generator.ts`, bloco DOCUMENTO):**
+  - Base passou a ser **só** `documentationFee` (removido o fallback para `saleAmount`, que pagaria % da venda inteira por engano).
+  - Candidatos ao DOCUMENTO agora incluem **vendedor** e **gerente** (além do setor de documentação, se existir). Assim uma **regra DOCUMENTO** (por cargo/vendedor) paga quem a loja definir.
+  - **Seguro/sem duplicar:** cada employee é um lançamento próprio; só paga quem tiver regra DOCUMENTO casada (matcher). Usuário de documentação que também é o vendedor/gerente é filtrado para não duplicar.
+- **Atenção operacional:** já existe 1 regra DOCUMENTO no tenant. Se ela for DEFAULT (sem alvo), agora passará a pagar o **vendedor** o documento em toda venda com taxa. Se a intenção for um cargo específico, ajustar o alvo da regra (aba "Serviços" das Regras de Comissão — DOCUMENTO cai nessa família).
+- **Verde:** `tsc` ok; `commission-generator.test.ts` 3/3 (a mudança não quebra os testes existentes). Gera de verdade após **reimportar** (para o `documentationFee` entrar) + haver regra DOCUMENTO.
+- **Falta:** C. Garantia (aguardando 1 negociação com garantia Gestauto p/ mapear); D. Serviços adicionais.

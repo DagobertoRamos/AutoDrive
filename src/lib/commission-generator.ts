@@ -431,10 +431,39 @@ export async function generateCommissionsForDeal(
     addForService(ds)
   }
 
-  // DOCUMENTO — para usuários com Position.slug == 'documentacao' no mesmo tenant
-  const docFee = toNum(d.documentationFee)
-  const docBase = docFee > 0 ? docFee : toNum(d.saleAmount)
+  // DOCUMENTO — comissão sobre a TAXA DE DOCUMENTAÇÃO (despachante), capturada do
+  // AutoConf. Candidatos: vendedor, gerente e, se existir, o setor de documentação
+  // (Position.slug == 'documentacao'). Só paga quem tiver uma regra DOCUMENTO
+  // casada (por cargo/vendedor) — por isso adicionar candidatos é seguro (não
+  // duplica: cada employee é um lançamento; sem regra, nada é gerado).
+  const docBase = toNum(d.documentationFee)
   if (docBase > 0) {
+    if (sellerEarner) {
+      items.push({
+        ruleType:      'DOCUMENTO',
+        commissionScope: 'DOCUMENT_COMMISSION',
+        employeeKind:  sellerEarner.kind,
+        employeeId:    sellerEarner.id,
+        employeeUserId: sellerEarner.userId,
+        employeeLabel: sellerEarner.label,
+        baseValue:     docBase,
+        description:   `DOCUMENTO — vendedor ${sellerEarner.label}`,
+        reference:     { dealId: d.id },
+      })
+    }
+    if (managerEarner) {
+      items.push({
+        ruleType:      'DOCUMENTO',
+        commissionScope: 'DOCUMENT_COMMISSION',
+        employeeKind:  managerEarner.kind,
+        employeeId:    managerEarner.id,
+        employeeUserId: managerEarner.userId,
+        employeeLabel: managerEarner.label,
+        baseValue:     docBase,
+        description:   `DOCUMENTO — gerente ${managerEarner.label}`,
+        reference:     { dealId: d.id },
+      })
+    }
     const docUsers = await prisma.user.findMany({
       where: {
         tenantId: tenantId,
@@ -442,10 +471,12 @@ export async function generateCommissionsForDeal(
       },
       select: { id: true, name: true, positionId: true, role: true, unitId: true },
     })
-    // Se o deal tiver unitId, prioriza usuários da mesma unidade
-    const eligible = unitId
+    // Se o deal tiver unitId, prioriza usuários da mesma unidade; evita duplicar
+    // quando o usuário de documentação já é o vendedor/gerente do negócio.
+    const eligible = (unitId
       ? docUsers.filter((u) => u.unitId == null || u.unitId === unitId)
       : docUsers
+    ).filter((u) => u.id !== sellerEarner?.userId && u.id !== managerEarner?.userId)
     for (const u of eligible) {
       items.push({
         ruleType:      'DOCUMENTO',
