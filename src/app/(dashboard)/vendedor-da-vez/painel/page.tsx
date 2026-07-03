@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { LayoutDashboard, RefreshCw, PhoneCall, Clock, Crown, ChevronUp, ChevronDown, Lock, Unlock, Pause, Play, UserMinus, UserPlus, CheckCircle2, PlayCircle, Trash2 } from 'lucide-react'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
+import FilasIndividuaisUnidade from '@/components/seller-queue/FilasIndividuaisUnidade'
 import { cn } from '@/lib/utils'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -175,6 +176,9 @@ export default function PainelUnidadePage() {
           <button onClick={() => startAttendance(startPick)} disabled={busy === 'start'} className="btn-primary text-xs"><PlayCircle size={13} />{busy === 'start' ? '...' : 'Iniciar'}</button>
         </div>
       )}
+
+      {/* Filas individuais da unidade (agendamento/retorno/pós-venda por responsável) */}
+      {canManage && <FilasIndividuaisUnidade onChanged={load} />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="rounded-xl border border-gray-200 bg-white shadow-card">
