@@ -53,6 +53,7 @@ export type CommissionScope =
   | 'SERVICE_COMMISSION'
   | 'DOCUMENT_COMMISSION'
   | 'BONUS_COMMISSION'
+  | 'DECEND_QUANTITY_BONUS'
 
 export interface GenerationItemRef {
   contractId?: string | null
@@ -63,6 +64,14 @@ export interface GenerationItemRef {
   bank?:       string | null
   bonusPeriod?: string | null
   bonusRuleId?: string | null
+  decend?: string | null
+  periodStart?: string | null
+  periodEnd?: string | null
+  periodEndExclusive?: string | null
+  minQuantitySnapshot?: number | null
+  quantitySnapshot?: number | null
+  bonusAmountSnapshot?: number | null
+  eligibleStatuses?: string[] | null
   originalOperationType?: string | null
   commissionOperationType?: string | null
 }
@@ -124,6 +133,13 @@ function periodOf(date: Date): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   return `${y}-${m}`
+}
+
+function dateOnly(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 export function normalizeCommissionOperationType(dealType: string | null | undefined): CommissionRuleType {
@@ -693,6 +709,14 @@ export async function generateCommissionsForDeal(
           bank:          item.reference.bank       ?? null,
           bonusPeriod:   item.reference.bonusPeriod ?? null,
           bonusRuleId:   item.reference.bonusRuleId ?? null,
+          decend:        item.reference.decend ?? null,
+          periodStart:   item.reference.periodStart ?? null,
+          periodEnd:     item.reference.periodEnd ?? null,
+          periodEndExclusive: item.reference.periodEndExclusive ?? null,
+          minQuantitySnapshot: item.reference.minQuantitySnapshot ?? null,
+          quantitySnapshot: item.reference.quantitySnapshot ?? item.periodQuantity ?? null,
+          bonusAmountSnapshot: item.reference.bonusAmountSnapshot ?? null,
+          eligibleStatuses: item.reference.eligibleStatuses ?? null,
           commissionScope: item.commissionScope,
           originalOperationType: item.reference.originalOperationType ?? null,
           commissionOperationType: item.reference.commissionOperationType ?? item.ruleType,
@@ -1003,7 +1027,7 @@ async function resolveQuantityBonuses(
 // ── Bônus DEZENAL (Parte 4) ───────────────────────────────────────────────────
 // Conta as vendas do employee dentro da DEZENA (janela de ~10 dias) da data de
 // referência e aplica uma regra `BONUS_DEZENA` (faixas por quantidade). Soma com
-// o bônus mensal — cada um é um lançamento BONUS_COMMISSION independente, com
+// o bônus mensal — cada um é um lançamento independente, com
 // bonusPeriod distinto (mensal = "yyyy-MM"; dezenal = "yyyy-MM-D1|D2|D3").
 async function resolveDecendialBonuses(
   items: GenerationItem[],
@@ -1040,24 +1064,43 @@ async function resolveDecendialBonuses(
       unitId,
       baseValue: 0,
       quantityInPeriod: quantityInDecend,
+      decend: decend.code,
       date,
     })
     if (!matched) continue
 
     const commissionValue = computeCommissionValue(matched.rule, 0)
     if (commissionValue <= 0) continue
+    const minQuantity = typeof matched.rule.fromQuantity === 'number'
+      ? matched.rule.fromQuantity
+      : matched.rule.fromQuantity == null
+        ? null
+        : Number(matched.rule.fromQuantity)
+    const periodEndInclusive = new Date(decend.end.getTime() - 1)
 
     out.push({
       item: {
         ruleType:      'BONUS_DEZENA',
-        commissionScope: 'BONUS_COMMISSION',
+        commissionScope: 'DECEND_QUANTITY_BONUS',
         employeeKind:  it.employeeKind,
         employeeId:    it.employeeId,
         employeeUserId: it.employeeUserId ?? null,
         employeeLabel: it.employeeLabel,
         baseValue:     0,
-        description:   `BÔNUS DEZENAL (${decend.label}) — ${quantityInDecend} no período — ${it.employeeLabel}`,
-        reference:     { dealId, bonusPeriod: decend.key, bonusRuleId: matched.rule.id },
+        description:   `BÔNUS DEZENAL (${decend.label} — ${decend.rangeLabel}) — ${quantityInDecend} vendas — ${it.employeeLabel}`,
+        reference:     {
+          dealId,
+          bonusPeriod: decend.key,
+          bonusRuleId: matched.rule.id,
+          decend: decend.code,
+          periodStart: dateOnly(decend.start),
+          periodEnd: dateOnly(periodEndInclusive),
+          periodEndExclusive: dateOnly(decend.end),
+          minQuantitySnapshot: minQuantity,
+          quantitySnapshot: quantityInDecend,
+          bonusAmountSnapshot: commissionValue,
+          eligibleStatuses: [...COMMISSION_ELIGIBLE_DEAL_STATUSES],
+        },
         periodQuantity: quantityInDecend,
       },
       matched: {

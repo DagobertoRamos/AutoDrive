@@ -19,6 +19,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import type { DecendCode } from '@/lib/commission/decendial'
 import type { CommissionRule, UserRole } from '@prisma/client'
 
 export type EmployeeKind = 'SELLER' | 'MANAGER' | 'USER'
@@ -39,6 +40,7 @@ export interface MatchContext {
   bank?:       string | null
   baseValue?:  number                 // valor do negócio — para filtrar fromValue/toValue
   quantityInPeriod?: number           // quantidade no período — para faixas por volume
+  decend?: DecendCode | null           // BONUS_DEZENA: filtra regra específica da dezena
   date?:       Date                   // default = now
 }
 
@@ -51,6 +53,8 @@ export interface MatchedRule {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+const DECEND_META_PREFIX = '__decendBonus__='
 
 function toNumber(v: unknown): number {
   if (v == null) return 0
@@ -82,6 +86,21 @@ function withinQuantityRange(rule: CommissionRule, quantity: number | undefined)
 
 function isBonusRule(rule: CommissionRule): boolean {
   return String(rule.commissionType ?? '').toUpperCase() === 'BONUS_QTD'
+}
+
+function decendFromRuleNotes(notes: string | null): DecendCode | null {
+  if (!notes) return null
+  const line = notes.split(/\r?\n/).find((item) => item.startsWith(DECEND_META_PREFIX))
+  if (!line) return null
+  try {
+    const meta = JSON.parse(line.slice(DECEND_META_PREFIX.length)) as { decend?: unknown }
+    if (meta.decend === 'FIRST_DECEND' || meta.decend === 'SECOND_DECEND' || meta.decend === 'THIRD_DECEND') {
+      return meta.decend
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 function classifyRule(rule: CommissionRule, ctx: MatchContext): { matchedBy: MatchedBy; base: number } | null {
@@ -153,6 +172,10 @@ export async function findCommissionRule(ctx: MatchContext): Promise<MatchedRule
     const commissionKind = ctx.commissionKind ?? 'ALL'
     if (commissionKind === 'REGULAR' && isBonusRule(rule)) continue
     if (commissionKind === 'BONUS' && !isBonusRule(rule)) continue
+    if (ctx.ruleType === 'BONUS_DEZENA' && ctx.decend) {
+      const ruleDecend = decendFromRuleNotes(rule.notes)
+      if (ruleDecend && ruleDecend !== ctx.decend) continue
+    }
 
     // Filtro de valor
     if (!withinValueRange(rule, ctx.baseValue)) continue

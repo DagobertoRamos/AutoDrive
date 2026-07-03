@@ -37,6 +37,7 @@ function scopeLabel(scope: string | null, ruleType: string): string {
   if (scope === 'RETURN_COMMISSION') return 'Retorno'
   if (scope === 'SERVICE_COMMISSION') return 'Serviço'
   if (scope === 'DOCUMENT_COMMISSION') return 'Documento'
+  if (scope === 'DECEND_QUANTITY_BONUS') return 'Bônus dezenal'
   if (scope === 'BONUS_COMMISSION') return 'Bônus'
   if (ruleType === 'VENDA' || ruleType === 'TROCA' || ruleType === 'COMPRA') return 'Principal'
   return ruleType

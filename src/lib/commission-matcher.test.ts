@@ -51,3 +51,65 @@ describe('findCommissionRule — faixa de quantidade', () => {
     expect(m).not.toBeNull()
   })
 })
+
+describe('findCommissionRule — bônus dezenal', () => {
+  it('filtra regra pelo metadado da dezena', async () => {
+    prismaMock.commissionRule.findMany.mockResolvedValue([
+      rule({
+        id: 'd1',
+        ruleType: 'BONUS_DEZENA',
+        commissionType: 'BONUS_QTD',
+        fixedValue: 500,
+        percentage: null,
+        fromQuantity: 4,
+        role: 'VENDEDOR',
+        notes: '__decendBonus__={"groupId":"g1","decend":"FIRST_DECEND"}',
+      }),
+      rule({
+        id: 'd2',
+        ruleType: 'BONUS_DEZENA',
+        commissionType: 'BONUS_QTD',
+        fixedValue: 500,
+        percentage: null,
+        fromQuantity: 4,
+        role: 'VENDEDOR',
+        notes: '__decendBonus__={"groupId":"g1","decend":"SECOND_DECEND"}',
+      }),
+    ])
+
+    const m = await findCommissionRule({
+      tenantId: 't1',
+      ruleType: 'BONUS_DEZENA',
+      employee: { kind: 'SELLER', id: 's1', positionId: null, role: 'VENDEDOR' },
+      quantityInPeriod: 4,
+      decend: 'SECOND_DECEND',
+    })
+
+    expect(m?.rule.id).toBe('d2')
+  })
+
+  it('mantém compatibilidade com regra antiga sem metadado', async () => {
+    prismaMock.commissionRule.findMany.mockResolvedValue([
+      rule({
+        id: 'legacy',
+        ruleType: 'BONUS_DEZENA',
+        commissionType: 'BONUS_QTD',
+        fixedValue: 500,
+        percentage: null,
+        fromQuantity: 4,
+        role: 'VENDEDOR',
+        notes: null,
+      }),
+    ])
+
+    const m = await findCommissionRule({
+      tenantId: 't1',
+      ruleType: 'BONUS_DEZENA',
+      employee: { kind: 'SELLER', id: 's1', positionId: null, role: 'VENDEDOR' },
+      quantityInPeriod: 4,
+      decend: 'THIRD_DECEND',
+    })
+
+    expect(m?.rule.id).toBe('legacy')
+  })
+})

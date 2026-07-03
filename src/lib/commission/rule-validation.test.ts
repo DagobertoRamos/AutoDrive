@@ -42,4 +42,32 @@ describe('validateCommissionRulePayload', () => {
     expect(data.fromQuantity).toBe(10)
     expect(data.percentage).toBeNull()
   })
+
+  it('aceita bônus dezenal como bônus por quantidade', () => {
+    const data = validateCommissionRulePayload({
+      name: 'Bônus primeira dezena',
+      ruleType: 'BONUS_DEZENA',
+      commissionType: 'BONUS_QTD',
+      role: 'VENDEDOR',
+      fixedValue: '500,00',
+      fromQuantity: 4,
+      notes: '__decendBonus__={"groupId":"g1","decend":"FIRST_DECEND"}',
+    })
+
+    expect(data.ruleType).toBe('BONUS_DEZENA')
+    expect(data.commissionType).toBe('BONUS_QTD')
+    expect(data.fixedValue).toBe(500)
+    expect(data.fromQuantity).toBe(4)
+    expect(data.percentage).toBeNull()
+  })
+
+  it('rejeita bônus dezenal com quantidade decimal', () => {
+    expect(() => validateCommissionRulePayload({
+      name: 'Bônus inválido',
+      ruleType: 'BONUS_DEZENA',
+      commissionType: 'BONUS_QTD',
+      fixedValue: 500,
+      fromQuantity: 4.5,
+    })).toThrow(CommissionRuleValidationError)
+  })
 })

@@ -38,6 +38,8 @@ interface CommissionRule {
   toValue:        number | null
   priority:       number
   active:         boolean
+  validFrom:      string | null
+  validUntil:     string | null
   unitId:         string | null
   unit?:          { id: string; name: string } | null
   positionId:     string | null
@@ -45,6 +47,7 @@ interface CommissionRule {
   role:           string | null
   sellerId:       string | null
   seller?:        { user?: { name: string | null } | null } | null
+  managerId?:     string | null
   notes:          string | null
 }
 
@@ -85,6 +88,8 @@ const EMPTY_FORM: Omit<CommissionRule, 'id' | 'unit' | 'position'> = {
   toValue:        null,
   priority:       0,
   active:         true,
+  validFrom:      null,
+  validUntil:     null,
   unitId:         null,
   positionId:     null,
   role:           null,
@@ -113,8 +118,31 @@ const RULE_TYPE_OPTIONS: [string, string][] = Object.entries(RULE_TYPE_LABELS).f
 // Tipos que NÃO usam faixa de quantidade/valor (a comissão é % /fixo por cargo,
 // e a base é derivada — retorno líquido, taxa de doc, preço do serviço/garantia).
 // Preencher faixa aqui BLOQUEIA o casamento da regra (bug histórico) → escondemos.
-const NO_RANGE_TYPES = new Set(['RETORNO', 'DOCUMENTO', 'SERVICO', 'GARANTIA'])
+const NO_RANGE_TYPES = new Set(['RETORNO', 'DOCUMENTO', 'SERVICO', 'GARANTIA', 'BONUS_DEZENA'])
 const usesRanges = (ruleType: string) => !NO_RANGE_TYPES.has(ruleType)
+
+type DecendCode = 'FIRST_DECEND' | 'SECOND_DECEND' | 'THIRD_DECEND'
+
+const DECEND_META_PREFIX = '__decendBonus__='
+const DECEND_DEFS: Array<{ code: DecendCode; title: string; range: string; minLabel: string; amountLabel: string }> = [
+  { code: 'FIRST_DECEND', title: 'Primeira dezena', range: '01 a 10', minLabel: 'Informe a quantidade mínima da primeira dezena.', amountLabel: 'Informe o valor do bônus da primeira dezena.' },
+  { code: 'SECOND_DECEND', title: 'Segunda dezena', range: '11 a 20', minLabel: 'Informe a quantidade mínima da segunda dezena.', amountLabel: 'Informe o valor do bônus da segunda dezena.' },
+  { code: 'THIRD_DECEND', title: 'Terceira dezena', range: '21 ao último dia do mês', minLabel: 'Informe a quantidade mínima da terceira dezena.', amountLabel: 'Informe o valor do bônus da terceira dezena.' },
+]
+
+interface DecendRuleMeta {
+  groupId: string
+  decend: DecendCode
+}
+
+interface DecendFormRow {
+  decend: DecendCode
+  enabled: boolean
+  minSalesQuantity: number | null
+  bonusAmount: number | null
+  notes: string
+  ruleId: string | null
+}
 
 // ── Famílias de regra (abas) ───────────────────────────────────────────────────
 // Agrupa os tipos de regra por família para navegação em abas. Um bônus mensal é
@@ -208,11 +236,101 @@ function formatRange(rule: Pick<CommissionRule, 'fromQuantity' | 'toQuantity' | 
   return [qty, value].filter(Boolean).join(' / ') || '—'
 }
 
+function parseDecendMeta(notes: string | null | undefined): DecendRuleMeta | null {
+  if (!notes) return null
+  const line = notes.split(/\r?\n/).find((item) => item.startsWith(DECEND_META_PREFIX))
+  if (!line) return null
+  try {
+    const meta = JSON.parse(line.slice(DECEND_META_PREFIX.length)) as { groupId?: unknown; decend?: unknown }
+    if (
+      typeof meta.groupId === 'string' &&
+      (meta.decend === 'FIRST_DECEND' || meta.decend === 'SECOND_DECEND' || meta.decend === 'THIRD_DECEND')
+    ) {
+      return { groupId: meta.groupId, decend: meta.decend }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function stripDecendNotes(notes: string | null | undefined): string {
+  return (notes ?? '')
+    .split(/\r?\n/)
+    .filter((line) => !line.startsWith(DECEND_META_PREFIX))
+    .join('\n')
+    .trim()
+}
+
+function buildDecendNotes(meta: DecendRuleMeta, notes: string): string {
+  const metaLine = `${DECEND_META_PREFIX}${JSON.stringify(meta)}`
+  const cleanNotes = notes.trim()
+  return cleanNotes ? `${metaLine}\n${cleanNotes}` : metaLine
+}
+
+function makeDecendGroupId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `decend-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function decendTitle(code: DecendCode): string {
+  return DECEND_DEFS.find((d) => d.code === code)?.title ?? 'Dezena'
+}
+
+function decendRange(code: DecendCode): string {
+  return DECEND_DEFS.find((d) => d.code === code)?.range ?? ''
+}
+
+function baseDecendRuleName(name: string): string {
+  let clean = name.trim()
+  for (const def of DECEND_DEFS) {
+    clean = clean.replace(new RegExp(`\\s*[—-]\\s*${def.title}$`, 'i'), '').trim()
+  }
+  return clean || 'Bônus dezenal'
+}
+
+function formatRuleRange(rule: Pick<CommissionRule, 'ruleType' | 'fromQuantity' | 'toQuantity' | 'fromValue' | 'toValue' | 'notes'>) {
+  if (rule.ruleType === 'BONUS_DEZENA') {
+    const meta = parseDecendMeta(rule.notes)
+    const title = meta ? decendTitle(meta.decend) : 'Bônus dezenal'
+    const range = meta ? ` · ${decendRange(meta.decend)}` : ''
+    return `${title}${range} · mínimo ${rule.fromQuantity ?? 0} venda(s)`
+  }
+  return formatRange(rule)
+}
+
+function initialDecendRows(initial: CommissionRule | null, allRules: CommissionRule[]): { groupId: string; rows: DecendFormRow[] } {
+  const initialMeta = parseDecendMeta(initial?.notes)
+  const groupId = initialMeta?.groupId ?? makeDecendGroupId()
+  const siblings = initialMeta
+    ? allRules.filter((rule) => parseDecendMeta(rule.notes)?.groupId === initialMeta.groupId)
+    : initial?.ruleType === 'BONUS_DEZENA'
+      ? [initial]
+      : []
+
+  return {
+    groupId,
+    rows: DECEND_DEFS.map((def, index) => {
+      const existing = siblings.find((rule) => parseDecendMeta(rule.notes)?.decend === def.code)
+        ?? (!initialMeta && index === 0 && initial?.ruleType === 'BONUS_DEZENA' ? initial : null)
+      return {
+        decend: def.code,
+        enabled: existing?.active ?? false,
+        minSalesQuantity: existing?.fromQuantity ?? null,
+        bonusAmount: existing?.fixedValue ?? null,
+        notes: stripDecendNotes(existing?.notes),
+        ruleId: existing?.id ?? null,
+      }
+    }),
+  }
+}
+
 // ── Modal — Criar / Editar ────────────────────────────────────────────────────
 
 function RuleModal({
   initial,
   defaultRuleType,
+  allRules,
   positions,
   units,
   sellers,
@@ -221,6 +339,7 @@ function RuleModal({
 }: {
   initial:         CommissionRule | null
   defaultRuleType?: string
+  allRules:        CommissionRule[]
   positions:       PositionLite[]
   units:           UnitLite[]
   sellers:         SellerLite[]
@@ -244,20 +363,35 @@ function RuleModal({
           toValue:        initial.toValue,
           priority:       initial.priority,
           active:         initial.active,
+          validFrom:      initial.validFrom,
+          validUntil:     initial.validUntil,
           unitId:         initial.unitId,
           positionId:     initial.positionId,
           role:           initial.role,
           sellerId:       initial.sellerId,
+          managerId:      initial.managerId ?? null,
           notes:          initial.notes,
         }
-      : { ...EMPTY_FORM, ruleType: defaultRuleType ?? EMPTY_FORM.ruleType },
+      : {
+          ...EMPTY_FORM,
+          ruleType: defaultRuleType ?? EMPTY_FORM.ruleType,
+          commissionType: defaultRuleType === 'BONUS_DEZENA' ? 'BONUS_QTD' : EMPTY_FORM.commissionType,
+        },
   )
+  const initialDecends = useMemo(() => initialDecendRows(initial, allRules), [initial, allRules])
+  const [decendGroupId] = useState(initialDecends.groupId)
+  const [decendRows, setDecendRows] = useState<DecendFormRow[]>(initialDecends.rows)
   const [payoutMode, setPayoutMode] = useState<'PERCENTUAL' | 'FIXO'>(initialPayoutMode)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+  const isDecendBonus = form.ruleType === 'BONUS_DEZENA'
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((p) => ({ ...p, [k]: v }))
+
+  const setDecendRow = <K extends keyof DecendFormRow>(decend: DecendCode, key: K, value: DecendFormRow[K]) => {
+    setDecendRows((prev) => prev.map((row) => row.decend === decend ? { ...row, [key]: value } : row))
+  }
 
   const setCommissionType = (commissionType: string) => {
     setForm((prev) => ({
@@ -279,8 +413,83 @@ function RuleModal({
     }))
   }
 
+  const saveDecendRules = async () => {
+    const baseName = baseDecendRuleName(form.name)
+    if (!baseName) { setError('Nome é obrigatório.'); return }
+    if (!form.sellerId && !form.positionId && !form.role) {
+      setError('Informe cargo/perfil ou um vendedor específico para o bônus dezenal.')
+      return
+    }
+
+    const activeRows = decendRows.filter((row) => row.enabled)
+    if (activeRows.length === 0) {
+      setError('Ative pelo menos uma dezena para salvar a regra.')
+      return
+    }
+
+    for (const row of activeRows) {
+      const def = DECEND_DEFS.find((item) => item.code === row.decend)!
+      if (row.minSalesQuantity == null) { setError(def.minLabel); return }
+      if (!Number.isInteger(row.minSalesQuantity)) { setError('A quantidade mínima deve ser um número inteiro.'); return }
+      if (row.minSalesQuantity <= 0) { setError('A quantidade mínima deve ser maior que zero.'); return }
+      if (row.bonusAmount == null) { setError(def.amountLabel); return }
+      if (row.bonusAmount <= 0) { setError('O valor do bônus deve ser maior que zero.'); return }
+    }
+
+    setSaving(true)
+    setError('')
+    try {
+      for (const row of decendRows) {
+        if (!row.enabled && !row.ruleId) continue
+
+        const def = DECEND_DEFS.find((item) => item.code === row.decend)!
+        const payload = {
+          name: `${baseName} — ${def.title}`,
+          description: form.description,
+          ruleType: 'BONUS_DEZENA',
+          commissionType: 'BONUS_QTD',
+          role: form.role,
+          positionId: form.positionId,
+          sellerId: form.sellerId,
+          managerId: form.managerId ?? null,
+          unitId: form.unitId,
+          priority: form.priority,
+          active: form.active && row.enabled,
+          validFrom: form.validFrom,
+          validUntil: form.validUntil,
+          fromQuantity: row.minSalesQuantity ?? 1,
+          toQuantity: null,
+          fromValue: null,
+          toValue: null,
+          fixedValue: row.bonusAmount ?? 1,
+          percentage: null,
+          notes: buildDecendNotes({ groupId: decendGroupId, decend: row.decend }, row.notes),
+        }
+        const url = row.ruleId ? `/api/commissions/rules/${row.ruleId}` : '/api/commissions/rules'
+        const method = row.ruleId ? 'PUT' : 'POST'
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? `Erro ao salvar ${def.title.toLowerCase()}`)
+      }
+      onSaved()
+      onClose()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isDecendBonus) {
+      await saveDecendRules()
+      return
+    }
     if (!form.name.trim()) { setError('Nome é obrigatório.'); return }
     if (form.commissionType === 'PERCENTUAL' && !form.percentage) {
       setError('Informe o percentual da comissão.')
@@ -392,8 +601,10 @@ function RuleModal({
                     setForm((prev) => ({
                       ...prev,
                       ruleType: rt,
+                      ...(rt === 'BONUS_DEZENA' ? { commissionType: 'BONUS_QTD', percentage: null, fixedValue: null } : {}),
                       ...(usesRanges(rt) ? {} : { fromQuantity: null, toQuantity: null, fromValue: null, toValue: null }),
                     }))
+                    if (rt === 'BONUS_DEZENA') setPayoutMode('FIXO')
                   }}
                 >
                   {RULE_TYPE_OPTIONS.map(([v, l]) => (
@@ -462,104 +673,185 @@ function RuleModal({
                   </p>
                 </Field>
               </div>
+              <Field label="Vigência inicial">
+                <input
+                  type="date"
+                  className={inputCls()}
+                  value={form.validFrom ? String(form.validFrom).slice(0, 10) : ''}
+                  onChange={(e) => set('validFrom', e.target.value || null)}
+                />
+              </Field>
+              <Field label="Vigência final">
+                <input
+                  type="date"
+                  className={inputCls()}
+                  value={form.validUntil ? String(form.validUntil).slice(0, 10) : ''}
+                  onChange={(e) => set('validUntil', e.target.value || null)}
+                />
+              </Field>
             </div>
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <Percent size={14} /> Valor e faixas
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Tipo de comissão *">
-                <select
-                  className={inputCls()}
-                  value={form.commissionType}
-                  onChange={(e) => setCommissionType(e.target.value)}
-                >
-                  {Object.entries(COMMISSION_TYPE_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </Field>
-              {form.commissionType === 'ESCALONADA' && (
-                <Field label="Pagamento da faixa">
-                  <select
-                    className={inputCls()}
-                    value={payoutMode}
-                    onChange={(e) => setEscalatedPayoutMode(e.target.value as 'PERCENTUAL' | 'FIXO')}
-                  >
-                    <option value="PERCENTUAL">Percentual</option>
-                    <option value="FIXO">Valor fixo</option>
-                  </select>
-                </Field>
-              )}
-              {(form.commissionType === 'PERCENTUAL' || (form.commissionType === 'ESCALONADA' && payoutMode === 'PERCENTUAL')) && (
-                <Field label="Percentual (%)">
-                  <input
-                    type="number" min={0} max={100} step={0.01}
-                    className={inputCls()}
-                    value={form.percentage ?? ''}
-                    onChange={(e) => set('percentage', e.target.value ? Number(e.target.value) : null)}
-                    placeholder="Ex: 2.5"
-                  />
-                </Field>
-              )}
-              {(form.commissionType === 'FIXO' || form.commissionType === 'BONUS_QTD' || (form.commissionType === 'ESCALONADA' && payoutMode === 'FIXO')) && (
-                <Field label={form.commissionType === 'BONUS_QTD' ? 'Valor do bônus (R$)' : 'Valor fixo (R$)'}>
-                  <input
-                    inputMode="numeric"
-                    className={inputCls()}
-                    value={brlInputValue(form.fixedValue)}
-                    onChange={(e) => set('fixedValue', parseBRL(e.target.value))}
-                    placeholder="Ex: 500,00"
-                  />
-                </Field>
-              )}
+              <Percent size={14} /> {isDecendBonus ? 'Configuração do Bônus Dezenal' : 'Valor e faixas'}
             </div>
 
-            {usesRanges(form.ruleType) ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field label={form.commissionType === 'BONUS_QTD' ? 'Quantidade mínima para bônus' : 'Quantidade mínima'}>
-                  <input
-                    type="number" min={0}
-                    className={inputCls()}
-                    value={form.fromQuantity ?? ''}
-                    onChange={(e) => set('fromQuantity', e.target.value ? Number(e.target.value) : null)}
-                    placeholder="Ex: 1"
-                  />
-                </Field>
-                <Field label="Quantidade máxima">
-                  <input
-                    type="number" min={0}
-                    className={inputCls()}
-                    value={form.toQuantity ?? ''}
-                    onChange={(e) => set('toQuantity', e.target.value ? Number(e.target.value) : null)}
-                    placeholder="Sem limite"
-                  />
-                </Field>
-                <Field label="Valor mínimo da venda">
-                  <input
-                    inputMode="numeric"
-                    className={inputCls()}
-                    value={brlInputValue(form.fromValue)}
-                    onChange={(e) => set('fromValue', parseBRL(e.target.value))}
-                    placeholder="Ex: 50.000,00"
-                  />
-                </Field>
-                <Field label="Valor máximo da venda">
-                  <input
-                    inputMode="numeric"
-                    className={inputCls()}
-                    value={brlInputValue(form.toValue)}
-                    onChange={(e) => set('toValue', parseBRL(e.target.value))}
-                    placeholder="Sem teto"
-                  />
-                </Field>
+            {isDecendBonus ? (
+              <div className="grid gap-3">
+                {DECEND_DEFS.map((def) => {
+                  const row = decendRows.find((item) => item.decend === def.code)!
+                  return (
+                    <div key={def.code} className={cn(
+                      'rounded-lg border p-3',
+                      row.enabled ? 'border-brand-200 bg-brand-50/40' : 'border-gray-200 bg-gray-50',
+                    )}>
+                      <label className="flex cursor-pointer items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={row.enabled}
+                          onChange={(e) => setDecendRow(def.code, 'enabled', e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-gray-900">{def.title}</span>
+                          <span className="block text-xs text-gray-500">{def.range}</span>
+                        </span>
+                      </label>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <Field label="Quantidade mínima de vendas">
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            disabled={!row.enabled}
+                            className={inputCls(!row.enabled ? 'bg-gray-100 text-gray-400' : undefined)}
+                            value={row.minSalesQuantity ?? ''}
+                            onChange={(e) => setDecendRow(def.code, 'minSalesQuantity', e.target.value ? Number(e.target.value) : null)}
+                            placeholder={def.code === 'THIRD_DECEND' ? 'Ex: 5' : 'Ex: 4'}
+                          />
+                        </Field>
+                        <Field label="Valor do bônus">
+                          <input
+                            inputMode="numeric"
+                            disabled={!row.enabled}
+                            className={inputCls(!row.enabled ? 'bg-gray-100 text-gray-400' : undefined)}
+                            value={brlInputValue(row.bonusAmount)}
+                            onChange={(e) => setDecendRow(def.code, 'bonusAmount', parseBRL(e.target.value))}
+                            placeholder={def.code === 'THIRD_DECEND' ? 'Ex: 700,00' : 'Ex: 500,00'}
+                          />
+                        </Field>
+                        <div className="md:col-span-2">
+                          <Field label="Observação opcional">
+                            <input
+                              className={inputCls(!row.enabled ? 'bg-gray-100 text-gray-400' : undefined)}
+                              disabled={!row.enabled}
+                              value={row.notes}
+                              onChange={(e) => setDecendRow(def.code, 'notes', e.target.value)}
+                              placeholder="Opcional"
+                            />
+                          </Field>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             ) : (
-              <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                {RULE_TYPE_LABELS[form.ruleType]} não usa faixa de quantidade/valor — a comissão vale por cargo/vendedor sobre a base ({form.ruleType === 'RETORNO' ? 'retorno líquido' : form.ruleType === 'DOCUMENTO' ? 'taxa de documentação' : form.ruleType === 'GARANTIA' ? 'preço da garantia' : 'valor do serviço'}).
-              </p>
+              <>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Tipo de comissão *">
+                    <select
+                      className={inputCls()}
+                      value={form.commissionType}
+                      onChange={(e) => setCommissionType(e.target.value)}
+                    >
+                      {Object.entries(COMMISSION_TYPE_LABELS).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  {form.commissionType === 'ESCALONADA' && (
+                    <Field label="Pagamento da faixa">
+                      <select
+                        className={inputCls()}
+                        value={payoutMode}
+                        onChange={(e) => setEscalatedPayoutMode(e.target.value as 'PERCENTUAL' | 'FIXO')}
+                      >
+                        <option value="PERCENTUAL">Percentual</option>
+                        <option value="FIXO">Valor fixo</option>
+                      </select>
+                    </Field>
+                  )}
+                  {(form.commissionType === 'PERCENTUAL' || (form.commissionType === 'ESCALONADA' && payoutMode === 'PERCENTUAL')) && (
+                    <Field label="Percentual (%)">
+                      <input
+                        type="number" min={0} max={100} step={0.01}
+                        className={inputCls()}
+                        value={form.percentage ?? ''}
+                        onChange={(e) => set('percentage', e.target.value ? Number(e.target.value) : null)}
+                        placeholder="Ex: 2.5"
+                      />
+                    </Field>
+                  )}
+                  {(form.commissionType === 'FIXO' || form.commissionType === 'BONUS_QTD' || (form.commissionType === 'ESCALONADA' && payoutMode === 'FIXO')) && (
+                    <Field label={form.commissionType === 'BONUS_QTD' ? 'Valor do bônus (R$)' : 'Valor fixo (R$)'}>
+                      <input
+                        inputMode="numeric"
+                        className={inputCls()}
+                        value={brlInputValue(form.fixedValue)}
+                        onChange={(e) => set('fixedValue', parseBRL(e.target.value))}
+                        placeholder="Ex: 500,00"
+                      />
+                    </Field>
+                  )}
+                </div>
+
+                {usesRanges(form.ruleType) ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label={form.commissionType === 'BONUS_QTD' ? 'Quantidade mínima para bônus' : 'Quantidade mínima'}>
+                      <input
+                        type="number" min={0}
+                        className={inputCls()}
+                        value={form.fromQuantity ?? ''}
+                        onChange={(e) => set('fromQuantity', e.target.value ? Number(e.target.value) : null)}
+                        placeholder="Ex: 1"
+                      />
+                    </Field>
+                    <Field label="Quantidade máxima">
+                      <input
+                        type="number" min={0}
+                        className={inputCls()}
+                        value={form.toQuantity ?? ''}
+                        onChange={(e) => set('toQuantity', e.target.value ? Number(e.target.value) : null)}
+                        placeholder="Sem limite"
+                      />
+                    </Field>
+                    <Field label="Valor mínimo da venda">
+                      <input
+                        inputMode="numeric"
+                        className={inputCls()}
+                        value={brlInputValue(form.fromValue)}
+                        onChange={(e) => set('fromValue', parseBRL(e.target.value))}
+                        placeholder="Ex: 50.000,00"
+                      />
+                    </Field>
+                    <Field label="Valor máximo da venda">
+                      <input
+                        inputMode="numeric"
+                        className={inputCls()}
+                        value={brlInputValue(form.toValue)}
+                        onChange={(e) => set('toValue', parseBRL(e.target.value))}
+                        placeholder="Sem teto"
+                      />
+                    </Field>
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                    {RULE_TYPE_LABELS[form.ruleType]} não usa faixa de quantidade/valor — a comissão vale por cargo/vendedor sobre a base ({form.ruleType === 'RETORNO' ? 'retorno líquido' : form.ruleType === 'DOCUMENTO' ? 'taxa de documentação' : form.ruleType === 'GARANTIA' ? 'preço da garantia' : 'valor do serviço'}).
+                  </p>
+                )}
+              </>
             )}
           </section>
 
@@ -1273,7 +1565,7 @@ export default function RegrasComissoesPage() {
                         </p>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-gray-600">
-                        {formatRange(r)}
+                        {formatRuleRange(r)}
                       </td>
                       <td className="px-4 py-3 text-center text-gray-600 tabular-nums">
                         {r.priority}
@@ -1319,6 +1611,7 @@ export default function RegrasComissoesPage() {
         <RuleModal
           initial={editing === 'new' ? null : editing}
           defaultRuleType={editing === 'new' ? defaultRuleType : undefined}
+          allRules={rules}
           positions={positions}
           units={units}
           sellers={sellers}

@@ -16,6 +16,8 @@
 export interface DecendPeriod {
   /** Chave estável da dezena, ex.: "2026-07-D1". Usada em ruleDetails.bonusPeriod. */
   key: string
+  /** Código estável para snapshots/metadados da regra. */
+  code: DecendCode
   /** 1 | 2 | 3 — número da dezena no mês. */
   index: 1 | 2 | 3
   /** Início inclusivo da janela (00:00 do primeiro dia da dezena). */
@@ -24,12 +26,82 @@ export interface DecendPeriod {
   end: Date
   /** Rótulo legível, ex.: "1ª dezena de julho". */
   label: string
+  /** Rótulo curto de faixa, ex.: "01 a 10" ou "21 a 31". */
+  rangeLabel: string
+  /** Primeiro dia civil da dezena. */
+  startDay: number
+  /** Último dia civil incluso da dezena. */
+  endDay: number
+}
+
+export type DecendCode = 'FIRST_DECEND' | 'SECOND_DECEND' | 'THIRD_DECEND'
+
+const DECEND_BY_INDEX: Record<1 | 2 | 3, DecendCode> = {
+  1: 'FIRST_DECEND',
+  2: 'SECOND_DECEND',
+  3: 'THIRD_DECEND',
+}
+
+const INDEX_BY_DECEND: Record<DecendCode, 1 | 2 | 3> = {
+  FIRST_DECEND: 1,
+  SECOND_DECEND: 2,
+  THIRD_DECEND: 3,
 }
 
 const MESES_PT = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ]
+
+function padDay(day: number): string {
+  return String(day).padStart(2, '0')
+}
+
+export function decendCodeFromIndex(index: 1 | 2 | 3): DecendCode {
+  return DECEND_BY_INDEX[index]
+}
+
+export function decendIndexFromCode(decend: DecendCode): 1 | 2 | 3 {
+  return INDEX_BY_DECEND[decend]
+}
+
+export function decendName(decend: DecendCode): string {
+  if (decend === 'FIRST_DECEND') return 'Primeira dezena'
+  if (decend === 'SECOND_DECEND') return 'Segunda dezena'
+  return 'Terceira dezena'
+}
+
+/**
+ * Retorna a janela de uma dezena em um mês específico.
+ * `month` é 1-based (janeiro = 1), como o usuário informa em telas/relatórios.
+ * O retorno usa `endExclusive` para evitar erro de horário no último dia.
+ */
+export function getDecendDateRange(year: number, month: number, decend: DecendCode) {
+  if (!Number.isInteger(year) || year < 1900) throw new Error('Ano inválido.')
+  if (!Number.isInteger(month) || month < 1 || month > 12) throw new Error('Mês inválido.')
+
+  const zeroMonth = month - 1
+  const index = decendIndexFromCode(decend)
+  const lastDay = new Date(year, month, 0).getDate()
+  const startDay = index === 1 ? 1 : index === 2 ? 11 : 21
+  const endDay = index === 1 ? 10 : index === 2 ? 20 : lastDay
+  const start = new Date(year, zeroMonth, startDay)
+  const endExclusive = index === 3 ? new Date(year, zeroMonth + 1, 1) : new Date(year, zeroMonth, endDay + 1)
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`
+
+  return {
+    key: `${monthKey}-D${index}`,
+    code: decend,
+    index,
+    start,
+    endExclusive,
+    end: endExclusive,
+    startDay,
+    endDay,
+    label: `${index}ª dezena de ${MESES_PT[zeroMonth]}`,
+    rangeLabel: `${padDay(startDay)} a ${padDay(endDay)}`,
+  }
+}
 
 /**
  * Retorna a dezena (janela decendial) que contém a data informada.
@@ -38,36 +110,14 @@ const MESES_PT = [
  */
 export function getDecendPeriod(date: Date): DecendPeriod {
   const y = date.getFullYear()
-  const m = date.getMonth() // 0-based
+  const m = date.getMonth() + 1
   const day = date.getDate()
 
   let index: 1 | 2 | 3
-  let startDay: number
-  let endDay: number | null // dia (inclusivo) onde a próxima janela começa; null = mês seguinte
+  if (day <= 10) index = 1
+  else if (day <= 20) index = 2
+  else index = 3
 
-  if (day <= 10) {
-    index = 1
-    startDay = 1
-    endDay = 11
-  } else if (day <= 20) {
-    index = 2
-    startDay = 11
-    endDay = 21
-  } else {
-    index = 3
-    startDay = 21
-    endDay = null // até o fim do mês
-  }
-
-  const start = new Date(y, m, startDay)
-  const end = endDay == null ? new Date(y, m + 1, 1) : new Date(y, m, endDay)
-
-  const monthKey = `${y}-${String(m + 1).padStart(2, '0')}`
-  return {
-    key: `${monthKey}-D${index}`,
-    index,
-    start,
-    end,
-    label: `${index}ª dezena de ${MESES_PT[m]}`,
-  }
+  const range = getDecendDateRange(y, m, decendCodeFromIndex(index))
+  return { ...range, end: range.endExclusive }
 }
