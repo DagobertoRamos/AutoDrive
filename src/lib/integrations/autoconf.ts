@@ -175,6 +175,7 @@ export interface AutoconfFinanceiro {
   retornoValue?: number | null
   retornoBank?: string | null
   despachanteValue?: number | null
+  documentationPaidBy?: string | null // LOJA | CLIENTE
   garantias?: AutoconfGarantia[] | null
 }
 export interface AutoconfCustomerDetails {

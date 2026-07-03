@@ -493,6 +493,20 @@ async function fetchJsonCandidate(path) {
   }
 }
 
+// Quem paga a documentação? No resumo aparece "Documentação" seguido de
+// "Loja paga" ou "Cliente paga". LOJA = cortesia (sem comissão de documento).
+function detectDocPayer(text) {
+  if (!text) return null
+  const n = normalizeText(text)
+  const idx = n.indexOf('documentacao')
+  const win = idx >= 0 ? n.slice(idx, idx + 140) : n
+  if (/loja paga/.test(win)) return 'LOJA'
+  if (/cliente paga/.test(win)) return 'CLIENTE'
+  if (/documentacao[\s\S]{0,140}loja paga/.test(n)) return 'LOJA'
+  if (/documentacao[\s\S]{0,140}cliente paga/.test(n)) return 'CLIENTE'
+  return null
+}
+
 async function fetchDetalhesNegociacao(row) {
   try {
     const id = row.externalId
@@ -542,6 +556,7 @@ async function fetchDetalhesNegociacao(row) {
 
     const detalhes = {
       vendedor,
+      documentationPaidBy: detectDocPayer(bodyText),
       dataNegociacao,
       dataNegociacaoIso: isoDate(dataNegociacao),
       aprovadoEm: valueByKeys(labelValues, ['aprovada em', 'data aprovacao', 'data aprovação']) || row.aprovadoEm || null,
@@ -847,8 +862,9 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
     preliminaryRows[i].totalPagamentosDetalhe = preliminaryRows[i].pagamentos.reduce((s, p) => s + (Number(p.value) || 0), 0) || null
     preliminaryRows[i].totalDebitosDetalhe = preliminaryRows[i].debitos.reduce((s, d) => s + (Number(d.value) || 0), 0) || null
     // Financeiro classificado (financiamento/retorno/despachante) para o AutoDrive
-    // calcular a comissão de retorno e a documentação.
+    // calcular a comissão de retorno e a documentação. Anexa quem paga a doc.
     preliminaryRows[i].financeiro = titulos.financeiro || null
+    if (preliminaryRows[i].financeiro) preliminaryRows[i].financeiro.documentationPaidBy = detalhes?.documentationPaidBy ?? null
     preliminaryRows[i].autoconfDetalhes = detalhes || null
 
     // "Visualizar histórico" — trilha de auditoria (quem cadastrou o quê).

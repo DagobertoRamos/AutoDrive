@@ -237,6 +237,8 @@ function financeFieldsFor(row: AutoconfRow, config: RetornoConfig): Record<strin
   if (f.retornoBank) out.paymentBank = safeText(f.retornoBank, 120)
   else if (f.financiamentoBank) out.paymentBank = safeText(f.financiamentoBank, 120)
   if (despachante > 0) out.documentationFee = despachante
+  const payer = String(f.documentationPaidBy ?? '').toUpperCase()
+  if (payer === 'LOJA' || payer === 'CLIENTE') out.documentationPaidBy = payer
   return out
 }
 

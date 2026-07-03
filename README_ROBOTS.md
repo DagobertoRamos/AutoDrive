@@ -2432,3 +2432,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **API `/api/commissions/documento-config`** (GET/PUT, gate `commissions.rules`) + **UI `DocumentoConfigCard`** na página Comissões › Retorno (tabela de faixas editável: de/até/gerente/vendedor + add/remover; toggles "usar este modelo" e "loja paga = cortesia").
 - **PENDÊNCIA (próximo passo):** capturar "Loja paga / Cliente paga" do AutoConf (extensão + import → `deal.documentationPaidBy`); hoje sem captura o gerador trata como CLIENTE (paga por faixa). Regenerar as vendas existentes para aplicar faixas/cortesia (depende de otimizar o retroativo em massa — LOG 0167).
 - **Verde:** `tsc` limpo; `eslint` 0 erros; 75 testes de comissão.
+
+### LOG 0170 — 2026-07-03 — Claude (Opus 4.8) — Documentação: captura "Loja paga / Cliente paga" do AutoConf
+- **Complementa o LOG 0169.** Fecha a pendência da captura do pagador.
+- **Extensão (`scanner.js`):** `detectDocPayer(bodyText)` — no resumo, "Documentação" seguido de "Loja paga" → `LOJA`; "Cliente paga" → `CLIENTE`. Anexado em `detalhes.documentationPaidBy` e mesclado em `row.financeiro.documentationPaidBy` (o payload slim já envia `financeiro`).
+- **Backend:** `AutoconfFinanceiro.documentationPaidBy` (tipo); `financeFieldsFor` grava `deal.documentationPaidBy = LOJA|CLIENTE`. O gerador já usa isso (LOG 0169): LOJA → cortesia (0), CLIENTE → faixa.
+- **Para valer:** recarregar a extensão + reimportar → cada venda passa a ter o pagador, e a comissão de documentação sai por faixa (cortesia quando loja paga).
+- **Verde:** `tsc` limpo. Extensão (recarregar) + backend.
