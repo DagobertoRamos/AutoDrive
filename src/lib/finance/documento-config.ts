@@ -22,12 +22,24 @@ export interface DocumentoTier {
 export interface DocumentoConfig {
   active: boolean
   lojaPagaSemComissao: boolean
+  // Conservador: só paga comissão quando o pagador é CONFIRMADAMENTE o cliente.
+  // Enquanto a venda não foi reimportada (payer = null), não paga — evita
+  // comissão indevida. Desligue para tratar "desconhecido" como cliente.
+  exigirPagadorCliente: boolean
   tiers: DocumentoTier[]
+}
+
+export type DocumentoPayer = 'LOJA' | 'CLIENTE' | null
+
+export function normalizePayer(v: unknown): DocumentoPayer {
+  const s = String(v ?? '').trim().toUpperCase()
+  return s === 'LOJA' || s === 'CLIENTE' ? s : null
 }
 
 export const DEFAULT_DOCUMENTO_CONFIG: DocumentoConfig = {
   active: true,
   lojaPagaSemComissao: true,
+  exigirPagadorCliente: true,
   tiers: [
     { minFee: 990, maxFee: 1489.99, gerente: 50, vendedor: 100 },
     { minFee: 1490, maxFee: null, gerente: 100, vendedor: 200 },
@@ -55,6 +67,7 @@ export function coerceDocumentoConfig(raw: unknown): DocumentoConfig {
   return {
     active: o.active !== false,
     lojaPagaSemComissao: o.lojaPagaSemComissao !== false,
+    exigirPagadorCliente: o.exigirPagadorCliente !== false,
     tiers,
   }
 }
@@ -77,18 +90,25 @@ export async function setDocumentoConfig(tenantId: string, patch: Partial<Docume
 
 /**
  * Comissão de documentação para UM colaborador. Retorna null quando a config
- * está inativa (aí o motor cai no modelo por regra). 0 = sem comissão
- * (loja paga cortesia, ou valor abaixo da menor faixa).
+ * está inativa (aí o motor cai no modelo por regra). 0 = sem comissão:
+ *   • loja paga cortesia (lojaPagaSemComissao);
+ *   • pagador não confirmado como cliente (exigirPagadorCliente — conservador);
+ *   • valor abaixo da menor faixa.
+ * `payer`: 'LOJA' | 'CLIENTE' | null (null = ainda não reimportado / desconhecido).
  */
 export function computeDocumentoCommission(input: {
   config: DocumentoConfig
   fee: number
-  paidByLoja: boolean
+  payer: DocumentoPayer | string | null | undefined
   isManager: boolean
 }): number | null {
   const { config } = input
   if (!config.active) return null
-  if (input.paidByLoja && config.lojaPagaSemComissao) return 0
+  const payer = normalizePayer(input.payer)
+  if (payer === 'LOJA' && config.lojaPagaSemComissao) return 0
+  // Conservador: só paga com pagador CONFIRMADAMENTE cliente. Sem confirmação
+  // (null) ou loja sem cortesia desligada, não paga a menos que o toggle libere.
+  if (config.exigirPagadorCliente && payer !== 'CLIENTE') return 0
   const fee = Math.max(0, num(input.fee))
   const tier = config.tiers.find((t) => fee >= t.minFee && (t.maxFee == null || fee <= t.maxFee))
   if (!tier) return 0

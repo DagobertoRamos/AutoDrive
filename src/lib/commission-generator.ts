@@ -468,13 +468,13 @@ export async function generateCommissionsForDeal(
   const docBase = toNum(d.documentationFee)
   const documentoConfig: DocumentoConfig = tenantId
     ? await getDocumentoConfig(tenantId)
-    : { active: false, lojaPagaSemComissao: true, tiers: [] }
+    : { active: false, lojaPagaSemComissao: true, exigirPagadorCliente: true, tiers: [] }
   if (docBase > 0 && documentoConfig.active) {
     // Config TIERED: comissão por FAIXA de valor + quem paga (loja = cortesia).
     // Valor já calculado (fixedCommissionValue) → não passa pelo matcher.
-    const paidByLoja = String(d.documentationPaidBy ?? '').toUpperCase() === 'LOJA'
+    const payer = d.documentationPaidBy ?? null
     const pushDoc = (earner: LocalEarner, isManager: boolean) => {
-      const val = computeDocumentoCommission({ config: documentoConfig, fee: docBase, paidByLoja, isManager }) ?? 0
+      const val = computeDocumentoCommission({ config: documentoConfig, fee: docBase, payer, isManager }) ?? 0
       items.push({
         ruleType: 'DOCUMENTO', commissionScope: 'DOCUMENT_COMMISSION',
         employeeKind: earner.kind, employeeId: earner.id, employeeUserId: earner.userId, employeeLabel: earner.label,

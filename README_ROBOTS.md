@@ -2439,3 +2439,9 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Backend:** `AutoconfFinanceiro.documentationPaidBy` (tipo); `financeFieldsFor` grava `deal.documentationPaidBy = LOJA|CLIENTE`. O gerador já usa isso (LOG 0169): LOJA → cortesia (0), CLIENTE → faixa.
 - **Para valer:** recarregar a extensão + reimportar → cada venda passa a ter o pagador, e a comissão de documentação sai por faixa (cortesia quando loja paga).
 - **Verde:** `tsc` limpo. Extensão (recarregar) + backend.
+
+### LOG 0171 — 2026-07-03 — Claude (Opus 4.8) — Documentação: só paga com pagador CONFIRMADO (conservador)
+- **Complementa 0169/0170.** Evita comissão de documentação indevida enquanto as vendas antigas (`documentationPaidBy = null`) não forem reimportadas.
+- `computeDocumentoCommission` agora recebe `payer: 'LOJA'|'CLIENTE'|null` (era `paidByLoja: boolean`). Regra: LOJA+cortesia→0; pagador ≠ CLIENTE (null/desconhecido)→0 quando `exigirPagadorCliente` (default **true**); senão faixa.
+- Novo toggle `exigirPagadorCliente` (config + UI + coerce, default true). Desligar volta ao comportamento antigo (desconhecido = cliente).
+- Gerador passa `d.documentationPaidBy` direto. `tsc` limpo; 9 testes verdes.

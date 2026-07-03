@@ -12,7 +12,7 @@ import { FileText, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } fr
 import { cn } from '@/lib/utils'
 
 interface Tier { minFee: string; maxFee: string; gerente: string; vendedor: string }
-interface Config { active: boolean; lojaPagaSemComissao: boolean; tiers: Tier[] }
+interface Config { active: boolean; lojaPagaSemComissao: boolean; exigirPagadorCliente: boolean; tiers: Tier[] }
 
 const asText = (v: number | null | undefined) => (v == null ? '' : String(v))
 const pnum = (s: string) => { const n = Number(String(s).replace(',', '.')); return Number.isFinite(n) ? n : 0 }
@@ -33,7 +33,7 @@ export default function DocumentoConfigCard() {
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? 'Erro ao carregar')
       const d = j.data
-      setCfg({ active: d.active, lojaPagaSemComissao: d.lojaPagaSemComissao, tiers: (d.tiers ?? []).map((t: { minFee: number; maxFee: number | null; gerente: number; vendedor: number }) => ({ minFee: asText(t.minFee), maxFee: asText(t.maxFee), gerente: asText(t.gerente), vendedor: asText(t.vendedor) })) })
+      setCfg({ active: d.active, lojaPagaSemComissao: d.lojaPagaSemComissao, exigirPagadorCliente: d.exigirPagadorCliente !== false, tiers: (d.tiers ?? []).map((t: { minFee: number; maxFee: number | null; gerente: number; vendedor: number }) => ({ minFee: asText(t.minFee), maxFee: asText(t.maxFee), gerente: asText(t.gerente), vendedor: asText(t.vendedor) })) })
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erro ao carregar') } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -47,7 +47,7 @@ export default function DocumentoConfigCard() {
     setSaving(true); setError(''); setSaved(false)
     try {
       const payload = {
-        active: cfg.active, lojaPagaSemComissao: cfg.lojaPagaSemComissao,
+        active: cfg.active, lojaPagaSemComissao: cfg.lojaPagaSemComissao, exigirPagadorCliente: cfg.exigirPagadorCliente,
         tiers: cfg.tiers.map((t) => ({ minFee: pnum(t.minFee), maxFee: pnumOrNull(t.maxFee), gerente: pnum(t.gerente), vendedor: pnum(t.vendedor) })),
       }
       const res = await fetch('/api/commissions/documento-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
@@ -78,6 +78,10 @@ export default function DocumentoConfigCard() {
           <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
             <input type="checkbox" checked={cfg.lojaPagaSemComissao} onChange={(e) => { setSaved(false); setCfg({ ...cfg, lojaPagaSemComissao: e.target.checked }) }} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
             <span className="text-sm font-medium text-gray-800">Quando a LOJA paga a documentação, não pagar comissão (cortesia)</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+            <input type="checkbox" checked={cfg.exigirPagadorCliente} onChange={(e) => { setSaved(false); setCfg({ ...cfg, exigirPagadorCliente: e.target.checked }) }} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+            <span className="text-sm font-medium text-gray-800">Só pagar quando o cliente for confirmadamente o pagador <span className="font-normal text-gray-500">(recomendado — vendas ainda não reimportadas não geram comissão)</span></span>
           </label>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200">
