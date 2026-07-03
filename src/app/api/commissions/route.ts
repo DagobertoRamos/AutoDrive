@@ -11,6 +11,13 @@ import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildCommissionExtractAccessWhere } from '@/lib/negotiation-access'
 import type { Prisma } from '@prisma/client'
 
+const num = (v: unknown): number => {
+  if (v == null) return 0
+  if (typeof v === 'number') return v
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function') return (v as { toNumber: () => number }).toNumber()
+  return Number(v) || 0
+}
+
 // ── GET — lista extratos ──────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
@@ -33,26 +40,63 @@ export async function GET(req: NextRequest) {
     if (period) extra.period   = period
     if (seller) extra.sellerId = seller
 
-    // Visibilidade central (Parte 9): OWN=próprias, UNIT=unidade do gerente,
-    // ALL=tenant. O escopo é aplicado por último e sobrescreve qualquer
-    // ?sellerId= alheio — vendedor/vendedor-líder só veem as próprias.
+    // Visibilidade: MASTER/ADM/FINANCEIRO veem tudo; demais só o próprio.
     const where = await buildCommissionExtractAccessWhere(session.user, extra)
 
-    const [total, data] = await Promise.all([
-      prisma.commissionExtract.count({ where }),
-      prisma.commissionExtract.findMany({
-        where,
-        include: { seller: { select: { fullName: true, shortName: true } } },
-        orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
-        skip:    (page - 1) * perPage,
-        take:    perPage,
-      }),
-    ])
+    // As linhas do extrato são BASE/AJUSTE por vendedor+período. Agrega em uma
+    // linha por (vendedor, período): baseValue = soma das BASE; adjustments =
+    // soma das AJUSTE/DESCONTO; finalValue = base + ajustes.
+    const rows = await prisma.commissionExtract.findMany({
+      where,
+      include: { seller: { select: { fullName: true, shortName: true } } },
+      orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
+      take: 5000,
+    })
+
+    type Group = {
+      id: string; sellerId: string; period: string
+      baseValue: number; adjustments: number
+      status: string; paidAt: Date | null
+      seller: { fullName: string; shortName: string | null } | null
+    }
+    const STATUS_RANK: Record<string, number> = { PREVISTO: 0, APROVADO: 1, PAGO: 2, AJUSTADO: 1, CANCELADO: 3 }
+    const groups = new Map<string, Group>()
+    for (const r of rows) {
+      const sid = r.sellerId ?? r.userId
+      const key = `${sid}::${r.period}`
+      const g = groups.get(key) ?? {
+        id: key, sellerId: sid, period: r.period,
+        baseValue: 0, adjustments: 0, status: r.status, paidAt: r.paidAt,
+        seller: r.seller ?? null,
+      }
+      const v = num(r.value)
+      if (r.type === 'AJUSTE' || r.type === 'DESCONTO') g.adjustments += v
+      else g.baseValue += v
+      // status "menos avançado" do grupo (o que falta liberar/pagar aparece).
+      if ((STATUS_RANK[r.status] ?? 0) < (STATUS_RANK[g.status] ?? 0)) g.status = r.status
+      if (r.paidAt && !g.paidAt) g.paidAt = r.paidAt
+      groups.set(key, g)
+    }
+
+    const all = [...groups.values()].map((g) => ({
+      id: g.id,
+      sellerId: g.sellerId,
+      period: g.period,
+      baseValue: g.baseValue,
+      adjustments: g.adjustments,
+      finalValue: g.baseValue + g.adjustments,
+      status: g.status,
+      paidAt: g.paidAt,
+      seller: g.seller,
+    }))
+
+    const total = all.length
+    const data = all.slice((page - 1) * perPage, (page - 1) * perPage + perPage)
 
     return NextResponse.json({
       success: true,
       data,
-      meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+      meta: { total, page, perPage, totalPages: Math.max(1, Math.ceil(total / perPage)) },
     })
   } catch (err) {
     console.error('[GET /api/commissions]', err)

@@ -1,248 +1,176 @@
 'use client'
 
 // =============================================================================
-// Regras de Retorno — AutoDrive
-// Percentuais de conversão de retorno sobre comissão
+// Retorno (ILA / IOF) — cadastro GLOBAL do tenant.
+// Uma única configuração vale para todos os financiamentos: faixa de retorno +
+// ILA% + IOF%. O retorno bruto vem da negociação (ou financiado × % padrão); o
+// líquido = bruto − ILA − IOF. A COMISSÃO do retorno sai de uma regra do tipo
+// "Retorno" (por cargo/vendedor), cadastrada em Regras de Comissão.
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Plus, Edit2, Trash2, ArrowLeftRight, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Percent, Save, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface ReturnRule {
-  id:                  string
-  name:                string
-  percentualInformado: number
-  percentualAplicado:  number
-  bank?:               string | null
-  active:              boolean
+interface RetornoConfig {
+  active: boolean
+  ilaPercent: number
+  iofPercent: number
+  minReturnPercent: number
+  maxReturnPercent: number
+  defaultReturnPercent: number | null
 }
 
-interface FormState {
-  name:                string
-  percentualInformado: string
-  percentualAplicado:  string
-  bank:                string
-}
+function pnum(s: string): number { const n = Number(String(s).replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+function pnumOrNull(s: string): number | null { const t = String(s).trim(); if (!t) return null; const n = Number(t.replace(',', '.')); return Number.isFinite(n) ? n : null }
+const asText = (v: number | null | undefined) => (v == null ? '' : String(v))
 
-const EMPTY_FORM: FormState = {
-  name:                '',
-  percentualInformado: '',
-  percentualAplicado:  '',
-  bank:                '',
+function inputCls() {
+  return cn(
+    'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400',
+    'focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500',
+  )
 }
 
 export default function RetornosPage() {
-  const [rules, setRules]     = useState<ReturnRule[]>([])
+  const [cfg, setCfg] = useState<RetornoConfig | null>(null)
+  const [text, setText] = useState({ ila: '', iof: '', min: '', max: '', def: '' })
   const [loading, setLoading] = useState(true)
-  const [open, setOpen]       = useState(false)
-  const [form, setForm]       = useState<FormState>(EMPTY_FORM)
-  const [saving, setSaving]   = useState(false)
-  const [toast, setToast]     = useState<{ ok: boolean; msg: string } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
 
-  const fetchRules = useCallback(async () => {
-    setLoading(true)
+  const syncText = (c: RetornoConfig) => setText({
+    ila: asText(c.ilaPercent), iof: asText(c.iofPercent),
+    min: asText(c.minReturnPercent), max: asText(c.maxReturnPercent),
+    def: asText(c.defaultReturnPercent),
+  })
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
     try {
-      const res  = await fetch('/api/commissions/return-rules', { credentials: 'include' })
+      const res = await fetch('/api/commissions/retorno-config', { credentials: 'include' })
       const data = await res.json()
-      if (data.success) setRules(data.data ?? [])
-    } catch { /* silent */ }
-    finally { setLoading(false) }
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao carregar')
+      setCfg(data.data); syncText(data.data)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  useEffect(() => { fetchRules() }, [fetchRules])
+  useEffect(() => { load() }, [load])
 
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 3500)
-    return () => clearTimeout(t)
-  }, [toast])
+  const setField = (k: keyof typeof text, v: string) => { setText((p) => ({ ...p, [k]: v })); setSaved(false) }
+  const setActive = (v: boolean) => { setCfg((p) => (p ? { ...p, active: v } : p)); setSaved(false) }
 
-  const openModal = () => { setForm(EMPTY_FORM); setOpen(true) }
-  const closeModal = () => { if (!saving) setOpen(false) }
-
-  const handleSave = async () => {
-    if (!form.name.trim()) {
-      setToast({ ok: false, msg: 'Informe o nome da regra.' }); return
-    }
-    const pi = Number(form.percentualInformado.replace(',', '.'))
-    const pa = Number(form.percentualAplicado.replace(',', '.'))
-    if (!Number.isFinite(pi) || !Number.isFinite(pa)) {
-      setToast({ ok: false, msg: 'Percentuais devem ser numéricos.' }); return
-    }
-    setSaving(true)
+  const save = async () => {
+    if (!cfg) return
+    setSaving(true); setError(''); setSaved(false)
     try {
-      const res = await fetch('/api/commissions/return-rules', {
-        method: 'POST',
-        credentials: 'include',
+      const payload = {
+        active: cfg.active,
+        ilaPercent: pnum(text.ila),
+        iofPercent: pnum(text.iof),
+        minReturnPercent: pnum(text.min),
+        maxReturnPercent: pnum(text.max),
+        defaultReturnPercent: pnumOrNull(text.def),
+      }
+      const res = await fetch('/api/commissions/retorno-config', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.name.trim(),
-          percentualInformado: pi,
-          percentualAplicado:  pa,
-          bank: form.bank.trim() || null,
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (data.success) {
-        setToast({ ok: true, msg: 'Regra criada com sucesso.' })
-        setOpen(false)
-        fetchRules()
-      } else {
-        setToast({ ok: false, msg: data.error ?? 'Erro ao salvar.' })
-      }
-    } catch {
-      setToast({ ok: false, msg: 'Erro de conexão.' })
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao salvar')
+      setCfg(data.data); syncText(data.data); setSaved(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-2xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Regras de Retorno</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Configure as faixas de percentual de retorno e seus descontos na comissão.
-          </p>
+          <h1 className="text-xl font-bold text-gray-900">Retorno (ILA / IOF)</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Cadastro global — vale para todos os financiamentos.</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={fetchRules} disabled={loading} className="btn-secondary text-xs">
-            <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
-          </button>
-          <button onClick={openModal} className="btn-primary text-xs"><Plus size={13} />Nova regra</button>
-        </div>
+        <button onClick={load} disabled={loading} className="btn-secondary text-xs">
+          <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
+        </button>
       </div>
 
-      {toast && (
-        <div className={cn(
-          'flex items-center gap-2 rounded-xl px-4 py-3 text-sm',
-          toast.ok
-            ? 'bg-green-50 border border-green-200 text-green-700'
-            : 'bg-red-50 border border-red-200 text-red-700',
-        )}>
-          {toast.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-          {toast.msg}
-        </div>
-      )}
-
-      {/* Info panel */}
-      <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
-        <p className="font-semibold">Como funciona?</p>
-        <p className="mt-1 text-xs text-blue-600">
-          Se o percentual de retorno do vendedor no período estiver dentro de uma faixa configurada,
-          o desconto correspondente é aplicado sobre a comissão bruta calculada.
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
+        <p className="text-sm text-gray-600">
+          O retorno bruto vem da negociação (ou <strong>financiado × % padrão</strong>); o líquido = bruto − ILA − IOF.
+          A <strong>comissão</strong> do retorno sai de uma regra do tipo <strong>Retorno</strong> (por cargo/vendedor), em Regras de Comissão.
         </p>
-      </div>
 
-      {loading ? (
-        <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100" />)}</div>
-      ) : rules.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-16">
-          <ArrowLeftRight size={36} strokeWidth={1} className="text-gray-300" />
-          <p className="mt-3 text-sm font-medium text-gray-500">Nenhuma regra de retorno configurada</p>
-          <button onClick={openModal} className="btn-primary mt-4 text-xs"><Plus size={13} />Criar regra</button>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                {['Nome','% Informado','% Aplicado','Banco','Status','Ações'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rules.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
-                  <td className="px-4 py-3 tabular-nums text-gray-600">{Number(r.percentualInformado)}%</td>
-                  <td className="px-4 py-3 tabular-nums font-semibold text-red-600">{Number(r.percentualAplicado)}%</td>
-                  <td className="px-4 py-3 text-gray-600">{r.bank ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', r.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
-                      {r.active ? 'Ativa' : 'Inativa'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><Edit2 size={13} /></button>
-                      <button className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+        {loading ? (
+          <div className="mt-4 h-40 animate-pulse rounded-lg bg-gray-100" />
+        ) : cfg ? (
+          <div className="mt-4 space-y-4">
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+              <input type="checkbox" checked={cfg.active} onChange={(e) => setActive(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+              <span className="text-sm font-medium text-gray-800">Ativar cálculo automático de retorno nas importações</span>
+            </label>
 
-      {/* ── Modal ───────────────────────────────────────────────────────── */}
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeModal}>
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900">Nova regra de retorno</h2>
-              <button onClick={closeModal} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="mt-4 space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="label">Nome *</label>
-                <input
-                  className="input"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex.: Faixa 1 — Banco X"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">% Informado</label>
-                  <input
-                    className="input"
-                    value={form.percentualInformado}
-                    onChange={(e) => setForm({ ...form, percentualInformado: e.target.value })}
-                    placeholder="Ex.: 1,5"
-                    inputMode="decimal"
-                  />
-                </div>
-                <div>
-                  <label className="label">% Aplicado</label>
-                  <input
-                    className="input"
-                    value={form.percentualAplicado}
-                    onChange={(e) => setForm({ ...form, percentualAplicado: e.target.value })}
-                    placeholder="Ex.: 1,2"
-                    inputMode="decimal"
-                  />
-                </div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">ILA (%)</label>
+                <input inputMode="decimal" className={inputCls()} value={text.ila} onChange={(e) => setField('ila', e.target.value)} placeholder="Ex: 26,1" />
               </div>
               <div>
-                <label className="label">Banco</label>
-                <input
-                  className="input"
-                  value={form.bank}
-                  onChange={(e) => setForm({ ...form, bank: e.target.value })}
-                  placeholder="Ex.: Banco Bradesco"
-                />
+                <label className="mb-1 block text-xs font-medium text-gray-700">IOF (%)</label>
+                <input inputMode="decimal" className={inputCls()} value={text.iof} onChange={(e) => setField('iof', e.target.value)} placeholder="Ex: 1,5" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Faixa de retorno — mínimo (%)</label>
+                <input inputMode="decimal" className={inputCls()} value={text.min} onChange={(e) => setField('min', e.target.value)} placeholder="Ex: 0,01" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Faixa de retorno — máximo (%)</label>
+                <input inputMode="decimal" className={inputCls()} value={text.max} onChange={(e) => setField('max', e.target.value)} placeholder="Ex: 20" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">% padrão (quando a negociação não traz o valor)</label>
+                <input inputMode="decimal" className={inputCls()} value={text.def} onChange={(e) => setField('def', e.target.value)} placeholder="Opcional. Ex: 6" />
               </div>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button onClick={closeModal} disabled={saving} className="btn-secondary text-sm">Cancelar</button>
-              <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">
-                {saving ? <><Loader2 size={14} className="animate-spin" />Salvando...</> : 'Salvar'}
+
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <AlertCircle size={14} /> {error}
+              </div>
+            )}
+            {saved && (
+              <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                <CheckCircle2 size={14} /> Cadastro salvo. Reimporte as vendas para aplicar o retorno.
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button onClick={save} disabled={saving} className="btn-primary text-sm">
+                {saving ? <><RefreshCw size={13} className="animate-spin" /> Salvando...</> : <><Save size={13} /> Salvar</>}
               </button>
             </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <AlertCircle size={14} /> {error || 'Não foi possível carregar a configuração.'}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-700">
+        <Percent size={14} />
+        Depois de salvar, crie a regra de <strong>Retorno</strong> (percentual do colaborador) em Regras de Comissão e reimporte as vendas.
+      </div>
     </div>
   )
 }

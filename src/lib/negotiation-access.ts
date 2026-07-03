@@ -15,8 +15,14 @@ const TENANT_WIDE_ROLES = new Set([
 const UNIT_ROLES = new Set(['GERENTE'])
 const OWN_ROLES = new Set(['VENDEDOR', 'VENDEDOR_LIDER'])
 
+// Visibilidade de COMISSÃO (lançamentos/extrato/relatório): só MASTER/ADM/
+// FINANCEIRO veem tudo (para fechamento); TODO o resto — inclusive gerentes —
+// vê apenas a PRÓPRIA comissão. (Requisito do cliente.)
+const COMMISSION_ALL_ROLES = new Set(['MASTER', 'ADM', 'FINANCEIRO'])
+
 type ActorAccess = {
   sellerId: string | null
+  managerId: string | null
   unitId: string | null
 }
 
@@ -26,12 +32,13 @@ async function resolveActorAccess(user: SessionUser): Promise<ActorAccess> {
     select: {
       unitId: true,
       seller: { select: { id: true, unitId: true } },
-      manager: { select: { unitId: true } },
+      manager: { select: { id: true, unitId: true } },
     },
   })
 
   return {
     sellerId: dbUser?.seller?.id ?? null,
+    managerId: dbUser?.manager?.id ?? null,
     unitId: user.unitId ?? dbUser?.manager?.unitId ?? dbUser?.seller?.unitId ?? dbUser?.unitId ?? null,
   }
 }
@@ -62,6 +69,10 @@ export async function buildNegotiationAccessWhere(
   return { ...extra, ...tenantWhere, id: NO_MATCH }
 }
 
+// Visibilidade de comissão (CommissionCalculation). ALL (MASTER/ADM/FINANCEIRO)
+// = tenant inteiro. Todos os demais = SOMENTE a própria comissão, onde "própria"
+// = é o vendedor (sellerId), OU o gerente (managerId), OU o usuário-ganhador
+// (ruleDetails.employeeUserId, p/ gerente-geral/documento/etc.).
 export async function buildCommissionAccessWhere(
   user: SessionUser,
   extra: Prisma.CommissionCalculationWhereInput = {},
@@ -71,26 +82,21 @@ export async function buildCommissionAccessWhere(
       ? {}
       : { tenantId: user.tenantId ?? NO_MATCH }
 
-  if (TENANT_WIDE_ROLES.has(user.role)) {
+  if (COMMISSION_ALL_ROLES.has(user.role)) {
     return { ...extra, ...tenantWhere }
   }
 
   const actor = await resolveActorAccess(user)
+  const ownOr: Prisma.CommissionCalculationWhereInput[] = []
+  if (actor.sellerId) ownOr.push({ sellerId: actor.sellerId })
+  if (actor.managerId) ownOr.push({ managerId: actor.managerId })
+  ownOr.push({ ruleDetails: { path: ['employeeUserId'], equals: user.id } as never })
 
-  if (UNIT_ROLES.has(user.role)) {
-    return { ...extra, ...tenantWhere, unitId: actor.unitId ?? NO_MATCH }
-  }
-
-  if (OWN_ROLES.has(user.role)) {
-    return { ...extra, ...tenantWhere, sellerId: actor.sellerId ?? NO_MATCH }
-  }
-
-  return { ...extra, ...tenantWhere, id: NO_MATCH }
+  return { AND: [{ ...extra, ...tenantWhere }, { OR: ownOr }] }
 }
 
-// Mesmo escopo de visibilidade, mas para CommissionExtract (extrato). Os campos
-// tenantId/sellerId/unitId existem nos dois models, então a regra é idêntica:
-// ALL=tenant, UNIT=unidade do gerente, OWN=próprio vendedor, demais=nada.
+// Mesmo escopo, para CommissionExtract (extrato). "Própria" = userId do ganhador
+// OU sellerId (vendedor). ALL = tenant inteiro.
 export async function buildCommissionExtractAccessWhere(
   user: SessionUser,
   extra: Prisma.CommissionExtractWhereInput = {},
@@ -100,21 +106,15 @@ export async function buildCommissionExtractAccessWhere(
       ? {}
       : { tenantId: user.tenantId ?? NO_MATCH }
 
-  if (TENANT_WIDE_ROLES.has(user.role)) {
+  if (COMMISSION_ALL_ROLES.has(user.role)) {
     return { ...extra, ...tenantWhere }
   }
 
   const actor = await resolveActorAccess(user)
+  const ownOr: Prisma.CommissionExtractWhereInput[] = [{ userId: user.id }]
+  if (actor.sellerId) ownOr.push({ sellerId: actor.sellerId })
 
-  if (UNIT_ROLES.has(user.role)) {
-    return { ...extra, ...tenantWhere, unitId: actor.unitId ?? NO_MATCH }
-  }
-
-  if (OWN_ROLES.has(user.role)) {
-    return { ...extra, ...tenantWhere, sellerId: actor.sellerId ?? NO_MATCH }
-  }
-
-  return { ...extra, ...tenantWhere, id: NO_MATCH }
+  return { AND: [{ ...extra, ...tenantWhere }, { OR: ownOr }] }
 }
 
 export async function getNegotiationActorIds(user: SessionUser): Promise<ActorAccess> {

@@ -875,7 +875,7 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
 
         <div className="max-h-[78vh] space-y-4 overflow-y-auto px-6 py-5">
           <p className="text-sm text-gray-600">
-            Vale para todos os financiamentos. O retorno bruto vem do AutoConf (ou financiado × % padrão);
+            Vale para todos os financiamentos. O retorno bruto vem da negociação (ou financiado × % padrão);
             o líquido = bruto − ILA − IOF. A <strong>comissão</strong> do retorno sai de uma regra do tipo <strong>Retorno</strong> (por cargo/vendedor).
           </p>
 
@@ -906,7 +906,7 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
                   <input inputMode="decimal" className={inputCls()} value={text.max}
                     onChange={(e) => setField('max', e.target.value)} placeholder="Ex: 20" />
                 </Field>
-                <Field label="% padrão (quando o AutoConf não traz o valor)">
+                <Field label="% padrão (quando a negociação não traz o valor)">
                   <input inputMode="decimal" className={inputCls()} value={text.def}
                     onChange={(e) => setField('def', e.target.value)} placeholder="Opcional. Ex: 6" />
                 </Field>

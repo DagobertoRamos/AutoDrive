@@ -29,9 +29,18 @@ beforeEach(() => {
   prismaMock.user.findUnique.mockResolvedValue({
     unitId: null,
     seller: { id: 'seller-1', unitId: 'unit-1' },
-    manager: { unitId: 'unit-1' },
+    manager: { id: 'manager-1', unitId: 'unit-1' },
   })
 })
+
+// OWN de comissão (calculation): vendedor OU gerente OU usuário-ganhador.
+const OWN_CALC = { OR: [
+  { sellerId: 'seller-1' },
+  { managerId: 'manager-1' },
+  { ruleDetails: { path: ['employeeUserId'], equals: 'user-1' } },
+] }
+// OWN de extrato: usuário-ganhador OU vendedor.
+const OWN_EXTRACT = { OR: [{ userId: 'user-1' }, { sellerId: 'seller-1' }] }
 
 describe('negotiation-access', () => {
   it('restringe VENDEDOR às próprias negociações pelo Seller.id', async () => {
@@ -56,24 +65,34 @@ describe('negotiation-access', () => {
     })
   })
 
-  it('aplica o mesmo escopo em comissões', async () => {
+  it('comissão: GERENTE vê SÓ a própria (não a unidade inteira)', async () => {
     await expect(buildCommissionAccessWhere(user('GERENTE'))).resolves.toEqual({
-      tenantId: 'tenant-1',
-      unitId: 'unit-1',
+      AND: [{ tenantId: 'tenant-1' }, OWN_CALC],
     })
   })
 
-  it('extrato: VENDEDOR só vê o próprio (sobrescreve ?sellerId= alheio)', async () => {
-    await expect(buildCommissionExtractAccessWhere(user('VENDEDOR'), { sellerId: 'outro-seller' })).resolves.toEqual({
-      tenantId: 'tenant-1',
-      sellerId: 'seller-1',
+  it('comissão: GERENTE_GERAL também vê só a própria (só fin/adm veem tudo)', async () => {
+    await expect(buildCommissionAccessWhere(user('GERENTE_GERAL'))).resolves.toEqual({
+      AND: [{ tenantId: 'tenant-1' }, OWN_CALC],
     })
   })
 
-  it('extrato: VENDEDOR_LIDER também é restrito ao próprio (era vazamento)', async () => {
+  it('comissão: ADM vê o tenant inteiro (fechamento)', async () => {
+    await expect(buildCommissionAccessWhere(user('ADM'), { period: '2026-07' })).resolves.toEqual({
+      tenantId: 'tenant-1',
+      period: '2026-07',
+    })
+  })
+
+  it('extrato: VENDEDOR só vê o próprio (userId OU sellerId)', async () => {
+    await expect(buildCommissionExtractAccessWhere(user('VENDEDOR'))).resolves.toEqual({
+      AND: [{ tenantId: 'tenant-1' }, OWN_EXTRACT],
+    })
+  })
+
+  it('extrato: VENDEDOR_LIDER também é restrito ao próprio', async () => {
     await expect(buildCommissionExtractAccessWhere(user('VENDEDOR_LIDER'))).resolves.toEqual({
-      tenantId: 'tenant-1',
-      sellerId: 'seller-1',
+      AND: [{ tenantId: 'tenant-1' }, OWN_EXTRACT],
     })
   })
 
@@ -84,10 +103,9 @@ describe('negotiation-access', () => {
     })
   })
 
-  it('extrato: GERENTE fica escopado à unidade', async () => {
+  it('extrato: GERENTE vê só o próprio (não a unidade)', async () => {
     await expect(buildCommissionExtractAccessWhere(user('GERENTE'))).resolves.toEqual({
-      tenantId: 'tenant-1',
-      unitId: 'unit-1',
+      AND: [{ tenantId: 'tenant-1' }, OWN_EXTRACT],
     })
   })
 })
