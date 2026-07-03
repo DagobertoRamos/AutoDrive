@@ -2445,3 +2445,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - `computeDocumentoCommission` agora recebe `payer: 'LOJA'|'CLIENTE'|null` (era `paidByLoja: boolean`). Regra: LOJA+cortesia→0; pagador ≠ CLIENTE (null/desconhecido)→0 quando `exigirPagadorCliente` (default **true**); senão faixa.
 - Novo toggle `exigirPagadorCliente` (config + UI + coerce, default true). Desligar volta ao comportamento antigo (desconhecido = cliente).
 - Gerador passa `d.documentationPaidBy` direto. `tsc` limpo; 9 testes verdes.
+
+### LOG 0172 — 2026-07-03 — Claude (Opus 4.8) — Purga de NEGOCIACOES + COMISSOES (EASYCAR)
+- **Operacao de dados (a pedido do usuario), escopo tenant EASYCAR (cmqmlyvya0004jv04j1rlpoot) apenas.** Feita em transacao atomica, com backup JSON antes.
+- **Apagado:** Deal 903 (+ filhos cascade), CommissionCalculation 2382, FinancialEntry derivado 2556, CommissionExtract/Adjustment 0, Contract-ligado-a-deal 0.
+- **PRESERVADO (nao tocado):** CommissionRule (27), ReturnPercentRule (1), WarrantyRule, RankingScore, GoalProgress, Vehicle/estoque, Customer (619), User (16), Unit/Seller/Manager, configs e F&I.
+- **Script temporario** (`scripts/_purge_easycar_deals.ts`) NAO commitado — removido apos uso. Backup em scratchpad (temp local, nao versionado).
+- **Nao houve mudanca de codigo do app.** Reimportar do AutoConf recria as negociacoes (ja com o pagador da documentacao — LOG 0170/0171).
