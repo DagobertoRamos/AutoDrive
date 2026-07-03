@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Percent, Save, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import RetornoPercentuais from '@/components/comissoes/RetornoPercentuais'
 
 interface RetornoConfig {
   active: boolean
@@ -167,9 +168,12 @@ export default function RetornosPage() {
         )}
       </div>
 
+      {/* Percentual de comissão do retorno (por cargo ou por vendedor específico) */}
+      <RetornoPercentuais />
+
       <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-700">
         <Percent size={14} />
-        Depois de salvar, crie a regra de <strong>Retorno</strong> (percentual do colaborador) em Regras de Comissão e reimporte as vendas.
+        O retorno bruto vem da negociação; o líquido = bruto − ILA − IOF; e a comissão = líquido × o percentual acima (por cargo, ou por vendedor específico quando ele recebe diferente).
       </div>
     </div>
   )

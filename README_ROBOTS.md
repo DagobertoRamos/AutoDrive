@@ -2415,3 +2415,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **PERFORMANCE (dívida técnica):** o fix do LOG 0164 (retroativo casa a faixa POR CARRO = N consultas por período) deixou a **regeneração em massa** muito lenta (regen de 895/44 deals estourou 5–10 min). Import/geração de UM deal segue ok. **Pendência:** otimizar o retroativo em lote (cachear regras da faixa por período/vendedor, ou reprecificar em memória) antes de futuros regens massivos.
 - **Retorno:** em análise separada (LOG a seguir) — o cálculo é (bruto − ILA 26,1% − IOF 1,5%) × 5% (gerente); uma amostra bate quase exata (net 1.198,65 → 59,93 sistema vs 59,87 PDF); divergência a confirmar com o usuário (ILA/IOF ou % do gerente).
 - **Verde:** `tsc` limpo. Card só front-end; regra/backfill em dados prod.
+
+### LOG 0168 — 2026-07-03 — Claude (Opus 4.8) — Retorno: percentuais editáveis na tela (por cargo + por vendedor específico)
+- **Pedido:** o % do retorno (o "× 5%") tem que ser configurável na tela, com campo de alteração, e com vendedor que recebe **diferente** (override por vendedor).
+- **Novo componente** `src/components/comissoes/RetornoPercentuais.tsx` na página **Comissões › Retorno (ILA/IOF)**: lista as regras de comissão do tipo **RETORNO** (por cargo ou por vendedor), cada uma com **campo de % editável** + Salvar + Excluir, e um formulário para **adicionar** — "Por cargo" (perfil) ou "Vendedor específico". Reusa `/api/commissions/rules[/:id]` (GET/POST/PUT/DELETE) e `/api/sellers`.
+- **Override por vendedor (já suportado pelo motor):** regra RETORNO com `sellerId` casa por `SELLER_ID` (prioridade 1000 no matcher) e **vence** a regra por cargo (POSITION/ROLE, 500/250). Então "vendedor que recebe diferente" é só adicionar a linha por vendedor específico.
+- **Tela de Retorno agora reúne tudo:** ILA%, IOF%, faixa, % padrão (cadastro global) **+** os percentuais de comissão por cargo/vendedor — tudo editável em um lugar. Os campos de faixa continuam escondidos para tipos sem faixa (LOG 0163).
+- **Confirmado (LOG anterior):** o cálculo do retorno = (bruto − ILA − IOF) × % está correto e bate com o modelo/PDF do usuário; a divergência anterior era leitura errada da folha (multi-linha) + o documento do gerente que faltava (LOG 0167).
+- **Verde:** `tsc` limpo; `eslint` 0 erros. Só front-end (reusa APIs de regras existentes).
