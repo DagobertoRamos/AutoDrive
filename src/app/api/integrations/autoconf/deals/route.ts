@@ -152,6 +152,26 @@ function debtsFor(row: AutoconfRow, dealId: string) {
     .filter(Boolean)
 }
 
+// Garantias/seguros (dos títulos) → DealService marcado como "Garantia: …".
+// O gerador roteia serviços de garantia para o tipo GARANTIA (regra por %/fixo).
+function warrantyServicesFor(row: AutoconfRow, dealId: string) {
+  const gs = row.financeiro?.garantias ?? []
+  return gs
+    .map((g) => {
+      const value = num(g.value)
+      if (!value || value <= 0) return null
+      const produto = safeText(g.produto, 140) || 'Garantia'
+      return {
+        dealId,
+        name: `Garantia: ${produto}`.slice(0, 180),
+        value,
+        supplier: safeText(g.fornecedor, 120),
+        notes: 'Importado do AutoConf — Garantias/Seguros.',
+      }
+    })
+    .filter(Boolean)
+}
+
 async function resolveCustomerId(tenantId: string, row: AutoconfRow): Promise<string | null> {
   const details = row.clienteDetalhes ?? {}
   const name = safeText(details.nome ?? row.cliente, 180)
@@ -329,6 +349,7 @@ export async function POST(req: Request) {
       const vehicles = vehiclesFor(row)
       const paymentCreates = (savedDealId: string) => paymentsFor(row, tenantId, savedDealId)
       const debtCreates = (savedDealId: string) => debtsFor(row, savedDealId)
+      const warrantyServiceCreates = (savedDealId: string) => warrantyServicesFor(row, savedDealId)
       const existing = await prisma.deal.findFirst({ where: { tenantId, dealNumber }, select: { id: true } })
 
       if (dryRun) {
@@ -359,6 +380,10 @@ export async function POST(req: Request) {
             await tx.dealDebt.deleteMany({ where: { dealId: savedDealId } })
             await tx.dealDebt.createMany({ data: debts as never })
           }
+          // Garantias importadas: recria só as marcadas "Garantia:" (preserva serviços manuais).
+          const warrantyServices = warrantyServiceCreates(savedDealId)
+          await tx.dealService.deleteMany({ where: { dealId: savedDealId, name: { startsWith: 'Garantia:' } } })
+          if (warrantyServices.length) await tx.dealService.createMany({ data: warrantyServices as never })
           await tx.dealAuditLog.create({
             data: {
               dealId: savedDealId,
@@ -397,6 +422,8 @@ export async function POST(req: Request) {
           if (payments.length) await tx.dealPayment.createMany({ data: payments as never })
           const debts = debtCreates(deal.id)
           if (debts.length) await tx.dealDebt.createMany({ data: debts as never })
+          const warrantyServices = warrantyServiceCreates(deal.id)
+          if (warrantyServices.length) await tx.dealService.createMany({ data: warrantyServices as never })
           await tx.dealAuditLog.create({
             data: {
               dealId: deal.id,

@@ -2229,3 +2229,13 @@
 - **Atenção operacional:** já existe 1 regra DOCUMENTO no tenant. Se ela for DEFAULT (sem alvo), agora passará a pagar o **vendedor** o documento em toda venda com taxa. Se a intenção for um cargo específico, ajustar o alvo da regra (aba "Serviços" das Regras de Comissão — DOCUMENTO cai nessa família).
 - **Verde:** `tsc` ok; `commission-generator.test.ts` 3/3 (a mudança não quebra os testes existentes). Gera de verdade após **reimportar** (para o `documentationFee` entrar) + haver regra DOCUMENTO.
 - **Falta:** C. Garantia (aguardando 1 negociação com garantia Gestauto p/ mapear); D. Serviços adicionais.
+
+### LOG 0148 — 2026-07-03 — Claude (Opus 4.8) — Comissões: GARANTIA das vendas importadas (Parte C)
+- **Descoberta:** a garantia JÁ vinha nos títulos importados como DÉBITO com categoria "GARANTIAS GESTAUTO" (ex.: neg. #723452, produto "+150EX 2anos", R$ 1.650) — só não era classificada nem comissionada. E há **6 regras GARANTIA** já cadastradas. Catálogo `Warranty` do AutoDrive está **vazio** → `WarrantySale` (que exige `warrantyId`) é inviável. Caminho escolhido: **regra GARANTIA por %/fixo** sobre o valor da garantia.
+- **Implementado (sem migration):**
+  - **Extensão (`scanner.js`):** classifica títulos com categoria `/garantia|seguro/` → `financeiro.garantias[] = {produto, value, fornecedor}` (produto = descrição limpa; ex.: "Gestauto - +150EX 2anos …"). `popup.js` já repassa `financeiro`.
+  - **Import (`autoconf/deals/route.ts`):** `warrantyServicesFor` cria um **DealService** por garantia (`name: "Garantia: {produto}"`, `value`, `supplier`). Idempotente: no update, apaga só os `DealService` com nome começando em "Garantia:" e recria (preserva serviços manuais).
+  - **Gerador (`commission-generator.ts`, `addForService`):** detecta serviço-garantia por `name`/`supplier` (`/garantia|seguro|gestauto/i`) e roteia para `ruleType='GARANTIA'` + escopo `WARRANTY_COMMISSION` (serviços comuns seguem SERVICO). **Garantia paga só o VENDEDOR** (gerente fica de fora → não paga em dobro). Base = valor da garantia; a regra GARANTIA (%/fixo) define a comissão. Idempotente por `serviceId`.
+- **Coexistência:** o bloco antigo de garantia por `WarrantySale`+catálogo continua para vendas manuais/catálogo; importadas usam o caminho DealService. Sem conflito (importadas não têm WarrantySale).
+- **Verde:** `tsc` ok; `commission-generator.test.ts`+`commission/` 27/27. Gera após **reimportar** (extensão recarregada) + haver regra GARANTIA. Se as 6 regras GARANTIA existentes tiverem `warrantyId` específico, criar uma genérica (sem garantia específica) para casar as importadas.
+- **Falta:** D. Serviços adicionais ("SERVIÇOS ADICIONAIS" dos títulos) — mesmo padrão (DealService → SERVICO).

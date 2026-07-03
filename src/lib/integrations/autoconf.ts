@@ -164,12 +164,18 @@ export interface AutoconfDebt {
   notes?: string | null
   raw?: unknown
 }
+export interface AutoconfGarantia {
+  produto?: string | null
+  value?: number | null
+  fornecedor?: string | null
+}
 export interface AutoconfFinanceiro {
   financiamentoValue?: number | null
   financiamentoBank?: string | null
   retornoValue?: number | null
   retornoBank?: string | null
   despachanteValue?: number | null
+  garantias?: AutoconfGarantia[] | null
 }
 export interface AutoconfCustomerDetails {
   nome?: string | null

@@ -586,7 +586,7 @@ async function fetchTitulosFinanceiros(externalId) {
   // financeiro: totais classificados pela CATEGORIA da linha (mais confiável que a
   // descrição). Financiamento = valor financiado; Retorno = receita de retorno do
   // banco (bruto); Despachante = custo de documentação. Bancos vêm da contraparte.
-  const empty = { pagamentos: [], debitos: [], financeiro: { financiamentoValue: 0, financiamentoBank: null, retornoValue: 0, retornoBank: null, despachanteValue: 0 } }
+  const empty = { pagamentos: [], debitos: [], financeiro: { financiamentoValue: 0, financiamentoBank: null, retornoValue: 0, retornoBank: null, despachanteValue: 0, garantias: [] } }
   try {
     const r = await fetch(`/negociacao/${externalId}/visualizacao-titulos-financeiros`, { headers: { Accept: 'text/html' }, credentials: 'include' })
     if (!r.ok) return empty
@@ -594,7 +594,7 @@ async function fetchTitulosFinanceiros(externalId) {
     const doc = new DOMParser().parseFromString(html, 'text/html')
     const rows = [...doc.querySelectorAll('table tbody tr')]
     const pagamentos = [], debitos = []
-    const financeiro = { financiamentoValue: 0, financiamentoBank: null, retornoValue: 0, retornoBank: null, despachanteValue: 0 }
+    const financeiro = { financiamentoValue: 0, financiamentoBank: null, retornoValue: 0, retornoBank: null, despachanteValue: 0, garantias: [] }
 
     for (const tr of rows) {
       const tds = [...tr.children]
@@ -623,6 +623,14 @@ async function fetchTitulosFinanceiros(externalId) {
       } else if (/financiamento/.test(catN)) {
         financeiro.financiamentoValue += absValue
         if (!financeiro.financiamentoBank) financeiro.financiamentoBank = contraparte
+      } else if (/garantia|seguro/.test(catN)) {
+        // Garantia/Seguro (ex.: "GARANTIAS GESTAUTO"). Produto = descrição limpa.
+        const produto = (descricao || 'Garantia')
+          .replace(/^negocia[cç][aã]o\s*#\d+\s*[-–]\s*/i, '')
+          .replace(/d[eé]bito do ve[ií]culo:\s*/i, '')
+          .replace(/\s*[-–]\s*[A-Z]{3,}\s*\(cpf\/cnpj[^)]*\).*/i, '')
+          .trim().slice(0, 140)
+        financeiro.garantias.push({ produto: produto || 'Garantia', value: absValue, fornecedor: contraparte })
       } else if (/despachante/.test(catN)) {
         financeiro.despachanteValue += absValue
       }
@@ -648,7 +656,7 @@ async function fetchTitulosFinanceiros(externalId) {
       }
     }
     return { pagamentos, debitos, financeiro }
-  } catch (e) { return empty }
+  } catch (e) { return { ...empty } }
 }
 
 // "Visualizar histórico" — trilha de auditoria (quem alterou o quê, quando).

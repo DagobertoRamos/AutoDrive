@@ -386,9 +386,13 @@ export async function generateCommissionsForDeal(
   }
 
   function addForService(ds: typeof d.services[number]) {
-    // Garantias agora são registradas em WarrantySale (preço/comissão do cadastro).
-    // DealService cobre apenas serviços comuns → sempre SERVICO.
-    const ruleType: CommissionRuleType = 'SERVICO'
+    // Garantias vendidas via cadastro/catálogo ficam em WarrantySale (bloco próprio
+    // abaixo). Aqui tratamos DealService: serviços comuns → SERVICO; mas quando o
+    // serviço É uma garantia/seguro (ex.: importado do AutoConf como "Garantia: …"),
+    // roteia para GARANTIA/WARRANTY_COMMISSION, pago por uma regra GARANTIA (%/fixo).
+    const isWarranty = /garantia|seguro|gestauto/i.test(ds.name ?? '') || /gestauto|seguro/i.test(ds.supplier ?? '')
+    const ruleType: CommissionRuleType = isWarranty ? 'GARANTIA' : 'SERVICO'
+    const commissionScope: CommissionScope = isWarranty ? 'WARRANTY_COMMISSION' : 'SERVICE_COMMISSION'
     const baseValue = toNum(ds.value)
     if (baseValue <= 0) return
     const refKind = { serviceId: ds.id }
@@ -397,7 +401,7 @@ export async function generateCommissionsForDeal(
     if (sellerEarner) {
       items.push({
         ruleType,
-        commissionScope: 'SERVICE_COMMISSION',
+        commissionScope,
         employeeKind:  sellerEarner.kind,
         employeeId:    sellerEarner.id,
         employeeUserId: sellerEarner.userId,
@@ -407,10 +411,11 @@ export async function generateCommissionsForDeal(
         reference:     { dealId: d.id, ...refKind },
       })
     }
-    if (managerEarner) {
+    if (managerEarner && !isWarranty) {
+      // Garantia é comissão do VENDEDOR (não do gerente) — evita pagar em dobro.
       items.push({
         ruleType,
-        commissionScope: 'SERVICE_COMMISSION',
+        commissionScope,
         employeeKind:  managerEarner.kind,
         employeeId:    managerEarner.id,
         employeeUserId: managerEarner.userId,
