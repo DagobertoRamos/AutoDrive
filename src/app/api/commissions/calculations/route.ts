@@ -54,57 +54,74 @@ export async function GET(req: Request) {
     const tenantId = assertTenantId(user.tenantId, user.role)
     const { searchParams } = new URL(req.url)
 
+    const ruleType     = searchParams.get('ruleType') || ''
+    const period       = searchParams.get('period') || ''
+    const status       = searchParams.get('status') || ''
+    const unitId       = searchParams.get('unitId') || ''
+    const collaborator = searchParams.get('collaborator') || '' // "s:<id>" | "m:<id>" | "u:<id>"
+
+    // Filtros de linha (tipo/período/status) vão no where; unidade e colaborador
+    // são aplicados DEPOIS, para que as listas dos dropdowns fiquem completas.
     const extra: Record<string, unknown> = {}
-    const ruleType = searchParams.get('ruleType')
-    const period   = searchParams.get('period')
-    const status   = searchParams.get('status')
-    const sellerId = searchParams.get('sellerId')
     if (ruleType) extra.ruleType = ruleType
     if (period)   extra.period = period
     if (status)   extra.status = status
-    if (sellerId) extra.sellerId = sellerId
 
     const where = await buildCommissionAccessWhere(
       user,
       tenantWhere(user.role, tenantId, extra) as never,
     )
 
-    const [rows, byType] = await Promise.all([
-      prisma.commissionCalculation.findMany({
-        where,
-        orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
-        take: 500,
-        select: {
-          id: true, ruleType: true, description: true, baseValue: true, commissionValue: true,
-          status: true, period: true, sellerId: true, managerId: true, ruleDetails: true, createdAt: true,
-        },
-      }),
-      prisma.commissionCalculation.groupBy({
-        by: ['ruleType'],
-        where: where as never,
-        _sum: { commissionValue: true },
-        _count: { _all: true },
-      }),
-    ])
+    const rows = await prisma.commissionCalculation.findMany({
+      where,
+      orderBy: [{ period: 'desc' }, { createdAt: 'desc' }],
+      take: 20000,
+      select: {
+        id: true, ruleType: true, description: true, baseValue: true, commissionValue: true,
+        status: true, period: true, sellerId: true, managerId: true, unitId: true, ruleDetails: true, createdAt: true,
+      },
+    })
 
-    // Resolve nomes (sellerId → Seller.fullName; managerId pode ser Manager.id
-    // nas comissões novas ou User.id em registros antigos).
+    // Resolve nomes (vendedor/gerente/usuário-ganhador) + unidades.
     const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter(Boolean))] as string[]
     const managerIds = [...new Set(rows.map((r) => r.managerId).filter(Boolean))] as string[]
-    const employeeUserIds = [...new Set(rows
-      .map((r) => detailsOf(r.ruleDetails).employeeUserId)
-      .filter(Boolean))] as string[]
+    const employeeUserIds = [...new Set(rows.map((r) => detailsOf(r.ruleDetails).employeeUserId).filter(Boolean))] as string[]
+    const unitIds = [...new Set(rows.map((r) => r.unitId).filter(Boolean))] as string[]
     const userIds = [...new Set([...managerIds, ...employeeUserIds])]
-    const [sellers, managers, users] = await Promise.all([
+    const [sellers, managers, users, units] = await Promise.all([
       sellerIds.length ? prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, fullName: true, shortName: true } }) : [],
       managerIds.length ? prisma.manager.findMany({ where: { id: { in: managerIds } }, select: { id: true, fullName: true, user: { select: { name: true } } } }) : [],
       userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [],
+      unitIds.length ? prisma.unit.findMany({ where: { id: { in: unitIds } }, select: { id: true, name: true } }) : [],
     ])
     const sellerMap = Object.fromEntries(sellers.map((s) => [s.id, s.shortName || s.fullName]))
     const managerMap = Object.fromEntries(managers.map((m) => [m.id, m.fullName || m.user?.name || 'Gerente']))
     const userMap = Object.fromEntries(users.map((m) => [m.id, m.name]))
+    const unitMap = Object.fromEntries(units.map((u) => [u.id, u.name]))
 
-    const data = rows.map((r) => {
+    // Chave e nome do colaborador (ganhador) de cada linha.
+    const earnerOf = (r: typeof rows[number]): { key: string; nome: string } => {
+      const details = detailsOf(r.ruleDetails)
+      if (r.sellerId) return { key: `s:${r.sellerId}`, nome: sellerMap[r.sellerId] ?? '—' }
+      if (r.managerId) return { key: `m:${r.managerId}`, nome: managerMap[r.managerId] ?? userMap[r.managerId] ?? '—' }
+      const uid = String(details.employeeUserId ?? '')
+      return { key: `u:${uid}`, nome: userMap[uid] ?? '—' }
+    }
+
+    // Listas para os dropdowns (completas dentro da visibilidade + filtros de tipo/período/status).
+    const unidades = [...new Map(rows.filter((r) => r.unitId).map((r) => [r.unitId as string, unitMap[r.unitId as string] ?? r.unitId as string])).entries()]
+      .map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
+    const colaboradores = [...new Map(rows.map((r) => { const e = earnerOf(r); return [e.key, e.nome] })).entries()]
+      .map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
+
+    // Aplica unidade + colaborador.
+    const filtered = rows.filter((r) => {
+      if (unitId && r.unitId !== unitId) return false
+      if (collaborator && earnerOf(r).key !== collaborator) return false
+      return true
+    })
+
+    const data = filtered.slice(0, 1000).map((r) => {
       const details = detailsOf(r.ruleDetails)
       const commissionScope = typeof details.commissionScope === 'string' ? details.commissionScope : null
       return {
@@ -120,22 +137,21 @@ export async function GET(req: Request) {
         status: r.status,
         period: r.period,
         createdAt: r.createdAt,
-        responsavel: r.sellerId
-        ? (sellerMap[r.sellerId] ?? '—')
-        : r.managerId
-          ? (managerMap[r.managerId] ?? userMap[r.managerId] ?? '—')
-          : userMap[String(details.employeeUserId ?? '')] ?? '—',
+        responsavel: earnerOf(r).nome,
       }
     })
 
-    const totalsByType = byType.map((g) => ({
-      ruleType: g.ruleType,
-      total: num(g._sum.commissionValue),
-      count: g._count._all,
-    }))
+    // Totais por tipo (do conjunto FILTRADO).
+    const totalsMap = new Map<string, { total: number; count: number }>()
+    for (const r of filtered) {
+      const t = totalsMap.get(r.ruleType) ?? { total: 0, count: 0 }
+      t.total += num(r.commissionValue); t.count += 1
+      totalsMap.set(r.ruleType, t)
+    }
+    const totalsByType = [...totalsMap.entries()].map(([rt, t]) => ({ ruleType: rt, total: t.total, count: t.count }))
     const grandTotal = totalsByType.reduce((s, t) => s + t.total, 0)
 
-    return NextResponse.json({ success: true, data, totalsByType, grandTotal })
+    return NextResponse.json({ success: true, data, totalsByType, grandTotal, unidades, colaboradores })
   } catch (err) {
     return handlePrismaError(err)
   }

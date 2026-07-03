@@ -24,6 +24,7 @@ interface Row {
   responsavel: string
 }
 interface TypeTotal { ruleType: string; total: number; count: number }
+interface Option { id: string; nome: string }
 
 const TYPE_LABEL: Record<string, string> = {
   VENDA: 'Venda', TROCA: 'Troca', COMPRA: 'Compra', CONSIGNACAO: 'Consignação', GARANTIA: 'Garantia',
@@ -56,6 +57,10 @@ export default function LancamentosComissaoPage() {
   const [period, setPeriod] = useState('')
   const [ruleType, setRuleType] = useState('')
   const [status, setStatus] = useState('')
+  const [unitId, setUnitId] = useState('')
+  const [collaborator, setCollaborator] = useState('')
+  const [unidades, setUnidades] = useState<Option[]>([])
+  const [colaboradores, setColaboradores] = useState<Option[]>([])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -64,17 +69,21 @@ export default function LancamentosComissaoPage() {
       if (period) params.set('period', period)
       if (ruleType) params.set('ruleType', ruleType)
       if (status) params.set('status', status)
+      if (unitId) params.set('unitId', unitId)
+      if (collaborator) params.set('collaborator', collaborator)
       const res = await fetch(`/api/commissions/calculations?${params}`, { credentials: 'include' })
       const json = await res.json()
       setRows(json?.data ?? [])
       setTotals(json?.totalsByType ?? [])
       setGrand(json?.grandTotal ?? 0)
+      setUnidades(json?.unidades ?? [])
+      setColaboradores(json?.colaboradores ?? [])
     } catch {
       setRows([]); setTotals([]); setGrand(0)
     } finally {
       setLoading(false)
     }
-  }, [period, ruleType, status])
+  }, [period, ruleType, status, unitId, collaborator])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -120,6 +129,18 @@ export default function LancamentosComissaoPage() {
           <option value="">Todos os status</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        {unidades.length > 1 && (
+          <select value={unitId} onChange={(e) => setUnitId(e.target.value)} className="input w-auto">
+            <option value="">Todas as unidades</option>
+            {unidades.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+          </select>
+        )}
+        {colaboradores.length > 1 && (
+          <select value={collaborator} onChange={(e) => setCollaborator(e.target.value)} className="input w-auto">
+            <option value="">Todos os colaboradores</option>
+            {colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Tabela */}

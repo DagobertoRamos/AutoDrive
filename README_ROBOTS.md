@@ -2263,3 +2263,10 @@ Feedback do usuário: cada colaborador deve ver SÓ o próprio lançamento (só 
 - **Extrato — status/labels:** status agora usa o enum real (PREVISTO/APROVADO/PAGO/AJUSTADO/CANCELADO) com rótulos Prevista/Liberada/Paga/Ajustada/Estornada; nome do responsável vem de `responsavel` (resolvido no servidor).
 - **Verde:** `tsc` 0 erros; visibilidade 10/10; sem novos erros de lint (só warnings pré-existentes de deps/effect).
 - **Observação:** o "Cálculo" (fechamento → CommissionExtract) continua existindo como ferramenta de fin/adm, mas o Extrato agora mostra a comissão viva dos Lançamentos (não exige salvar antes).
+
+### LOG 0152 — 2026-07-03 — Claude (Opus 4.8) — Lançamentos de Comissão: filtros por unidade e por colaborador
+- **Pedido:** filtrar os Lançamentos por unidade / geral / colaborador.
+- **Rota (`/api/commissions/calculations`):** aceita `unitId` e `collaborator` ("s:<id>"|"m:<id>"|"u:<id>"). Tipo/período/status continuam no `where`; unidade e colaborador são aplicados DEPOIS (em memória) para as listas dos dropdowns ficarem completas. Devolve `unidades:[{id,nome}]` e `colaboradores:[{id,nome}]` (dentro da visibilidade). Totais por tipo + total geral agora refletem o conjunto FILTRADO. Cap de leitura subiu p/ 20000 e o retorno exibe até 1000 linhas.
+- **Página (`comissoes/lancamentos`):** dois selects novos — "Todas as unidades" e "Todos os colaboradores" — que só aparecem quando há mais de uma opção (vendedor comum, que só vê o próprio, não vê filtro). "Geral" = nenhum filtro selecionado.
+- **Respeita a visibilidade:** as listas e os dados já vêm escopados por `buildCommissionAccessWhere` (fin/adm/GG veem todos; demais só o próprio).
+- **Verde:** `tsc` 0 erros; só warning pré-existente de effect.
