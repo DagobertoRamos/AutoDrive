@@ -2270,3 +2270,14 @@ Feedback do usuário: cada colaborador deve ver SÓ o próprio lançamento (só 
 - **Página (`comissoes/lancamentos`):** dois selects novos — "Todas as unidades" e "Todos os colaboradores" — que só aparecem quando há mais de uma opção (vendedor comum, que só vê o próprio, não vê filtro). "Geral" = nenhum filtro selecionado.
 - **Respeita a visibilidade:** as listas e os dados já vêm escopados por `buildCommissionAccessWhere` (fin/adm/GG veem todos; demais só o próprio).
 - **Verde:** `tsc` 0 erros; só warning pré-existente de effect.
+
+### LOG 0153 — 2026-07-03 — Claude (Opus 4.8) — Teste ponta a ponta do pipeline retorno/garantia/documento
+- **Teste do gerador (`commission-generator.test.ts`):** novo caso "gera RETORNO, GARANTIA e DOCUMENTO quando a negociação traz os dados" — deal com `returnNetValue`, `services:[{name:'Garantia: …'}]` e `documentationFee` → assere que os escopos RETURN/WARRANTY/DOCUMENT são gerados, garantia paga só o vendedor (1 lançamento, tipo GARANTIA), retorno usa o líquido como base e documento a taxa. **4/4 verdes** (suíte de comissão total continua verde).
+- **Números reais (read-only, prod EasyCar):**
+  - Retorno neg. 718486: valor real R$1.391 → com ILA 26% (−361,66) e IOF 2% (−27,82) → **líquido R$1.001,52** (bate com a config salva pelo usuário).
+  - Garantia: regras FIXO de R$200 a R$700 já cadastradas.
+  - Documento: regra FIXO R$200 ("documentação vendedor cheio").
+- **Bloqueios para o teste AO VIVO (não são bug — são config/dados):**
+  1. **0 regras RETORNO ativas** → sem elas, retorno calcula líquido mas comissão = 0. Precisa criar uma regra tipo Retorno (% do colaborador).
+  2. **Deals ainda não reimportados** com o bloco `financeiro` → a extensão precisa ser recarregada e as vendas reimportadas para `returnNetValue`/DealService-garantia/`documentationFee` entrarem. (Hoje o retorno 1391 está guardado como pagamento FINANCIAMENTO; a garantia 1650 como débito.)
+- **Conclusão:** o pipeline de código está **provado** (gerador + matemática do retorno). Falta só ação operacional do usuário: recarregar extensão, criar regra RETORNO, reimportar.

@@ -163,6 +163,37 @@ describe('generateCommissionsForDeal', () => {
     expect(dagoberto.some((it) => it.commissionScope === 'UNIT_MANAGER_COMMISSION')).toBe(true)
   })
 
+  it('gera RETORNO, GARANTIA e DOCUMENTO quando a negociacao traz os dados', async () => {
+    prismaMock.deal.findUnique.mockResolvedValue(makeDeal({
+      type: 'VENDA',
+      returnNetValue: 1000,          // retorno líquido (base da comissão de retorno)
+      documentationFee: 1490,        // despachante → base do documento
+      services: [                    // garantia importada como DealService "Garantia: …"
+        { id: 'svcWarr', name: 'Garantia: Gestauto +150EX 2anos', value: 1650, supplier: 'GESTAUTO' },
+      ],
+    }))
+
+    const result = await generateCommissionsForDeal({
+      dealId: 'deal1', tenantId: 'tenant1', triggeredBy: 'tester', dryRun: true,
+    })
+    const scopes = new Set(result.items.map((it) => it.commissionScope))
+
+    // Os três novos escopos são gerados.
+    expect(scopes.has('RETURN_COMMISSION')).toBe(true)
+    expect(scopes.has('WARRANTY_COMMISSION')).toBe(true)
+    expect(scopes.has('DOCUMENT_COMMISSION')).toBe(true)
+
+    // Garantia = comissão do VENDEDOR (só 1 lançamento; gerente fora), tipo GARANTIA.
+    const warr = result.items.filter((it) => it.commissionScope === 'WARRANTY_COMMISSION')
+    expect(warr).toHaveLength(1)
+    expect(warr[0].ruleType).toBe('GARANTIA')
+    expect(warr[0].baseValue).toBe(1650)
+
+    // Retorno usa o líquido como base; documento usa a taxa de documentação.
+    expect(result.items.find((it) => it.commissionScope === 'RETURN_COMMISSION')?.baseValue).toBe(1000)
+    expect(result.items.find((it) => it.commissionScope === 'DOCUMENT_COMMISSION')?.baseValue).toBe(1490)
+  })
+
   it('trata lancamento legado por veiculo como existente para nao duplicar no reprocessamento', async () => {
     prismaMock.deal.findUnique.mockResolvedValue(makeDeal())
     prismaMock.commissionCalculation.findMany
