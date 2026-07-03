@@ -43,6 +43,8 @@ interface CommissionRule {
   positionId:     string | null
   position?:      { id: string; name: string; slug: string; baseRole?: string | null } | null
   role:           string | null
+  sellerId:       string | null
+  seller?:        { user?: { name: string | null } | null } | null
   notes:          string | null
 }
 
@@ -52,6 +54,12 @@ interface PositionLite {
   slug:     string
   baseRole: string | null
   active:   boolean
+}
+
+interface SellerLite {
+  id:       string
+  fullName: string
+  shortName?: string | null
 }
 
 interface UnitLite {
@@ -80,6 +88,7 @@ const EMPTY_FORM: Omit<CommissionRule, 'id' | 'unit' | 'position'> = {
   unitId:         null,
   positionId:     null,
   role:           null,
+  sellerId:       null,
   notes:          null,
 }
 
@@ -199,6 +208,7 @@ function RuleModal({
   defaultRuleType,
   positions,
   units,
+  sellers,
   onClose,
   onSaved,
 }: {
@@ -206,6 +216,7 @@ function RuleModal({
   defaultRuleType?: string
   positions:       PositionLite[]
   units:           UnitLite[]
+  sellers:         SellerLite[]
   onClose:         () => void
   onSaved:         () => void
 }) {
@@ -229,6 +240,7 @@ function RuleModal({
           unitId:         initial.unitId,
           positionId:     initial.positionId,
           role:           initial.role,
+          sellerId:       initial.sellerId,
           notes:          initial.notes,
         }
       : { ...EMPTY_FORM, ruleType: defaultRuleType ?? EMPTY_FORM.ruleType },
@@ -415,6 +427,23 @@ function RuleModal({
                   ))}
                 </select>
               </Field>
+              <div className="md:col-span-2">
+                <Field label="Vendedor específico (opcional)">
+                  <select
+                    className={inputCls()}
+                    value={form.sellerId ?? ''}
+                    onChange={(e) => set('sellerId', e.target.value || null)}
+                  >
+                    <option value="">Nenhum — vale por cargo/perfil</option>
+                    {sellers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.shortName || s.fullName}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Se escolher um vendedor, a regra vale só para ele e tem prioridade sobre cargo/perfil.
+                  </p>
+                </Field>
+              </div>
             </div>
           </section>
 
@@ -945,6 +974,7 @@ export default function RegrasComissoesPage() {
   const [rules, setRules]         = useState<CommissionRule[]>([])
   const [positions, setPositions] = useState<PositionLite[]>([])
   const [units, setUnits]         = useState<UnitLite[]>([])
+  const [sellers, setSellers]     = useState<SellerLite[]>([])
   const [settings, setSettings]   = useState<CommissionSettings>({ managerReceivesOnOwnSale: false })
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [loading, setLoading]     = useState(true)
@@ -1011,6 +1041,16 @@ export default function RegrasComissoesPage() {
     }
   }, [])
 
+  const fetchSellers = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/sellers?active=true', { credentials: 'include' })
+      const data = await res.json()
+      if (res.ok) setSellers((data.data ?? []).map((s: { id: string; fullName: string; shortName?: string | null }) => ({ id: s.id, fullName: s.fullName, shortName: s.shortName })))
+    } catch {
+      /* silencioso — campo é opcional */
+    }
+  }, [])
+
   const fetchSettings = useCallback(async () => {
     try {
       const res  = await fetch('/api/commissions/settings', { credentials: 'include' })
@@ -1046,8 +1086,9 @@ export default function RegrasComissoesPage() {
     fetchRules()
     fetchPositions()
     fetchUnits()
+    fetchSellers()
     fetchSettings()
-  }, [fetchRules, fetchPositions, fetchUnits, fetchSettings])
+  }, [fetchRules, fetchPositions, fetchUnits, fetchSellers, fetchSettings])
 
   return (
     <>
@@ -1197,7 +1238,9 @@ export default function RegrasComissoesPage() {
                         {RULE_TYPE_LABELS[r.ruleType] ?? r.ruleType}
                       </td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                        {r.position?.name ?? (r.role ? ROLE_LABELS[r.role] ?? r.role : 'Todos')}
+                        {r.seller?.user?.name
+                          ? `Vendedor: ${r.seller.user.name}`
+                          : r.position?.name ?? (r.role ? ROLE_LABELS[r.role] ?? r.role : 'Todos')}
                       </td>
                       <td className="px-4 py-3 font-semibold text-brand-700 tabular-nums whitespace-nowrap">
                         <span>{formatCommission(r)}</span>
@@ -1254,6 +1297,7 @@ export default function RegrasComissoesPage() {
           defaultRuleType={editing === 'new' ? defaultRuleType : undefined}
           positions={positions}
           units={units}
+          sellers={sellers}
           onClose={() => setEditing(null)}
           onSaved={fetchRules}
         />

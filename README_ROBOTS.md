@@ -2281,3 +2281,11 @@ Feedback do usuário: cada colaborador deve ver SÓ o próprio lançamento (só 
   1. **0 regras RETORNO ativas** → sem elas, retorno calcula líquido mas comissão = 0. Precisa criar uma regra tipo Retorno (% do colaborador).
   2. **Deals ainda não reimportados** com o bloco `financeiro` → a extensão precisa ser recarregada e as vendas reimportadas para `returnNetValue`/DealService-garantia/`documentationFee` entrarem. (Hoje o retorno 1391 está guardado como pagamento FINANCIAMENTO; a garantia 1650 como débito.)
 - **Conclusão:** o pipeline de código está **provado** (gerador + matemática do retorno). Falta só ação operacional do usuário: recarregar extensão, criar regra RETORNO, reimportar.
+
+### LOG 0154 — 2026-07-03 — Claude (Opus 4.8) — Regras de Comissão: seletor de VENDEDOR ESPECÍFICO (regra por colaborador)
+- **Pedido:** criar regras por cargo E por colaborador. Cargo já existia (Perfil base/Cargo específico); faltava expor o **vendedor específico**.
+- **Backend já suportava:** `CommissionRule.sellerId` + `rule-validation` aceita `sellerId`/`managerId` (e barra os dois juntos); o matcher dá prioridade máxima a `SELLER_ID` (score 1000) sobre POSITION/ROLE. Só faltava a UI.
+- **UI (`comissoes/regras`, RuleModal):** novo campo "Vendedor específico (opcional)" na seção Aplicação, populado via `/api/sellers` (15 vendedores). Grava `form.sellerId`. Interface/EMPTY_FORM/carga do formulário ganharam `sellerId`. Nota no campo: escolher um vendedor faz a regra valer só p/ ele e ter prioridade sobre cargo/perfil.
+- **Tabela:** a coluna Aplicação mostra "Vendedor: {nome}" quando a regra é por colaborador (usa `seller.user.name`, que o GET de regras já retorna).
+- **Uso p/ RETORNO:** agora dá pra criar a regra de Retorno por cargo (Perfil base = VENDEDOR/GERENTE) e/ou por vendedor específico (% sobre o líquido).
+- **Verde:** `tsc` 0 erros; sem novos erros de lint.
