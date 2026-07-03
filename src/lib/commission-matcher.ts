@@ -71,7 +71,10 @@ function withinValueRange(rule: CommissionRule, baseValue: number | undefined): 
 
 function withinQuantityRange(rule: CommissionRule, quantity: number | undefined): boolean {
   if (rule.fromQuantity == null && rule.toQuantity == null) return true
-  if (quantity == null) return false
+  // Sem contexto de quantidade (RETORNO/DOCUMENTO/SERVIÇO/GARANTIA não são
+  // operações por "nº de carros no período") → a faixa de quantidade NÃO filtra.
+  // Só gateia quem passa uma quantidade (VENDA/TROCA/bônus por volume).
+  if (quantity == null) return true
   if (rule.fromQuantity != null && quantity < rule.fromQuantity) return false
   if (rule.toQuantity   != null && quantity > rule.toQuantity)   return false
   return true
