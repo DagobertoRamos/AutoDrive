@@ -1148,6 +1148,7 @@ model Deal {
   purchaseAmount   Decimal? @db.Decimal(12, 2) // valor de compra
   financedAmount   Decimal? @db.Decimal(12, 2) // valor financiado
   documentationFee Decimal? @db.Decimal(12, 2) // taxa de documentação
+  documentationPaidBy String? // LOJA | CLIENTE (loja paga = cortesia, sem comissão)
   signalAmount     Decimal? @db.Decimal(12, 2) // sinal / entrada
   payoffAmount     Decimal? @db.Decimal(12, 2) // quitação do veículo recebido
   discountAmount   Decimal? @db.Decimal(12, 2) // desconto concedido

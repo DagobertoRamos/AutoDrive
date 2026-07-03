@@ -2423,3 +2423,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Tela de Retorno agora reúne tudo:** ILA%, IOF%, faixa, % padrão (cadastro global) **+** os percentuais de comissão por cargo/vendedor — tudo editável em um lugar. Os campos de faixa continuam escondidos para tipos sem faixa (LOG 0163).
 - **Confirmado (LOG anterior):** o cálculo do retorno = (bruto − ILA − IOF) × % está correto e bate com o modelo/PDF do usuário; a divergência anterior era leitura errada da folha (multi-linha) + o documento do gerente que faltava (LOG 0167).
 - **Verde:** `tsc` limpo; `eslint` 0 erros. Só front-end (reusa APIs de regras existentes).
+
+### LOG 0169 — 2026-07-03 — Claude (Opus 4.8) — Documentação: comissão TIERED por valor + quem paga (loja=cortesia), configurável
+- **Modelo (pedido do usuário):** loja paga = cortesia (sem comissão); cliente paga = faixa por valor cobrado: <R$990 = 0; 990–1489,99 = gerente R$50 / vendedor R$100; 1490+ = gerente R$100 / vendedor R$200. **Tudo configurável** (faixas e valores) para mudanças futuras.
+- **MIGRATION (aditiva, aplicada em prod):** `20260703200000_add_deal_documentation_paidby` — `deals.documentationPaidBy TEXT` (LOJA|CLIENTE).
+- **Config (`lib/finance/documento-config.ts`, JSON em SystemSetting):** `{ active, lojaPagaSemComissao, tiers:[{minFee,maxFee,gerente,vendedor}] }` + `computeDocumentoCommission({fee,paidByLoja,isManager})`. Default = as faixas acima. **7 testes** (loja=0, <990=0, 990–1489,99=50/100, 1490+=100/200, inativa→null, coerce ordena).
+- **Gerador (`commission-generator.ts`):** bloco DOCUMENTO agora, quando a config está ativa, calcula o valor por faixa+pagador e cria o lançamento **sem passar pelo matcher** (novo `item.fixedCommissionValue` → resolve direto, `ruleId` null). Vendedor e gerente. Modelo por REGRA vira fallback (config desligada). Suíte de comissão 75/75; `tsc` verde.
+- **API `/api/commissions/documento-config`** (GET/PUT, gate `commissions.rules`) + **UI `DocumentoConfigCard`** na página Comissões › Retorno (tabela de faixas editável: de/até/gerente/vendedor + add/remover; toggles "usar este modelo" e "loja paga = cortesia").
+- **PENDÊNCIA (próximo passo):** capturar "Loja paga / Cliente paga" do AutoConf (extensão + import → `deal.documentationPaidBy`); hoje sem captura o gerador trata como CLIENTE (paga por faixa). Regenerar as vendas existentes para aplicar faixas/cortesia (depende de otimizar o retroativo em massa — LOG 0167).
+- **Verde:** `tsc` limpo; `eslint` 0 erros; 75 testes de comissão.

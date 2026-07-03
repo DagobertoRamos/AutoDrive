@@ -25,6 +25,7 @@ import {
 } from '@/lib/commission-matcher'
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
+import { getDocumentoConfig, computeDocumentoCommission, type DocumentoConfig } from '@/lib/finance/documento-config'
 import { recalculateSellerMainForPeriod } from '@/lib/commission/retroactive'
 import { getDecendPeriod } from '@/lib/commission/decendial'
 import {
@@ -87,6 +88,8 @@ export interface GenerationItem {
   description:   string
   reference:     GenerationItemRef
   periodQuantity?: number | null
+  // Valor já calculado por CONFIG (ex.: documentação tiered) → pula o matcher.
+  fixedCommissionValue?: number | null
 }
 
 export interface GenerationResultItem extends GenerationItem {
@@ -457,13 +460,32 @@ export async function generateCommissionsForDeal(
     addForService(ds)
   }
 
-  // DOCUMENTO — comissão sobre a TAXA DE DOCUMENTAÇÃO (despachante), capturada do
-  // AutoConf. Candidatos: vendedor, gerente e, se existir, o setor de documentação
-  // (Position.slug == 'documentacao'). Só paga quem tiver uma regra DOCUMENTO
-  // casada (por cargo/vendedor) — por isso adicionar candidatos é seguro (não
-  // duplica: cada employee é um lançamento; sem regra, nada é gerado).
+  // DOCUMENTO — comissão sobre a TAXA DE DOCUMENTAÇÃO (despachante).
+  // Modelo TIERED por valor + quem paga (config global): loja paga = cortesia (0);
+  // cliente paga = faixa por valor { gerente, vendedor }. Aplicado num bloco
+  // direto abaixo. Aqui só roda o modelo LEGADO por REGRA quando a config está
+  // DESLIGADA.
   const docBase = toNum(d.documentationFee)
-  if (docBase > 0) {
+  const documentoConfig: DocumentoConfig = tenantId
+    ? await getDocumentoConfig(tenantId)
+    : { active: false, lojaPagaSemComissao: true, tiers: [] }
+  if (docBase > 0 && documentoConfig.active) {
+    // Config TIERED: comissão por FAIXA de valor + quem paga (loja = cortesia).
+    // Valor já calculado (fixedCommissionValue) → não passa pelo matcher.
+    const paidByLoja = String(d.documentationPaidBy ?? '').toUpperCase() === 'LOJA'
+    const pushDoc = (earner: LocalEarner, isManager: boolean) => {
+      const val = computeDocumentoCommission({ config: documentoConfig, fee: docBase, paidByLoja, isManager }) ?? 0
+      items.push({
+        ruleType: 'DOCUMENTO', commissionScope: 'DOCUMENT_COMMISSION',
+        employeeKind: earner.kind, employeeId: earner.id, employeeUserId: earner.userId, employeeLabel: earner.label,
+        baseValue: docBase, description: `DOCUMENTO — ${isManager ? 'gerente' : 'vendedor'} ${earner.label}`,
+        reference: { dealId: d.id }, fixedCommissionValue: val,
+      })
+    }
+    if (sellerEarner) pushDoc(sellerEarner, false)
+    if (managerEarner) pushDoc(managerEarner, true)
+  } else if (docBase > 0) {
+    // Modelo LEGADO por REGRA (só quando a config tiered está desligada).
     if (sellerEarner) {
       items.push({
         ruleType:      'DOCUMENTO',
@@ -553,6 +575,19 @@ export async function generateCommissionsForDeal(
 
   // 3. Para cada item: resolver a regra (em paralelo) + calcular o valor
   const resolved: ResolvedGenerationItem[] = await Promise.all(items.map(async (it) => {
+    // Item com valor já calculado por CONFIG (documentação tiered) → pula o matcher.
+    if (it.fixedCommissionValue != null) {
+      const v = it.fixedCommissionValue
+      return {
+        item: it,
+        matched: v > 0 ? {
+          rule: { id: '', name: 'Documentação (config)', commissionType: 'FIXO', fixedValue: v, percentage: null, priority: 0 } as unknown as CommissionRule,
+          matchedBy: 'CONFIG',
+          commissionValue: v,
+          rateApplied: null,
+        } : null,
+      }
+    }
     const quantityInPeriod = await resolvePeriodQuantity(it, tenantId, date)
     it.periodQuantity = quantityInPeriod ?? null
 
@@ -741,7 +776,7 @@ export async function generateCommissionsForDeal(
             managerId:    item.employeeKind === 'MANAGER' ? item.employeeId : null,
             unitId:       unitId,
             period,
-            ruleId:       matched.rule.id,
+            ruleId:       matched.rule.id || null, // config (documentação) não tem regra
             ruleType:     item.ruleType as CommissionRuleType,
             description:  item.description,
             baseValue:    item.baseValue,

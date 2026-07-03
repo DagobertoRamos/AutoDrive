@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Percent, Save, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import RetornoPercentuais from '@/components/comissoes/RetornoPercentuais'
+import DocumentoConfigCard from '@/components/comissoes/DocumentoConfigCard'
 
 interface RetornoConfig {
   active: boolean
@@ -170,6 +171,9 @@ export default function RetornosPage() {
 
       {/* Percentual de comissão do retorno (por cargo ou por vendedor específico) */}
       <RetornoPercentuais />
+
+      {/* Comissão de documentação (despachante) — faixas + loja/cliente paga */}
+      <DocumentoConfigCard />
 
       <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-700">
         <Percent size={14} />
