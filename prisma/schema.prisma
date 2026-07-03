@@ -4821,6 +4821,58 @@ enum SellerAttendanceResult {
   INVALID_ATTENDANCE
 }
 
+// ── Fila INDIVIDUAL do vendedor/gerente ("fila dentro da fila") ──────────────
+// Agendamento/retorno/pós-venda vinculado a um responsável entram AQUI quando ele
+// está atendendo (não furam a fila principal nem somem). Ao finalizar, o sistema
+// sugere iniciar o próximo. FKs soft (como o resto do módulo da fila).
+enum PersonalQueueItemType {
+  AGENDAMENTO
+  RETORNO
+  POS_VENDA
+  OUTRO
+}
+
+enum PersonalQueueItemStatus {
+  AGUARDANDO
+  CHAMADO
+  EM_ATENDIMENTO
+  TRANSFERIDO
+  CONCLUIDO
+  CANCELADO
+}
+
+model AgentPersonalQueueItem {
+  id                  String                  @id @default(cuid())
+  tenantId            String
+  unitId              String
+  agentUserId         String // responsável (vendedor/gerente) dono do item
+  customerId          String?
+  dealId              String?
+  leadId              String?
+  arrivalId           String? // chegada de origem, se veio de "cliente na loja"
+  attendanceId        String? // atendimento criado ao iniciar
+  itemType            PersonalQueueItemType
+  status              PersonalQueueItemStatus @default(AGUARDANDO)
+  priority            Int                     @default(0)
+  source              String?
+  customerName        String?
+  customerPhone       String?
+  notes               String?
+  queuedAt            DateTime                @default(now())
+  calledAt            DateTime?
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  transferredToUserId String?
+  createdByUserId     String
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  @@index([tenantId, unitId, agentUserId, status])
+  @@index([tenantId, unitId, status])
+  @@index([agentUserId, status])
+  @@map("agent_personal_queue_items")
+}
+
 // Fila por unidade/dia (agrupador). Uma fila por unidade por dia.
 model SellerQueue {
   id        String    @id @default(cuid())

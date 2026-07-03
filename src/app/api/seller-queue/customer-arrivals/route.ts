@@ -22,6 +22,7 @@ import { detectRecurringCustomer } from '@/lib/seller-queue/recurring'
 import { callForArrival, callSpecificSeller } from '@/lib/seller-queue/call'
 import { flagFraud } from '@/lib/seller-queue/fraud'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { isAgentBusy, enqueuePersonalItem, type PersonalItemType } from '@/lib/seller-queue/personal-queue'
 
 const ACTIVE_ENTRY = ['WAITING', 'NEXT', 'CALLED', 'ACCEPTED', 'IN_ATTENDANCE', 'PAUSED']
 
@@ -102,11 +103,22 @@ export async function POST(req: Request) {
       if (!target || target.tenantId !== tenantId || target.unitId !== unitId || target.status !== 'ATIVO') {
         return NextResponse.json({ success: false, error: 'Colaborador inválido para esta unidade.' }, { status: 400 })
       }
-      // Agendamento / pós-vendas / responsável: SEMPRE CHAMA (toca) o colaborador
-      // escolhido, com aceite + prazo. Se ele não estiver na loja e não aceitar,
-      // vira timeout → perda → bloqueio (fica registrado o no-show). Antes o
-      // agendamento ia direto pra atendimento e o pós-vendas só pausava — sem
-      // tocar e sem registrar o não-comparecimento.
+      // FILA INDIVIDUAL (Fase 2): se o responsável está OCUPADO (em atendimento),
+      // o cliente NÃO fura a fila principal nem some — entra na FILA INDIVIDUAL
+      // dele. Se está LIVRE, chama na hora (comportamento atual).
+      if (await isAgentBusy(tenantId, unitId, queue.id, d.targetSellerId)) {
+        const itemType: PersonalItemType = mode === 'POS_VENDAS' ? 'POS_VENDA' : mode === 'AGENDAMENTO' ? 'AGENDAMENTO' : 'RETORNO'
+        const item = await enqueuePersonalItem({
+          tenantId, unitId, agentUserId: d.targetSellerId, itemType, createdByUserId: user.id,
+          customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null,
+          customerId: arrival.customerId, leadId: arrival.leadId, arrivalId: arrival.id, source: 'cliente-na-loja',
+        })
+        // A chegada foi encaminhada para a fila individual → sai da lista de "aguardando".
+        await prisma.sellerQueueCustomerArrival.update({ where: { id: arrival.id }, data: { status: 'ASSIGNED', notes: `Fila individual (${itemType})` } }).catch(() => {})
+        await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CUSTOMER_ARRIVED', sellerId: d.targetSellerId, actorId: user.id, arrivalId: arrival.id, reason: `fila individual (${itemType})` })
+        return NextResponse.json({ success: true, data: { arrivalId: arrival.id, recurring, personalQueued: true, itemId: item.id } }, { status: 201 })
+      }
+      // Responsável livre → chama na hora (toca), com aceite + prazo.
       const reason = mode === 'POS_VENDAS' ? 'pós-vendas' : mode === 'AGENDAMENTO' ? 'agendamento' : 'responsável'
       call = await callSpecificSeller({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId: d.targetSellerId, customerName: d.customerName ?? null, reason })
     } else {

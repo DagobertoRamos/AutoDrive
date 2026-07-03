@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { ListOrdered, RefreshCw, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MinhaVezPanel from '@/components/seller-queue/MinhaVezPanel'
+import MinhaFilaIndividual from '@/components/seller-queue/MinhaFilaIndividual'
 import QueueRanking from '@/components/seller-queue/QueueRanking'
 import VerificarVezModal from '@/components/seller-queue/VerificarVezModal'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
@@ -74,6 +75,9 @@ export default function FilaOverviewPage() {
 
       {/* Ações (entrar na fila / QR / atender cliente) + aceitar/finalizar */}
       <MinhaVezPanel />
+
+      {/* Fila individual (agendamento/retorno/pós-venda que chegaram enquanto atendia) */}
+      <MinhaFilaIndividual onChanged={load} />
 
       {/* Ranking de qualidade */}
       {!denied && <QueueRanking />}

@@ -16,6 +16,7 @@ import { finishSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { ensureAttendanceLead } from '@/lib/seller-queue/lead'
+import { concludePersonalItemByAttendance, listPersonalQueueForAgent } from '@/lib/seller-queue/personal-queue'
 import type { SellerAttendanceType, SellerAttendanceResult } from '@prisma/client'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -74,7 +75,13 @@ export async function POST(req: Request, { params }: Ctx) {
       await prisma.sellerQueueAttendance.update({ where: { id: att.id }, data: { leadId: out.leadId, dealId: out.dealId, customerId: out.customerId } }).catch(() => {})
     }
 
-    return NextResponse.json({ success: true, data: { leadId: out?.leadId ?? null, dealId: out?.dealId ?? null, customerId: out?.customerId ?? null } })
+    // Fila individual (Fase 2): conclui o item ligado a este atendimento (se houver)
+    // e informa quantos clientes ainda aguardam na fila individual do vendedor,
+    // para a UI sugerir "iniciar o próximo".
+    await concludePersonalItemByAttendance(att.id).catch(() => {})
+    const personalQueuePending = await listPersonalQueueForAgent(tenantId, att.unitId, att.sellerId).then((l) => l.length).catch(() => 0)
+
+    return NextResponse.json({ success: true, data: { leadId: out?.leadId ?? null, dealId: out?.dealId ?? null, customerId: out?.customerId ?? null, personalQueuePending } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
     return handlePrismaError(err)
