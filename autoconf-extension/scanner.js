@@ -507,6 +507,24 @@ function detectDocPayer(text) {
   return null
 }
 
+// Quem paga a garantia? No resumo, na seção "Garantias e Seguros", o produto
+// (ex.: "Gestauto - +150EX 2anos") vem seguido de "Cliente paga" ou "Loja paga".
+// LOJA = cortesia (sem comissão de garantia). Ancoramos no produto/seção p/ não
+// pegar o "Loja paga" da documentação por engano.
+function detectGarantiaPayer(text) {
+  if (!text) return null
+  const n = normalizeText(text)
+  let idx = n.indexOf('gestauto -')
+  if (idx < 0) idx = n.indexOf('garantias gestauto')
+  if (idx < 0) idx = n.indexOf('garantias e seguros')
+  if (idx < 0) idx = n.indexOf('garantia')
+  if (idx < 0) return null
+  const win = n.slice(idx, idx + 220)
+  if (/cliente paga/.test(win)) return 'CLIENTE'
+  if (/loja paga/.test(win)) return 'LOJA'
+  return null
+}
+
 async function fetchDetalhesNegociacao(row) {
   try {
     const id = row.externalId
@@ -557,6 +575,7 @@ async function fetchDetalhesNegociacao(row) {
     const detalhes = {
       vendedor,
       documentationPaidBy: detectDocPayer(bodyText),
+      garantiaPaidBy: detectGarantiaPayer(bodyText),
       dataNegociacao,
       dataNegociacaoIso: isoDate(dataNegociacao),
       aprovadoEm: valueByKeys(labelValues, ['aprovada em', 'data aprovacao', 'data aprovação']) || row.aprovadoEm || null,
@@ -645,7 +664,10 @@ async function fetchTitulosFinanceiros(externalId) {
           .replace(/d[eé]bito do ve[ií]culo:\s*/i, '')
           .replace(/\s*[-–]\s*[A-Z]{3,}\s*\(cpf\/cnpj[^)]*\).*/i, '')
           .trim().slice(0, 140)
-        financeiro.garantias.push({ produto: produto || 'Garantia', value: absValue, fornecedor: contraparte })
+        // absValue aqui é o CUSTO da loja (linha a-pagar "GARANTIAS GESTAUTO").
+        // A AutoConf não expõe o valor cobrado do cliente — a comissão é por
+        // produto (config). Guardamos o custo e o produto real.
+        financeiro.garantias.push({ produto: produto || 'Garantia', value: absValue, custo: absValue, side: isReceita ? 'RECEBER' : 'PAGAR', fornecedor: contraparte })
       } else if (/despachante/.test(catN)) {
         financeiro.despachanteValue += absValue
       }
@@ -864,7 +886,10 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
     // Financeiro classificado (financiamento/retorno/despachante) para o AutoDrive
     // calcular a comissão de retorno e a documentação. Anexa quem paga a doc.
     preliminaryRows[i].financeiro = titulos.financeiro || null
-    if (preliminaryRows[i].financeiro) preliminaryRows[i].financeiro.documentationPaidBy = detalhes?.documentationPaidBy ?? null
+    if (preliminaryRows[i].financeiro) {
+      preliminaryRows[i].financeiro.documentationPaidBy = detalhes?.documentationPaidBy ?? null
+      preliminaryRows[i].financeiro.garantiaPaidBy = detalhes?.garantiaPaidBy ?? null
+    }
     preliminaryRows[i].autoconfDetalhes = detalhes || null
 
     // "Visualizar histórico" — trilha de auditoria (quem cadastrou o quê).

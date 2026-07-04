@@ -2452,3 +2452,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **PRESERVADO (nao tocado):** CommissionRule (27), ReturnPercentRule (1), WarrantyRule, RankingScore, GoalProgress, Vehicle/estoque, Customer (619), User (16), Unit/Seller/Manager, configs e F&I.
 - **Script temporario** (`scripts/_purge_easycar_deals.ts`) NAO commitado — removido apos uso. Backup em scratchpad (temp local, nao versionado).
 - **Nao houve mudanca de codigo do app.** Reimportar do AutoConf recria as negociacoes (ja com o pagador da documentacao — LOG 0170/0171).
+
+### LOG 0173 — 2026-07-04 — Claude (Opus 4.8) — Garantia por PRODUTO (dados reais AutoConf) + mapeamento
+- **Mapeamento AutoConf (inspeção ao vivo via extensão Chrome):** dados vêm de HTML, não da API JSON (`/api/ui/v1/negociacoes/{id}` = 404). Fontes: lista `/api/ui/v1/negociacoes?page=N` (`negociacoes.data[]`, 21/pág), resumo `/negociacao/{id}/resumo` (vendedor, cliente, "Loja/Cliente paga"), razão `/negociacao/{id}/visualizacao-titulos-financeiros` (categorias reais: RECEITA COM VENDA/FINANCIAMENTO/RETORNOS, DESPACHANTE, GARANTIAS GESTAUTO, etc.), histórico JSON.
+- **Causa raiz da garantia errada:** a linha "GARANTIAS GESTAUTO" no razão é o **CUSTO da loja** (a-PAGAR, ex.: −1650), NÃO o valor cobrado do cliente. O scanner usava esse custo como valor da garantia. **A AutoConf não expõe o valor cobrado** (entra diluído no financiamento/venda). Só entrega: produto ("+150EX 2anos"), custo e pagador ("Cliente/Loja paga").
+- **Modelo novo — comissão de garantia POR PRODUTO:** `src/lib/finance/garantia-config.ts` (produtos casados por trecho do nome, gerente/vendedor fixos, loja paga=cortesia, default p/ não cadastrado). Config JSON em SystemSetting `t:{tenant}:garantia_config`. API `/api/commissions/garantia-config`. UI `GarantiaConfigCard` na página de retornos. 8 testes.
+- **Captura:** scanner `detectGarantiaPayer` + `financeiro.garantiaPaidBy`; garantia guarda `custo`/`side`. Import: `Deal.warrantyPaidBy` (migração `20260704090000`, aplicada). `DealService.cost` = custo real.
+- **Gerador:** `addForService` — garantia com config ativa computa via produto+pagador (fixedCommissionValue, não passa pelo matcher, não trava no ds.value). Loja paga → 0.
+- **Para valer:** cadastrar os produtos/valores na tela + recarregar extensão + reimportar. `tsc` verde; 17 testes.

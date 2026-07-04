@@ -13,6 +13,7 @@ import { Percent, Save, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import RetornoPercentuais from '@/components/comissoes/RetornoPercentuais'
 import DocumentoConfigCard from '@/components/comissoes/DocumentoConfigCard'
+import GarantiaConfigCard from '@/components/comissoes/GarantiaConfigCard'
 
 interface RetornoConfig {
   active: boolean
@@ -174,6 +175,9 @@ export default function RetornosPage() {
 
       {/* Comissão de documentação (despachante) — faixas + loja/cliente paga */}
       <DocumentoConfigCard />
+
+      {/* Comissão de garantia (Gestauto/seguros) — por produto + loja/cliente paga */}
+      <GarantiaConfigCard />
 
       <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-700">
         <Percent size={14} />

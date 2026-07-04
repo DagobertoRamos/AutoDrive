@@ -26,6 +26,7 @@ import {
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
 import { getDocumentoConfig, computeDocumentoCommission, type DocumentoConfig } from '@/lib/finance/documento-config'
+import { getGarantiaConfig, computeGarantiaCommission, type GarantiaConfig } from '@/lib/finance/garantia-config'
 import { recalculateSellerMainForPeriod } from '@/lib/commission/retroactive'
 import { getDecendPeriod } from '@/lib/commission/decendial'
 import {
@@ -415,6 +416,27 @@ export async function generateCommissionsForDeal(
     const isWarranty = /garantia|seguro|gestauto/i.test(ds.name ?? '') || /gestauto|seguro/i.test(ds.supplier ?? '')
     const ruleType: CommissionRuleType = isWarranty ? 'GARANTIA' : 'SERVICO'
     const commissionScope: CommissionScope = isWarranty ? 'WARRANTY_COMMISSION' : 'SERVICE_COMMISSION'
+
+    // GARANTIA via CONFIG por produto (loja paga = cortesia). A AutoConf não dá o
+    // valor cobrado, então a comissão vem do produto + pagador (não do ds.value)
+    // e não passa pelo matcher (fixedCommissionValue). Bloqueia o modelo legado.
+    if (isWarranty && garantiaConfig.active) {
+      const produto = (ds.name ?? '').replace(/^garantia:\s*/i, '').trim()
+      const payer = d.warrantyPaidBy ?? null
+      const pushGarantia = (earner: LocalEarner, isManager: boolean) => {
+        const val = computeGarantiaCommission({ config: garantiaConfig, produto, payer, isManager }) ?? 0
+        items.push({
+          ruleType: 'GARANTIA', commissionScope: 'WARRANTY_COMMISSION',
+          employeeKind: earner.kind, employeeId: earner.id, employeeUserId: earner.userId, employeeLabel: earner.label,
+          baseValue: toNum(ds.value), description: `GARANTIA ${ds.name} — ${isManager ? 'gerente' : 'vendedor'} ${earner.label}`,
+          reference: { dealId: d.id, serviceId: ds.id }, fixedCommissionValue: val,
+        })
+      }
+      if (sellerEarner) pushGarantia(sellerEarner, false)
+      if (managerEarner) pushGarantia(managerEarner, true)
+      return
+    }
+
     const baseValue = toNum(ds.value)
     if (baseValue <= 0) return
     const refKind = { serviceId: ds.id }
@@ -454,6 +476,13 @@ export async function generateCommissionsForDeal(
   // Comissão principal: uma por negociação e por escopo. TROCA vira VENDA para
   // comissão principal; o tipo original segue em ruleDetails para relatório.
   addPrincipalCommissions()
+
+  // GARANTIA — comissão por PRODUTO + quem paga (config global): loja paga =
+  // cortesia (0); cliente paga = valor fixo por produto. Carregada aqui e usada
+  // dentro de addForService. Config desligada → cai no modelo legado por regra.
+  const garantiaConfig: GarantiaConfig = tenantId
+    ? await getGarantiaConfig(tenantId)
+    : { active: false, lojaPagaSemComissao: true, produtos: [], defaultGerente: 0, defaultVendedor: 0 }
 
   // Serviços (incluindo "garantia" detectada pelo nome)
   for (const ds of d.services) {

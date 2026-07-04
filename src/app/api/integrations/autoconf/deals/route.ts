@@ -161,10 +161,14 @@ function warrantyServicesFor(row: AutoconfRow, dealId: string) {
       const value = num(g.value)
       if (!value || value <= 0) return null
       const produto = safeText(g.produto, 140) || 'Garantia'
+      const custo = num(g.custo ?? g.value) ?? 0
       return {
         dealId,
         name: `Garantia: ${produto}`.slice(0, 180),
+        // value = custo da loja (AutoConf não expõe o valor cobrado). A comissão
+        // sai da config por produto; value serve só de referência/registro.
         value,
+        cost: custo > 0 ? custo : null,
         supplier: safeText(g.fornecedor, 120),
         notes: 'Importado do AutoConf — Garantias/Seguros.',
       }
@@ -239,6 +243,8 @@ function financeFieldsFor(row: AutoconfRow, config: RetornoConfig): Record<strin
   if (despachante > 0) out.documentationFee = despachante
   const payer = String(f.documentationPaidBy ?? '').toUpperCase()
   if (payer === 'LOJA' || payer === 'CLIENTE') out.documentationPaidBy = payer
+  const gpayer = String(f.garantiaPaidBy ?? '').toUpperCase()
+  if (gpayer === 'LOJA' || gpayer === 'CLIENTE') out.warrantyPaidBy = gpayer
   return out
 }
 
