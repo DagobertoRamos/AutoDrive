@@ -2532,3 +2532,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Gatilho:** integrado ao `recalc.ts` (recálculo do período) — por unidade, só no modo real. UI `BonusPeriodoCard` (seletor de colaborador p/ produção + campos meta/dezena).
 - **Seed EASYCAR:** produção Anderson 50 / Cesar 10 (ativo); dezena combo 1000 (ativo); meta 250/500 (inativa até definir o alvo). `tsc` verde; 5 testes de coerce.
 - **Aplicar:** rodar o **recálculo do período** (Comissões) após importar/gerar. Bônus de período não saem no gerador por-deal; saem no recalc.
+
+### LOG 0178 — 2026-07-04 — Claude (Opus 4.8) — Fase C: UI profissional unificada (Plano de Comissão)
+- **Tela hub** `/comissoes/plano` (menu Comissões → "Plano de Comissão", gate commissions.rules). Abas:
+  - **Visão geral** — resumo do plano por cargo (tipo, faixa/condição, valor, status), lido de `/api/commissions/rules`.
+  - **Regras por cargo** — edição INLINE do valor (fixo/%) + liga/desliga + excluir; reenvia payload completo (respeita `validateCommissionRulePayload`, preserva notes/faixas). Cadastro completo continua em `/comissoes/regras`.
+  - **Documento / Garantia / Retorno / Bônus de período** — cards dedicados reaproveitados (DocumentoConfigCard, GarantiaConfigCard, RetornoPercentuais, BonusPeriodoCard).
+- Reaproveita APIs/cards existentes; sem duplicar o editor de 1637 linhas. `tsc` verde.
+- **Fecha a Fase C.** Plano completo: venda faixas, bônus 15, compra, dezena+combo, documento, garantia cheia/desconto, retorno, meta, produção da loja — tudo editável por cargo e por vendedor.

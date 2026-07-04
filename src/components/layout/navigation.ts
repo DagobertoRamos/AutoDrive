@@ -38,6 +38,7 @@ import {
   ListChecks,
   ArrowLeftRight,
   Shield,
+  SlidersHorizontal,
   // Pendências
   Inbox,
   UserSquare,
@@ -142,6 +143,7 @@ export const NAV_GROUPS: NavItem[] = [
     children: [
       { label: 'Meu Extrato',  href: '/comissoes/extrato',     icon: FileText,        module: 'commissions' },
       { label: 'Lançamentos',  href: '/comissoes/lancamentos', icon: ListChecks,      module: 'commissions' },
+      { label: 'Plano de Comissão', href: '/comissoes/plano',  icon: SlidersHorizontal, module: 'commissions.rules' },
       { label: 'Cálculo',     href: '/comissoes/calculo',  icon: Calculator,      module: 'commissions.calculate' },
       { label: 'Regras',      href: '/comissoes/regras',   icon: ListChecks,      module: 'commissions.rules' },
       { label: 'Retornos',    href: '/comissoes/retornos', icon: ArrowLeftRight,  module: 'commissions.rules' },
