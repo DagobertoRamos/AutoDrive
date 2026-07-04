@@ -7,8 +7,9 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { DollarSign, RefreshCw } from 'lucide-react'
+import { DollarSign, RefreshCw, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import LancamentoManualModal from '@/components/comissoes/LancamentoManualModal'
 
 interface Row {
   id: string
@@ -61,6 +62,7 @@ export default function LancamentosComissaoPage() {
   const [collaborator, setCollaborator] = useState('')
   const [unidades, setUnidades] = useState<Option[]>([])
   const [colaboradores, setColaboradores] = useState<Option[]>([])
+  const [showManual, setShowManual] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -110,10 +112,24 @@ export default function LancamentosComissaoPage() {
           <h1 className="text-xl font-bold text-gray-900">Lançamentos de Comissão</h1>
           <p className="mt-0.5 text-sm text-gray-500">Comissões geradas por venda, retorno, garantia e serviços.</p>
         </div>
-        <button onClick={fetchData} disabled={loading} className="btn-secondary text-xs">
-          <RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowManual(true)} className="btn-primary text-xs">
+            <Plus size={13} />Lançamento manual
+          </button>
+          <button onClick={fetchData} disabled={loading} className="btn-secondary text-xs">
+            <RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar
+          </button>
+        </div>
       </div>
+
+      {showManual && (
+        <LancamentoManualModal
+          periodDefault={period}
+          colaboradores={colaboradores}
+          onClose={() => setShowManual(false)}
+          onDone={fetchData}
+        />
+      )}
 
       {/* Totais por tipo (destaque) + total geral */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

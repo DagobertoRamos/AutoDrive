@@ -2460,3 +2460,9 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Captura:** scanner `detectGarantiaPayer` + `financeiro.garantiaPaidBy`; garantia guarda `custo`/`side`. Import: `Deal.warrantyPaidBy` (migração `20260704090000`, aplicada). `DealService.cost` = custo real.
 - **Gerador:** `addForService` — garantia com config ativa computa via produto+pagador (fixedCommissionValue, não passa pelo matcher, não trava no ds.value). Loja paga → 0.
 - **Para valer:** cadastrar os produtos/valores na tela + recarregar extensão + reimportar. `tsc` verde; 17 testes.
+
+### LOG 0174 — 2026-07-04 — Claude (Opus 4.8) — Lançamento manual RH (extrato + financeiro)
+- **Ferramenta de RH nos Lançamentos de Comissão.** Botão "Lançamento manual" abre modal `LancamentoManualModal`.
+- **Tipos:** Crédito (+ soma), Débito (− desconta), Vale/Adiantamento (−), Desconto em folha (−). Escolhe colaborador (vendedores via `/api/sellers` + quem já tem comissão), período, valor, descrição, motivo.
+- **Backend:** estende `/api/commissions/manual` (gate `commissions.adjust`). Cria `CommissionCalculation` (EXCECAO/MANUAL_ADJUSTMENT, valor com sinal) → **extrato** — E espelha em `FinancialEntry` (DESPESA, source COMISSAO, `commissionCalculationId`, categoria "Comissões") → **Financeiro/DRE**. Idempotente pela unique de `commissionCalculationId` (mesma convenção do `finance-sync`).
+- **Nota:** vale/adiantamento é modelado como desconto no líquido do colaborador (o pagamento em caixa, se houver, é lançado à parte no Financeiro). `tsc` verde.

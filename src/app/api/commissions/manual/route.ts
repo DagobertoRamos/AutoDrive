@@ -26,13 +26,23 @@ export async function POST(req: Request) {
     const b = await req.json().catch(() => ({}))
     const collaborator = String(b?.collaborator ?? '') // "s:<id>" | "m:<id>" | "u:<id>"
     const period = String(b?.period ?? '').trim()
-    const kind = String(b?.kind ?? '').toUpperCase() // CREDITO | DEBITO
+    const kind = String(b?.kind ?? '').toUpperCase() // CREDITO | DEBITO | VALE | DESCONTO_FOLHA
     const value = Math.abs(Number(b?.value))
     const description = String(b?.description ?? '').trim()
     const reason = String(b?.reason ?? '').trim()
 
+    // Cada tipo: rótulo + sinal no extrato (crédito soma; os demais descontam do
+    // que o colaborador recebe). O Financeiro espelha esse valor com sinal.
+    const KINDS: Record<string, { label: string; sign: 1 | -1 }> = {
+      CREDITO:        { label: 'Crédito',            sign: 1 },
+      DEBITO:         { label: 'Débito',             sign: -1 },
+      VALE:           { label: 'Vale/Adiantamento',  sign: -1 },
+      DESCONTO_FOLHA: { label: 'Desconto em folha',  sign: -1 },
+    }
+    const meta = KINDS[kind]
+
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) return NextResponse.json({ success: false, error: 'Período inválido (AAAA-MM).' }, { status: 400 })
-    if (!['CREDITO', 'DEBITO'].includes(kind)) return NextResponse.json({ success: false, error: 'Tipo inválido (crédito/débito).' }, { status: 400 })
+    if (!meta) return NextResponse.json({ success: false, error: 'Tipo inválido (crédito/débito/vale/desconto).' }, { status: 400 })
     if (!Number.isFinite(value) || value <= 0) return NextResponse.json({ success: false, error: 'Informe um valor maior que zero.' }, { status: 400 })
     if (description.length < 2) return NextResponse.json({ success: false, error: 'Informe uma descrição.' }, { status: 400 })
 
@@ -55,11 +65,12 @@ export async function POST(req: Request) {
       employeeUserId = refId; unitId = u.unitId
     }
 
-    const signed = kind === 'DEBITO' ? -value : value
+    const signed = meta.sign * value
+    const fullDesc = `${meta.label} — ${description}`
     const item = await prisma.commissionCalculation.create({
       data: {
         tenantId, sellerId, managerId, unitId, period,
-        ruleType: 'EXCECAO', description: `${kind === 'CREDITO' ? 'Crédito' : 'Débito'} manual — ${description}`,
+        ruleType: 'EXCECAO', description: fullDesc,
         baseValue: 0, commissionValue: signed, status: 'PREVISTO',
         ruleDetails: {
           commissionScope: 'MANUAL_ADJUSTMENT', manualKind: kind, reason: reason || null,
@@ -68,6 +79,24 @@ export async function POST(req: Request) {
       },
       select: { id: true },
     })
+
+    // Espelha no FINANCEIRO (contas/DRE) — DESPESA de folha, idempotente por
+    // commissionCalculationId (mesma convenção do finance-sync). Não bloqueia o
+    // lançamento se falhar.
+    try {
+      const cat = await prisma.financialCategory.findFirst({ where: { tenantId, name: 'Comissões', kind: 'DESPESA' }, select: { id: true } })
+        ?? await prisma.financialCategory.create({ data: { tenantId, name: 'Comissões', kind: 'DESPESA' }, select: { id: true } })
+      await prisma.financialEntry.create({
+        data: {
+          tenantId, unitId, sellerId, commissionCalculationId: item.id, source: 'COMISSAO',
+          type: 'DESPESA', status: 'PREVISTO', description: `RH · ${fullDesc}`,
+          amount: signed, categoryId: cat.id,
+          competenceDate: new Date(), dueDate: new Date(),
+          createdById: user.id,
+        },
+      })
+    } catch { /* financeiro é best-effort; o extrato já foi lançado */ }
+
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'COMMISSION_MANUAL', entity: 'CommissionCalculation', entityId: item.id, userName: user.name, userRole: user.role, afterData: { kind, value: signed, description, reason } as never })
     return NextResponse.json({ success: true, data: { id: item.id } }, { status: 201 })
   } catch (err) {
