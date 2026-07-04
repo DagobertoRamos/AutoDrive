@@ -18,6 +18,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { recalculateSellerMainForPeriod } from '@/lib/commission/retroactive'
+import { recomputePeriodBonusesForUnits, type PeriodBonusResult } from '@/lib/commission/period-bonuses'
 
 const MAIN_SCOPE = 'SELLER_MAIN_COMMISSION'
 
@@ -42,6 +43,7 @@ export interface RecalcResult {
   oldTotal: number
   newTotal: number
   delta: number
+  periodBonuses: PeriodBonusResult[]
 }
 
 /** yyyy-MM válido? */
@@ -116,6 +118,23 @@ export async function recalcCommissionsForPeriod(opts: {
   const oldTotal = results.reduce((s, r) => s + r.oldTotal, 0)
   const newTotal = results.reduce((s, r) => s + r.newTotal, 0)
 
+  // 3b. Bônus de período (produção da loja / meta / 3 dezenas) — recomputados de
+  // forma idempotente por unidade. Só aplica no modo real (não na prévia).
+  let periodBonuses: PeriodBonusResult[] = []
+  if (!dryRun) {
+    let unitIds: string[] = []
+    if (opts.unitId) {
+      unitIds = [opts.unitId]
+    } else {
+      const unitRows = await prisma.commissionCalculation.findMany({
+        where: { tenantId, period, ruleType: 'VENDA', status: { not: 'CANCELADO' }, unitId: { not: null }, ruleDetails: { path: ['commissionScope'], equals: MAIN_SCOPE } as never },
+        select: { unitId: true }, distinct: ['unitId'],
+      }).catch(() => [] as Array<{ unitId: string | null }>)
+      unitIds = unitRows.map((u) => u.unitId).filter((v): v is string => !!v)
+    }
+    periodBonuses = await recomputePeriodBonusesForUnits(tenantId, unitIds, period).catch(() => [])
+  }
+
   // 4. Auditoria (só quando aplicou de fato e houve mudança).
   if (!dryRun && totalRepriced > 0 && opts.triggeredBy) {
     await prisma.auditLog.create({
@@ -151,5 +170,6 @@ export async function recalcCommissionsForPeriod(opts: {
     oldTotal,
     newTotal,
     delta: newTotal - oldTotal,
+    periodBonuses,
   }
 }

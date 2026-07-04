@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import RetornoPercentuais from '@/components/comissoes/RetornoPercentuais'
 import DocumentoConfigCard from '@/components/comissoes/DocumentoConfigCard'
 import GarantiaConfigCard from '@/components/comissoes/GarantiaConfigCard'
+import BonusPeriodoCard from '@/components/comissoes/BonusPeriodoCard'
 
 interface RetornoConfig {
   active: boolean
@@ -178,6 +179,9 @@ export default function RetornosPage() {
 
       {/* Comissão de garantia (Gestauto/seguros) — por produto + loja/cliente paga */}
       <GarantiaConfigCard />
+
+      {/* Bônus de período — produção da loja, meta da loja, 3 dezenas */}
+      <BonusPeriodoCard />
 
       <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-700">
         <Percent size={14} />

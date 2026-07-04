@@ -2522,3 +2522,13 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Build:** `npm run build` bloqueado localmente em `prisma generate` por `EPERM: operation not permitted, unlink node_modules/.prisma/client/index.js`, mesmo padrão recorrente do ambiente Windows.
 - **Riscos observados:** a UI do dashboard ainda usa polling; a verificação visual real em todos os viewports não foi executada no navegador local por causa do ambiente, mas as classes foram ajustadas para 320px+ sem largura fixa. Há alterações não relacionadas já presentes no worktree (`autoconf-extension`, garantia/comissão, `AlertSetup`, `push-test`, scripts temporários) e não fazem parte deste log.
 - **Pendências futuras:** adicionar uma página dedicada "Permissões" com filtros/histórico mais amplo; migrar gradualmente outros módulos para chaves granulares específicas; fazer QA visual com Playwright/dev server nos viewports 320, 360, 375, 390, 414, 430, 768, 1024, 1366 e 1920 antes do deploy final.
+
+### LOG 0177 — 2026-07-04 — Claude (Opus 4.8) — Bônus de período: produção da loja + meta + 3 dezenas
+- **Fase B (parte 2).** Bônus mensais agregados por unidade, config-driven (`bonus-periodo-config.ts`, JSON em SystemSetting):
+  - **Produção da loja:** R$/carro da UNIDADE por colaborador (ex.: Anderson R$50, Cesar R$10 sobre o total da unidade).
+  - **Meta da loja:** unidade ≥ alvo de vendas no mês → fixo por cargo (vendedor 250 / gerente 500). Alvo configurável.
+  - **Bônus das 3 dezenas:** vendedor que fecha as 3 dezenas → +R$1.000.
+- **`period-bonuses.ts`** `recomputePeriodBonusesForUnit` — idempotente: conta carros da unidade (SELLER_MAIN VENDA), apaga bônus de período PREVISTO (marcados `ruleDetails.periodBonus`) e recria. Escopos STORE_PRODUCTION/STORE_GOAL/DECEND_COMBO.
+- **Gatilho:** integrado ao `recalc.ts` (recálculo do período) — por unidade, só no modo real. UI `BonusPeriodoCard` (seletor de colaborador p/ produção + campos meta/dezena).
+- **Seed EASYCAR:** produção Anderson 50 / Cesar 10 (ativo); dezena combo 1000 (ativo); meta 250/500 (inativa até definir o alvo). `tsc` verde; 5 testes de coerce.
+- **Aplicar:** rodar o **recálculo do período** (Comissões) após importar/gerar. Bônus de período não saem no gerador por-deal; saem no recalc.
