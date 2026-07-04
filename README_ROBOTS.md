@@ -2551,3 +2551,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Testes:** adicionado `src/lib/validators/seller-queue.test.ts` para garantir mensagens claras e limites válidos; `src/lib/seller-queue/reminders.test.ts` cobre o clamp de 1440 minutos.
 - **Validação:** `npm exec tsc -- --noEmit` verde. `npm exec vitest run -- src/lib/validators/seller-queue.test.ts src/lib/seller-queue/reminders.test.ts` verde (8/8). `npm exec eslint -- ...` direcionado com 0 erros e 9 warnings já existentes na página de configurações. `git diff --check` verde, apenas avisos LF→CRLF do Windows.
 - **Build:** `npm run build` continua bloqueado localmente antes do Next build, em `prisma generate`, por `EPERM: operation not permitted, unlink node_modules/.prisma/client/index.js`, mesmo padrão recorrente do ambiente Windows.
+
+### LOG 0180 — 2026-07-04 — Claude (Opus 4.8) — Fila: motor de ESCALONAMENTO multinível (Fase 1 — fundação isolada)
+- **Contexto:** usuário pediu overhaul da fila (assumo o módulo). Análise obrigatória feita (li README+logs 0094–0110/0157–0160 e os do Codex 0175–0179, schema, call.ts, accept). Constatado que a maior parte da spec JÁ existe (dashboard/permissões/lembretes/config = Codex hoje; check-turn/fila individual/tipos = LOGs anteriores). **Lacuna real principal: escalonamento multinível configurável da CHAMADA** (vez → líder → gerente → GG → admin, vários por nível, primeiro que aceita assume).
+- **Fase 1 (isolada, sem tocar arquivos do Codex, sem migration):**
+  - `escalation-config.ts` — `EscalationConfig` no JSON `SellerQueueUnitConfig.config.escalation` (níveis: targetType VENDEDOR_DA_VEZ/VENDEDOR_LIDER/GERENTE/GERENTE_GERAL/ADMIN/CARGO/COLABORADORES + timeout/tentativas/notifyAll/ativo; firstAcceptWins; onNoResponse; onDecline). coerce/read + defaults (4 níveis, inativo). Limites clamp.
+  - `escalation.ts` — `planNextEscalation()` PURA (próxima tentativa/nível/esgotado) + `resolveLevelTargets()` (resolve userIds por nível no escopo tenant+unidade, exclui ocupados/já-tentados).
+  - `escalation.test.ts` — **10 testes** (plano de níveis, pula inativo, esgota, coerce/clamp, read do bloco).
+- **Não quebra nada:** só arquivos NOVOS; o fluxo atual (rotação + fallback gerente em call.ts) segue idêntico. `tsc` verde.
+- **Próximo (Fase 2):** migration aditiva (escalationLevel/attempt/deadline no arrival), `sweepExpiredCalls` escala pela config quando `active`, accept com first-accept-wins (claim atômico do arrival + expira irmãos). Depois UI de config + modal de tipos.
