@@ -29,9 +29,11 @@ interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve({})
+    // maximumAge: reaproveita uma posição recente (≤60s) → aceite instantâneo no
+    // 2º toque/atendimento. timeout menor p/ não travar o botão por muito tempo.
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracyM: p.coords.accuracy }),
-      () => resolve({}), { enableHighAccuracy: true, timeout: 8000 },
+      () => resolve({}), { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 },
     )
   })
 }
@@ -82,7 +84,9 @@ export default function MinhaVezPanel() {
       if (res.ok) setData((await res.json())?.data ?? null)
     } catch { /* noop */ }
   }, [])
-  useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i) }, [load])
+  // Polling mais rápido (2s) para o "Aceitar/Recusar" aparecer logo após ser
+  // chamado (antes era 5s → parecia travado no celular).
+  useEffect(() => { load(); const i = setInterval(load, 2000); return () => clearInterval(i) }, [load])
   useEffect(() => { setNow(Date.now()); timer.current = setInterval(() => setNow(Date.now()), 1000); return () => { if (timer.current) clearInterval(timer.current) } }, [])
 
   useEffect(() => {
@@ -129,8 +133,10 @@ export default function MinhaVezPanel() {
   const secsLeft = att?.acceptDeadline ? Math.max(0, Math.floor((new Date(att.acceptDeadline).getTime() - now) / 1000)) : null
 
   const pedirVoltar = async () => { await post('pos-vendas/request-return', undefined, 'Retorno solicitado — aguarde a autorização do gestor.') }
-  const accept = async () => { if (!att) return; stopCriticalAlert(); const pos = await getPosition(); await post(`attendances/${att.id}/accept`, pos, 'Atendimento iniciado!') }
-  const reject = async () => { if (!att) return; stopCriticalAlert(); const reason = prompt('Motivo da recusa:'); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
+  // Trava IMEDIATA (busy) antes do GPS → o botão desabilita no 1º toque e mostra
+  // "Iniciando…"; evita o duplo-toque no celular (antes o GPS rodava sem travar).
+  const accept = async () => { if (!att || busy) return; setBusy(true); stopCriticalAlert(); const pos = await getPosition(); await post(`attendances/${att.id}/accept`, pos, 'Atendimento iniciado!') }
+  const reject = async () => { if (!att || busy) return; stopCriticalAlert(); const reason = prompt('Motivo da recusa:'); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
   const finish = async () => {
     if (!att) return
     const name = capName(finForm.customerName.trim())
@@ -212,7 +218,7 @@ export default function MinhaVezPanel() {
           <p className="mt-1 text-gray-700">Cliente presencial aguardando{att.arrival?.customerName ? `: ${att.arrival.customerName}` : ''}.{att.arrival?.recurring ? ' (recorrente)' : ''}</p>
           {secsLeft != null && <p className="mt-2 inline-flex items-center gap-1 text-2xl font-bold tabular-nums text-brand-700"><Clock size={20} />{secsLeft}s</p>}
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <button onClick={accept} disabled={busy} className="btn-primary flex-1 justify-center py-3 text-base"><Check size={18} />Aceitar</button>
+            <button onClick={accept} disabled={busy} className="btn-primary flex-1 justify-center py-3 text-base">{busy ? <><Clock size={18} className="animate-spin" />Iniciando…</> : <><Check size={18} />Aceitar</>}</button>
             <button onClick={reject} disabled={busy} className="btn-secondary justify-center py-3"><X size={18} />Recusar</button>
           </div>
         </div>

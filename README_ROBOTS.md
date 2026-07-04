@@ -2614,3 +2614,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Paginação dos logs** (`/api/seller-queue/events`): cursor aditivo `?before=<ISO>` (eventos anteriores ao instante, sem a trava "só hoje") + `take limit+1` → retorna `hasMore` e `nextCursor`. **Sem cursor = comportamento atual** (só o dia, leve) — o dashboard não muda. Habilita "carregar mais" num visualizador de log detalhado futuro. O `/events` já era leve (limit 10, índice em createdAt).
 - **Não quebra nada:** ambos aditivos; `data` continua sendo o array que o dashboard consome. `tsc` verde.
 - **Restante (opcional):** UI de "carregar mais" no log; consolidar `/current` no agregado (mais invasivo — fora por segurança do núcleo/sweep).
+
+### LOG 0186 — 2026-07-04 — Claude (Opus 4.8) — Fila: dashboard enxuto + bugs de mobile no aceite
+- **Bugs de mobile corrigidos (`MinhaVezPanel`):**
+  - **"Aceitar/Recusar" demorava a aparecer:** o polling do painel do vendedor era 5s → **2s**. O botão surge logo após ser chamado.
+  - **Precisava tocar 2× para atender:** `accept` chamava o GPS ANTES de travar → tela sem feedback, vendedor tocava de novo (2 aceites). Agora **trava `busy` imediatamente** (guard `if(busy)return` + `setBusy(true)` antes do GPS) e o botão mostra **"Iniciando…"**. GPS com `maximumAge:60000` (reaproveita posição recente → aceite instantâneo) e timeout 8s→6s.
+- **Dashboard reorganizado (`vendedor-da-vez/page.tsx`), sem repetição:**
+  - **Cabeçalho enxuto:** removidos os botões duplicados (Verificar vez / Chamar vendedor da vez / Iniciar atendimento) — sobraram só utilitários (Alerta / Atualizar / Configurações).
+  - **Card de visão geral:** linha de 3 botões duplicados → só **"Verificar vez"** (largura total). As ações ficam no painel.
+  - **"Meu status e atendimento" removido como seção separada:** o `MinhaVezPanel` foi **trazido para o topo** (logo após o card de visão geral), sem título repetido — status + chamar + atender + aceitar/recusar num lugar só.
+  - **Log recolhível:** "Log recente da fila" agora abre/fecha (fechado por padrão, com contador) — menos poluição.
+- **Pop-ups:** verificados — já responsivos (bottom-sheet no mobile, `max-h`+scroll, `max-w-[calc(100vw-1.5rem)]`). Sem mudança necessária.
+- **Não quebra nada:** `tsc` verde; suíte seller-queue 55/55. Reorganização de layout + fix de UX; APIs intactas. (2 funções órfãs viraram warning de lint — build ignora eslint; sem impacto.)

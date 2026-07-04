@@ -20,6 +20,7 @@ import {
   Clock,
   Crown,
   History,
+  ChevronDown,
   LayoutDashboard,
   ListOrdered,
   LogOut,
@@ -266,6 +267,7 @@ export default function FilaOverviewPage() {
   const [checkTurnOpen, setCheckTurnOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [now, setNow] = useState(0)
+  const [logOpen, setLogOpen] = useState(false) // log recolhível (fechado por padrão)
   const firedTimeouts = useRef<Set<string>>(new Set())
   const queuePerms = current?.permissions
   const canCallCurrent = Boolean(queuePerms?.callCurrentSeller || roleCanManage)
@@ -554,27 +556,13 @@ export default function FilaOverviewPage() {
             {loading ? 'Atualizando fila...' : `${stats.total} colaborador(es) na fila · ${current?.arrivalsPending ?? 0} cliente(s) aguardando`}
           </p>
         </div>
+        {/* Cabeçalho enxuto: só utilitários. As ações (verificar/chamar/iniciar/
+            atender) ficam no painel abaixo — sem botões repetidos. */}
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => setCheckTurnOpen(true)} className="btn-primary text-xs">
-            <Crown size={14} />
-            Verificar vez
-          </button>
-          {canCallCurrent && (
-            <button onClick={callCurrent} disabled={busy === 'quick-call'} className="btn-primary bg-amber-600 text-xs hover:bg-amber-700">
-              {busy === 'quick-call' ? <RefreshCw size={14} className="animate-spin" /> : <PhoneCall size={14} />}
-              Chamar vendedor da vez
-            </button>
-          )}
           {canSendQueueAlert && (
             <button onClick={sendQueueAlert} disabled={busy === 'queue-alert'} className="btn-secondary text-xs">
               {busy === 'queue-alert' ? <RefreshCw size={14} className="animate-spin" /> : <BellRing size={14} />}
               Alerta da fila
-            </button>
-          )}
-          {isMyTurn && (
-            <button onClick={startMyTurn} disabled={busy === 'start-my-turn'} className="btn-secondary text-xs">
-              {busy === 'start-my-turn' ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
-              Iniciar atendimento
             </button>
           )}
           <button onClick={load} disabled={loading} className="btn-secondary text-xs">
@@ -635,20 +623,10 @@ export default function FilaOverviewPage() {
                   </div>
                 </div>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-3 text-sm">
+              <div className="mt-4">
+                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary w-full justify-center py-3 text-sm">
                   <Crown size={16} />
                   Verificar vez
-                </button>
-                {canCallCurrent ? (
-                  <button onClick={callCurrent} disabled={busy === 'quick-call'} className="btn-primary justify-center bg-amber-600 py-3 text-sm hover:bg-amber-700">
-                    <BellRing size={16} />
-                    Chamar da vez
-                  </button>
-                ) : <button disabled className="btn-secondary justify-center py-3 text-sm opacity-60"><BellRing size={16} />Sem permissão</button>}
-                <button onClick={() => void startAttendanceFor()} disabled={!canManage || busy === 'start-me'} className="btn-secondary justify-center py-3 text-sm" title={canManage ? 'Iniciar atendimento rápido como gestão' : 'Apenas gestão'}>
-                  <Play size={16} />
-                  Iniciar rápido
                 </button>
               </div>
             </div>
@@ -678,6 +656,10 @@ export default function FilaOverviewPage() {
               </div>
             </div>
           </section>
+
+          {/* Painel do colaborador (status · chamar · atender · aceitar/recusar) —
+              trazido para o topo, junto do card de visão geral. Sem título repetido. */}
+          <MinhaVezPanel />
 
           <section className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
@@ -826,13 +808,6 @@ export default function FilaOverviewPage() {
 
           <section className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
             <div className="space-y-4">
-              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-                <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-                  <UserCheck size={16} className="text-brand-600" />
-                  Meu status e atendimento
-                </p>
-                <MinhaVezPanel />
-              </div>
               {canManage ? <FilasIndividuaisUnidade onChanged={load} /> : <MinhaFilaIndividual onChanged={load} />}
             </div>
 
@@ -873,26 +848,30 @@ export default function FilaOverviewPage() {
           {canViewLogs && (
             <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                <button onClick={() => setLogOpen((v) => !v)} className="flex items-center gap-2 text-sm font-semibold text-gray-900" aria-expanded={logOpen}>
+                  <ChevronDown size={16} className={cn('text-gray-400 transition-transform', logOpen && 'rotate-180')} />
                   <History size={16} className="text-brand-600" />
                   Log recente da fila
-                </p>
+                  {!logOpen && events.length > 0 && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">{events.length}</span>}
+                </button>
                 <a href="/vendedor-da-vez/relatorios" className="text-xs font-semibold text-brand-700 hover:text-brand-800">Ver relatórios</a>
               </div>
-              <div className="divide-y divide-gray-100">
-                {events.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-gray-400">Sem eventos recentes.</div>
-                ) : events.map((event) => (
-                  <div key={event.id} className="grid gap-2 px-4 py-3 md:grid-cols-[10rem_minmax(0,1fr)_minmax(8rem,14rem)] md:items-center">
-                    <div className="text-xs text-gray-500">{clockLabel(event.createdAt)}</div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-900">{EVENT_LABELS[event.type] ?? event.type}</p>
-                      <p className="truncate text-xs text-gray-500">{event.sellerName ?? '—'} {event.actorName ? `· por ${event.actorName}` : ''}</p>
+              {logOpen && (
+                <div className="divide-y divide-gray-100">
+                  {events.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-gray-400">Sem eventos recentes.</div>
+                  ) : events.map((event) => (
+                    <div key={event.id} className="grid gap-2 px-4 py-3 md:grid-cols-[10rem_minmax(0,1fr)_minmax(8rem,14rem)] md:items-center">
+                      <div className="text-xs text-gray-500">{clockLabel(event.createdAt)}</div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{EVENT_LABELS[event.type] ?? event.type}</p>
+                        <p className="truncate text-xs text-gray-500">{event.sellerName ?? '—'} {event.actorName ? `· por ${event.actorName}` : ''}</p>
+                      </div>
+                      <p className="truncate text-xs text-gray-500">{event.reason ?? 'Sem motivo informado'}</p>
                     </div>
-                    <p className="truncate text-xs text-gray-500">{event.reason ?? 'Sem motivo informado'}</p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
         </>
