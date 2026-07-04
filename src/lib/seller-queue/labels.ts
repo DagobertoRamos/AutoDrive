@@ -12,10 +12,12 @@ const LABELS: Record<string, string> = {
   IN_ATTENDANCE: 'Em atendimento',
   PAUSED: 'Pausado',
   LEFT: 'Fora da fila',
+  SKIPPED: 'Perdeu a vez',
+  BLOCKED: 'Bloqueado',
   // Atendimento (SellerQueueAttendance)
   FINISHED: 'Finalizado',
   CANCELED: 'Cancelado',
-  EXPIRED: 'Não atendido',
+  EXPIRED: 'Não respondeu',
   // Chegada do cliente (SellerQueueCustomerArrival)
   PENDING: 'Aguardando',
   CALLING: 'Chamando',

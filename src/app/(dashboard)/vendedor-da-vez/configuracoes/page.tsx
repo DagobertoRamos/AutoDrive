@@ -118,9 +118,11 @@ export default function ConfiguracoesFilaPage() {
   }
 
   const release = async (sellerId?: string) => {
+    const reason = prompt('Informe o motivo da liberação:')
+    if (!reason?.trim()) { setMsg('Motivo obrigatório.'); setTimeout(() => setMsg(null), 3000); return }
     setBlocksBusy(sellerId ?? 'ALL')
     try {
-      const body = sellerId ? { sellerId } : { all: true }
+      const body = sellerId ? { sellerId, reason: reason.trim() } : { all: true, reason: reason.trim() }
       const res = await fetch('/api/seller-queue/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       const j = await res.json().catch(() => ({}))
       setMsg(res.ok ? (sellerId ? 'Vendedor liberado.' : 'Todos liberados.') : (j?.error ?? 'Falha ao liberar.')); setTimeout(() => setMsg(null), 3000)

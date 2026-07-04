@@ -46,6 +46,13 @@ export async function POST(req: Request, { params }: Ctx) {
     }
 
     const d = finishSchema.parse(await req.json())
+    const hasCustomer = Boolean(d.customerId) || (Boolean(d.customerName?.trim()) && (d.customerPhone ?? '').replace(/\D/g, '').length >= 10)
+    if (!hasCustomer) {
+      return NextResponse.json({ success: false, error: 'Para finalizar o atendimento, cadastre os dados mínimos do cliente.' }, { status: 400 })
+    }
+    if (d.result !== 'CONVERTED_TO_NEGOTIATION' && !d.notes?.trim()) {
+      return NextResponse.json({ success: false, error: 'Informe uma observação/motivo quando o atendimento não gerar negociação.' }, { status: 400 })
+    }
     await prisma.$transaction(async (tx) => {
       await tx.sellerQueueAttendance.update({
         where: { id: att.id },

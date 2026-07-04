@@ -127,8 +127,10 @@ export default function PainelUnidadePage() {
   // Gestão controla a fila do vendedor: pausar / voltar / retirar / colocar.
   const manageSeller = async (sellerId: string, action: 'pause' | 'resume' | 'remove' | 'add', label: string) => {
     if (action === 'remove' && !confirm('Retirar este vendedor da fila?')) return
+    const reason = prompt('Informe o motivo da ação:')
+    if (!reason?.trim()) { flash('Motivo obrigatório.', false); return }
     setBusy(sellerId)
-    try { const res = await fetch('/api/seller-queue/manage-seller', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId, action }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? label : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
+    try { const res = await fetch('/api/seller-queue/manage-seller', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ sellerId, action, reason: reason.trim() }) }); const j = await res.json().catch(() => ({})); flash(res.ok ? label : (j?.error ?? 'Falha.'), res.ok); await load() } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
 
   // Reiniciar a fila pela tela (gerente+/ADM = dia; MASTER = tudo).

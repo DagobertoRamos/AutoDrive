@@ -37,6 +37,9 @@ export async function POST(req: Request) {
     if (!sellerId || !ACTIONS.includes(action)) {
       return NextResponse.json({ success: false, error: 'Parâmetros inválidos (sellerId/action).' }, { status: 400 })
     }
+    if (!reason) {
+      return NextResponse.json({ success: false, error: 'Informe o motivo da ação administrativa.' }, { status: 400 })
+    }
 
     // O alvo precisa ser um vendedor da unidade.
     const seller = await prisma.seller.findFirst({ where: { userId: sellerId, unit: { tenantId } }, select: { id: true } })
@@ -55,19 +58,19 @@ export async function POST(req: Request) {
       } else {
         await prisma.sellerQueueEntry.create({ data: { tenantId, unitId, queueId: queue.id, sellerId, status: 'WAITING', position: await nextPosition(queue.id), lastActiveAt: new Date() } })
       }
-      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CHECK_IN', sellerId, actorId: user.id, reason: reason ?? 'colocado na fila pela gestão' })
+      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CHECK_IN', sellerId, actorId: user.id, reason })
     } else if (action === 'remove') {
       if (!entry || entry.status === 'LEFT') return NextResponse.json({ success: false, error: 'Vendedor não está na fila.' }, { status: 404 })
       await prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'LEFT', leftAt: new Date() } })
-      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CHECK_OUT', sellerId, actorId: user.id, entryId: entry.id, reason: reason ?? 'retirado da fila pela gestão' })
+      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CHECK_OUT', sellerId, actorId: user.id, entryId: entry.id, reason })
     } else if (action === 'pause') {
       if (!entry || !['WAITING', 'NEXT'].includes(entry.status)) return NextResponse.json({ success: false, error: 'Vendedor não está aguardando na fila.' }, { status: 409 })
       await prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'PAUSED', pausedAt: new Date() } })
-      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'PAUSE', sellerId, actorId: user.id, entryId: entry.id, reason: reason ?? 'pausado pela gestão' })
+      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'PAUSE', sellerId, actorId: user.id, entryId: entry.id, reason })
     } else {
       if (!entry || entry.status !== 'PAUSED') return NextResponse.json({ success: false, error: 'Vendedor não está pausado.' }, { status: 409 })
       await prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'WAITING', pausedAt: null, position: await nextPosition(queue.id), lastActiveAt: new Date() } })
-      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'RESUME', sellerId, actorId: user.id, entryId: entry.id, reason: reason ?? 'reativado pela gestão' })
+      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'RESUME', sellerId, actorId: user.id, entryId: entry.id, reason })
     }
 
     await createSafeAuditLog({ userId: user.id, tenantId, action: `QUEUE_MGR_${action.toUpperCase()}`, entity: 'SellerQueueEntry', entityId: entry?.id ?? seller.id, userName: user.name, userRole: user.role })

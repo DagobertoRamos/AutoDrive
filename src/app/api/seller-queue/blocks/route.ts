@@ -43,6 +43,10 @@ export async function POST(req: Request) {
   if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
   try {
     const body = await req.json().catch(() => ({}))
+    const reason = typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim() : null
+    if (!reason) {
+      return NextResponse.json({ success: false, error: 'Informe o motivo da liberação.' }, { status: 400 })
+    }
     if (body?.all === true) {
       const count = await releaseAllSellers(tenantId, unitId)
       await createSafeAuditLog({ userId: user.id, tenantId, action: 'UNBLOCK', entity: 'SellerQueue', entityId: unitId, userName: user.name, userRole: user.role })
