@@ -63,7 +63,7 @@ export default function DashboardShell({
           <ImpersonationBanner />
           <SystemBannerBar />
           <Topbar />
-          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+          <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-6">{children}</main>
         </div>
         <NotificationToastContainer />
       </div>
