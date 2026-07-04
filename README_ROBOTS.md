@@ -2500,3 +2500,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Teste:** `src/lib/seller-queue/reminders.test.ts` cobre defaults, vencimento inicial, repetição após confirmação e limite máximo.
 - **Validação:** `npm exec tsc -- --noEmit` verde; `npm exec vitest run -- src/lib/seller-queue/reminders.test.ts` verde (4/4); `npm exec eslint -- ...` direcionado verde com 0 erros e warnings já existentes em `configuracoes/page.tsx` (`set-state-in-effect` e aspas não escapadas antigas).
 - **Deploy manual:** `.env.example` documenta `QUEUE_JOB_SECRET`. Depois do deploy, configurar essa variável na Vercel e criar/acionar cron chamando `POST https://<dominio>/api/queue/jobs/attendance-reminders` com header `x-cron-secret: <QUEUE_JOB_SECRET>`. Recomendado rodar a cada 1 minuto; o próprio motor aplica intervalos/anti-spam.
+
+### LOG 0176 — 2026-07-04 — Claude (Opus 4.8) — Garantia: valor COBRADO real do resumo + cheia/desconto
+- **Descoberta (inspeção ao vivo, print do usuário):** o valor COBRADO da garantia ESTÁ no AutoConf — no **resumo → "Itens da Negociação"** (`Gestauto - +150EX 2anos · Cliente paga · R$ 3.350,00`), não no razão (que só tem o custo a-pagar). Corrige o LOG 0173.
+- **Scanner:** `extractGarantiasResumo(doc)` lê os Itens da Negociação → `{produto, valor cobrado, paidBy}`. Na montagem da linha, sobrepõe as garantias do razão (mantém o custo casando por produto). Pagador por garantia.
+- **garantia-config v2:** por produto com **CHEIA × DESCONTO**. Tier decidido pelo valor: `cobrado ≥ valorCheia → CHEIA`, abaixo → DESCONTO (override manual possível). Gerente fixo por garantia. Match por **tokens** (ex.: "100 2anos" casa "+100PR 2anos"). 12 testes.
+- **Gerador:** passa o valor cobrado + pagador → `computeGarantiaCommission`. UI `GarantiaConfigCard` com colunas valor cheio / vend. cheia / vend. desconto / gerente + defaults.
+- **Seed EASYCAR:** 6 produtos (Excelence 150 / Prime 100 / Futura 70 × 1/2 anos) com os valores do usuário; `valorCheia` só do confirmado (150EX 2anos=3350); defaults gerente 100 / vendedor 0 (fail-safe). **Verificar tokens de Prime/Futura num import real.** `tsc` verde.

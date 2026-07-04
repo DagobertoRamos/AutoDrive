@@ -423,8 +423,9 @@ export async function generateCommissionsForDeal(
     if (isWarranty && garantiaConfig.active) {
       const produto = (ds.name ?? '').replace(/^garantia:\s*/i, '').trim()
       const payer = d.warrantyPaidBy ?? null
+      const valorCobrado = toNum(ds.value) // valor real cobrado (resumo AutoConf)
       const pushGarantia = (earner: LocalEarner, isManager: boolean) => {
-        const val = computeGarantiaCommission({ config: garantiaConfig, produto, payer, isManager }) ?? 0
+        const val = computeGarantiaCommission({ config: garantiaConfig, produto, valorCobrado, payer, isManager }) ?? 0
         items.push({
           ruleType: 'GARANTIA', commissionScope: 'WARRANTY_COMMISSION',
           employeeKind: earner.kind, employeeId: earner.id, employeeUserId: earner.userId, employeeLabel: earner.label,
@@ -482,7 +483,7 @@ export async function generateCommissionsForDeal(
   // dentro de addForService. Config desligada → cai no modelo legado por regra.
   const garantiaConfig: GarantiaConfig = tenantId
     ? await getGarantiaConfig(tenantId)
-    : { active: false, lojaPagaSemComissao: true, produtos: [], defaultGerente: 0, defaultVendedor: 0 }
+    : { active: false, lojaPagaSemComissao: true, produtos: [], defaultGerente: 0, defaultVendedorCheia: 0, defaultVendedorDesconto: 0 }
 
   // Serviços (incluindo "garantia" detectada pelo nome)
   for (const ds of d.services) {

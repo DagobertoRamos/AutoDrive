@@ -166,9 +166,10 @@ export interface AutoconfDebt {
 }
 export interface AutoconfGarantia {
   produto?: string | null
-  value?: number | null   // custo da loja (linha a-pagar) — AutoConf não dá o cobrado
-  custo?: number | null
+  value?: number | null   // valor COBRADO do cliente (resumo → Itens da Negociação)
+  custo?: number | null   // custo da loja (razão a-pagar), casado por produto
   side?: string | null    // RECEBER | PAGAR
+  paidBy?: string | null  // LOJA | CLIENTE (por garantia)
   fornecedor?: string | null
 }
 export interface AutoconfFinanceiro {

@@ -1,15 +1,14 @@
 // =============================================================================
 // finance/garantia-config.ts — Cadastro GLOBAL da comissão de GARANTIA por
-// tenant. Modelo POR PRODUTO + quem paga:
+// tenant. Modelo POR PRODUTO com CHEIA × DESCONTO + quem paga:
 //   • LOJA paga  → cortesia → SEM comissão.
-//   • CLIENTE paga → comissão FIXA por produto { gerente, vendedor }.
-//   • Produto não cadastrado → usa o default (0 = não paga).
+//   • CLIENTE paga → comissão por produto, tier CHEIA ou DESCONTO.
 //
-// A AutoConf NÃO expõe o valor cobrado do cliente (só o produto, o custo e o
-// pagador). Por isso a comissão é ancorada no PRODUTO real capturado da AutoConf
-// (ex.: "+150EX 2anos"), casado por trecho do nome (case/acento-insensível).
-// `valorCobrado` é opcional/informativo (o preço que a loja cobra pelo produto).
-// Guardado como JSON em SystemSetting (sem coluna nova por config).
+// O valor COBRADO do cliente vem REAL do AutoConf (resumo → Itens da Negociação,
+// ex.: "Gestauto - +150EX 2anos · Cliente paga · R$ 3.350,00"). O tier é
+// detectado pelo valor: cobrado >= `valorCheia` → CHEIA; abaixo → DESCONTO.
+// (Um override manual por lançamento pode forçar o tier.) `gerente` é fixo por
+// garantia (independe de cheia/desconto). Tudo editável. JSON em SystemSetting.
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
@@ -17,21 +16,23 @@ import { prisma } from '@/lib/prisma'
 const KEY = (tenantId: string) => `t:${tenantId}:garantia_config`
 
 export interface GarantiaProduto {
-  match: string          // trecho do nome do produto p/ casar (ex.: "150ex 2anos")
-  valorCobrado: number | null // informativo: preço cobrado do cliente
-  gerente: number
-  vendedor: number
+  match: string               // trecho do nome do produto (ex.: "150ex 2anos")
+  valorCheia: number | null   // preço cheio: cobrado >= este → CHEIA; abaixo → DESCONTO
+  vendedorCheia: number
+  vendedorDesconto: number
+  gerente: number             // fixo por garantia (cheia/desconto igual)
 }
 export interface GarantiaConfig {
   active: boolean
   lojaPagaSemComissao: boolean
   produtos: GarantiaProduto[]
-  // Produto não cadastrado: usa estes (0 = não paga)
   defaultGerente: number
-  defaultVendedor: number
+  defaultVendedorCheia: number
+  defaultVendedorDesconto: number
 }
 
 export type GarantiaPayer = 'LOJA' | 'CLIENTE' | null
+export type GarantiaTier = 'CHEIA' | 'DESCONTO'
 
 export function normalizePayer(v: unknown): GarantiaPayer {
   const s = String(v ?? '').trim().toUpperCase()
@@ -52,7 +53,8 @@ export const DEFAULT_GARANTIA_CONFIG: GarantiaConfig = {
   lojaPagaSemComissao: true,
   produtos: [],
   defaultGerente: 0,
-  defaultVendedor: 0,
+  defaultVendedorCheia: 0,
+  defaultVendedorDesconto: 0,
 }
 
 function num(v: unknown, fallback = 0): number {
@@ -64,9 +66,10 @@ function coerceProduto(raw: unknown): GarantiaProduto {
   const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
   return {
     match: String(o.match ?? '').trim().slice(0, 80),
-    valorCobrado: o.valorCobrado == null || o.valorCobrado === '' ? null : Math.max(0, num(o.valorCobrado)),
+    valorCheia: o.valorCheia == null || o.valorCheia === '' ? null : Math.max(0, num(o.valorCheia)),
+    vendedorCheia: Math.max(0, num(o.vendedorCheia)),
+    vendedorDesconto: Math.max(0, num(o.vendedorDesconto)),
     gerente: Math.max(0, num(o.gerente)),
-    vendedor: Math.max(0, num(o.vendedor)),
   }
 }
 
@@ -80,7 +83,8 @@ export function coerceGarantiaConfig(raw: unknown): GarantiaConfig {
     lojaPagaSemComissao: o.lojaPagaSemComissao !== false,
     produtos,
     defaultGerente: Math.max(0, num(o.defaultGerente)),
-    defaultVendedor: Math.max(0, num(o.defaultVendedor)),
+    defaultVendedorCheia: Math.max(0, num(o.defaultVendedorCheia)),
+    defaultVendedorDesconto: Math.max(0, num(o.defaultVendedorDesconto)),
   }
 }
 
@@ -100,36 +104,64 @@ export async function setGarantiaConfig(tenantId: string, patch: Partial<Garanti
   return next
 }
 
-/** Casa o produto do lançamento contra os cadastrados (por trecho do nome). */
+/**
+ * Casa o produto do lançamento contra os cadastrados. Cada `match` é um conjunto
+ * de TOKENS (separados por espaço): todos precisam aparecer no nome do produto
+ * (case/acento-insensível). Ex.: match "100 2anos" casa "+100PR 2anos" mas não
+ * "+150EX 2anos". Mais tokens/mais longo = mais específico (desempata).
+ */
 export function matchGarantiaProduto(config: GarantiaConfig, produto: unknown): GarantiaProduto | null {
   const p = normProduct(produto)
   if (!p) return null
-  // Prioriza o match mais específico (trecho mais longo que casar).
   const candidates = config.produtos
-    .map((prod) => ({ prod, key: normProduct(prod.match) }))
-    .filter(({ key }) => key.length > 0 && p.includes(key))
-    .sort((a, b) => b.key.length - a.key.length)
+    .map((prod) => {
+      const key = normProduct(prod.match)
+      const tokens = key.split(' ').filter(Boolean)
+      const ok = tokens.length > 0 && tokens.every((t) => p.includes(t))
+      return { prod, ok, spec: key.replace(/\s+/g, '').length }
+    })
+    .filter((c) => c.ok)
+    .sort((a, b) => b.spec - a.spec)
   return candidates[0]?.prod ?? null
+}
+
+/** Decide o tier pelo valor cobrado vs preço cheio do produto. */
+export function resolveGarantiaTier(input: {
+  produto: GarantiaProduto | null
+  valorCobrado: number | null | undefined
+  forceTier?: GarantiaTier | null
+}): GarantiaTier {
+  if (input.forceTier) return input.forceTier
+  const full = input.produto?.valorCheia
+  if (full != null && full > 0 && input.valorCobrado != null && Number.isFinite(input.valorCobrado)) {
+    return input.valorCobrado >= full - 0.01 ? 'CHEIA' : 'DESCONTO'
+  }
+  return 'CHEIA' // sem preço cheio de referência → padrão cheia
 }
 
 /**
  * Comissão de garantia para UM colaborador. Retorna null quando a config está
  * inativa (aí o motor cai no modelo por regra). 0 = sem comissão:
  *   • loja paga cortesia (lojaPagaSemComissao);
- *   • produto sem cadastro e default 0.
- * `payer`: 'LOJA' | 'CLIENTE' | null.
+ *   • produto/tier sem valor cadastrado (0).
+ * `valorCobrado`: valor real cobrado do cliente (resumo AutoConf).
+ * `payer`: 'LOJA' | 'CLIENTE' | null. `forceTier`: override manual do tier.
  */
 export function computeGarantiaCommission(input: {
   config: GarantiaConfig
   produto: unknown
+  valorCobrado?: number | null
   payer: GarantiaPayer | string | null | undefined
   isManager: boolean
+  forceTier?: GarantiaTier | null
 }): number | null {
   const { config } = input
   if (!config.active) return null
   const payer = normalizePayer(input.payer)
   if (payer === 'LOJA' && config.lojaPagaSemComissao) return 0
   const matched = matchGarantiaProduto(config, input.produto)
-  if (matched) return input.isManager ? matched.gerente : matched.vendedor
-  return input.isManager ? config.defaultGerente : config.defaultVendedor
+  const tier = resolveGarantiaTier({ produto: matched, valorCobrado: input.valorCobrado, forceTier: input.forceTier })
+  if (input.isManager) return matched ? matched.gerente : config.defaultGerente
+  if (tier === 'CHEIA') return matched ? matched.vendedorCheia : config.defaultVendedorCheia
+  return matched ? matched.vendedorDesconto : config.defaultVendedorDesconto
 }

@@ -525,6 +525,36 @@ function detectGarantiaPayer(text) {
   return null
 }
 
+// Garantias com o VALOR COBRADO real. No resumo, a seção "Itens da Negociação"
+// lista cada garantia como "Gestauto - <produto><Cliente|Loja paga>" e o valor
+// R$ na linha seguinte (ex.: "+150EX 2anos" · Cliente paga · R$ 3.350,00). Esse
+// é o valor cobrado do cliente — melhor que o custo a-pagar do razão financeiro.
+function extractGarantiasResumo(doc) {
+  try {
+    const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT)
+    let box = null, n
+    while ((n = w.nextNode())) {
+      if ([...n.childNodes].some((c) => c.nodeType === 3 && normalizeText(c.textContent).includes('itens da negocia'))) { box = n; break }
+    }
+    if (!box) return []
+    for (let k = 0; k < 8 && box && box.parentElement; k++) {
+      const m = (box.innerText || '').match(/R\$/g)
+      if (m && m.length >= 3) break
+      box = box.parentElement
+    }
+    const lines = (box.innerText || '').split('\n').map(cleanText).filter(Boolean)
+    const out = []
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/gestauto\s*-\s*(.+?)\s*(cliente paga|loja paga)\s*$/i)
+      if (!m) continue
+      let val = null
+      for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) { const v = parseMoney(lines[j]); if (v != null) { val = Math.abs(v); break } }
+      out.push({ produto: cleanText(m[1]).slice(0, 140), paidBy: /loja/i.test(m[2]) ? 'LOJA' : 'CLIENTE', value: val })
+    }
+    return out
+  } catch (e) { return [] }
+}
+
 async function fetchDetalhesNegociacao(row) {
   try {
     const id = row.externalId
@@ -576,6 +606,7 @@ async function fetchDetalhesNegociacao(row) {
       vendedor,
       documentationPaidBy: detectDocPayer(bodyText),
       garantiaPaidBy: detectGarantiaPayer(bodyText),
+      garantiasResumo: extractGarantiasResumo(doc),
       dataNegociacao,
       dataNegociacaoIso: isoDate(dataNegociacao),
       aprovadoEm: valueByKeys(labelValues, ['aprovada em', 'data aprovacao', 'data aprovação']) || row.aprovadoEm || null,
@@ -888,7 +919,21 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
     preliminaryRows[i].financeiro = titulos.financeiro || null
     if (preliminaryRows[i].financeiro) {
       preliminaryRows[i].financeiro.documentationPaidBy = detalhes?.documentationPaidBy ?? null
-      preliminaryRows[i].financeiro.garantiaPaidBy = detalhes?.garantiaPaidBy ?? null
+      // Garantia: valor COBRADO + pagador vêm do resumo (Itens da Negociação).
+      // Sobrepõe as do razão (que só têm o custo a-pagar); mantém o custo do razão
+      // casando pelo produto. Assim a comissão sai do valor real cobrado.
+      const gResumo = detalhes?.garantiasResumo || []
+      if (gResumo.length) {
+        const razao = preliminaryRows[i].financeiro.garantias || []
+        const normP = (s) => normalizeText(s || '')
+        preliminaryRows[i].financeiro.garantias = gResumo.map((g) => {
+          const c = razao.find((r) => normP(r.produto).includes(normP(g.produto)) || normP(g.produto).includes(normP(r.produto)))
+          return { produto: g.produto, value: g.value, custo: c ? (c.custo ?? c.value) : null, paidBy: g.paidBy, side: 'RECEBER' }
+        })
+        preliminaryRows[i].financeiro.garantiaPaidBy = gResumo[0].paidBy ?? detalhes?.garantiaPaidBy ?? null
+      } else {
+        preliminaryRows[i].financeiro.garantiaPaidBy = detalhes?.garantiaPaidBy ?? null
+      }
     }
     preliminaryRows[i].autoconfDetalhes = detalhes || null
 
