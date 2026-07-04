@@ -71,7 +71,11 @@ export default function AlertSetup({ scope = 'queue' }: { scope?: 'queue' | 'gen
       const total = (j?.devicesNativos ?? 0) + (j?.webPushInscricoes ?? 0)
       if (j?.enviados > 0) setTestMsg('✅ Alerta enviado! Em alguns segundos deve aparecer a notificação.')
       else if (total === 0) setTestMsg('⚠️ Este aparelho ainda não está inscrito. Toque em "Ativar notificações" primeiro.')
-      else setTestMsg('⚠️ Não foi possível enviar (a inscrição pode ter expirado). Toque em "Ativar notificações" de novo.')
+      else setTestMsg(
+        isNativeAndroid()
+          ? '⚠️ Não foi possível enviar (a inscrição pode ter expirado). Feche o app completamente e abra de novo para renovar a inscrição.'
+          : '⚠️ Não foi possível enviar (a inscrição pode ter expirado). Toque em "Ativar notificações" de novo.',
+      )
     } catch {
       setTestMsg('⚠️ Erro de rede ao testar.')
     } finally { setTesting(false) }

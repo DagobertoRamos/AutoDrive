@@ -1,0 +1,13 @@
+export const QUEUE_CONFIG_LIMITS = {
+  maxPauseMinutes: { min: 0, max: 1440 },
+  attendanceFirstAfterMinutes: { min: 1, max: 1440 },
+  attendanceRepeatIntervalSeconds: { min: 30, max: 86400 },
+  attendanceMaxReminders: { min: 1, max: 50 },
+  attendanceEscalateAfter: { min: 1, max: 50 },
+  queuePushIntervalSeconds: { min: 30, max: 86400 },
+  queuePushMaxRetries: { min: 1, max: 50 },
+  queuePushAntiSpamUserLimit: { min: 1, max: 100 },
+  queuePushAntiSpamAttendanceLimit: { min: 1, max: 100 },
+  queuePushAntiSpamQueueLimit: { min: 1, max: 500 },
+  queuePushAntiSpamWindowMinutes: { min: 1, max: 1440 },
+} as const

@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { canAccessModule } from '@/lib/permissions'
 import AlertSetup from '@/components/seller-queue/AlertSetup'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
+import { QUEUE_CONFIG_LIMITS } from '@/lib/seller-queue/config-limits'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const METHODS = [['GPS', 'GPS / geofence'], ['QR_CODE', 'QR Code'], ['DEVICE_CHECK', 'Dispositivo']] as const
@@ -44,6 +45,7 @@ interface Cfg {
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
 const DEFAULT_ATTENDANCE_REMINDER: AttendanceReminderConfig = { enabled: true, firstAfterMinutes: 15, repeatIntervalSeconds: 300, maxReminders: 6, escalateAfter: 3, autoEscalate: true, requireFinishOnNo: true, allowSnooze: false, logEveryReminder: true }
 const DEFAULT_QUEUE_PUSH: QueuePushConfig = { enabled: true, intervalSeconds: 300, targetScope: 'CURRENT_SELLER', maxRetries: 6, resendUntil: 'ACKNOWLEDGED', antiSpamUserLimit: 8, antiSpamAttendanceLimit: 6, antiSpamQueueLimit: 60, antiSpamWindowMinutes: 10, allowedStartTime: null, allowedEndTime: null, allowOutsideHoursForAdmins: true, urgency: 'HIGH', sound: true }
+const limits = QUEUE_CONFIG_LIMITS
 
 // Editor de lista de motivos (chips). Usado para encerrar lead e negociação.
 function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: string; items: string[]; onChange: (v: string[]) => void }) {
@@ -80,6 +82,29 @@ function untilText(b: BlockedSeller): string {
   const mins = Math.max(0, Math.ceil((new Date(b.endsAt).getTime() - Date.now()) / 60000))
   const h = Math.floor(mins / 60), m = mins % 60
   return h > 0 ? `~${h}h${m > 0 ? ` ${m}min` : ''} restantes` : `~${m}min restantes`
+}
+
+function validateRange(value: number, label: string, min: number, max: number, unit: string): string | null {
+  if (!Number.isInteger(value)) return `${label} deve ser um número inteiro.`
+  if (value < min) return `${label} deve ser no mínimo ${min} ${unit}.`
+  if (value > max) return `${label} deve ser no máximo ${max} ${unit}.`
+  return null
+}
+
+function validateCfg(c: Cfg): string | null {
+  return (
+    validateRange(c.attendanceReminder.firstAfterMinutes, 'Primeiro lembrete', limits.attendanceFirstAfterMinutes.min, limits.attendanceFirstAfterMinutes.max, 'minutos') ??
+    validateRange(c.attendanceReminder.repeatIntervalSeconds, 'Intervalo de repetição dos lembretes', limits.attendanceRepeatIntervalSeconds.min, limits.attendanceRepeatIntervalSeconds.max, 'segundos') ??
+    validateRange(c.attendanceReminder.maxReminders, 'Quantidade máxima de lembretes', limits.attendanceMaxReminders.min, limits.attendanceMaxReminders.max, 'lembretes') ??
+    validateRange(c.attendanceReminder.escalateAfter, 'Quantidade de lembretes para escalar', limits.attendanceEscalateAfter.min, limits.attendanceEscalateAfter.max, 'lembretes') ??
+    validateRange(c.queuePush.intervalSeconds, 'Intervalo mínimo de push', limits.queuePushIntervalSeconds.min, limits.queuePushIntervalSeconds.max, 'segundos') ??
+    validateRange(c.queuePush.maxRetries, 'Quantidade máxima de tentativas', limits.queuePushMaxRetries.min, limits.queuePushMaxRetries.max, 'tentativas') ??
+    validateRange(c.queuePush.antiSpamUserLimit, 'Limite por vendedor', limits.queuePushAntiSpamUserLimit.min, limits.queuePushAntiSpamUserLimit.max, 'envios') ??
+    validateRange(c.queuePush.antiSpamAttendanceLimit, 'Limite por atendimento', limits.queuePushAntiSpamAttendanceLimit.min, limits.queuePushAntiSpamAttendanceLimit.max, 'envios') ??
+    validateRange(c.queuePush.antiSpamQueueLimit, 'Limite por fila', limits.queuePushAntiSpamQueueLimit.min, limits.queuePushAntiSpamQueueLimit.max, 'envios') ??
+    validateRange(c.queuePush.antiSpamWindowMinutes, 'Janela anti-spam', limits.queuePushAntiSpamWindowMinutes.min, limits.queuePushAntiSpamWindowMinutes.max, 'minutos') ??
+    validateRange(c.maxPauseMinutes, 'Tempo de pausa/ausência', limits.maxPauseMinutes.min, limits.maxPauseMinutes.max, 'minutos')
+  )
 }
 
 export default function ConfiguracoesFilaPage() {
@@ -153,6 +178,12 @@ export default function ConfiguracoesFilaPage() {
   const blockConfigInvalid = cfg.autoBlock.enabled && cfg.autoBlock.strikesForDailyBlock <= cfg.autoBlock.strikesForCooldown
 
   const save = async () => {
+    const rangeError = validateCfg(cfg)
+    if (rangeError) {
+      setMsg(rangeError)
+      setTimeout(() => setMsg(null), 5000)
+      return
+    }
     if (blockConfigInvalid) {
       setMsg('O "bloqueio diário" deve exigir mais perdas que o "bloqueio temporário".')
       setTimeout(() => setMsg(null), 4000)
@@ -264,10 +295,10 @@ export default function ConfiguracoesFilaPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Primeiro após (min)</label><input type="number" min={1} max={480} className={inputCls} value={cfg.attendanceReminder.firstAfterMinutes} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, firstAfterMinutes: Number(e.target.value) || 15 })} /></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Repetir a cada (s)</label><input type="number" min={30} max={86400} className={inputCls} value={cfg.attendanceReminder.repeatIntervalSeconds} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, repeatIntervalSeconds: Number(e.target.value) || 300 })} /></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Máx. lembretes</label><input type="number" min={1} max={50} className={inputCls} value={cfg.attendanceReminder.maxReminders} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, maxReminders: Number(e.target.value) || 6 })} /></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Escalar após</label><input type="number" min={1} max={50} className={inputCls} value={cfg.attendanceReminder.escalateAfter} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, escalateAfter: Number(e.target.value) || 3 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Primeiro após (min, até 1440)</label><input type="number" min={limits.attendanceFirstAfterMinutes.min} max={limits.attendanceFirstAfterMinutes.max} className={inputCls} value={cfg.attendanceReminder.firstAfterMinutes} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, firstAfterMinutes: Number(e.target.value) || 15 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Repetir a cada (s, 30-86400)</label><input type="number" min={limits.attendanceRepeatIntervalSeconds.min} max={limits.attendanceRepeatIntervalSeconds.max} className={inputCls} value={cfg.attendanceReminder.repeatIntervalSeconds} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, repeatIntervalSeconds: Number(e.target.value) || 300 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Máx. lembretes (até 50)</label><input type="number" min={limits.attendanceMaxReminders.min} max={limits.attendanceMaxReminders.max} className={inputCls} value={cfg.attendanceReminder.maxReminders} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, maxReminders: Number(e.target.value) || 6 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Escalar após (até 50)</label><input type="number" min={limits.attendanceEscalateAfter.min} max={limits.attendanceEscalateAfter.max} className={inputCls} value={cfg.attendanceReminder.escalateAfter} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, escalateAfter: Number(e.target.value) || 3 })} /></div>
         </div>
 
         <div className="border-t border-gray-100 pt-4">
@@ -288,14 +319,14 @@ export default function ConfiguracoesFilaPage() {
                 <option value="ALL_QUEUE">Todos da fila</option>
               </select>
             </div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Intervalo mínimo (s)</label><input type="number" min={30} max={86400} className={inputCls} value={cfg.queuePush.intervalSeconds} onChange={(e) => set('queuePush', { ...cfg.queuePush, intervalSeconds: Number(e.target.value) || 300 })} /></div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Tentativas máximas</label><input type="number" min={1} max={50} className={inputCls} value={cfg.queuePush.maxRetries} onChange={(e) => set('queuePush', { ...cfg.queuePush, maxRetries: Number(e.target.value) || 6 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Intervalo mínimo (s, 30-86400)</label><input type="number" min={limits.queuePushIntervalSeconds.min} max={limits.queuePushIntervalSeconds.max} className={inputCls} value={cfg.queuePush.intervalSeconds} onChange={(e) => set('queuePush', { ...cfg.queuePush, intervalSeconds: Number(e.target.value) || 300 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Tentativas máximas (até 50)</label><input type="number" min={limits.queuePushMaxRetries.min} max={limits.queuePushMaxRetries.max} className={inputCls} value={cfg.queuePush.maxRetries} onChange={(e) => set('queuePush', { ...cfg.queuePush, maxRetries: Number(e.target.value) || 6 })} /></div>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/vendedor</label><input type="number" min={1} max={100} className={inputCls} value={cfg.queuePush.antiSpamUserLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamUserLimit: Number(e.target.value) || 8 })} /></div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/atendimento</label><input type="number" min={1} max={100} className={inputCls} value={cfg.queuePush.antiSpamAttendanceLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamAttendanceLimit: Number(e.target.value) || 6 })} /></div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/fila</label><input type="number" min={1} max={500} className={inputCls} value={cfg.queuePush.antiSpamQueueLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamQueueLimit: Number(e.target.value) || 60 })} /></div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Janela (min)</label><input type="number" min={1} max={1440} className={inputCls} value={cfg.queuePush.antiSpamWindowMinutes} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamWindowMinutes: Number(e.target.value) || 10 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/vendedor (até 100)</label><input type="number" min={limits.queuePushAntiSpamUserLimit.min} max={limits.queuePushAntiSpamUserLimit.max} className={inputCls} value={cfg.queuePush.antiSpamUserLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamUserLimit: Number(e.target.value) || 8 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/atendimento (até 100)</label><input type="number" min={limits.queuePushAntiSpamAttendanceLimit.min} max={limits.queuePushAntiSpamAttendanceLimit.max} className={inputCls} value={cfg.queuePush.antiSpamAttendanceLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamAttendanceLimit: Number(e.target.value) || 6 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/fila (até 500)</label><input type="number" min={limits.queuePushAntiSpamQueueLimit.min} max={limits.queuePushAntiSpamQueueLimit.max} className={inputCls} value={cfg.queuePush.antiSpamQueueLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamQueueLimit: Number(e.target.value) || 60 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Janela (min, até 1440)</label><input type="number" min={limits.queuePushAntiSpamWindowMinutes.min} max={limits.queuePushAntiSpamWindowMinutes.max} className={inputCls} value={cfg.queuePush.antiSpamWindowMinutes} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamWindowMinutes: Number(e.target.value) || 10 })} /></div>
           </div>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
             <div><label className="mb-1 block text-xs font-medium text-gray-700">Início permitido</label><input type="time" className={inputCls} value={cfg.queuePush.allowedStartTime ?? ''} onChange={(e) => set('queuePush', { ...cfg.queuePush, allowedStartTime: e.target.value || null })} /></div>
@@ -385,8 +416,8 @@ export default function ConfiguracoesFilaPage() {
         </div>
 
         <div className="border-t border-gray-100 pt-3">
-          <label className="mb-1 block text-sm font-medium text-gray-700">Sair da fila após pausado/ausente por (minutos)</label>
-          <input type="number" min={0} max={480} className={cn(inputCls, 'max-w-[140px]')} value={cfg.maxPauseMinutes} onChange={(e) => set('maxPauseMinutes', Number(e.target.value) || 0)} />
+          <label className="mb-1 block text-sm font-medium text-gray-700">Sair da fila após pausado/ausente por (minutos, até 1440)</label>
+          <input type="number" min={limits.maxPauseMinutes.min} max={limits.maxPauseMinutes.max} className={cn(inputCls, 'max-w-[140px]')} value={cfg.maxPauseMinutes} onChange={(e) => set('maxPauseMinutes', Number(e.target.value) || 0)} />
           <p className="mt-1 text-[11px] text-gray-400">0 = desligado. Ex.: 30 → quem ficar pausado/fora por 30 min sai da fila automaticamente; ao tentar voltar, recebe o aviso de que foi removido.</p>
         </div>
       </div>

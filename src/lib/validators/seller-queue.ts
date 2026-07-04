@@ -4,8 +4,10 @@
 // =============================================================================
 
 import { z } from 'zod'
+import { QUEUE_CONFIG_LIMITS } from '@/lib/seller-queue/config-limits'
 
 const optStr = z.string().trim().max(500).nullish()
+const limits = QUEUE_CONFIG_LIMITS
 
 // Payload de presença (enviado pelo celular do vendedor).
 export const presenceSchema = z.object({
@@ -106,16 +108,16 @@ export const configSchema = z.object({
   leadCloseReasons:   z.array(z.string().trim().min(1).max(80)).max(60).optional(),
   negotiationReasons: z.array(z.string().trim().min(1).max(80)).max(60).optional(),
   // Auto-saída por pausa/ausência prolongada (minutos). 0/ausente = desligado.
-  maxPauseMinutes:    z.number().int().min(0).max(480).optional(),
+  maxPauseMinutes:    z.number().int('O tempo de pausa/ausência deve ser um número inteiro.').min(limits.maxPauseMinutes.min, 'O tempo de pausa/ausência não pode ser negativo.').max(limits.maxPauseMinutes.max, 'O tempo de pausa/ausência deve ser no máximo 1440 minutos.').optional(),
   // Liga/desliga a fila automaticamente pelo horário (openTime/closeTime/allowedDays).
   autoSchedule:       z.boolean().optional(),
   // Lembretes de atendimento aberto + política de push da fila (campo JSON).
   attendanceReminder: z.object({
     enabled:               z.boolean(),
-    firstAfterMinutes:     z.number().int().min(1).max(480),
-    repeatIntervalSeconds: z.number().int().min(30).max(86400),
-    maxReminders:          z.number().int().min(1).max(50),
-    escalateAfter:         z.number().int().min(1).max(50),
+    firstAfterMinutes:     z.number().int('O primeiro lembrete deve ser um número inteiro.').min(limits.attendanceFirstAfterMinutes.min, 'O primeiro lembrete deve ser de no mínimo 1 minuto.').max(limits.attendanceFirstAfterMinutes.max, 'O primeiro lembrete deve ser de no máximo 1440 minutos.'),
+    repeatIntervalSeconds: z.number().int('O intervalo de repetição dos lembretes deve ser um número inteiro.').min(limits.attendanceRepeatIntervalSeconds.min, 'O intervalo de repetição dos lembretes deve ser de no mínimo 30 segundos.').max(limits.attendanceRepeatIntervalSeconds.max, 'O intervalo de repetição dos lembretes deve ser de no máximo 86400 segundos.'),
+    maxReminders:          z.number().int('A quantidade máxima de lembretes deve ser um número inteiro.').min(limits.attendanceMaxReminders.min, 'A quantidade máxima de lembretes deve ser no mínimo 1.').max(limits.attendanceMaxReminders.max, 'A quantidade máxima de lembretes deve ser no máximo 50.'),
+    escalateAfter:         z.number().int('A quantidade de lembretes para escalar deve ser um número inteiro.').min(limits.attendanceEscalateAfter.min, 'A quantidade de lembretes para escalar deve ser no mínimo 1.').max(limits.attendanceEscalateAfter.max, 'A quantidade de lembretes para escalar deve ser no máximo 50.'),
     autoEscalate:          z.boolean(),
     requireFinishOnNo:     z.boolean(),
     allowSnooze:           z.boolean(),
@@ -123,14 +125,14 @@ export const configSchema = z.object({
   }).optional(),
   queuePush: z.object({
     enabled:                   z.boolean(),
-    intervalSeconds:           z.number().int().min(30).max(86400),
+    intervalSeconds:           z.number().int('O intervalo mínimo de push deve ser um número inteiro.').min(limits.queuePushIntervalSeconds.min, 'O intervalo mínimo de push deve ser de no mínimo 30 segundos.').max(limits.queuePushIntervalSeconds.max, 'O intervalo mínimo de push deve ser de no máximo 86400 segundos.'),
     targetScope:               z.enum(['CURRENT_SELLER', 'CALLED_SELLER', 'ALL_ACTIVE_PARTICIPANTS', 'MANAGERS', 'MANAGERS_AND_CURRENT', 'ALL_QUEUE']),
-    maxRetries:                z.number().int().min(1).max(50),
+    maxRetries:                z.number().int('A quantidade máxima de tentativas deve ser um número inteiro.').min(limits.queuePushMaxRetries.min, 'A quantidade máxima de tentativas deve ser no mínimo 1.').max(limits.queuePushMaxRetries.max, 'A quantidade máxima de tentativas deve ser no máximo 50.'),
     resendUntil:               z.enum(['ACKNOWLEDGED', 'FINISHED', 'MAX_RETRIES']),
-    antiSpamUserLimit:         z.number().int().min(1).max(100),
-    antiSpamAttendanceLimit:   z.number().int().min(1).max(100),
-    antiSpamQueueLimit:        z.number().int().min(1).max(500),
-    antiSpamWindowMinutes:     z.number().int().min(1).max(1440),
+    antiSpamUserLimit:         z.number().int('O limite por vendedor deve ser um número inteiro.').min(limits.queuePushAntiSpamUserLimit.min, 'O limite por vendedor deve ser no mínimo 1.').max(limits.queuePushAntiSpamUserLimit.max, 'O limite por vendedor deve ser no máximo 100.'),
+    antiSpamAttendanceLimit:   z.number().int('O limite por atendimento deve ser um número inteiro.').min(limits.queuePushAntiSpamAttendanceLimit.min, 'O limite por atendimento deve ser no mínimo 1.').max(limits.queuePushAntiSpamAttendanceLimit.max, 'O limite por atendimento deve ser no máximo 100.'),
+    antiSpamQueueLimit:        z.number().int('O limite por fila deve ser um número inteiro.').min(limits.queuePushAntiSpamQueueLimit.min, 'O limite por fila deve ser no mínimo 1.').max(limits.queuePushAntiSpamQueueLimit.max, 'O limite por fila deve ser no máximo 500.'),
+    antiSpamWindowMinutes:     z.number().int('A janela anti-spam deve ser um número inteiro.').min(limits.queuePushAntiSpamWindowMinutes.min, 'A janela anti-spam deve ser de no mínimo 1 minuto.').max(limits.queuePushAntiSpamWindowMinutes.max, 'A janela anti-spam deve ser de no máximo 1440 minutos.'),
     allowedStartTime:          optStr,
     allowedEndTime:            optStr,
     allowOutsideHoursForAdmins: z.boolean(),

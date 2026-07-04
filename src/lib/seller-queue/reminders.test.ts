@@ -32,6 +32,14 @@ describe('seller queue attendance reminders', () => {
     expect(settings.queuePush.targetScope).toBe('CURRENT_SELLER')
   })
 
+  it('keeps reminder minutes aligned with the config screen limit', () => {
+    const settings = coerceReminderSettings({
+      attendanceReminder: { firstAfterMinutes: 2000 },
+    })
+
+    expect(settings.attendanceReminder.firstAfterMinutes).toBe(1440)
+  })
+
   it('becomes due after the first configured interval', () => {
     const state = buildReminderState('att-1', [])
     const due = isReminderDue(baseAttendance, state, DEFAULT_REMINDER_SETTINGS, new Date('2026-07-04T12:16:00.000Z'))

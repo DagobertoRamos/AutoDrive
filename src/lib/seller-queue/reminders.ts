@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { QUEUE_CONFIG_LIMITS } from '@/lib/seller-queue/config-limits'
 import { notify, notifyByRole, type NotifyChannel } from '@/services/notification.service'
 import type { Prisma } from '@prisma/client'
 
@@ -115,6 +116,7 @@ export const DEFAULT_REMINDER_SETTINGS: SellerQueueReminderSettings = {
     sound: true,
   },
 }
+const limits = QUEUE_CONFIG_LIMITS
 
 function obj(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -148,10 +150,10 @@ export function coerceReminderSettings(config: unknown): SellerQueueReminderSett
   return {
     attendanceReminder: {
       enabled: bool(reminder.enabled, defaults.attendanceReminder.enabled),
-      firstAfterMinutes: int(reminder.firstAfterMinutes, defaults.attendanceReminder.firstAfterMinutes, 1, 480),
-      repeatIntervalSeconds: int(reminder.repeatIntervalSeconds, defaults.attendanceReminder.repeatIntervalSeconds, 30, 86400),
-      maxReminders: int(reminder.maxReminders, defaults.attendanceReminder.maxReminders, 1, 50),
-      escalateAfter: int(reminder.escalateAfter, defaults.attendanceReminder.escalateAfter, 1, 50),
+      firstAfterMinutes: int(reminder.firstAfterMinutes, defaults.attendanceReminder.firstAfterMinutes, limits.attendanceFirstAfterMinutes.min, limits.attendanceFirstAfterMinutes.max),
+      repeatIntervalSeconds: int(reminder.repeatIntervalSeconds, defaults.attendanceReminder.repeatIntervalSeconds, limits.attendanceRepeatIntervalSeconds.min, limits.attendanceRepeatIntervalSeconds.max),
+      maxReminders: int(reminder.maxReminders, defaults.attendanceReminder.maxReminders, limits.attendanceMaxReminders.min, limits.attendanceMaxReminders.max),
+      escalateAfter: int(reminder.escalateAfter, defaults.attendanceReminder.escalateAfter, limits.attendanceEscalateAfter.min, limits.attendanceEscalateAfter.max),
       autoEscalate: bool(reminder.autoEscalate, defaults.attendanceReminder.autoEscalate),
       requireFinishOnNo: bool(reminder.requireFinishOnNo, defaults.attendanceReminder.requireFinishOnNo),
       allowSnooze: bool(reminder.allowSnooze, defaults.attendanceReminder.allowSnooze),
@@ -159,14 +161,14 @@ export function coerceReminderSettings(config: unknown): SellerQueueReminderSett
     },
     queuePush: {
       enabled: bool(push.enabled, defaults.queuePush.enabled),
-      intervalSeconds: int(push.intervalSeconds, defaults.queuePush.intervalSeconds, 30, 86400),
+      intervalSeconds: int(push.intervalSeconds, defaults.queuePush.intervalSeconds, limits.queuePushIntervalSeconds.min, limits.queuePushIntervalSeconds.max),
       targetScope: str(push.targetScope, ['CURRENT_SELLER', 'CALLED_SELLER', 'ALL_ACTIVE_PARTICIPANTS', 'MANAGERS', 'MANAGERS_AND_CURRENT', 'ALL_QUEUE'] as const, defaults.queuePush.targetScope),
-      maxRetries: int(push.maxRetries, defaults.queuePush.maxRetries, 1, 50),
+      maxRetries: int(push.maxRetries, defaults.queuePush.maxRetries, limits.queuePushMaxRetries.min, limits.queuePushMaxRetries.max),
       resendUntil: str(push.resendUntil, ['ACKNOWLEDGED', 'FINISHED', 'MAX_RETRIES'] as const, defaults.queuePush.resendUntil),
-      antiSpamUserLimit: int(push.antiSpamUserLimit, defaults.queuePush.antiSpamUserLimit, 1, 100),
-      antiSpamAttendanceLimit: int(push.antiSpamAttendanceLimit, defaults.queuePush.antiSpamAttendanceLimit, 1, 100),
-      antiSpamQueueLimit: int(push.antiSpamQueueLimit, defaults.queuePush.antiSpamQueueLimit, 1, 500),
-      antiSpamWindowMinutes: int(push.antiSpamWindowMinutes, defaults.queuePush.antiSpamWindowMinutes, 1, 1440),
+      antiSpamUserLimit: int(push.antiSpamUserLimit, defaults.queuePush.antiSpamUserLimit, limits.queuePushAntiSpamUserLimit.min, limits.queuePushAntiSpamUserLimit.max),
+      antiSpamAttendanceLimit: int(push.antiSpamAttendanceLimit, defaults.queuePush.antiSpamAttendanceLimit, limits.queuePushAntiSpamAttendanceLimit.min, limits.queuePushAntiSpamAttendanceLimit.max),
+      antiSpamQueueLimit: int(push.antiSpamQueueLimit, defaults.queuePush.antiSpamQueueLimit, limits.queuePushAntiSpamQueueLimit.min, limits.queuePushAntiSpamQueueLimit.max),
+      antiSpamWindowMinutes: int(push.antiSpamWindowMinutes, defaults.queuePush.antiSpamWindowMinutes, limits.queuePushAntiSpamWindowMinutes.min, limits.queuePushAntiSpamWindowMinutes.max),
       allowedStartTime: timeOrNull(push.allowedStartTime),
       allowedEndTime: timeOrNull(push.allowedEndTime),
       allowOutsideHoursForAdmins: bool(push.allowOutsideHoursForAdmins, defaults.queuePush.allowOutsideHoursForAdmins),

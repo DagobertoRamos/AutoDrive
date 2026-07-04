@@ -33,6 +33,13 @@ export async function GET() {
     sendWebPushToUser(user.id, { title, body, data }),
   ])
 
+  // Igual ao caminho de produção (queue-push): desativa tokens que o FCM
+  // recusou como inválidos/expirados, senão o registro morto fica ativo para
+  // sempre e o teste repete "a inscrição pode ter expirado" sem se curar.
+  if (fcm.invalid.length) {
+    await prisma.mobileDevice.updateMany({ where: { deviceToken: { in: fcm.invalid } }, data: { isActive: false, revokedAt: new Date() } }).catch(() => {})
+  }
+
   const enviados = fcm.sent + web.sent
   return NextResponse.json({
     fcmConfigured: fcmConfigured(),
