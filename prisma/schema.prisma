@@ -4948,6 +4948,8 @@ model SellerQueueCustomerArrival {
   requestedSellerId String? // cliente pediu pelo nome (exige confirmação/regra)
   status            String   @default("PENDING") // PENDING | CALLING | ASSIGNED | DONE | CANCELED
   notes             String?
+  escalationLevel   Int? // índice do nível de escalonamento atual (config)
+  escalationAttempt Int? // tentativa dentro do nível atual
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

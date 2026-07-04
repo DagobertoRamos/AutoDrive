@@ -52,11 +52,31 @@ export async function POST(req: Request, { params }: Ctx) {
     }
 
     const now = new Date()
-    await prisma.$transaction(async (tx) => {
-      await tx.sellerQueueAttendance.update({ where: { id: att.id }, data: { status: 'IN_ATTENDANCE', acceptedAt: now, startedAt: now } })
+    // FIRST-ACCEPT-WINS: quando um nível de escalonamento chama VÁRIOS colaboradores,
+    // o PRIMEIRO que aceitar assume. O claim do arrival (compare-and-set) serializa
+    // pela linha do arrival — o segundo recebe "já assumido". Sem duplicar atendimento.
+    const claim = await prisma.$transaction(async (tx) => {
+      if (att.arrivalId) {
+        const arr = await tx.sellerQueueCustomerArrival.updateMany({ where: { id: att.arrivalId, status: { in: ['CALLING', 'PENDING'] } }, data: { status: 'ASSIGNED' } })
+        if (arr.count !== 1) return { ok: false as const }
+      }
+      const self = await tx.sellerQueueAttendance.updateMany({ where: { id: att.id, status: 'CALLED' }, data: { status: 'IN_ATTENDANCE', acceptedAt: now, startedAt: now } })
+      if (self.count !== 1) throw new Error('SELF_NOT_CALLED') // rollback do claim
+      // Expira as chamadas irmãs (mesmo arrival) que ficaram aguardando.
+      if (att.arrivalId) {
+        await tx.sellerQueueAttendance.updateMany({ where: { arrivalId: att.arrivalId, id: { not: att.id }, status: 'CALLED' }, data: { status: 'EXPIRED' } })
+      }
       await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: user.id }, data: { status: 'IN_ATTENDANCE', lastActiveAt: now } })
-      if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'ASSIGNED' } })
-    })
+      return { ok: true as const }
+    }).catch((e) => { if (e instanceof Error && e.message === 'SELF_NOT_CALLED') return { ok: false as const }; throw e })
+
+    if (!claim.ok) {
+      const winner = att.arrivalId
+        ? await prisma.sellerQueueAttendance.findFirst({ where: { arrivalId: att.arrivalId, status: { in: ['ACCEPTED', 'IN_ATTENDANCE'] } }, select: { sellerId: true } })
+        : null
+      const winnerName = winner ? (await prisma.user.findUnique({ where: { id: winner.sellerId }, select: { name: true } }))?.name : null
+      return NextResponse.json({ success: false, error: winnerName ? `Este atendimento já foi assumido por ${winnerName}.` : 'Este atendimento já foi assumido por outro colaborador.' }, { status: 409 })
+    }
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'ACCEPTED', sellerId: user.id, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id })
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'ATTENDANCE_STARTED', sellerId: user.id, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'ACCEPT', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })

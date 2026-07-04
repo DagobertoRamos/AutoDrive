@@ -15,8 +15,10 @@
 import { prisma } from '@/lib/prisma'
 import {
   type EscalationConfig, type EscalationLevel,
-  nextActiveLevelIndex,
+  nextActiveLevelIndex, firstActiveLevelIndex,
 } from './escalation-config'
+import { logQueueEvent } from './queue'
+import { notifySellerCalled, notifyNoSellerAvailable } from './notify'
 
 export interface EscalationState { levelIndex: number; attempt: number }
 export type EscalationStep =
@@ -132,4 +134,78 @@ export async function resolveLevelTargets(opts: {
   }
   // notifyAll=false → chama só o primeiro (exceto lista explícita, que respeita notifyAll)
   return level.notifyAll ? filtered : filtered.slice(0, 1)
+}
+
+export interface EscalateResult {
+  escalated: boolean
+  exhausted?: boolean
+  levelIndex?: number
+  levelName?: string
+  targets?: string[]
+}
+
+/**
+ * Avança o escalonamento de UM arrival para o próximo nível/tentativa e notifica
+ * o(s) alvo(s). Chamado pelo `sweepExpiredCalls` quando a config está ativa.
+ * Idempotente por arrival: só age se o arrival ainda estiver PENDING/CALLING.
+ * `escalationLevel == null` = o call inicial (rotação) já cobriu o 1º nível ativo.
+ * first-accept-wins é garantido no /accept (claim atômico do arrival).
+ */
+export async function escalateArrival(opts: {
+  tenantId: string
+  unitId: string
+  queueId: string
+  arrivalId: string
+  actorId: string
+  config: EscalationConfig
+  customerName?: string | null
+  whatsapp?: boolean
+  whatsappManagers?: boolean
+}): Promise<EscalateResult> {
+  const { tenantId, unitId, queueId, arrivalId, actorId, config } = opts
+  const arrival = await prisma.sellerQueueCustomerArrival.findUnique({
+    where: { id: arrivalId },
+    select: { status: true, escalationLevel: true, escalationAttempt: true },
+  })
+  if (!arrival || ['ASSIGNED', 'DONE', 'CANCELED'].includes(arrival.status)) return { escalated: false }
+
+  const startLevel = arrival.escalationLevel ?? firstActiveLevelIndex(config.levels)
+  const startAttempt = arrival.escalationLevel == null ? 1 : (arrival.escalationAttempt ?? 1)
+
+  // Percorre níveis até achar um com alvo disponível ou esgotar (evita loop em
+  // nível vazio marcando a tentativa como esgotada antes de recorrer).
+  let state = { levelIndex: startLevel, attempt: startAttempt }
+  for (let guard = 0; guard < config.levels.length + 2; guard++) {
+    const step = planNextEscalation(config, state)
+    if (step.done) {
+      // Esgotou os níveis sem resposta → política onNoResponse.
+      if (config.onNoResponse === 'NOTIFY_MANAGER' || config.onNoResponse === 'HOLD') {
+        await notifyNoSellerAvailable({ tenantId, unitId, arrivalId, whatsapp: opts.whatsappManagers ?? false }).catch(() => {})
+      }
+      await logQueueEvent({ tenantId, unitId, queueId, type: 'TIMEOUT', actorId, arrivalId, reason: 'escalonamento esgotado — sem resposta' }).catch(() => {})
+      return { escalated: false, exhausted: true }
+    }
+
+    const targets = await resolveLevelTargets({ tenantId, unitId, queueId, level: step.level })
+    if (!targets.length) {
+      // Nível sem alvo → pula direto para o próximo nível (não repete tentativa).
+      state = { levelIndex: step.levelIndex, attempt: step.level.maxAttempts }
+      continue
+    }
+
+    const now = new Date()
+    const deadline = new Date(now.getTime() + step.timeoutSeconds * 1000)
+    for (const uid of targets) {
+      const att = await prisma.sellerQueueAttendance.create({
+        data: { tenantId, unitId, queueId, sellerId: uid, arrivalId, status: 'CALLED', calledAt: now, acceptDeadline: deadline },
+      })
+      // Se estiver na rotação (WAITING), trava a entry (sai da fila enquanto chamado).
+      await prisma.sellerQueueEntry.updateMany({ where: { queueId, sellerId: uid, status: 'WAITING', blocked: false }, data: { status: 'CALLED', lastActiveAt: now } }).catch(() => {})
+      await logQueueEvent({ tenantId, unitId, queueId, type: 'CALLED', sellerId: uid, actorId, arrivalId, attendanceId: att.id, reason: `escalonamento nível ${step.levelIndex + 1} — ${step.level.name}` }).catch(() => {})
+      await notifySellerCalled({ tenantId, sellerId: uid, timeoutSeconds: step.timeoutSeconds, attendanceId: att.id, arrivalId, customerName: opts.customerName ?? null, recurring: false, whatsapp: opts.whatsapp ?? false }).catch(() => {})
+    }
+    await prisma.sellerQueueCustomerArrival.update({ where: { id: arrivalId }, data: { status: 'CALLING', escalationLevel: step.levelIndex, escalationAttempt: step.attempt } })
+    return { escalated: true, levelIndex: step.levelIndex, levelName: step.level.name, targets }
+  }
+  return { escalated: false, exhausted: true }
 }

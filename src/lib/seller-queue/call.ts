@@ -10,6 +10,8 @@ import { prisma } from '@/lib/prisma'
 import { getUnitConfig, logQueueEvent } from './queue'
 import { notifySellerCalled, notifyNoSellerAvailable } from './notify'
 import { escalateAfterTimeout } from './penalty'
+import { readEscalationConfig } from './escalation-config'
+import { escalateArrival } from './escalation'
 
 export interface CallResult {
   ok: boolean
@@ -137,11 +139,18 @@ export async function sweepExpiredCalls(opts: { tenantId: string; unitId: string
     // Escala (avisa/cooldown/bloqueia conforme as perdas do dia) — pode remover
     // o vendedor da fila (ex.: 1 perda já bloqueia, conforme a config da loja).
     await escalateAfterTimeout({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, sellerId: att.sellerId, whatsapp: cfg?.alertWhatsappManagers ?? false }).catch(() => {})
-    // Avança a fila: chama o próximo (ou o gerente no fallback) para o cliente.
+    // Avança a fila. Com ESCALONAMENTO ativo, sobe o próximo nível configurado
+    // (líder → gerente → GG → …); sem escalonamento, mantém o comportamento
+    // atual (chama o próximo da rotação / fallback gerente).
     if (att.arrivalId) {
       const arrival = await prisma.sellerQueueCustomerArrival.findUnique({ where: { id: att.arrivalId }, select: { customerName: true, recurring: true, status: true } })
       if (arrival && arrival.status === 'PENDING') {
-        await callForArrival({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, arrivalId: att.arrivalId, actorId: opts.actorId, reason: 'timeout (auto)', customerName: arrival.customerName, recurring: arrival.recurring }).catch(() => {})
+        const esc = readEscalationConfig(cfg?.config)
+        if (esc.active) {
+          await escalateArrival({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, arrivalId: att.arrivalId, actorId: opts.actorId, config: esc, customerName: arrival.customerName, whatsapp: cfg?.alertWhatsapp ?? false, whatsappManagers: cfg?.alertWhatsappManagers ?? false }).catch(() => {})
+        } else {
+          await callForArrival({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, arrivalId: att.arrivalId, actorId: opts.actorId, reason: 'timeout (auto)', customerName: arrival.customerName, recurring: arrival.recurring }).catch(() => {})
+        }
       }
     }
   }

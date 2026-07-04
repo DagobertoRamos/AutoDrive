@@ -2560,3 +2560,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - `escalation.test.ts` — **10 testes** (plano de níveis, pula inativo, esgota, coerce/clamp, read do bloco).
 - **Não quebra nada:** só arquivos NOVOS; o fluxo atual (rotação + fallback gerente em call.ts) segue idêntico. `tsc` verde.
 - **Próximo (Fase 2):** migration aditiva (escalationLevel/attempt/deadline no arrival), `sweepExpiredCalls` escala pela config quando `active`, accept com first-accept-wins (claim atômico do arrival + expira irmãos). Depois UI de config + modal de tipos.
+
+### LOG 0181 — 2026-07-04 — Claude (Opus 4.8) — Fila: escalonamento ligado ao fluxo (Fase 2) + first-accept-wins
+- **Migration ADITIVA (aplicada em prod):** `20260704140000_add_arrival_escalation` — `seller_queue_customer_arrivals.escalationLevel/escalationAttempt` (INTEGER, nullable). Rastreia o nível/tentativa do escalonamento por chegada.
+- **`escalateArrival()` (escalation.ts):** avança o arrival para o próximo nível/tentativa e notifica o(s) alvo(s) (cria CALLED + trava entry se estiver na rotação + `notifySellerCalled`). Pula nível sem alvo; ao esgotar aplica `onNoResponse` (avisa gestão). `escalationLevel==null` = a chamada inicial (rotação) já cobriu o 1º nível.
+- **`sweepExpiredCalls` (call.ts):** no timeout, se `escalation.active` → `escalateArrival` (sobe líder→gerente→GG→…); **senão mantém 100% o comportamento atual** (rotação + fallback gerente). Nada muda quando o escalonamento está desligado (default).
+- **`/accept` — FIRST-ACCEPT-WINS:** quando um nível chama vários, o 1º que aceita assume. Transação faz **claim atômico do arrival** (compare-and-set CALLING/PENDING→ASSIGNED, serializa pela linha), marca o próprio atendimento IN_ATTENDANCE e **expira as chamadas irmãs**; o 2º recebe "já assumido por Fulano" (409). Sem atendimento duplicado.
+- **Não quebra nada:** escalonamento é opt-in (`active=false` por default). Push/rotação/fallback/antifraude/geo/multi-tenant intactos. `tsc` verde; suíte seller-queue **49/49**.
+- **Próximo (Fase 3):** UI de config do escalonamento (níveis editáveis) + modal "iniciar atendimento com TIPO" (retirada/entrega/documentação/test-drive/avaliação) + config "consome a vez".
