@@ -2585,6 +2585,20 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Não quebra nada:** visitType nullable; sem tipo → consome (conservador, = comportamento atual). `tsc` verde; suíte seller-queue **55/55**.
 - **Fecha a Fase 4.** Cliente é opcional no início e obrigatório no finish (guard já existente do Codex mantido).
 
+### LOG 0184 — 2026-07-04 14:21:46 -03:00 — Codex (GPT-5) — Responsividade AutoDrive: Fase 1 base global
+- **Tarefa:** iniciar revisão profissional de responsividade do sistema inteiro sem refatorar tudo de uma vez e sem atropelar trabalhos recentes de Claude/Codex.
+- **Leitura/coordenação:** README_ROBOTS.md e índice completo dos logs foram consultados. Logs recentes 0175-0183 indicam trabalho ativo e pesado na Fila; por isso esta fase evitou mexer nos arquivos da fila e ficou restrita à base global.
+- **Módulos analisados:** shell do dashboard, sidebar/menu, padrões existentes de Tailwind, componentes `ui`, documentação mobile e logs recentes de fila/pendências/configurações.
+- **Arquivos alterados/criados:** `src/components/ui/responsive.tsx`; `src/app/(dashboard)/DashboardShell.tsx`; `docs/responsividade-autodrive.md`; `README_ROBOTS.md`.
+- **Componentes base criados:** `PageContainer`, `ResponsiveGrid`, `ResponsiveCard`, `ResponsiveActions`, `ResponsiveTable`, `ResponsiveModalFrame`, `ResponsiveModalFooter`, `ResponsiveTabs`, `ResponsiveDashboardSection`.
+- **Correção global aplicada:** `DashboardShell` agora usa `min-w-0`, `overflow-x-hidden` e padding mobile-first (`p-3 sm:p-4 lg:p-6`) no `<main>`, reduzindo risco de scroll horizontal e conteúdo apertado em celular sem alterar fluxo comercial.
+- **Checklist/documentação:** criado `docs/responsividade-autodrive.md` com regras de uso, breakpoints de QA (320 a 1920), checklist por tela e módulos prioritários para fases futuras.
+- **Breakpoints planejados:** 320, 360, 375, 390, 414, 430, 768, 820, 1024, 1280, 1366, 1440, 1536 e 1920. Nesta fase não houve QA visual em navegador; a entrega é fundação técnica/documental.
+- **Testes realizados:** `npm exec tsc -- --noEmit` verde; `npm exec eslint -- src/components/ui/responsive.tsx "src/app/(dashboard)/DashboardShell.tsx"` verde; `git diff --check` verde.
+- **Testes com ressalva:** `npm test` executou 369/370 verdes, mas falhou 1 teste antigo de `/api/commissions/calculations` (`where.tenantId` esperado no mock), fora dos arquivos desta fase; não foi corrigido para não misturar comissões ao escopo de responsividade.
+- **Build:** `npm run build` continua bloqueado localmente antes do Next build em `prisma generate`, por `EPERM: operation not permitted, unlink node_modules/.prisma/client/index.js`, mesmo padrão recorrente do ambiente Windows.
+- **Riscos observados:** os componentes base ainda precisam ser adotados incrementalmente nas telas reais; não houve varredura visual completa. Proximas fases devem revisar modulo por modulo, começando por Fila, Pendências, Negociações e Comissões, sempre cuidando para não sobrescrever trabalho recente.
+
 ### LOG 0184 — 2026-07-04 — Claude (Opus 4.8) — Fila: performance do dashboard (endpoint agregado + cadência)
 - **Problema:** o dashboard fazia **6 fetches a cada 3s**, incluindo `/reports?days=7` (ranking de 7 dias — consulta mais cara) e `/events` (log) — recomputados 20×/min sem necessidade.
 - **Endpoint agregado** `getQueueDashboardData` (`dashboard.ts`) + `GET /api/seller-queue/dashboard` (gate `sellerQueue.view`): retorna **atendimentos ativos + lembretes + bloqueios** numa chamada (Promise.all, `select`/`take`, sem N+1). Bloqueios só p/ gestão.
@@ -2594,3 +2608,9 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Ganho:** caminho quente 6→2 fetches; ranking de 20×/min → 2×/min. Mesmos estados/dados, comportamento preservado.
 - **Não quebra nada:** endpoints antigos seguem existindo; só o dashboard passou a usar o agregado + cadência. `tsc` verde; suíte seller-queue **55/55**.
 - **Pendência (futuro):** paginação/lazy nos logs detalhados; cache curto no ranking se ainda pesar; consolidar `/current` no agregado (mais invasivo — deixado fora p/ não mexer no núcleo/sweep).
+
+### LOG 0185 — 2026-07-04 — Claude (Opus 4.8) — Fila: cache do ranking + paginação dos logs (pendências de perf)
+- **Cache curto do ranking** (`/api/seller-queue/reports`): o relatório de N dias é a consulta mais cara (até 5.000 atendimentos + 20.000 no consolidado do tenant, agregados em memória). Adicionado cache em memória por `(tenant:unidade:from:to:days:sellerId:tenantWide)` com **TTL 25s** + cap de 500 entradas com limpeza preguiçosa. Com vários da unidade olhando o dashboard, colapsa N recomputações por janela em **1**. Janela rolante desloca ≤ TTL (irrelevante p/ 7 dias). Resposta traz `cached:true` quando servida do cache.
+- **Paginação dos logs** (`/api/seller-queue/events`): cursor aditivo `?before=<ISO>` (eventos anteriores ao instante, sem a trava "só hoje") + `take limit+1` → retorna `hasMore` e `nextCursor`. **Sem cursor = comportamento atual** (só o dia, leve) — o dashboard não muda. Habilita "carregar mais" num visualizador de log detalhado futuro. O `/events` já era leve (limit 10, índice em createdAt).
+- **Não quebra nada:** ambos aditivos; `data` continua sendo o array que o dashboard consome. `tsc` verde.
+- **Restante (opcional):** UI de "carregar mais" no log; consolidar `/current` no agregado (mais invasivo — fora por segurança do núcleo/sweep).

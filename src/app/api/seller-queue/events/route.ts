@@ -29,18 +29,25 @@ export async function GET(req: Request) {
   const type = sp.get('type') as SellerQueueEventType | null
   const sellerId = sp.get('sellerId')
   const limit = Math.min(Number(sp.get('limit') ?? 100) || 100, 300)
+  // Cursor de paginação ("carregar mais"): eventos ANTES deste instante. Sem
+  // cursor, mantém o comportamento do dashboard (só o dia atual, leve).
+  const beforeParam = sp.get('before')
+  const beforeDate = beforeParam ? new Date(beforeParam) : null
+  const validBefore = beforeDate && !Number.isNaN(beforeDate.getTime()) ? beforeDate : null
 
   try {
-    // Eventos do dia (a partir da meia-noite UTC da fila).
     const rows = await prisma.sellerQueueEvent.findMany({
       where: {
-        tenantId, unitId, createdAt: { gte: queueDate() },
+        tenantId, unitId,
+        createdAt: validBefore ? { lt: validBefore } : { gte: queueDate() },
         ...(type ? { type } : {}),
         ...(sellerId ? { sellerId } : {}),
       },
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take: limit + 1, // +1 p/ saber se há mais (hasMore)
     })
+    const hasMore = rows.length > limit
+    if (hasMore) rows.pop()
     const ids = [...new Set(rows.flatMap((r) => [r.sellerId, r.actorId].filter(Boolean) as string[]))]
     const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []
     const nameOf = new Map(users.map((u) => [u.id, u.name]))
@@ -53,7 +60,7 @@ export async function GET(req: Request) {
       reason: r.reason,
       createdAt: r.createdAt,
     }))
-    return NextResponse.json({ success: true, data })
+    return NextResponse.json({ success: true, data, hasMore, nextCursor: hasMore && rows.length ? rows[rows.length - 1].createdAt : null })
   } catch (err) {
     return handlePrismaError(err)
   }

@@ -14,6 +14,26 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
+// Cache curto em memória: o ranking de N dias é a consulta mais cara do módulo.
+// Com vários da unidade olhando o dashboard, todos batem aqui a cada 30s em fases
+// diferentes → sem cache, N recomputações por janela. O cache colapsa em UMA por
+// (tenant+unidade+parâmetros) a cada REPORT_TTL_MS. Por-instância (Vercel), mas
+// já reduz muito a carga. Janela rolante desloca ≤ TTL — irrelevante p/ 7 dias.
+type ReportCacheEntry = { data: unknown; expires: number }
+const reportCache = new Map<string, ReportCacheEntry>()
+const REPORT_TTL_MS = 25_000
+
+function reportCacheGet(key: string): unknown | null {
+  const hit = reportCache.get(key)
+  if (hit && hit.expires > Date.now()) return hit.data
+  if (hit) reportCache.delete(key)
+  return null
+}
+function reportCacheSet(key: string, data: unknown) {
+  if (reportCache.size > 500) { const now = Date.now(); for (const [k, v] of reportCache) if (v.expires <= now) reportCache.delete(k) }
+  reportCache.set(key, { data, expires: Date.now() + REPORT_TTL_MS })
+}
+
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
@@ -34,6 +54,10 @@ export async function GET(req: Request) {
   const sellerFilter = sp.get('sellerId') || null
   // Quem enxerga a loja inteira pode ver o consolidado por unidade.
   const tenantWide = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'].includes(user.role)
+
+  const cacheKey = `${tenantId}:${unitId}:${fromParam ?? ''}:${toParam ?? ''}:${days}:${sellerFilter ?? ''}:${tenantWide ? 1 : 0}`
+  const cached = reportCacheGet(cacheKey)
+  if (cached) return NextResponse.json({ success: true, data: cached, cached: true })
 
   try {
     const attWhere = { tenantId, unitId, calledAt: dateRange, ...(sellerFilter ? { sellerId: sellerFilter } : {}) }
@@ -86,24 +110,23 @@ export async function GET(req: Request) {
       byUnit = unitIds.map((id) => ({ unitId: id, unitName: unitNames.get(id) ?? id, ...um.get(id)! })).sort((x, y) => y.finished - x.finished)
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        days,
-        tenantWide,
-        byUnit,
-        totals: {
-          arrivals: arrivals.length,
-          recurring: arrivals.filter((a) => a.recurring).length,
-          attendances: attendances.length,
-          finished: attendances.filter((a) => a.status === 'FINISHED').length,
-          timeouts: attendances.filter((a) => a.status === 'EXPIRED').length,
-        },
-        bySeller,
-        fraudFlags: fraud,
-        penalties,
+    const data = {
+      days,
+      tenantWide,
+      byUnit,
+      totals: {
+        arrivals: arrivals.length,
+        recurring: arrivals.filter((a) => a.recurring).length,
+        attendances: attendances.length,
+        finished: attendances.filter((a) => a.status === 'FINISHED').length,
+        timeouts: attendances.filter((a) => a.status === 'EXPIRED').length,
       },
-    })
+      bySeller,
+      fraudFlags: fraud,
+      penalties,
+    }
+    reportCacheSet(cacheKey, data)
+    return NextResponse.json({ success: true, data })
   } catch (err) {
     return handlePrismaError(err)
   }
