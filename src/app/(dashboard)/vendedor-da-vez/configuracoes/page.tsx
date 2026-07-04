@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { canAccessModule } from '@/lib/permissions'
 import AlertSetup from '@/components/seller-queue/AlertSetup'
 import EscalationConfigCard from '@/components/seller-queue/EscalationConfigCard'
+import AttendanceTypesConfigCard from '@/components/seller-queue/AttendanceTypesConfigCard'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 import { QUEUE_CONFIG_LIMITS } from '@/lib/seller-queue/config-limits'
 
@@ -353,6 +354,9 @@ export default function ConfiguracoesFilaPage() {
 
       {/* Escalonamento multinível da chamada (config dedicada) */}
       <EscalationConfigCard />
+
+      {/* Tipos de atendimento + "consome a vez" (config dedicada) */}
+      <AttendanceTypesConfigCard />
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
         <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><ShieldAlert size={16} className="text-brand-600" />Bloqueio por reincidência (anti-abuso)</h2>

@@ -15,6 +15,7 @@ import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { finishSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
+import { readAttendanceTypesConfig, typeConsumesTurn } from '@/lib/seller-queue/attendance-types-config'
 import { ensureAttendanceLead } from '@/lib/seller-queue/lead'
 import { concludePersonalItemByAttendance, listPersonalQueueForAgent } from '@/lib/seller-queue/personal-queue'
 import type { SellerAttendanceType, SellerAttendanceResult } from '@prisma/client'
@@ -40,6 +41,8 @@ export async function POST(req: Request, { params }: Ctx) {
 
     // Config da loja: se o vendedor NÃO pode finalizar, só a gestão (líder/gerente).
     const cfgFinish = await getUnitConfig(tenantId, att.unitId)
+    // Tipo de atendimento (natureza da visita) decide se consome a vez da fila.
+    const consumesTurn = typeConsumesTurn(readAttendanceTypesConfig(cfgFinish?.config), att.visitType)
     const allowSellerFinish = (cfgFinish?.config as { allowSellerFinish?: boolean } | null)?.allowSellerFinish ?? true
     if (!allowSellerFinish && att.sellerId === user.id && !isLead) {
       return forbiddenResponse('A finalização do atendimento é feita pela gestão (configuração da loja).')
@@ -62,11 +65,18 @@ export async function POST(req: Request, { params }: Ctx) {
           dealId: d.dealId ?? null, leadId: d.leadId ?? null, notes: d.notes ?? null,
         },
       })
-      await moveEntryToEnd(tx, att.queueId, att.sellerId, { countAttendance: true })
+      // "Consome a vez": tipo que consome → vai ao FIM da fila (padrão). Tipo que
+      // NÃO consome (ex.: agendamento/retorno/documentação, conforme config) →
+      // volta a AGUARDAR mantendo a posição (não perde a vez).
+      if (consumesTurn) {
+        await moveEntryToEnd(tx, att.queueId, att.sellerId, { countAttendance: true })
+      } else {
+        await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: att.sellerId, status: { in: ['IN_ATTENDANCE', 'CALLED'] } }, data: { status: 'WAITING', pausedAt: null, lastActiveAt: new Date() } })
+      }
       if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'DONE' } })
     })
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'ATTENDANCE_FINISHED', sellerId: att.sellerId, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id, reason: d.result })
-    await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
+    if (consumesTurn) await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'FINISH', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
 
     // Gera/reaproveita o lead (sem duplicar), acha-ou-cria o cliente e — se

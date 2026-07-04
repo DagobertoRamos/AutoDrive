@@ -43,6 +43,14 @@ export default function VerificarVezModal({ onClose, onChanged }: { onClose: () 
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [types, setTypes] = useState<Array<{ code: string; label: string }>>([])
+  const [visitType, setVisitType] = useState('CLIENTE_PORTA')
+
+  useEffect(() => {
+    fetch('/api/seller-queue/attendance-types-config', { credentials: 'include' }).then((r) => r.json())
+      .then((j) => { const t = (j?.data?.types ?? []).filter((x: { active?: boolean }) => x.active !== false); setTypes(t); if (t[0]?.code) setVisitType((v) => t.some((x: { code: string }) => x.code === v) ? v : t[0].code) })
+      .catch(() => setTypes([]))
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -87,6 +95,8 @@ export default function VerificarVezModal({ onClose, onChanged }: { onClose: () 
       const pos = await getPosition()
       const acc = await post(`/api/seller-queue/attendances/${attId}/accept`, pos)
       if (!acc.ok) { setFeedback({ ok: false, msg: acc.error ?? 'Não foi possível validar sua presença para iniciar.' }); return }
+      // Grava a natureza da visita (best-effort — não bloqueia o início).
+      if (visitType) await post(`/api/seller-queue/attendances/${attId}/set-type`, { visitType }).catch(() => {})
       setFeedback({ ok: true, msg: 'Atendimento iniciado! Cadastre o cliente na sua fila.' })
       onChanged?.()
       await load()
@@ -155,6 +165,15 @@ export default function VerificarVezModal({ onClose, onChanged }: { onClose: () 
 
               {/* Ações */}
               <div className="space-y-2">
+                {data.canStartAttendance && types.length > 0 && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Tipo de atendimento</label>
+                    <select value={visitType} onChange={(e) => setVisitType(e.target.value)} disabled={busy}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+                      {types.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                    </select>
+                  </div>
+                )}
                 {data.canStartAttendance && (
                   <button onClick={startAttendance} disabled={busy} className="btn-primary w-full justify-center py-3 text-base">
                     {busy ? <RefreshCw size={18} className="animate-spin" /> : <Play size={18} />}Iniciar atendimento

@@ -2575,3 +2575,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Montado** em `vendedor-da-vez/configuracoes` (toque mínimo: 1 import + 1 render antes da seção anti-abuso). Não altera nenhuma outra seção do Codex.
 - **Feature de escalonamento COMPLETA:** config (0180) → motor (0180) → fluxo+first-accept-wins (0181) → API+UI (0182). Opt-in (`active=false` default). `tsc` verde.
 - **Pendência (Fase 4):** modal "iniciar atendimento com TIPO" (retirada de carro / entrega / documentação / test-drive / avaliação, além dos atuais agendamento/retorno/pós-venda) + config "esse tipo consome a vez?".
+
+### LOG 0183 — 2026-07-04 — Claude (Opus 4.8) — Fila: tipos de atendimento (natureza da visita) + "consome a vez" (Fase 4)
+- **Migration ADITIVA (aplicada em prod):** `20260704160000_add_attendance_visit_type` — `seller_queue_attendances.visitType TEXT`.
+- **Config-driven** (`attendance-types-config.ts`, bloco `config.attendanceTypes`): lista de tipos com código/rótulo/ativo/**consumesTurn** + defaults da spec (Cliente de porta, Agendamento, Retorno, Pós-venda, **Retirada de carro, Entrega de veículo, Documentação, Test-drive, Avaliação**, Outro). `findActiveType`/`typeConsumesTurn`. **6 testes**.
+- **API dedicada** `/api/seller-queue/attendance-types-config` (GET/PUT, merge, gate settings) + `/api/seller-queue/attendances/[id]/set-type` (grava visitType, valida tipo ativo, "Outro" exige descrição, próprio vendedor ou gestão, tenant-scoped, auditado).
+- **"Consome a vez" no finish:** tipo que consome → vai ao fim da fila (padrão atual); tipo que NÃO consome → volta a AGUARDAR **mantendo a posição** (não perde a vez). Guard cirúrgico no `finish/route.ts` (usa o `cfgFinish` já carregado).
+- **UI:** `AttendanceTypesConfigCard` (editar tipos + consumesTurn) montado nas configurações; **seletor de tipo** no `VerificarVezModal` (ao "Iniciar atendimento" o vendedor escolhe a natureza; grava via set-type após o accept, best-effort).
+- **Não quebra nada:** visitType nullable; sem tipo → consome (conservador, = comportamento atual). `tsc` verde; suíte seller-queue **55/55**.
+- **Fecha a Fase 4.** Cliente é opcional no início e obrigatório no finish (guard já existente do Codex mantido).

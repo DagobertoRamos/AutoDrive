@@ -4974,6 +4974,7 @@ model SellerQueueAttendance {
   arrivalId      String?
   status         String                  @default("CALLED") // CALLED | ACCEPTED | IN_ATTENDANCE | FINISHED | REJECTED | EXPIRED
   type           SellerAttendanceType?
+  visitType      String? // natureza da visita (config-driven): CLIENTE_PORTA | AGENDAMENTO | RETORNO | POS_VENDA | RETIRADA_CARRO | ENTREGA_VEICULO | DOCUMENTACAO | TEST_DRIVE | AVALIACAO | OUTRO
   result         SellerAttendanceResult?
   calledAt       DateTime                @default(now())
   acceptDeadline DateTime?
