@@ -8,19 +8,18 @@ import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { reorderSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gerência pode reordenar a fila.')
-  { const gate = await assertModuleEnabled(user, 'sellerQueue.manage'); if (gate) return gate }
+  if (!await canAccessModuleForUser(user, 'queue.reorder')) return forbiddenResponse('Sem permissão para reordenar a fila.')
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   try {

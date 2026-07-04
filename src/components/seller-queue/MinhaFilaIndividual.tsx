@@ -68,7 +68,7 @@ export default function MinhaFilaIndividual({ onChanged }: { onChanged?: () => v
   if (loading || items.length === 0) return null // só aparece quando há itens
 
   return (
-    <div className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-card">
+    <div className="max-w-full overflow-hidden rounded-xl border border-brand-200 bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-gray-100 bg-brand-50 px-4 py-2.5">
         <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-800"><ListChecks size={15} />Minha fila individual ({items.length})</p>
         <button onClick={load} className="rounded p-1 text-brand-600 hover:bg-brand-100" title="Atualizar"><RefreshCw size={13} /></button>
@@ -76,21 +76,23 @@ export default function MinhaFilaIndividual({ onChanged }: { onChanged?: () => v
       {error && <div className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
       <ul className="divide-y divide-gray-100">
         {items.map((it, i) => (
-          <li key={it.id} className="flex items-center gap-3 px-4 py-3">
-            <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', TYPE_CLS[it.itemType] ?? 'bg-gray-100 text-gray-600')}>{it.itemTypeLabel}</span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-gray-900">{it.customerName ?? 'Cliente'}</p>
+          <li key={it.id} className="grid gap-3 px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+            <span className={cn('w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold', TYPE_CLS[it.itemType] ?? 'bg-gray-100 text-gray-600')}>{it.itemTypeLabel}</span>
+            <div className="min-w-0">
+              <p className="break-words text-sm font-medium text-gray-900">{it.customerName ?? 'Cliente'}</p>
               <p className="flex items-center gap-1 text-xs text-gray-400"><Clock size={11} />aguardando {waitLabel(it.waitingSeconds)}</p>
             </div>
-            <button
-              onClick={() => act(it.id, 'start')}
-              disabled={busyId === it.id}
-              className={cn('flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold', i === 0 ? 'bg-brand-600 text-white hover:bg-brand-700' : 'border border-brand-300 text-brand-700 hover:bg-brand-50')}
-            >
-              {busyId === it.id ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}{i === 0 ? 'Iniciar próximo' : 'Iniciar'}
-            </button>
-            <button onClick={() => act(it.id, 'reschedule')} disabled={busyId === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Atender depois (manda para o fim da fila)"><History size={14} /></button>
-            <button onClick={() => act(it.id, 'cancel')} disabled={busyId === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Cancelar"><X size={14} /></button>
+            <div className="grid gap-1.5 min-[380px]:grid-cols-[1fr_auto_auto] sm:flex sm:justify-end">
+              <button
+                onClick={() => act(it.id, 'start')}
+                disabled={busyId === it.id}
+                className={cn('flex min-h-9 items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold', i === 0 ? 'bg-brand-600 text-white hover:bg-brand-700' : 'border border-brand-300 text-brand-700 hover:bg-brand-50')}
+              >
+                {busyId === it.id ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}{i === 0 ? 'Iniciar próximo' : 'Iniciar'}
+              </button>
+              <button onClick={() => act(it.id, 'reschedule')} disabled={busyId === it.id} className="min-h-9 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Atender depois (manda para o fim da fila)"><History size={14} className="mx-auto" /></button>
+              <button onClick={() => act(it.id, 'cancel')} disabled={busyId === it.id} className="min-h-9 rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Cancelar"><X size={14} className="mx-auto" /></button>
+            </div>
           </li>
         ))}
       </ul>

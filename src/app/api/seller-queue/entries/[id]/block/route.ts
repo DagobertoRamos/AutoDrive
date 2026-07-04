@@ -7,14 +7,13 @@ import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { blockSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent } from '@/lib/seller-queue/queue'
 import { clearActiveBlocks } from '@/lib/seller-queue/penalty'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 const MGMT_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -22,8 +21,7 @@ const MGMT_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 
 export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gerência pode bloquear/liberar vendedores.')
-  { const gate = await assertModuleEnabled(user, 'sellerQueue.manage'); if (gate) return gate }
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
@@ -33,6 +31,8 @@ export async function POST(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, user.tenantId, entry.tenantId)) return forbiddenResponse('Vendedor de outra loja.')
 
     const d = blockSchema.parse(await req.json())
+    const permission = d.blocked ? 'queue.block_participant' : 'queue.unblock_participant'
+    if (!await canAccessModuleForUser(user, permission)) return forbiddenResponse('Sem permissão para bloquear/liberar vendedores.')
     await prisma.sellerQueueEntry.update({
       where: { id },
       data: { blocked: d.blocked, status: d.blocked ? 'BLOCKED' : 'WAITING', ...(d.blocked ? {} : { pausedAt: null }) },

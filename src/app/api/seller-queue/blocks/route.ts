@@ -8,17 +8,16 @@
 
 import { NextResponse } from 'next/server'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
 import { listBlockedSellers, releaseSeller, releaseAllSellers } from '@/lib/seller-queue/penalty'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gerência pode gerir bloqueios.')
+  if (!await canAccessModuleForUser(user, 'queue.unblock_participant')) return forbiddenResponse('Apenas pessoas autorizadas podem gerir bloqueios.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.manage'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
@@ -35,7 +34,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gerência pode liberar vendedores.')
+  if (!await canAccessModuleForUser(user, 'queue.unblock_participant')) return forbiddenResponse('Apenas pessoas autorizadas podem liberar vendedores.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.manage'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))

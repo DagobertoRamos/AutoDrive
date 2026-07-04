@@ -41,6 +41,15 @@ describe('permissions (RBAC por módulo)', () => {
     expect(canAccessModule('VENDEDOR', 'commissions')).toBe(true)
   })
 
+  it('permissões granulares da fila separam vendedor comum de gestão', () => {
+    expect(canAccessModule('VENDEDOR', 'queue.call_current_seller')).toBe(false)
+    expect(canAccessModule('GERENTE', 'queue.call_current_seller')).toBe(true)
+    expect(canAccessModule('VENDEDOR', 'queue.transfer_attendance')).toBe(false)
+    expect(canAccessModule('VENDEDOR_LIDER', 'queue.transfer_attendance')).toBe(true)
+    expect(canAccessModule('GERENTE', 'queue.reorder')).toBe(true)
+    expect(canAccessModule('VENDEDOR_LIDER', 'queue.reorder')).toBe(false)
+  })
+
   it('getManageableRoles não inclui roles iguais ou acima', () => {
     const m = getManageableRoles('GERENTE')
     expect(m).not.toContain('MASTER')

@@ -122,6 +122,29 @@ export type Module =
   | 'sellerQueue.reports'         // relatórios da fila/atendimentos
   | 'sellerQueue.settings'        // configurar regras da unidade
   | 'sellerQueue.override'        // exceção/override com justificativa
+  | 'queue.view.own'
+  | 'queue.view.unit'
+  | 'queue.view.all'
+  | 'queue.check_turn'
+  | 'queue.call_current_seller'
+  | 'queue.start_own_attendance'
+  | 'queue.finish_own_attendance'
+  | 'queue.transfer_attendance'
+  | 'queue.takeover_attendance'
+  | 'queue.finish_other_attendance'
+  | 'queue.pause_self'
+  | 'queue.resume_self'
+  | 'queue.pause_other'
+  | 'queue.resume_other'
+  | 'queue.remove_participant'
+  | 'queue.add_participant'
+  | 'queue.block_participant'
+  | 'queue.unblock_participant'
+  | 'queue.view_logs'
+  | 'queue.manage_settings'
+  | 'queue.send_alert_all'
+  | 'queue.reorder'
+  | 'queue.force_skip_turn'
 
 // ── Hierarquia numérica de roles ─────────────────────────────────────────────
 // Quanto maior, mais alto na hierarquia
@@ -531,6 +554,29 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
     actions: ['read', 'update', 'configure'],
   },
+  'queue.view.own': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'], actions: ['read'] },
+  'queue.view.unit': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read'] },
+  'queue.view.all': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL'], actions: ['read'] },
+  'queue.check_turn': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'], actions: ['read'] },
+  'queue.call_current_seller': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read', 'create'] },
+  'queue.start_own_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'], actions: ['create'] },
+  'queue.finish_own_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'], actions: ['update'] },
+  'queue.transfer_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
+  'queue.takeover_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
+  'queue.finish_other_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
+  'queue.pause_self': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'], actions: ['update'] },
+  'queue.resume_self': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'], actions: ['update'] },
+  'queue.pause_other': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
+  'queue.resume_other': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
+  'queue.remove_participant': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['delete'] },
+  'queue.add_participant': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['create'] },
+  'queue.block_participant': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
+  'queue.unblock_participant': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
+  'queue.view_logs': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read'] },
+  'queue.manage_settings': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['configure'] },
+  'queue.send_alert_all': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['dispatch'] },
+  'queue.reorder': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
+  'queue.force_skip_turn': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────

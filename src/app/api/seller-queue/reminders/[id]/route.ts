@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server'
 import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import {
   confirmAttendanceStillActive,
   requestAttendanceFinishFromReminder,
@@ -22,7 +21,7 @@ const bodySchema = z.object({
 export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
+  if (!await canAccessModuleForUser(user, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
@@ -33,7 +32,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const att = await prisma.sellerQueueAttendance.findUnique({ where: { id }, select: { tenantId: true, sellerId: true } })
     if (!att) return NextResponse.json({ success: false, error: 'Atendimento não encontrado.' }, { status: 404 })
     if (!ownsTenant(user.role, user.tenantId, att.tenantId)) return forbiddenResponse('Atendimento de outra loja.')
-    const isManager = canAccessModule(user.role, 'sellerQueue.lead')
+    const isManager = await canAccessModuleForUser(user, 'queue.send_alert_all')
     if (body.action === 'send-now') {
       if (!isManager) return forbiddenResponse('Apenas a gestão pode enviar lembrete manual.')
       const data = await sendAttendanceReminderNow(id, { tenantId, actorId: user.id, manual: true })

@@ -92,16 +92,18 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 // Editor de módulos por colaborador (override do cargo)
 // -----------------------------------------------------------------------------
 
-interface ModFeature { key: string; label: string; tenantDisabled: boolean; enabled: boolean }
+interface ModFeature { key: string; label: string; tenantDisabled: boolean; enabled: boolean; baseAllowed: boolean; extraAllowed: boolean; blocked: boolean; level: number; sensitive: boolean }
 interface ModGroup { area: string; features: ModFeature[] }
+interface ModuleSelection { allowed: string[]; denied: string[]; reason: string; restoreDefault?: boolean }
 
-// Seletor de módulos CONTROLADO — funciona para colaborador NOVO (catálogo do
-// cargo, por positionId) e EDIÇÃO (estado real, por userId). Não salva sozinho:
-// reporta a lista de "denied" ao formulário, que salva tudo junto.
-function ModulesPicker({ positionId, userId, onChange }: { positionId: string | null; userId?: string | null; onChange: (denied: string[]) => void }) {
+// Seletor de permissões CONTROLADO — mostra padrão do cargo + extras individuais
+// + bloqueios. Não salva sozinho: reporta a seleção ao formulário.
+function ModulesPicker({ positionId, userId, onChange }: { positionId: string | null; userId?: string | null; onChange: (selection: ModuleSelection) => void }) {
   const [groups, setGroups] = useState<ModGroup[]>([])
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
+  const [reason, setReason] = useState('')
+  const [restoreDefault, setRestoreDefault] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -119,16 +121,38 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
   }, [positionId, userId])
 
   useEffect(() => {
-    onChange(groups.flatMap((g) => g.features).filter((f) => !f.enabled).map((f) => f.key))
-  }, [groups, onChange])
+    const features = groups.flatMap((g) => g.features)
+    onChange({
+      allowed: features.filter((f) => f.enabled && !f.baseAllowed).map((f) => f.key),
+      denied: features.filter((f) => !f.enabled && f.baseAllowed).map((f) => f.key),
+      reason,
+      restoreDefault,
+    })
+  }, [groups, onChange, reason, restoreDefault])
 
-  const toggle = (key: string) => setGroups((gs) => gs.map((g) => ({ ...g, features: g.features.map((f) => (f.key === key ? { ...f, enabled: !f.enabled } : f)) })))
+  const toggle = (key: string) => {
+    setRestoreDefault(false)
+    setGroups((gs) => gs.map((g) => ({ ...g, features: g.features.map((f) => {
+      if (f.key !== key) return f
+      const enabled = !f.enabled
+      return { ...f, enabled, extraAllowed: enabled && !f.baseAllowed, blocked: !enabled && f.baseAllowed }
+    }) })))
+  }
+
+  const restore = () => {
+    if (!window.confirm('Restaurar o padrão do cargo e remover permissões extras/bloqueios deste colaborador?')) return
+    setRestoreDefault(true)
+    setGroups((gs) => gs.map((g) => ({ ...g, features: g.features.map((f) => ({ ...f, enabled: f.baseAllowed, extraAllowed: false, blocked: false })) })))
+  }
 
   if (loading) return <p className="text-xs text-gray-400">Carregando módulos…</p>
   if (!groups.length) return <p className="text-xs text-gray-400">Selecione um cargo para ver os módulos.</p>
 
   const all = groups.flatMap((g) => g.features)
   const onCount = all.filter((f) => f.enabled).length
+  const extraCount = all.filter((f) => f.enabled && !f.baseAllowed).length
+  const blockedCount = all.filter((f) => !f.enabled && f.baseAllowed).length
+  const needsReason = all.some((f) => f.sensitive && ((f.enabled && !f.baseAllowed) || (!f.enabled && f.baseAllowed)))
   const ql = q.trim().toLowerCase()
   const filtered = ql
     ? groups.map((g) => ({ ...g, features: g.features.filter((f) => f.label.toLowerCase().includes(ql) || g.area.toLowerCase().includes(ql)) })).filter((g) => g.features.length)
@@ -143,13 +167,32 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
         </div>
         <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">{onCount}/{all.length} ativos</span>
       </div>
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="rounded-full bg-blue-50 px-2 py-1 font-medium text-blue-700">{extraCount} extra(s)</span>
+        <span className="rounded-full bg-red-50 px-2 py-1 font-medium text-red-700">{blockedCount} bloqueio(s)</span>
+        {userId && <button type="button" onClick={restore} className="rounded-lg border border-gray-200 px-2 py-1 font-semibold text-gray-600 hover:bg-gray-50">Restaurar padrão do cargo</button>}
+      </div>
+      {needsReason && (
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-gray-700">Motivo da alteração sensível</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: colaborador atuará como líder da loja" className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500" />
+        </div>
+      )}
       {filtered.map((g) => (
         <div key={g.area} className="overflow-hidden rounded-lg border border-gray-200">
           <p className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{g.area}</p>
           <div className="divide-y divide-gray-100">
             {g.features.map((f) => (
               <button type="button" key={f.key} disabled={f.tenantDisabled} onClick={() => toggle(f.key)} className={cn('flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50')}>
-                <span className={cn('text-sm', f.enabled ? 'font-medium text-gray-800' : 'text-gray-400')}>{f.label}{f.tenantDisabled ? ' (desligado p/ loja)' : ''}</span>
+                <span className={cn('min-w-0 text-sm', f.enabled ? 'font-medium text-gray-800' : 'text-gray-400')}>
+                  <span className="break-words">{f.label}{f.tenantDisabled ? ' (desligado p/ loja)' : ''}</span>
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    {f.baseAllowed && <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">cargo</span>}
+                    {f.extraAllowed && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">extra</span>}
+                    {f.blocked && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">bloqueado</span>}
+                    {f.sensitive && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">sensível N{f.level}</span>}
+                  </span>
+                </span>
                 <span className={cn('relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors', f.enabled ? 'bg-brand-600' : 'bg-gray-300')}>
                   <span className={cn('inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform', f.enabled ? 'translate-x-[18px]' : 'translate-x-0.5')} />
                 </span>
@@ -171,7 +214,7 @@ function Modal({
 }: {
   open: boolean
   onClose: () => void
-  onSave: (data: SellerForm, denied: string[], rankingParticipates: boolean) => Promise<void>
+  onSave: (data: SellerForm, moduleSelection: ModuleSelection, rankingParticipates: boolean) => Promise<void>
   initial?: Seller | null
   saving: boolean
   error: string | null
@@ -179,7 +222,7 @@ function Modal({
   positions: Position[]
 }) {
   const [form, setForm] = useState<SellerForm>(emptyForm)
-  const [denied, setDenied] = useState<string[]>([])
+  const [moduleSelection, setModuleSelection] = useState<ModuleSelection>({ allowed: [], denied: [], reason: '' })
   const [rankingOn, setRankingOn] = useState(true)
 
   useEffect(() => {
@@ -229,7 +272,7 @@ function Modal({
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); onSave(form, denied, rankingOn) }}
+          onSubmit={(e) => { e.preventDefault(); onSave(form, moduleSelection, rankingOn) }}
           className="px-6 py-5 space-y-4"
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -287,9 +330,9 @@ function Modal({
           </div>
 
           <div className="rounded-lg border border-gray-200 p-3">
-            <p className="mb-2 text-xs font-semibold text-gray-700">Módulos e serviços liberados</p>
-            <p className="-mt-1 mb-2 text-[11px] text-gray-400">Desmarque para remover o acesso deste colaborador. A lista mostra só o que o cargo permite. Salva junto com o cadastro.</p>
-            <ModulesPicker positionId={form.positionId} userId={initial?.userId} onChange={setDenied} />
+            <p className="mb-2 text-xs font-semibold text-gray-700">Permissões do colaborador</p>
+            <p className="-mt-1 mb-2 text-[11px] text-gray-400">Essas permissões são adicionais ao cargo base. Também é possível bloquear algo que o cargo normalmente permite.</p>
+            <ModulesPicker positionId={form.positionId} userId={initial?.userId} onChange={setModuleSelection} />
           </div>
 
           {!initial && (
@@ -375,7 +418,7 @@ export default function VendedoresPage() {
   const openCreate = () => { setEditing(null); setSaveError(null); setModalOpen(true) }
   const openEdit = (s: Seller) => { setEditing(s); setSaveError(null); setModalOpen(true) }
 
-  const handleSave = async (data: SellerForm, denied: string[], rankingParticipates: boolean) => {
+  const handleSave = async (data: SellerForm, moduleSelection: ModuleSelection, rankingParticipates: boolean) => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -389,7 +432,16 @@ export default function VendedoresPage() {
       // Salva os módulos (ativação/desativação) JUNTO com o cadastro.
       const targetUserId = editing ? editing.userId : json?.data?.userId
       if (targetUserId) {
-        await fetch(`/api/users/${targetUserId}/modules`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ denied }) }).catch(() => {})
+        const modulesRes = await fetch(`/api/users/${targetUserId}/modules`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(moduleSelection),
+        }).catch(() => null)
+        if (modulesRes && !modulesRes.ok) {
+          const modulesJson = await modulesRes.json().catch(() => ({}))
+          throw new Error(modulesJson?.error ?? 'Colaborador salvo, mas falhou ao salvar permissões.')
+        }
         // Participação no ranking (default: participa) — salva junto.
         await fetch('/api/ranking/participation', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ userId: targetUserId, participates: rankingParticipates }) }).catch(() => {})
       }

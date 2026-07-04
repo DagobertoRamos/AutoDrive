@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server'
 import { z, ZodError } from 'zod'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
 import { getReminderDashboard, sendQueueAlert } from '@/lib/seller-queue/reminders'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 const alertSchema = z.object({
   action: z.literal('send-queue-alert'),
@@ -19,7 +18,7 @@ const alertSchema = z.object({
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
+  if (!await canAccessModuleForUser(user, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
@@ -37,7 +36,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.lead')) return forbiddenResponse('Apenas a gestão pode enviar alertas da fila.')
+  if (!await canAccessModuleForUser(user, 'queue.send_alert_all')) return forbiddenResponse('Sem permissão para enviar alertas da fila.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.lead'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))

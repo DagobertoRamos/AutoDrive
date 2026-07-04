@@ -18,7 +18,7 @@ import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { ensureAttendanceLead } from '@/lib/seller-queue/lead'
 import { concludePersonalItemByAttendance, listPersonalQueueForAgent } from '@/lib/seller-queue/personal-queue'
 import type { SellerAttendanceType, SellerAttendanceResult } from '@prisma/client'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -34,7 +34,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const att = await prisma.sellerQueueAttendance.findUnique({ where: { id } })
     if (!att) return NextResponse.json({ success: false, error: 'Atendimento não encontrado.' }, { status: 404 })
     if (!ownsTenant(user.role, user.tenantId, att.tenantId)) return forbiddenResponse('Atendimento de outra loja.')
-    const isLead = canAccessModule(user.role, 'sellerQueue.lead')
+    const isLead = await canAccessModuleForUser(user, 'queue.finish_other_attendance')
     if (att.sellerId !== user.id && !isLead) return forbiddenResponse('Apenas o vendedor do atendimento ou a gestão pode finalizar.')
     if (!['IN_ATTENDANCE', 'ACCEPTED'].includes(att.status)) return NextResponse.json({ success: false, error: 'Atendimento não está em andamento.' }, { status: 409 })
 

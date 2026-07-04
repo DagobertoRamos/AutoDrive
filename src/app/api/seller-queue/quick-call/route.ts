@@ -11,18 +11,17 @@ import { NextResponse } from 'next/server'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 
 export const maxDuration = 30 // reenvios de web push (iPhone) rodam em 2º plano
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
 import { getOrCreateQueue, logQueueEvent, unitFromRequest } from '@/lib/seller-queue/queue'
 import { callForArrival } from '@/lib/seller-queue/call'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
+  if (!await canAccessModuleForUser(user, 'queue.call_current_seller')) return forbiddenResponse('Sem permissão para chamar o vendedor da vez.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))

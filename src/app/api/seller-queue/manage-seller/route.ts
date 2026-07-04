@@ -8,22 +8,27 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { queueDate, nextPosition, getOrCreateQueue, logQueueEvent } from '@/lib/seller-queue/queue'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
 const ACTIONS = ['pause', 'resume', 'add', 'remove'] as const
 type Action = (typeof ACTIONS)[number]
 
+const ACTION_PERMISSION: Record<Action, string> = {
+  pause: 'queue.pause_other',
+  resume: 'queue.resume_other',
+  add: 'queue.add_participant',
+  remove: 'queue.remove_participant',
+}
+
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.lead')) return forbiddenResponse('Apenas a gestão pode gerenciar a fila dos vendedores.')
-  { const gate = await assertModuleEnabled(user, 'sellerQueue.lead'); if (gate) return gate }
+  { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = user.unitId
@@ -36,6 +41,9 @@ export async function POST(req: Request) {
     const reason = typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim() : null
     if (!sellerId || !ACTIONS.includes(action)) {
       return NextResponse.json({ success: false, error: 'Parâmetros inválidos (sellerId/action).' }, { status: 400 })
+    }
+    if (!await canAccessModuleForUser(user, ACTION_PERMISSION[action])) {
+      return forbiddenResponse('Sem permissão para esta ação na fila.')
     }
     if (!reason) {
       return NextResponse.json({ success: false, error: 'Informe o motivo da ação administrativa.' }, { status: 400 })

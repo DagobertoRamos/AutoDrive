@@ -24,7 +24,7 @@ const RESULTS = [['CONVERTED_TO_NEGOTIATION', 'Virou negociação'], ['SCHEDULED
 interface Me { status: string; position: number }
 interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; customerEmail: string | null; recurring: boolean } | null }
 interface Block { type: 'COOLDOWN' | 'DAILY_BLOCK'; endsAt: string }
-interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; myBlock?: Block | null; myPosVenda?: { status: string } | null; closeReasons?: string[]; autoRemovedNotice?: string | null; queueOpen?: boolean; canCheckIn?: boolean; onVacation?: boolean }
+interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; myBlock?: Block | null; myPosVenda?: { status: string } | null; closeReasons?: string[]; autoRemovedNotice?: string | null; queueOpen?: boolean; canCheckIn?: boolean; onVacation?: boolean; permissions?: { callCurrentSeller?: boolean } }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -109,6 +109,7 @@ export default function MinhaVezPanel() {
   // há chamada tocando ou dentro do cooldown de 10s.
   const callDaVez = async () => {
     if (calling) return
+    if (!data?.permissions?.callCurrentSeller) { flash('Sem permissão para chamar o vendedor da vez.', false); return }
     setCalling(true)
     try {
       const res = await fetch('/api/seller-queue/quick-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' })
@@ -155,7 +156,7 @@ export default function MinhaVezPanel() {
   const showStatusCard = !!me || data?.canCheckIn !== false
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 max-w-full space-y-4 overflow-hidden">
       <style>{`
         @keyframes mv-rise { from { opacity:0; transform: translateY(12px) } to { opacity:1; transform:none } }
         @keyframes mv-shine { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
@@ -164,7 +165,7 @@ export default function MinhaVezPanel() {
         .mv-card::after { content:''; position:absolute; inset:0; background-image:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.5) 50%,transparent 65%); background-size:200% 100%; animation: mv-shine 3s linear infinite; pointer-events:none }
         .mv-float { animation: mv-float 2.6s ease-in-out infinite }
       `}</style>
-      {toast && <div className={cn('rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
+      {toast && <div className={cn('break-words rounded-lg px-4 py-2 text-sm', toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>{toast.msg}</div>}
 
       <AlertSetupBanner />
 
@@ -210,7 +211,7 @@ export default function MinhaVezPanel() {
           <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">Você é o vendedor da vez</p>
           <p className="mt-1 text-gray-700">Cliente presencial aguardando{att.arrival?.customerName ? `: ${att.arrival.customerName}` : ''}.{att.arrival?.recurring ? ' (recorrente)' : ''}</p>
           {secsLeft != null && <p className="mt-2 inline-flex items-center gap-1 text-2xl font-bold tabular-nums text-brand-700"><Clock size={20} />{secsLeft}s</p>}
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <button onClick={accept} disabled={busy} className="btn-primary flex-1 justify-center py-3 text-base"><Check size={18} />Aceitar</button>
             <button onClick={reject} disabled={busy} className="btn-secondary justify-center py-3"><X size={18} />Recusar</button>
           </div>
@@ -227,10 +228,10 @@ export default function MinhaVezPanel() {
       )}
 
       {/* Ações rápidas — cards animados: Entrar · Chamar da vez · Atender · QR */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {/* Card 1 — Entrar na fila / seu status */}
         {showStatusCard && (
-          <div className="mv-card relative overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4 shadow-card" style={{ animationDelay: '0ms' }}>
+          <div className="mv-card relative min-w-0 overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4 shadow-card" style={{ animationDelay: '0ms' }}>
             <DoorOpen size={22} className="mv-float text-brand-600" />
             <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-500">Sua vez</p>
             {!me || me.status === 'LEFT' ? (
@@ -243,7 +244,7 @@ export default function MinhaVezPanel() {
               <>
                 <p className="text-2xl font-bold leading-tight text-gray-900">{me.position > 0 ? `${me.position}º` : statusLabel(me.status)}</p>
                 <p className="text-xs text-gray-400">{statusLabel(me.status)}</p>
-                <div className="relative z-10 mt-2 flex gap-1.5">
+                <div className="relative z-10 mt-2 grid gap-1.5 min-[380px]:grid-cols-2">
                   {me.status === 'PAUSED' ? (
                     <button onClick={resume} disabled={busy} className="flex-1 rounded-lg bg-brand-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-60"><Play size={13} className="mr-1 inline" />Voltar</button>
                   ) : ['WAITING', 'NEXT'].includes(me.status) ? (
@@ -257,16 +258,16 @@ export default function MinhaVezPanel() {
         )}
 
         {/* Card 2 — Chamar vendedor da vez (1 toque, com trava anti-duplicidade) */}
-        <button onClick={callDaVez} disabled={calling} className="mv-card group relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '60ms' }}>
+        {data?.permissions?.callCurrentSeller && <button onClick={callDaVez} disabled={calling} className="mv-card group relative min-w-0 overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '60ms' }}>
           <Crown size={22} className="mv-float text-amber-500" />
           <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-amber-600">Vendedor da vez</p>
           <p className="truncate text-lg font-bold leading-tight text-gray-900" title={data?.vendedorDaVez?.sellerName}>{data?.vendedorDaVez?.sellerName ?? '— ninguém'}</p>
           <span className="relative z-10 mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm"><Hand size={13} />{calling ? 'Chamando…' : 'Chamar da vez'}</span>
-        </button>
+        </button>}
 
         {/* Card 3 — Ler QR da loja */}
         {showStatusCard && (
-          <button onClick={() => setScanOpen(true)} disabled={busy} className="mv-card group relative overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '90ms' }}>
+          <button onClick={() => setScanOpen(true)} disabled={busy} className="mv-card group relative min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '90ms' }}>
             <QrCode size={22} className="mv-float text-gray-700" />
             <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">QR da loja</p>
             <p className="text-lg font-bold leading-tight text-gray-900">Entrar com QR</p>
@@ -275,7 +276,7 @@ export default function MinhaVezPanel() {
         )}
 
         {/* Card 4 — Atender cliente (chamar responsável / registrar chegada) */}
-        <button onClick={() => setCustomerOpen(true)} className="mv-card group relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg" style={{ animationDelay: '180ms' }}>
+        <button onClick={() => setCustomerOpen(true)} className="mv-card group relative min-w-0 overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg" style={{ animationDelay: '180ms' }}>
           <Bell size={22} className="mv-float text-blue-500" />
           <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">Atender cliente</p>
           <p className="text-lg font-bold leading-tight text-gray-900">Registrar / chamar</p>
@@ -288,7 +289,7 @@ export default function MinhaVezPanel() {
       {/* Popup — atender cliente (registrar chegada / chamar responsável / pós-vendas / agendamento) */}
       {customerOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3" onClick={() => setCustomerOpen(false)}>
-          <div className="mx-auto my-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto my-4 w-full max-w-md max-w-[calc(100vw-1.5rem)]" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-base font-bold text-white drop-shadow">Atender cliente</h3>
               <button onClick={() => setCustomerOpen(false)} className="rounded-lg bg-white/90 p-1.5 text-gray-600 shadow hover:bg-white"><X size={18} /></button>
@@ -300,7 +301,7 @@ export default function MinhaVezPanel() {
 
       {finishOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[92vh] w-full max-w-md max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-5" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-1 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
             <p className="mb-3 text-xs text-gray-500">Registre os dados do cliente e o resultado. Gera um lead de atendimento no seu nome.</p>
             <div className="space-y-3">
@@ -315,7 +316,7 @@ export default function MinhaVezPanel() {
               )}
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações *</label><textarea rows={2} className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Obrigatório — resumo do atendimento" /></div>
             </div>
-            <div className="mt-4 flex justify-end gap-2"><button onClick={() => setFinishOpen(false)} className="btn-secondary text-sm">Cancelar</button><button onClick={finish} disabled={busy} className="btn-primary text-sm"><CheckCircle2 size={15} />Finalizar</button></div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-[auto_auto] sm:justify-end"><button onClick={() => setFinishOpen(false)} className="btn-secondary justify-center text-sm">Cancelar</button><button onClick={finish} disabled={busy} className="btn-primary justify-center text-sm"><CheckCircle2 size={15} />Finalizar</button></div>
           </div>
         </div>
       )}

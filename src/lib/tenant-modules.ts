@@ -54,6 +54,30 @@ export async function getUserDeniedModules(userId: string): Promise<string[]> {
   }
 }
 
+/** Módulos LIBERADOS explicitamente para um colaborador (extra além do cargo). */
+export async function getUserAllowedModules(userId: string): Promise<string[]> {
+  try {
+    const rows = await prisma.userModule.findMany({ where: { userId, allowed: true }, select: { moduleKey: true } })
+    return rows.map((r) => r.moduleKey)
+  } catch (err) {
+    console.error('[tenant-modules] getUserAllowedModules falhou:', err)
+    return []
+  }
+}
+
+/** Permissão final do colaborador: cargo + extra individual - bloqueio individual. */
+export async function canAccessModuleForUser(user: { id?: string; role?: string | null }, module: Module | string): Promise<boolean> {
+  const base = canAccessModule(user.role ?? undefined, module as Module)
+  if (!user.id) return base
+  try {
+    const row = await prisma.userModule.findUnique({ where: { userId_moduleKey: { userId: user.id, moduleKey: module } }, select: { allowed: true } })
+    if (row) return row.allowed
+  } catch (err) {
+    console.error('[tenant-modules] canAccessModuleForUser falhou:', err)
+  }
+  return base
+}
+
 /** true se o módulo foi explicitamente removido para o colaborador. */
 export async function isModuleDeniedForUser(userId: string, module: string): Promise<boolean> {
   try {

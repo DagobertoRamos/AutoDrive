@@ -8,20 +8,19 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/queue'
 import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
-import { assertModuleEnabled, getDisabledModules } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser, getDisabledModules } from '@/lib/tenant-modules'
 import { autoCheckoutStalePauses, isQueueOpenNow, isOnVacation, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
 import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
+  if (!await canAccessModuleForUser(user, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
@@ -49,7 +48,7 @@ export async function GET(req: Request) {
     // Pode entrar na fila? = módulo sellerQueue.checkIn EFETIVO (cargo permite +
     // não removido do colaborador + não desligado p/ a loja). Quem não pode, não
     // vê "Entrar na fila" — mas continua vendo "Chamar vendedor da vez".
-    let canCheckIn = canAccessModule(user.role, 'sellerQueue.checkIn')
+    let canCheckIn = await canAccessModuleForUser(user, 'sellerQueue.checkIn')
     if (canCheckIn) {
       const [denied, tenantDisabled] = await Promise.all([
         prisma.userModule.findFirst({ where: { userId: user.id, moduleKey: 'sellerQueue.checkIn', allowed: false }, select: { id: true } }),
@@ -57,9 +56,24 @@ export async function GET(req: Request) {
       ])
       if (denied || tenantDisabled.includes('sellerQueue.checkIn')) canCheckIn = false
     }
+    const queuePermissions = {
+      callCurrentSeller: await canAccessModuleForUser(user, 'queue.call_current_seller'),
+      sendAlertAll: await canAccessModuleForUser(user, 'queue.send_alert_all'),
+      viewLogs: await canAccessModuleForUser(user, 'queue.view_logs'),
+      transferAttendance: await canAccessModuleForUser(user, 'queue.transfer_attendance'),
+      finishOtherAttendance: await canAccessModuleForUser(user, 'queue.finish_other_attendance'),
+      pauseOther: await canAccessModuleForUser(user, 'queue.pause_other'),
+      resumeOther: await canAccessModuleForUser(user, 'queue.resume_other'),
+      addParticipant: await canAccessModuleForUser(user, 'queue.add_participant'),
+      removeParticipant: await canAccessModuleForUser(user, 'queue.remove_participant'),
+      blockParticipant: await canAccessModuleForUser(user, 'queue.block_participant'),
+      unblockParticipant: await canAccessModuleForUser(user, 'queue.unblock_participant'),
+      reorder: await canAccessModuleForUser(user, 'queue.reorder'),
+      manageSettings: await canAccessModuleForUser(user, 'queue.manage_settings'),
+    }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions } })
     }
 
     // Remove quem ficou pausado/fora por muito tempo (antes de ler a fila).
@@ -133,6 +147,7 @@ export async function GET(req: Request) {
         myBlock,
         myPosVenda,
         canCheckIn,
+        permissions: queuePermissions,
         queueOpen,
         onVacation,
         autoRemovedNotice,

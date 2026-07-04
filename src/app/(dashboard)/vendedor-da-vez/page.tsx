@@ -60,6 +60,18 @@ interface CurrentData {
   me: Entry | null
   arrivalsPending: number
   queueOpen?: boolean
+  permissions?: {
+    callCurrentSeller?: boolean
+    sendAlertAll?: boolean
+    viewLogs?: boolean
+    pauseOther?: boolean
+    resumeOther?: boolean
+    addParticipant?: boolean
+    removeParticipant?: boolean
+    blockParticipant?: boolean
+    unblockParticipant?: boolean
+    reorder?: boolean
+  }
 }
 
 interface Attendance {
@@ -240,7 +252,7 @@ function requireReason(action: string): string | null {
 export default function FilaOverviewPage() {
   const { data: session } = useSession()
   const user = session?.user as { id?: string; role?: string } | undefined
-  const canManage = !!user?.role && MANAGE_ROLES.includes(user.role)
+  const roleCanManage = !!user?.role && MANAGE_ROLES.includes(user.role)
 
   const [current, setCurrent] = useState<CurrentData | null>(null)
   const [attendances, setAttendances] = useState<Attendance[]>([])
@@ -255,6 +267,11 @@ export default function FilaOverviewPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [now, setNow] = useState(0)
   const firedTimeouts = useRef<Set<string>>(new Set())
+  const queuePerms = current?.permissions
+  const canCallCurrent = Boolean(queuePerms?.callCurrentSeller || roleCanManage)
+  const canManage = Boolean(roleCanManage || queuePerms?.pauseOther || queuePerms?.resumeOther || queuePerms?.removeParticipant || queuePerms?.blockParticipant || queuePerms?.reorder)
+  const canViewLogs = Boolean(queuePerms?.viewLogs || roleCanManage)
+  const canSendQueueAlert = Boolean(queuePerms?.sendAlertAll || roleCanManage)
 
   const flash = (msg: string, ok: boolean) => {
     setToast({ msg, ok })
@@ -268,8 +285,8 @@ export default function FilaOverviewPage() {
         fetch('/api/seller-queue/attendances?active=true', { credentials: 'include' }),
         fetch('/api/seller-queue/reports?days=7', { credentials: 'include' }),
         fetch('/api/seller-queue/reminders', { credentials: 'include' }),
-        canManage ? fetch('/api/seller-queue/events?limit=10', { credentials: 'include' }) : Promise.resolve(null),
-        canManage ? fetch('/api/seller-queue/blocks', { credentials: 'include' }) : Promise.resolve(null),
+        fetch('/api/seller-queue/events?limit=10', { credentials: 'include' }),
+        fetch('/api/seller-queue/blocks', { credentials: 'include' }),
       ])
 
       const [currentRes, attendanceRes, reportRes, reminderRes, eventRes, blockRes] = requests
@@ -304,7 +321,7 @@ export default function FilaOverviewPage() {
     } finally {
       setLoading(false)
     }
-  }, [canManage])
+  }, [])
 
   useEffect(() => {
     const firstLoad = setTimeout(() => { void load() }, 0)
@@ -529,11 +546,13 @@ export default function FilaOverviewPage() {
             <Crown size={14} />
             Verificar vez
           </button>
-          <button onClick={callCurrent} disabled={busy === 'quick-call'} className="btn-primary bg-amber-600 text-xs hover:bg-amber-700">
-            {busy === 'quick-call' ? <RefreshCw size={14} className="animate-spin" /> : <PhoneCall size={14} />}
-            Chamar vendedor da vez
-          </button>
-          {canManage && (
+          {canCallCurrent && (
+            <button onClick={callCurrent} disabled={busy === 'quick-call'} className="btn-primary bg-amber-600 text-xs hover:bg-amber-700">
+              {busy === 'quick-call' ? <RefreshCw size={14} className="animate-spin" /> : <PhoneCall size={14} />}
+              Chamar vendedor da vez
+            </button>
+          )}
+          {canSendQueueAlert && (
             <button onClick={sendQueueAlert} disabled={busy === 'queue-alert'} className="btn-secondary text-xs">
               {busy === 'queue-alert' ? <RefreshCw size={14} className="animate-spin" /> : <BellRing size={14} />}
               Alerta da fila
@@ -608,10 +627,12 @@ export default function FilaOverviewPage() {
                   <Crown size={16} />
                   Verificar vez
                 </button>
-                <button onClick={callCurrent} disabled={busy === 'quick-call'} className="btn-primary justify-center bg-amber-600 py-3 text-sm hover:bg-amber-700">
-                  <BellRing size={16} />
-                  Chamar da vez
-                </button>
+                {canCallCurrent ? (
+                  <button onClick={callCurrent} disabled={busy === 'quick-call'} className="btn-primary justify-center bg-amber-600 py-3 text-sm hover:bg-amber-700">
+                    <BellRing size={16} />
+                    Chamar da vez
+                  </button>
+                ) : <button disabled className="btn-secondary justify-center py-3 text-sm opacity-60"><BellRing size={16} />Sem permissão</button>}
                 <button onClick={() => void startAttendanceFor()} disabled={!canManage || busy === 'start-me'} className="btn-secondary justify-center py-3 text-sm" title={canManage ? 'Iniciar atendimento rápido como gestão' : 'Apenas gestão'}>
                   <Play size={16} />
                   Iniciar rápido
@@ -680,35 +701,35 @@ export default function FilaOverviewPage() {
                       </div>
                       {canManage && (
                         <div className="flex flex-wrap justify-start gap-1.5 md:justify-end">
-                          <button onClick={() => callSpecific(entry.sellerId, entry.sellerName)} disabled={busy === `call-${entry.sellerId}`} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                          {canCallCurrent && <button onClick={() => callSpecific(entry.sellerId, entry.sellerName)} disabled={busy === `call-${entry.sellerId}`} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
                             <PhoneCall size={13} className="mr-1 inline" />
                             Chamar
-                          </button>
+                          </button>}
                           <button onClick={() => startAttendanceFor(entry.sellerId)} disabled={busy === `start-${entry.sellerId}`} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
                             <Play size={13} className="mr-1 inline" />
                             Iniciar
                           </button>
-                          {entry.status === 'PAUSED' ? (
+                          {entry.status === 'PAUSED' && (queuePerms?.resumeOther || roleCanManage) ? (
                             <button onClick={() => manageSeller(entry, 'resume')} className="rounded-lg border border-green-200 px-2 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">
                               <UserCheck size={13} className="mr-1 inline" />
                               Retomar
                             </button>
-                          ) : AVAILABLE_STATUSES.includes(entry.status) ? (
+                          ) : AVAILABLE_STATUSES.includes(entry.status) && (queuePerms?.pauseOther || roleCanManage) ? (
                             <button onClick={() => manageSeller(entry, 'pause')} className="rounded-lg border border-amber-200 px-2 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">
                               <Ban size={13} className="mr-1 inline" />
                               Pausar
                             </button>
                           ) : null}
-                          <button onClick={() => manageSeller(entry, 'remove')} className="rounded-lg border border-red-200 px-2 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
+                          {(queuePerms?.removeParticipant || roleCanManage) && <button onClick={() => manageSeller(entry, 'remove')} className="rounded-lg border border-red-200 px-2 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
                             <LogOut size={13} className="mr-1 inline" />
                             Tirar
-                          </button>
-                          <button onClick={() => blockEntry(entry, !blocked)} className={cn('rounded-lg border px-2 py-1.5 text-xs font-medium', blocked ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-red-200 text-red-700 hover:bg-red-50')}>
+                          </button>}
+                          {((blocked && (queuePerms?.unblockParticipant || roleCanManage)) || (!blocked && (queuePerms?.blockParticipant || roleCanManage))) && <button onClick={() => blockEntry(entry, !blocked)} className={cn('rounded-lg border px-2 py-1.5 text-xs font-medium', blocked ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-red-200 text-red-700 hover:bg-red-50')}>
                             {blocked ? <UserCheck size={13} className="mr-1 inline" /> : <UserX size={13} className="mr-1 inline" />}
                             {blocked ? 'Desbloquear' : 'Bloquear'}
-                          </button>
-                          <button onClick={() => moveEntry(entry, 'up')} className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50" title="Subir posição"><ArrowUp size={14} /></button>
-                          <button onClick={() => moveEntry(entry, 'down')} className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50" title="Descer posição"><ArrowDown size={14} /></button>
+                          </button>}
+                          {(queuePerms?.reorder || roleCanManage) && <button onClick={() => moveEntry(entry, 'up')} className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50" title="Subir posição"><ArrowUp size={14} /></button>}
+                          {(queuePerms?.reorder || roleCanManage) && <button onClick={() => moveEntry(entry, 'down')} className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50" title="Descer posição"><ArrowDown size={14} /></button>}
                         </div>
                       )}
                     </div>
@@ -753,7 +774,7 @@ export default function FilaOverviewPage() {
                         {reminder?.escalatedAt && <span className="font-semibold text-red-600">escalado</span>}
                         {!att.arrival?.customerName && <span className="font-semibold text-red-600">cadastro obrigatório antes de finalizar</span>}
                       </div>
-                      {canManage && (
+                      {canSendQueueAlert && (
                         <div className="mt-2">
                           <button onClick={() => sendReminderNow(att.id, att.sellerName)} disabled={busy === `reminder-${att.id}`} className="rounded-lg border border-amber-200 px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60">
                             {busy === `reminder-${att.id}` ? 'Enviando...' : 'Enviar lembrete agora'}
@@ -836,7 +857,7 @@ export default function FilaOverviewPage() {
             </div>
           </section>
 
-          {canManage && (
+          {canViewLogs && (
             <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                 <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">

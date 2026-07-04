@@ -35,8 +35,20 @@ export async function GET(req: Request) {
     const groups = MODULE_CATALOG.map((g) => ({
       area: g.area,
       features: g.features
-        .filter((f) => canAccessModule(role, f.key as Module))
-        .map((f) => ({ key: f.key, label: f.label, tenantDisabled: disabled.has(f.key), enabled: true })),
+        .map((f) => {
+          const baseAllowed = canAccessModule(role, f.key as Module)
+          return {
+            key: f.key,
+            label: f.label,
+            level: f.level ?? 2,
+            sensitive: f.sensitive ?? false,
+            tenantDisabled: disabled.has(f.key),
+            baseAllowed,
+            extraAllowed: false,
+            blocked: false,
+            enabled: baseAllowed,
+          }
+        }),
     })).filter((g) => g.features.length > 0)
 
     return NextResponse.json({ success: true, data: { groups } })

@@ -6,7 +6,7 @@
 // loja (sempre disponíveis). Default: sem registro em TenantModule = HABILITADO.
 // =============================================================================
 
-export interface ModuleFeature { key: string; label: string }
+export interface ModuleFeature { key: string; label: string; level?: number; sensitive?: boolean }
 export interface ModuleGroup { area: string; features: ModuleFeature[] }
 
 export const MODULE_CATALOG: ModuleGroup[] = [
@@ -66,6 +66,20 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'sellerQueue.manage', label: 'Gerência da fila' },
     { key: 'sellerQueue.reports', label: 'Relatórios da fila' },
     { key: 'sellerQueue.settings', label: 'Configurar a fila' },
+    { key: 'queue.call_current_seller', label: 'Chamar vendedor da vez', level: 1 },
+    { key: 'queue.view_logs', label: 'Ver logs da fila', level: 2 },
+    { key: 'queue.send_alert_all', label: 'Enviar alerta para todos da fila', level: 2, sensitive: true },
+    { key: 'queue.transfer_attendance', label: 'Transferir atendimento', level: 2, sensitive: true },
+    { key: 'queue.takeover_attendance', label: 'Assumir atendimento', level: 2, sensitive: true },
+    { key: 'queue.finish_other_attendance', label: 'Finalizar atendimento de outro vendedor', level: 3, sensitive: true },
+    { key: 'queue.pause_other', label: 'Pausar outro vendedor', level: 2, sensitive: true },
+    { key: 'queue.resume_other', label: 'Retomar outro vendedor', level: 2, sensitive: true },
+    { key: 'queue.add_participant', label: 'Colocar vendedor na fila', level: 2, sensitive: true },
+    { key: 'queue.remove_participant', label: 'Tirar vendedor da fila', level: 3, sensitive: true },
+    { key: 'queue.block_participant', label: 'Bloquear vendedor', level: 3, sensitive: true },
+    { key: 'queue.unblock_participant', label: 'Desbloquear vendedor', level: 3, sensitive: true },
+    { key: 'queue.reorder', label: 'Alterar ordem da fila', level: 3, sensitive: true },
+    { key: 'queue.manage_settings', label: 'Configurar regras da fila', level: 4, sensitive: true },
   ] },
   { area: 'Inteligência Artificial', features: [
     { key: 'ai', label: 'IA controlada (chat/documentos)' },

@@ -9,20 +9,19 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
 import { logQueueEvent, getUnitConfig, nextPosition } from '@/lib/seller-queue/queue'
 import { notifySellerCalled } from '@/lib/seller-queue/notify'
 import type { LeadStatus } from '@prisma/client'
+import { canAccessModuleForUser } from '@/lib/tenant-modules'
 
 type Ctx = { params: Promise<{ id: string }> }
 
 export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gestão pode reabrir/cancelar/excluir/transferir atendimentos.')
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const { id } = await params
@@ -31,6 +30,16 @@ export async function POST(req: Request, { params }: Ctx) {
     const action = body?.action as 'reopen' | 'cancel' | 'delete' | 'transfer' | 'finish' | undefined
     if (!action || !['reopen', 'cancel', 'delete', 'transfer', 'finish'].includes(action)) {
       return NextResponse.json({ success: false, error: 'Ação inválida.' }, { status: 400 })
+    }
+    const permissionByAction: Record<string, string> = {
+      transfer: 'queue.transfer_attendance',
+      finish: 'queue.finish_other_attendance',
+      reopen: 'queue.takeover_attendance',
+      cancel: 'queue.finish_other_attendance',
+      delete: 'queue.finish_other_attendance',
+    }
+    if (!await canAccessModuleForUser(user, permissionByAction[action])) {
+      return forbiddenResponse('Sem permissão para gerenciar este atendimento.')
     }
 
     const att = await prisma.sellerQueueAttendance.findUnique({ where: { id }, select: { id: true, tenantId: true, unitId: true, queueId: true, sellerId: true, status: true, leadId: true, arrivalId: true } })
