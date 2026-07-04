@@ -278,18 +278,14 @@ export default function FilaOverviewPage() {
     setTimeout(() => setToast(null), 3600)
   }
 
+  // Polling RÁPIDO (operacional): estado da fila (/current) + agregado
+  // (atendimentos ativos + lembretes + bloqueios numa chamada). 2 fetches.
   const load = useCallback(async () => {
     try {
-      const requests = await Promise.all([
+      const [currentRes, dashRes] = await Promise.all([
         fetch('/api/seller-queue/current', { credentials: 'include' }),
-        fetch('/api/seller-queue/attendances?active=true', { credentials: 'include' }),
-        fetch('/api/seller-queue/reports?days=7', { credentials: 'include' }),
-        fetch('/api/seller-queue/reminders', { credentials: 'include' }),
-        fetch('/api/seller-queue/events?limit=10', { credentials: 'include' }),
-        fetch('/api/seller-queue/blocks', { credentials: 'include' }),
+        fetch('/api/seller-queue/dashboard', { credentials: 'include' }),
       ])
-
-      const [currentRes, attendanceRes, reportRes, reminderRes, eventRes, blockRes] = requests
       if (currentRes.status === 403 || currentRes.status === 400) {
         const j = await currentRes.json().catch(() => ({})) as { error?: string }
         setDenied(j.error ?? 'Sem acesso à fila.')
@@ -297,12 +293,14 @@ export default function FilaOverviewPage() {
       }
       setDenied(null)
       setCurrent(await jsonData<CurrentData>(currentRes))
-      const attendanceRows = attendanceRes.ok ? await jsonData<Attendance[]>(attendanceRes) ?? [] : []
-      setAttendances(attendanceRows)
-      if (reportRes.ok) setReports(await jsonData<ReportData>(reportRes))
-      if (reminderRes.ok) setReminders(await jsonData<ReminderDashboard>(reminderRes))
-      if (eventRes?.ok) setEvents(await jsonData<QueueEvent[]>(eventRes) ?? [])
-      if (blockRes?.ok) setBlocks(await jsonData<BlockedSeller[]>(blockRes) ?? [])
+      let attendanceRows: Attendance[] = []
+      if (dashRes.ok) {
+        const dash = await jsonData<{ attendances: Attendance[]; reminders: ReminderDashboard | null; blocks: BlockedSeller[] }>(dashRes)
+        attendanceRows = dash?.attendances ?? []
+        setAttendances(attendanceRows)
+        if (dash?.reminders) setReminders(dash.reminders)
+        if (dash?.blocks) setBlocks(dash.blocks)
+      }
 
       const nowMs = Date.now()
       for (const att of attendanceRows) {
@@ -323,16 +321,31 @@ export default function FilaOverviewPage() {
     }
   }, [])
 
+  // Polling LENTO (não-crítico): ranking (7 dias, pesado) + log recente. A cada
+  // 30s em vez de 3s — reduz ~10x a carga da consulta mais cara do dashboard.
+  const loadSlow = useCallback(async () => {
+    try {
+      const [reportRes, eventRes] = await Promise.all([
+        fetch('/api/seller-queue/reports?days=7', { credentials: 'include' }),
+        fetch('/api/seller-queue/events?limit=10', { credentials: 'include' }),
+      ])
+      if (reportRes.ok) setReports(await jsonData<ReportData>(reportRes))
+      if (eventRes?.ok) setEvents(await jsonData<QueueEvent[]>(eventRes) ?? [])
+    } catch { /* silencioso — dado secundário */ }
+  }, [])
+
   useEffect(() => {
-    const firstLoad = setTimeout(() => { void load() }, 0)
+    const firstLoad = setTimeout(() => { void load(); void loadSlow() }, 0)
     const poll = setInterval(load, 3000)
+    const slowPoll = setInterval(loadSlow, 30000)
     const tick = setInterval(() => setNow(Date.now()), 1000)
     return () => {
       clearTimeout(firstLoad)
       clearInterval(poll)
+      clearInterval(slowPoll)
       clearInterval(tick)
     }
-  }, [load])
+  }, [load, loadSlow])
 
   const stats = useMemo(() => {
     const entries = current?.entries ?? []

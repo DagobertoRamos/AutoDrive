@@ -2584,3 +2584,13 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **UI:** `AttendanceTypesConfigCard` (editar tipos + consumesTurn) montado nas configurações; **seletor de tipo** no `VerificarVezModal` (ao "Iniciar atendimento" o vendedor escolhe a natureza; grava via set-type após o accept, best-effort).
 - **Não quebra nada:** visitType nullable; sem tipo → consome (conservador, = comportamento atual). `tsc` verde; suíte seller-queue **55/55**.
 - **Fecha a Fase 4.** Cliente é opcional no início e obrigatório no finish (guard já existente do Codex mantido).
+
+### LOG 0184 — 2026-07-04 — Claude (Opus 4.8) — Fila: performance do dashboard (endpoint agregado + cadência)
+- **Problema:** o dashboard fazia **6 fetches a cada 3s**, incluindo `/reports?days=7` (ranking de 7 dias — consulta mais cara) e `/events` (log) — recomputados 20×/min sem necessidade.
+- **Endpoint agregado** `getQueueDashboardData` (`dashboard.ts`) + `GET /api/seller-queue/dashboard` (gate `sellerQueue.view`): retorna **atendimentos ativos + lembretes + bloqueios** numa chamada (Promise.all, `select`/`take`, sem N+1). Bloqueios só p/ gestão.
+- **Dashboard (`vendedor-da-vez/page.tsx`):** polling separado em dois:
+  - **RÁPIDO (3s):** `/current` + `/dashboard` → **2 fetches** (era 6). Mantém a auto-expiração do timeout.
+  - **LENTO (30s):** ranking (`/reports?days=7`) + log (`/events`) → 10× menos carga na consulta mais pesada.
+- **Ganho:** caminho quente 6→2 fetches; ranking de 20×/min → 2×/min. Mesmos estados/dados, comportamento preservado.
+- **Não quebra nada:** endpoints antigos seguem existindo; só o dashboard passou a usar o agregado + cadência. `tsc` verde; suíte seller-queue **55/55**.
+- **Pendência (futuro):** paginação/lazy nos logs detalhados; cache curto no ranking se ainda pesar; consolidar `/current` no agregado (mais invasivo — deixado fora p/ não mexer no núcleo/sweep).
