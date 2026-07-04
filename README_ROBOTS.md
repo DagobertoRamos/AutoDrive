@@ -2480,3 +2480,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Build:** `npm run build` bloqueado localmente por `EPERM: operation not permitted, unlink node_modules/.prisma/client/index.d.ts` durante `prisma generate`, mesmo bloqueio local recorrente do ambiente Windows.
 - **Riscos observados:** o dashboard depende do polling atual (3s), não de websocket; ações rápidas usam o mesmo fluxo de chamada/push já existente. `scripts/_dagregen.ts` e `scripts/_gerdoc.ts` aparecem como não versionados antes/depois desta tarefa e não foram alterados.
 - **Pendências futuras:** criar modal visual dedicado de log por vendedor/atendimento com filtros avançados; opcionalmente consolidar uma API única `getQueueDashboardData` para reduzir chamadas paralelas do front; evoluir `start-attendance` para gravar explicitamente `startedWithoutCustomer/customerRequiredBeforeFinish` se houver futura migration.
+
+### LOG 0175 — 2026-07-04 — Claude (Opus 4.8) — Fase A: reset das regras de comissão (base limpa)
+- **A pedido do usuário**, backup das 27 CommissionRules do EASYCAR (JSON no scratchpad) → apagadas → recriadas 14 regras limpas conforme spec nova:
+  - VENDA vendedor faixa retroativa FIXO: 1–9=300, 10–14=350, 15–19=400, 20+=500 (sem faixa de valor); + bônus BONUS_QTD 500 aos 15.
+  - VENDA/Troca gerente FIXO 200. COMPRA vendedor 300 / gerente 200 / bônus compra unidade 500 (qty≥5).
+  - RETORNO vendedor 8% / gerente 5% (sobre o líquido). Dezena 1/2 (≥3→300) e 3 (≥5→400), cada uma amarrada à dezena via `__decendBonus__`.
+- **Documento** agora 100% por config (documento-config): vendedor 100/200, gerente 50/100, loja paga=cortesia. Regras DOCUMENTO removidas.
+- **Fica para Fase B/C:** garantia cheia/desconto por produto + botão "vendido com desconto"; produção da loja por vendedor (Anderson +50, Cesar +10/carro-unidade); meta da loja (vend 250 / ger 500); bônus combinado das 3 dezenas (+1000); UI profissional unificada; overrides por vendedor. Scripts temporários não commitados.
