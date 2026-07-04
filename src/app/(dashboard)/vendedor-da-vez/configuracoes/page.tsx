@@ -19,6 +19,15 @@ const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 te
 const METHODS = [['GPS', 'GPS / geofence'], ['QR_CODE', 'QR Code'], ['DEVICE_CHECK', 'Dispositivo']] as const
 
 interface AutoBlock { enabled: boolean; strikesForCooldown: number; cooldownHours: number; strikesForDailyBlock: number }
+interface AttendanceReminderConfig {
+  enabled: boolean; firstAfterMinutes: number; repeatIntervalSeconds: number; maxReminders: number; escalateAfter: number;
+  autoEscalate: boolean; requireFinishOnNo: boolean; allowSnooze: boolean; logEveryReminder: boolean;
+}
+interface QueuePushConfig {
+  enabled: boolean; intervalSeconds: number; targetScope: string; maxRetries: number; resendUntil: string;
+  antiSpamUserLimit: number; antiSpamAttendanceLimit: number; antiSpamQueueLimit: number; antiSpamWindowMinutes: number;
+  allowedStartTime: string | null; allowedEndTime: string | null; allowOutsideHoursForAdmins: boolean; urgency: string; sound: boolean;
+}
 interface Cfg {
   active: boolean; presenceMethods: string[]; geofenceLat: number | null; geofenceLng: number | null; geofenceRadiusM: number;
   qrSecret: string | null; acceptTimeoutSeconds: number; requireRevalidationOnAccept: boolean;
@@ -29,8 +38,12 @@ interface Cfg {
   openTime: string | null; closeTime: string | null; allowedDays: string[];
   maxPauseMinutes: number; autoSchedule: boolean;
   autoBlock: AutoBlock
+  attendanceReminder: AttendanceReminderConfig
+  queuePush: QueuePushConfig
 }
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
+const DEFAULT_ATTENDANCE_REMINDER: AttendanceReminderConfig = { enabled: true, firstAfterMinutes: 15, repeatIntervalSeconds: 300, maxReminders: 6, escalateAfter: 3, autoEscalate: true, requireFinishOnNo: true, allowSnooze: false, logEveryReminder: true }
+const DEFAULT_QUEUE_PUSH: QueuePushConfig = { enabled: true, intervalSeconds: 300, targetScope: 'CURRENT_SELLER', maxRetries: 6, resendUntil: 'ACKNOWLEDGED', antiSpamUserLimit: 8, antiSpamAttendanceLimit: 6, antiSpamQueueLimit: 60, antiSpamWindowMinutes: 10, allowedStartTime: null, allowedEndTime: null, allowOutsideHoursForAdmins: true, urgency: 'HIGH', sound: true }
 
 // Editor de lista de motivos (chips). Usado para encerrar lead e negociação.
 function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: string; items: string[]; onChange: (v: string[]) => void }) {
@@ -56,7 +69,7 @@ function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: 
     </div>
   )
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, autoBlock: DEFAULT_AUTO_BLOCK }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -91,7 +104,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -237,6 +250,73 @@ export default function ConfiguracoesFilaPage() {
         <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.allowChooseSeller} onChange={(e) => set('allowChooseSeller', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Gestão pode escolher o vendedor (auto-organização)</label>
         <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.allowSellerFinish} onChange={(e) => set('allowSellerFinish', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Vendedor pode finalizar o próprio atendimento <span className="text-xs text-gray-400">(se desmarcado, só a gestão finaliza)</span></label>
         <p className="-mt-1 text-[11px] text-gray-400">O WhatsApp usa o provedor já configurado da loja; sem provedor ativo, o envio é ignorado silenciosamente.</p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><BellRing size={16} className="text-brand-600" />Lembretes de atendimento aberto</h2>
+        <p className="-mt-2 text-xs text-gray-500">Quando um atendimento fica aberto por muito tempo, o vendedor confirma se continua atendendo ou abre a finalização.</p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.attendanceReminder.enabled} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativar lembrete automático</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.attendanceReminder.autoEscalate} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, autoEscalate: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Escalar para gestão sem resposta</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.attendanceReminder.requireFinishOnNo} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, requireFinishOnNo: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Abrir finalização ao responder &quot;não&quot;</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.attendanceReminder.logEveryReminder} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, logEveryReminder: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Registrar todos os lembretes</label>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Primeiro após (min)</label><input type="number" min={1} max={480} className={inputCls} value={cfg.attendanceReminder.firstAfterMinutes} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, firstAfterMinutes: Number(e.target.value) || 15 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Repetir a cada (s)</label><input type="number" min={30} max={86400} className={inputCls} value={cfg.attendanceReminder.repeatIntervalSeconds} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, repeatIntervalSeconds: Number(e.target.value) || 300 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Máx. lembretes</label><input type="number" min={1} max={50} className={inputCls} value={cfg.attendanceReminder.maxReminders} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, maxReminders: Number(e.target.value) || 6 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Escalar após</label><input type="number" min={1} max={50} className={inputCls} value={cfg.attendanceReminder.escalateAfter} onChange={(e) => set('attendanceReminder', { ...cfg.attendanceReminder, escalateAfter: Number(e.target.value) || 3 })} /></div>
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-900">Push da fila</h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.queuePush.enabled} onChange={(e) => set('queuePush', { ...cfg.queuePush, enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Enviar push/mobile além da central</label>
+            <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.queuePush.allowOutsideHoursForAdmins} onChange={(e) => set('queuePush', { ...cfg.queuePush, allowOutsideHoursForAdmins: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Gestão pode alertar fora do horário</label>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Alvo padrão</label>
+              <select className={inputCls} value={cfg.queuePush.targetScope} onChange={(e) => set('queuePush', { ...cfg.queuePush, targetScope: e.target.value })}>
+                <option value="CURRENT_SELLER">Vendedor da vez</option>
+                <option value="CALLED_SELLER">Vendedor chamado/atendendo</option>
+                <option value="ALL_ACTIVE_PARTICIPANTS">Participantes ativos</option>
+                <option value="MANAGERS">Gestão</option>
+                <option value="MANAGERS_AND_CURRENT">Gestão + vendedor da vez</option>
+                <option value="ALL_QUEUE">Todos da fila</option>
+              </select>
+            </div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Intervalo mínimo (s)</label><input type="number" min={30} max={86400} className={inputCls} value={cfg.queuePush.intervalSeconds} onChange={(e) => set('queuePush', { ...cfg.queuePush, intervalSeconds: Number(e.target.value) || 300 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Tentativas máximas</label><input type="number" min={1} max={50} className={inputCls} value={cfg.queuePush.maxRetries} onChange={(e) => set('queuePush', { ...cfg.queuePush, maxRetries: Number(e.target.value) || 6 })} /></div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/vendedor</label><input type="number" min={1} max={100} className={inputCls} value={cfg.queuePush.antiSpamUserLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamUserLimit: Number(e.target.value) || 8 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/atendimento</label><input type="number" min={1} max={100} className={inputCls} value={cfg.queuePush.antiSpamAttendanceLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamAttendanceLimit: Number(e.target.value) || 6 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Limite/fila</label><input type="number" min={1} max={500} className={inputCls} value={cfg.queuePush.antiSpamQueueLimit} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamQueueLimit: Number(e.target.value) || 60 })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Janela (min)</label><input type="number" min={1} max={1440} className={inputCls} value={cfg.queuePush.antiSpamWindowMinutes} onChange={(e) => set('queuePush', { ...cfg.queuePush, antiSpamWindowMinutes: Number(e.target.value) || 10 })} /></div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Início permitido</label><input type="time" className={inputCls} value={cfg.queuePush.allowedStartTime ?? ''} onChange={(e) => set('queuePush', { ...cfg.queuePush, allowedStartTime: e.target.value || null })} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Fim permitido</label><input type="time" className={inputCls} value={cfg.queuePush.allowedEndTime ?? ''} onChange={(e) => set('queuePush', { ...cfg.queuePush, allowedEndTime: e.target.value || null })} /></div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Urgência</label>
+              <select className={inputCls} value={cfg.queuePush.urgency} onChange={(e) => set('queuePush', { ...cfg.queuePush, urgency: e.target.value })}>
+                <option value="HIGH">Alta</option>
+                <option value="NORMAL">Normal</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Reenviar até</label>
+              <select className={inputCls} value={cfg.queuePush.resendUntil} onChange={(e) => set('queuePush', { ...cfg.queuePush, resendUntil: e.target.value })}>
+                <option value="ACKNOWLEDGED">Confirmar</option>
+                <option value="FINISHED">Finalizar</option>
+                <option value="MAX_RETRIES">Máx. tentativas</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">

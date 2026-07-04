@@ -52,7 +52,7 @@ export async function PUT(req: Request) {
     // Estratégia anti-abuso vai no campo JSON `config` (sem coluna nova). Mescla
     // com o que já houver lá para não apagar outros extras.
     let mergedConfig: Record<string, unknown> | undefined
-    if (d.autoBlock !== undefined || d.allowSellerFinish !== undefined || d.leadCloseReasons !== undefined || d.negotiationReasons !== undefined || d.maxPauseMinutes !== undefined || d.autoSchedule !== undefined) {
+    if (d.autoBlock !== undefined || d.allowSellerFinish !== undefined || d.leadCloseReasons !== undefined || d.negotiationReasons !== undefined || d.maxPauseMinutes !== undefined || d.autoSchedule !== undefined || d.attendanceReminder !== undefined || d.queuePush !== undefined) {
       const existing = await prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } }, select: { config: true } })
       mergedConfig = { ...((existing?.config as Record<string, unknown>) ?? {}) }
       if (d.autoBlock !== undefined) mergedConfig.autoBlock = d.autoBlock
@@ -61,6 +61,8 @@ export async function PUT(req: Request) {
       if (d.negotiationReasons !== undefined) mergedConfig.negotiationReasons = d.negotiationReasons
       if (d.maxPauseMinutes !== undefined) mergedConfig.maxPauseMinutes = d.maxPauseMinutes
       if (d.autoSchedule !== undefined) mergedConfig.autoSchedule = d.autoSchedule
+      if (d.attendanceReminder !== undefined) mergedConfig.attendanceReminder = d.attendanceReminder
+      if (d.queuePush !== undefined) mergedConfig.queuePush = d.queuePush
     }
 
     const data = {

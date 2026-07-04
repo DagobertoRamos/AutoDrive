@@ -38,6 +38,7 @@ import MinhaFilaIndividual from '@/components/seller-queue/MinhaFilaIndividual'
 import FilasIndividuaisUnidade from '@/components/seller-queue/FilasIndividuaisUnidade'
 import QueueRanking from '@/components/seller-queue/QueueRanking'
 import VerificarVezModal from '@/components/seller-queue/VerificarVezModal'
+import AttendanceReminderModal, { type AttendanceReminderData } from '@/components/seller-queue/AttendanceReminderModal'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 interface Entry {
@@ -106,6 +107,34 @@ interface BlockedSeller {
   type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'
   endsAt: string | null
   strikes: number
+}
+
+interface ReminderState {
+  attendanceId: string
+  reminderCount: number
+  lastReminderAt: string | null
+  lastAcknowledgedAt: string | null
+  finishRequestedAt: string | null
+  escalatedAt: string | null
+  awaitingResponse: boolean
+  nextReminderAt: string | null
+}
+
+interface ReminderDashboard {
+  settings: { queuePush: { targetScope: string } }
+  stats: {
+    activeAttendances: number
+    remindersToday: number
+    confirmationsToday: number
+    finishRequestsToday: number
+    escalationsToday: number
+    queueAlertsToday: number
+    awaitingResponses: number
+    dueNow: number
+    escalatedOpen: number
+  }
+  byAttendance: Record<string, ReminderState>
+  myReminder: AttendanceReminderData | null
 }
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -218,6 +247,7 @@ export default function FilaOverviewPage() {
   const [events, setEvents] = useState<QueueEvent[]>([])
   const [reports, setReports] = useState<ReportData | null>(null)
   const [blocks, setBlocks] = useState<BlockedSeller[]>([])
+  const [reminders, setReminders] = useState<ReminderDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null)
@@ -237,11 +267,12 @@ export default function FilaOverviewPage() {
         fetch('/api/seller-queue/current', { credentials: 'include' }),
         fetch('/api/seller-queue/attendances?active=true', { credentials: 'include' }),
         fetch('/api/seller-queue/reports?days=7', { credentials: 'include' }),
+        fetch('/api/seller-queue/reminders', { credentials: 'include' }),
         canManage ? fetch('/api/seller-queue/events?limit=10', { credentials: 'include' }) : Promise.resolve(null),
         canManage ? fetch('/api/seller-queue/blocks', { credentials: 'include' }) : Promise.resolve(null),
       ])
 
-      const [currentRes, attendanceRes, reportRes, eventRes, blockRes] = requests
+      const [currentRes, attendanceRes, reportRes, reminderRes, eventRes, blockRes] = requests
       if (currentRes.status === 403 || currentRes.status === 400) {
         const j = await currentRes.json().catch(() => ({})) as { error?: string }
         setDenied(j.error ?? 'Sem acesso à fila.')
@@ -252,6 +283,7 @@ export default function FilaOverviewPage() {
       const attendanceRows = attendanceRes.ok ? await jsonData<Attendance[]>(attendanceRes) ?? [] : []
       setAttendances(attendanceRows)
       if (reportRes.ok) setReports(await jsonData<ReportData>(reportRes))
+      if (reminderRes.ok) setReminders(await jsonData<ReminderDashboard>(reminderRes))
       if (eventRes?.ok) setEvents(await jsonData<QueueEvent[]>(eventRes) ?? [])
       if (blockRes?.ok) setBlocks(await jsonData<BlockedSeller[]>(blockRes) ?? [])
 
@@ -296,8 +328,10 @@ export default function FilaOverviewPage() {
       blocked: entries.filter((e) => e.blocked || e.status === 'BLOCKED').length + blocks.length,
       noAlert: entries.filter((e) => e.hasDevice === false).length,
       pendingCustomer: attendances.filter((a) => ATTENDING_STATUSES.includes(a.status) && !a.arrival?.customerName).length,
+      remindersDue: reminders?.stats.dueNow ?? 0,
+      remindersAwaiting: reminders?.stats.awaitingResponses ?? 0,
     }
-  }, [current?.entries, attendances, blocks.length])
+  }, [current?.entries, attendances, blocks.length, reminders])
 
   const waitingLine = useMemo(
     () => (current?.entries ?? []).filter((e) => AVAILABLE_STATUSES.includes(e.status) && !e.blocked),
@@ -442,6 +476,35 @@ export default function FilaOverviewPage() {
     }
   }
 
+  const sendReminderNow = async (attendanceId: string, sellerName: string) => {
+    const reason = requireReason(`Enviar lembrete para ${sellerName}`)
+    if (!reason) { flash('Motivo obrigatório.', false); return }
+    setBusy(`reminder-${attendanceId}`)
+    try {
+      const r = await postJson(`/api/seller-queue/reminders/${attendanceId}`, { action: 'send-now', reason })
+      if (!r.ok) { flash(r.error ?? 'Falha ao enviar lembrete.', false); return }
+      await refreshAfter('Lembrete enviado.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const sendQueueAlert = async () => {
+    const message = window.prompt('Mensagem do alerta para a fila:')?.trim()
+    if (!message) { flash('Mensagem obrigatória.', false); return }
+    const reason = requireReason('Enviar alerta manual da fila')
+    if (!reason) { flash('Motivo obrigatório.', false); return }
+    setBusy('queue-alert')
+    try {
+      const scope = reminders?.settings.queuePush.targetScope ?? 'CURRENT_SELLER'
+      const r = await postJson('/api/seller-queue/reminders', { action: 'send-queue-alert', message, reason, scope })
+      if (!r.ok) { flash(r.error ?? 'Falha ao enviar alerta.', false); return }
+      await refreshAfter('Alerta enviado para a fila.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <style>{`
@@ -470,6 +533,12 @@ export default function FilaOverviewPage() {
             {busy === 'quick-call' ? <RefreshCw size={14} className="animate-spin" /> : <PhoneCall size={14} />}
             Chamar vendedor da vez
           </button>
+          {canManage && (
+            <button onClick={sendQueueAlert} disabled={busy === 'queue-alert'} className="btn-secondary text-xs">
+              {busy === 'queue-alert' ? <RefreshCw size={14} className="animate-spin" /> : <BellRing size={14} />}
+              Alerta da fila
+            </button>
+          )}
           {isMyTurn && (
             <button onClick={startMyTurn} disabled={busy === 'start-my-turn'} className="btn-secondary text-xs">
               {busy === 'start-my-turn' ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
@@ -565,12 +634,12 @@ export default function FilaOverviewPage() {
                   <p className="text-xs text-red-700">Sem cliente cadastrado</p>
                 </div>
                 <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
-                  <p className="text-xl font-bold text-amber-700">{stats.noAlert}</p>
-                  <p className="text-xs text-amber-700">Sem alerta ativo</p>
+                  <p className="text-xl font-bold text-amber-700">{stats.remindersAwaiting}</p>
+                  <p className="text-xs text-amber-700">Aguardando confirmação</p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xl font-bold text-gray-800">{current?.arrivalsPending ?? 0}</p>
-                  <p className="text-xs text-gray-500">Clientes aguardando</p>
+                  <p className="text-xl font-bold text-gray-800">{stats.remindersDue}</p>
+                  <p className="text-xs text-gray-500">Lembretes vencidos</p>
                 </div>
               </div>
             </div>
@@ -659,7 +728,9 @@ export default function FilaOverviewPage() {
                 <div className="divide-y divide-gray-100">
                   {attendances.length === 0 ? (
                     <div className="px-4 py-8 text-center text-sm text-gray-400">Nenhum atendimento ativo.</div>
-                  ) : attendances.map((att) => (
+                  ) : attendances.map((att) => {
+                    const reminder = reminders?.byAttendance?.[att.id]
+                    return (
                     <div key={att.id} className="px-4 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -675,10 +746,23 @@ export default function FilaOverviewPage() {
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
                         <span>Chamado {clockLabel(att.calledAt)}</span>
                         {att.acceptedAt && <span>Em atendimento há {timeLabel(att.acceptedAt, now)}</span>}
+                        {reminder && <span>{reminder.reminderCount} lembrete(s)</span>}
+                        {reminder?.lastReminderAt && <span>último {clockLabel(reminder.lastReminderAt)}</span>}
+                        {reminder?.lastAcknowledgedAt && <span>confirmado {clockLabel(reminder.lastAcknowledgedAt)}</span>}
+                        {reminder?.awaitingResponse && <span className="font-semibold text-amber-600">aguardando confirmação</span>}
+                        {reminder?.escalatedAt && <span className="font-semibold text-red-600">escalado</span>}
                         {!att.arrival?.customerName && <span className="font-semibold text-red-600">cadastro obrigatório antes de finalizar</span>}
                       </div>
+                      {canManage && (
+                        <div className="mt-2">
+                          <button onClick={() => sendReminderNow(att.id, att.sellerName)} disabled={busy === `reminder-${att.id}`} className="rounded-lg border border-amber-200 px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60">
+                            {busy === `reminder-${att.id}` ? 'Enviando...' : 'Enviar lembrete agora'}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
@@ -781,6 +865,7 @@ export default function FilaOverviewPage() {
       )}
 
       {checkTurnOpen && <VerificarVezModal onClose={() => setCheckTurnOpen(false)} onChanged={load} />}
+      {reminders?.myReminder && <AttendanceReminderModal reminder={reminders.myReminder} onClose={() => setReminders((r) => r ? { ...r, myReminder: null } : r)} onChanged={load} />}
     </div>
   )
 }

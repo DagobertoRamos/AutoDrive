@@ -109,6 +109,34 @@ export const configSchema = z.object({
   maxPauseMinutes:    z.number().int().min(0).max(480).optional(),
   // Liga/desliga a fila automaticamente pelo horário (openTime/closeTime/allowedDays).
   autoSchedule:       z.boolean().optional(),
+  // Lembretes de atendimento aberto + política de push da fila (campo JSON).
+  attendanceReminder: z.object({
+    enabled:               z.boolean(),
+    firstAfterMinutes:     z.number().int().min(1).max(480),
+    repeatIntervalSeconds: z.number().int().min(30).max(86400),
+    maxReminders:          z.number().int().min(1).max(50),
+    escalateAfter:         z.number().int().min(1).max(50),
+    autoEscalate:          z.boolean(),
+    requireFinishOnNo:     z.boolean(),
+    allowSnooze:           z.boolean(),
+    logEveryReminder:      z.boolean(),
+  }).optional(),
+  queuePush: z.object({
+    enabled:                   z.boolean(),
+    intervalSeconds:           z.number().int().min(30).max(86400),
+    targetScope:               z.enum(['CURRENT_SELLER', 'CALLED_SELLER', 'ALL_ACTIVE_PARTICIPANTS', 'MANAGERS', 'MANAGERS_AND_CURRENT', 'ALL_QUEUE']),
+    maxRetries:                z.number().int().min(1).max(50),
+    resendUntil:               z.enum(['ACKNOWLEDGED', 'FINISHED', 'MAX_RETRIES']),
+    antiSpamUserLimit:         z.number().int().min(1).max(100),
+    antiSpamAttendanceLimit:   z.number().int().min(1).max(100),
+    antiSpamQueueLimit:        z.number().int().min(1).max(500),
+    antiSpamWindowMinutes:     z.number().int().min(1).max(1440),
+    allowedStartTime:          optStr,
+    allowedEndTime:            optStr,
+    allowOutsideHoursForAdmins: z.boolean(),
+    urgency:                   z.enum(['NORMAL', 'HIGH']),
+    sound:                     z.boolean(),
+  }).optional(),
   // Estratégia anti-abuso (bloqueio por reincidência de timeouts no dia).
   autoBlock: z.object({
     enabled:              z.boolean(),
