@@ -6,12 +6,13 @@
 // e NOTIFICA o vendedor. Quem registra o cliente NÃO escolhe quem atende.
 // =============================================================================
 
-import { prisma } from '@/lib/prisma'
+import { prisma } from '../prisma'
 import { getUnitConfig, logQueueEvent } from './queue'
 import { notifySellerCalled, notifyNoSellerAvailable } from './notify'
 import { escalateAfterTimeout } from './penalty'
 import { readEscalationConfig } from './escalation-config'
 import { escalateArrival } from './escalation'
+import { canTransitionQueueEntryStatus } from './state-machine'
 
 export interface CallResult {
   ok: boolean
@@ -46,10 +47,14 @@ export async function callForArrival(opts: {
     const deadline = new Date(now.getTime() + timeout * 1000)
     const result = await prisma.$transaction(async (tx) => {
       if (entryId) {
-        const upd = await tx.sellerQueueEntry.updateMany({ where: { id: entryId, status: 'WAITING', blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
+        const current = await tx.sellerQueueEntry.findUnique({ where: { id: entryId }, select: { status: true } })
+        if (!current || !canTransitionQueueEntryStatus(current.status, 'CALLED')) return null
+        const upd = await tx.sellerQueueEntry.updateMany({ where: { id: entryId, status: current.status, blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
         if (upd.count !== 1) return null // perdeu a corrida
       } else {
-        await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId, status: 'WAITING', blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
+        const current = await tx.sellerQueueEntry.findFirst({ where: { queueId: opts.queueId, sellerId, status: { in: ['WAITING', 'NEXT'] } }, select: { status: true } })
+        if (!current || !canTransitionQueueEntryStatus(current.status, 'CALLED')) return null
+        await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId, status: current.status, blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
       }
       const att = await tx.sellerQueueAttendance.create({
         data: { tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, sellerId, arrivalId: opts.arrivalId, status: 'CALLED', calledAt: now, acceptDeadline: deadline },
@@ -58,7 +63,7 @@ export async function callForArrival(opts: {
       return att
     })
     if (!result) return null
-    await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.id, reason })
+    await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.id, reason, metadata: { transition: 'CALLED', source: 'callForArrival' } })
     await notifySellerCalled({ tenantId: opts.tenantId, sellerId, timeoutSeconds: timeout, attendanceId: result.id, arrivalId: opts.arrivalId, customerName: opts.customerName ?? null, recurring, whatsapp: cfg?.alertWhatsapp ?? false })
     return { ok: true, attendanceId: result.id, sellerId }
   }

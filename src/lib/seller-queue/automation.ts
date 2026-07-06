@@ -6,7 +6,7 @@
 // Chamadas de forma "lazy" no /current (sem cron).
 // =============================================================================
 
-import { prisma } from '@/lib/prisma'
+import { prisma } from '../prisma'
 import { logQueueEvent } from './queue'
 
 export const AUTO_PAUSE_REASON = 'AUTO_PAUSE_TIMEOUT'

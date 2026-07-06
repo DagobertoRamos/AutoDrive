@@ -4,7 +4,7 @@
 // e de eventos (auditoria). Reutilizado pelas rotas /api/seller-queue/*.
 // =============================================================================
 
-import { prisma } from '@/lib/prisma'
+import { prisma } from '../prisma'
 import type { Prisma, SellerQueueEventType, SellerPresenceMethod } from '@prisma/client'
 import { evaluatePresence, type PresenceConfig, type PresenceInput, type PresenceResult } from './geo'
 import { flagFraud } from './fraud'
