@@ -56,6 +56,18 @@
     </div>
   </div>
 
+  <div class="section">
+    <h2>Login do AutoConf (auto-login)</h2>
+    <p class="sub" style="margin:2px 0 6px">Se a sessão cair, a extensão loga sozinha. Guardado só neste navegador (não é enviado ao AutoDrive).</p>
+    <div class="row" style="margin-top:4px">
+      <input id="acEmail" type="text" placeholder="e-mail / usuário do AutoConf" autocomplete="off" />
+    </div>
+    <div class="row" style="margin-top:6px">
+      <input id="acPassword" type="password" placeholder="senha do AutoConf" autocomplete="new-password" />
+      <button id="saveCreds" class="ghost">Salvar</button>
+    </div>
+  </div>
+
   <div class="section soft">
     <h2>Filtros de busca</h2>
 
@@ -170,14 +182,18 @@
 
   <div class="section">
     <h2>Atualização automática</h2>
-    <div class="grid2">
-      <label class="check" style="margin-top:24px"><input id="autoRefresh" type="checkbox" /><span>Atualizar sozinho</span></label>
-      <div>
+    <p class="sub" style="margin:2px 0 8px">Roda sozinho (mesmo com esta janela fechada): busca e importa o período do filtro acima. Com "Mês atual" no filtro, ele rola sozinho para o mês corrente.</p>
+    <div class="row" style="align-items:flex-end;gap:10px">
+      <button id="autoToggle" class="primary" style="min-width:160px">Ligar atualização</button>
+      <div style="flex:1">
         <label for="autoMinutes">A cada X minutos</label>
         <input id="autoMinutes" inputmode="numeric" min="1" max="1440" value="10" />
       </div>
     </div>
-    <div class="mini" id="autoStatus">Desligada. A atualização automática apenas busca novamente; não importa para o AutoDrive.</div>
+    <label class="check" style="margin-top:8px"><input id="autoImport" type="checkbox" checked /><span>Importar automaticamente para o AutoDrive (não só buscar)</span></label>
+    <input id="autoRefresh" type="checkbox" style="display:none" />
+    <div class="mini" id="autoStatus">Desligada.</div>
+    <div class="mini" id="autoLastRun"></div>
   </div>
 
   <div id="stats">

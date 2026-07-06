@@ -984,6 +984,45 @@ async function scanMonth({ dryRun = true, month } = {}) {
   })
 }
 
+// ── Auto-login no AutoConf ────────────────────────────────────────────────────
+// Detecta a tela de login (existe input de senha) e preenche e-mail+senha,
+// disparando eventos "input/change" (React/Vue reagem) e submetendo o form.
+function setNativeValue(el, value) {
+  try {
+    const proto = Object.getPrototypeOf(el)
+    const desc = Object.getOwnPropertyDescriptor(proto, 'value')
+    if (desc && desc.set) desc.set.call(el, value); else el.value = value
+  } catch (e) { el.value = value }
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+  el.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function isLoggedOut() {
+  // Página de login: tem campo de senha visível (o app logado não tem).
+  const p = document.querySelector('input[type="password"]')
+  return !!(p && p.offsetParent !== null || /\/login|\/entrar|\/signin/i.test(location.pathname))
+}
+
+async function doLogin(email, password) {
+  const pass = document.querySelector('input[type="password"]')
+  if (!pass) return { ok: true, loggedIn: true } // já logado
+  if (!email || !password) return { ok: false, error: 'Sem login/senha salvos na extensão.' }
+  // Campo de usuário = e-mail/texto mais próximo ANTES da senha (ou por nome).
+  const inputs = [...document.querySelectorAll('input')]
+  const pi = inputs.indexOf(pass)
+  const user = inputs.slice(0, pi).reverse().find((i) => /email|text|tel/i.test(i.type) || /email|usuario|user|login|cpf/i.test(`${i.name} ${i.id} ${i.placeholder || ''}`))
+    || document.querySelector('input[type="email"], input[name="email"], input[name="usuario"], input[name="login"]')
+  if (user) setNativeValue(user, email)
+  setNativeValue(pass, password)
+  await new Promise((r) => setTimeout(r, 250))
+  const form = pass.closest('form')
+  const btn = (form || document).querySelector('button[type="submit"], input[type="submit"], button.btn-primary, button')
+  if (form && typeof form.requestSubmit === 'function') form.requestSubmit(btn || undefined)
+  else if (btn) btn.click()
+  else if (form) form.submit()
+  return { ok: true, submitted: true }
+}
+
 chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
   if (req?.action === 'scan') {
     const run = req.filters
@@ -992,6 +1031,17 @@ chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
 
     run
       .then((res) => sendResponse({ ok: true, res }))
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }))
+    return true
+  }
+  if (req?.action === 'loginStatus') {
+    sendResponse({ ok: true, loggedOut: isLoggedOut() })
+    return true
+  }
+  if (req?.action === 'ensureLogin') {
+    if (!isLoggedOut()) { sendResponse({ ok: true, loggedIn: true }); return true }
+    doLogin(req.email, req.password)
+      .then((r) => sendResponse(r))
       .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }))
     return true
   }

@@ -7,6 +7,8 @@ const $ = (id) => document.getElementById(id)
 const AUTODRIVE = 'https://auto-drive-mocha.vercel.app'
 const FILTER_KEY = 'autoconfFilters'
 const AUTO_KEY = 'autoconfAutoRefresh'
+const CREDS_KEY = 'autoconfCreds'
+const LASTRUN_KEY = 'autoconfLastRun'
 const TARGET_TAB_KEY = 'autoconfTargetTabId'
 const DEFAULT_STATUSES = ['Finalizada', 'Pendente Contrato', 'Pendente NFe']
 
@@ -251,13 +253,24 @@ function autoSettingsFromForm() {
   return {
     enabled: $('autoRefresh').checked,
     minutes: parseAutoMinutes($('autoMinutes').value) || 10,
+    autoImport: $('autoImport').checked,
   }
+}
+
+function updateToggleButton() {
+  const on = $('autoRefresh').checked
+  const b = $('autoToggle')
+  if (!b) return
+  b.textContent = on ? 'Desligar atualização' : 'Ligar atualização'
+  b.className = on ? 'ghost' : 'primary'
 }
 
 function applyAutoSettings(settings) {
   const cfg = settings && typeof settings === 'object' ? settings : {}
   $('autoRefresh').checked = cfg.enabled === true
   $('autoMinutes').value = parseAutoMinutes(cfg.minutes) || 10
+  $('autoImport').checked = cfg.autoImport !== false // padrão: importa
+  updateToggleButton()
   scheduleAutoRefresh()
 }
 
@@ -278,50 +291,27 @@ function stopAutoTimers() {
 function updateAutoStatus() {
   const enabled = $('autoRefresh').checked
   const minutes = parseAutoMinutes($('autoMinutes').value)
-  if (!enabled) {
-    $('autoStatus').textContent = 'Desligada. A atualização automática apenas busca novamente; não importa para o AutoDrive.'
-    return
-  }
-  if (!minutes) {
-    $('autoStatus').textContent = 'Informe um intervalo entre 1 e 1440 minutos.'
-    return
-  }
-  if (autoRunning) {
-    $('autoStatus').textContent = 'Atualizando agora...'
-    return
-  }
-  if (!autoNextRunAt) {
-    $('autoStatus').textContent = `Ligada. Intervalo: ${minutes} min.`
-    return
-  }
-  const remaining = Math.max(0, autoNextRunAt - Date.now())
-  const totalSeconds = Math.ceil(remaining / 1000)
-  const mm = Math.floor(totalSeconds / 60)
-  const ss = totalSeconds % 60
-  $('autoStatus').textContent = `Ligada. Próxima busca em ${mm}m ${String(ss).padStart(2, '0')}s.`
+  const st = $('autoStatus')
+  if (!enabled) { st.textContent = 'Desligada. Clique em "Ligar atualização".'; if ($('autoLastRun')) $('autoLastRun').textContent = ''; return }
+  if (!minutes) { st.textContent = 'Informe um intervalo entre 1 e 1440 minutos.'; return }
+  st.textContent = `Ligada — atualiza a cada ${minutes} min (roda em segundo plano, mesmo com esta janela fechada).`
+  // Último resultado do background (importações feitas sozinho).
+  chrome.storage.local.get(LASTRUN_KEY, (r) => {
+    const lr = r[LASTRUN_KEY]; const el = $('autoLastRun'); if (!el) return
+    if (!lr) { el.textContent = ''; return }
+    const when = new Date(lr.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    el.textContent = `${lr.ok ? '✅' : '⚠️'} última: ${when} — ${lr.message || ''}`
+    el.style.color = lr.ok ? '' : '#b91c1c'
+  })
 }
 
 function scheduleAutoRefresh() {
-  stopAutoTimers()
-  const settings = saveAutoSettings()
-  const minutes = parseAutoMinutes(settings.minutes)
-  if (!settings.enabled || !minutes) {
-    updateAutoStatus()
-    return
-  }
-
-  autoNextRunAt = Date.now() + minutes * 60 * 1000
-  autoTicker = setInterval(updateAutoStatus, 1000)
-  autoTimer = setTimeout(async () => {
-    autoRunning = true
-    updateAutoStatus()
-    try {
-      await runScan({ source: 'auto' })
-    } finally {
-      autoRunning = false
-      scheduleAutoRefresh()
-    }
-  }, minutes * 60 * 1000)
+  saveAutoSettings()
+  // O agendamento REAL roda no background (chrome.alarms) — funciona com o popup
+  // fechado. Aqui só salvamos e avisamos o background para (re)armar o alarme.
+  try { chrome.runtime.sendMessage({ type: 'autoConfigChanged' }, () => void chrome.runtime.lastError) } catch (e) { /* noop */ }
+  if (autoTicker) clearInterval(autoTicker)
+  autoTicker = setInterval(updateAutoStatus, 2000)
   updateAutoStatus()
 }
 
@@ -330,8 +320,11 @@ chrome.runtime.onMessage.addListener((req) => {
   if (req?.type === 'progress') log(req.msg)
 })
 
-chrome.storage.local.get(['autoconfToken', FILTER_KEY, AUTO_KEY], (r) => {
+chrome.storage.local.get(['autoconfToken', FILTER_KEY, AUTO_KEY, CREDS_KEY], (r) => {
   if (r.autoconfToken) $('token').value = r.autoconfToken
+  const creds = r[CREDS_KEY] || {}
+  if (creds.email) $('acEmail').value = creds.email
+  if (creds.password) $('acPassword').value = creds.password
   const now = new Date()
   applyFiltersToForm(r[FILTER_KEY] || {
     mode: 'current_month',
@@ -357,7 +350,7 @@ $('statusAll').addEventListener('change', () => {
 })
 
 document.querySelectorAll('input, select').forEach((el) => {
-  if (['token', 'statusAll', 'mode', 'autoRefresh', 'autoMinutes'].includes(el.id)) return
+  if (['token', 'statusAll', 'mode', 'autoRefresh', 'autoMinutes', 'autoImport', 'acEmail', 'acPassword'].includes(el.id)) return
   el.addEventListener('change', () => {
     if (el.classList.contains('statusOpt') && el.checked) $('statusAll').checked = false
     syncStatusControls()
@@ -381,6 +374,22 @@ $('autoMinutes').addEventListener('change', () => {
 
 $('saveToken').addEventListener('click', () => {
   chrome.storage.local.set({ autoconfToken: $('token').value.trim() }, () => log('Token salvo.'))
+})
+
+// Botão LIGAR/DESLIGAR a atualização automática (dirige o checkbox oculto).
+$('autoToggle').addEventListener('click', () => {
+  $('autoRefresh').checked = !$('autoRefresh').checked
+  updateToggleButton()
+  scheduleAutoRefresh()
+  log($('autoRefresh').checked ? 'Atualização automática LIGADA — roda em segundo plano.' : 'Atualização automática desligada.')
+})
+
+$('autoImport').addEventListener('change', () => { scheduleAutoRefresh() })
+
+$('saveCreds').addEventListener('click', () => {
+  const email = $('acEmail').value.trim()
+  const password = $('acPassword').value
+  chrome.storage.local.set({ [CREDS_KEY]: { email, password } }, () => log('Login do AutoConf salvo (só neste navegador).'))
 })
 
 async function runScan({ source = 'manual' } = {}) {
