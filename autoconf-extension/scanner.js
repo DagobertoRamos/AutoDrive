@@ -1004,21 +1004,21 @@ function isLoggedOut() {
 }
 
 async function doLogin(email, password) {
-  const pass = document.querySelector('input[type="password"]')
+  // AutoConf: input[name=email] + input[name=senha] + <button type=submit>Entrar</button>
+  // (form Laravel POST /login com CSRF _token já embutido).
+  const pass = document.querySelector('input[type="password"], input[name="senha"]')
   if (!pass) return { ok: true, loggedIn: true } // já logado
   if (!email || !password) return { ok: false, error: 'Sem login/senha salvos na extensão.' }
-  // Campo de usuário = e-mail/texto mais próximo ANTES da senha (ou por nome).
-  const inputs = [...document.querySelectorAll('input')]
-  const pi = inputs.indexOf(pass)
-  const user = inputs.slice(0, pi).reverse().find((i) => /email|text|tel/i.test(i.type) || /email|usuario|user|login|cpf/i.test(`${i.name} ${i.id} ${i.placeholder || ''}`))
-    || document.querySelector('input[type="email"], input[name="email"], input[name="usuario"], input[name="login"]')
+  const user = document.querySelector('input[type="email"], input[name="email"], input[name="usuario"], input[name="login"], input[name="cpf"]')
+    || (() => { const ins = [...document.querySelectorAll('input')]; const pi = ins.indexOf(pass); return ins.slice(0, pi).reverse().find((i) => /email|text|tel/i.test(i.type)) })()
   if (user) setNativeValue(user, email)
   setNativeValue(pass, password)
-  await new Promise((r) => setTimeout(r, 250))
+  await new Promise((r) => setTimeout(r, 300))
   const form = pass.closest('form')
-  const btn = (form || document).querySelector('button[type="submit"], input[type="submit"], button.btn-primary, button')
-  if (form && typeof form.requestSubmit === 'function') form.requestSubmit(btn || undefined)
-  else if (btn) btn.click()
+  // Clicar no botão "Entrar" dispara o submit natural do form (inclui o CSRF).
+  const btn = (form || document).querySelector('button[type="submit"], input[type="submit"]') || (form || document).querySelector('button')
+  if (btn) btn.click()
+  else if (form && typeof form.requestSubmit === 'function') form.requestSubmit()
   else if (form) form.submit()
   return { ok: true, submitted: true }
 }

@@ -381,7 +381,18 @@ $('autoToggle').addEventListener('click', () => {
   $('autoRefresh').checked = !$('autoRefresh').checked
   updateToggleButton()
   scheduleAutoRefresh()
-  log($('autoRefresh').checked ? 'Atualização automática LIGADA — roda em segundo plano.' : 'Atualização automática desligada.')
+  if ($('autoRefresh').checked) {
+    log('Atualização automática LIGADA — rodando a primeira agora (login + busca + importação)...')
+    chrome.runtime.sendMessage({ type: 'runAutoNow' }, () => { void chrome.runtime.lastError; setTimeout(updateAutoStatus, 2000) })
+  } else {
+    log('Atualização automática desligada.')
+  }
+})
+
+// Rodar UMA vez agora (testar login + importação sem esperar o intervalo).
+$('autoRunNow').addEventListener('click', () => {
+  log('Atualizando agora... (abre a aba do AutoConf, loga se preciso, busca e importa) — aguarde ~10s.')
+  chrome.runtime.sendMessage({ type: 'runAutoNow' }, () => { void chrome.runtime.lastError; setTimeout(updateAutoStatus, 2500) })
 })
 
 $('autoImport').addEventListener('change', () => { scheduleAutoRefresh() })

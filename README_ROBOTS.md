@@ -2643,3 +2643,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **manifest:** permissões `alarms`, `scripting`, `tabs`. Sintaxe dos 3 JS + manifest validados (`node --check`).
 - **Segurança:** a senha do AutoConf fica **local** (chrome.storage.local, não sincroniza, não vai ao AutoDrive) — feature de auto-login pedida pelo usuário, com aviso na tela. **NÃO deployado** (é extensão; o usuário precisa RECARREGAR a extensão no Chrome).
 - **Riscos/pendências:** os seletores do form de login são heurísticos (input[type=password] + campo de usuário anterior) — se o AutoConf mudar o HTML de login, ajustar. `chrome.alarms` tem período mínimo de 1 min.
+
+### LOG 0189 — 2026-07-04 — Claude (Opus 4.8) — Extensão v0.4.1: auto-login não disparava — botão "Atualizar agora" + seletores reais + diagnóstico
+- **Inspeção ao vivo do login do AutoConf:** form Laravel POST `/login` com `input[name=email]` + `input[name=senha]` + `<button type=submit>Entrar</button>` + CSRF `_token` embutido. Os seletores da v0.4.0 já casavam — o problema era **disparo e falta de feedback** (o alarme só roda após N minutos; sem como testar na hora).
+- **Correções:**
+  - **Botão "Atualizar agora"** no popup (`runAutoNow` com `force:true`) — roda na hora (login+busca+importação) sem esperar o intervalo, mesmo com o toggle desligado. Ao LIGAR, também roda a primeira imediatamente.
+  - **`doLogin`** usa os seletores reais (`name=email`/`name=senha`) e **clica no "Entrar"** (submit natural do form Laravel, inclui o CSRF).
+  - **Diagnóstico claro** no status: após o login, o background re-checa `loginStatus` e reporta "Deslogado e sem login/senha salvos", "Não logou — confira login/senha (ou captcha)" ou "Importado: +X...".
+- **manifest 0.4.0 → 0.4.1.** `node --check` OK nos 3 JS. **Recarregar a extensão** no Chrome.

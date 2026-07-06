@@ -173,13 +173,14 @@ async function importRows(rows, token, filters, period) {
 }
 
 let autoRunning = false
-async function runAutoUpdate() {
+async function runAutoUpdate(opts) {
+  const force = opts && opts.force === true
   if (autoRunning) return
   autoRunning = true
   try {
     const st = await getLocal([AUTO_KEY, FILTER_KEY, CREDS_KEY, TOKEN_KEY])
     const cfg = st[AUTO_KEY] || {}
-    if (cfg.enabled !== true) return
+    if (!force && cfg.enabled !== true) return
     const token = st[TOKEN_KEY]
     if (!token) { await setLastRun(false, 'Sem token do AutoDrive salvo.'); return }
 
@@ -188,13 +189,22 @@ async function runAutoUpdate() {
     if (filters.mode === 'current_month') { const d = new Date(); filters = { ...filters, month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` } }
 
     const tab = await findOrCreateAutoconfTab()
-    await sleep(1600) // dá tempo se a aba acabou de abrir
+    await sleep(1800) // dá tempo se a aba acabou de abrir
     await ensureContentScript(tab.id)
 
     // Auto-login se estiver deslogado.
     const creds = st[CREDS_KEY] || {}
     const login = await sendToTab(tab.id, { action: 'ensureLogin', email: creds.email, password: creds.password })
-    if (login && login.submitted) { await sleep(4500); await ensureContentScript(tab.id) }
+    if (login && login.submitted) {
+      await sleep(5000) // espera o POST /login redirecionar
+      await ensureContentScript(tab.id)
+    }
+    // Confirma o estado de login (o content script é re-injetado após o redirect).
+    const status = await sendToTab(tab.id, { action: 'loginStatus' })
+    if (status && status.ok && status.loggedOut) {
+      await setLastRun(false, creds.email ? 'Não logou — confira o login/senha do AutoConf (ou apareceu captcha).' : 'Deslogado e sem login/senha salvos na extensão. Salve as credenciais.')
+      return
+    }
 
     const scan = await sendToTab(tab.id, { action: 'scan', dryRun: true, filters })
     if (!scan.ok) { await setLastRun(false, 'Busca falhou: ' + (scan.error || 'verifique o login')); return }
@@ -218,5 +228,5 @@ setupAutoAlarm().catch(() => {})
 
 chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
   if (req?.type === 'autoConfigChanged') { setupAutoAlarm().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false })); return true }
-  if (req?.type === 'runAutoNow') { runAutoUpdate().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false })); return true }
+  if (req?.type === 'runAutoNow') { runAutoUpdate({ force: true }).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false })); return true }
 })
