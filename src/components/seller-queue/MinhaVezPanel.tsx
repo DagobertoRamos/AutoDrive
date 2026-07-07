@@ -112,29 +112,7 @@ export default function MinhaVezPanel() {
     } catch { flash('Erro de rede.', false); return false } finally { setBusy(false) }
   }
 
-  const [scanOpen, setScanOpen] = useState(false)
   const [customerOpen, setCustomerOpen] = useState(false)
-  const [calling, setCalling] = useState(false)
-  // Chamar o vendedor da vez (1 toque). Trava anti-duplicidade: o botão fica
-  // travado enquanto chama (front) e o backend devolve "alreadyInProgress" se já
-  // há chamada tocando ou dentro do cooldown de 10s.
-  const callDaVez = async () => {
-    if (calling) return
-    if (!data?.permissions?.callCurrentSeller) { flash('Sem permissão para chamar o vendedor da vez.', false); return }
-    setCalling(true)
-    try {
-      const res = await fetch('/api/seller-queue/quick-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' })
-      const j = await res.json().catch(() => ({}))
-      if (!res.ok) flash(j?.error ?? 'Falha ao chamar.', false)
-      else if (j?.data?.alreadyInProgress) flash(j?.data?.sellerName ? `Chamada já em andamento — ${j.data.sellerName} foi chamado.` : (j?.data?.cooldownSeconds ? `Aguarde ${j.data.cooldownSeconds}s para chamar de novo.` : 'Chamada já em andamento — aguarde.'), false)
-      else if (j?.data?.call?.ok) flash('Vendedor da vez chamado! 🔔', true)
-      else flash(j?.data?.call?.reason ?? 'Nenhum vendedor disponível na fila.', false)
-      await load()
-    } catch { flash('Erro de rede.', false) } finally { setCalling(false) }
-  }
-  const checkIn = async () => { unlockAudio(); void ensureNotifyPermission(); const pos = await getPosition(); await post('check-in', pos, 'Você entrou na fila!') }
-  const checkInQr = async (token: string) => { unlockAudio(); void ensureNotifyPermission(); setScanOpen(false); await post('check-in', { qrToken: token }, 'Você entrou na fila!') }
-  const resume = async () => { const pos = await getPosition(); await post('resume', pos, 'De volta à fila!') }
   const me = data?.me
   const att = data?.myAttendance
   const secsLeft = att?.acceptDeadline ? Math.max(0, Math.floor((new Date(att.acceptDeadline).getTime() - now) / 1000)) : null
@@ -152,7 +130,7 @@ export default function MinhaVezPanel() {
     if (!isInfoRapida) {
       if (!name) { flash('Informe o nome do cliente.', false); return }
       if (finForm.customerPhone.replace(/\D/g, '').length < 10) { flash('Informe um telefone válido.', false); return }
-      if (!isEmail(finForm.customerEmail)) { flash('Informe um e-mail válido.', false); return }
+      if (finForm.customerEmail.trim() && !isEmail(finForm.customerEmail)) { flash('Informe um e-mail válido.', false); return }
     } else {
       if (name || finForm.customerPhone.replace(/\D/g, '').length > 0 || finForm.customerEmail.trim()) {
         if (!name) { flash('Informe o nome do cliente.', false); return }
@@ -260,69 +238,12 @@ export default function MinhaVezPanel() {
         </div>
       )}
 
-      {/* Ações rápidas — cards animados: Entrar · Chamar da vez · Atender · QR */}
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {/* Card 1 — Entrar na fila / seu status */}
-        {showStatusCard && (
-          <div className="mv-card relative min-w-0 overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4 shadow-card" style={{ animationDelay: '0ms' }}>
-            <DoorOpen size={22} className="mv-float text-brand-600" />
-            <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-500">Sua vez</p>
-            {!me || me.status === 'LEFT' ? (
-              <>
-                <p className="text-lg font-bold leading-tight text-gray-900">Fora da fila</p>
-                <button onClick={checkIn} disabled={busy} className="relative z-10 mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"><Hand size={15} />Entrar na fila</button>
-                <p className="mt-1.5 text-center text-[10px] text-gray-400">Presença validada (GPS/QR)</p>
-              </>
-            ) : (
-              <>
-                <p className="text-2xl font-bold leading-tight text-gray-900">{me.position > 0 ? `${me.position}º` : statusLabel(me.status)}</p>
-                <p className="text-xs text-gray-400">{statusLabel(me.status)}</p>
-                <div className="relative z-10 mt-2 grid gap-1.5 min-[380px]:grid-cols-2">
-                  {me.status === 'PAUSED' ? (
-                    <button onClick={resume} disabled={busy} className="flex-1 rounded-lg bg-brand-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-60"><Play size={13} className="mr-1 inline" />Voltar</button>
-                  ) : ['WAITING', 'NEXT'].includes(me.status) ? (
-                    <button onClick={() => post('pause', {}, 'Pausado.')} disabled={busy} className="flex-1 rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60"><Pause size={13} className="mr-1 inline" />Pausar</button>
-                  ) : null}
-                  <button onClick={() => post('check-out', {}, 'Você saiu da fila.')} disabled={busy} className="flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"><LogOut size={13} className="mr-1 inline" />Sair</button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
 
-        {/* Card 2 — Chamar vendedor da vez (1 toque, com trava anti-duplicidade) */}
-        {data?.permissions?.callCurrentSeller && <button onClick={callDaVez} disabled={calling} className="mv-card group relative min-w-0 overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '60ms' }}>
-          <Crown size={22} className="mv-float text-amber-500" />
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-amber-600">Vendedor da vez</p>
-          <p className="truncate text-lg font-bold leading-tight text-gray-900" title={data?.vendedorDaVez?.sellerName}>{data?.vendedorDaVez?.sellerName ?? '— ninguém'}</p>
-          <span className="relative z-10 mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm"><Hand size={13} />{calling ? 'Chamando…' : 'Chamar da vez'}</span>
-        </button>}
-
-        {/* Card 3 — Ler QR da loja */}
-        {showStatusCard && (
-          <button onClick={() => setScanOpen(true)} disabled={busy} className="mv-card group relative min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60" style={{ animationDelay: '90ms' }}>
-            <QrCode size={22} className="mv-float text-gray-700" />
-            <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">QR da loja</p>
-            <p className="text-lg font-bold leading-tight text-gray-900">Entrar com QR</p>
-            <p className="relative z-10 mt-1 text-xs font-medium text-gray-500">Escanear código →</p>
-          </button>
-        )}
-
-        {/* Card 4 — Atender cliente (chamar responsável / registrar chegada) */}
-        <button onClick={() => setCustomerOpen(true)} className="mv-card group relative min-w-0 overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg" style={{ animationDelay: '180ms' }}>
-          <Bell size={22} className="mv-float text-blue-500" />
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">Atender cliente</p>
-          <p className="text-lg font-bold leading-tight text-gray-900">Registrar / chamar</p>
-          <p className="relative z-10 mt-1 text-xs font-medium text-blue-600">Cadastrar cliente · chamar responsável →</p>
-        </button>
-      </div>
-
-      {scanOpen && <QrScanner onResult={checkInQr} onClose={() => setScanOpen(false)} />}
 
       {/* Popup — atender cliente (registrar chegada / chamar responsável / pós-vendas / agendamento) */}
       {customerOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3" onClick={() => setCustomerOpen(false)}>
-          <div className="mx-auto my-4 w-full max-w-md max-w-[calc(100vw-1.5rem)]" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto my-4 w-full max-w-[min(28rem,calc(100vw-1.5rem))]" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-base font-bold text-white drop-shadow">Atender cliente</h3>
               <button onClick={() => setCustomerOpen(false)} className="rounded-lg bg-white/90 p-1.5 text-gray-600 shadow hover:bg-white"><X size={18} /></button>
@@ -334,13 +255,13 @@ export default function MinhaVezPanel() {
 
       {finishOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>
-          <div className="max-h-[92vh] w-full max-w-md max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[92vh] w-full max-w-[min(28rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-5" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-1 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
             <p className="mb-3 text-xs text-gray-500">Registre os dados do cliente e o resultado. Gera um lead de atendimento no seu nome.</p>
             <div className="space-y-3">
               <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={finForm.customerName} onChange={(e) => { setFinForm((f) => ({ ...f, customerName: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} onBlur={() => setFinForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Ex.: Dagoberto Ramos de Francisco" /><CustomerLookup query={finForm.customerName} onPick={pickMatch} /></div>
               <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={finForm.customerPhone} onChange={(e) => { setFinForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="(11)9.9999-9999" /><CustomerLookup query={finForm.customerPhone} onPick={pickMatch} /></div>
-              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={finForm.customerEmail} onChange={(e) => { setFinForm((f) => ({ ...f, customerEmail: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="cliente@email.com" /><CustomerLookup query={finForm.customerEmail} onPick={pickMatch} /></div>
+              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail (opcional)</label><input type="email" className={inputCls} value={finForm.customerEmail} onChange={(e) => { setFinForm((f) => ({ ...f, customerEmail: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="cliente@email.com" /><CustomerLookup query={finForm.customerEmail} onPick={pickMatch} /></div>
               {pickedCustomerId && <p className="-mt-1 text-[11px] font-medium text-green-600">✓ Cliente existente selecionado — não vai duplicar.</p>}
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={finForm.type} onChange={(e) => setFinForm((f) => ({ ...f, type: e.target.value }))}>{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Resultado</label><select className={inputCls} value={finForm.result} onChange={(e) => setFinForm((f) => ({ ...f, result: e.target.value }))}>{RESULTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>

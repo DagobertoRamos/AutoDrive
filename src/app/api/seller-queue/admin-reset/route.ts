@@ -12,7 +12,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAudi
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { queueDate, unitFromRequest } from '@/lib/seller-queue/queue'
+import { queueDate, unitFromRequest, isUserQueueResponsible } from '@/lib/seller-queue/queue'
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
@@ -30,7 +30,8 @@ export async function POST(req: Request) {
     if (action === 'wipe') {
       if (user.role !== 'MASTER') return forbiddenResponse('Apagar todo o histórico é exclusivo do MASTER.')
     } else {
-      if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gestão (gerente/ADM) pode reiniciar a fila.')
+      const isResponsible = await isUserQueueResponsible({ id: user.id, role: user.role, tenantId: user.tenantId ?? '', unitId: user.unitId })
+      if (!isResponsible && !canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gestão (gerente/ADM) pode reiniciar a fila.')
     }
 
     const removed: Record<string, number> = {}

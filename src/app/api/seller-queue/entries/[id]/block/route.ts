@@ -11,7 +11,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { blockSchema } from '@/lib/validators/seller-queue'
-import { logQueueEvent } from '@/lib/seller-queue/queue'
+import { logQueueEvent, isUserQueueResponsible } from '@/lib/seller-queue/queue'
 import { clearActiveBlocks } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
@@ -32,7 +32,8 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const d = blockSchema.parse(await req.json())
     const permission = d.blocked ? 'queue.block_participant' : 'queue.unblock_participant'
-    if (!await canAccessModuleForUser(user, permission)) return forbiddenResponse('Sem permissão para bloquear/liberar vendedores.')
+    const isResponsible = await isUserQueueResponsible({ id: user.id, role: user.role, tenantId: user.tenantId ?? '', unitId: user.unitId })
+    if (!isResponsible && !await canAccessModuleForUser(user, permission)) return forbiddenResponse('Sem permissão para bloquear/liberar vendedores.')
     await prisma.sellerQueueEntry.update({
       where: { id },
       data: { blocked: d.blocked, status: d.blocked ? 'BLOCKED' : 'WAITING', ...(d.blocked ? {} : { pausedAt: null }) },

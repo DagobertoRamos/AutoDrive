@@ -155,4 +155,5 @@ export const configSchema = z.object({
   infoRapidaConsumesTurn:      z.enum(['NO', 'YES', 'TIME_LIMIT']).optional(),
   infoRapidaTimeLimitMinutes:  z.number().int().min(1).max(120).optional(),
   allowWaitWithOpenAttendance: z.enum(['NO', 'YES', 'QUICK_ONLY']).optional(),
+  responsibleUserIds:          z.array(z.string()).optional(),
 })

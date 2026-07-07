@@ -10,7 +10,7 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { queueDate, nextPosition, getOrCreateQueue, logQueueEvent } from '@/lib/seller-queue/queue'
+import { queueDate, nextPosition, getOrCreateQueue, logQueueEvent, isUserQueueResponsible } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
@@ -43,7 +43,8 @@ export async function POST(req: Request) {
     if (!sellerId || !ACTIONS.includes(action)) {
       return NextResponse.json({ success: false, error: 'Parâmetros inválidos (sellerId/action).' }, { status: 400 })
     }
-    if (!await canAccessModuleForUser(user, ACTION_PERMISSION[action])) {
+    const isResponsible = await isUserQueueResponsible({ id: user.id, role: user.role, tenantId: user.tenantId ?? '', unitId: user.unitId })
+    if (!isResponsible && !await canAccessModuleForUser(user, ACTION_PERMISSION[action])) {
       return forbiddenResponse('Sem permissão para esta ação na fila.')
     }
     if (!reason) {

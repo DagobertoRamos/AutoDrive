@@ -12,13 +12,14 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { reorderSchema } from '@/lib/validators/seller-queue'
-import { logQueueEvent } from '@/lib/seller-queue/queue'
+import { logQueueEvent, isUserQueueResponsible } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!await canAccessModuleForUser(user, 'queue.reorder')) return forbiddenResponse('Sem permissão para reordenar a fila.')
+  const isResponsible = await isUserQueueResponsible({ id: user.id, role: user.role, tenantId: user.tenantId ?? '', unitId: user.unitId })
+  if (!isResponsible && !await canAccessModuleForUser(user, 'queue.reorder')) return forbiddenResponse('Sem permissão para reordenar a fila.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))

@@ -2683,7 +2683,17 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - **Testes:** criados os testes automatizados unitários em `src/lib/seller-queue/anti-briga.test.ts` cobrindo o schema de conclusão de atendimento e o status de ocupado (`isAgentBusy`) com as diferentes regras de `allowWaitWithOpenAttendance` e timeouts de `INFORMACAO_RAPIDA`.
 - **Validações:** `npx tsc --noEmit` completado com sucesso sem erros. `npx vitest run src/lib/seller-queue/anti-briga.test.ts` passou com 5/5 testes verdes.
 
-### LOG 0194 — 2026-07-07 — Codex (GPT-5) — Ranking: participantes por tipo/unidade
+### LOG 0194 — 2026-07-07 — Antigravity (Gemini 3.5 Flash) — Dashboard de Fila: Auditoria e Ajustes de Responsividade Mobile-First
+- **Branch:** `codex-responsividade-base` (worktree).
+- **Tarefa:** Resolver problemas de conteúdo cortado, layout vazando, flex-nowrap e tables não responsivas no mobile (celular/tablet) do Dashboard da Fila (Vendedor da Vez).
+- **Feito:**
+  - **Fila Overview Page (`vendedor-da-vez/page.tsx`):** adicionadas classes `min-w-0 max-w-full overflow-x-hidden` para evitar qualquer vazamento horizontal de contêiner. O card principal de estatísticas foi alterado de grid rígido para colunas dinâmicas (4 no mobile, 2 no sm+). Ajustado grid de botões do gerente para `grid-cols-1 min-[420px]:grid-cols-2` para evitar compressão no mobile. Adicionada quebra de texto flexível (`break-words`) nos nomes de vendedores, sinais da fila e log de eventos em vez de truncamento rígido.
+  - **Minha Vez Panel (`MinhaVezPanel.tsx`):** corrigido conflito de largura máxima (`max-w-md max-w-[calc(100vw-1.5rem)]`) unificando os valores com `max-w-[min(28rem,calc(100vw-1.5rem))]`.
+  - **Ranking de Qualidade (`QueueRanking.tsx`):** adicionado layout responsivo alternativo em formato de lista/cards empilhados (`md:hidden`) para visualização mobile. Em resoluções de tablet/desktop (`md:`), a tabela detalhada tradicional continua sendo exibida. Adicionado `break-words` nas dezenas/nomes do pódio.
+  - **Help Chat Launcher (`HelpChatLauncher.tsx`):** posicionado o botão flutuante e o chat de ajuda usando `env(safe-area-inset-bottom)` para respeitar a safe area de iPhones modernos com notch.
+- **Validações:** `npx tsc --noEmit` verde. Vitest tests (61/61) verdes (incluindo fix de assinatura no mock de `anti-briga.test.ts`). `npm run build` completado com 100% de sucesso sem erros.
+
+### LOG 0195 — 2026-07-07 — Codex (GPT-5) — Ranking: participantes por tipo/unidade
 - **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
 - **Tarefa:** Criar configuração de quem participa dos rankings por tipo e unidade, preservando histórico/participantes antigos e garantindo validação no backend.
 - **Arquivos alterados/criados:** `src/lib/ranking/participation.ts`, `src/app/api/ranking/participants/route.ts`, `src/app/(dashboard)/ranking/configuracao/page.tsx`, `src/lib/ranking/service.ts`, `src/app/api/seller-queue/ranking/route.ts`, `src/app/api/seller-queue/reports/route.ts`, `src/lib/permissions.ts`, `src/components/layout/navigation.ts`, testes de ranking/permissões/rotas, e pequenos ajustes de lint em telas da fila.
@@ -2691,7 +2701,7 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Validações:** `npx tsc --noEmit` OK; `npm run lint -- --quiet` OK; `npm test` OK (54 arquivos, 379 testes); `npm run build` OK após permissão elevada para regenerar Prisma Client.
 - **Observações:** Sem exclusão de usuários, histórico, comissões ou dados de ranking. A configuração granular fica em `SystemSetting` (`ranking_participants_v2`) para manter compatibilidade com os toggles legados de cadastro.
 
-### LOG 0195 — 2026-07-07 — Codex (GPT-5) — Dashboard da Fila igual ao modelo mobile
+### LOG 0196 — 2026-07-07 — Codex (GPT-5) — Dashboard da Fila igual ao modelo mobile
 - **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
 - **Tarefa:** Remover da dashboard principal o bloco antigo “Sua vez / QR da loja / Atender cliente” e manter o modelo visual do card mobile como padrão, adicionando “Entrar na fila” acima de “Verificar vez”.
 - **Arquivos alterados:** `src/app/(dashboard)/vendedor-da-vez/page.tsx`, `README_ROBOTS.md`.

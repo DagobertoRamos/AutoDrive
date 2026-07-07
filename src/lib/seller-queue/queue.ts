@@ -136,3 +136,14 @@ export async function recordPresence(args: {
   }).catch(() => {})
   return result
 }
+
+export async function isUserQueueResponsible(user: { id: string; role: string; tenantId: string; unitId?: string | null }): Promise<boolean> {
+  const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
+  if (MANAGE_ROLES.includes(user.role)) return true
+  const unitId = user.unitId
+  if (!unitId) return false
+  const cfg = await getUnitConfig(user.tenantId, unitId)
+  if (!cfg) return false
+  const responsibleUserIds = (cfg.config as any)?.responsibleUserIds ?? []
+  return responsibleUserIds.includes(user.id)
+}
