@@ -1,20 +1,11 @@
-// =============================================================================
-// GET /api/seller-queue/current — estado da fila da unidade hoje.
-// Gate: sellerQueue.view. Retorna a fila ordenada, o "vendedor da vez", a
-// posição do solicitante e a contagem de clientes aguardando. Tenant/unit-scoped.
-// MASTER: passar ?unitId=. Não cria fila (só leitura).
-// =============================================================================
-
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/queue'
-import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
-import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
-import { assertModuleEnabled, canAccessModuleForUser, getDisabledModules } from '@/lib/tenant-modules'
-import { autoCheckoutStalePauses, isQueueOpenNow, isOnVacation, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
+import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
+import { autoCheckoutStalePauses, isQueueOpenNow, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
 import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
 export async function GET(req: Request) {
@@ -32,11 +23,7 @@ export async function GET(req: Request) {
     const alerts = {
       sound: ucfg?.alertSound ?? true,
       soundType: ucfg?.alertSoundType ?? 'siren',
-      browserPush: ucfg?.alertBrowserPush ?? true,
-      repeatSeconds: ucfg?.alertRepeatSeconds ?? 10,
     }
-    const allowChooseSeller = ucfg?.allowChooseSeller ?? true
-    // Automações: auto-saída por pausa longa + abre/fecha por horário.
     const cfgExtras = (ucfg?.config as Record<string, unknown> | undefined) ?? {}
     const rawPanelSound = (cfgExtras.panelSound && typeof cfgExtras.panelSound === 'object' ? cfgExtras.panelSound : {}) as Record<string, unknown>
     const panelSound = {
@@ -55,43 +42,24 @@ export async function GET(req: Request) {
     }
     const maxPauseMinutes = typeof cfgExtras.maxPauseMinutes === 'number' ? cfgExtras.maxPauseMinutes : 0
     const queueOpen = cfgExtras.autoSchedule ? isQueueOpenNow(ucfg?.openTime, ucfg?.closeTime, ucfg?.allowedDays) : true
-    const onVacation = isOnVacation(ucfg?.config, user.id)
-    const myBlockRaw = await getActiveQueueBlock(tenantId, unitId, user.id)
-    const myBlock = myBlockRaw ? { type: myBlockRaw.type, endsAt: myBlockRaw.endsAt } : null
-    const myPosVendaRaw = await getActivePosVenda(tenantId, unitId, user.id)
-    const myPosVenda = myPosVendaRaw ? { status: myPosVendaRaw.status } : null
-    // Pode entrar na fila? = módulo sellerQueue.checkIn EFETIVO (cargo permite +
-    // não removido do colaborador + não desligado p/ a loja). Quem não pode, não
-    // vê "Entrar na fila" — mas continua vendo "Chamar vendedor da vez".
-    const responsibleUserIds = (ucfg?.config as any)?.responsibleUserIds ?? []
-    const isQueueResponsible = responsibleUserIds.includes(user.id)
-    let canCheckIn = await canAccessModuleForUser(user, 'sellerQueue.checkIn')
-    if (canCheckIn) {
-      const [denied, tenantDisabled] = await Promise.all([
-        prisma.userModule.findFirst({ where: { userId: user.id, moduleKey: 'sellerQueue.checkIn', allowed: false }, select: { id: true } }),
-        getDisabledModules(tenantId),
-      ])
-      if (denied || tenantDisabled.includes('sellerQueue.checkIn')) canCheckIn = false
-    }
-    const queuePermissions = {
-      callCurrentSeller: isQueueResponsible || await canAccessModuleForUser(user, 'queue.call_current_seller'),
-      sendAlertAll: isQueueResponsible || await canAccessModuleForUser(user, 'queue.send_alert_all'),
-      viewLogs: isQueueResponsible || await canAccessModuleForUser(user, 'queue.view_logs'),
-      transferAttendance: isQueueResponsible || await canAccessModuleForUser(user, 'queue.transfer_attendance'),
-      finishOtherAttendance: isQueueResponsible || await canAccessModuleForUser(user, 'queue.finish_other_attendance'),
-      pauseOther: isQueueResponsible || await canAccessModuleForUser(user, 'queue.pause_other'),
-      resumeOther: isQueueResponsible || await canAccessModuleForUser(user, 'queue.resume_other'),
-      addParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.add_participant'),
-      removeParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.remove_participant'),
-      blockParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.block_participant'),
-      unblockParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.unblock_participant'),
-      reorder: isQueueResponsible || await canAccessModuleForUser(user, 'queue.reorder'),
-      manageSettings: isQueueResponsible || await canAccessModuleForUser(user, 'queue.manage_settings'),
-    }
-    const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
+
+    const queue = await prisma.sellerQueue.findUnique({
+      where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } },
+      select: { id: true, date: true, status: true }
+    })
     const unit = await prisma.unit.findFirst({ where: { id: unitId, tenantId }, select: { name: true } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible, unitName: unit?.name ?? null } })
+      return NextResponse.json({
+        success: true,
+        data: {
+          queue: null,
+          entries: [],
+          vendedorDaVez: null,
+          unitName: unit?.name ?? null,
+          panelSound,
+          queueOpen
+        }
+      })
     }
 
     let entries = await prisma.sellerQueueEntry.findMany({
@@ -169,24 +137,6 @@ export async function GET(req: Request) {
       activeAtts = newActiveAtts
     }
 
-    const isVendedor = user.role === 'VENDEDOR'
-    const meRawInit = entries.find((e) => e.sellerId === user.id) ?? null
-    const hasMeOrVendedor = meRawInit !== null || isVendedor
-
-    const [arrivalsPending, personalCounts, testNotif] = await Promise.all([
-      prisma.sellerQueueCustomerArrival.count({ where: { queueId: queue.id, status: { in: ['PENDING', 'CALLING'] } } }),
-      prisma.agentPersonalQueueItem.groupBy({
-        by: ['agentUserId'],
-        where: { tenantId, unitId, status: { in: ['AGUARDANDO', 'CHAMADO'] } },
-        _count: { id: true },
-      }),
-      hasMeOrVendedor ? prisma.notification.findFirst({
-        where: { userId: user.id, read: false, metadata: { path: ['kind'], equals: 'test_attention' } },
-        select: { id: true, metadata: true, createdAt: true },
-        orderBy: { createdAt: 'desc' }
-      }) : Promise.resolve(null)
-    ])
-
     // Se vendedor está WAITING na entry, mas tem INFORMACAO_RAPIDA há mais que o limite,
     // move a entry dele para IN_ATTENDANCE (remover da fila)
     const infoLimit = typeof (ucfg?.config as any)?.infoRapidaTimeLimitMinutes === 'number'
@@ -207,13 +157,18 @@ export async function GET(req: Request) {
       }
     }
 
+    const personalCounts = await prisma.agentPersonalQueueItem.groupBy({
+      by: ['agentUserId'],
+      where: { tenantId, unitId, status: { in: ['AGUARDANDO', 'CHAMADO'] } },
+      _count: { id: true },
+    })
+
     const personalCountsMap = new Map<string, number>()
     personalCounts.forEach((r) => personalCountsMap.set(r.agentUserId, r._count.id))
 
     const attBySeller = new Map<string, typeof activeAtts[0]>()
     activeAtts.forEach((a) => attBySeller.set(a.sellerId, a))
 
-    // Nomes dos vendedores (User não tem relação direta no model da fila).
     const names = new Map<string, string>()
     const hasDev = new Set<string>()
     const activeActorIds = activeAtts.map((a) => a.createdById).filter((id): id is string => Boolean(id))
@@ -244,7 +199,6 @@ export async function GET(req: Request) {
         if (att.status === 'CALLED') {
           operationalState = 'CHAMADO'
         } else {
-          // ACCEPTED ou IN_ATTENDANCE
           const durationMin = (Date.now() - new Date(att.startedAt ?? att.calledAt).getTime()) / 60000
           const timeLimit = typeof (ucfg?.config as any)?.attendanceReminder?.firstAfterMinutes === 'number'
             ? (ucfg?.config as any).attendanceReminder.firstAfterMinutes
@@ -279,49 +233,6 @@ export async function GET(req: Request) {
     })
 
     const vencedor = list.find((e) => e.status === 'WAITING' && !e.blocked) ?? null
-    const meRaw = list.find((e) => e.sellerId === user.id) ?? null
-    // Posição REAL na fila: rank entre os que estão aguardando (1º, 2º, 3º…),
-    // não o campo interno `position` (que cresce como contador ao ir pro fim).
-    const lineOrder = list.filter((e) => (e.status === 'WAITING' || e.status === 'NEXT') && !e.blocked)
-    const myRank = lineOrder.findIndex((e) => e.sellerId === user.id) + 1
-    // Em atendimento/chamado o vendedor NÃO está na fila de espera → posição 0
-    // (a UI mostra a situação, não o contador interno, que confundia como "14º").
-    const me = meRaw ? { ...meRaw, position: myRank > 0 ? myRank : 0 } : null
-
-    // Aviso: o vendedor foi removido automaticamente (pausa/ausência prolongada)?
-    let autoRemovedNotice: string | null = null
-    if (!meRaw && isVendedor) {
-      const lastEv = await prisma.sellerQueueEvent.findFirst({
-        where: { queueId: queue.id, sellerId: user.id },
-        orderBy: { createdAt: 'desc' },
-        select: { type: true, reason: true }
-      })
-      if (lastEv?.type === 'CHECK_OUT' && lastEv.reason?.startsWith(AUTO_PAUSE_REASON)) {
-        autoRemovedNotice = 'Você saiu da fila automaticamente porque ficou pausado/fora por muito tempo. Entre novamente para voltar à fila.'
-      }
-    }
-
-    // Atendimento ativo do próprio solicitante (p/ aceitar/recusar/finalizar).
-    const myAtt = (meRaw || isVendedor) ? await prisma.sellerQueueAttendance.findFirst({
-      where: { queueId: queue.id, sellerId: user.id, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
-      orderBy: { calledAt: 'desc' },
-      select: {
-        id: true,
-        status: true,
-        acceptDeadline: true,
-        visitType: true,
-        startedAt: true,
-        calledAt: true,
-        arrival: {
-          select: {
-            customerName: true,
-            customerPhone: true,
-            customerEmail: true,
-            recurring: true,
-          }
-        }
-      }
-    }) : null
 
     return NextResponse.json({
       success: true,
@@ -330,22 +241,8 @@ export async function GET(req: Request) {
         unitName: unit?.name ?? null,
         entries: list,
         vendedorDaVez: vencedor ? { sellerId: vencedor.sellerId, sellerName: vencedor.sellerName, position: vencedor.position } : null,
-        me,
-        arrivalsPending,
-        alerts,
         panelSound,
-        allowChooseSeller,
-        myBlock,
-        myPosVenda,
-        canCheckIn,
-        permissions: queuePermissions,
-        isQueueResponsible,
         queueOpen,
-        onVacation,
-        autoRemovedNotice,
-        closeReasons: (cfgExtras.leadCloseReasons as string[] | undefined) ?? [],
-        myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival, visitType: myAtt.visitType, startedAt: myAtt.startedAt || myAtt.calledAt } : null,
-        activeAttentionTest: testNotif ? { id: testNotif.id, sentAt: (testNotif.metadata as any)?.sentAt || testNotif.createdAt.toISOString() } : null,
       },
     })
   } catch (err) {

@@ -2716,3 +2716,24 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Corrigido:** adicionada configuração `panelSound` por unidade/tenant com som ativo, repetir até aceite, intervalo do toque 1-30s, atualização do painel 3-60s, volume 0-100%, tipo de som, tocar também no Dashboard, tocar somente no Painel da Loja, silenciar fora do horário, ativação manual, Wake Lock e aviso de aba em segundo plano. O Painel da Loja agora controla o loop por `activeAttendanceId`/`callId` e para automaticamente quando a chamada deixa o estado `CHAMADO`.
 - **Validações:** `npx eslint` nos arquivos alterados OK com avisos legados; `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes). `npm run build` ficou bloqueado no ambiente por `EPERM` ao regenerar `node_modules/.prisma/client/index.js`.
 - **Riscos/pendências:** para validar o build local completo, liberar/remover a trava de `node_modules/.prisma/client/index.js` ou rodar em terminal com permissão sobre esse arquivo. Sem deploy feito pelo Codex.
+
+### LOG 0198 — 2026-07-07 20:07:00 -03:00 — Antigravity (Gemini 2.0 Flash) — Otimização de Performance da Fila e Painel da Loja
+- **Tarefa:** Investigar causa da lentidão e realizar otimizações no Painel da Loja (TV Dashboard) e no Dashboard de Vendedores da Vez.
+- **Arquivos alterados/criados:**
+  - `src/lib/seller-queue/queue.ts`: cache de 10s para a configuração da unidade.
+  - `src/lib/seller-queue/reminders.ts`: cache de 3s para o lembrete de dashboard (reduzindo requisições na tabela de AuditLog).
+  - `src/app/api/seller-queue/current/route.ts`: selects enxutos, consultas de notificação/atendimento condicionados ao perfil `VENDEDOR` e verificação em memória (lazy) de timeouts/checkout de pausas antes de abrir transação de gravação.
+  - `src/app/api/seller-queue/panel-summary/route.ts` [NOVO]: endpoint ultraleve específico para TVs e visualizadores da loja (retorna apenas dados estruturais resumidos).
+  - `src/app/(dashboard)/vendedor-da-vez/painel-loja/page.tsx`: alterado fetch de `current` para `panel-summary` e implementada a trava `isFetching` no front-end para evitar concorrência/overlapping de requisições.
+  - `src/app/(dashboard)/vendedor-da-vez/page.tsx`: implementada trava `isFetching` no polling rápido.
+- **Causa da lentidão encontrada:**
+  - O polling frequente de 3 segundos de múltiplos navegadores executava a cada chamada transações de gravação (`sweepExpiredCalls`/`autoCheckoutStalePauses`), consultas complexas a campos JSON de tabelas grandes (`Notification.metadata`) e queries agregadas pesadas em tabelas de auditoria (`AuditLog` para lembretes) para usuários não-vendedores/TVs que não precisavam dessas informações.
+- **Otimizações aplicadas:**
+  - Criação do endpoint específico `panel-summary` com selects dedicados;
+  - Caches em memória no backend com curto período de expiração (3s a 10s);
+  - Condicionamento de rotinas pesadas de gravação para execução lazy (apenas quando de fato há dados para timeout/checkout pendentes);
+  - Adicionado semáforo no front-end para evitar o empilhamento de requisições.
+- **Testes realizados:**
+  - Suíte completa de testes unitários e de integração (`npx vitest run`) passou com sucesso (379/379 testes verdes);
+  - Verificação de tipos via `npx tsc --noEmit` bem-sucedida (0 erros).
+- **Riscos/pendências:** Nenhum. Nenhuma alteração estrutural no banco de dados e as regras de negócio originais de timeout, penalidades e fila individual foram 100% preservadas.

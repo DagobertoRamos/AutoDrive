@@ -32,9 +32,19 @@ export function unitFromRequest(req: Request, fallback: string | null | undefine
   return null
 }
 
+const configCache = new Map<string, { value: any; expiresAt: number }>()
+
 /** Config da fila da unidade (ou null se não houver). */
 export async function getUnitConfig(tenantId: string, unitId: string) {
-  return prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } } })
+  const key = `${tenantId}:${unitId}`
+  const cached = configCache.get(key)
+  const now = Date.now()
+  if (cached && cached.expiresAt > now) {
+    return cached.value
+  }
+  const value = await prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } } })
+  configCache.set(key, { value, expiresAt: now + 10000 }) // 10s cache
+  return value
 }
 
 /** Converte a config persistida no shape de validação de presença. */

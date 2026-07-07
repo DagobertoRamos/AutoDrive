@@ -75,7 +75,7 @@ export default function StorePanelPage() {
   const prevVendedorId = useRef<string | null>(null)
   const activeSoundTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSoundCallId = useRef<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const isFetchingRef = useRef(false)
   const wakeLockRef = useRef<{ release: () => Promise<void>; released?: boolean } | null>(null)
 
   useEffect(() => {
@@ -84,12 +84,11 @@ export default function StorePanelPage() {
   }, [])
 
   const load = useCallback(async () => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
     try {
       const sp = typeof window !== 'undefined' ? window.location.search : ''
-      const res = await fetch(`/api/seller-queue/current${sp}`, { credentials: 'include', signal: controller.signal })
+      const res = await fetch(`/api/seller-queue/panel-summary${sp}`, { credentials: 'include' })
       if (res.ok) {
         const j = await res.json()
         const currentData = j?.data as CurrentData
@@ -107,12 +106,11 @@ export default function StorePanelPage() {
           prevVendedorId.current = null
         }
       }
-    } catch (err) {
-      if ((err as { name?: string })?.name !== 'AbortError') {
-        // noop: painel de TV não pode travar por oscilação de rede.
-      }
+    } catch {
+      // noop: painel de TV não pode travar por oscilação de rede.
     } finally {
-      if (abortRef.current === controller) setLoading(false)
+      isFetchingRef.current = false
+      setLoading(false)
     }
   }, [])
 
@@ -123,7 +121,6 @@ export default function StorePanelPage() {
     return () => {
       clearTimeout(firstLoad)
       clearInterval(poll)
-      abortRef.current?.abort()
     }
   }, [load, data?.panelSound?.refreshSeconds])
 
