@@ -2658,3 +2658,9 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Ativação (a cargo do usuário, depende do plano):** (a) **cron externo** (cron-job.org, grátis, qualquer plano) → POST no endpoint a cada 1 min com `x-cron-secret: <QUEUE_JOB_SECRET>`; ou (b) **Vercel Cron** (só Pro faz por minuto) → adicionar em `vercel.json` (Hobby limita a 1x/dia e a 2 crons; já há 2). Precisa setar `QUEUE_JOB_SECRET` (ou `CRON_SECRET`) nas envs da Vercel.
 - **Não altera o vercel.json** (evita quebrar o deploy com cron por-minuto em plano Hobby). `tsc` verde.
 - **Nota:** com o cron, timeout/escalonamento rodam mesmo sem ninguém no dashboard (antes só "lazy" via `/current`). Granularidade ~1 min (aceitável p/ rede de segurança).
+
+### LOG 0191 — 2026-07-04 — Claude (Opus 4.8) — Fila: liberar /api/queue/jobs no middleware (cron redirecionava p/ /login)
+- **Sintoma:** o cron-job.org batia em `/api/queue/jobs/sweep` e recebia **redirect 302 → /login?callbackUrl=...** (não chegava na checagem de segredo).
+- **Causa:** o middleware `src/proxy.ts` (Next 16 usa `proxy.ts`) protege tudo por sessão, com uma lista de exclusões (`api/auth|api/webhook|api/internal|api/integrations|...`). **`api/queue/jobs` não estava na lista** → requisição sem sessão (cron) caía no redirect de login. (O job de lembretes do Codex, mesmo prefixo, tinha o mesmo bug.)
+- **Fix:** adicionado `api/queue/jobs` às exclusões do matcher. Os endpoints seguem protegidos pelo **segredo** (QUEUE_JOB_SECRET/CRON_SECRET) — só saem do gate de SESSÃO. Corrige sweep + attendance-reminders.
+- `tsc` verde. Após deploy, o cron externo passa a receber 200 + JSON.

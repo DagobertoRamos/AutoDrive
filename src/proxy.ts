@@ -71,6 +71,6 @@ export default async function middleware(req: NextRequest) {
 // "cadastro" excluía `/cadastros/*` da autenticação (furo de segurança).
 export const config = {
   matcher: [
-    '/((?!login|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|privacidade|excluir-conta|api/auth|api/webhook|api/internal|api/integrations|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!login|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|privacidade|excluir-conta|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
