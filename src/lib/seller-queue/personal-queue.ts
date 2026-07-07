@@ -144,6 +144,10 @@ export type AgentQueueState = 'FREE' | 'BUSY' | 'PAUSED' | 'AWAY'
  *  enfileira (BUSY/PAUSED/AWAY). PAUSED/AWAY também avisa a gestão. */
 export async function getAgentQueueState(queueId: string, agentUserId: string): Promise<AgentQueueState> {
   if (await isAgentBusy('', '', queueId, agentUserId)) return 'BUSY'
+  const pendingCount = await prisma.agentPersonalQueueItem.count({
+    where: { agentUserId, status: { in: ['AGUARDANDO', 'CHAMADO'] } }
+  })
+  if (pendingCount > 0) return 'BUSY'
   const entry = await prisma.sellerQueueEntry.findUnique({
     where: { queueId_sellerId: { queueId, sellerId: agentUserId } },
     select: { status: true, blocked: true },

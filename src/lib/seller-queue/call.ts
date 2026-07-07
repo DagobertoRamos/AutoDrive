@@ -84,8 +84,19 @@ export async function callForArrival(opts: {
   const ordered = opts.preferSellerId
     ? [...waiting.filter((w) => w.sellerId === opts.preferSellerId), ...waiting.filter((w) => w.sellerId !== opts.preferSellerId)]
     : waiting
-  // Rotação regular = vendedores (exclui GERENTE), mas honra o preferido específico.
-  const regular = ordered.filter((w) => w.sellerId === opts.preferSellerId || cargoByUser.get(w.sellerId) !== 'GERENTE')
+
+  // Exclui vendedores que possuem itens pendentes/ativos em sua fila individual (estão ocupados com a própria fila)
+  const busySellers = await prisma.agentPersonalQueueItem.findMany({
+    where: { tenantId: opts.tenantId, unitId: opts.unitId, status: { in: ['AGUARDANDO', 'CHAMADO'] } },
+    select: { agentUserId: true }
+  })
+  const busyIds = new Set(busySellers.map((b) => b.agentUserId))
+
+  // Rotação regular = vendedores (exclui GERENTE), mas honra o preferido específico, excluindo quem tem pendência individual.
+  const regular = ordered.filter((w) => 
+    (w.sellerId === opts.preferSellerId || cargoByUser.get(w.sellerId) !== 'GERENTE') &&
+    !busyIds.has(w.sellerId)
+  )
 
   // 1) Tenta um vendedor disponível.
   for (const cand of regular) {

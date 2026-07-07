@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
-const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
+const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base md:text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const dt = (s: string) => new Date(s).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
 function maskPhoneBR(v: string): string {
@@ -87,9 +87,14 @@ export default function ClienteNaLojaPanel() {
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { flash(j?.error ?? 'Não foi possível registrar.', false); return }
+      const personalQueued = j?.data?.personalQueued
       const call = j?.data?.call
-      const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'AGENDAMENTO' ? 'Agendamento iniciado — colaborador em atendimento.' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
-      flash(call?.ok ? okMsg : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, !!call?.ok)
+      if (personalQueued) {
+        flash('Cliente registrado com sucesso na fila individual do colaborador!', true)
+      } else {
+        const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'AGENDAMENTO' ? 'Agendamento iniciado — colaborador em atendimento.' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
+        flash(call?.ok ? okMsg : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, !!call?.ok)
+      }
       setForm({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false }); setTargetSellerId(''); setPickedCustomerId(null); setPickedLeadId(null); await load()
     } catch { flash('Erro de rede.', false) } finally { setSaving(false) }
   }

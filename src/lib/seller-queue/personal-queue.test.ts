@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { prismaMock, notifyMock } = vi.hoisted(() => ({
   prismaMock: {
-    agentPersonalQueueItem: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    agentPersonalQueueItem: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
     sellerQueueAttendance: { findFirst: vi.fn(), create: vi.fn() },
     sellerQueueEntry: { updateMany: vi.fn(), findUnique: vi.fn() },
     user: { findUnique: vi.fn(), findMany: vi.fn() },
@@ -28,6 +28,7 @@ import { enqueuePersonalItem, startPersonalItem, transferPersonalItem, listPerso
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.agentPersonalQueueItem.create.mockResolvedValue({ id: 'item-1' })
+  prismaMock.agentPersonalQueueItem.count.mockResolvedValue(0)
   prismaMock.sellerQueueAttendance.findFirst.mockResolvedValue(null) // não ocupado por padrão
 })
 
@@ -136,6 +137,11 @@ describe('getAgentQueueState', () => {
     prismaMock.sellerQueueAttendance.findFirst.mockResolvedValue(null)
     prismaMock.sellerQueueEntry.findUnique.mockResolvedValue({ status: 'WAITING', blocked: false })
     expect(await getAgentQueueState('q1', 'a1')).toBe('FREE')
+  })
+  it('com itens na fila individual → BUSY', async () => {
+    prismaMock.sellerQueueAttendance.findFirst.mockResolvedValue(null)
+    prismaMock.agentPersonalQueueItem.count.mockResolvedValue(2)
+    expect(await getAgentQueueState('q1', 'a1')).toBe('BUSY')
   })
 })
 

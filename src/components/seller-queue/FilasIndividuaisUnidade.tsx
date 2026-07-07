@@ -87,36 +87,47 @@ export default function FilasIndividuaisUnidade({ onChanged }: { onChanged?: () 
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{g.name} · {g.items.length}</p>
               <ul className="space-y-2">
                 {g.items.map((it) => (
-                  <li key={it.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                    <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', TYPE_CLS[it.itemType] ?? 'bg-gray-100 text-gray-600')}>{it.itemTypeLabel}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900">{it.customerName ?? 'Cliente'}</p>
-                      <p className="flex items-center gap-1 text-xs text-gray-400"><Clock size={11} />{waitLabel(it.waitingSeconds)} · prioridade {it.priority}</p>
+                  <li key={it.id} className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 sm:flex-row sm:items-center sm:gap-2 sm:px-3 sm:py-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold shrink-0', TYPE_CLS[it.itemType] ?? 'bg-gray-100 text-gray-600')}>{it.itemTypeLabel}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-900">{it.customerName ?? 'Cliente'}</p>
+                        <p className="flex items-center gap-1 text-xs text-gray-400"><Clock size={11} />{waitLabel(it.waitingSeconds)} · prioridade {it.priority}</p>
+                      </div>
+                      <div className="flex items-center gap-1 sm:hidden shrink-0">
+                        <button onClick={() => act(it.id, { action: 'priority', priority: it.priority + 10 })} disabled={busy === it.id} className="rounded p-1 text-gray-400 hover:bg-gray-100" title="Subir prioridade"><ChevronUp size={16} /></button>
+                        <button onClick={() => act(it.id, { action: 'priority', priority: Math.max(0, it.priority - 10) })} disabled={busy === it.id} className="rounded p-1 text-gray-400 hover:bg-gray-100" title="Baixar prioridade"><ChevronDown size={16} /></button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                      <div className="flex flex-col">
+                    
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-1.5 sm:shrink-0">
+                      <div className="hidden sm:flex sm:flex-col">
                         <button onClick={() => act(it.id, { action: 'priority', priority: it.priority + 10 })} disabled={busy === it.id} className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Subir prioridade"><ChevronUp size={13} /></button>
                         <button onClick={() => act(it.id, { action: 'priority', priority: Math.max(0, it.priority - 10) })} disabled={busy === it.id} className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Baixar prioridade"><ChevronDown size={13} /></button>
                       </div>
-                      <select
-                        value={pick[it.id] ?? ''}
-                        onChange={(e) => setPick((p) => ({ ...p, [it.id]: e.target.value }))}
-                        disabled={busy === it.id}
-                        className="max-w-[8.5rem] rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        title="Transferir para…"
-                      >
-                        <option value="">Transferir p/…</option>
-                        {sellers.filter((s) => s.sellerId !== it.agentUserId).map((s) => <option key={s.sellerId} value={s.sellerId}>{s.name}</option>)}
-                      </select>
-                      <button
-                        onClick={() => pick[it.id] && act(it.id, { action: 'transfer', toUserId: pick[it.id] })}
-                        disabled={busy === it.id || !pick[it.id]}
-                        className="flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-                        title="Transferir"
-                      ><ArrowRightLeft size={13} /></button>
-                      <button onClick={() => act(it.id, { action: 'start' })} disabled={busy === it.id} className="flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"><PlayCircle size={13} />Iniciar</button>
-                      <button onClick={() => act(it.id, { action: 'reschedule' })} disabled={busy === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Reagendar (manda para o fim)"><History size={14} /></button>
-                      <button onClick={() => act(it.id, { action: 'cancel' })} disabled={busy === it.id} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Cancelar"><X size={14} /></button>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={pick[it.id] ?? ''}
+                          onChange={(e) => setPick((p) => ({ ...p, [it.id]: e.target.value }))}
+                          disabled={busy === it.id}
+                          className="flex-1 sm:max-w-[8.5rem] rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-base sm:text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          title="Transferir para…"
+                        >
+                          <option value="">Transferir p/…</option>
+                          {sellers.filter((s) => s.sellerId !== it.agentUserId).map((s) => <option key={s.sellerId} value={s.sellerId}>{s.name}</option>)}
+                        </select>
+                        <button
+                          onClick={() => pick[it.id] && act(it.id, { action: 'transfer', toUserId: pick[it.id] })}
+                          disabled={busy === it.id || !pick[it.id]}
+                          className="flex h-9 w-9 sm:h-auto sm:w-auto items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-40 shrink-0"
+                          title="Transferir"
+                        ><ArrowRightLeft size={14} className="sm:h-[13px] sm:w-[13px]" /></button>
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <button onClick={() => act(it.id, { action: 'start' })} disabled={busy === it.id} className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 sm:px-2.5 sm:py-1.5 text-sm sm:text-xs font-semibold text-white hover:bg-brand-700"><PlayCircle size={15} className="sm:h-[13px] sm:w-[13px]" />Iniciar</button>
+                        <button onClick={() => act(it.id, { action: 'reschedule' })} disabled={busy === it.id} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border border-gray-200 sm:border-0" title="Reagendar (manda para o fim)"><History size={16} /></button>
+                        <button onClick={() => act(it.id, { action: 'cancel' })} disabled={busy === it.id} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 border border-gray-200 sm:border-0" title="Cancelar"><X size={16} /></button>
+                      </div>
                     </div>
                   </li>
                 ))}
