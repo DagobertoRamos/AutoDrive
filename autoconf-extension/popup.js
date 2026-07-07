@@ -403,6 +403,24 @@ $('saveCreds').addEventListener('click', () => {
   chrome.storage.local.set({ [CREDS_KEY]: { email, password } }, () => log('Login do AutoConf salvo (só neste navegador).'))
 })
 
+// Garante que o leitor (scanner.js) está ativo na aba. Depois de atualizar/recarregar
+// a extensão, as abas do AutoConf JÁ ABERTAS ficam com o content script órfão — aí
+// chrome.tabs.sendMessage falha com "Receiving end does not exist". Damos um "ping";
+// se não responder, injetamos o script sob demanda (mesma tática do background).
+async function ensureScannerInTab(tabId) {
+  try {
+    const ping = await chrome.tabs.sendMessage(tabId, { action: 'loginStatus' })
+    if (ping?.ok) return true
+  } catch (e) { /* ausente/órfão — injeta abaixo */ }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['scanner.js'] })
+    await new Promise((r) => setTimeout(r, 400))
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
 async function runScan({ source = 'manual' } = {}) {
   if (scanning) {
     log('Já existe uma busca em andamento.')
@@ -418,6 +436,13 @@ async function runScan({ source = 'manual' } = {}) {
   const tab = await activeAutoconfTab()
   if (!tab) {
     log('Abra ou mantenha uma aba do AutoConf (app.autoconf.com.br) logada e tente de novo.')
+    return false
+  }
+
+  // Reinjeta o leitor se a aba ficou sem ele (típico após atualizar a extensão).
+  const ready = await ensureScannerInTab(tab.id)
+  if (!ready) {
+    log('Não consegui carregar o leitor na aba do AutoConf. Recarregue a aba (F5) e tente de novo — o script é injetado ao carregar a página.')
     return false
   }
 
