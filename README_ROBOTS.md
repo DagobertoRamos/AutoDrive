@@ -2651,3 +2651,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - **`doLogin`** usa os seletores reais (`name=email`/`name=senha`) e **clica no "Entrar"** (submit natural do form Laravel, inclui o CSRF).
   - **Diagnóstico claro** no status: após o login, o background re-checa `loginStatus` e reporta "Deslogado e sem login/senha salvos", "Não logou — confira login/senha (ou captcha)" ou "Importado: +X...".
 - **manifest 0.4.0 → 0.4.1.** `node --check` OK nos 3 JS. **Recarregar a extensão** no Chrome.
+
+### LOG 0190 — 2026-07-04 — Claude (Opus 4.8) — Fila: worker como endpoint de cron (roda o escalonamento no Vercel)
+- **Contexto:** o worker persistente (`scripts/seller-queue-worker`) não fica de pé no Vercel (serverless). Solução serverless-friendly: endpoint que faz UMA passada do worker, chamado por um cron a cada 1 min.
+- **Novo `GET|POST /api/queue/jobs/sweep`:** para TODAS as filas OPEN roda `sweepExpiredCalls` (expira chamada vencida + **avança o escalonamento**) e `autoCheckoutStalePauses` (só se a unidade tem `maxPauseMinutes>0` — não força padrão). Protegido por `QUEUE_JOB_SECRET` **ou** `CRON_SECRET` (header `x-cron-secret` ou `Authorization: Bearer`). Aceita GET (Vercel Cron) e POST (cron externo). System-wide (é job, não request de usuário). Retorna `{queues, ok, failed, durationMs}`.
+- **Ativação (a cargo do usuário, depende do plano):** (a) **cron externo** (cron-job.org, grátis, qualquer plano) → POST no endpoint a cada 1 min com `x-cron-secret: <QUEUE_JOB_SECRET>`; ou (b) **Vercel Cron** (só Pro faz por minuto) → adicionar em `vercel.json` (Hobby limita a 1x/dia e a 2 crons; já há 2). Precisa setar `QUEUE_JOB_SECRET` (ou `CRON_SECRET`) nas envs da Vercel.
+- **Não altera o vercel.json** (evita quebrar o deploy com cron por-minuto em plano Hobby). `tsc` verde.
+- **Nota:** com o cron, timeout/escalonamento rodam mesmo sem ninguém no dashboard (antes só "lazy" via `/current`). Granularidade ~1 min (aceitável p/ rede de segurança).
