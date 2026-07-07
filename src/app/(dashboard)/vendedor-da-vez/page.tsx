@@ -622,7 +622,7 @@ export default function FilaOverviewPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 max-w-full space-y-4 sm:space-y-5 overflow-x-hidden">
       <style>{`
         @keyframes qd-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, .20) } 50% { box-shadow: 0 0 0 10px rgba(22, 163, 74, 0) } }
         @keyframes qd-rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
@@ -630,18 +630,17 @@ export default function FilaOverviewPage() {
         .qd-current { animation: qd-pulse 2.4s ease-in-out infinite }
       `}</style>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">
-            <LayoutDashboard size={21} className="text-brand-600" />
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-lg sm:text-xl font-bold text-gray-900">
+            <LayoutDashboard size={21} className="shrink-0 text-brand-600" />
             Dashboard da Fila
           </h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <p className="mt-0.5 text-xs sm:text-sm text-gray-500 break-words">
             {loading ? 'Atualizando fila...' : `${stats.total} colaborador(es) na fila · ${current?.arrivalsPending ?? 0} cliente(s) aguardando`}
           </p>
         </div>
-        {/* Cabeçalho enxuto: só utilitários. As ações (verificar/chamar/iniciar/
-            atender) ficam no painel abaixo — sem botões repetidos. */}
+        {/* Cabeçalho enxuto: só utilitários */}
         <div className="flex flex-wrap gap-2">
           {canSendQueueAlert && (
             <button onClick={sendQueueAlert} disabled={busy === 'queue-alert'} className="btn-secondary text-xs">
@@ -673,50 +672,50 @@ export default function FilaOverviewPage() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
       ) : (
         <>
-          <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className={cn('qd-rise rounded-xl border bg-white p-4 shadow-card', current?.vendedorDaVez ? 'qd-current border-green-200' : 'border-amber-200')}>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-full', current?.vendedorDaVez ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
-                    <Crown size={25} />
+          <section className="grid min-w-0 gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className={cn('qd-rise min-w-0 rounded-xl border bg-white p-3 sm:p-4 shadow-card', current?.vendedorDaVez ? 'qd-current border-green-200' : 'border-amber-200')}>
+              <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className={cn('flex h-11 w-11 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-full', current?.vendedorDaVez ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
+                    <Crown size={22} />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Vendedor da vez</p>
-                    <h2 className="truncate text-2xl font-bold text-gray-900">{current?.vendedorDaVez?.sellerName ?? 'Nenhum vendedor disponível'}</h2>
-                    <p className="mt-1 text-sm text-gray-500">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500">Vendedor da vez</p>
+                    <h2 className="break-words text-lg sm:text-2xl font-bold text-gray-900 leading-tight">{current?.vendedorDaVez?.sellerName ?? 'Nenhum vendedor disponível'}</h2>
+                    <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-gray-500 break-words">
                       {current?.vendedorDaVez ? `Posição ${waitingLine.findIndex((e) => e.sellerId === current.vendedorDaVez?.sellerId) + 1 || 1} · tempo na fila ${timeLabel(currentEntry?.joinedAt, now)}` : noSellerReason}
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:w-64">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
-                    <p className="text-lg font-bold text-green-700">{stats.available}</p>
-                    <p className="text-[11px] text-gray-500">Disponíveis</p>
+                <div className="grid grid-cols-4 sm:grid-cols-2 gap-1.5 sm:gap-2 sm:w-64">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-1.5 sm:p-2.5">
+                    <p className="text-base sm:text-lg font-bold text-green-700">{stats.available}</p>
+                    <p className="text-[10px] sm:text-[11px] text-gray-500">Disponíveis</p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
-                    <p className="text-lg font-bold text-indigo-700">{stats.attending}</p>
-                    <p className="text-[11px] text-gray-500">Atendendo</p>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-1.5 sm:p-2.5">
+                    <p className="text-base sm:text-lg font-bold text-indigo-700">{stats.attending}</p>
+                    <p className="text-[10px] sm:text-[11px] text-gray-500">Atendendo</p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
-                    <p className="text-lg font-bold text-amber-700">{stats.paused}</p>
-                    <p className="text-[11px] text-gray-500">Pausados</p>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-1.5 sm:p-2.5">
+                    <p className="text-base sm:text-lg font-bold text-amber-700">{stats.paused}</p>
+                    <p className="text-[10px] sm:text-[11px] text-gray-500">Pausados</p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
-                    <p className="text-lg font-bold text-red-700">{stats.blocked}</p>
-                    <p className="text-[11px] text-gray-500">Bloqueados</p>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-1.5 sm:p-2.5">
+                    <p className="text-base sm:text-lg font-bold text-red-700">{stats.blocked}</p>
+                    <p className="text-[10px] sm:text-[11px] text-gray-500">Bloqueados</p>
                   </div>
                 </div>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm col-span-2 sm:col-span-1">
+              <div className="mt-3 sm:mt-4 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm">
                   <Crown size={16} />
                   Verificar vez
                 </button>
                 {canManage && (
                   <>
-                    <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm col-span-2 sm:col-span-1">
+                    <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm">
                       <PhoneCall size={16} className="text-amber-600 animate-pulse" />
-                      Chamar vendedor da vez
+                      Chamar da vez
                     </button>
                     <button onClick={() => openMarkAttendingModal('CLIENTE_PORTA')} className="btn-secondary justify-center py-2.5 text-sm">
                       <UserCheck size={16} className="text-blue-600" />
@@ -724,7 +723,7 @@ export default function FilaOverviewPage() {
                     </button>
                     <button onClick={() => openMarkAttendingModal('INFORMACAO_RAPIDA')} className="btn-secondary justify-center py-2.5 text-sm">
                       <Zap size={16} className="text-cyan-500 animate-pulse" />
-                      Informação rápida
+                      Info rápida
                     </button>
                     <a href="/vendedor-da-vez/painel-loja" target="_blank" rel="noopener noreferrer" className="btn-secondary justify-center py-2.5 text-sm">
                       <Tv size={16} className="text-indigo-600" />
@@ -732,34 +731,34 @@ export default function FilaOverviewPage() {
                     </a>
                     <a href="/vendedor-da-vez/testes" className="btn-secondary justify-center py-2.5 text-sm">
                       <Settings size={16} className="text-red-500" />
-                      Testar push / atenção
+                      Testar push
                     </a>
                   </>
                 )}
               </div>
             </div>
 
-            <div className="qd-rise rounded-xl border border-gray-200 bg-white p-4 shadow-card" style={{ animationDelay: '60ms' }}>
+            <div className="qd-rise min-w-0 rounded-xl border border-gray-200 bg-white p-3 sm:p-4 shadow-card" style={{ animationDelay: '60ms' }}>
               <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                <Activity size={16} className="text-brand-600" />
+                <Activity size={16} className="shrink-0 text-brand-600" />
                 Sinais da fila
               </p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
-                  <p className="text-xl font-bold text-blue-700">{stats.called}</p>
-                  <p className="text-xs text-blue-700">Chamado agora</p>
+              <div className="mt-3 grid grid-cols-2 gap-1.5 sm:gap-2">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-2 sm:p-3">
+                  <p className="text-lg sm:text-xl font-bold text-blue-700">{stats.called}</p>
+                  <p className="text-[10px] sm:text-xs text-blue-700">Chamado agora</p>
                 </div>
-                <div className="rounded-lg border border-red-100 bg-red-50 p-3">
-                  <p className="text-xl font-bold text-red-700">{stats.pendingCustomer}</p>
-                  <p className="text-xs text-red-700">Sem cliente cadastrado</p>
+                <div className="rounded-lg border border-red-100 bg-red-50 p-2 sm:p-3">
+                  <p className="text-lg sm:text-xl font-bold text-red-700">{stats.pendingCustomer}</p>
+                  <p className="text-[10px] sm:text-xs text-red-700 break-words">Sem cliente cadastrado</p>
                 </div>
-                <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
-                  <p className="text-xl font-bold text-amber-700">{stats.remindersAwaiting}</p>
-                  <p className="text-xs text-amber-700">Aguardando confirmação</p>
+                <div className="rounded-lg border border-amber-100 bg-amber-50 p-2 sm:p-3">
+                  <p className="text-lg sm:text-xl font-bold text-amber-700">{stats.remindersAwaiting}</p>
+                  <p className="text-[10px] sm:text-xs text-amber-700 break-words">Aguardando confirmação</p>
                 </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xl font-bold text-gray-800">{stats.remindersDue}</p>
-                  <p className="text-xs text-gray-500">Lembretes vencidos</p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 sm:p-3">
+                  <p className="text-lg sm:text-xl font-bold text-gray-800">{stats.remindersDue}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500">Lembretes vencidos</p>
                 </div>
               </div>
             </div>
@@ -769,7 +768,7 @@ export default function FilaOverviewPage() {
               trazido para o topo, junto do card de visão geral. Sem título repetido. */}
           <MinhaVezPanel />
 
-          <section className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
+          <section className="grid min-w-0 gap-4 xl:grid-cols-[1fr_0.95fr]">
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                 <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
@@ -784,55 +783,55 @@ export default function FilaOverviewPage() {
                 ) : (current?.entries ?? []).map((entry, index) => {
                   const blocked = entry.blocked || entry.status === 'BLOCKED'
                   return (
-                    <div key={entry.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold', index === 0 && !blocked ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600')}>
+                    <div key={entry.id} className="grid min-w-0 gap-2 sm:gap-3 px-3 sm:px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                        <div className={cn('flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-full text-xs sm:text-sm font-bold', index === 0 && !blocked ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600')}>
                           {index + 1}
                         </div>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-gray-900">{entry.sellerName}</p>
-                            <span className={cn('rounded-full border px-2 py-0.5 text-[11px] font-semibold', statusTone(entry))}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                            <p className="break-words text-sm font-semibold text-gray-900">{entry.sellerName}</p>
+                            <span className={cn('shrink-0 rounded-full border px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold', statusTone(entry))}>
                               {blocked ? 'Bloqueado' : queueStatusLabel(entry.status)}
                             </span>
-                            {entry.hasDevice === false && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">sem alerta</span>}
+                            {entry.hasDevice === false && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-amber-700">sem alerta</span>}
                           </div>
-                          <p className="mt-0.5 text-xs text-gray-400">
-                            Tempo na posição {timeLabel(entry.joinedAt, now)} · {entry.attendanceCount} atendimento(s) hoje
+                          <p className="mt-0.5 text-[10px] sm:text-xs text-gray-400 break-words">
+                            Tempo na posição {timeLabel(entry.joinedAt, now)} · {entry.attendanceCount} atend. hoje
                           </p>
                         </div>
                       </div>
                       {canManage && (
-                        <div className="flex flex-wrap justify-start gap-1.5 md:justify-end">
-                          {canCallCurrent && <button onClick={() => callSpecific(entry.sellerId, entry.sellerName)} disabled={busy === `call-${entry.sellerId}`} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                            <PhoneCall size={13} className="mr-1 inline" />
+                        <div className="flex flex-wrap justify-start gap-1 sm:gap-1.5 md:justify-end">
+                          {canCallCurrent && <button onClick={() => callSpecific(entry.sellerId, entry.sellerName)} disabled={busy === `call-${entry.sellerId}`} className="rounded-lg border border-gray-200 px-1.5 sm:px-2 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium text-gray-700 hover:bg-gray-50">
+                            <PhoneCall size={12} className="mr-0.5 sm:mr-1 inline" />
                             Chamar
                           </button>}
-                          <button onClick={() => startAttendanceFor(entry.sellerId)} disabled={busy === `start-${entry.sellerId}`} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                            <Play size={13} className="mr-1 inline" />
+                          <button onClick={() => startAttendanceFor(entry.sellerId)} disabled={busy === `start-${entry.sellerId}`} className="rounded-lg border border-gray-200 px-1.5 sm:px-2 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium text-gray-700 hover:bg-gray-50">
+                            <Play size={12} className="mr-0.5 sm:mr-1 inline" />
                             Iniciar
                           </button>
                           {entry.status === 'PAUSED' && (queuePerms?.resumeOther || roleCanManage) ? (
-                            <button onClick={() => manageSeller(entry, 'resume')} className="rounded-lg border border-green-200 px-2 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50">
-                              <UserCheck size={13} className="mr-1 inline" />
+                            <button onClick={() => manageSeller(entry, 'resume')} className="rounded-lg border border-green-200 px-1.5 sm:px-2 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium text-green-700 hover:bg-green-50">
+                              <UserCheck size={12} className="mr-0.5 sm:mr-1 inline" />
                               Retomar
                             </button>
                           ) : AVAILABLE_STATUSES.includes(entry.status) && (queuePerms?.pauseOther || roleCanManage) ? (
-                            <button onClick={() => manageSeller(entry, 'pause')} className="rounded-lg border border-amber-200 px-2 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">
-                              <Ban size={13} className="mr-1 inline" />
+                            <button onClick={() => manageSeller(entry, 'pause')} className="rounded-lg border border-amber-200 px-1.5 sm:px-2 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium text-amber-700 hover:bg-amber-50">
+                              <Ban size={12} className="mr-0.5 sm:mr-1 inline" />
                               Pausar
                             </button>
                           ) : null}
-                          {(queuePerms?.removeParticipant || roleCanManage) && <button onClick={() => manageSeller(entry, 'remove')} className="rounded-lg border border-red-200 px-2 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
-                            <LogOut size={13} className="mr-1 inline" />
+                          {(queuePerms?.removeParticipant || roleCanManage) && <button onClick={() => manageSeller(entry, 'remove')} className="rounded-lg border border-red-200 px-1.5 sm:px-2 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium text-red-700 hover:bg-red-50">
+                            <LogOut size={12} className="mr-0.5 sm:mr-1 inline" />
                             Tirar
                           </button>}
-                          {((blocked && (queuePerms?.unblockParticipant || roleCanManage)) || (!blocked && (queuePerms?.blockParticipant || roleCanManage))) && <button onClick={() => blockEntry(entry, !blocked)} className={cn('rounded-lg border px-2 py-1.5 text-xs font-medium', blocked ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-red-200 text-red-700 hover:bg-red-50')}>
-                            {blocked ? <UserCheck size={13} className="mr-1 inline" /> : <UserX size={13} className="mr-1 inline" />}
+                          {((blocked && (queuePerms?.unblockParticipant || roleCanManage)) || (!blocked && (queuePerms?.blockParticipant || roleCanManage))) && <button onClick={() => blockEntry(entry, !blocked)} className={cn('rounded-lg border px-1.5 sm:px-2 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium', blocked ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-red-200 text-red-700 hover:bg-red-50')}>
+                            {blocked ? <UserCheck size={12} className="mr-0.5 inline" /> : <UserX size={12} className="mr-0.5 inline" />}
                             {blocked ? 'Desbloquear' : 'Bloquear'}
                           </button>}
-                          {(queuePerms?.reorder || roleCanManage) && <button onClick={() => moveEntry(entry, 'up')} className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50" title="Subir posição"><ArrowUp size={14} /></button>}
-                          {(queuePerms?.reorder || roleCanManage) && <button onClick={() => moveEntry(entry, 'down')} className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50" title="Descer posição"><ArrowDown size={14} /></button>}
+                          {(queuePerms?.reorder || roleCanManage) && <button onClick={() => moveEntry(entry, 'up')} className="rounded-lg border border-gray-200 p-1 sm:p-1.5 text-gray-500 hover:bg-gray-50" title="Subir posição"><ArrowUp size={13} /></button>}
+                          {(queuePerms?.reorder || roleCanManage) && <button onClick={() => moveEntry(entry, 'down')} className="rounded-lg border border-gray-200 p-1 sm:p-1.5 text-gray-500 hover:bg-gray-50" title="Descer posição"><ArrowDown size={13} /></button>}
                         </div>
                       )}
                     </div>
@@ -855,19 +854,19 @@ export default function FilaOverviewPage() {
                   ) : attendances.map((att) => {
                     const reminder = reminders?.byAttendance?.[att.id]
                     return (
-                    <div key={att.id} className="px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-gray-900">{att.sellerName}</p>
-                          <p className="mt-0.5 text-xs text-gray-500">
+                    <div key={att.id} className="px-3 sm:px-4 py-3">
+                      <div className="flex items-start justify-between gap-2 sm:gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words text-sm font-semibold text-gray-900">{att.sellerName}</p>
+                          <p className="mt-0.5 text-xs text-gray-500 break-words">
                             {att.arrival?.customerName ?? 'Cliente não cadastrado'} · {attendanceTypeLabel(att.type)}
                           </p>
                         </div>
-                        <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold', STATUS_CLS[att.status] ?? 'border-gray-200 bg-gray-50 text-gray-600')}>
+                        <span className={cn('shrink-0 rounded-full border px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold', STATUS_CLS[att.status] ?? 'border-gray-200 bg-gray-50 text-gray-600')}>
                           {queueStatusLabel(att.status)}
                         </span>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                      <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[10px] sm:text-[11px] text-gray-500">
                         <span>Chamado {clockLabel(att.calledAt)}</span>
                         {att.acceptedAt && <span>Em atendimento há {timeLabel(att.acceptedAt, now)}</span>}
                         {reminder && <span>{reminder.reminderCount} lembrete(s)</span>}
@@ -875,7 +874,7 @@ export default function FilaOverviewPage() {
                         {reminder?.lastAcknowledgedAt && <span>confirmado {clockLabel(reminder.lastAcknowledgedAt)}</span>}
                         {reminder?.awaitingResponse && <span className="font-semibold text-amber-600">aguardando confirmação</span>}
                         {reminder?.escalatedAt && <span className="font-semibold text-red-600">escalado</span>}
-                        {!att.arrival?.customerName && <span className="font-semibold text-red-600">cadastro obrigatório antes de finalizar</span>}
+                        {!att.arrival?.customerName && <span className="font-semibold text-red-600">cadastro obrigatório</span>}
                       </div>
                       {canSendQueueAlert && (
                         <div className="mt-2">
@@ -900,12 +899,12 @@ export default function FilaOverviewPage() {
                   </div>
                   <div className="divide-y divide-red-100">
                     {blocks.map((block) => (
-                      <div key={`${block.sellerId}-${block.type}`} className="flex items-center justify-between gap-3 px-4 py-3">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{block.name}</p>
-                          <p className="text-xs text-gray-500">{block.type === 'MANUAL' ? 'Bloqueio manual' : block.type === 'COOLDOWN' ? 'Cooldown por não resposta' : 'Bloqueio até o fim do dia'} · {block.strikes} perda(s)</p>
+                      <div key={`${block.sellerId}-${block.type}`} className="flex items-start sm:items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-gray-900 break-words">{block.name}</p>
+                          <p className="text-[10px] sm:text-xs text-gray-500 break-words">{block.type === 'MANUAL' ? 'Bloqueio manual' : block.type === 'COOLDOWN' ? 'Cooldown' : 'Bloqueio diário'} · {block.strikes} perda(s)</p>
                         </div>
-                        <button onClick={() => releaseBlock(block.sellerId)} className="rounded-lg border border-green-200 px-2 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50">Liberar</button>
+                        <button onClick={() => releaseBlock(block.sellerId)} className="shrink-0 rounded-lg border border-green-200 px-2 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50">Liberar</button>
                       </div>
                     ))}
                   </div>
@@ -914,7 +913,7 @@ export default function FilaOverviewPage() {
             </div>
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
+          <section className="grid min-w-0 gap-4 xl:grid-cols-[1fr_0.95fr]">
             <div className="space-y-4">
               {canManage ? <FilasIndividuaisUnidade onChanged={load} /> : <MinhaFilaIndividual onChanged={load} />}
             </div>
@@ -932,17 +931,17 @@ export default function FilaOverviewPage() {
                   {(reports?.bySeller ?? []).slice(0, 5).length === 0 ? (
                     <div className="px-4 py-8 text-center text-sm text-gray-400">Sem atendimentos no período.</div>
                   ) : (reports?.bySeller ?? []).slice(0, 5).map((row, index) => (
-                    <div key={row.sellerId} className="flex items-center gap-3 px-4 py-3">
-                      <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold', index === 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600')}>
+                    <div key={row.sellerId} className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3">
+                      <div className={cn('flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-full text-xs sm:text-sm font-bold', index === 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600')}>
                         {index + 1}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-gray-900">{row.sellerName}</p>
-                        <p className="text-xs text-gray-500">{row.called} chamado(s) · {row.finished} finalizado(s) · {row.avgAcceptSeconds ?? '—'}s resposta média</p>
+                        <p className="break-words text-sm font-semibold text-gray-900">{row.sellerName}</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500 break-words">{row.called} cham. · {row.finished} fin. · {row.avgAcceptSeconds ?? '—'}s resp.</p>
                       </div>
-                      <div className="text-right text-xs">
-                        <p className="font-semibold text-red-600">{row.timeouts} timeout</p>
-                        <p className="text-gray-400">{row.rejected} recusa(s)</p>
+                      <div className="shrink-0 text-right text-[10px] sm:text-xs">
+                        <p className="font-semibold text-red-600">{row.timeouts} tout</p>
+                        <p className="text-gray-400">{row.rejected} rec.</p>
                       </div>
                     </div>
                   ))}
@@ -969,13 +968,13 @@ export default function FilaOverviewPage() {
                   {events.length === 0 ? (
                     <div className="px-4 py-8 text-center text-sm text-gray-400">Sem eventos recentes.</div>
                   ) : events.map((event) => (
-                    <div key={event.id} className="grid gap-2 px-4 py-3 md:grid-cols-[10rem_minmax(0,1fr)_minmax(8rem,14rem)] md:items-center">
-                      <div className="text-xs text-gray-500">{clockLabel(event.createdAt)}</div>
+                    <div key={event.id} className="flex flex-col gap-1 px-3 sm:px-4 py-3 md:grid md:grid-cols-[8rem_minmax(0,1fr)_minmax(6rem,12rem)] md:items-center md:gap-2">
+                      <div className="text-[10px] sm:text-xs text-gray-500">{clockLabel(event.createdAt)}</div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900">{EVENT_LABELS[event.type] ?? event.type}</p>
-                        <p className="truncate text-xs text-gray-500">{event.sellerName ?? '—'} {event.actorName ? `· por ${event.actorName}` : ''}</p>
+                        <p className="break-words text-sm font-semibold text-gray-900">{EVENT_LABELS[event.type] ?? event.type}</p>
+                        <p className="break-words text-[10px] sm:text-xs text-gray-500">{event.sellerName ?? '—'} {event.actorName ? `· por ${event.actorName}` : ''}</p>
                       </div>
-                      <p className="truncate text-xs text-gray-500">{event.reason ?? 'Sem motivo informado'}</p>
+                      <p className="break-words text-[10px] sm:text-xs text-gray-500">{event.reason ?? 'Sem motivo informado'}</p>
                     </div>
                   ))}
                 </div>

@@ -76,7 +76,7 @@ export default function QueueRanking() {
                 return (
                   <div key={r.sellerId} className={cn('qr-rise flex w-24 flex-col items-center sm:w-28', p.order)} style={{ animationDelay: `${slot * 90}ms` }}>
                     <span className="text-2xl">{p.medal}</span>
-                    <p className="mt-0.5 max-w-full truncate text-center text-xs font-semibold text-gray-800" title={r.sellerName}>{r.sellerName}</p>
+                    <p className="mt-0.5 max-w-full break-words text-center text-xs font-semibold text-gray-800" title={r.sellerName}>{r.sellerName}</p>
                     <p className="text-[11px] text-gray-400">{r.points} pts</p>
                     <div className={cn('relative mt-1.5 w-full overflow-hidden rounded-t-xl bg-gradient-to-b ring-1', p.bg, p.ring, p.h)}>
                       <div className="qr-shine absolute inset-0" />
@@ -88,8 +88,31 @@ export default function QueueRanking() {
             </div>
           )}
 
-          {/* Tabela detalhada */}
-          <div className="overflow-x-auto border-t border-gray-100">
+          {/* Mobile: card list (below md) */}
+          <div className="divide-y divide-gray-100 border-t border-gray-100 md:hidden">
+            {rows.map((r, i) => (
+              <div key={r.sellerId} className={cn('qr-rise px-3 py-3', i === 0 && 'bg-amber-50/40')} style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-gray-500">{i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}º`}</span>
+                  <p className="min-w-0 flex-1 break-words text-sm font-semibold text-gray-900">{r.sellerName}</p>
+                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums', i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-700')}>{r.points} pts</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
+                  <span>{r.finished} atend.</span>
+                  <span className="flex items-center gap-1">
+                    <span className={cn('inline-block h-1 w-8 rounded-full', r.qualidade >= 80 ? 'bg-green-500' : r.qualidade >= 50 ? 'bg-amber-500' : 'bg-red-400')} />
+                    {r.qualidade}%
+                  </span>
+                  <span className="text-red-600">{r.reversoes} rev.</span>
+                  <span>{r.posVendas} pós-v.</span>
+                  <span className="text-brand-700">{r.conversoes} conv.</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: full table (md+) */}
+          <div className="hidden overflow-x-auto border-t border-gray-100 md:block">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50"><tr>{['#', 'Vendedor', 'Atend.', 'Qualidade', 'Reversões', 'Pós-vendas', 'Conversões', 'Pontos'].map((h) => (<th key={h} className="whitespace-nowrap px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
               <tbody className="divide-y divide-gray-100">
@@ -115,8 +138,9 @@ export default function QueueRanking() {
               </tbody>
             </table>
           </div>
-          <div className="flex items-center gap-1.5 border-t border-gray-100 px-4 py-2 text-[11px] text-gray-400">
-            <Medal size={12} />Pontos = atendimentos + conversões + pós-vendas + preenchimento − reversões/timeouts. Qualidade = % de atendimentos com cadastro completo.
+          <div className="flex items-center gap-1.5 border-t border-gray-100 px-3 sm:px-4 py-2 text-[10px] sm:text-[11px] text-gray-400">
+            <Medal size={12} className="shrink-0" />
+            <span className="break-words">Pontos = atendimentos + conversões + pós-vendas + preenchimento − reversões/timeouts. Qualidade = % de atendimentos com cadastro completo.</span>
           </div>
         </>
       )}

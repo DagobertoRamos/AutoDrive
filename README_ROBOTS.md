@@ -2683,3 +2683,14 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - **Testes:** criados os testes automatizados unitários em `src/lib/seller-queue/anti-briga.test.ts` cobrindo o schema de conclusão de atendimento e o status de ocupado (`isAgentBusy`) com as diferentes regras de `allowWaitWithOpenAttendance` e timeouts de `INFORMACAO_RAPIDA`.
 - **Validações:** `npx tsc --noEmit` completado com sucesso sem erros. `npx vitest run src/lib/seller-queue/anti-briga.test.ts` passou com 5/5 testes verdes.
 
+### LOG 0194 — 2026-07-07 — Antigravity (Gemini 3.5 Flash) — Dashboard de Fila: Auditoria e Ajustes de Responsividade Mobile-First
+- **Branch:** `codex-responsividade-base` (worktree).
+- **Tarefa:** Resolver problemas de conteúdo cortado, layout vazando, flex-nowrap e tables não responsivas no mobile (celular/tablet) do Dashboard da Fila (Vendedor da Vez).
+- **Feito:**
+  - **Fila Overview Page (`vendedor-da-vez/page.tsx`):** adicionadas classes `min-w-0 max-w-full overflow-x-hidden` para evitar qualquer vazamento horizontal de contêiner. O card principal de estatísticas foi alterado de grid rígido para colunas dinâmicas (4 no mobile, 2 no sm+). Ajustado grid de botões do gerente para `grid-cols-1 min-[420px]:grid-cols-2` para evitar compressão no mobile. Adicionada quebra de texto flexível (`break-words`) nos nomes de vendedores, sinais da fila e log de eventos em vez de truncamento rígido.
+  - **Minha Vez Panel (`MinhaVezPanel.tsx`):** corrigido conflito de largura máxima (`max-w-md max-w-[calc(100vw-1.5rem)]`) unificando os valores com `max-w-[min(28rem,calc(100vw-1.5rem))]`.
+  - **Ranking de Qualidade (`QueueRanking.tsx`):** adicionado layout responsivo alternativo em formato de lista/cards empilhados (`md:hidden`) para visualização mobile. Em resoluções de tablet/desktop (`md:`), a tabela detalhada tradicional continua sendo exibida. Adicionado `break-words` nas dezenas/nomes do pódio.
+  - **Help Chat Launcher (`HelpChatLauncher.tsx`):** posicionado o botão flutuante e o chat de ajuda usando `env(safe-area-inset-bottom)` para respeitar a safe area de iPhones modernos com notch.
+- **Validações:** `npx tsc --noEmit` verde. Vitest tests (61/61) verdes (incluindo fix de assinatura no mock de `anti-briga.test.ts`). `npm run build` completado com 100% de sucesso sem erros.
+
+
