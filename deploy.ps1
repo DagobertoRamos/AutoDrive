@@ -1,5 +1,5 @@
 param(
-  [string]$ProjectPath = "D:\Sistema de avisos\Robo\.claude\worktrees\distracted-dhawan-fd8ce5",
+  [string]$ProjectPath = $PSScriptRoot,
   [switch]$SkipBuild
 )
 
