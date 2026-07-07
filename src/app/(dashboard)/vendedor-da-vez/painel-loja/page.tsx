@@ -88,7 +88,8 @@ export default function StorePanelPage() {
     const controller = new AbortController()
     abortRef.current = controller
     try {
-      const res = await fetch('/api/seller-queue/current', { credentials: 'include', signal: controller.signal })
+      const sp = typeof window !== 'undefined' ? window.location.search : ''
+      const res = await fetch(`/api/seller-queue/current${sp}`, { credentials: 'include', signal: controller.signal })
       if (res.ok) {
         const j = await res.json()
         const currentData = j?.data as CurrentData

@@ -80,7 +80,8 @@ export default function MinhaVezPanel() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/seller-queue/current', { credentials: 'include' })
+      const sp = typeof window !== 'undefined' ? window.location.search : ''
+      const res = await fetch(`/api/seller-queue/current${sp}`, { credentials: 'include' })
       if (res.ok) setData((await res.json())?.data ?? null)
     } catch { /* noop */ }
   }, [])

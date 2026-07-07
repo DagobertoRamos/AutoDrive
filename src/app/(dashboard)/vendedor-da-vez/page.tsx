@@ -412,9 +412,10 @@ export default function FilaOverviewPage() {
   // (atendimentos ativos + lembretes + bloqueios numa chamada). 2 fetches.
   const load = useCallback(async () => {
     try {
+      const sp = typeof window !== 'undefined' ? window.location.search : ''
       const [currentRes, dashRes] = await Promise.all([
-        fetch('/api/seller-queue/current', { credentials: 'include' }),
-        fetch('/api/seller-queue/dashboard', { credentials: 'include' }),
+        fetch(`/api/seller-queue/current${sp}`, { credentials: 'include' }),
+        fetch(`/api/seller-queue/dashboard${sp}`, { credentials: 'include' }),
       ])
       if (currentRes.status === 403 || currentRes.status === 400) {
         const j = await currentRes.json().catch(() => ({})) as { error?: string }
