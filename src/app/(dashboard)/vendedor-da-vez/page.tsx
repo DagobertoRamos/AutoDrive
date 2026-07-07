@@ -28,6 +28,7 @@ import {
   Play,
   RefreshCw,
   Settings,
+  Hand,
   ShieldAlert,
   Trophy,
   UserCheck,
@@ -37,13 +38,13 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import MinhaVezPanel from '@/components/seller-queue/MinhaVezPanel'
 import MinhaFilaIndividual from '@/components/seller-queue/MinhaFilaIndividual'
 import FilasIndividuaisUnidade from '@/components/seller-queue/FilasIndividuaisUnidade'
 import QueueRanking from '@/components/seller-queue/QueueRanking'
 import VerificarVezModal from '@/components/seller-queue/VerificarVezModal'
 import AttendanceReminderModal, { type AttendanceReminderData } from '@/components/seller-queue/AttendanceReminderModal'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
+import { ensureNotifyPermission, unlockAudio } from '@/lib/seller-queue/alert-client'
 
 interface Entry {
   id: string
@@ -65,6 +66,7 @@ interface CurrentData {
   me: Entry | null
   arrivalsPending: number
   queueOpen?: boolean
+  canCheckIn?: boolean
   permissions?: {
     callCurrentSeller?: boolean
     sendAlertAll?: boolean
@@ -358,6 +360,20 @@ export default function FilaOverviewPage() {
   const canManage = Boolean(roleCanManage || queuePerms?.pauseOther || queuePerms?.resumeOther || queuePerms?.removeParticipant || queuePerms?.blockParticipant || queuePerms?.reorder)
   const canViewLogs = Boolean(queuePerms?.viewLogs || roleCanManage)
   const canSendQueueAlert = Boolean(queuePerms?.sendAlertAll || roleCanManage)
+  const myQueueStatus = current?.me?.blocked ? 'BLOCKED' : current?.me?.status ?? null
+  const isMeWaiting = myQueueStatus === 'WAITING' || myQueueStatus === 'NEXT'
+  const isMeAttending = myQueueStatus === 'CALLED' || myQueueStatus === 'ACCEPTED' || myQueueStatus === 'IN_ATTENDANCE'
+  const isMePaused = myQueueStatus === 'PAUSED'
+  const isMeBlocked = myQueueStatus === 'BLOCKED'
+  const joinQueueLabel = isMeWaiting
+    ? 'Você está na fila'
+    : isMeAttending
+      ? 'Atendendo'
+      : isMePaused
+        ? 'Voltar para fila'
+        : isMeBlocked
+          ? 'Bloqueado'
+          : 'Entrar na fila'
 
   const flash = (msg: string, ok: boolean) => {
     setToast({ msg, ok })
@@ -470,44 +486,25 @@ export default function FilaOverviewPage() {
     return 'Nenhum vendedor elegível no momento.'
   }, [current, stats])
 
-  const isMyTurn = Boolean(user?.id && current?.vendedorDaVez?.sellerId === user.id)
-
   const refreshAfter = async (okMsg?: string) => {
     if (okMsg) flash(okMsg, true)
     await load()
   }
 
-  const callCurrent = async () => {
-    setBusy('quick-call')
-    try {
-      const r = await postJson('/api/seller-queue/quick-call')
-      if (!r.ok) { flash(r.error ?? 'Falha ao chamar vendedor da vez.', false); return }
-      const data = r.data as { alreadyInProgress?: boolean; sellerName?: string | null; cooldownSeconds?: number; call?: { ok?: boolean; reason?: string } } | undefined
-      if (data?.alreadyInProgress) {
-        flash(data.sellerName ? `Chamada já em andamento para ${data.sellerName}.` : `Aguarde ${data.cooldownSeconds ?? 10}s para chamar novamente.`, false)
-      } else if (data?.call?.ok) {
-        await refreshAfter('Vendedor da vez chamado.')
-      } else {
-        flash(data?.call?.reason ?? 'Nenhum vendedor disponível.', false)
-      }
-    } finally {
-      setBusy(null)
-    }
-  }
+  const enterQueue = async () => {
+    if (isMeWaiting) { flash('Você já está na fila.', true); return }
+    if (isMeAttending) { flash('Você já está em atendimento.', false); return }
+    if (isMeBlocked) { flash('Você está bloqueado na fila. Fale com a gerência.', false); return }
 
-  const startMyTurn = async () => {
-    if (!isMyTurn) { flash('Você não é o vendedor da vez neste momento.', false); return }
-    setBusy('start-my-turn')
+    setBusy('enter-queue')
     try {
-      const r = await postJson('/api/seller-queue/quick-call')
-      if (!r.ok) { flash(r.error ?? 'Falha ao iniciar atendimento.', false); return }
-      const data = r.data as { call?: { ok?: boolean; attendanceId?: string; reason?: string } } | undefined
-      const attendanceId = data?.call?.attendanceId
-      if (!data?.call?.ok || !attendanceId) { flash(data?.call?.reason ?? 'Não foi possível iniciar agora.', false); return }
+      unlockAudio()
+      void ensureNotifyPermission()
       const pos = await getPosition()
-      const accepted = await postJson(`/api/seller-queue/attendances/${attendanceId}/accept`, pos)
-      if (!accepted.ok) { flash(accepted.error ?? 'Não foi possível validar presença para iniciar.', false); return }
-      await refreshAfter('Atendimento iniciado. Cadastre o cliente antes de finalizar.')
+      const r = await postJson(isMePaused ? '/api/seller-queue/resume' : '/api/seller-queue/check-in', pos)
+      if (!r.ok) { flash(r.error ?? 'Não foi possível entrar na fila.', false); return }
+      await refreshAfter(isMePaused ? 'Você voltou para a fila.' : 'Você entrou na fila.')
+      void loadSlow()
     } finally {
       setBusy(null)
     }
@@ -708,15 +705,30 @@ export default function FilaOverviewPage() {
                 </div>
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm col-span-2 sm:col-span-1">
+                <button
+                  onClick={enterQueue}
+                  disabled={busy === 'enter-queue' || isMeWaiting || isMeAttending || isMeBlocked}
+                  className={cn(
+                    'col-span-2 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70',
+                    isMeWaiting
+                      ? 'border border-green-200 bg-green-50 text-green-700'
+                      : isMeAttending || isMeBlocked
+                        ? 'border border-gray-200 bg-gray-50 text-gray-500'
+                        : 'bg-brand-700 text-white hover:bg-brand-800',
+                  )}
+                >
+                  {busy === 'enter-queue' ? <RefreshCw size={16} className="animate-spin" /> : <Hand size={16} />}
+                  {joinQueueLabel}
+                </button>
+                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary col-span-2 justify-center py-2.5 text-sm">
                   <Crown size={16} />
                   Verificar vez
                 </button>
                 {canManage && (
                   <>
-                    <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm col-span-2 sm:col-span-1">
+                    <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm">
                       <PhoneCall size={16} className="text-amber-600 animate-pulse" />
-                      Chamar vendedor da vez
+                      Chamar da vez
                     </button>
                     <button onClick={() => openMarkAttendingModal('CLIENTE_PORTA')} className="btn-secondary justify-center py-2.5 text-sm">
                       <UserCheck size={16} className="text-blue-600" />
@@ -724,7 +736,7 @@ export default function FilaOverviewPage() {
                     </button>
                     <button onClick={() => openMarkAttendingModal('INFORMACAO_RAPIDA')} className="btn-secondary justify-center py-2.5 text-sm">
                       <Zap size={16} className="text-cyan-500 animate-pulse" />
-                      Informação rápida
+                      Info rápida
                     </button>
                     <a href="/vendedor-da-vez/painel-loja" target="_blank" rel="noopener noreferrer" className="btn-secondary justify-center py-2.5 text-sm">
                       <Tv size={16} className="text-indigo-600" />
@@ -732,7 +744,7 @@ export default function FilaOverviewPage() {
                     </a>
                     <a href="/vendedor-da-vez/testes" className="btn-secondary justify-center py-2.5 text-sm">
                       <Settings size={16} className="text-red-500" />
-                      Testar push / atenção
+                      Testar push
                     </a>
                   </>
                 )}
@@ -764,10 +776,6 @@ export default function FilaOverviewPage() {
               </div>
             </div>
           </section>
-
-          {/* Painel do colaborador (status · chamar · atender · aceitar/recusar) —
-              trazido para o topo, junto do card de visão geral. Sem título repetido. */}
-          <MinhaVezPanel />
 
           <section className="grid gap-4 xl:grid-cols-[1fr_0.95fr]">
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
