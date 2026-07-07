@@ -2737,3 +2737,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - Suíte completa de testes unitários e de integração (`npx vitest run`) passou com sucesso (379/379 testes verdes);
   - Verificação de tipos via `npx tsc --noEmit` bem-sucedida (0 erros).
 - **Riscos/pendências:** Nenhum. Nenhuma alteração estrutural no banco de dados e as regras de negócio originais de timeout, penalidades e fila individual foram 100% preservadas.
+
+### LOG 0199 — 2026-07-07 20:30:00 -03:00 — Antigravity (Gemini 2.5 Pro) — Painel da TV: Ajustes de Alerta Sonoro e Inversão de Layout
+- **Tarefa:** Resolver o problema do som de alerta que não repetia e realizar a inversão de layout solicitada pelo usuário no Painel da TV (painel-loja/page.tsx).
+- **Feito:**
+  - **Som de Alerta Repetitivo:** Corrigido o loop de efeitos de áudio no painel-loja para que ele limpe e registre o setInterval de forma limpa quando as configurações do som ou o ID do chamado ativo mudarem. O som passa a tocar instantaneamente no início do chamado e se repete de forma precisa a cada 3s (ou conforme configurado).
+  - **Inversão de Layout:** O Painel da Loja agora exibe o vendedor sendo chamado (Chamado Agora) na seção superior (maior), com destaque gigante, fundo piscante vermelho/amber e contagem regressiva. O vendedor da vez em espera (Aguardando chamado) foi movido para a seção inferior (menor), como "Próximo da Vez".
+- **Validações:**
+  - `npx tsc --noEmit` bem-sucedido (0 erros).
+  - Vitest suíte completa (`npx vitest run`) verde (379/379 testes passaram).
