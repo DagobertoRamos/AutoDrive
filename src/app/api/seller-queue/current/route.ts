@@ -48,6 +48,8 @@ export async function GET(req: Request) {
     // Pode entrar na fila? = módulo sellerQueue.checkIn EFETIVO (cargo permite +
     // não removido do colaborador + não desligado p/ a loja). Quem não pode, não
     // vê "Entrar na fila" — mas continua vendo "Chamar vendedor da vez".
+    const responsibleUserIds = (ucfg?.config as any)?.responsibleUserIds ?? []
+    const isQueueResponsible = responsibleUserIds.includes(user.id)
     let canCheckIn = await canAccessModuleForUser(user, 'sellerQueue.checkIn')
     if (canCheckIn) {
       const [denied, tenantDisabled] = await Promise.all([
@@ -57,23 +59,23 @@ export async function GET(req: Request) {
       if (denied || tenantDisabled.includes('sellerQueue.checkIn')) canCheckIn = false
     }
     const queuePermissions = {
-      callCurrentSeller: await canAccessModuleForUser(user, 'queue.call_current_seller'),
-      sendAlertAll: await canAccessModuleForUser(user, 'queue.send_alert_all'),
-      viewLogs: await canAccessModuleForUser(user, 'queue.view_logs'),
-      transferAttendance: await canAccessModuleForUser(user, 'queue.transfer_attendance'),
-      finishOtherAttendance: await canAccessModuleForUser(user, 'queue.finish_other_attendance'),
-      pauseOther: await canAccessModuleForUser(user, 'queue.pause_other'),
-      resumeOther: await canAccessModuleForUser(user, 'queue.resume_other'),
-      addParticipant: await canAccessModuleForUser(user, 'queue.add_participant'),
-      removeParticipant: await canAccessModuleForUser(user, 'queue.remove_participant'),
-      blockParticipant: await canAccessModuleForUser(user, 'queue.block_participant'),
-      unblockParticipant: await canAccessModuleForUser(user, 'queue.unblock_participant'),
-      reorder: await canAccessModuleForUser(user, 'queue.reorder'),
-      manageSettings: await canAccessModuleForUser(user, 'queue.manage_settings'),
+      callCurrentSeller: isQueueResponsible || await canAccessModuleForUser(user, 'queue.call_current_seller'),
+      sendAlertAll: isQueueResponsible || await canAccessModuleForUser(user, 'queue.send_alert_all'),
+      viewLogs: isQueueResponsible || await canAccessModuleForUser(user, 'queue.view_logs'),
+      transferAttendance: isQueueResponsible || await canAccessModuleForUser(user, 'queue.transfer_attendance'),
+      finishOtherAttendance: isQueueResponsible || await canAccessModuleForUser(user, 'queue.finish_other_attendance'),
+      pauseOther: isQueueResponsible || await canAccessModuleForUser(user, 'queue.pause_other'),
+      resumeOther: isQueueResponsible || await canAccessModuleForUser(user, 'queue.resume_other'),
+      addParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.add_participant'),
+      removeParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.remove_participant'),
+      blockParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.block_participant'),
+      unblockParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.unblock_participant'),
+      reorder: isQueueResponsible || await canAccessModuleForUser(user, 'queue.reorder'),
+      manageSettings: isQueueResponsible || await canAccessModuleForUser(user, 'queue.manage_settings'),
     }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible } })
     }
 
     // Remove quem ficou pausado/fora por muito tempo (antes de ler a fila).
@@ -227,6 +229,7 @@ export async function GET(req: Request) {
         myPosVenda,
         canCheckIn,
         permissions: queuePermissions,
+        isQueueResponsible,
         queueOpen,
         onVacation,
         autoRemovedNotice,

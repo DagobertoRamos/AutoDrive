@@ -24,6 +24,19 @@ interface AttentionEvent {
   reason: string | null
 }
 
+function parseEventStatus(reason: string | null) {
+  if (!reason) return { status: 'UNKNOWN', text: 'Sem informações', color: 'bg-gray-100 text-gray-700 border-gray-200' }
+  if (reason.includes('respondido')) {
+    const match = reason.match(/tempo de resposta:\s*(\d+s)/i)
+    const time = match ? match[1] : ''
+    return { status: 'RESPONDED', text: `Respondido em ${time || 'alguns segundos'} ✓`, color: 'bg-green-100 text-green-800 border-green-200' }
+  }
+  if (reason.includes('enviado')) {
+    return { status: 'SENT', text: 'Pendente (aguardando vendedor)', color: 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse' }
+  }
+  return { status: 'OTHER', text: reason, color: 'bg-gray-100 text-gray-700 border-gray-200' }
+}
+
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER']
 
 export default function QueueTestsPage() {
@@ -237,25 +250,30 @@ export default function QueueTestsPage() {
               Nenhum alerta de atenção enviado recentemente.
             </div>
           ) : (
-            history.map((h) => (
-              <div key={h.id} className="grid gap-2 px-4 py-3 md:grid-cols-[10rem_1.5fr_1fr] md:items-center text-xs">
-                <div className="text-gray-400 tabular-nums">
-                  {new Date(h.createdAt).toLocaleString()}
+            history.map((h) => {
+              const statusInfo = parseEventStatus(h.reason)
+              return (
+                <div key={h.id} className="grid gap-2 px-4 py-3 md:grid-cols-[10rem_1.5fr_1fr] md:items-center text-xs">
+                  <div className="text-gray-400 tabular-nums">
+                    {new Date(h.createdAt).toLocaleString()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800 flex items-center gap-1.5">
+                      <User size={12} className="text-gray-400" />
+                      {h.sellerName ?? 'Vendedor desconhecido'}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      Enviado por: {h.actorName ?? 'Gestão'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn('px-2.5 py-1 rounded-full border text-[10px] font-bold shadow-sm', statusInfo.color)}>
+                      {statusInfo.text}
+                    </span>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-800 flex items-center gap-1.5">
-                    <User size={12} className="text-gray-400" />
-                    {h.sellerName ?? 'Vendedor desconhecido'}
-                  </p>
-                  <p className="text-[11px] text-gray-400">
-                    Enviado por: {h.actorName ?? 'Gestão'}
-                  </p>
-                </div>
-                <p className="text-gray-600 italic">
-                  {h.reason ?? 'Teste enviado'}
-                </p>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

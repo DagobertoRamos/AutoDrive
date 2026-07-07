@@ -199,24 +199,36 @@ export async function callSpecificSeller(opts: {
   if (busy) return { ok: false, reason: 'Este colaborador já está em atendimento.' }
 
   const now = new Date()
-  const deadline = new Date(now.getTime() + timeout * 1000)
   const result = await prisma.$transaction(async (tx) => {
-    // Tenta tirar da fila se estiver WAITING (não bloqueado).
+    // Tenta tirar da fila se estiver na fila e não bloqueado.
     const locked = await tx.sellerQueueEntry.updateMany({
-      where: { queueId: opts.queueId, sellerId: opts.sellerId, status: 'WAITING', blocked: false },
-      data: { status: 'CALLED', lastActiveAt: now },
+      where: { queueId: opts.queueId, sellerId: opts.sellerId, blocked: false },
+      data: { status: 'IN_ATTENDANCE', lastActiveAt: now },
     })
+    const count = await tx.sellerQueueEntry.count({ where: { queueId: opts.queueId, sellerId: opts.sellerId } })
+    if (count === 0) {
+      await tx.sellerQueueEntry.create({
+        data: {
+          tenantId: opts.tenantId,
+          unitId: opts.unitId,
+          queueId: opts.queueId,
+          sellerId: opts.sellerId,
+          status: 'IN_ATTENDANCE',
+          lastActiveAt: now,
+        }
+      })
+    }
     const att = await tx.sellerQueueAttendance.create({
       data: {
         tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, sellerId: opts.sellerId,
-        arrivalId: opts.arrivalId, status: 'CALLED', calledAt: now, acceptDeadline: deadline,
+        arrivalId: opts.arrivalId, status: 'IN_ATTENDANCE', calledAt: now, startedAt: now, acceptedAt: now,
       },
     })
-    await tx.sellerQueueCustomerArrival.update({ where: { id: opts.arrivalId }, data: { status: 'CALLING' } })
+    await tx.sellerQueueCustomerArrival.update({ where: { id: opts.arrivalId }, data: { status: 'IN_ATTENDANCE' } })
     return { att, fromQueue: locked.count === 1 }
   })
 
-  await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'CALLED', sellerId: opts.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.att.id, reason: opts.reason ?? (result.fromQueue ? 'chamada específica' : 'chamada específica (fora da fila)') })
+  await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, type: 'ATTENDANCE_STARTED', sellerId: opts.sellerId, actorId: opts.actorId, arrivalId: opts.arrivalId, attendanceId: result.att.id, reason: opts.reason ?? (result.fromQueue ? 'chamada específica (em atendimento)' : 'chamada específica (fora da fila, em atendimento)') })
   await notifySellerCalled({ tenantId: opts.tenantId, sellerId: opts.sellerId, timeoutSeconds: timeout, attendanceId: result.att.id, arrivalId: opts.arrivalId, customerName: opts.customerName ?? null, recurring: true, whatsapp: cfg?.alertWhatsapp ?? false })
 
   return { ok: true, attendanceId: result.att.id, sellerId: opts.sellerId }

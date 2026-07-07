@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Settings, Save, MapPin, Bell, BellRing, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock, Palmtree, Zap } from 'lucide-react'
+import { Settings, Save, MapPin, Bell, BellRing, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock, Palmtree, Zap, Trash2 } from 'lucide-react'
 
 const DAYS: [string, string][] = [['MON', 'Seg'], ['TUE', 'Ter'], ['WED', 'Qua'], ['THU', 'Qui'], ['FRI', 'Sex'], ['SAT', 'Sáb'], ['SUN', 'Dom']]
 import { cn } from '@/lib/utils'
@@ -43,6 +43,7 @@ interface Cfg {
   infoRapidaConsumesTurn: string;
   infoRapidaTimeLimitMinutes: number;
   allowWaitWithOpenAttendance: string;
+  responsibleUserIds: string[];
   autoBlock: AutoBlock
   attendanceReminder: AttendanceReminderConfig
   queuePush: QueuePushConfig
@@ -76,7 +77,7 @@ function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: 
     </div>
   )
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', responsibleUserIds: [], autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -127,6 +128,7 @@ export default function ConfiguracoesFilaPage() {
   const [blocksBusy, setBlocksBusy] = useState<string | null>(null)
   const [onVacation, setOnVacation] = useState(false)
   const [vacBusy, setVacBusy] = useState(false)
+  const [sellers, setSellers] = useState<{ sellerId: string; name: string }[]>([])
   const set = <K extends keyof Cfg>(k: K, v: Cfg[K]) => setCfg((c) => ({ ...c, [k]: v }))
   const toggleMethod = (m: string) => setCfg((c) => ({ ...c, presenceMethods: c.presenceMethods.includes(m) ? c.presenceMethods.filter((x) => x !== m) : [...c.presenceMethods, m] }))
 
@@ -135,7 +137,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', responsibleUserIds: j.data.config?.responsibleUserIds ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -144,7 +146,13 @@ export default function ConfiguracoesFilaPage() {
       if (res.ok) setBlocks((await res.json())?.data ?? [])
     } catch { /* noop */ }
   }, [])
-  useEffect(() => { if (canSettings) { load(); loadBlocks() } else { setLoading(false) } }, [canSettings, load, loadBlocks])
+  const loadSellers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/seller-queue/callable', { credentials: 'include' })
+      if (res.ok) setSellers((await res.json())?.data ?? [])
+    } catch { /* noop */ }
+  }, [])
+  useEffect(() => { if (canSettings) { load(); loadBlocks(); loadSellers() } else { setLoading(false) } }, [canSettings, load, loadBlocks, loadSellers])
 
   // Modo férias (auto-serviço — todos).
   useEffect(() => {
@@ -496,8 +504,81 @@ export default function ConfiguracoesFilaPage() {
         />
       </div>
 
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><Save size={16} className="text-brand-600" />Responsáveis pela fila (Gerente+)</h2>
+        <p className="text-xs text-gray-500">Designações especiais: selecione os colaboradores que terão permissão de gestão (chamar, pausar, reordenar ou reconfigurar) nesta fila, além dos cargos administrativos padrão da loja.</p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 max-h-48 overflow-y-auto border border-gray-100 rounded-lg p-2.5 bg-gray-50/50">
+          {sellers.map((s) => {
+            const isChecked = cfg.responsibleUserIds.includes(s.sellerId)
+            return (
+              <label key={s.sellerId} className="flex items-center gap-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200/60 rounded-lg p-2 hover:bg-gray-50 transition cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? [...cfg.responsibleUserIds, s.sellerId]
+                      : cfg.responsibleUserIds.filter((x) => x !== s.sellerId)
+                    set('responsibleUserIds', next)
+                  }}
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="truncate">{s.name}</span>
+              </label>
+            )
+          })}
+          {sellers.length === 0 && (
+            <p className="col-span-full text-center text-xs text-gray-400 py-4">Nenhum vendedor elegível encontrado.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-red-200 bg-red-50/30 p-5 shadow-card space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-red-900"><ShieldAlert size={16} className="text-red-600" />Zona de perigo / reinicialização</h2>
+        <p className="text-xs text-gray-600">Comandos para reiniciar a fila ou apagar registros caso queira começar do zero.</p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            onClick={async () => {
+              if (!confirm('Deseja realmente limpar todos os vendedores da fila de hoje? O histórico do dia será arquivado e a fila começará vazia.')) return
+              setSaving(true)
+              try {
+                const res = await fetch('/api/seller-queue/admin-reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'reset' }) })
+                const j = await res.json().catch(() => ({}))
+                setMsg(res.ok ? 'Fila de hoje reiniciada com sucesso! ✓' : (j?.error ?? 'Falha ao reiniciar.'))
+                setTimeout(() => setMsg(null), 3000)
+              } catch { setMsg('Erro de rede.') } finally { setSaving(false) }
+            }}
+            disabled={saving}
+            className="rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-2 flex items-center gap-1.5 shadow-sm transition disabled:opacity-60"
+          >
+            <RefreshCw size={13} />
+            Resetar fila de hoje
+          </button>
+
+          {role === 'MASTER' && (
+            <button
+              onClick={async () => {
+                if (!confirm('ATENÇÃO: Isso irá apagar permanentemente TODO o histórico da fila (atendimentos, presenças, logs, eventos, métricas) desta unidade! Esta ação NÃO pode ser desfeita. Confirmar?')) return
+                setSaving(true)
+                try {
+                  const res = await fetch('/api/seller-queue/admin-reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'wipe' }) })
+                  const j = await res.json().catch(() => ({}))
+                  setMsg(res.ok ? 'Todo o histórico da fila foi deletado permanentemente! ✓' : (j?.error ?? 'Falha ao limpar histórico.'))
+                  setTimeout(() => setMsg(null), 4000)
+                } catch { setMsg('Erro de rede.') } finally { setSaving(false) }
+              }}
+              disabled={saving}
+              className="rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-3 py-2 flex items-center gap-1.5 shadow-sm transition disabled:opacity-60"
+            >
+              <Trash2 size={13} />
+              Apagar histórico geral (WIPE)
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="flex items-center justify-end gap-3">
-        {msg && <span className={cn('text-sm', /salvas|liberad|ativado|desativado/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
+        {msg && <span className={cn('text-sm', /salvas|liberad|ativado|desativado|reiniciada|deletado/.test(msg) ? 'text-green-600' : 'text-red-600')}>{msg}</span>}
         <button onClick={save} disabled={saving || loading || blockConfigInvalid} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar configurações'}</button>
       </div>
       </>)}

@@ -26,6 +26,8 @@ import {
   LogOut,
   PhoneCall,
   Play,
+  Pause,
+  Hand,
   RefreshCw,
   Settings,
   ShieldAlert,
@@ -77,6 +79,8 @@ interface CurrentData {
     unblockParticipant?: boolean
     reorder?: boolean
   }
+  canCheckIn?: boolean
+  onVacation?: boolean
 }
 
 interface Attendance {
@@ -284,6 +288,82 @@ export default function FilaOverviewPage() {
     reason: 'Marcado como atendendo pela gestão'
   })
   const [callable, setCallable] = useState<{ sellerId: string; name: string; queueStatus: string | null }[]>([])
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+  const handleCheckIn = async () => {
+    setActionLoading('check-in')
+    try {
+      const pos = await getPosition()
+      const r = await postJson('/api/seller-queue/check-in', pos)
+      if (r.ok) {
+        flash('Entrada registrada com sucesso! ✓', true)
+        await load()
+      } else {
+        flash(r.error ?? 'Erro ao entrar na fila.', false)
+      }
+    } catch (err: any) {
+      flash(err?.message ?? 'Erro de rede.', false)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleResume = async () => {
+    setActionLoading('resume')
+    try {
+      const pos = await getPosition()
+      const r = await postJson('/api/seller-queue/resume', pos)
+      if (r.ok) {
+        flash('Presença retomada! ✓', true)
+        await load()
+      } else {
+        flash(r.error ?? 'Erro ao retomar presença.', false)
+      }
+    } catch (err: any) {
+      flash(err?.message ?? 'Erro de rede.', false)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handlePause = async () => {
+    const reason = prompt('Motivo da pausa:')
+    if (reason === null) return
+    if (!reason.trim()) { flash('Motivo obrigatório.', false); return }
+    setActionLoading('pause')
+    try {
+      const r = await postJson('/api/seller-queue/pause', { reason })
+      if (r.ok) {
+        flash('Pausado com sucesso.', true)
+        await load()
+      } else {
+        flash(r.error ?? 'Erro ao pausar.', false)
+      }
+    } catch (err: any) {
+      flash(err?.message ?? 'Erro de rede.', false)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleCheckOut = async () => {
+    const confirmLeft = confirm('Deseja realmente sair da fila?')
+    if (!confirmLeft) return
+    setActionLoading('check-out')
+    try {
+      const r = await postJson('/api/seller-queue/check-out', { reason: 'Saída manual' })
+      if (r.ok) {
+        flash('Saída da fila registrada. ✓', true)
+        await load()
+      } else {
+        flash(r.error ?? 'Erro ao sair da fila.', false)
+      }
+    } catch (err: any) {
+      flash(err?.message ?? 'Erro de rede.', false)
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   useEffect(() => {
     if (roleCanManage) {
@@ -706,6 +786,67 @@ export default function FilaOverviewPage() {
                   </div>
                 </div>
               </div>
+              {/* Painel de Presença / Controle do Colaborador (Entrar na Fila, Pausar, Sair) */}
+              {current?.canCheckIn && (
+                <div className="mt-3.5 border-t border-gray-100 pt-3.5">
+                  {!current?.me || current.me.status === 'LEFT' ? (
+                    <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between bg-brand-50/50 rounded-xl p-3 border border-brand-100">
+                      <div>
+                        <p className="text-xs font-bold text-brand-700">Você está fora da fila</p>
+                        <p className="text-[10px] text-gray-500">Entre na fila para começar a receber chamados.</p>
+                      </div>
+                      <button
+                        onClick={handleCheckIn}
+                        disabled={actionLoading === 'check-in'}
+                        className="btn-primary justify-center text-xs py-2 px-4 shadow-sm"
+                      >
+                        {actionLoading === 'check-in' ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}
+                        Entrar na fila
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between bg-indigo-50/30 rounded-xl p-3 border border-indigo-100/50">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-ping shrink-0" />
+                          Sua vez: <span className="text-sm font-black">{current.me.position > 0 ? `${current.me.position}º lugar` : queueStatusLabel(current.me.status)}</span>
+                        </p>
+                        <p className="text-[10px] text-gray-500 truncate">Status atual: {queueStatusLabel(current.me.status)}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {current.me.status === 'PAUSED' ? (
+                          <button
+                            onClick={handleResume}
+                            disabled={actionLoading === 'resume'}
+                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-700 disabled:opacity-60 flex items-center gap-1"
+                          >
+                            {actionLoading === 'resume' ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />}
+                            Voltar
+                          </button>
+                        ) : ['WAITING', 'NEXT'].includes(current.me.status) ? (
+                          <button
+                            onClick={handlePause}
+                            disabled={actionLoading === 'pause'}
+                            className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60 flex items-center gap-1"
+                          >
+                            {actionLoading === 'pause' ? <RefreshCw size={12} className="animate-spin" /> : <Pause size={12} />}
+                            Pausar
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={handleCheckOut}
+                          disabled={actionLoading === 'check-out'}
+                          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60 flex items-center gap-1"
+                        >
+                          {actionLoading === 'check-out' ? <RefreshCw size={12} className="animate-spin" /> : <LogOut size={12} />}
+                          Sair
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="mt-3 sm:mt-4 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                 <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm">
                   <Crown size={16} />
