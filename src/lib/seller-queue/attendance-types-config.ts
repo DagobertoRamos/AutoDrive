@@ -23,6 +23,7 @@ export interface AttendanceTypesConfig {
 // consomem por padrão — a loja ajusta. "Outro" exige descrição.
 export const DEFAULT_ATTENDANCE_TYPES: AttendanceTypeItem[] = [
   { code: 'CLIENTE_PORTA', label: 'Cliente de porta', active: true, consumesTurn: true },
+  { code: 'INFORMACAO_RAPIDA', label: 'Informação rápida', active: true, consumesTurn: false },
   { code: 'AGENDAMENTO', label: 'Agendamento', active: true, consumesTurn: false },
   { code: 'RETORNO', label: 'Retorno', active: true, consumesTurn: false },
   { code: 'POS_VENDA', label: 'Pós-venda', active: true, consumesTurn: false },

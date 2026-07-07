@@ -15,7 +15,7 @@ import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-module
 
 export const dynamic = 'force-dynamic'
 
-const ACTIONS = ['pause', 'resume', 'add', 'remove'] as const
+const ACTIONS = ['pause', 'resume', 'add', 'remove', 'mark_attending'] as const
 type Action = (typeof ACTIONS)[number]
 
 const ACTION_PERMISSION: Record<Action, string> = {
@@ -23,6 +23,7 @@ const ACTION_PERMISSION: Record<Action, string> = {
   resume: 'queue.resume_other',
   add: 'queue.add_participant',
   remove: 'queue.remove_participant',
+  mark_attending: 'queue.mark_seller_attending',
 }
 
 export async function POST(req: Request) {
@@ -75,10 +76,80 @@ export async function POST(req: Request) {
       if (!entry || !['WAITING', 'NEXT'].includes(entry.status)) return NextResponse.json({ success: false, error: 'Vendedor não está aguardando na fila.' }, { status: 409 })
       await prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'PAUSED', pausedAt: new Date() } })
       await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'PAUSE', sellerId, actorId: user.id, entryId: entry.id, reason })
-    } else {
+    } else if (action === 'resume') {
       if (!entry || entry.status !== 'PAUSED') return NextResponse.json({ success: false, error: 'Vendedor não está pausado.' }, { status: 409 })
       await prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'WAITING', pausedAt: null, position: await nextPosition(queue.id), lastActiveAt: new Date() } })
       await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'RESUME', sellerId, actorId: user.id, entryId: entry.id, reason })
+    } else {
+      // action === 'mark_attending'
+      const isBusy = await prisma.sellerQueueAttendance.findFirst({
+        where: { queueId: queue.id, sellerId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
+        select: { id: true }
+      })
+      if (isBusy) {
+        return NextResponse.json({ success: false, error: 'Este vendedor já está em atendimento ativo.' }, { status: 409 })
+      }
+      const visitType = typeof body?.visitType === 'string' ? body.visitType : 'CLIENTE_PORTA'
+
+      const arrival = await prisma.sellerQueueCustomerArrival.create({
+        data: {
+          tenantId,
+          unitId,
+          queueId: queue.id,
+          registeredById: user.id,
+          customerName: typeof body?.customerName === 'string' && body.customerName.trim() ? body.customerName.trim() : null,
+          customerPhone: typeof body?.customerPhone === 'string' && body.customerPhone.trim() ? body.customerPhone.trim() : null,
+          customerEmail: typeof body?.customerEmail === 'string' && body.customerEmail.trim() ? body.customerEmail.trim() : null,
+          recurring: false,
+          status: 'IN_ATTENDANCE',
+          notes: typeof body?.notes === 'string' && body.notes.trim() ? body.notes.trim() : 'Marcado como atendendo pela gerência',
+        }
+      })
+
+      const att = await prisma.sellerQueueAttendance.create({
+        data: {
+          tenantId,
+          unitId,
+          queueId: queue.id,
+          sellerId,
+          arrivalId: arrival.id,
+          visitType,
+          status: 'IN_ATTENDANCE',
+          calledAt: new Date(),
+          acceptedAt: new Date(),
+          startedAt: new Date(),
+          createdById: user.id,
+        }
+      })
+
+      if (entry) {
+        await prisma.sellerQueueEntry.update({
+          where: { id: entry.id },
+          data: { status: 'IN_ATTENDANCE', lastActiveAt: new Date() }
+        })
+      } else {
+        await prisma.sellerQueueEntry.create({
+          data: {
+            tenantId,
+            unitId,
+            queueId: queue.id,
+            sellerId,
+            status: 'IN_ATTENDANCE',
+            lastActiveAt: new Date()
+          }
+        })
+      }
+
+      await logQueueEvent({
+        tenantId,
+        unitId,
+        queueId: queue.id,
+        type: 'ATTENDANCE_STARTED',
+        sellerId,
+        actorId: user.id,
+        attendanceId: att.id,
+        reason: reason || 'Marcado como atendendo pela gestão'
+      })
     }
 
     await createSafeAuditLog({ userId: user.id, tenantId, action: `QUEUE_MGR_${action.toUpperCase()}`, entity: 'SellerQueueEntry', entityId: entry?.id ?? seller.id, userName: user.name, userRole: user.role })

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Settings, Save, MapPin, Bell, BellRing, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock, Palmtree } from 'lucide-react'
+import { Settings, Save, MapPin, Bell, BellRing, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock, Palmtree, Zap } from 'lucide-react'
 
 const DAYS: [string, string][] = [['MON', 'Seg'], ['TUE', 'Ter'], ['WED', 'Qua'], ['THU', 'Qui'], ['FRI', 'Sex'], ['SAT', 'Sáb'], ['SUN', 'Dom']]
 import { cn } from '@/lib/utils'
@@ -40,6 +40,9 @@ interface Cfg {
   leadCloseReasons: string[]; negotiationReasons: string[];
   openTime: string | null; closeTime: string | null; allowedDays: string[];
   maxPauseMinutes: number; autoSchedule: boolean;
+  infoRapidaConsumesTurn: string;
+  infoRapidaTimeLimitMinutes: number;
+  allowWaitWithOpenAttendance: string;
   autoBlock: AutoBlock
   attendanceReminder: AttendanceReminderConfig
   queuePush: QueuePushConfig
@@ -73,7 +76,7 @@ function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: 
     </div>
   )
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -105,7 +108,8 @@ function validateCfg(c: Cfg): string | null {
     validateRange(c.queuePush.antiSpamAttendanceLimit, 'Limite por atendimento', limits.queuePushAntiSpamAttendanceLimit.min, limits.queuePushAntiSpamAttendanceLimit.max, 'envios') ??
     validateRange(c.queuePush.antiSpamQueueLimit, 'Limite por fila', limits.queuePushAntiSpamQueueLimit.min, limits.queuePushAntiSpamQueueLimit.max, 'envios') ??
     validateRange(c.queuePush.antiSpamWindowMinutes, 'Janela anti-spam', limits.queuePushAntiSpamWindowMinutes.min, limits.queuePushAntiSpamWindowMinutes.max, 'minutos') ??
-    validateRange(c.maxPauseMinutes, 'Tempo de pausa/ausência', limits.maxPauseMinutes.min, limits.maxPauseMinutes.max, 'minutos')
+    validateRange(c.maxPauseMinutes, 'Tempo de pausa/ausência', limits.maxPauseMinutes.min, limits.maxPauseMinutes.max, 'minutos') ??
+    validateRange(c.infoRapidaTimeLimitMinutes, 'Limite de tempo da informação rápida', 1, 60, 'minutos')
   )
 }
 
@@ -131,7 +135,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -427,6 +431,51 @@ export default function ConfiguracoesFilaPage() {
           <label className="mb-1 block text-sm font-medium text-gray-700">Sair da fila após pausado/ausente por (minutos, até 1440)</label>
           <input type="number" min={limits.maxPauseMinutes.min} max={limits.maxPauseMinutes.max} className={cn(inputCls, 'max-w-[140px]')} value={cfg.maxPauseMinutes} onChange={(e) => set('maxPauseMinutes', Number(e.target.value) || 0)} />
           <p className="mt-1 text-[11px] text-gray-400">0 = desligado. Ex.: 30 → quem ficar pausado/fora por 30 min sai da fila automaticamente; ao tentar voltar, recebe o aviso de que foi removido.</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><Zap size={16} className="text-brand-600" />Regras de Informação Rápida / Modo Anti-Briga</h2>
+        
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-gray-700">Permitir aguardar na fila com atendimento ativo?</label>
+          <select
+            value={cfg.allowWaitWithOpenAttendance}
+            onChange={(e) => set('allowWaitWithOpenAttendance', e.target.value)}
+            className={inputCls}
+          >
+            <option value="NO">Não (vendedor fica indisponível para novos chamados)</option>
+            <option value="YES">Sim (vendedor permanece na fila de espera geral)</option>
+            <option value="QUICK_ONLY">Apenas se for Informação Rápida (dentro do tempo limite)</option>
+          </select>
+          <p className="mt-1 text-[11px] text-gray-400">Controla se o vendedor continua disponível para ser chamado na fila geral enquanto atende outro cliente.</p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-gray-700">Atendimento de Informação Rápida consome a vez?</label>
+          <select
+            value={cfg.infoRapidaConsumesTurn}
+            onChange={(e) => set('infoRapidaConsumesTurn', e.target.value)}
+            className={inputCls}
+          >
+            <option value="NO">Não (vendedor volta para o topo da fila após finalizar)</option>
+            <option value="YES">Sim (vendedor vai para o final da fila após finalizar)</option>
+            <option value="TIME_LIMIT">Apenas se exceder o limite de tempo</option>
+          </select>
+          <p className="mt-1 text-[11px] text-gray-400">Determina se um atendimento de natureza rápida consome a vez do vendedor.</p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-gray-700">Limite de tempo para Informação Rápida (minutos)</label>
+          <input
+            type="number"
+            min={1}
+            max={60}
+            value={cfg.infoRapidaTimeLimitMinutes}
+            onChange={(e) => set('infoRapidaTimeLimitMinutes', Number(e.target.value) || 3)}
+            className={cn(inputCls, 'max-w-[140px]')}
+          />
+          <p className="mt-1 text-[11px] text-gray-400">Tempo limite para o vendedor finalizar sem precisar cadastrar dados do cliente. Se passar do limite, o cadastro do cliente passa a ser obrigatório e a vez é consumida.</p>
         </div>
       </div>
 
