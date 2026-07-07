@@ -2683,3 +2683,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - **Testes:** criados os testes automatizados unitários em `src/lib/seller-queue/anti-briga.test.ts` cobrindo o schema de conclusão de atendimento e o status de ocupado (`isAgentBusy`) com as diferentes regras de `allowWaitWithOpenAttendance` e timeouts de `INFORMACAO_RAPIDA`.
 - **Validações:** `npx tsc --noEmit` completado com sucesso sem erros. `npx vitest run src/lib/seller-queue/anti-briga.test.ts` passou com 5/5 testes verdes.
 
+### LOG 0194 — 2026-07-07 — Codex (GPT-5) — Ranking: participantes por tipo/unidade
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
+- **Tarefa:** Criar configuração de quem participa dos rankings por tipo e unidade, preservando histórico/participantes antigos e garantindo validação no backend.
+- **Arquivos alterados/criados:** `src/lib/ranking/participation.ts`, `src/app/api/ranking/participants/route.ts`, `src/app/(dashboard)/ranking/configuracao/page.tsx`, `src/lib/ranking/service.ts`, `src/app/api/seller-queue/ranking/route.ts`, `src/app/api/seller-queue/reports/route.ts`, `src/lib/permissions.ts`, `src/components/layout/navigation.ts`, testes de ranking/permissões/rotas, e pequenos ajustes de lint em telas da fila.
+- **Entregue:** nova API `/api/ranking/participants` (GET/PUT/DELETE) com auditoria; tela de Configurações do Ranking com seção de participantes; suporte a tipos `GENERAL`, `UNIT`, `ATTENDANCE`, `QUALITY`, `SALES`, `CONVERSION`, `QUEUE`, `CRM`, `COMMISSION`; gerente limitado à própria unidade; regras explícitas por ranking sobrescrevem a exclusão legada; rankings geral/unidade/qualidade/atendimento aplicam o filtro no backend.
+- **Validações:** `npx tsc --noEmit` OK; `npm run lint -- --quiet` OK; `npm test` OK (54 arquivos, 379 testes); `npm run build` OK após permissão elevada para regenerar Prisma Client.
+- **Observações:** Sem exclusão de usuários, histórico, comissões ou dados de ranking. A configuração granular fica em `SystemSetting` (`ranking_participants_v2`) para manter compatibilidade com os toggles legados de cadastro.

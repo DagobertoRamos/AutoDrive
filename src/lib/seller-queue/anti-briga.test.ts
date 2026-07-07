@@ -43,7 +43,7 @@ describe('Modo Anti-Briga & Informação Rápida Rules', () => {
         calledAt: new Date(),
       } as any)
 
-      const busy = await isAgentBusy('tenant-1', 'unit-1', 'agent-1')
+      const busy = await isAgentBusy('tenant-1', 'unit-1', 'queue-1', 'agent-1')
       expect(busy).toBe(true)
     })
 
@@ -57,7 +57,7 @@ describe('Modo Anti-Briga & Informação Rápida Rules', () => {
         calledAt: new Date(),
       } as any)
 
-      const busy = await isAgentBusy('tenant-1', 'unit-1', 'agent-1')
+      const busy = await isAgentBusy('tenant-1', 'unit-1', 'queue-1', 'agent-1')
       expect(busy).toBe(false)
     })
 
@@ -74,7 +74,7 @@ describe('Modo Anti-Briga & Informação Rápida Rules', () => {
         calledAt: new Date(),
       } as any)
 
-      const busy = await isAgentBusy('tenant-1', 'unit-1', 'agent-1')
+      const busy = await isAgentBusy('tenant-1', 'unit-1', 'queue-1', 'agent-1')
       expect(busy).toBe(false)
     })
 
@@ -94,7 +94,7 @@ describe('Modo Anti-Briga & Informação Rápida Rules', () => {
         startedAt: tenMinsAgo,
       } as any)
 
-      const busy = await isAgentBusy('tenant-1', 'unit-1', 'agent-1')
+      const busy = await isAgentBusy('tenant-1', 'unit-1', 'queue-1', 'agent-1')
       expect(busy).toBe(true)
     })
   })

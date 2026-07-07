@@ -112,6 +112,12 @@ export type Module =
   | 'goals.manage'                // criar/configurar metas e níveis
   | 'ranking'                     // ver ranking
   | 'ranking.configure'           // configurar pesos do ranking
+  | 'ranking.view.own'             // ver próprio desempenho no ranking
+  | 'ranking.view.unit'            // ver ranking da unidade
+  | 'ranking.view.all'             // ver ranking geral/tenant
+  | 'ranking.settings.view'        // ver configuração de participantes
+  | 'ranking.settings.manage.unit' // configurar participantes da própria unidade
+  | 'ranking.settings.manage.tenant' // configurar participantes gerais/tenant
   // ── Comercial › Fila de Atendimento ("Vendedor da Vez") ──────────────────
   | 'sellerQueue.view'            // ver a fila / própria posição / histórico
   | 'sellerQueue.checkIn'         // entrar/sair/pausar a fila (presença)
@@ -509,8 +515,32 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read'],
   },
   'ranking.configure': {
-    roles: ['MASTER', 'ADM', 'GERENTE_ADMINISTRATIVO'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'],
     actions: ['read', 'configure'],
+  },
+  'ranking.view.own': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'ranking.view.unit': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read'],
+  },
+  'ranking.view.all': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'],
+    actions: ['read'],
+  },
+  'ranking.settings.view': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read'],
+  },
+  'ranking.settings.manage.unit': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read', 'update', 'configure'],
+  },
+  'ranking.settings.manage.tenant': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'],
+    actions: ['read', 'update', 'configure'],
   },
   // ── Comercial › Fila de Atendimento ("Vendedor da Vez") ──────────────────────
   // Operação na loja: vendedor entra na fila, registra cliente, atende.

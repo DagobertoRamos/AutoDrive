@@ -30,7 +30,7 @@ interface CurrentData {
 export default function StorePanelPage() {
   const [data, setData] = useState<CurrentData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [now, setNow] = useState(Date.now())
+  const [now, setNow] = useState(0)
   const [audioUnlocked, setAudioUnlocked] = useState(false)
   const [flashActive, setFlashActive] = useState(false)
 

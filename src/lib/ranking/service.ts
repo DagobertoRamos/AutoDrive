@@ -9,10 +9,9 @@
 
 import type { GoalPeriod, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { MANAGEMENT_ROLES } from '@/lib/auth-guards'
 import { aggregateAchieved, type AggregationWindow } from '@/lib/goals/aggregators'
 import { computeQueueScores } from '@/lib/seller-queue/quality'
-import { getRankingExcludedUsers, getRankingExcludedUnits } from '@/lib/ranking/participation'
+import { applyRankingParticipationFilter, getRankingExcludedUnits } from '@/lib/ranking/participation'
 
 // ── Defaults (espelham a especificação) ───────────────────────────────────────
 
@@ -82,7 +81,7 @@ export interface RankingEntry {
 // ── RBAC ────────────────────────────────────────────────────────────────────
 
 export function canManageRanking(role: UserRole): boolean {
-  return MANAGEMENT_ROLES.includes(role)
+  return ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'].includes(role)
 }
 
 // ── Janela de período ─────────────────────────────────────────────────────────
@@ -289,11 +288,9 @@ export async function computeRanking(opts: {
   const window = resolvePeriodWindow(period, now, opts.start, opts.end)
   const rule = await getRankingRule(tenantId)
 
-  // Participação (editável no cadastro do colaborador e da unidade).
-  const [excludedUsers, excludedUnits] = await Promise.all([
-    getRankingExcludedUsers(tenantId),
-    getRankingExcludedUnits(tenantId),
-  ])
+  // Participação da unidade ainda preserva a regra legada: unidade desligada não
+  // pontua nem aparece. Participação por colaborador/tipo é aplicada depois.
+  const excludedUnits = await getRankingExcludedUnits(tenantId)
 
   // Ranking de uma unidade que não participa → vazio (nada a exibir).
   if (unitId && excludedUnits.includes(unitId)) {
@@ -307,8 +304,7 @@ export async function computeRanking(opts: {
     }
   }
 
-  const excludedUserSet = new Set(excludedUsers)
-  const sellers = (await prisma.seller.findMany({
+  const sellers = await prisma.seller.findMany({
     where: {
       active: true,
       unit: { tenantId },
@@ -316,7 +312,7 @@ export async function computeRanking(opts: {
       ...(!unitId && excludedUnits.length ? { unitId: { notIn: excludedUnits } } : {}),
     },
     select: { id: true, userId: true, fullName: true, shortName: true, unitId: true },
-  })).filter((s) => !excludedUserSet.has(s.userId))
+  })
 
   // Pontuação de qualidade da fila de atendimento (por USER id), mesma janela.
   const queueScores = await computeQueueScores({ tenantId, unitId, window, excludeUnitIds: excludedUnits })
@@ -344,7 +340,12 @@ export async function computeRanking(opts: {
     })
   }
 
-  const sorted = sortRanking(rawEntries, rule.tiebreakers)
+  const filteredEntries = await applyRankingParticipationFilter(rawEntries, {
+    tenantId,
+    unitId,
+    rankingType: unitId ? 'UNIT' : 'GENERAL',
+  })
+  const sorted = sortRanking(filteredEntries, rule.tiebreakers)
   sorted.forEach((e, i) => (e.rank = i + 1))
 
   return {

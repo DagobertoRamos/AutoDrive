@@ -14,7 +14,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
 import { computeQueueScores } from '@/lib/seller-queue/quality'
-import { getRankingExcludedUsers, getRankingExcludedUnits } from '@/lib/ranking/participation'
+import { applyRankingParticipationFilter, getRankingExcludedUnits } from '@/lib/ranking/participation'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -28,9 +28,8 @@ export async function GET(req: Request) {
   const since = new Date(Date.now() - days * 86400000)
 
   try {
-    const [scores, excludedUsers, excludedUnits] = await Promise.all([
+    const [scores, excludedUnits] = await Promise.all([
       computeQueueScores({ tenantId, unitId, window: { start: since, end: new Date() } }),
-      getRankingExcludedUsers(tenantId),
       getRankingExcludedUnits(tenantId),
     ])
 
@@ -39,24 +38,24 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: true, data: { days, ranking: [], unitExcluded: true } })
     }
 
-    const excluded = new Set(excludedUsers)
-    const ids = [...scores.keys()].filter((id) => !excluded.has(id))
+    const ids = [...scores.keys()]
     const names = new Map<string, string>()
     if (ids.length) {
       const us = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
       us.forEach((u) => names.set(u.id, u.name))
     }
 
-    const rows = ids.map((id) => {
+    const rows = await applyRankingParticipationFilter(ids.map((id) => {
       const s = scores.get(id)!
       return {
-        sellerId: id, sellerName: names.get(id) ?? id,
+        userId: id, sellerId: id, sellerName: names.get(id) ?? id,
         finished: s.finished, called: s.called, reversoes: s.reversoes, timeouts: s.timeouts,
         posVendas: s.posVendas, conversoes: s.conversoes, qualidade: s.qualidade,
         avgAcceptSeconds: s.avgAcceptSeconds,
         points: s.points,
       }
-    }).sort((x, y) => y.points - x.points || y.finished - x.finished)
+    }), { tenantId, unitId, rankingType: 'QUALITY' })
+    rows.sort((x, y) => y.points - x.points || y.finished - x.finished)
 
     return NextResponse.json({ success: true, data: { days, ranking: rows } })
   } catch (err) {

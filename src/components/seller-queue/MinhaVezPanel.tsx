@@ -15,7 +15,7 @@ import AlertSetupBanner from '@/components/seller-queue/AlertSetupBanner'
 import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
 import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
-import { unlockAudio, ensureNotifyPermission, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
+import { unlockAudio, ensureNotifyPermission, stopCriticalAlert, criticalAlert } from '@/lib/seller-queue/alert-client'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base md:text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'], ['CONSIGNMENT', 'Consignação'], ['FINANCING', 'Financiamento'], ['AFTER_SALES', 'Pós-venda'], ['OTHER', 'Outro']] as const
@@ -96,7 +96,6 @@ export default function MinhaVezPanel() {
   }, [])
 
   // Alerta sonoro / vibratório de teste de atenção
-  const { criticalAlert } = require('@/lib/seller-queue/alert-client')
   useEffect(() => {
     if (data?.activeAttentionTest) {
       criticalAlert({ title: 'Teste de atenção! ⚠️', body: 'Confirme que está ativo para responder à gerência.' })

@@ -31,6 +31,7 @@ export default function RelatoriosPage() {
   const [period, setPeriod] = useState('7')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [relativeRange, setRelativeRange] = useState({ from: '', to: '' })
   const [sellerId, setSellerId] = useState('')
   const [unitId, setUnitId] = useState('')
   const [sellers, setSellers] = useState<Opt[]>([])
@@ -51,6 +52,16 @@ export default function RelatoriosPage() {
     } catch { /* noop */ } finally { setLoading(false) }
   }, [period, from, to, sellerId, unitId])
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (period === 'custom') return
+    const end = new Date()
+    const start = new Date(end.getTime() - Number(period) * 86400000)
+    setRelativeRange({
+      from: start.toISOString().slice(0, 10),
+      to: end.toISOString().slice(0, 10),
+    })
+  }, [period])
 
   // Opções dos filtros (vendedores + unidades).
   useEffect(() => {
@@ -172,8 +183,8 @@ export default function RelatoriosPage() {
         </>
       ) : (
         <AtendimentosPanel
-          from={period === 'custom' ? (from || undefined) : new Date(Date.now() - Number(period) * 86400000).toISOString().slice(0, 10)}
-          to={period === 'custom' ? (to || undefined) : new Date().toISOString().slice(0, 10)}
+          from={period === 'custom' ? (from || undefined) : relativeRange.from}
+          to={period === 'custom' ? (to || undefined) : relativeRange.to}
         />
       )}
     </div>

@@ -72,8 +72,6 @@ import {
   // Comercial / Fila de Atendimento (Vendedor da Vez)
   UserCheck,
   ListOrdered,
-  DoorOpen,
-  Bell,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -203,7 +201,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Ranking Geral',    href: '/ranking/geral',        icon: Trophy,   module: 'ranking' },
       { label: 'Ranking da Unidade', href: '/ranking/unidade',    icon: Trophy,   module: 'ranking' },
       { label: 'Desempenho',      href: '/desempenho',           icon: Trophy,   module: 'ranking' },
-      { label: 'Configurar Pesos', href: '/ranking/configuracao', icon: Settings, module: 'ranking.configure' },
+      { label: 'Configurações', href: '/ranking/configuracao', icon: Settings, module: 'ranking.settings.view' },
     ],
   },
 

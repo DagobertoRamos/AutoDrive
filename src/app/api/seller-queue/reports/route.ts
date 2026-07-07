@@ -13,6 +13,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { applyRankingParticipationFilter } from '@/lib/ranking/participation'
 
 // Cache curto em memória: o ranking de N dias é a consulta mais cara do módulo.
 // Com vários da unidade olhando o dashboard, todos batem aqui a cada 30s em fases
@@ -85,10 +86,15 @@ export async function GET(req: Request) {
       const us = await prisma.user.findMany({ where: { id: { in: sellerIds } }, select: { id: true, name: true } })
       us.forEach((u) => names.set(u.id, u.name))
     }
-    const bySeller = sellerIds.map((id) => {
+    const bySellerRaw = sellerIds.map((id) => {
       const a = by.get(id)!
       return { sellerId: id, sellerName: names.get(id) ?? id, finished: a.finished, timeouts: a.timeouts, rejected: a.rejected, called: a.called, avgAcceptSeconds: a.acceptN ? Math.round(a.acceptMs / a.acceptN / 1000) : null }
-    }).sort((x, y) => y.finished - x.finished)
+    })
+    const bySeller = (await applyRankingParticipationFilter(bySellerRaw, {
+      tenantId,
+      unitId,
+      rankingType: 'ATTENDANCE',
+    })).sort((x, y) => y.finished - x.finished)
 
     // Consolidado por unidade (loja inteira) — só para quem enxerga o tenant.
     let byUnit: { unitId: string; unitName: string; called: number; finished: number; timeouts: number }[] = []

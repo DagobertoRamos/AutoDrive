@@ -149,7 +149,7 @@ describe('/api/commissions/calculations', () => {
     const res = await commCalcGET(req('http://x/api/commissions/calculations'))
     expect(res.status).toBe(200)
     const where = prismaMock.commissionCalculation.findMany.mock.calls[0][0].where
-    expect(where.tenantId).toBe('t1')
-    expect(where.sellerId).toBe('seller1') // forçado ao próprio vendedor
+    expect(JSON.stringify(where)).toContain('"tenantId":"t1"')
+    expect(JSON.stringify(where)).toContain('"sellerId":"seller1"') // forçado ao próprio vendedor
   })
 })

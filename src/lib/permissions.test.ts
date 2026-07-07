@@ -18,10 +18,18 @@ describe('permissions (RBAC por módulo)', () => {
     expect(canAccessModule('VENDEDOR', 'goals.manage')).toBe(false)
   })
 
-  it('ranking.configure: MASTER/ADM/GERENTE_ADMINISTRATIVO, não GERENTE comum', () => {
+  it('ranking.configure: gestão geral configura pesos, gerente comum não', () => {
     expect(canAccessModule('ADM', 'ranking.configure')).toBe(true)
+    expect(canAccessModule('GERENTE_GERAL', 'ranking.configure')).toBe(true)
     expect(canAccessModule('GERENTE_ADMINISTRATIVO', 'ranking.configure')).toBe(true)
     expect(canAccessModule('GERENTE', 'ranking.configure')).toBe(false)
+  })
+
+  it('ranking settings: gerente configura participantes da unidade, não do tenant', () => {
+    expect(canAccessModule('GERENTE', 'ranking.settings.view')).toBe(true)
+    expect(canAccessModule('GERENTE', 'ranking.settings.manage.unit')).toBe(true)
+    expect(canAccessModule('GERENTE', 'ranking.settings.manage.tenant')).toBe(false)
+    expect(canAccessModule('ADM', 'ranking.settings.manage.tenant')).toBe(true)
   })
 
   it('negotiations.financing inclui FINANCEIRO, exclui VENDEDOR', () => {
