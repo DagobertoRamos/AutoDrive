@@ -128,6 +128,12 @@ export type Module =
   | 'sellerQueue.reports'         // relatórios da fila/atendimentos
   | 'sellerQueue.settings'        // configurar regras da unidade
   | 'sellerQueue.override'        // exceção/override com justificativa
+  | 'queue.panel.view'
+  | 'queue.panel.sound_control'
+  | 'queue.panel.test_sound'
+  | 'queue.dashboard.view'
+  | 'queue.calls.view'
+  | 'queue.personal_queues.view_unit'
   | 'queue.view.own'
   | 'queue.view.unit'
   | 'queue.view.all'
@@ -584,6 +590,12 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
     actions: ['read', 'update', 'configure'],
   },
+  'queue.panel.view': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read'] },
+  'queue.panel.sound_control': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read', 'update'] },
+  'queue.panel.test_sound': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read'] },
+  'queue.dashboard.view': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read'] },
+  'queue.calls.view': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read'] },
+  'queue.personal_queues.view_unit': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read'] },
   'queue.view.own': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'], actions: ['read'] },
   'queue.view.unit': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['read'] },
   'queue.view.all': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL'], actions: ['read'] },

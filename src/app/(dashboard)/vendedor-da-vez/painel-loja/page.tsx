@@ -61,6 +61,7 @@ const DEFAULT_PANEL_SOUND: PanelSoundConfig = {
 export default function StorePanelPage() {
   const [data, setData] = useState<CurrentData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(0)
   const [audioUnlocked, setAudioUnlocked] = useState(() => {
     try { return typeof window !== 'undefined' && localStorage.getItem('sq_panel_audio_unlocked') === '1' } catch { return false }
@@ -92,6 +93,7 @@ export default function StorePanelPage() {
       if (res.ok) {
         const j = await res.json()
         const currentData = j?.data as CurrentData
+        setError(null)
         setData(currentData)
 
         // Detecção de mudança no vendedor da vez
@@ -105,10 +107,14 @@ export default function StorePanelPage() {
         } else {
           prevVendedorId.current = null
         }
+      } else {
+        const j = await res.json().catch(() => null) as { error?: string } | null
+        setData(null)
+        setError(j?.error ?? 'Não foi possível carregar o painel da loja.')
       }
     } catch (err) {
       if ((err as { name?: string })?.name !== 'AbortError') {
-        // noop: painel de TV não pode travar por oscilação de rede.
+        setError('Não foi possível atualizar o painel da loja. Verifique a conexão.')
       }
     } finally {
       if (abortRef.current === controller) setLoading(false)
@@ -260,7 +266,9 @@ export default function StorePanelPage() {
           </div>
           <div>
             <h1 className="text-xl font-black tracking-wider text-gray-100">AUTODRIVE</h1>
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Painel de Atendimento da Loja</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Painel da loja ativo{data?.unitName ? ` - Unidade: ${data.unitName}` : ''}
+            </p>
           </div>
         </div>
 
@@ -327,9 +335,23 @@ export default function StorePanelPage() {
         </div>
       )}
 
+      {error && (
+        <div className="mb-4 rounded-2xl border border-amber-500/60 bg-amber-950/40 px-4 py-3 text-sm font-bold text-amber-100">
+          {error}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="h-12 w-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="flex-1 rounded-3xl border border-dashed border-amber-800/70 bg-amber-950/20 p-10 text-center text-amber-100">
+          <ShieldAlert className="mx-auto mb-4 text-amber-400" size={44} />
+          <h2 className="text-2xl font-black">Painel sem unidade configurada</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm font-semibold text-amber-200/80">
+            Configure a unidade principal deste usuário no cadastro ou acesse o painel com uma unidade válida.
+          </p>
         </div>
       ) : (
         <div className="flex-grow grid grid-cols-1 xl:grid-cols-3 gap-6">

@@ -9,6 +9,12 @@ import type { Prisma, SellerQueueEventType, SellerPresenceMethod } from '@prisma
 import { evaluatePresence, type PresenceConfig, type PresenceInput, type PresenceResult } from './geo'
 import { flagFraud } from './fraud'
 
+const STORE_PANEL_EMAILS = new Set(['filadeatendimento@easycarveiculo.com.br'])
+
+export function isQueuePanelFallbackUser(user: { email?: string | null }): boolean {
+  return STORE_PANEL_EMAILS.has(String(user.email ?? '').trim().toLowerCase())
+}
+
 /** Data (sem hora) de hoje, em UTC — suficiente p/ o campo @db.Date da fila. */
 export function queueDate(now = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -30,6 +36,41 @@ export function unitFromRequest(req: Request, fallback: string | null | undefine
   const m = c.match(/(?:^|;\s*)sq_unit=([^;]+)/)
   if (m) return decodeURIComponent(m[1])
   return null
+}
+
+/** Unidade segura para leituras do painel/dashboard da fila. */
+export async function resolveQueueUnitForRead(
+  req: Request,
+  user: { unitId?: string | null },
+  tenantId: string,
+): Promise<{ unitId: string | null; unitName: string | null; error?: string; status?: number }> {
+  const requested = unitFromRequest(req, user.unitId)
+  if (requested) {
+    const unit = await prisma.unit.findFirst({
+      where: { id: requested, tenantId },
+      select: { id: true, name: true },
+    })
+    if (!unit) {
+      return { unitId: null, unitName: null, error: 'Unidade inválida ou não vinculada à sua empresa.', status: 403 }
+    }
+    return { unitId: unit.id, unitName: unit.name }
+  }
+
+  const units = await prisma.unit.findMany({
+    where: { tenantId, active: true },
+    select: { id: true, name: true },
+    orderBy: { createdAt: 'asc' },
+    take: 2,
+  })
+
+  if (units.length === 1) return { unitId: units[0].id, unitName: units[0].name }
+  if (units.length === 0) return { unitId: null, unitName: null, error: 'Nenhuma unidade ativa encontrada para esta empresa.', status: 400 }
+  return {
+    unitId: null,
+    unitName: null,
+    error: 'Este usuário de painel não possui unidade configurada. Configure a unidade no cadastro do usuário.',
+    status: 400,
+  }
 }
 
 /** Config da fila da unidade (ou null se não houver). */

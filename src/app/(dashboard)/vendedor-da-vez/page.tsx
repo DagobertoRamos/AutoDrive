@@ -85,6 +85,8 @@ interface CurrentData {
     callCurrentSeller?: boolean
     sendAlertAll?: boolean
     viewLogs?: boolean
+    panelView?: boolean
+    personalQueuesViewUnit?: boolean
     pauseOther?: boolean
     resumeOther?: boolean
     addParticipant?: boolean
@@ -388,6 +390,8 @@ export default function FilaOverviewPage() {
   const canManage = Boolean(roleCanManage || queuePerms?.pauseOther || queuePerms?.resumeOther || queuePerms?.removeParticipant || queuePerms?.blockParticipant || queuePerms?.reorder)
   const canViewLogs = Boolean(queuePerms?.viewLogs || roleCanManage)
   const canSendQueueAlert = Boolean(queuePerms?.sendAlertAll || roleCanManage)
+  const canViewUnitPersonalQueues = Boolean(canManage || queuePerms?.personalQueuesViewUnit || queuePerms?.panelView)
+  const canUseOwnQueue = current?.canCheckIn === true
   const myQueueStatus = current?.me?.blocked ? 'BLOCKED' : current?.me?.status ?? null
   const isMeWaiting = myQueueStatus === 'WAITING' || myQueueStatus === 'NEXT'
   const isMeAttending = myQueueStatus === 'CALLED' || myQueueStatus === 'ACCEPTED' || myQueueStatus === 'IN_ATTENDANCE'
@@ -775,25 +779,29 @@ export default function FilaOverviewPage() {
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:mt-4">
-                <button
-                  onClick={enterQueue}
-                  disabled={busy === 'enter-queue' || isMeWaiting || isMeAttending || isMeBlocked}
-                  className={cn(
-                    'col-span-full flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-70',
-                    isMeWaiting
-                      ? 'border border-green-200 bg-green-50 text-green-700'
-                      : isMeAttending || isMeBlocked
-                        ? 'border border-gray-200 bg-gray-50 text-gray-500'
-                        : 'bg-brand-700 text-white hover:bg-brand-800',
-                  )}
-                >
-                  {busy === 'enter-queue' ? <RefreshCw size={16} className="animate-spin" /> : <Hand size={16} />}
-                  {joinQueueLabel}
-                </button>
-                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm">
-                  <Crown size={16} />
-                  Verificar vez
-                </button>
+                {canUseOwnQueue && (
+                  <>
+                    <button
+                      onClick={enterQueue}
+                      disabled={busy === 'enter-queue' || isMeWaiting || isMeAttending || isMeBlocked}
+                      className={cn(
+                        'col-span-full flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-70',
+                        isMeWaiting
+                          ? 'border border-green-200 bg-green-50 text-green-700'
+                          : isMeAttending || isMeBlocked
+                            ? 'border border-gray-200 bg-gray-50 text-gray-500'
+                            : 'bg-brand-700 text-white hover:bg-brand-800',
+                      )}
+                    >
+                      {busy === 'enter-queue' ? <RefreshCw size={16} className="animate-spin" /> : <Hand size={16} />}
+                      {joinQueueLabel}
+                    </button>
+                    <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm">
+                      <Crown size={16} />
+                      Verificar vez
+                    </button>
+                  </>
+                )}
                 {/* Painel da Loja (TV) — visível a qualquer um que enxerga a fila
                     (ex.: terminal/TV da loja), pois é um display só-leitura. */}
                 <a href="/vendedor-da-vez/painel-loja" target="_blank" rel="noopener noreferrer" className="btn-secondary justify-center py-2.5 text-sm">
@@ -999,7 +1007,7 @@ export default function FilaOverviewPage() {
 
           <section className="grid min-w-0 gap-4 xl:grid-cols-[1fr_0.95fr]">
             <div className="space-y-4">
-              {canManage ? <FilasIndividuaisUnidade onChanged={load} /> : <MinhaFilaIndividual onChanged={load} />}
+              {canViewUnitPersonalQueues ? <FilasIndividuaisUnidade onChanged={load} readOnly={!canManage} /> : <MinhaFilaIndividual onChanged={load} />}
             </div>
 
             <div className="space-y-4">

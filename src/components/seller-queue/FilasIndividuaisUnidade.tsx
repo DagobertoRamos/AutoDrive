@@ -29,7 +29,7 @@ function waitLabel(s: number) {
   return m < 60 ? `${m}min` : `${Math.floor(m / 60)}h${m % 60}min`
 }
 
-export default function FilasIndividuaisUnidade({ onChanged }: { onChanged?: () => void }) {
+export default function FilasIndividuaisUnidade({ onChanged, readOnly = false }: { onChanged?: () => void; readOnly?: boolean }) {
   const [items, setItems] = useState<Item[]>([])
   const [sellers, setSellers] = useState<Seller[]>([])
   const [pick, setPick] = useState<Record<string, string>>({})
@@ -41,14 +41,14 @@ export default function FilasIndividuaisUnidade({ onChanged }: { onChanged?: () 
     try {
       const [pRes, cRes] = await Promise.all([
         fetch('/api/seller-queue/personal-queue?all=1', { credentials: 'include' }),
-        fetch('/api/seller-queue/callable', { credentials: 'include' }),
+        readOnly ? Promise.resolve(null) : fetch('/api/seller-queue/callable', { credentials: 'include' }),
       ])
       const pj = await pRes.json().catch(() => ({}))
       if (pRes.ok) setItems(pj?.data ?? [])
-      const cj = await cRes.json().catch(() => ({}))
-      if (cRes.ok) setSellers((cj?.data ?? []).map((s: { sellerId: string; name: string }) => ({ sellerId: s.sellerId, name: s.name })))
+      const cj = await cRes?.json().catch(() => ({}))
+      if (cRes?.ok) setSellers((cj?.data ?? []).map((s: { sellerId: string; name: string }) => ({ sellerId: s.sellerId, name: s.name })))
     } catch { /* noop */ } finally { setLoading(false) }
-  }, [])
+  }, [readOnly])
   useEffect(() => { load(); const i = setInterval(load, 5000); return () => clearInterval(i) }, [load])
 
   const act = async (id: string, body: Record<string, unknown>) => {
@@ -100,7 +100,7 @@ export default function FilasIndividuaisUnidade({ onChanged }: { onChanged?: () 
                       </div>
                     </div>
                     
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-1.5 sm:shrink-0">
+                    {!readOnly && <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-1.5 sm:shrink-0">
                       <div className="hidden sm:flex sm:flex-col">
                         <button onClick={() => act(it.id, { action: 'priority', priority: it.priority + 10 })} disabled={busy === it.id} className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Subir prioridade"><ChevronUp size={13} /></button>
                         <button onClick={() => act(it.id, { action: 'priority', priority: Math.max(0, it.priority - 10) })} disabled={busy === it.id} className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Baixar prioridade"><ChevronDown size={13} /></button>
@@ -128,7 +128,7 @@ export default function FilasIndividuaisUnidade({ onChanged }: { onChanged?: () 
                         <button onClick={() => act(it.id, { action: 'reschedule' })} disabled={busy === it.id} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border border-gray-200 sm:border-0" title="Reagendar (manda para o fim)"><History size={16} /></button>
                         <button onClick={() => act(it.id, { action: 'cancel' })} disabled={busy === it.id} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 border border-gray-200 sm:border-0" title="Cancelar"><X size={16} /></button>
                       </div>
-                    </div>
+                    </div>}
                   </li>
                 ))}
               </ul>

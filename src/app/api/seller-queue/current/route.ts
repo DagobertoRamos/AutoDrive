@@ -10,24 +10,38 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { queueDate , unitFromRequest, getUnitConfig } from '@/lib/seller-queue/queue'
+import { queueDate, resolveQueueUnitForRead, getUnitConfig, isQueuePanelFallbackUser } from '@/lib/seller-queue/queue'
 import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
-import { assertModuleEnabled, canAccessModuleForUser, getDisabledModules } from '@/lib/tenant-modules'
+import { assertModuleEnabled, canAccessModuleForUser, getDisabledModules, isModuleEnabled } from '@/lib/tenant-modules'
 import { autoCheckoutStalePauses, isQueueOpenNow, isOnVacation, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
 import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!await canAccessModuleForUser(user, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
-  { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
+  const [canViewQueue, canViewPanel, canViewDashboard] = await Promise.all([
+    canAccessModuleForUser(user, 'sellerQueue.view'),
+    canAccessModuleForUser(user, 'queue.panel.view'),
+    canAccessModuleForUser(user, 'queue.dashboard.view'),
+  ])
+  const panelFallback = isQueuePanelFallbackUser(user)
+  if (!canViewQueue && !canViewPanel && !canViewDashboard && !panelFallback) return forbiddenResponse('Sem acesso à fila.')
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
-  const unitId = unitFromRequest(req, user.unitId)
-  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: 400 })
+  if (canViewQueue) {
+    const gate = await assertModuleEnabled(user, 'sellerQueue.view')
+    if (gate) return gate
+  } else if (user.role !== 'MASTER' && !await isModuleEnabled(tenantId, 'sellerQueue.view')) {
+    return forbiddenResponse('Este recurso não está habilitado para a sua loja. Fale com o suporte.')
+  }
 
   try {
+    const unitScope = await resolveQueueUnitForRead(req, user, tenantId)
+    if (!unitScope.unitId) {
+      return NextResponse.json({ success: false, error: unitScope.error ?? 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: unitScope.status ?? 400 })
+    }
+    const unitId = unitScope.unitId
     const ucfg = await getUnitConfig(tenantId, unitId)
     const alerts = {
       sound: ucfg?.alertSound ?? true,
@@ -77,6 +91,8 @@ export async function GET(req: Request) {
       callCurrentSeller: isQueueResponsible || await canAccessModuleForUser(user, 'queue.call_current_seller'),
       sendAlertAll: isQueueResponsible || await canAccessModuleForUser(user, 'queue.send_alert_all'),
       viewLogs: isQueueResponsible || await canAccessModuleForUser(user, 'queue.view_logs'),
+      panelView: panelFallback || await canAccessModuleForUser(user, 'queue.panel.view'),
+      personalQueuesViewUnit: panelFallback || isQueueResponsible || await canAccessModuleForUser(user, 'queue.personal_queues.view_unit'),
       transferAttendance: isQueueResponsible || await canAccessModuleForUser(user, 'queue.transfer_attendance'),
       finishOtherAttendance: isQueueResponsible || await canAccessModuleForUser(user, 'queue.finish_other_attendance'),
       pauseOther: isQueueResponsible || await canAccessModuleForUser(user, 'queue.pause_other'),
@@ -89,9 +105,9 @@ export async function GET(req: Request) {
       manageSettings: isQueueResponsible || await canAccessModuleForUser(user, 'queue.manage_settings'),
     }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
-    const unit = await prisma.unit.findFirst({ where: { id: unitId, tenantId }, select: { name: true } })
+    const unitName = unitScope.unitName
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible, unitName: unit?.name ?? null } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible, unitName } })
     }
 
     // Remove quem ficou pausado/fora por muito tempo (antes de ler a fila).
@@ -241,7 +257,7 @@ export async function GET(req: Request) {
       success: true,
       data: {
         queue: { id: queue.id, date: queue.date, status: queue.status, unitId },
-        unitName: unit?.name ?? null,
+        unitName,
         entries: list,
         vendedorDaVez: vencedor ? { sellerId: vencedor.sellerId, sellerName: vencedor.sellerName, position: vencedor.position } : null,
         me,

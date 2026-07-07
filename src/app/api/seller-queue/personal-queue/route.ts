@@ -12,8 +12,8 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAudi
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { unitFromRequest } from '@/lib/seller-queue/queue'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { isQueuePanelFallbackUser, resolveQueueUnitForRead, unitFromRequest } from '@/lib/seller-queue/queue'
+import { assertModuleEnabled, canAccessModuleForUser, isModuleEnabled } from '@/lib/tenant-modules'
 import { enqueuePersonalItem, listPersonalQueueForAgent, listPersonalQueueForUnit, type PersonalItemType } from '@/lib/seller-queue/personal-queue'
 
 const VALID_TYPES: PersonalItemType[] = ['AGENDAMENTO', 'RETORNO', 'POS_VENDA', 'OUTRO']
@@ -22,18 +22,32 @@ const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.view')) return forbiddenResponse('Sem acesso à fila.')
-  { const gate = await assertModuleEnabled(user, 'sellerQueue.view'); if (gate) return gate }
+  const [canViewQueue, canViewPanel, canViewUnitPersonalQueues] = await Promise.all([
+    canAccessModuleForUser(user, 'sellerQueue.view'),
+    canAccessModuleForUser(user, 'queue.panel.view'),
+    canAccessModuleForUser(user, 'queue.personal_queues.view_unit'),
+  ])
+  const panelFallback = isQueuePanelFallbackUser(user)
+  if (!canViewQueue && !canViewPanel && !canViewUnitPersonalQueues && !panelFallback) return forbiddenResponse('Sem acesso à fila.')
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
-  const unitId = unitFromRequest(req, user.unitId)
-  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=).' }, { status: 400 })
+  if (canViewQueue) {
+    const gate = await assertModuleEnabled(user, 'sellerQueue.view')
+    if (gate) return gate
+  } else if (user.role !== 'MASTER' && !await isModuleEnabled(tenantId, 'sellerQueue.view')) {
+    return forbiddenResponse('Este recurso não está habilitado para a sua loja. Fale com o suporte.')
+  }
 
   try {
+    const unitScope = await resolveQueueUnitForRead(req, user, tenantId)
+    if (!unitScope.unitId) {
+      return NextResponse.json({ success: false, error: unitScope.error ?? 'Informe a unidade (?unitId=).' }, { status: unitScope.status ?? 400 })
+    }
+    const unitId = unitScope.unitId
     const url = new URL(req.url)
     const wantsAll = url.searchParams.get('all') === '1'
-    // Só a gestão vê a fila individual de TODOS; vendedor vê a própria.
-    if (wantsAll && canAccessModule(user.role, 'sellerQueue.manage')) {
+    // Gestão e usuário de painel veem a fila individual da unidade; vendedor vê a própria.
+    if (wantsAll && (canAccessModule(user.role, 'sellerQueue.manage') || panelFallback || canViewPanel || canViewUnitPersonalQueues)) {
       const items = await listPersonalQueueForUnit(tenantId, unitId)
       return NextResponse.json({ success: true, data: items, scope: 'unit' })
     }
