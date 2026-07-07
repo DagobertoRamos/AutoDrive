@@ -787,89 +787,156 @@ export default function FilaOverviewPage() {
                 </div>
               </div>
               {/* Painel de Presença / Controle do Colaborador (Entrar na Fila, Pausar, Sair) */}
-              {current?.canCheckIn && (
-                <div className="mt-3.5 border-t border-gray-100 pt-3.5">
-                  {!current?.me || current.me.status === 'LEFT' ? (
-                    <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between bg-brand-50/50 rounded-xl p-3 border border-brand-100">
-                      <div>
-                        <p className="text-xs font-bold text-brand-700">Você está fora da fila</p>
-                        <p className="text-[10px] text-gray-500">Entre na fila para começar a receber chamados.</p>
+              <div className="mt-3 sm:mt-4 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+                {/* 1. Entrar na fila (dynamic check-in / status button) */}
+                {(() => {
+                  const me = current?.me
+                  const canCheckIn = current?.canCheckIn !== false
+
+                  if (!canCheckIn) {
+                    return (
+                      <div className="col-span-full">
+                        <button disabled className="w-full btn-secondary opacity-50 font-bold py-2.5 px-4 justify-center rounded-xl text-sm cursor-not-allowed flex items-center gap-2">
+                          <Play size={15} />
+                          Entrar na fila
+                        </button>
                       </div>
-                      <button
-                        onClick={handleCheckIn}
-                        disabled={actionLoading === 'check-in'}
-                        className="btn-primary justify-center text-xs py-2 px-4 shadow-sm"
-                      >
-                        {actionLoading === 'check-in' ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}
-                        Entrar na fila
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between bg-indigo-50/30 rounded-xl p-3 border border-indigo-100/50">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-ping shrink-0" />
-                          Sua vez: <span className="text-sm font-black">{current.me.position > 0 ? `${current.me.position}º lugar` : queueStatusLabel(current.me.status)}</span>
-                        </p>
-                        <p className="text-[10px] text-gray-500 truncate">Status atual: {queueStatusLabel(current.me.status)}</p>
+                    )
+                  }
+
+                  if (!me || me.status === 'LEFT') {
+                    return (
+                      <div className="col-span-full">
+                        <button
+                          onClick={handleCheckIn}
+                          disabled={actionLoading === 'check-in'}
+                          className="w-full btn-primary bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-4 justify-center rounded-xl text-sm shadow-sm transition flex items-center gap-2"
+                        >
+                          {actionLoading === 'check-in' ? <RefreshCw size={15} className="animate-spin" /> : <Play size={15} />}
+                          Entrar na fila
+                        </button>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        {current.me.status === 'PAUSED' ? (
+                    )
+                  }
+
+                  if (me.blocked || me.status === 'BLOCKED') {
+                    return (
+                      <div className="col-span-full">
+                        <button disabled className="w-full btn-secondary bg-red-50 border border-red-200 text-red-700 font-bold py-2.5 px-4 justify-center rounded-xl text-sm flex items-center gap-2 cursor-default">
+                          <AlertCircle size={15} className="text-red-600 shrink-0" />
+                          Bloqueado (Fale com a gerência)
+                        </button>
+                      </div>
+                    )
+                  }
+
+                  if (me.status === 'PAUSED') {
+                    return (
+                      <div className="col-span-full space-y-1.5">
+                        <button
+                          onClick={handleResume}
+                          disabled={actionLoading === 'resume'}
+                          className="w-full btn-primary bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-4 justify-center rounded-xl text-sm flex items-center gap-2 transition"
+                        >
+                          {actionLoading === 'resume' ? <RefreshCw size={15} className="animate-spin" /> : <Play size={15} />}
+                          Retomar presença (Pausado)
+                        </button>
+                        <div className="flex gap-2">
                           <button
-                            onClick={handleResume}
-                            disabled={actionLoading === 'resume'}
-                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-700 disabled:opacity-60 flex items-center gap-1"
+                            onClick={handleCheckOut}
+                            disabled={actionLoading === 'check-out'}
+                            className="w-full btn-secondary justify-center py-2 text-xs border border-red-200 bg-red-50/50 hover:bg-red-100/50 text-red-600 font-semibold rounded-lg"
                           >
-                            {actionLoading === 'resume' ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />}
-                            Voltar
+                            {actionLoading === 'check-out' ? <RefreshCw size={13} className="animate-spin" /> : <LogOut size={13} />}
+                            Sair da fila
                           </button>
-                        ) : ['WAITING', 'NEXT'].includes(current.me.status) ? (
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  if (['WAITING', 'NEXT'].includes(me.status)) {
+                    return (
+                      <div className="col-span-full space-y-1.5">
+                        <button disabled className="w-full btn-secondary bg-green-50 border border-green-200 text-green-700 font-bold py-2.5 px-4 justify-center rounded-xl text-sm flex items-center gap-2 cursor-default">
+                          <CheckCircle2 size={15} className="text-green-600 shrink-0" />
+                          Você está na fila {me.position > 0 ? `(${me.position}º lugar)` : ''}
+                        </button>
+                        <div className="flex gap-2">
                           <button
                             onClick={handlePause}
                             disabled={actionLoading === 'pause'}
-                            className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60 flex items-center gap-1"
+                            className="flex-1 btn-secondary justify-center py-2 text-xs border border-amber-200 bg-amber-50/50 hover:bg-amber-100/50 text-amber-700 font-semibold rounded-lg"
                           >
-                            {actionLoading === 'pause' ? <RefreshCw size={12} className="animate-spin" /> : <Pause size={12} />}
-                            Pausar
+                            {actionLoading === 'pause' ? <RefreshCw size={13} className="animate-spin" /> : <Pause size={13} />}
+                            Pausar presença
                           </button>
-                        ) : null}
-                        <button
-                          onClick={handleCheckOut}
-                          disabled={actionLoading === 'check-out'}
-                          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60 flex items-center gap-1"
-                        >
-                          {actionLoading === 'check-out' ? <RefreshCw size={12} className="animate-spin" /> : <LogOut size={12} />}
-                          Sair
+                          <button
+                            onClick={handleCheckOut}
+                            disabled={actionLoading === 'check-out'}
+                            className="flex-1 btn-secondary justify-center py-2 text-xs border border-red-200 bg-red-50/50 hover:bg-red-100/50 text-red-600 font-semibold rounded-lg"
+                          >
+                            {actionLoading === 'check-out' ? <RefreshCw size={13} className="animate-spin" /> : <LogOut size={13} />}
+                            Sair da fila
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  if (['CALLED', 'ACCEPTED'].includes(me.status)) {
+                    return (
+                      <div className="col-span-full">
+                        <button disabled className="w-full btn-secondary bg-blue-100 border border-blue-200 text-blue-700 font-bold py-2.5 px-4 justify-center rounded-xl text-sm flex items-center gap-2 animate-pulse cursor-default">
+                          <Crown size={15} className="text-blue-600 shrink-0" />
+                          Sua vez! Chamado para atendimento
                         </button>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )
+                  }
 
-              <div className="mt-3 sm:mt-4 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+                  if (me.status === 'IN_ATTENDANCE') {
+                    return (
+                      <div className="col-span-full">
+                        <button disabled className="w-full btn-secondary bg-green-50 border border-green-200 text-green-700 font-bold py-2.5 px-4 justify-center rounded-xl text-sm flex items-center gap-2 cursor-default">
+                          <CheckCircle2 size={15} className="text-green-600 shrink-0" />
+                          Em atendimento
+                        </button>
+                      </div>
+                    )
+                  }
+
+                  return null
+                })()}
+
+                {/* 2. Verificar vez */}
                 <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm">
                   <Crown size={16} />
                   Verificar vez
                 </button>
                 {canManage && (
                   <>
+                    {/* 3. Chamar da vez */}
                     <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm">
                       <PhoneCall size={16} className="text-amber-600 animate-pulse" />
                       Chamar da vez
                     </button>
+                    {/* 4. Marcar atendendo */}
                     <button onClick={() => openMarkAttendingModal('CLIENTE_PORTA')} className="btn-secondary justify-center py-2.5 text-sm">
                       <UserCheck size={16} className="text-blue-600" />
                       Marcar atendendo
                     </button>
+                    {/* 5. Info rápida */}
                     <button onClick={() => openMarkAttendingModal('INFORMACAO_RAPIDA')} className="btn-secondary justify-center py-2.5 text-sm">
                       <Zap size={16} className="text-cyan-500 animate-pulse" />
                       Info rápida
                     </button>
+                    {/* 6. Painel da Loja */}
                     <a href="/vendedor-da-vez/painel-loja" target="_blank" rel="noopener noreferrer" className="btn-secondary justify-center py-2.5 text-sm">
                       <Tv size={16} className="text-indigo-600" />
                       Painel da Loja
                     </a>
+                    {/* 7. Testar push */}
                     <a href="/vendedor-da-vez/testes" className="btn-secondary justify-center py-2.5 text-sm">
                       <Settings size={16} className="text-red-500" />
                       Testar push
