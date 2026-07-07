@@ -2664,3 +2664,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Causa:** o middleware `src/proxy.ts` (Next 16 usa `proxy.ts`) protege tudo por sessão, com uma lista de exclusões (`api/auth|api/webhook|api/internal|api/integrations|...`). **`api/queue/jobs` não estava na lista** → requisição sem sessão (cron) caía no redirect de login. (O job de lembretes do Codex, mesmo prefixo, tinha o mesmo bug.)
 - **Fix:** adicionado `api/queue/jobs` às exclusões do matcher. Os endpoints seguem protegidos pelo **segredo** (QUEUE_JOB_SECRET/CRON_SECRET) — só saem do gate de SESSÃO. Corrige sweep + attendance-reminders.
 - `tsc` verde. Após deploy, o cron externo passa a receber 200 + JSON.
+
+### LOG 0192 — 2026-07-04 — Claude (Opus 4.8) — Cron ÚNICO (/tick): lembretes + pendências + avisos agendados
+- **Decisão do usuário:** um cron único roda tudo + avisos agendados (novo).
+- **`/api/queue/jobs/tick` (novo, GET+POST, QUEUE_JOB_SECRET/CRON_SECRET):** roda numa chamada, cada job isolado (um erro não derruba os outros): `runQueueSweepAll` (escalonamento/timeout), `processAttendanceReminders` (lembretes da fila), `sendDuePendencyReminders` (lembretes de pendência), `archiveResolvedPendenciesJob` (auto-arquivar), `dispatchScheduledAvisos` (avisos agendados). Retorna `{jobs:[{label,ok,data|error}]}`.
+- **`sweep-job.ts` (novo):** extraí `runQueueSweepAll` (reusado por `/sweep` e `/tick`).
+- **Avisos agendados (`comunicacao/scheduled-avisos.ts`):** o modelo `InternalNotice` + UI (`NoticesTab` "Programar publicação" + datetime `startsAt`) + create já suportavam SCHEDULED — mas o create grava `active:false` (linha 111) e o `/active` filtra `active:true`, então um agendado **nunca aparecia**. `dispatchScheduledAvisos` vira `SCHEDULED→ACTIVE` (active:true, publishedAt) quando `startsAt<=now` (dentro de `endsAt`), com log 'PUBLISHED'. **Sem migration nem mudança de UI** — só o job faltava.
+- **Ativação:** apontar o cron-job.org (que já existe) do `/sweep` para **`/api/queue/jobs/tick`** — 1 tarefa passa a rodar tudo. `tsc` verde.
+- **Nota:** todos os jobs rodam system-wide (todos os tenants). `/sweep` continua existindo (compat), mas o cron deve ir para `/tick` (senão o sweep roda 2×).

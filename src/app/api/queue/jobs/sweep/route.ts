@@ -11,10 +11,7 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { sweepExpiredCalls } from '@/lib/seller-queue/call'
-import { autoCheckoutStalePauses } from '@/lib/seller-queue/automation'
-import { getUnitConfig } from '@/lib/seller-queue/queue'
+import { runQueueSweepAll } from '@/lib/seller-queue/sweep-job'
 
 function authorized(req: Request): boolean {
   const header = req.headers.get('x-cron-secret') ?? ''
@@ -26,30 +23,8 @@ function authorized(req: Request): boolean {
 
 async function runSweep() {
   const startedAt = Date.now()
-  const queues = await prisma.sellerQueue.findMany({
-    where: { status: 'OPEN' },
-    select: { id: true, tenantId: true, unitId: true },
-  }).catch(() => [] as Array<{ id: string; tenantId: string; unitId: string }>)
-
-  let ok = 0
-  let failed = 0
-  for (const q of queues) {
-    try {
-      // Auto-checkout de pausas longas — respeita a config da unidade (só age se
-      // maxPauseMinutes > 0; não força um padrão que a loja não escolheu).
-      const cfg = await getUnitConfig(q.tenantId, q.unitId).catch(() => null)
-      const maxPause = Number((cfg?.config as { maxPauseMinutes?: number } | null)?.maxPauseMinutes) || 0
-      if (maxPause > 0) {
-        await autoCheckoutStalePauses({ tenantId: q.tenantId, unitId: q.unitId, queueId: q.id, maxPauseMinutes: maxPause })
-      }
-      // Núcleo: expira chamadas vencidas e avança o escalonamento.
-      await sweepExpiredCalls({ tenantId: q.tenantId, unitId: q.unitId, queueId: q.id, actorId: 'system-cron' })
-      ok++
-    } catch {
-      failed++
-    }
-  }
-  return { success: true, queues: queues.length, ok, failed, durationMs: Date.now() - startedAt }
+  const r = await runQueueSweepAll()
+  return { success: true, ...r, durationMs: Date.now() - startedAt }
 }
 
 export async function GET(req: Request) {
