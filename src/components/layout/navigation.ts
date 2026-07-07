@@ -129,7 +129,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Visão Geral',         href: '/vendedor-da-vez',               icon: ListOrdered,     module: 'sellerQueue.view' },
       { label: 'Painel da Unidade',   href: '/vendedor-da-vez/painel',         icon: LayoutDashboard, module: 'sellerQueue.lead' },
       { label: 'Relatórios',          href: '/vendedor-da-vez/relatorios',     icon: BarChart3,       module: 'sellerQueue.reports' },
-      { label: 'Configurações',       href: '/vendedor-da-vez/configuracoes',  icon: Settings,        module: 'sellerQueue.view' },
+      { label: 'Configurações',       href: '/vendedor-da-vez/configuracoes',  icon: Settings,        module: 'sellerQueue.settings' },
     ],
   },
 
