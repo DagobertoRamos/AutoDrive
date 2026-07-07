@@ -21,6 +21,8 @@ export const presenceSchema = z.object({
   overrideReason: optStr,
 })
 
+
+
 export const checkInSchema = presenceSchema
 export const resumeSchema = presenceSchema
 export const checkOutSchema = z.object({ reason: optStr })
@@ -64,7 +66,7 @@ export const finishSchema = z.object({
   // Cliente registrado pelo vendedor que atendeu (gera o lead de atendimento).
   customerName:  z.string().trim().max(200).nullish(),
   customerPhone: z.string().trim().max(40).nullish(),
-  customerEmail: z.string().trim().email('E-mail inválido').max(200).nullish(),
+  customerEmail: z.string().trim().email('E-mail inválido').max(200).or(z.literal('')).nullish(),
 })
 
 // ── Ações do gerente: bloquear/liberar + reordenar (Fase 8) ─────────────────
@@ -149,4 +151,8 @@ export const configSchema = z.object({
     message: 'O bloqueio diário deve exigir mais perdas que o bloqueio temporário.',
     path: ['strikesForDailyBlock'],
   }).optional(),
+  // Novas configurações para a Fila Automática / Modo Anti-Briga
+  infoRapidaConsumesTurn:      z.enum(['NO', 'YES', 'TIME_LIMIT']).optional(),
+  infoRapidaTimeLimitMinutes:  z.number().int().min(1).max(120).optional(),
+  allowWaitWithOpenAttendance: z.enum(['NO', 'YES', 'QUICK_ONLY']).optional(),
 })

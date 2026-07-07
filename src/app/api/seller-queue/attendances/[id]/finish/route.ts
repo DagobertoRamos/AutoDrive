@@ -41,21 +41,53 @@ export async function POST(req: Request, { params }: Ctx) {
 
     // Config da loja: se o vendedor NÃO pode finalizar, só a gestão (líder/gerente).
     const cfgFinish = await getUnitConfig(tenantId, att.unitId)
-    // Tipo de atendimento (natureza da visita) decide se consome a vez da fila.
-    const consumesTurn = typeConsumesTurn(readAttendanceTypesConfig(cfgFinish?.config), att.visitType)
     const allowSellerFinish = (cfgFinish?.config as { allowSellerFinish?: boolean } | null)?.allowSellerFinish ?? true
     if (!allowSellerFinish && att.sellerId === user.id && !isLead) {
       return forbiddenResponse('A finalização do atendimento é feita pela gestão (configuração da loja).')
     }
 
-    const d = finishSchema.parse(await req.json())
+    const bodyJson = await req.json()
+    const d = finishSchema.parse(bodyJson)
     const hasCustomer = Boolean(d.customerId) || (Boolean(d.customerName?.trim()) && (d.customerPhone ?? '').replace(/\D/g, '').length >= 10)
-    if (!hasCustomer) {
+
+    let allowBypassCustomer = false
+    const durationMin = (Date.now() - new Date(att.startedAt ?? att.calledAt).getTime()) / 60000
+
+    if (att.visitType === 'INFORMACAO_RAPIDA') {
+      const cfgExtras = (cfgFinish?.config as Record<string, any>) ?? {}
+      const infoTimeLimit = typeof cfgExtras.infoRapidaTimeLimitMinutes === 'number' ? cfgExtras.infoRapidaTimeLimitMinutes : 3
+      if (durationMin <= infoTimeLimit || isLead) {
+        allowBypassCustomer = true
+      } else {
+        return NextResponse.json({
+          success: false,
+          error: `O atendimento de Informação Rápida excedeu o limite de ${infoTimeLimit} minutos. É necessário cadastrar os dados do cliente para finalizar.`
+        }, { status: 400 })
+      }
+    }
+
+    if (!hasCustomer && !allowBypassCustomer) {
       return NextResponse.json({ success: false, error: 'Para finalizar o atendimento, cadastre os dados mínimos do cliente.' }, { status: 400 })
     }
     if (d.result !== 'CONVERTED_TO_NEGOTIATION' && !d.notes?.trim()) {
       return NextResponse.json({ success: false, error: 'Informe uma observação/motivo quando o atendimento não gerar negociação.' }, { status: 400 })
     }
+
+    // Tipo de atendimento (natureza da visita) decide se consome a vez da fila.
+    let consumesTurn = typeConsumesTurn(readAttendanceTypesConfig(cfgFinish?.config), att.visitType)
+    if (att.visitType === 'INFORMACAO_RAPIDA') {
+      const rule = (cfgFinish?.config as any)?.infoRapidaConsumesTurn ?? 'NO'
+      if (rule === 'YES') {
+        consumesTurn = true
+      } else if (rule === 'NO') {
+        consumesTurn = false
+      } else if (rule === 'TIME_LIMIT') {
+        const cfgExtras = (cfgFinish?.config as Record<string, any>) ?? {}
+        const infoTimeLimit = typeof cfgExtras.infoRapidaTimeLimitMinutes === 'number' ? cfgExtras.infoRapidaTimeLimitMinutes : 3
+        consumesTurn = durationMin > infoTimeLimit
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.sellerQueueAttendance.update({
         where: { id: att.id },
@@ -75,21 +107,38 @@ export async function POST(req: Request, { params }: Ctx) {
       }
       if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'DONE' } })
     })
-    await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'ATTENDANCE_FINISHED', sellerId: att.sellerId, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id, reason: d.result })
-    if (consumesTurn) await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
-    await createSafeAuditLog({ userId: user.id, tenantId, action: 'FINISH', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
 
-    // Gera/reaproveita o lead (sem duplicar), acha-ou-cria o cliente e — se
-    // virou negociação — cria a negociação (Deal RASCUNHO) e linka tudo.
-    const out = await ensureAttendanceLead({
-      tenantId, unitId: att.unitId, sellerId: att.sellerId, actorId: user.id,
-      attendanceId: att.id, arrivalId: att.arrivalId, result: d.result, attendanceType: d.type,
-      dealId: d.dealId ?? null, notes: d.notes ?? null,
-      existingLeadId: d.leadId ?? null, existingCustomerId: d.customerId ?? null,
-      customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null, customerEmail: d.customerEmail ?? null,
-    }).catch(() => null)
-    if (out) {
-      await prisma.sellerQueueAttendance.update({ where: { id: att.id }, data: { leadId: out.leadId, dealId: out.dealId, customerId: out.customerId } }).catch(() => {})
+    let out: { leadId?: string | null; dealId?: string | null; customerId?: string | null } | null = null
+
+    if (allowBypassCustomer && !hasCustomer) {
+      await logQueueEvent({
+        tenantId,
+        unitId: att.unitId,
+        queueId: att.queueId,
+        type: 'ATTENDANCE_FINISHED',
+        sellerId: att.sellerId,
+        actorId: user.id,
+        arrivalId: att.arrivalId,
+        attendanceId: att.id,
+        reason: 'Informação rápida finalizada sem cadastro de cliente conforme configuração da fila'
+      })
+    } else {
+      await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'ATTENDANCE_FINISHED', sellerId: att.sellerId, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id, reason: d.result })
+      if (consumesTurn) await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
+      await createSafeAuditLog({ userId: user.id, tenantId, action: 'FINISH', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
+
+      // Gera/reaproveita o lead (sem duplicar), acha-ou-cria o cliente e — se
+      // virou negociação — cria a negociação (Deal RASCUNHO) e linka tudo.
+      out = await ensureAttendanceLead({
+        tenantId, unitId: att.unitId, sellerId: att.sellerId, actorId: user.id,
+        attendanceId: att.id, arrivalId: att.arrivalId, result: d.result, attendanceType: d.type,
+        dealId: d.dealId ?? null, notes: d.notes ?? null,
+        existingLeadId: d.leadId ?? null, existingCustomerId: d.customerId ?? null,
+        customerName: d.customerName ?? null, customerPhone: d.customerPhone ?? null, customerEmail: d.customerEmail ?? null,
+      }).catch(() => null)
+      if (out) {
+        await prisma.sellerQueueAttendance.update({ where: { id: att.id }, data: { leadId: out.leadId, dealId: out.dealId, customerId: out.customerId } }).catch(() => {})
+      }
     }
 
     // Fila individual (Fase 2): conclui o item ligado a este atendimento (se houver)

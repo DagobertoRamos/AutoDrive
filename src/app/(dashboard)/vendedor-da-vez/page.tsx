@@ -32,6 +32,9 @@ import {
   Trophy,
   UserCheck,
   UserX,
+  Zap,
+  Tv,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import MinhaVezPanel from '@/components/seller-queue/MinhaVezPanel'
@@ -52,6 +55,7 @@ interface Entry {
   blocked: boolean
   attendanceCount: number
   hasDevice?: boolean
+  operationalState?: string
 }
 
 interface CurrentData {
@@ -268,6 +272,86 @@ export default function FilaOverviewPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [now, setNow] = useState(0)
   const [logOpen, setLogOpen] = useState(false) // log recolhível (fechado por padrão)
+  const [calling, setCalling] = useState(false)
+  const [markAttendingOpen, setMarkAttendingOpen] = useState(false)
+  const [markAttendingForm, setMarkAttendingForm] = useState({
+    sellerId: '',
+    visitType: 'CLIENTE_PORTA',
+    customerName: '',
+    customerPhone: '',
+    customerEmail: '',
+    notes: '',
+    reason: 'Marcado como atendendo pela gestão'
+  })
+  const [callable, setCallable] = useState<{ sellerId: string; name: string; queueStatus: string | null }[]>([])
+
+  useEffect(() => {
+    if (roleCanManage) {
+      fetch('/api/seller-queue/callable', { credentials: 'include' })
+        .then((r) => r.ok ? r.json() : null)
+        .then((j) => { if (j?.success) setCallable(j.data ?? []) })
+        .catch(() => {})
+    }
+  }, [roleCanManage])
+
+  const callDaVez = async () => {
+    if (calling) return
+    setCalling(true)
+    try {
+      const res = await fetch('/api/seller-queue/quick-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) flash(j?.error ?? 'Falha ao chamar.', false)
+      else if (j?.data?.alreadyInProgress) flash(j?.data?.sellerName ? `Chamada já em andamento — ${j.data.sellerName} foi chamado.` : (j?.data?.cooldownSeconds ? `Aguarde ${j.data.cooldownSeconds}s para chamar de novo.` : 'Chamada já em andamento — aguarde.'), false)
+      else if (j?.data?.call?.ok) flash('Vendedor da vez chamado! 🔔', true)
+      else flash(j?.data?.call?.reason ?? 'Nenhum vendedor disponível na fila.', false)
+      await load()
+    } catch { flash('Erro de rede.', false) } finally { setCalling(false) }
+  }
+
+  const openMarkAttendingModal = (visitType: string) => {
+    setMarkAttendingForm({
+      sellerId: '',
+      visitType,
+      customerName: '',
+      customerPhone: '',
+      customerEmail: '',
+      notes: '',
+      reason: 'Marcado como atendendo pela gestão'
+    })
+    setMarkAttendingOpen(true)
+  }
+
+  const submitMarkAttending = async () => {
+    if (!markAttendingForm.sellerId) { flash('Selecione o vendedor.', false); return }
+    if (!markAttendingForm.notes.trim()) { flash('As observações são obrigatórias.', false); return }
+    setBusy('mark-attending')
+    try {
+      const res = await fetch('/api/seller-queue/manage-seller', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'mark_attending',
+          sellerId: markAttendingForm.sellerId,
+          visitType: markAttendingForm.visitType,
+          customerName: markAttendingForm.customerName.trim() || undefined,
+          customerPhone: markAttendingForm.customerPhone.trim() || undefined,
+          customerEmail: markAttendingForm.customerEmail.trim() || undefined,
+          notes: markAttendingForm.notes.trim(),
+          reason: markAttendingForm.reason.trim()
+        })
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { flash(j?.error ?? 'Não foi possível marcar como atendendo.', false); return }
+      flash('Vendedor marcado como atendendo com sucesso!', true)
+      setMarkAttendingOpen(false)
+      await load()
+    } catch {
+      flash('Erro de rede.', false)
+    } finally {
+      setBusy(null)
+    }
+  }
   const firedTimeouts = useRef<Set<string>>(new Set())
   const queuePerms = current?.permissions
   const canCallCurrent = Boolean(queuePerms?.callCurrentSeller || roleCanManage)
@@ -623,11 +707,35 @@ export default function FilaOverviewPage() {
                   </div>
                 </div>
               </div>
-              <div className="mt-4">
-                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary w-full justify-center py-3 text-sm">
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <button onClick={() => setCheckTurnOpen(true)} className="btn-primary justify-center py-2.5 text-sm col-span-2 sm:col-span-1">
                   <Crown size={16} />
                   Verificar vez
                 </button>
+                {canManage && (
+                  <>
+                    <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm col-span-2 sm:col-span-1">
+                      <PhoneCall size={16} className="text-amber-600 animate-pulse" />
+                      Chamar vendedor da vez
+                    </button>
+                    <button onClick={() => openMarkAttendingModal('CLIENTE_PORTA')} className="btn-secondary justify-center py-2.5 text-sm">
+                      <UserCheck size={16} className="text-blue-600" />
+                      Marcar atendendo
+                    </button>
+                    <button onClick={() => openMarkAttendingModal('INFORMACAO_RAPIDA')} className="btn-secondary justify-center py-2.5 text-sm">
+                      <Zap size={16} className="text-cyan-500 animate-pulse" />
+                      Informação rápida
+                    </button>
+                    <a href="/vendedor-da-vez/painel-loja" target="_blank" rel="noopener noreferrer" className="btn-secondary justify-center py-2.5 text-sm">
+                      <Tv size={16} className="text-indigo-600" />
+                      Painel da Loja
+                    </a>
+                    <a href="/vendedor-da-vez/testes" className="btn-secondary justify-center py-2.5 text-sm">
+                      <Settings size={16} className="text-red-500" />
+                      Testar push / atenção
+                    </a>
+                  </>
+                )}
               </div>
             </div>
 
@@ -879,6 +987,101 @@ export default function FilaOverviewPage() {
 
       {checkTurnOpen && <VerificarVezModal onClose={() => setCheckTurnOpen(false)} onChanged={load} />}
       {reminders?.myReminder && <AttendanceReminderModal reminder={reminders.myReminder} onClose={() => setReminders((r) => r ? { ...r, myReminder: null } : r)} onChanged={load} />}
+
+      {/* Modal de Marcar Atendendo (Gestor) */}
+      {markAttendingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setMarkAttendingOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">
+                {markAttendingForm.visitType === 'INFORMACAO_RAPIDA' ? 'Marcar Informação Rápida' : 'Marcar como Atendendo'}
+              </h3>
+              <button onClick={() => setMarkAttendingOpen(false)} className="rounded-lg bg-gray-100 p-1.5 text-gray-500 hover:bg-gray-200">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Vendedor *</label>
+                <select
+                  value={markAttendingForm.sellerId}
+                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, sellerId: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                >
+                  <option value="">— selecione o vendedor —</option>
+                  {callable.map((c) => (
+                    <option key={c.sellerId} value={c.sellerId}>
+                      {c.name} {c.queueStatus ? `(${queueStatusLabel(c.queueStatus)})` : '(fora da fila)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Tipo de Atendimento</label>
+                <select
+                  value={markAttendingForm.visitType}
+                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, visitType: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                >
+                  <option value="CLIENTE_PORTA">Cliente de porta</option>
+                  <option value="INFORMACAO_RAPIDA">Informação rápida</option>
+                  <option value="AGENDAMENTO">Agendamento</option>
+                  <option value="RETORNO">Retorno</option>
+                  <option value="POS_VENDA">Pós-venda</option>
+                  <option value="TEST_DRIVE">Test-drive</option>
+                  <option value="AVALIACAO">Avaliação</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Nome do Cliente (opcional)</label>
+                <input
+                  type="text"
+                  value={markAttendingForm.customerName}
+                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, customerName: e.target.value }))}
+                  placeholder="Ex: Anderson Silva"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Telefone (opcional)</label>
+                <input
+                  type="tel"
+                  value={markAttendingForm.customerPhone}
+                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, customerPhone: e.target.value }))}
+                  placeholder="(11)9.9999-9999"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Observações *</label>
+                <textarea
+                  rows={2}
+                  value={markAttendingForm.notes}
+                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, notes: e.target.value }))}
+                  placeholder="Justificativa ou descrição do atendimento"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Motivo Administrativo *</label>
+                <input
+                  type="text"
+                  value={markAttendingForm.reason}
+                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, reason: e.target.value }))}
+                  placeholder="Justificativa do gerente"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setMarkAttendingOpen(false)} className="btn-secondary text-sm">Cancelar</button>
+              <button onClick={submitMarkAttending} disabled={busy === 'mark-attending'} className="btn-primary text-sm">
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

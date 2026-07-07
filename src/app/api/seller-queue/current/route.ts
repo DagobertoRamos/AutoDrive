@@ -82,13 +82,51 @@ export async function GET(req: Request) {
     // vendedor): marca EXPIRED, penaliza/bloqueia e chama o próximo/gerente.
     await sweepExpiredCalls({ tenantId, unitId, queueId: queue.id, actorId: user.id }).catch(() => {})
 
-    const [entries, arrivalsPending] = await Promise.all([
+    const [entries, arrivalsPending, activeAtts, personalCounts, testNotif] = await Promise.all([
       prisma.sellerQueueEntry.findMany({
         where: { queueId: queue.id, status: { notIn: ['LEFT'] } },
         orderBy: [{ position: 'asc' }, { joinedAt: 'asc' }],
       }),
       prisma.sellerQueueCustomerArrival.count({ where: { queueId: queue.id, status: { in: ['PENDING', 'CALLING'] } } }),
+      prisma.sellerQueueAttendance.findMany({
+        where: { queueId: queue.id, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
+      }),
+      prisma.agentPersonalQueueItem.groupBy({
+        by: ['agentUserId'],
+        where: { tenantId, unitId, status: { in: ['AGUARDANDO', 'CHAMADO'] } },
+        _count: { id: true },
+      }),
+      prisma.notification.findFirst({
+        where: { userId: user.id, read: false, metadata: { path: ['kind'], equals: 'test_attention' } },
+        orderBy: { createdAt: 'desc' }
+      })
     ])
+
+    // Se vendedor está WAITING na entry, mas tem INFORMACAO_RAPIDA há mais que o limite,
+    // move a entry dele para IN_ATTENDANCE (remover da fila)
+    const infoLimit = typeof (ucfg?.config as any)?.infoRapidaTimeLimitMinutes === 'number'
+      ? (ucfg?.config as any).infoRapidaTimeLimitMinutes
+      : 3
+    const activeQuickAtts = activeAtts.filter((a) => a.visitType === 'INFORMACAO_RAPIDA' && a.status === 'IN_ATTENDANCE')
+    for (const a of activeQuickAtts) {
+      const entry = entries.find((e) => e.sellerId === a.sellerId)
+      if (entry && (entry.status === 'WAITING' || entry.status === 'NEXT')) {
+        const dur = (Date.now() - new Date(a.startedAt ?? a.calledAt).getTime()) / 60000
+        if (dur > infoLimit) {
+          await prisma.sellerQueueEntry.update({
+            where: { id: entry.id },
+            data: { status: 'IN_ATTENDANCE', lastActiveAt: new Date() }
+          }).catch(() => {})
+          entry.status = 'IN_ATTENDANCE'
+        }
+      }
+    }
+
+    const personalCountsMap = new Map<string, number>()
+    personalCounts.forEach((r) => personalCountsMap.set(r.agentUserId, r._count.id))
+
+    const attBySeller = new Map<string, typeof activeAtts[0]>()
+    activeAtts.forEach((a) => attBySeller.set(a.sellerId, a))
 
     // Nomes dos vendedores (User não tem relação direta no model da fila).
     const names = new Map<string, string>()
@@ -103,11 +141,52 @@ export async function GET(req: Request) {
       devs.forEach((d) => hasDev.add(d.userId))
     }
 
-    const list = entries.map((e) => ({
-      id: e.id, sellerId: e.sellerId, sellerName: names.get(e.sellerId) ?? e.sellerId,
-      status: e.status, position: e.position, joinedAt: e.joinedAt, blocked: e.blocked, attendanceCount: e.attendanceCount,
-      hasDevice: hasDev.has(e.sellerId),
-    }))
+    const list = entries.map((e) => {
+      const att = attBySeller.get(e.sellerId)
+      const hasPersonal = (personalCountsMap.get(e.sellerId) ?? 0) > 0
+      
+      let operationalState = 'DISPONIVEL'
+      if (e.blocked || e.status === 'BLOCKED') {
+        operationalState = 'BLOQUEADO'
+      } else if (e.status === 'LEFT') {
+        operationalState = 'FORA_DA_LOJA'
+      } else if (e.status === 'PAUSED') {
+        operationalState = 'PAUSADO'
+      } else if (e.status === 'EXPIRED') {
+        operationalState = 'NAO_RESPONDEU'
+      } else if (att) {
+        if (att.status === 'CALLED') {
+          operationalState = 'CHAMADO'
+        } else {
+          // ACCEPTED ou IN_ATTENDANCE
+          const durationMin = (Date.now() - new Date(att.startedAt ?? att.calledAt).getTime()) / 60000
+          const timeLimit = typeof (ucfg?.config as any)?.attendanceReminder?.firstAfterMinutes === 'number'
+            ? (ucfg?.config as any).attendanceReminder.firstAfterMinutes
+            : 30
+          
+          if (att.visitType === 'INFORMACAO_RAPIDA') {
+            operationalState = 'EM_INFORMACAO_RAPIDA'
+          } else if (att.createdById && att.createdById !== e.sellerId && !att.startedAt) {
+            operationalState = 'ATENDENDO_SEM_INICIAR'
+          } else if (durationMin > timeLimit) {
+            operationalState = 'AGUARDANDO_FINALIZACAO'
+          } else {
+            operationalState = 'ATENDENDO'
+          }
+        }
+      } else if (hasPersonal) {
+        operationalState = 'COM_FILA_INDIVIDUAL'
+      } else if (e.status === 'WAITING' || e.status === 'NEXT') {
+        operationalState = 'DISPONIVEL'
+      }
+
+      return {
+        id: e.id, sellerId: e.sellerId, sellerName: names.get(e.sellerId) ?? e.sellerId,
+        status: e.status, position: e.position, joinedAt: e.joinedAt, blocked: e.blocked, attendanceCount: e.attendanceCount,
+        hasDevice: hasDev.has(e.sellerId), operationalState,
+      }
+    })
+
     const vencedor = list.find((e) => e.status === 'WAITING' && !e.blocked) ?? null
     const meRaw = list.find((e) => e.sellerId === user.id) ?? null
     // Posição REAL na fila: rank entre os que estão aguardando (1º, 2º, 3º…),
@@ -152,7 +231,8 @@ export async function GET(req: Request) {
         onVacation,
         autoRemovedNotice,
         closeReasons: (cfgExtras.leadCloseReasons as string[] | undefined) ?? [],
-        myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival } : null,
+        myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival, visitType: myAtt.visitType, startedAt: myAtt.startedAt || myAtt.calledAt } : null,
+        activeAttentionTest: testNotif ? { id: testNotif.id, sentAt: (testNotif.metadata as any)?.sentAt || testNotif.createdAt.toISOString() } : null,
       },
     })
   } catch (err) {

@@ -22,9 +22,9 @@ const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'],
 const RESULTS = [['CONVERTED_TO_NEGOTIATION', 'Virou negociação'], ['SCHEDULED_RETURN', 'Retorno agendado'], ['NO_INTEREST', 'Sem interesse'], ['LOST', 'Perdido'], ['DUPLICATED', 'Duplicado'], ['FORWARDED_TO_RESPONSIBLE', 'Encaminhado'], ['INVALID_ATTENDANCE', 'Inválido']] as const
 
 interface Me { status: string; position: number }
-interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; customerEmail: string | null; recurring: boolean } | null }
+interface MyAtt { id: string; status: string; acceptDeadline: string | null; arrival: { customerName: string | null; customerPhone: string | null; customerEmail: string | null; recurring: boolean } | null; visitType?: string | null; startedAt?: string | null }
 interface Block { type: 'COOLDOWN' | 'DAILY_BLOCK'; endsAt: string }
-interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; myBlock?: Block | null; myPosVenda?: { status: string } | null; closeReasons?: string[]; autoRemovedNotice?: string | null; queueOpen?: boolean; canCheckIn?: boolean; onVacation?: boolean; permissions?: { callCurrentSeller?: boolean } }
+interface Current { me: Me | null; myAttendance: MyAtt | null; vendedorDaVez: { sellerName: string } | null; myBlock?: Block | null; myPosVenda?: { status: string } | null; closeReasons?: string[]; autoRemovedNotice?: string | null; queueOpen?: boolean; canCheckIn?: boolean; onVacation?: boolean; permissions?: { callCurrentSeller?: boolean }; activeAttentionTest?: { id: string; sentAt: string } | null }
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -95,6 +95,14 @@ export default function MinhaVezPanel() {
     return () => window.removeEventListener('pointerdown', onGesture)
   }, [])
 
+  // Alerta sonoro / vibratório de teste de atenção
+  const { criticalAlert } = require('@/lib/seller-queue/alert-client')
+  useEffect(() => {
+    if (data?.activeAttentionTest) {
+      criticalAlert({ title: 'Teste de atenção! ⚠️', body: 'Confirme que está ativo para responder à gerência.' })
+    }
+  }, [data?.activeAttentionTest?.id])
+
   const post = async (path: string, body?: unknown, okMsg?: string) => {
     setBusy(true)
     try {
@@ -140,12 +148,32 @@ export default function MinhaVezPanel() {
   const finish = async () => {
     if (!att) return
     const name = capName(finForm.customerName.trim())
-    if (!name) { flash('Informe o nome do cliente.', false); return }
-    if (finForm.customerPhone.replace(/\D/g, '').length < 10) { flash('Informe um telefone válido.', false); return }
-    if (!isEmail(finForm.customerEmail)) { flash('Informe um e-mail válido.', false); return }
+    const isInfoRapida = att.visitType === 'INFORMACAO_RAPIDA'
+
+    if (!isInfoRapida) {
+      if (!name) { flash('Informe o nome do cliente.', false); return }
+      if (finForm.customerPhone.replace(/\D/g, '').length < 10) { flash('Informe um telefone válido.', false); return }
+      if (!isEmail(finForm.customerEmail)) { flash('Informe um e-mail válido.', false); return }
+    } else {
+      if (name || finForm.customerPhone.replace(/\D/g, '').length > 0 || finForm.customerEmail.trim()) {
+        if (!name) { flash('Informe o nome do cliente.', false); return }
+        if (finForm.customerPhone.replace(/\D/g, '').length < 10) { flash('Informe um telefone válido.', false); return }
+        if (finForm.customerEmail.trim() && !isEmail(finForm.customerEmail)) { flash('Informe um e-mail válido.', false); return }
+      }
+    }
+
     if (!finForm.notes.trim()) { flash('As observações são obrigatórias.', false); return }
     const notesWithMotivo = (finForm.motivo ? `Motivo: ${finForm.motivo}. ` : '') + finForm.notes.trim()
-    const payload: Record<string, unknown> = { type: finForm.type, result: finForm.result, notes: notesWithMotivo, customerName: name, customerPhone: finForm.customerPhone, customerEmail: finForm.customerEmail.trim(), customerId: pickedCustomerId || undefined, leadId: pickedLeadId || undefined }
+    const payload: Record<string, unknown> = {
+      type: finForm.type,
+      result: finForm.result,
+      notes: notesWithMotivo,
+      customerName: name || undefined,
+      customerPhone: finForm.customerPhone || undefined,
+      customerEmail: finForm.customerEmail.trim() || undefined,
+      customerId: pickedCustomerId || undefined,
+      leadId: pickedLeadId || undefined
+    }
     setBusy(true)
     try {
       const res = await fetch(`/api/seller-queue/attendances/${att.id}/finish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
@@ -323,6 +351,57 @@ export default function MinhaVezPanel() {
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações *</label><textarea rows={2} className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Obrigatório — resumo do atendimento" /></div>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-[auto_auto] sm:justify-end"><button onClick={() => setFinishOpen(false)} className="btn-secondary justify-center text-sm">Cancelar</button><button onClick={finish} disabled={busy} className="btn-primary justify-center text-sm"><CheckCircle2 size={15} />Finalizar</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Teste de Atenção Operacional */}
+      {data?.activeAttentionTest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-2xl border-2 border-red-500 bg-white p-6 text-center shadow-2xl">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 animate-bounce">
+              <Bell size={24} />
+            </span>
+            <h2 className="mt-4 text-xl font-bold text-gray-900">Teste de Atenção! ⚠️</h2>
+            <p className="mt-2 text-sm text-gray-500">
+              A gerência solicitou uma validação de sua atenção operacional. Responda imediatamente.
+            </p>
+            <p className="mt-4 text-2xl font-black tabular-nums text-red-600">
+              {Math.max(1, Math.round((now - new Date(data.activeAttentionTest.sentAt).getTime()) / 1000))}s
+            </p>
+            <button
+              onClick={async () => {
+                const durationSeconds = Math.max(1, Math.round((Date.now() - new Date(data.activeAttentionTest!.sentAt).getTime()) / 1000))
+                setBusy(true)
+                try {
+                  const res = await fetch('/api/seller-queue/test-attention', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                      action: 'respond',
+                      notificationId: data.activeAttentionTest!.id,
+                      durationSeconds
+                    })
+                  })
+                  if (res.ok) {
+                    flash(`Teste respondido com sucesso em ${durationSeconds} segundos!`, true)
+                    stopCriticalAlert()
+                  } else {
+                    flash('Erro ao responder teste de atenção.', false)
+                  }
+                  await load()
+                } catch {
+                  flash('Erro de rede ao responder.', false)
+                } finally {
+                  setBusy(false)
+                }
+              }}
+              disabled={busy}
+              className="mt-6 w-full rounded-xl bg-red-600 py-3 text-base font-bold text-white shadow-lg transition hover:bg-red-700 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            >
+              ESTOU ATIVO / RESPONDER
+            </button>
           </div>
         </div>
       )}

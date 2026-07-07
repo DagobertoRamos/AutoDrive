@@ -129,13 +129,47 @@ export async function listPersonalQueueForUnit(tenantId: string, unitId: string)
   return rows.map((r) => shapeItem(r, (id) => names.get(id) ?? id))
 }
 
-/** O responsável está OCUPADO (em atendimento ativo)? → item deve ir para a fila individual. */
 export async function isAgentBusy(tenantId: string, unitId: string, queueId: string, agentUserId: string): Promise<boolean> {
   const active = await prisma.sellerQueueAttendance.findFirst({
     where: { queueId, sellerId: agentUserId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
-    select: { id: true },
+    orderBy: { calledAt: 'desc' },
   })
-  return !!active
+  if (!active) return false
+  if (active.status === 'CALLED' || active.status === 'ACCEPTED') return true
+
+  try {
+    let tid = tenantId || active.tenantId
+    let uid = unitId || active.unitId
+    if (!tid || !uid) {
+      const queue = await prisma.sellerQueue.findUnique({ where: { id: queueId }, select: { tenantId: true, unitId: true } })
+      if (queue) {
+        tid = tid || queue.tenantId
+        uid = uid || queue.unitId
+      }
+    }
+
+    if (tid && uid) {
+      const ucfg = await prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId: tid, unitId: uid } } })
+      const config = (ucfg?.config as any) || {}
+      const allowWait = config.allowWaitWithOpenAttendance ?? 'NO'
+      if (allowWait === 'YES') {
+        return false
+      }
+      if (allowWait === 'QUICK_ONLY') {
+        if (active.visitType === 'INFORMACAO_RAPIDA') {
+          const limit = typeof config.infoRapidaTimeLimitMinutes === 'number' ? config.infoRapidaTimeLimitMinutes : 3
+          const durationMin = (Date.now() - new Date(active.startedAt ?? active.calledAt).getTime()) / 60000
+          if (durationMin <= limit) {
+            return false
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[isAgentBusy] Erro ao ler config:', err)
+  }
+
+  return true
 }
 
 export type AgentQueueState = 'FREE' | 'BUSY' | 'PAUSED' | 'AWAY'

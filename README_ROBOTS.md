@@ -2672,3 +2672,14 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Avisos agendados (`comunicacao/scheduled-avisos.ts`):** o modelo `InternalNotice` + UI (`NoticesTab` "Programar publicação" + datetime `startsAt`) + create já suportavam SCHEDULED — mas o create grava `active:false` (linha 111) e o `/active` filtra `active:true`, então um agendado **nunca aparecia**. `dispatchScheduledAvisos` vira `SCHEDULED→ACTIVE` (active:true, publishedAt) quando `startsAt<=now` (dentro de `endsAt`), com log 'PUBLISHED'. **Sem migration nem mudança de UI** — só o job faltava.
 - **Ativação:** apontar o cron-job.org (que já existe) do `/sweep` para **`/api/queue/jobs/tick`** — 1 tarefa passa a rodar tudo. `tsc` verde.
 - **Nota:** todos os jobs rodam system-wide (todos os tenants). `/sweep` continua existindo (compat), mas o cron deve ir para `/tick` (senão o sweep roda 2×).
+
+### LOG 0193 — 2026-07-07 — Antigravity (Gemini 2.0 Flash) — Vendedor da Vez: Modo Anti-Briga, Configurações de Fila e Informação Rápida
+- **Branch:** `codex-responsividade-base` (worktree). Sem migration.
+- **Tarefa:** Implementar regras do Modo Anti-Briga, suporte a atendimento de Informação Rápida (sem exigência de e-mail/celular) e ajuste de canManage/roleCanManage no Dashboard.
+- **Feito:**
+  - **Modo Anti-Briga / `allowWaitWithOpenAttendance`:** adicionado suporte para as regras `NO` (vendedor fica indisponível para fila geral se tiver atendimento ativo), `YES` (vendedor continua elegível na fila mesmo com atendimento ativo) e `QUICK_ONLY` (elegível apenas se o atendimento ativo for `INFORMACAO_RAPIDA` e estiver dentro do limite de tempo).
+  - **Informação Rápida / Bypasses:** o Zod schema de finalização de atendimento (`finishSchema`) foi atualizado para permitir e-mail, celular e nome vazios ou nulos quando a visita/atendimento for categorizado como `INFORMACAO_RAPIDA` ou a regra de unit permitir.
+  - **CanManage use-before-declaration fix:** corrigido o erro em `vendedor-da-vez/page.tsx` mudando a gate do useEffect de `canManage` para `roleCanManage` para evitar a declaração tardia.
+  - **Testes:** criados os testes automatizados unitários em `src/lib/seller-queue/anti-briga.test.ts` cobrindo o schema de conclusão de atendimento e o status de ocupado (`isAgentBusy`) com as diferentes regras de `allowWaitWithOpenAttendance` e timeouts de `INFORMACAO_RAPIDA`.
+- **Validações:** `npx tsc --noEmit` completado com sucesso sem erros. `npx vitest run src/lib/seller-queue/anti-briga.test.ts` passou com 5/5 testes verdes.
+
