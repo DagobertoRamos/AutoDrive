@@ -38,6 +38,21 @@ export async function GET(req: Request) {
     const allowChooseSeller = ucfg?.allowChooseSeller ?? true
     // Automações: auto-saída por pausa longa + abre/fecha por horário.
     const cfgExtras = (ucfg?.config as Record<string, unknown> | undefined) ?? {}
+    const rawPanelSound = (cfgExtras.panelSound && typeof cfgExtras.panelSound === 'object' ? cfgExtras.panelSound : {}) as Record<string, unknown>
+    const panelSound = {
+      enabled: rawPanelSound.enabled !== false,
+      repeatUntilAccepted: rawPanelSound.repeatUntilAccepted !== false,
+      repeatSeconds: typeof rawPanelSound.repeatSeconds === 'number' ? Math.min(Math.max(rawPanelSound.repeatSeconds, 1), 30) : 3,
+      refreshSeconds: typeof rawPanelSound.refreshSeconds === 'number' ? Math.min(Math.max(rawPanelSound.refreshSeconds, 3), 60) : 3,
+      volume: typeof rawPanelSound.volume === 'number' ? Math.min(Math.max(rawPanelSound.volume, 0), 100) : 80,
+      soundType: typeof rawPanelSound.soundType === 'string' ? rawPanelSound.soundType : alerts.soundType,
+      playOnDashboard: rawPanelSound.playOnDashboard === true,
+      onlyStorePanel: rawPanelSound.onlyStorePanel !== false,
+      muteOutsideHours: rawPanelSound.muteOutsideHours === true,
+      requireManualActivation: rawPanelSound.requireManualActivation !== false,
+      wakeLock: rawPanelSound.wakeLock !== false,
+      showHiddenWarning: rawPanelSound.showHiddenWarning !== false,
+    }
     const maxPauseMinutes = typeof cfgExtras.maxPauseMinutes === 'number' ? cfgExtras.maxPauseMinutes : 0
     const queueOpen = cfgExtras.autoSchedule ? isQueueOpenNow(ucfg?.openTime, ucfg?.closeTime, ucfg?.allowedDays) : true
     const onVacation = isOnVacation(ucfg?.config, user.id)
@@ -74,8 +89,9 @@ export async function GET(req: Request) {
       manageSettings: isQueueResponsible || await canAccessModuleForUser(user, 'queue.manage_settings'),
     }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
+    const unit = await prisma.unit.findFirst({ where: { id: unitId, tenantId }, select: { name: true } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible, unitName: unit?.name ?? null } })
     }
 
     // Remove quem ficou pausado/fora por muito tempo (antes de ler a fila).
@@ -133,8 +149,9 @@ export async function GET(req: Request) {
     // Nomes dos vendedores (User não tem relação direta no model da fila).
     const names = new Map<string, string>()
     const hasDev = new Set<string>()
-    if (entries.length) {
-      const ids = entries.map((e) => e.sellerId)
+    const activeActorIds = activeAtts.map((a) => a.createdById).filter((id): id is string => Boolean(id))
+    if (entries.length || activeActorIds.length) {
+      const ids = [...new Set([...entries.map((e) => e.sellerId), ...activeActorIds])]
       const [us, devs] = await Promise.all([
         prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
         prisma.mobileDevice.findMany({ where: { userId: { in: ids }, isActive: true }, select: { userId: true } }),
@@ -186,6 +203,11 @@ export async function GET(req: Request) {
         id: e.id, sellerId: e.sellerId, sellerName: names.get(e.sellerId) ?? e.sellerId,
         status: e.status, position: e.position, joinedAt: e.joinedAt, blocked: e.blocked, attendanceCount: e.attendanceCount,
         hasDevice: hasDev.has(e.sellerId), operationalState,
+        activeAttendanceId: att?.id ?? null,
+        activeAttendanceStatus: att?.status ?? null,
+        activeAttendanceCalledAt: att?.calledAt ?? null,
+        activeAttendanceAcceptDeadline: att?.acceptDeadline ?? null,
+        activeAttendanceActorName: att?.createdById ? names.get(att.createdById) ?? null : null,
       }
     })
 
@@ -219,11 +241,13 @@ export async function GET(req: Request) {
       success: true,
       data: {
         queue: { id: queue.id, date: queue.date, status: queue.status, unitId },
+        unitName: unit?.name ?? null,
         entries: list,
         vendedorDaVez: vencedor ? { sellerId: vencedor.sellerId, sellerName: vencedor.sellerName, position: vencedor.position } : null,
         me,
         arrivalsPending,
         alerts,
+        panelSound,
         allowChooseSeller,
         myBlock,
         myPosVenda,

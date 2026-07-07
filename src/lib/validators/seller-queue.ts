@@ -8,6 +8,7 @@ import { QUEUE_CONFIG_LIMITS } from '@/lib/seller-queue/config-limits'
 
 const optStr = z.string().trim().max(500).nullish()
 const limits = QUEUE_CONFIG_LIMITS
+const soundTypes = ['siren', 'beep', 'chime', 'alarm', 'bell', 'soft', 'double_beep', 'buzzer', 'strobe', 'sonar', 'space', 'elevator', 'ringtone', 'laser', 'melody', 'panic'] as const
 
 // Payload de presença (enviado pelo celular do vendedor).
 export const presenceSchema = z.object({
@@ -98,7 +99,7 @@ export const configSchema = z.object({
   requestByNameRequiresApproval: z.boolean().optional(),
   // Avisos/alertas
   alertSound:                    z.boolean().optional(),
-  alertSoundType:                z.enum(['siren', 'beep', 'chime', 'alarm', 'bell', 'soft']).optional(),
+  alertSoundType:                z.enum(soundTypes).optional(),
   alertBrowserPush:              z.boolean().optional(),
   alertWhatsapp:                 z.boolean().optional(),
   alertWhatsappManagers:         z.boolean().optional(),
@@ -140,6 +141,20 @@ export const configSchema = z.object({
     allowOutsideHoursForAdmins: z.boolean(),
     urgency:                   z.enum(['NORMAL', 'HIGH']),
     sound:                     z.boolean(),
+  }).optional(),
+  panelSound: z.object({
+    enabled: z.boolean(),
+    repeatUntilAccepted: z.boolean(),
+    repeatSeconds: z.number().int('O intervalo do toque do painel deve ser um número inteiro.').min(1, 'O intervalo do toque do painel deve ser de no mínimo 1 segundo.').max(30, 'O intervalo do toque do painel deve ser de no máximo 30 segundos.'),
+    refreshSeconds: z.number().int('O intervalo de atualização do painel deve ser um número inteiro.').min(3, 'O intervalo de atualização do painel deve ser de no mínimo 3 segundos.').max(60, 'O intervalo de atualização do painel deve ser de no máximo 60 segundos.'),
+    volume: z.number().int('O volume do painel deve ser um número inteiro.').min(0, 'O volume do painel deve ser no mínimo 0.').max(100, 'O volume do painel deve ser no máximo 100.'),
+    soundType: z.enum(soundTypes),
+    playOnDashboard: z.boolean(),
+    onlyStorePanel: z.boolean(),
+    muteOutsideHours: z.boolean(),
+    requireManualActivation: z.boolean(),
+    wakeLock: z.boolean(),
+    showHiddenWarning: z.boolean(),
   }).optional(),
   // Estratégia anti-abuso (bloqueio por reincidência de timeouts no dia).
   autoBlock: z.object({

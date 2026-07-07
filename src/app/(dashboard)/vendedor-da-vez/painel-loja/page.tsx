@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, User, Clock, ShieldAlert, ArrowRight, Volume2 } from 'lucide-react'
+import { Bell, User, Clock, ShieldAlert, ArrowRight, Volume2, VolumeX, RefreshCw } from 'lucide-react'
 import { playSound, unlockAudio, setAlertVolume } from '@/lib/seller-queue/alert-client'
 import { cn } from '@/lib/utils'
 
@@ -16,77 +16,83 @@ interface Entry {
   attendanceCount: number
   hasDevice?: boolean
   operationalState?: string
+  activeAttendanceId?: string | null
+  activeAttendanceStatus?: string | null
+  activeAttendanceCalledAt?: string | null
+  activeAttendanceAcceptDeadline?: string | null
+  activeAttendanceActorName?: string | null
+}
+
+interface PanelSoundConfig {
+  enabled: boolean
+  repeatUntilAccepted: boolean
+  repeatSeconds: number
+  refreshSeconds: number
+  volume: number
+  soundType: string
+  muteOutsideHours: boolean
+  wakeLock: boolean
+  showHiddenWarning: boolean
 }
 
 interface CurrentData {
   queue: { id: string; date: string; status: string; unitId: string } | null
+  unitName?: string | null
   entries: Entry[]
   vendedorDaVez: { sellerId: string; sellerName: string; position: number } | null
   me: Entry | null
   arrivalsPending: number
   queueOpen?: boolean
+  panelSound?: PanelSoundConfig
+}
+
+const DEFAULT_PANEL_SOUND: PanelSoundConfig = {
+  enabled: true,
+  repeatUntilAccepted: true,
+  repeatSeconds: 3,
+  refreshSeconds: 3,
+  volume: 80,
+  soundType: 'siren',
+  muteOutsideHours: false,
+  wakeLock: true,
+  showHiddenWarning: true,
 }
 
 export default function StorePanelPage() {
   const [data, setData] = useState<CurrentData | null>(null)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(0)
-  const [audioUnlocked, setAudioUnlocked] = useState(false)
+  const [audioUnlocked, setAudioUnlocked] = useState(() => {
+    try { return typeof window !== 'undefined' && localStorage.getItem('sq_panel_audio_unlocked') === '1' } catch { return false }
+  })
+  const [panelSoundEnabled, setPanelSoundEnabled] = useState(() => {
+    try { return typeof window === 'undefined' || localStorage.getItem('sq_panel_sound_enabled') !== '0' } catch { return true }
+  })
   const [flashActive, setFlashActive] = useState(false)
-  // Volume do alarme na TV (multiplicador). Padrão alto (4x) porque a TV da loja
-  // costuma ficar com volume baixo. Ajustável na tela e lembrado por terminal.
-  const [vol, setVol] = useState(4)
+  const [isHidden, setIsHidden] = useState(false)
+  const [wakeLockActive, setWakeLockActive] = useState(false)
 
   const prevVendedorId = useRef<string | null>(null)
-  const prevCalledSellerId = useRef<string | null>(null)
+  const activeSoundTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const activeSoundCallId = useRef<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const wakeLockRef = useRef<{ release: () => Promise<void>; released?: boolean } | null>(null)
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
 
-  // Carrega o volume salvo neste terminal (se houver).
-  useEffect(() => {
-    try { const s = localStorage.getItem('sq_panel_vol'); if (s) setVol(Math.max(1, Math.min(8, Number(s) || 4))) } catch { /* ignore */ }
-  }, [])
-
-  // Aplica e persiste o volume mestre sempre que mudar.
-  useEffect(() => {
-    setAlertVolume(vol)
-    try { localStorage.setItem('sq_panel_vol', String(vol)) } catch { /* ignore */ }
-  }, [vol])
-
-  // Ajusta o volume e toca uma prévia (se o áudio já estiver liberado).
-  const changeVol = (delta: number) => {
-    setVol((v) => {
-      const nv = Math.max(1, Math.min(8, v + delta))
-      setAlertVolume(nv)
-      if (audioUnlocked) playSound('soft')
-      return nv
-    })
-  }
-
   const load = useCallback(async () => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
-      const res = await fetch('/api/seller-queue/current', { credentials: 'include' })
+      const res = await fetch('/api/seller-queue/current', { credentials: 'include', signal: controller.signal })
       if (res.ok) {
         const j = await res.json()
         const currentData = j?.data as CurrentData
         setData(currentData)
-
-        // Detecção de nova chamada
-        const calledSeller = currentData?.entries?.find((e) => e.operationalState === 'CHAMADO')
-        if (calledSeller) {
-          if (calledSeller.sellerId !== prevCalledSellerId.current) {
-            // Nova chamada de vendedor!
-            prevCalledSellerId.current = calledSeller.sellerId
-            playSound('chime')
-            setFlashActive(true)
-            setTimeout(() => setFlashActive(false), 5000)
-          }
-        } else {
-          prevCalledSellerId.current = null
-        }
 
         // Detecção de mudança no vendedor da vez
         if (currentData?.vendedorDaVez) {
@@ -100,21 +106,43 @@ export default function StorePanelPage() {
           prevVendedorId.current = null
         }
       }
-    } catch { /* noop */ } finally {
-      setLoading(false)
+    } catch (err) {
+      if ((err as { name?: string })?.name !== 'AbortError') {
+        // noop: painel de TV não pode travar por oscilação de rede.
+      }
+    } finally {
+      if (abortRef.current === controller) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    load()
-    const poll = setInterval(load, 2500)
-    return () => clearInterval(poll)
-  }, [load])
+    const firstLoad = window.setTimeout(() => { void load() }, 0)
+    const seconds = Math.min(Math.max(data?.panelSound?.refreshSeconds ?? DEFAULT_PANEL_SOUND.refreshSeconds, 3), 60)
+    const poll = setInterval(load, seconds * 1000)
+    return () => {
+      clearTimeout(firstLoad)
+      clearInterval(poll)
+      abortRef.current?.abort()
+    }
+  }, [load, data?.panelSound?.refreshSeconds])
 
   const handleUnlockAudio = () => {
     unlockAudio()
     setAudioUnlocked(true)
-    playSound('soft')
+    setPanelSoundEnabled(true)
+    try {
+      localStorage.setItem('sq_panel_audio_unlocked', '1')
+      localStorage.setItem('sq_panel_sound_enabled', '1')
+    } catch { /* ignore */ }
+    playSound(data?.panelSound?.soundType ?? DEFAULT_PANEL_SOUND.soundType)
+  }
+
+  const silencePanel = () => {
+    setPanelSoundEnabled(false)
+    if (activeSoundTimer.current) clearInterval(activeSoundTimer.current)
+    activeSoundTimer.current = null
+    activeSoundCallId.current = null
+    try { localStorage.setItem('sq_panel_sound_enabled', '0') } catch { /* ignore */ }
   }
 
   // Separar vendedores nas sub-filas operacionais
@@ -122,7 +150,85 @@ export default function StorePanelPage() {
   const waiting = entries.filter((e) => (e.status === 'WAITING' || e.status === 'NEXT') && !e.blocked)
   const called = entries.filter((e) => e.operationalState === 'CHAMADO')
   const attending = entries.filter((e) => e.operationalState === 'ATENDENDO' || e.operationalState === 'EM_INFORMACAO_RAPIDA' || e.operationalState === 'ATENDENDO_SEM_INICIAR' || e.operationalState === 'AGUARDANDO_FINALIZACAO')
-  const paused = entries.filter((e) => e.operationalState === 'PAUSADO' || e.operationalState === 'NAO_RESPONDEU' || e.operationalState === 'BLOQUEADO' || e.operationalState === 'FORA_DA_LOJA')
+  const panelSound = { ...DEFAULT_PANEL_SOUND, ...(data?.panelSound ?? {}) }
+  const activeCall = called[0] ?? null
+  const activeCallId = activeCall?.activeAttendanceId ?? activeCall?.id ?? null
+  const canPlayPanelSound = panelSound.enabled && panelSound.repeatUntilAccepted && panelSoundEnabled && audioUnlocked && panelSound.volume > 0 && !(panelSound.muteOutsideHours && data?.queueOpen === false)
+
+  useEffect(() => {
+    const onVisibility = () => setIsHidden(document.hidden)
+    onVisibility()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
+  useEffect(() => {
+    setAlertVolume(Math.max(0, Math.min(8, (panelSound.volume / 100) * 8)))
+  }, [panelSound.volume])
+
+  useEffect(() => {
+    const stopLoop = () => {
+      if (activeSoundTimer.current) clearInterval(activeSoundTimer.current)
+      activeSoundTimer.current = null
+      activeSoundCallId.current = null
+      setFlashActive(false)
+    }
+
+    if (!activeCallId || !canPlayPanelSound) {
+      stopLoop()
+      return stopLoop
+    }
+
+    const repeatMs = Math.min(Math.max(panelSound.repeatSeconds, 1), 30) * 1000
+    const playPanelAlert = () => {
+      playSound(panelSound.soundType)
+      setFlashActive(true)
+      window.setTimeout(() => setFlashActive(false), Math.min(900, repeatMs - 100))
+    }
+
+    if (activeSoundCallId.current !== activeCallId) {
+      stopLoop()
+      activeSoundCallId.current = activeCallId
+      playPanelAlert()
+    }
+
+    if (!activeSoundTimer.current) activeSoundTimer.current = setInterval(playPanelAlert, repeatMs)
+    return stopLoop
+  }, [activeCallId, canPlayPanelSound, panelSound.repeatSeconds, panelSound.soundType])
+
+  useEffect(() => {
+    if (!panelSound.wakeLock) return
+    let cancelled = false
+
+    const requestWakeLock = async () => {
+      try {
+        const nav = navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void>; released?: boolean; addEventListener?: (event: 'release', cb: () => void) => void }> } }
+        if (!nav.wakeLock || document.hidden) return
+        const lock = await nav.wakeLock.request('screen')
+        if (cancelled) { await lock.release(); return }
+        wakeLockRef.current = lock
+        setWakeLockActive(true)
+        lock.addEventListener?.('release', () => setWakeLockActive(false))
+      } catch {
+        setWakeLockActive(false)
+      }
+    }
+
+    const onVisible = () => {
+      if (!document.hidden && (!wakeLockRef.current || wakeLockRef.current.released)) void requestWakeLock()
+    }
+
+    void requestWakeLock()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+      const lock = wakeLockRef.current
+      wakeLockRef.current = null
+      setWakeLockActive(false)
+      void lock?.release().catch(() => {})
+    }
+  }, [panelSound.wakeLock])
 
   const timeLabel = (joinedStr: string) => {
     try {
@@ -133,6 +239,12 @@ export default function StorePanelPage() {
     } catch {
       return '--'
     }
+  }
+
+  const countdownLabel = (deadline?: string | null) => {
+    if (!deadline) return 'sem prazo'
+    const seconds = Math.max(0, Math.ceil((new Date(deadline).getTime() - now) / 1000))
+    return seconds > 0 ? `${seconds}s para responder` : 'tempo esgotado'
   }
 
   return (
@@ -152,32 +264,68 @@ export default function StorePanelPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* Controle de volume do alarme (TV baixa → aumentar aqui). */}
-          <div className="flex items-center gap-1.5 rounded-xl bg-gray-800/60 border border-gray-700 px-2 py-1.5">
-            <button onClick={() => changeVol(-1)} disabled={vol <= 1} className="h-6 w-6 rounded-md bg-gray-700 text-white text-base font-bold leading-none hover:bg-gray-600 disabled:opacity-40" aria-label="Diminuir volume">−</button>
-            <span className="flex items-center gap-1 text-xs font-bold text-gray-200 tabular-nums w-[54px] justify-center"><Volume2 size={14} /> {vol}x</span>
-            <button onClick={() => changeVol(1)} disabled={vol >= 8} className="h-6 w-6 rounded-md bg-gray-700 text-white text-base font-bold leading-none hover:bg-gray-600 disabled:opacity-40" aria-label="Aumentar volume">+</button>
-          </div>
-          {!audioUnlocked ? (
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <span className={cn(
+            "flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold",
+            canPlayPanelSound ? "border-green-800 bg-green-950/50 text-green-300" : "border-gray-700 bg-gray-800/60 text-gray-300"
+          )}>
+            {canPlayPanelSound ? <Volume2 size={15} /> : <VolumeX size={15} />}
+            {canPlayPanelSound ? 'Som ativo' : 'Som inativo'}
+          </span>
+          <span className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/60 px-3 py-2 text-xs font-bold text-gray-300">
+            <RefreshCw size={14} />
+            {panelSound.refreshSeconds}s
+          </span>
+          <span className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/60 px-3 py-2 text-xs font-bold text-gray-300">
+            <Bell size={14} />
+            {panelSound.repeatSeconds}s / {panelSound.volume}%
+          </span>
+          {panelSound.wakeLock && (
+            <span className={cn(
+              "flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold",
+              wakeLockActive ? "border-blue-800 bg-blue-950/40 text-blue-300" : "border-amber-800 bg-amber-950/30 text-amber-300"
+            )}>
+              <ShieldAlert size={14} />
+              {wakeLockActive ? 'Tela ativa' : 'Wake Lock pendente'}
+            </span>
+          )}
+          {!audioUnlocked || !panelSoundEnabled ? (
             <button
               onClick={handleUnlockAudio}
               className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-black animate-pulse hover:bg-amber-400"
             >
               <Volume2 size={16} />
-              HABILITAR ÁUDIO DO PAINEL
+              Ativar som do painel
             </button>
           ) : (
-            <span className="text-xs font-bold text-green-500 flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-ping" />
-              ÁUDIO ATIVO
-            </span>
+            <>
+              <button
+                onClick={handleUnlockAudio}
+                className="flex items-center gap-2 rounded-xl bg-gray-800 px-4 py-2 text-xs font-bold text-gray-100 hover:bg-gray-700"
+              >
+                <Volume2 size={16} />
+                Testar som
+              </button>
+              <button
+                onClick={silencePanel}
+                className="flex items-center gap-2 rounded-xl bg-gray-800 px-4 py-2 text-xs font-bold text-gray-100 hover:bg-gray-700"
+              >
+                <VolumeX size={16} />
+                Silenciar painel
+              </button>
+            </>
           )}
           <span className="text-sm font-semibold tabular-nums text-gray-400">
             {new Date(now).toLocaleTimeString()}
           </span>
         </div>
       </header>
+
+      {panelSound.showHiddenWarning && isHidden && (
+        <div className="mb-4 rounded-2xl border border-amber-500/60 bg-amber-950/40 px-4 py-3 text-sm font-bold text-amber-200">
+          Painel em segundo plano. Mantenha esta aba visível para garantir som e Wake Lock no navegador.
+        </div>
+      )}
 
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
@@ -228,22 +376,37 @@ export default function StorePanelPage() {
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 flex-grow">
                   {called.map((c) => (
-                    <div key={c.id} className="rounded-3xl border-2 border-amber-500 bg-amber-950/20 p-6 flex flex-col justify-between shadow-lg shadow-amber-500/5 animate-pulse">
+                    <div
+                      key={c.id}
+                      className={cn(
+                        "rounded-3xl border-2 border-amber-500 bg-amber-950/20 p-6 flex flex-col justify-between shadow-lg shadow-amber-500/5",
+                        flashActive && "animate-pulse ring-4 ring-amber-400/30"
+                      )}
+                    >
                       <div>
                         <div className="flex items-center justify-between">
                           <span className="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
-                            TOCANDO
+                            Chamando vendedor
                           </span>
                           <span className="text-xs font-bold text-amber-500 tabular-nums">
-                            {timeLabel(c.joinedAt)}
+                            {countdownLabel(c.activeAttendanceAcceptDeadline)}
                           </span>
                         </div>
                         <h4 className="text-3xl font-black mt-3 text-white truncate">
                           {c.sellerName}
                         </h4>
+                        <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-amber-200/80">
+                          {c.activeAttendanceActorName ? `Chamado por ${c.activeAttendanceActorName}` : 'Chamado pelo sistema'}
+                        </p>
                       </div>
-                      <div className="mt-6 text-sm text-gray-400 font-medium">
-                        Responda no celular/computador
+                      <div className="mt-6 grid gap-2 text-sm text-gray-300">
+                        <div className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2">
+                          <span className="font-medium">Tocando ha</span>
+                          <span className="font-bold tabular-nums">{timeLabel(c.activeAttendanceCalledAt ?? c.joinedAt)}</span>
+                        </div>
+                        <div className="rounded-xl bg-black/20 px-3 py-2 font-semibold text-amber-100">
+                          O som para quando o vendedor aceitar, recusar, expirar ou a chamada for escalonada.
+                        </div>
                       </div>
                     </div>
                   ))}

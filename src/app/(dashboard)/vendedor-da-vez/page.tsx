@@ -44,7 +44,7 @@ import QueueRanking from '@/components/seller-queue/QueueRanking'
 import VerificarVezModal from '@/components/seller-queue/VerificarVezModal'
 import AttendanceReminderModal, { type AttendanceReminderData } from '@/components/seller-queue/AttendanceReminderModal'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
-import { ensureNotifyPermission, unlockAudio } from '@/lib/seller-queue/alert-client'
+import { ensureNotifyPermission, playSound, setAlertVolume, unlockAudio } from '@/lib/seller-queue/alert-client'
 
 interface Entry {
   id: string
@@ -57,6 +57,19 @@ interface Entry {
   attendanceCount: number
   hasDevice?: boolean
   operationalState?: string
+  activeAttendanceId?: string | null
+}
+
+interface PanelSoundConfig {
+  enabled: boolean
+  repeatUntilAccepted: boolean
+  repeatSeconds: number
+  refreshSeconds: number
+  volume: number
+  soundType: string
+  playOnDashboard: boolean
+  onlyStorePanel: boolean
+  muteOutsideHours: boolean
 }
 
 interface CurrentData {
@@ -67,6 +80,7 @@ interface CurrentData {
   arrivalsPending: number
   queueOpen?: boolean
   canCheckIn?: boolean
+  panelSound?: PanelSoundConfig
   permissions?: {
     callCurrentSeller?: boolean
     sendAlertAll?: boolean
@@ -160,6 +174,17 @@ interface ReminderDashboard {
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const ATTENDING_STATUSES = ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE']
 const AVAILABLE_STATUSES = ['WAITING', 'NEXT']
+const DEFAULT_PANEL_SOUND: PanelSoundConfig = {
+  enabled: true,
+  repeatUntilAccepted: true,
+  repeatSeconds: 3,
+  refreshSeconds: 3,
+  volume: 80,
+  soundType: 'siren',
+  playOnDashboard: false,
+  onlyStorePanel: true,
+  muteOutsideHours: false,
+}
 
 const STATUS_CLS: Record<string, string> = {
   WAITING: 'border-green-200 bg-green-50 text-green-700',
@@ -356,6 +381,8 @@ export default function FilaOverviewPage() {
     }
   }
   const firedTimeouts = useRef<Set<string>>(new Set())
+  const dashboardSoundTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const dashboardSoundCallId = useRef<string | null>(null)
   const queuePerms = current?.permissions
   const canCallCurrent = Boolean(queuePerms?.callCurrentSeller || roleCanManage)
   const canManage = Boolean(roleCanManage || queuePerms?.pauseOther || queuePerms?.resumeOther || queuePerms?.removeParticipant || queuePerms?.blockParticipant || queuePerms?.reorder)
@@ -475,6 +502,49 @@ export default function FilaOverviewPage() {
     const sellerId = current?.vendedorDaVez?.sellerId
     return sellerId ? current?.entries.find((e) => e.sellerId === sellerId) ?? null : null
   }, [current])
+
+  const panelSound = { ...DEFAULT_PANEL_SOUND, ...(current?.panelSound ?? {}) }
+  const dashboardCalled = useMemo(() => (
+    current?.entries.find((e) => e.operationalState === 'CHAMADO') ?? null
+  ), [current?.entries])
+  const dashboardCallId = dashboardCalled?.activeAttendanceId ?? dashboardCalled?.id ?? null
+
+  useEffect(() => {
+    setAlertVolume(Math.max(0, Math.min(8, (panelSound.volume / 100) * 8)))
+  }, [panelSound.volume])
+
+  useEffect(() => {
+    const stopLoop = () => {
+      if (dashboardSoundTimer.current) clearInterval(dashboardSoundTimer.current)
+      dashboardSoundTimer.current = null
+      dashboardSoundCallId.current = null
+    }
+
+    const canPlayOnDashboard =
+      panelSound.enabled &&
+      panelSound.repeatUntilAccepted &&
+      panelSound.playOnDashboard &&
+      !panelSound.onlyStorePanel &&
+      panelSound.volume > 0 &&
+      !(panelSound.muteOutsideHours && current?.queueOpen === false)
+
+    if (!dashboardCallId || !canPlayOnDashboard) {
+      stopLoop()
+      return stopLoop
+    }
+
+    const repeatMs = Math.min(Math.max(panelSound.repeatSeconds, 1), 30) * 1000
+    const playDashboardAlert = () => playSound(panelSound.soundType)
+
+    if (dashboardSoundCallId.current !== dashboardCallId) {
+      stopLoop()
+      dashboardSoundCallId.current = dashboardCallId
+      playDashboardAlert()
+    }
+
+    if (!dashboardSoundTimer.current) dashboardSoundTimer.current = setInterval(playDashboardAlert, repeatMs)
+    return stopLoop
+  }, [current?.queueOpen, dashboardCallId, panelSound.enabled, panelSound.muteOutsideHours, panelSound.onlyStorePanel, panelSound.playOnDashboard, panelSound.repeatSeconds, panelSound.repeatUntilAccepted, panelSound.soundType, panelSound.volume])
 
   const noSellerReason = useMemo(() => {
     if (current?.vendedorDaVez) return null

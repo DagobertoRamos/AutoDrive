@@ -31,6 +31,10 @@ interface QueuePushConfig {
   antiSpamUserLimit: number; antiSpamAttendanceLimit: number; antiSpamQueueLimit: number; antiSpamWindowMinutes: number;
   allowedStartTime: string | null; allowedEndTime: string | null; allowOutsideHoursForAdmins: boolean; urgency: string; sound: boolean;
 }
+interface PanelSoundConfig {
+  enabled: boolean; repeatUntilAccepted: boolean; repeatSeconds: number; refreshSeconds: number; volume: number; soundType: string;
+  playOnDashboard: boolean; onlyStorePanel: boolean; muteOutsideHours: boolean; requireManualActivation: boolean; wakeLock: boolean; showHiddenWarning: boolean;
+}
 interface Cfg {
   active: boolean; presenceMethods: string[]; geofenceLat: number | null; geofenceLng: number | null; geofenceRadiusM: number;
   qrSecret: string | null; acceptTimeoutSeconds: number; requireRevalidationOnAccept: boolean;
@@ -47,10 +51,12 @@ interface Cfg {
   autoBlock: AutoBlock
   attendanceReminder: AttendanceReminderConfig
   queuePush: QueuePushConfig
+  panelSound: PanelSoundConfig
 }
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
 const DEFAULT_ATTENDANCE_REMINDER: AttendanceReminderConfig = { enabled: true, firstAfterMinutes: 15, repeatIntervalSeconds: 300, maxReminders: 6, escalateAfter: 3, autoEscalate: true, requireFinishOnNo: true, allowSnooze: false, logEveryReminder: true }
 const DEFAULT_QUEUE_PUSH: QueuePushConfig = { enabled: true, intervalSeconds: 300, targetScope: 'CURRENT_SELLER', maxRetries: 6, resendUntil: 'ACKNOWLEDGED', antiSpamUserLimit: 8, antiSpamAttendanceLimit: 6, antiSpamQueueLimit: 60, antiSpamWindowMinutes: 10, allowedStartTime: null, allowedEndTime: null, allowOutsideHoursForAdmins: true, urgency: 'HIGH', sound: true }
+const DEFAULT_PANEL_SOUND: PanelSoundConfig = { enabled: true, repeatUntilAccepted: true, repeatSeconds: 3, refreshSeconds: 3, volume: 80, soundType: 'siren', playOnDashboard: false, onlyStorePanel: true, muteOutsideHours: false, requireManualActivation: true, wakeLock: true, showHiddenWarning: true }
 const limits = QUEUE_CONFIG_LIMITS
 
 // Editor de lista de motivos (chips). Usado para encerrar lead e negociação.
@@ -77,7 +83,7 @@ function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: 
     </div>
   )
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', responsibleUserIds: [], autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', responsibleUserIds: [], autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH, panelSound: DEFAULT_PANEL_SOUND }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -109,6 +115,9 @@ function validateCfg(c: Cfg): string | null {
     validateRange(c.queuePush.antiSpamAttendanceLimit, 'Limite por atendimento', limits.queuePushAntiSpamAttendanceLimit.min, limits.queuePushAntiSpamAttendanceLimit.max, 'envios') ??
     validateRange(c.queuePush.antiSpamQueueLimit, 'Limite por fila', limits.queuePushAntiSpamQueueLimit.min, limits.queuePushAntiSpamQueueLimit.max, 'envios') ??
     validateRange(c.queuePush.antiSpamWindowMinutes, 'Janela anti-spam', limits.queuePushAntiSpamWindowMinutes.min, limits.queuePushAntiSpamWindowMinutes.max, 'minutos') ??
+    validateRange(c.panelSound.repeatSeconds, 'Intervalo do toque do Painel da Loja', 1, 30, 'segundos') ??
+    validateRange(c.panelSound.refreshSeconds, 'Intervalo de atualização do Painel da Loja', 3, 60, 'segundos') ??
+    validateRange(c.panelSound.volume, 'Volume do alerta do Painel da Loja', 0, 100, '%') ??
     validateRange(c.maxPauseMinutes, 'Tempo de pausa/ausência', limits.maxPauseMinutes.min, limits.maxPauseMinutes.max, 'minutos') ??
     validateRange(c.infoRapidaTimeLimitMinutes, 'Limite de tempo da informação rápida', 1, 60, 'minutos')
   )
@@ -137,7 +146,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', responsibleUserIds: j.data.config?.responsibleUserIds ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', responsibleUserIds: j.data.config?.responsibleUserIds ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) }, panelSound: { ...DEFAULT_PANEL_SOUND, ...(j.data.config?.panelSound ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -295,6 +304,38 @@ export default function ConfiguracoesFilaPage() {
         <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.allowChooseSeller} onChange={(e) => set('allowChooseSeller', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Gestão pode escolher o vendedor (auto-organização)</label>
         <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.allowSellerFinish} onChange={(e) => set('allowSellerFinish', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Vendedor pode finalizar o próprio atendimento <span className="text-xs text-gray-400">(se desmarcado, só a gestão finaliza)</span></label>
         <p className="-mt-1 text-[11px] text-gray-400">O WhatsApp usa o provedor já configurado da loja; sem provedor ativo, o envio é ignorado silenciosamente.</p>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><Volume2 size={16} className="text-brand-600" />Painel da Loja e Som</h2>
+        <p className="-mt-2 text-xs text-gray-500">Som da TV/painel grande. Quando houver vendedor chamado, o painel repete o alerta até aceitar, recusar, expirar ou escalonar.</p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.enabled} onChange={(e) => set('panelSound', { ...cfg.panelSound, enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativar som do Painel da Loja</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.repeatUntilAccepted} onChange={(e) => set('panelSound', { ...cfg.panelSound, repeatUntilAccepted: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Tocar enquanto vendedor não aceitar</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.onlyStorePanel} onChange={(e) => set('panelSound', { ...cfg.panelSound, onlyStorePanel: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Tocar somente no Painel da Loja</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.playOnDashboard} onChange={(e) => set('panelSound', { ...cfg.panelSound, playOnDashboard: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Tocar também no Dashboard da Fila</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.muteOutsideHours} onChange={(e) => set('panelSound', { ...cfg.panelSound, muteOutsideHours: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Silenciar fora do horário da loja</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.requireManualActivation} onChange={(e) => set('panelSound', { ...cfg.panelSound, requireManualActivation: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Exigir ativação manual do som</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.wakeLock} onChange={(e) => set('panelSound', { ...cfg.panelSound, wakeLock: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Usar Wake Lock quando disponível</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.panelSound.showHiddenWarning} onChange={(e) => set('panelSound', { ...cfg.panelSound, showHiddenWarning: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Avisar se o painel estiver em segundo plano</label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Tipo de som</label>
+            <select className={inputCls} value={cfg.panelSound.soundType} onChange={(e) => set('panelSound', { ...cfg.panelSound, soundType: e.target.value })}>
+              {SOUND_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Toque a cada (s, 1-30)</label><input type="number" min={1} max={30} className={inputCls} value={cfg.panelSound.repeatSeconds} onChange={(e) => set('panelSound', { ...cfg.panelSound, repeatSeconds: Number(e.target.value) || 3 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Atualizar painel (s, 3-60)</label><input type="number" min={3} max={60} className={inputCls} value={cfg.panelSound.refreshSeconds} onChange={(e) => set('panelSound', { ...cfg.panelSound, refreshSeconds: Number(e.target.value) || 3 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Volume (%)</label><input type="number" min={0} max={100} className={inputCls} value={cfg.panelSound.volume} onChange={(e) => set('panelSound', { ...cfg.panelSound, volume: Number(e.target.value) || 0 })} /></div>
+        </div>
+
+        <button type="button" onClick={() => { unlockAudio(); playSound(cfg.panelSound.soundType) }} className="btn-secondary text-xs">
+          <Volume2 size={14} />Testar som do painel
+        </button>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
