@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Bell, User, Clock, ShieldAlert, ArrowRight, Volume2 } from 'lucide-react'
-import { playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
+import { playSound, unlockAudio, setAlertVolume } from '@/lib/seller-queue/alert-client'
 import { cn } from '@/lib/utils'
 
 interface Entry {
@@ -33,6 +33,9 @@ export default function StorePanelPage() {
   const [now, setNow] = useState(0)
   const [audioUnlocked, setAudioUnlocked] = useState(false)
   const [flashActive, setFlashActive] = useState(false)
+  // Volume do alarme na TV (multiplicador). Padrão alto (4x) porque a TV da loja
+  // costuma ficar com volume baixo. Ajustável na tela e lembrado por terminal.
+  const [vol, setVol] = useState(4)
 
   const prevVendedorId = useRef<string | null>(null)
   const prevCalledSellerId = useRef<string | null>(null)
@@ -41,6 +44,27 @@ export default function StorePanelPage() {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
+
+  // Carrega o volume salvo neste terminal (se houver).
+  useEffect(() => {
+    try { const s = localStorage.getItem('sq_panel_vol'); if (s) setVol(Math.max(1, Math.min(8, Number(s) || 4))) } catch { /* ignore */ }
+  }, [])
+
+  // Aplica e persiste o volume mestre sempre que mudar.
+  useEffect(() => {
+    setAlertVolume(vol)
+    try { localStorage.setItem('sq_panel_vol', String(vol)) } catch { /* ignore */ }
+  }, [vol])
+
+  // Ajusta o volume e toca uma prévia (se o áudio já estiver liberado).
+  const changeVol = (delta: number) => {
+    setVol((v) => {
+      const nv = Math.max(1, Math.min(8, v + delta))
+      setAlertVolume(nv)
+      if (audioUnlocked) playSound('soft')
+      return nv
+    })
+  }
 
   const load = useCallback(async () => {
     try {
@@ -129,6 +153,12 @@ export default function StorePanelPage() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Controle de volume do alarme (TV baixa → aumentar aqui). */}
+          <div className="flex items-center gap-1.5 rounded-xl bg-gray-800/60 border border-gray-700 px-2 py-1.5">
+            <button onClick={() => changeVol(-1)} disabled={vol <= 1} className="h-6 w-6 rounded-md bg-gray-700 text-white text-base font-bold leading-none hover:bg-gray-600 disabled:opacity-40" aria-label="Diminuir volume">−</button>
+            <span className="flex items-center gap-1 text-xs font-bold text-gray-200 tabular-nums w-[54px] justify-center"><Volume2 size={14} /> {vol}x</span>
+            <button onClick={() => changeVol(1)} disabled={vol >= 8} className="h-6 w-6 rounded-md bg-gray-700 text-white text-base font-bold leading-none hover:bg-gray-600 disabled:opacity-40" aria-label="Aumentar volume">+</button>
+          </div>
           {!audioUnlocked ? (
             <button
               onClick={handleUnlockAudio}

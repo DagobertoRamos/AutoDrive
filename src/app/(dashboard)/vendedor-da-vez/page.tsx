@@ -724,6 +724,12 @@ export default function FilaOverviewPage() {
                   <Crown size={16} />
                   Verificar vez
                 </button>
+                {/* Painel da Loja (TV) — visível a qualquer um que enxerga a fila
+                    (ex.: terminal/TV da loja), pois é um display só-leitura. */}
+                <a href="/vendedor-da-vez/painel-loja" target="_blank" rel="noopener noreferrer" className="btn-secondary justify-center py-2.5 text-sm">
+                  <Tv size={16} className="text-indigo-600" />
+                  Painel da Loja
+                </a>
                 {canManage && (
                   <>
                     <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm">
@@ -740,11 +746,6 @@ export default function FilaOverviewPage() {
                       <Zap size={16} className="text-cyan-500 animate-pulse" />
                       Info rápida
                     </button>
-                    {/* 6. Painel da Loja */}
-                    <a href="/vendedor-da-vez/painel-loja" target="_blank" rel="noopener noreferrer" className="btn-secondary justify-center py-2.5 text-sm">
-                      <Tv size={16} className="text-indigo-600" />
-                      Painel da Loja
-                    </a>
                     {/* 7. Testar push */}
                     <a href="/vendedor-da-vez/testes" className="btn-secondary justify-center py-2.5 text-sm">
                       <Settings size={16} className="text-red-500" />

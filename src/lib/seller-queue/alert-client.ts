@@ -23,6 +23,32 @@ function audioCtx(): AudioContext | null {
 /** Destrava o áudio num gesto do usuário (chamar em cliques de botão). */
 export function unlockAudio(): void { audioCtx() }
 
+// ── Volume mestre ──────────────────────────────────────────────────────────────
+// Todos os sons passam por este ganho antes do destino. Multiplicador > 1 amplifica
+// (útil na TV da loja, cujo volume costuma ficar baixo). Cap em 8x p/ evitar
+// distorção absurda. Valor > 1 pode "clipar" — para um alarme, isso ajuda a cortar
+// o ruído do salão.
+let master: GainNode | null = null
+let masterVolume = 1
+
+function getMaster(ac: AudioContext): GainNode {
+  if (!master || master.context !== ac) {
+    master = ac.createGain()
+    master.gain.value = masterVolume
+    master.connect(ac.destination)
+  }
+  return master
+}
+
+/** Ajusta o volume mestre do alarme (1 = normal). Persiste para os próximos sons. */
+export function setAlertVolume(mult: number): void {
+  masterVolume = Math.max(0, Math.min(8, Number.isFinite(mult) ? mult : 1))
+  try { const ac = audioCtx(); if (ac) getMaster(ac).gain.value = masterVolume } catch { /* ignore */ }
+}
+
+/** Volume mestre atual (1 = normal). */
+export function getAlertVolume(): number { return masterVolume }
+
 // ── Catálogo de sons ─────────────────────────────────────────────────────────
 // Modelos disponíveis para o ADM escolher (chave salva em alertSoundType).
 export const SOUND_OPTIONS: { value: string; label: string }[] = [
@@ -70,7 +96,7 @@ function tone(ac: AudioContext, opts: { freq: number; start: number; dur: number
   const g = ac.createGain()
   o.type = opts.type ?? 'square'
   o.frequency.setValueAtTime(opts.freq, opts.start)
-  o.connect(g); g.connect(ac.destination)
+  o.connect(g); g.connect(getMaster(ac))
   g.gain.setValueAtTime(0.0001, opts.start)
   g.gain.exponentialRampToValueAtTime(opts.gain ?? 0.35, opts.start + 0.02)
   g.gain.exponentialRampToValueAtTime(0.0001, opts.start + opts.dur)
@@ -81,7 +107,7 @@ function tone(ac: AudioContext, opts: { freq: number; start: number; dur: number
 const PLAYERS: Record<string, (ac: AudioContext, t: number) => void> = {
   siren: (ac, t) => {
     const o = ac.createOscillator(); const g = ac.createGain()
-    o.type = 'square'; o.connect(g); g.connect(ac.destination)
+    o.type = 'square'; o.connect(g); g.connect(getMaster(ac))
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.03)
     o.frequency.setValueAtTime(880, t); o.frequency.setValueAtTime(660, t + 0.35)
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85)
@@ -98,7 +124,7 @@ const PLAYERS: Record<string, (ac: AudioContext, t: number) => void> = {
   sonar: (ac, t) => { tone(ac, { freq: 880, start: t, dur: 0.15, type: 'sine', gain: 0.4 }); tone(ac, { freq: 440, start: t + 0.15, dur: 0.5, type: 'sine', gain: 0.1 }) },
   space: (ac, t) => {
     const o = ac.createOscillator(); const g = ac.createGain()
-    o.type = 'sawtooth'; o.connect(g); g.connect(ac.destination)
+    o.type = 'sawtooth'; o.connect(g); g.connect(getMaster(ac))
     g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.35, t + 0.05)
     o.frequency.setValueAtTime(300, t); o.frequency.exponentialRampToValueAtTime(1500, t + 0.5)
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6)
@@ -115,7 +141,7 @@ const PLAYERS: Record<string, (ac: AudioContext, t: number) => void> = {
     for (let i = 0; i < 3; i++) {
       const start = t + i * 0.2
       const o = ac.createOscillator(); const g = ac.createGain()
-      o.type = 'sawtooth'; o.connect(g); g.connect(ac.destination)
+      o.type = 'sawtooth'; o.connect(g); g.connect(getMaster(ac))
       g.gain.setValueAtTime(0.35, start); g.gain.linearRampToValueAtTime(0.0001, start + 0.15)
       o.frequency.setValueAtTime(1200, start); o.frequency.exponentialRampToValueAtTime(100, start + 0.15)
       o.start(start); o.stop(start + 0.15)
@@ -127,7 +153,7 @@ const PLAYERS: Record<string, (ac: AudioContext, t: number) => void> = {
   },
   panic: (ac, t) => {
     const o = ac.createOscillator(); const g = ac.createGain()
-    o.type = 'sawtooth'; o.connect(g); g.connect(ac.destination)
+    o.type = 'sawtooth'; o.connect(g); g.connect(getMaster(ac))
     g.gain.setValueAtTime(0.38, t)
     o.frequency.setValueAtTime(600, t)
     o.frequency.linearRampToValueAtTime(1400, t + 0.15)
