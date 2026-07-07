@@ -417,9 +417,10 @@ export default function FilaOverviewPage() {
     isFetchingRef.current = true
     try {
       const sp = typeof window !== 'undefined' ? window.location.search : ''
+      const connector = sp ? (sp.includes('?') ? '&' : '?') : '?'
       const [currentRes, dashRes] = await Promise.all([
-        fetch(`/api/seller-queue/current${sp}`, { credentials: 'include' }),
-        fetch(`/api/seller-queue/dashboard${sp}`, { credentials: 'include' }),
+        fetch(`/api/seller-queue/current${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }),
+        fetch(`/api/seller-queue/dashboard${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }),
       ])
       if (currentRes.status === 403 || currentRes.status === 400) {
         const j = await currentRes.json().catch(() => ({})) as { error?: string }

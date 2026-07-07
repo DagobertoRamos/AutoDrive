@@ -8,6 +8,12 @@ import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-module
 import { autoCheckoutStalePauses, isQueueOpenNow, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
 import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
+export const dynamic = 'force-dynamic'
+
+const HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+}
+
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
@@ -16,7 +22,7 @@ export async function GET(req: Request) {
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = unitFromRequest(req, user.unitId)
-  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: 400 })
+  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: 400, headers: HEADERS })
 
   try {
     const ucfg = await getUnitConfig(tenantId, unitId)
@@ -59,7 +65,7 @@ export async function GET(req: Request) {
           panelSound,
           queueOpen
         }
-      })
+      }, { headers: HEADERS })
     }
 
     let entries = await prisma.sellerQueueEntry.findMany({
@@ -244,7 +250,7 @@ export async function GET(req: Request) {
         panelSound,
         queueOpen,
       },
-    })
+    }, { headers: HEADERS })
   } catch (err) {
     return handlePrismaError(err)
   }

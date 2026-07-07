@@ -17,6 +17,12 @@ import { assertModuleEnabled, canAccessModuleForUser, getDisabledModules } from 
 import { autoCheckoutStalePauses, isQueueOpenNow, isOnVacation, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
 import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
+export const dynamic = 'force-dynamic'
+
+const HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+}
+
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
@@ -25,7 +31,7 @@ export async function GET(req: Request) {
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   const unitId = unitFromRequest(req, user.unitId)
-  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: 400 })
+  if (!unitId) return NextResponse.json({ success: false, error: 'Informe a unidade (?unitId=) ou tenha unidade vinculada.' }, { status: 400, headers: HEADERS })
 
   try {
     const ucfg = await getUnitConfig(tenantId, unitId)
@@ -91,7 +97,7 @@ export async function GET(req: Request) {
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     const unit = await prisma.unit.findFirst({ where: { id: unitId, tenantId }, select: { name: true } })
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible, unitName: unit?.name ?? null } })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible, unitName: unit?.name ?? null } }, { headers: HEADERS })
     }
 
     let entries = await prisma.sellerQueueEntry.findMany({
@@ -347,7 +353,7 @@ export async function GET(req: Request) {
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival, visitType: myAtt.visitType, startedAt: myAtt.startedAt || myAtt.calledAt } : null,
         activeAttentionTest: testNotif ? { id: testNotif.id, sentAt: (testNotif.metadata as any)?.sentAt || testNotif.createdAt.toISOString() } : null,
       },
-    })
+    }, { headers: HEADERS })
   } catch (err) {
     return handlePrismaError(err)
   }

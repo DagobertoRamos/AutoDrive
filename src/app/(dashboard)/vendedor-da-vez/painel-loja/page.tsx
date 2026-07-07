@@ -88,7 +88,8 @@ export default function StorePanelPage() {
     isFetchingRef.current = true
     try {
       const sp = typeof window !== 'undefined' ? window.location.search : ''
-      const res = await fetch(`/api/seller-queue/panel-summary${sp}`, { credentials: 'include' })
+      const connector = sp ? (sp.includes('?') ? '&' : '?') : '?'
+      const res = await fetch(`/api/seller-queue/panel-summary${sp}${connector}_t=${Date.now()}`, { credentials: 'include' })
       if (res.ok) {
         const j = await res.json()
         const currentData = j?.data as CurrentData
