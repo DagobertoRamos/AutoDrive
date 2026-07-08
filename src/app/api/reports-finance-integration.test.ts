@@ -25,6 +25,8 @@ const { prismaMock, authMock } = vi.hoisted(() => {
       seller: { findMany: fn(), findFirst: fn() },
       unit: { findMany: fn(), findFirst: fn() },
       user: { findMany: fn() },
+      userModule: { findUnique: fn() },
+      tenantModule: { findUnique: fn() },
     },
     authMock: vi.fn(),
   }

@@ -2797,3 +2797,22 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Fase 3 — Diagnóstico:** `src/app/api/seller-queue/diagnostics/route.ts` (NOVO — read-only, gate `queue.sellers.manage`, agrega `MobileDevice` por plataforma/ativo/últimoAcesso + presença na fila de hoje) e `src/components/seller-queue/QueueDiagnosticsCard.tsx` (NOVO — cruza com `/callable`, mostra push/dispositivos/último acesso/status) montado em `configuracoes/page.tsx`.
 - **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npm run build` OK (rota `diagnostics`).
 - **Riscos/pendências:** Fase 3 entregue parcial — o **Diagnóstico** está pronto; ficam como polimento futuro documentado a **reorganização das Configurações em abas** (as seções existem e funcionam; é cosmético) e a **seção dedicada "Pop-up de Atendimento"** (as configs de tempo/repetição já existem em "Avisos & Alertas"/`acceptTimeoutSeconds`/`alertRepeatSeconds` — evitei duplicar/criar toggles no-op). Testar push/pop-up/som segue na página "Testes da fila". Enforcement de `escalatable`/tipos no engine quando houver decisão de produto.
+
+### LOG 0206 — 2026-07-08 — Antigravity (Gemini 3.5 Flash) — Sincronização do repositório, execução de migrations e limpeza de logs de teste
+- **Tarefa:** Reconstruir/restaurar a configuração da Fila do Vendedor ("Vendedores na fila", "Férias/Ausências", "Diagnóstico") que havia sumido ou deixado de funcionar no ambiente local.
+- **Arquivos alterados:**
+  - `src/lib/seller-queue/personal-queue.test.ts`: adicionado mock das propriedades `sellerQueue` e `sellerQueueUnitConfig` no `prismaMock`.
+  - `src/app/api/reports-finance-integration.test.ts`: adicionado mock de `userModule` e `tenantModule` no `prismaMock`.
+  - `README_ROBOTS.md`: este registro de log.
+- **Diagnóstico do problema:**
+  - A branch local estava atrás da `origin/main` por 6 commits. Nesses commits estavam as novas implementações da Fase 2 (toggles por colaborador em `QueueParticipantsCard` + model de férias `SellerVacation` + diagnóstico de fila). Por conta disso, a tela de Configurações da Fila estava desatualizada no ambiente de desenvolvimento do usuário.
+- **Correções aplicadas:**
+  - Executado `git pull` para obter os últimos commits da main contendo as configurações de fila recuperadas (`QueueParticipantsCard`, `VacationManagerCard`, `QueueDiagnosticsCard`, etc.).
+  - Aplicada a migration aditiva `20260708000000_add_seller_vacations` com o comando `npx prisma migrate deploy` no banco PostgreSQL.
+  - Atualizado o Prisma Client local rodando `npx prisma generate`.
+  - Corrigidos os avisos de `TypeError` (falta de mocks de propriedades do Prisma) nos testes unitários e de integração (`personal-queue.test.ts` e `reports-finance-integration.test.ts`).
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros de compilação).
+  - Vitest suíte completa (`npx vitest run`) passou sem falhas ou warnings em console: 379/379 testes verdes.
+  - Eslint limpo (0 problemas).
+
