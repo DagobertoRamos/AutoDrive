@@ -16,6 +16,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import type { UserRole } from '@prisma/client'
 
 // ── Verificar se seller pertence ao tenant do usuário ────────────────────────
 
@@ -50,15 +51,16 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
     const body = await req.json()
     const { fullName, shortName, cpf, whatsapp, email, unitId, cargo, active, receivesCharge, positionId } = body
 
-    // Valida positionId (se fornecido)
+    // Valida positionId (se fornecido) e captura o baseRole do cargo.
     let positionUpdate: string | null | undefined = undefined
+    let positionBaseRole: string | null = null
     if (positionId !== undefined) {
       if (positionId === null || positionId === '') {
         positionUpdate = null
       } else {
         const pos = await prisma.position.findUnique({
           where:  { id: String(positionId) },
-          select: { id: true, tenantId: true },
+          select: { id: true, tenantId: true, baseRole: true },
         })
         if (!pos || (pos.tenantId !== null && user.role !== 'MASTER' && pos.tenantId !== user.tenantId)) {
           return NextResponse.json(
@@ -67,8 +69,16 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
           )
         }
         positionUpdate = pos.id
+        positionBaseRole = pos.baseRole ?? null
       }
     }
+    // O cargo/role acompanham a POSIÇÃO escolhida (mesma regra do cadastro). Sem
+    // isso, mudar alguém para "Vendedor Líder" na edição NÃO o tornava líder —
+    // permissões e escalonamento olham user.role/seller.cargo, não a posição.
+    // MASTER nunca é atribuído por aqui (igual ao CREATE).
+    const derivedRole: UserRole | null = (positionBaseRole && positionBaseRole !== 'MASTER')
+      ? (positionBaseRole as UserRole)
+      : null
 
     const seller = await prisma.seller.update({
       where: { id: params.id },
@@ -79,20 +89,21 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
         whatsapp:       whatsapp       !== undefined ? String(whatsapp).replace(/\D/g, '')           : undefined,
         email:          email          !== undefined ? String(email).toLowerCase().trim()             : undefined,
         unitId:         unitId         !== undefined ? String(unitId)                                 : undefined,
-        cargo:          cargo          !== undefined ? String(cargo)                                  : undefined,
+        cargo:          derivedRole ?? (cargo !== undefined ? String(cargo) : undefined),
         active:         active         !== undefined ? Boolean(active)                                : undefined,
         receivesCharge: receivesCharge !== undefined ? Boolean(receivesCharge)                        : undefined,
         positionId:     positionUpdate,
       },
     })
 
-    // Propaga nome e e-mail para o User vinculado se foram alterados
-    if (fullName !== undefined || email !== undefined) {
+    // Propaga nome/e-mail e o PAPEL (derivado do cargo) para o User vinculado.
+    if (fullName !== undefined || email !== undefined || derivedRole) {
       await prisma.user.update({
         where: { id: existing.userId },
         data: {
           ...(fullName !== undefined && { name:  String(fullName).trim()               }),
           ...(email    !== undefined && { email: String(email).toLowerCase().trim()    }),
+          ...(derivedRole            && { role:  derivedRole                            }),
         },
       })
     }
