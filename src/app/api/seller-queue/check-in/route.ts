@@ -16,6 +16,7 @@ import { checkInSchema } from '@/lib/validators/seller-queue'
 import { getUnitConfig, toPresenceConfig, getOrCreateQueue, nextPosition, recordPresence, logQueueEvent } from '@/lib/seller-queue/queue'
 import { isQueueOpenNow, isOnVacation } from '@/lib/seller-queue/automation'
 import { getActiveVacation, VACATION_TYPE_LABELS } from '@/lib/seller-queue/vacation'
+import { getParticipant } from '@/lib/seller-queue/participants'
 import { getActiveQueueBlock, blockMessage } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -57,6 +58,10 @@ export async function POST(req: Request) {
     if (activeVac) {
       const ateDia = new Date(activeVac.endAt).toLocaleDateString('pt-BR')
       return NextResponse.json({ success: false, error: `Você está com ausência cadastrada (${VACATION_TYPE_LABELS[activeVac.type] ?? activeVac.type}) até ${ateDia}. Fale com a gestão.` }, { status: 409 })
+    }
+    // Participação na fila (config por colaborador): quem não participa não entra.
+    if (getParticipant(cfg?.config, sellerId).participates === false) {
+      return NextResponse.json({ success: false, error: 'Você não está habilitado a participar da fila. Fale com a gestão.' }, { status: 409 })
     }
     // Fila com horário automático: barra check-in fora do expediente.
     const cfgX = (cfg?.config as Record<string, unknown> | undefined) ?? {}

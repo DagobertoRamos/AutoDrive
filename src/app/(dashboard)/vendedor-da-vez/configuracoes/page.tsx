@@ -16,6 +16,7 @@ import AlertSetup from '@/components/seller-queue/AlertSetup'
 import EscalationConfigCard from '@/components/seller-queue/EscalationConfigCard'
 import AttendanceTypesConfigCard from '@/components/seller-queue/AttendanceTypesConfigCard'
 import VacationManagerCard from '@/components/seller-queue/VacationManagerCard'
+import QueueParticipantsCard from '@/components/seller-queue/QueueParticipantsCard'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 import { QUEUE_CONFIG_LIMITS } from '@/lib/seller-queue/config-limits'
 
@@ -411,6 +412,9 @@ export default function ConfiguracoesFilaPage() {
 
       {/* Tipos de atendimento + "consome a vez" (config dedicada) */}
       <AttendanceTypesConfigCard />
+
+      {/* Vendedores na fila — participação/toggles por colaborador (gestão) — Fase 2 */}
+      <QueueParticipantsCard />
 
       {/* Férias e Ausências por colaborador (gestão) — Fase 2 */}
       <VacationManagerCard />
