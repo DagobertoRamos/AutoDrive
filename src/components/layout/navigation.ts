@@ -62,6 +62,7 @@ import {
   Palette,
   Target,
   Trophy,
+  Columns3,
   // Marketing / Mesa SDR + Telefonia
   Headset,
   Phone,
@@ -253,6 +254,20 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Conexões',        href: '/marketing/telephony/conexoes',  icon: Phone,     module: 'marketing.telephony.manage' },
       { label: 'Números',         href: '/marketing/telephony/numeros',   icon: Hash,      module: 'marketing.telephony.manage' },
       { label: 'Gravações',       href: '/marketing/telephony/gravacoes', icon: Disc,      module: 'marketing.telephony.recordings' },
+    ],
+  },
+
+  // ── CRM ────────────────────────────────────────────────────────────────────
+  {
+    label: 'CRM',
+    icon: Columns3,
+    module: 'crm',
+    children: [
+      { label: 'Cockpit CRM',   href: '/crm/cockpit',       icon: LayoutDashboard, module: 'crm' },
+      { label: 'Atendimentos',  href: '/crm/atendimentos',  icon: ClipboardList,   module: 'crm.attendance.view.own' },
+      { label: 'Leads',         href: '/crm/leads',         icon: Inbox,           module: 'crm.view.own' },
+      { label: 'Kanban',        href: '/crm/kanban',        icon: Columns3,        module: 'crm.kanban.view.own' },
+      { label: 'Configurações', href: '/crm/configuracoes', icon: Settings,        module: 'crm.settings.manage' },
     ],
   },
 

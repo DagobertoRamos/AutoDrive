@@ -118,6 +118,28 @@ export type Module =
   | 'ranking.settings.view'        // ver configuração de participantes
   | 'ranking.settings.manage.unit' // configurar participantes da própria unidade
   | 'ranking.settings.manage.tenant' // configurar participantes gerais/tenant
+  | 'crm'
+  | 'crm.view.own'
+  | 'crm.view.unit'
+  | 'crm.view.all'
+  | 'crm.lead.create'
+  | 'crm.lead.edit.own'
+  | 'crm.lead.edit.unit'
+  | 'crm.lead.transfer'
+  | 'crm.lead.convert'
+  | 'crm.lead.mark_lost'
+  | 'crm.kanban.view.own'
+  | 'crm.kanban.view.unit'
+  | 'crm.kanban.move.own'
+  | 'crm.kanban.move.unit'
+  | 'crm.attendance.view.own'
+  | 'crm.attendance.view.unit'
+  | 'crm.attendance.create'
+  | 'crm.attendance.finish'
+  | 'crm.sdr.view'
+  | 'crm.sdr.manage'
+  | 'crm.settings.manage'
+  | 'crm.reports.view'
   // ── Comercial › Fila de Atendimento ("Vendedor da Vez") ──────────────────
   | 'sellerQueue.view'            // ver a fila / própria posição / histórico
   | 'sellerQueue.checkIn'         // entrar/sair/pausar a fila (presença)
@@ -549,6 +571,94 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'ranking.settings.manage.tenant': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'],
     actions: ['read', 'update', 'configure'],
+  },
+  'crm': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'crm.view.own': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'crm.view.unit': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read'],
+  },
+  'crm.view.all': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'],
+    actions: ['read'],
+  },
+  'crm.lead.create': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'create'],
+  },
+  'crm.lead.edit.own': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'update'],
+  },
+  'crm.lead.edit.unit': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read', 'update'],
+  },
+  'crm.lead.transfer': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read', 'update'],
+  },
+  'crm.lead.convert': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'update'],
+  },
+  'crm.lead.mark_lost': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'update'],
+  },
+  'crm.kanban.view.own': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'crm.kanban.view.unit': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read'],
+  },
+  'crm.kanban.move.own': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'update'],
+  },
+  'crm.kanban.move.unit': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read', 'update'],
+  },
+  'crm.attendance.view.own': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read'],
+  },
+  'crm.attendance.view.unit': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read'],
+  },
+  'crm.attendance.create': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'create'],
+  },
+  'crm.attendance.finish': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'update'],
+  },
+  'crm.sdr.view': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read'],
+  },
+  'crm.sdr.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read', 'create', 'update', 'delete', 'configure'],
+  },
+  'crm.settings.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read', 'update', 'configure'],
+  },
+  'crm.reports.view': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
+    actions: ['read'],
   },
   // ── Comercial › Fila de Atendimento ("Vendedor da Vez") ──────────────────────
   // Operação na loja: vendedor entra na fila, registra cliente, atende.
