@@ -2961,3 +2961,8 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Limitação conhecida documentada:** a fonte da verdade do papel é `user.role`/`seller.cargo` (não `position.baseRole` em runtime). Colaboradores editados ANTES deste fix podem ter role×posição divergentes — recomendável um passo futuro de reconciliação em massa (setar role/cargo a partir de position.baseRole para todos). Só corrigi o Anderson agora.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (389/389); `npm run build` OK.
 - **Pendências:** (1) reconciliação em massa role×posição (opcional); (2) testes manuais de dispositivo (iPhone/Android) fora do meu alcance; (3) checklist manual de fila entregue ao usuário. Commit sugerido: `fix(colaboradores): edição propaga cargo/posição para role (sistema de vendedor líder)`.
+
+### LOG 0218 — 2026-07-08 — Claude (Opus 4.8) — Reconciliação em massa role×posição (dados)
+- **Tipo:** operação de DADOS em produção (Neon), sem código. Complementa o LOG 0217.
+- **Feito:** alinhado `user.role` + `seller.cargo` + `user.positionId` ao `baseRole` da posição para todos os colaboradores com Seller+posição divergentes (nunca MASTER; sem rebaixar gestão sênior — verificado no dry-run). **3 corrigidos:** CESAR (Motorista) VENDEDOR→USUARIO, JESSE (Preparador) cargo→USUARIO, LUCIANA (Auxiliar Geral) cargo→USUARIO. **Divergências restantes: 0.**
+- **Resultado:** cadastros agora consistentes (posição = fonte do papel). Anderson já estava correto (VENDEDOR_LIDER) do LOG 0217.
