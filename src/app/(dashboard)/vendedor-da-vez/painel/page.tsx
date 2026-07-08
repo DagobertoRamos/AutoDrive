@@ -52,14 +52,16 @@ export default function PainelUnidadePage() {
 
   const load = useCallback(async () => {
     try {
+      const sp = typeof window !== 'undefined' ? window.location.search : ''
+      const connector = sp ? (sp.includes('?') ? '&' : '?') : '?'
       const [cRes, aRes, atRes, pvRes] = await Promise.all([
-        fetch('/api/seller-queue/current', { credentials: 'include' }),
-        fetch('/api/seller-queue/customer-arrivals', { credentials: 'include' }),
-        fetch('/api/seller-queue/attendances?active=true', { credentials: 'include' }),
-        fetch('/api/seller-queue/pos-vendas', { credentials: 'include' }),
+        fetch(`/api/seller-queue/current${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }),
+        fetch(`/api/seller-queue/customer-arrivals${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }),
+        fetch(`/api/seller-queue/attendances?active=true${sp ? `&${sp.slice(1)}&` : '?'}_t=${Date.now()}`, { credentials: 'include' }),
+        fetch(`/api/seller-queue/pos-vendas${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }),
       ])
-      fetch('/api/seller-queue/events?limit=80', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setEvents(j.data ?? []) }).catch(() => {})
-      fetch('/api/seller-queue/callable', { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setCallable(j.data ?? []) }).catch(() => {})
+      fetch(`/api/seller-queue/events?limit=80${sp ? `&${sp.slice(1)}&` : '?'}_t=${Date.now()}`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setEvents(j.data ?? []) }).catch(() => {})
+      fetch(`/api/seller-queue/callable${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => { if (j?.success) setCallable(j.data ?? []) }).catch(() => {})
       if (cRes.status === 403 || cRes.status === 400) { const j = await cRes.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
       setDenied(null)
       setCur((await cRes.json())?.data ?? null)

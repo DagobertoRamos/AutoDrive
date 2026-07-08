@@ -148,7 +148,8 @@ export default function QueueAlertWatcher() {
     const poll = async () => {
       if (stopped || noAccess.current) return
       try {
-        const res = await fetch('/api/seller-queue/my-active-call', { credentials: 'include' })
+        const sp = typeof window !== 'undefined' ? window.location.search : ''
+        const res = await fetch(`/api/seller-queue/my-active-call${sp}`, { credentials: 'include' })
         if (res.status === 403) { noAccess.current = true; return }
         if (!res.ok) return
         const data = (await res.json())?.data

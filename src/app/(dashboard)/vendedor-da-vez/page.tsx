@@ -385,10 +385,12 @@ export default function FilaOverviewPage() {
   const firedTimeouts = useRef<Set<string>>(new Set())
   const dashboardSoundTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const dashboardSoundCallId = useRef<string | null>(null)
+  const isFetchingRef = useRef(false)
   const queuePerms = current?.permissions
   const canCallCurrent = Boolean(queuePerms?.callCurrentSeller || roleCanManage)
   const canManage = Boolean(roleCanManage || queuePerms?.pauseOther || queuePerms?.resumeOther || queuePerms?.removeParticipant || queuePerms?.blockParticipant || queuePerms?.reorder)
   const canViewLogs = Boolean(queuePerms?.viewLogs || roleCanManage)
+  const canViewAlertAll = Boolean(queuePerms?.sendAlertAll || roleCanManage)
   const canSendQueueAlert = Boolean(queuePerms?.sendAlertAll || roleCanManage)
   const canViewUnitPersonalQueues = Boolean(canManage || queuePerms?.personalQueuesViewUnit || queuePerms?.panelView)
   const canUseOwnQueue = current?.canCheckIn === true
@@ -415,10 +417,14 @@ export default function FilaOverviewPage() {
   // Polling RÁPIDO (operacional): estado da fila (/current) + agregado
   // (atendimentos ativos + lembretes + bloqueios numa chamada). 2 fetches.
   const load = useCallback(async () => {
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
     try {
+      const sp = typeof window !== 'undefined' ? window.location.search : ''
+      const connector = sp ? (sp.includes('?') ? '&' : '?') : '?'
       const [currentRes, dashRes] = await Promise.all([
-        fetch('/api/seller-queue/current', { credentials: 'include' }),
-        fetch('/api/seller-queue/dashboard', { credentials: 'include' }),
+        fetch(`/api/seller-queue/current${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }),
+        fetch(`/api/seller-queue/dashboard${sp}${connector}_t=${Date.now()}`, { credentials: 'include' }),
       ])
       if (currentRes.status === 403 || currentRes.status === 400) {
         const j = await currentRes.json().catch(() => ({})) as { error?: string }
@@ -451,6 +457,7 @@ export default function FilaOverviewPage() {
     } catch {
       flash('Não foi possível atualizar a fila.', false)
     } finally {
+      isFetchingRef.current = false
       setLoading(false)
     }
   }, [])

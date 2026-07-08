@@ -2734,3 +2734,40 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Corrigido:** novo endpoint LEVE `GET /api/seller-queue/my-active-call` — devolve só `myAttendance` (chamada ativa do próprio usuário) + `alerts` + `unitName`, com 1–2 queries indexadas e o MESMO gate/escopo (tenant+unidade) do `/current` (reusa `resolveQueueUnitForRead`/`isQueuePanelFallbackUser`, LOG 0198). O `QueueAlertWatcher` passou a consultar esse endpoint a cada **2s** (era 6s), mantendo intacta toda a lógica (Android nativo/CallStyle, `deadlineTimer`, `handledAttId`, timeout, destrava de áudio, geolocalização no accept). Pop-up redesenhado no modelo do spec: cabeçalho **"VOCÊ É O VENDEDOR DA VEZ"**, linhas Tipo/Unidade, **contagem regressiva** do prazo, botões **ACEITAR/RECUSAR/PASSAR A VEZ**; overlay subiu de `z-[70]` para `z-[9999]` com backdrop (`role="alertdialog"`) — sobrepõe qualquer tela. Nada removido.
 - **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npm run build` OK (rota `/api/seller-queue/my-active-call` gerada).
 - **Riscos/pendências:** não foi possível testar fisicamente iPhone PWA/Android FCM/GPS daqui — validado por código + build; roteiro de teste em dispositivo entregue ao usuário. PENDENTE **FASE 2** (grid "Vendedores na fila" + Férias/Ausências com model novo `SellerVacation` + migration manual na Neon) e **FASE 3** (Diagnóstico por vendedor via `MobileDevice` + reorganização das Configurações em abas + seção "Pop-up de Atendimento"). Deploy sob aprovação do usuário.
+### LOG 0200 — 2026-07-07 20:07:00 -03:00 — Antigravity (Gemini 2.0 Flash) — Otimização de Performance da Fila e Painel da Loja
+- **Tarefa:** Investigar causa da lentidão e realizar otimizações no Painel da Loja (TV Dashboard) e no Dashboard de Vendedores da Vez.
+- **Arquivos alterados/criados:**
+  - `src/lib/seller-queue/queue.ts`: cache de 10s para a configuração da unidade.
+  - `src/lib/seller-queue/reminders.ts`: cache de 3s para o lembrete de dashboard (reduzindo requisições na tabela de AuditLog).
+  - `src/app/api/seller-queue/current/route.ts`: selects enxutos, consultas de notificação/atendimento condicionados ao perfil `VENDEDOR` e verificação em memória (lazy) de timeouts/checkout de pausas antes de abrir transação de gravação.
+  - `src/app/api/seller-queue/panel-summary/route.ts` [NOVO]: endpoint ultraleve específico para TVs e visualizadores da loja (retorna apenas dados estruturais resumidos).
+  - `src/app/(dashboard)/vendedor-da-vez/painel-loja/page.tsx`: alterado fetch de `current` para `panel-summary` e implementada a trava `isFetching` no front-end para evitar concorrência/overlapping de requisições.
+  - `src/app/(dashboard)/vendedor-da-vez/page.tsx`: implementada trava `isFetching` no polling rápido.
+- **Causa da lentidão encontrada:**
+  - O polling frequente de 3 segundos de múltiplos navegadores executava a cada chamada transações de gravação (`sweepExpiredCalls`/`autoCheckoutStalePauses`), consultas complexas a campos JSON de tabelas grandes (`Notification.metadata`) e queries agregadas pesadas em tabelas de auditoria (`AuditLog` para lembretes) para usuários não-vendedores/TVs que não precisavam dessas informações.
+- **Otimizações aplicadas:**
+  - Criação do endpoint específico `panel-summary` com selects dedicados;
+  - Caches em memória no backend com curto período de expiração (3s a 10s);
+  - Condicionamento de rotinas pesadas de gravação para execução lazy (apenas quando de fato há dados para timeout/checkout pendentes);
+  - Adicionado semáforo no front-end para evitar o empilhamento de requisições.
+- **Testes realizados:**
+  - Suíte completa de testes unitários e de integração (`npx vitest run`) passou com sucesso (379/379 testes verdes);
+  - Verificação de tipos via `npx tsc --noEmit` bem-sucedida (0 erros).
+- **Riscos/pendências:** Nenhum. Nenhuma alteração estrutural no banco de dados e as regras de negócio originais de timeout, penalidades e fila individual foram 100% preservadas.
+
+### LOG 0201 — 2026-07-07 20:30:00 -03:00 — Antigravity (Gemini 2.5 Pro) — Painel da TV: Ajustes de Alerta Sonoro e Inversão de Layout
+- **Tarefa:** Resolver o problema do som de alerta que não repetia e realizar a inversão de layout solicitada pelo usuário no Painel da TV (painel-loja/page.tsx).
+- **Feito:**
+  - **Som de Alerta Repetitivo:** Corrigido o loop de efeitos de áudio no painel-loja para que ele limpe e registre o setInterval de forma limpa quando as configurações do som ou o ID do chamado ativo mudarem. O som passa a tocar instantaneamente no início do chamado e se repete de forma precisa a cada 3s (ou conforme configurado).
+  - **Inversão de Layout:** O Painel da Loja agora exibe o vendedor sendo chamado (Chamado Agora) na seção superior (maior), com destaque gigante, fundo piscante vermelho/amber e contagem regressiva. O vendedor da vez em espera (Aguardando chamado) foi movido para a seção inferior (menor), como "Próximo da Vez".
+- **Validações:**
+  - `npx tsc --noEmit` bem-sucedido (0 erros).
+  - Vitest suíte completa (`npx vitest run`) verde (379/379 testes passaram).
+
+### LOG 0202 — 2026-07-08 — Claude (Opus 4.8) — Reconciliação das linhas main × codex-responsividade-base + limpeza do git
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
+- **Tarefa:** A `origin/main` (produção) e a branch `codex-responsividade-base` divergiram em paralelo (dois times/IAs trabalhando ao mesmo tempo): a main recebeu o trabalho de PERFORMANCE do Antigravity (cache de config, endpoint `panel-summary`, selects enxutos, lazy sweeps, `Cache-Control`/`force-dynamic`, trava `isFetching`), enquanto a branch recebeu o trabalho do Codex (acesso técnico ao Painel/`resolveQueueUnitForRead`/permissões `queue.panel.*`) + a Fase 1 do pop-up (Claude). Também houve **colisão de numeração** (dois LOG 0198 e dois LOG 0199) e a main tinha **lixo versionado**.
+- **Feito:** `git merge origin/main` na branch, resolvendo os 5 conflitos combinando os dois lados — `queue.ts` (mantém `resolveQueueUnitForRead` + `configCache`), `current/route.ts` (guard/multi-unidade do LOG 0198 + `HEADERS`/`force-dynamic` de cache da main), `QueueAlertWatcher.tsx` (endpoint leve `my-active-call` da Fase 1 + forwarding de `?unitId`), `painel-loja/page.tsx` (versão avançada da main com `panel-summary`/wakeLock/volume). LOGs renumerados: os do Antigravity viraram **0200** (perf) e **0201** (som/layout da TV); Codex (0198) e Claude/Fase 1 (0199) mantidos. **Removido do git** (mantido em disco): `backups/`, `Rascunhos/`, `.claude/worktrees/*` e `.claire/worktrees/*` (32 arquivos que não deviam estar versionados).
+- **Arquivos alterados (conflitos):** `README_ROBOTS.md`, `src/lib/seller-queue/queue.ts`, `src/app/api/seller-queue/current/route.ts`, `src/components/seller-queue/QueueAlertWatcher.tsx`, `src/app/(dashboard)/vendedor-da-vez/painel-loja/page.tsx` (+ arquivos auto-mesclados do merge de perf).
+- **Validações:** `npx tsc --noEmit` OK (0 erros); `npm test` OK (54 arquivos, 379 testes); `npm run build` OK (rotas `my-active-call` E `panel-summary` presentes).
+- **Riscos/pendências:** merge apresentado ao usuário ANTES do push para revisão. Adicionar `.gitignore` para o lixo removido (evitar recommit). Sem deploy até aprovação. PENDENTE Fases 2–3 da fila (ver LOG 0199).

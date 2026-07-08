@@ -178,3 +178,9 @@ google-credentials.json
 .env*.local
 eslint-report.json
 .env*
+
+# Artefatos que não devem ser versionados (removidos na reconciliação — LOG 0202)
+backups/
+Rascunhos/
+.claire/
+.claude/worktrees/

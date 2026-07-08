@@ -76,7 +76,7 @@ export default function StorePanelPage() {
   const prevVendedorId = useRef<string | null>(null)
   const activeSoundTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeSoundCallId = useRef<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const isFetchingRef = useRef(false)
   const wakeLockRef = useRef<{ release: () => Promise<void>; released?: boolean } | null>(null)
 
   useEffect(() => {
@@ -85,11 +85,12 @@ export default function StorePanelPage() {
   }, [])
 
   const load = useCallback(async () => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
     try {
-      const res = await fetch('/api/seller-queue/current', { credentials: 'include', signal: controller.signal })
+      const sp = typeof window !== 'undefined' ? window.location.search : ''
+      const connector = sp ? (sp.includes('?') ? '&' : '?') : '?'
+      const res = await fetch(`/api/seller-queue/panel-summary${sp}${connector}_t=${Date.now()}`, { credentials: 'include' })
       if (res.ok) {
         const j = await res.json()
         const currentData = j?.data as CurrentData
@@ -112,12 +113,11 @@ export default function StorePanelPage() {
         setData(null)
         setError(j?.error ?? 'Não foi possível carregar o painel da loja.')
       }
-    } catch (err) {
-      if ((err as { name?: string })?.name !== 'AbortError') {
-        setError('Não foi possível atualizar o painel da loja. Verifique a conexão.')
-      }
+    } catch {
+      // noop: painel de TV não pode travar por oscilação de rede.
     } finally {
-      if (abortRef.current === controller) setLoading(false)
+      isFetchingRef.current = false
+      setLoading(false)
     }
   }, [])
 
@@ -128,7 +128,6 @@ export default function StorePanelPage() {
     return () => {
       clearTimeout(firstLoad)
       clearInterval(poll)
-      abortRef.current?.abort()
     }
   }, [load, data?.panelSound?.refreshSeconds])
 
@@ -173,16 +172,14 @@ export default function StorePanelPage() {
   }, [panelSound.volume])
 
   useEffect(() => {
-    const stopLoop = () => {
-      if (activeSoundTimer.current) clearInterval(activeSoundTimer.current)
+    if (activeSoundTimer.current) {
+      clearInterval(activeSoundTimer.current)
       activeSoundTimer.current = null
-      activeSoundCallId.current = null
-      setFlashActive(false)
     }
+    setFlashActive(false)
 
     if (!activeCallId || !canPlayPanelSound) {
-      stopLoop()
-      return stopLoop
+      return
     }
 
     const repeatMs = Math.min(Math.max(panelSound.repeatSeconds, 1), 30) * 1000
@@ -192,14 +189,18 @@ export default function StorePanelPage() {
       window.setTimeout(() => setFlashActive(false), Math.min(900, repeatMs - 100))
     }
 
-    if (activeSoundCallId.current !== activeCallId) {
-      stopLoop()
-      activeSoundCallId.current = activeCallId
-      playPanelAlert()
-    }
+    // Toca imediatamente no primeiro disparo do chamado
+    playPanelAlert()
 
-    if (!activeSoundTimer.current) activeSoundTimer.current = setInterval(playPanelAlert, repeatMs)
-    return stopLoop
+    activeSoundTimer.current = setInterval(playPanelAlert, repeatMs)
+
+    return () => {
+      if (activeSoundTimer.current) {
+        clearInterval(activeSoundTimer.current)
+      }
+      activeSoundTimer.current = null
+      setFlashActive(false)
+    }
   }, [activeCallId, canPlayPanelSound, panelSound.repeatSeconds, panelSound.soundType])
 
   useEffect(() => {
@@ -355,83 +356,140 @@ export default function StorePanelPage() {
         </div>
       ) : (
         <div className="flex-grow grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Coluna Principal: Vendedor da Vez + Chamadas Ativas */}
+          {/* Coluna Principal: Chamados Ativos (Topo, Maior) e Vendedor da Vez / Próximo (Baixo, Menor) */}
           <div className="xl:col-span-2 space-y-6 flex flex-col">
-            {/* Vendedor da Vez */}
-            <div className="rounded-3xl border border-gray-800 bg-[#0f1626]/80 p-8 flex flex-col justify-between relative overflow-hidden shadow-2xl shadow-black/40 min-h-[320px]">
-              <div className="absolute top-0 right-0 h-40 w-40 bg-brand-500/10 rounded-full blur-3xl" />
-              <div>
-                <span className="px-3 py-1 rounded-full bg-brand-950 text-brand-400 border border-brand-800 text-xs font-bold tracking-widest uppercase">
-                  Vendedor da Vez / Próximo Chamado
-                </span>
-                <h2 className="text-6xl md:text-8xl font-black mt-6 tracking-tight bg-gradient-to-r from-white via-gray-100 to-gray-400 bg-clip-text text-transparent">
-                  {data?.vendedorDaVez?.sellerName ?? "Fila Vazia"}
-                </h2>
-              </div>
-              <div className="mt-8 flex items-center gap-4">
-                {data?.vendedorDaVez ? (
-                  <div className="flex items-center gap-2 text-brand-400 font-bold text-sm bg-brand-950/60 border border-brand-900 rounded-xl px-4 py-2">
-                    <Clock size={16} />
-                    Aguardando chamado
-                  </div>
-                ) : (
-                  <div className="text-amber-500 font-bold text-sm bg-amber-950/40 border border-amber-900 rounded-xl px-4 py-2">
-                    Nenhum vendedor em espera geral
-                  </div>
+            {/* Bloco do Topo: Chamando Vendedor Agora (Vendedor Chamado) */}
+            {called.length > 0 ? (
+              <div
+                className={cn(
+                  "rounded-3xl border-2 border-amber-500 bg-amber-950/20 p-8 flex flex-col justify-between relative overflow-hidden shadow-2xl shadow-black/40 min-h-[320px] transition-all",
+                  flashActive && "animate-pulse ring-4 ring-amber-500/50 bg-amber-900/30"
                 )}
-              </div>
-            </div>
-
-            {/* Chamadas Ativas (Chamado / Tocando) */}
-            <div className="flex-grow flex flex-col">
-              <h3 className="text-lg font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Bell size={18} className="text-amber-500 animate-bounce" />
-                Chamados Agora
-              </h3>
-              {called.length === 0 ? (
-                <div className="flex-grow rounded-3xl border border-dashed border-gray-800 flex flex-col items-center justify-center py-12 text-center">
-                  <span className="h-12 w-12 rounded-full bg-gray-900 flex items-center justify-center text-gray-600 mb-2">
-                    <User size={20} />
-                  </span>
-                  <p className="text-sm font-semibold text-gray-500">Nenhum chamado ativo no momento.</p>
+              >
+                <div className="absolute top-0 right-0 h-40 w-40 bg-amber-500/10 rounded-full blur-3xl" />
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 rounded-full bg-amber-950 text-amber-400 border border-brand-800 text-xs font-black tracking-widest uppercase flex items-center gap-1.5">
+                      <Bell size={12} className="text-amber-500 animate-bounce" />
+                      VENDEDOR CHAMADO
+                    </span>
+                    <span className="text-xs font-bold text-amber-500 tabular-nums bg-black/40 px-3 py-1 rounded-full border border-amber-900/50 animate-pulse">
+                      {countdownLabel(called[0].activeAttendanceAcceptDeadline)}
+                    </span>
+                  </div>
+                  <h2 className="text-6xl md:text-8xl font-black mt-6 tracking-tight bg-gradient-to-r from-white via-amber-100 to-amber-300 bg-clip-text text-transparent truncate leading-none py-2">
+                    {called[0].sellerName}
+                  </h2>
+                  <p className="mt-2 text-sm font-semibold uppercase tracking-wider text-amber-200/80">
+                    {called[0].activeAttendanceActorName ? `Chamado por ${called[0].activeAttendanceActorName}` : 'Chamado pelo sistema'}
+                  </p>
                 </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 flex-grow">
-                  {called.map((c) => (
+                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-300">
+                  <div className="flex items-center justify-between rounded-xl bg-black/30 border border-gray-800/50 px-4 py-3">
+                    <span className="font-medium text-gray-400">Chamado há</span>
+                    <span className="font-bold text-white tabular-nums">{timeLabel(called[0].activeAttendanceCalledAt ?? called[0].joinedAt)}</span>
+                  </div>
+                  <div className="rounded-xl bg-black/30 border border-amber-950/50 px-4 py-3 font-bold text-amber-200 text-center flex items-center justify-center">
+                    COMPARECER À RECEPÇÃO AGORA
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-gray-800 bg-[#0f1626]/80 p-8 flex flex-col justify-between relative overflow-hidden shadow-2xl shadow-black/40 min-h-[320px]">
+                <div className="absolute top-0 right-0 h-40 w-40 bg-blue-500/5 rounded-full blur-3xl" />
+                <div>
+                  <span className="px-3 py-1 rounded-full bg-blue-950/40 text-blue-400 border border-blue-900/50 text-xs font-bold tracking-widest uppercase">
+                    Status da Fila
+                  </span>
+                  <h2 className="text-5xl md:text-7xl font-black mt-6 tracking-tight text-gray-500">
+                    Aguardando Cliente
+                  </h2>
+                  <p className="mt-3 text-sm text-gray-400 leading-relaxed">
+                    Nenhum vendedor está sendo chamado no momento. A fila do AutoDrive está ativa e operando em tempo real.
+                  </p>
+                </div>
+                <div className="mt-8 flex items-center gap-4 text-sm text-gray-400">
+                  <div className="flex items-center gap-2 bg-[#121b2d] border border-gray-800 rounded-xl px-4 py-2">
+                    <Clock size={16} className="text-blue-500" />
+                    Fila ativa e operacional
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Chamando outros (se houver mais de um vendedor chamado concorrentemente) */}
+            {called.length > 1 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <Bell size={12} className="text-amber-500" />
+                  Também Chamados
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {called.slice(1).map((c) => (
                     <div
                       key={c.id}
                       className={cn(
-                        "rounded-3xl border-2 border-amber-500 bg-amber-950/20 p-6 flex flex-col justify-between shadow-lg shadow-amber-500/5",
-                        flashActive && "animate-pulse ring-4 ring-amber-400/30"
+                        "rounded-3xl border border-amber-600 bg-amber-950/10 p-5 flex flex-col justify-between shadow-lg",
+                        flashActive && "animate-pulse"
                       )}
                     >
                       <div>
                         <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
-                            Chamando vendedor
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-400 border border-amber-800 text-[9px] font-black uppercase">
+                            Em chamada
                           </span>
                           <span className="text-xs font-bold text-amber-500 tabular-nums">
                             {countdownLabel(c.activeAttendanceAcceptDeadline)}
                           </span>
                         </div>
-                        <h4 className="text-3xl font-black mt-3 text-white truncate">
+                        <h4 className="text-3xl font-black mt-2 text-white truncate">
                           {c.sellerName}
                         </h4>
-                        <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-amber-200/80">
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-amber-200/60 mt-1">
                           {c.activeAttendanceActorName ? `Chamado por ${c.activeAttendanceActorName}` : 'Chamado pelo sistema'}
                         </p>
                       </div>
-                      <div className="mt-6 grid gap-2 text-sm text-gray-300">
-                        <div className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2">
-                          <span className="font-medium">Tocando ha</span>
-                          <span className="font-bold tabular-nums">{timeLabel(c.activeAttendanceCalledAt ?? c.joinedAt)}</span>
-                        </div>
-                        <div className="rounded-xl bg-black/20 px-3 py-2 font-semibold text-amber-100">
-                          O som para quando o vendedor aceitar, recusar, expirar ou a chamada for escalonada.
-                        </div>
+                      <div className="mt-4 flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-xs text-gray-300 border border-gray-800">
+                        <span className="font-medium text-gray-400">Tocando há</span>
+                        <span className="font-bold tabular-nums">{timeLabel(c.activeAttendanceCalledAt ?? c.joinedAt)}</span>
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bloco de Baixo: Próximo Vendedor da Vez (Menor) */}
+            <div className="flex-grow flex flex-col justify-end">
+              <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <ArrowRight size={16} className="text-brand-500" />
+                Vendedor da Vez (Próximo)
+              </h3>
+              {data?.vendedorDaVez ? (
+                <div className="rounded-3xl border border-gray-800 bg-[#0f1626]/60 p-6 flex flex-col justify-between relative overflow-hidden shadow-xl min-h-[160px]">
+                  <div className="absolute top-0 right-0 h-20 w-20 bg-brand-500/5 rounded-full blur-2xl" />
+                  <div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-brand-950 text-brand-400 border border-brand-800 text-[10px] font-black tracking-widest uppercase">
+                      Próximo da Vez
+                    </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-3">
+                      <h3 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                        {data.vendedorDaVez.sellerName}
+                      </h3>
+                      <div className="shrink-0 flex items-center gap-1.5 text-brand-400 font-bold text-xs bg-brand-950/60 border border-brand-900 rounded-xl px-3 py-2 w-fit">
+                        <Clock size={14} />
+                        Aguardando chamado
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-gray-800 bg-[#0f1626]/20 p-6 flex flex-col justify-center items-center min-h-[160px] text-center">
+                  <span className="h-8 w-8 rounded-full bg-gray-900/60 border border-gray-800/50 flex items-center justify-center text-gray-600 mb-2">
+                    <User size={14} />
+                  </span>
+                  <h3 className="text-base font-bold text-gray-500">Fila Geral Vazia</h3>
+                  <p className="text-xs text-gray-650 mt-1">Nenhum vendedor aguardando na fila de espera no momento.</p>
                 </div>
               )}
             </div>

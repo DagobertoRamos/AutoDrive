@@ -1,0 +1,5 @@
+[2026-07-04 18:01] Backup do módulo de fila criado com sucesso.
+[2026-07-04 18:02] Camada de transições da fila adicionada.
+[2026-07-04 18:03] Fluxo de chamada passou a validar transições antes de chamar.
+[2026-07-04 18:04] Worker leve da fila criado e iniciado.
+[2026-07-04 18:05] Ajuste de resolução de aliases do worker aplicado.

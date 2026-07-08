@@ -475,7 +475,16 @@ export async function processAttendanceReminders(opts: { tenantId?: string; unit
   return { success: errors.length === 0, processed, sent, skipped, escalated, errors }
 }
 
+const dashboardReminderCache = new Map<string, { value: any; expiresAt: number }>()
+
 export async function getReminderDashboard(opts: { tenantId: string; unitId: string; userId: string }) {
+  const cacheKey = `${opts.tenantId}:${opts.unitId}:${opts.userId}`
+  const cached = dashboardReminderCache.get(cacheKey)
+  const nowMs = Date.now()
+  if (cached && cached.expiresAt > nowMs) {
+    return cached.value
+  }
+
   const now = new Date()
   const [cfg, attendances] = await Promise.all([
     prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId: opts.tenantId, unitId: opts.unitId } }, select: { config: true } }),
@@ -539,7 +548,9 @@ export async function getReminderDashboard(opts: { tenantId: string; unitId: str
     dueNow,
     escalatedOpen: escalated,
   }
-  return { settings, stats, byAttendance, myReminder }
+  const result = { settings, stats, byAttendance, myReminder }
+  dashboardReminderCache.set(cacheKey, { value: result, expiresAt: Date.now() + 3000 })
+  return result
 }
 
 async function queueTargetUsers(tenantId: string, unitId: string, scope: QueuePushTargetScope) {
