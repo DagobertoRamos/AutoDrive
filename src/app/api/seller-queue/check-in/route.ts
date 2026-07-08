@@ -15,6 +15,7 @@ import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { checkInSchema } from '@/lib/validators/seller-queue'
 import { getUnitConfig, toPresenceConfig, getOrCreateQueue, nextPosition, recordPresence, logQueueEvent } from '@/lib/seller-queue/queue'
 import { isQueueOpenNow, isOnVacation } from '@/lib/seller-queue/automation'
+import { getActiveVacation, VACATION_TYPE_LABELS } from '@/lib/seller-queue/vacation'
 import { getActiveQueueBlock, blockMessage } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
@@ -50,6 +51,12 @@ export async function POST(req: Request) {
     // Modo férias: vendedor de férias não entra na fila.
     if (isOnVacation(cfg?.config, sellerId)) {
       return NextResponse.json({ success: false, error: 'Você está em modo férias. Desative em Configurações para entrar na fila.' }, { status: 409 })
+    }
+    // Ausência cadastrada pela gestão (férias/folga/atestado…) em vigor: não entra.
+    const activeVac = await getActiveVacation(tenantId, unitId, sellerId)
+    if (activeVac) {
+      const ateDia = new Date(activeVac.endAt).toLocaleDateString('pt-BR')
+      return NextResponse.json({ success: false, error: `Você está com ausência cadastrada (${VACATION_TYPE_LABELS[activeVac.type] ?? activeVac.type}) até ${ateDia}. Fale com a gestão.` }, { status: 409 })
     }
     // Fila com horário automático: barra check-in fora do expediente.
     const cfgX = (cfg?.config as Record<string, unknown> | undefined) ?? {}

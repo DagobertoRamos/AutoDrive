@@ -157,6 +157,8 @@ export type Module =
   | 'queue.send_alert_all'
   | 'queue.reorder'
   | 'queue.force_skip_turn'
+  | 'queue.vacations.manage'    // gerir férias/ausências da fila (gestão)
+  | 'queue.sellers.manage'      // gerir participação dos vendedores na fila (gestão)
 
 // ── Hierarquia numérica de roles ─────────────────────────────────────────────
 // Quanto maior, mais alto na hierarquia
@@ -619,6 +621,8 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'queue.send_alert_all': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['dispatch'] },
   'queue.reorder': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
   'queue.force_skip_turn': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
+  'queue.vacations.manage': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read', 'create', 'update', 'delete'] },
+  'queue.sellers.manage': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['read', 'update', 'configure'] },
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────

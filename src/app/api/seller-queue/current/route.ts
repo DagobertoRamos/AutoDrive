@@ -15,6 +15,7 @@ import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
 import { assertModuleEnabled, canAccessModuleForUser, getDisabledModules, isModuleEnabled } from '@/lib/tenant-modules'
 import { autoCheckoutStalePauses, isQueueOpenNow, isOnVacation, AUTO_PAUSE_REASON } from '@/lib/seller-queue/automation'
+import { getActiveVacation } from '@/lib/seller-queue/vacation'
 import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
 export const dynamic = 'force-dynamic'
@@ -75,7 +76,9 @@ export async function GET(req: Request) {
     }
     const maxPauseMinutes = typeof cfgExtras.maxPauseMinutes === 'number' ? cfgExtras.maxPauseMinutes : 0
     const queueOpen = cfgExtras.autoSchedule ? isQueueOpenNow(ucfg?.openTime, ucfg?.closeTime, ucfg?.allowedDays) : true
-    const onVacation = isOnVacation(ucfg?.config, user.id)
+    const myActiveVacation = await getActiveVacation(tenantId, unitId, user.id)
+    const onVacation = isOnVacation(ucfg?.config, user.id) || !!myActiveVacation
+    const myVacation = myActiveVacation ? { type: myActiveVacation.type, endAt: myActiveVacation.endAt } : null
     const myBlockRaw = await getActiveQueueBlock(tenantId, unitId, user.id)
     const myBlock = myBlockRaw ? { type: myBlockRaw.type, endsAt: myBlockRaw.endsAt } : null
     const myPosVendaRaw = await getActivePosVenda(tenantId, unitId, user.id)
@@ -113,7 +116,7 @@ export async function GET(req: Request) {
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     const unitName = unitScope.unitName
     if (!queue) {
-      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, permissions: queuePermissions, isQueueResponsible, unitName } }, { headers: HEADERS })
+      return NextResponse.json({ success: true, data: { queue: null, entries: [], vendedorDaVez: null, me: null, arrivalsPending: 0, alerts, panelSound, allowChooseSeller, myBlock, myPosVenda, canCheckIn, queueOpen, onVacation, myVacation, permissions: queuePermissions, isQueueResponsible, unitName } }, { headers: HEADERS })
     }
 
     let entries = await prisma.sellerQueueEntry.findMany({
@@ -364,6 +367,7 @@ export async function GET(req: Request) {
         isQueueResponsible,
         queueOpen,
         onVacation,
+        myVacation,
         autoRemovedNotice,
         closeReasons: (cfgExtras.leadCloseReasons as string[] | undefined) ?? [],
         myAttendance: myAtt ? { id: myAtt.id, status: myAtt.status, acceptDeadline: myAtt.acceptDeadline, arrival: myAtt.arrival, visitType: myAtt.visitType, startedAt: myAtt.startedAt || myAtt.calledAt } : null,

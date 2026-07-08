@@ -5138,6 +5138,35 @@ model SellerQueuePosVenda {
   @@map("seller_queue_pos_vendas")
 }
 
+// Férias/Ausências do colaborador na fila (Fase 2). Standalone (sem relações)
+// para não tocar tabelas existentes. Colaborador com ausência ATIVA no período
+// não entra na fila (bloqueado no check-in), não vira vendedor da vez e não
+// recebe push — logo fica fora do escalonamento. Datas em UTC.
+// type: FERIAS|FOLGA|ATESTADO|TREINAMENTO|AUSENCIA|BLOQUEIO_ADM|OUTRO
+// status: PROGRAMADO|ATIVO|ENCERRADO|CANCELADO
+model SellerVacation {
+  id           String   @id @default(cuid())
+  tenantId     String
+  unitId       String
+  sellerId     String
+  type         String   @default("FERIAS")
+  startAt      DateTime
+  endAt        DateTime
+  reason       String?
+  status       String   @default("PROGRAMADO")
+  autoReturn   Boolean  @default(true)
+  createdById  String?
+  canceledById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("seller_vacations")
+}
+
 // Suspeita de fraude/manipulação (aparece nos relatórios).
 model SellerQueueFraudFlag {
   id           String    @id @default(cuid())
