@@ -5,12 +5,14 @@
 
 import { z } from 'zod'
 
+import { UserRole } from '@prisma/client'
+
 export const goalTypeEnum = z.enum(
   ['SALES_EXCHANGE', 'PURCHASE', 'RETURN', 'DOCUMENTATION', 'EXTENDED_WARRANTY', 'SERVICE'],
   { errorMap: () => ({ message: 'Tipo de meta inválido.' }) },
 )
 
-export const goalScopeEnum = z.enum(['USER', 'UNIT', 'TENANT', 'GLOBAL'], {
+export const goalScopeEnum = z.enum(['USER', 'ROLE', 'UNIT', 'TENANT', 'GLOBAL'], {
   errorMap: () => ({ message: 'Escopo de meta inválido.' }),
 })
 
@@ -45,6 +47,7 @@ const goalBaseObject = z.object({
   title:       z.string().max(120, 'Título muito longo.').nullish(),
   unitId:      z.string().cuid('unitId inválido.').nullish(),
   userId:      z.string().cuid('userId inválido.').nullish(),
+  targetRole:  z.nativeEnum(UserRole).nullish(),
   startDate:   z.coerce.date({ invalid_type_error: 'Data inicial inválida.' }),
   endDate:     z.coerce.date({ invalid_type_error: 'Data final inválida.' }),
   targetValue: z.number().nonnegative('Alvo não pode ser negativo.'),
@@ -63,6 +66,10 @@ export const createGoalSchema = goalBaseObject
   .refine((d) => d.scope !== 'USER' || !!d.userId, {
     message: 'userId é obrigatório para metas de escopo USER.',
     path: ['userId'],
+  })
+  .refine((d) => d.scope !== 'ROLE' || !!d.targetRole, {
+    message: 'targetRole é obrigatório para metas de escopo ROLE.',
+    path: ['targetRole'],
   })
   .refine((d) => d.scope !== 'UNIT' || !!d.unitId, {
     message: 'unitId é obrigatório para metas de escopo UNIT.',

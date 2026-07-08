@@ -2816,3 +2816,23 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - Vitest suíte completa (`npx vitest run`) passou sem falhas ou warnings em console: 379/379 testes verdes.
   - Eslint limpo (0 problemas).
 
+### LOG 0207 — 2026-07-08 — Antigravity (Gemini 3.5 Pro) — Metas Mensais Recorrentes e Escopo por Cargo
+- **Tarefa:** Corrigir cadastro/configuração de metas mensais para que iniciem no dia 1º e terminem no último dia do mês às 23:59:59 de forma contínua/recorrente. Adicionar escopo de metas por cargo/função (ROLE) com a devida ordem de prioridade (USER > ROLE > UNIT > TENANT > GLOBAL).
+- **Arquivos alterados:**
+  - `prisma/schema.prisma`: adicionado `ROLE` ao enum `GoalScope` e o campo `targetRole` (UserRole?) ao model `Goal`.
+  - `src/lib/validators/goal.ts`: incluído `ROLE` e `targetRole` no schema Zod do goal, com refinamento de dependência.
+  - `src/lib/goals/service.ts`: implementada a função central de datas `getGoalPeriod` (ajustada para timezone America/Sao_Paulo, leap years, etc.); adicionado método `resolveGoalForUser`; adaptada a janela de apuração `goalWindow` para suportar datas dinâmicas.
+  - `src/services/goalAlertScanner.ts`: ajustada a consulta de metas ativas e idempotência baseada no início da apuração dinâmica.
+  - `src/app/api/goals/route.ts` e `[id]/route.ts`: integrados o tratamento de `targetRole`, bloqueio de duplicidades de metas ativas para o mesmo escopo e aplicação automática do fim de ciclo remoto em `2099-12-31` para metas recorrentes (MONTHLY).
+  - `src/app/api/goals/me/route.ts`: implementado agrupamento por tipo/período para retornar a meta ativa de maior prioridade (USER > ROLE > UNIT > TENANT > GLOBAL).
+  - `src/lib/dashboard/getDashboardData.ts`: incluídas metas do escopo `ROLE` no contador de metas pessoais do dashboard.
+  - `src/app/(dashboard)/metas/page.tsx`: adicionado o escopo "Cargo/Função" e a seleção do cargo correspondente; implementada a desabilitação do campo "Fim" e renderização de uma caixa de prévia do ciclo para metas mensais.
+  - `src/app/api/routes-integration.test.ts`: mockado o `goal.findFirst` no factory do PrismaMock para passar testes de integração.
+  - `src/lib/goals/service.test.ts` [NOVO]: testes unitários da geração de datas (Julho/Agosto/Setembro 2026, Fevereiro 2027, Fevereiro 2028, virada de ano) e da ordem de prioridade na resolução de metas.
+- **Validações:**
+  - Banco atualizado utilizando `npx prisma db push`.
+  - `npx tsc --noEmit` executado com sucesso (0 erros de compilação).
+  - `npm run build` executado com sucesso (todas as rotas estáticas e dinâmicas geradas).
+  - Vitest suíte completa (`npx vitest run`) passou sem erros: 389/389 testes verdes.
+
+

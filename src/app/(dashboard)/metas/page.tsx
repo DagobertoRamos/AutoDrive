@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface GoalLevel { level: number; targetValue: number; label?: string | null }
+interface GoalLevel { level: number; targetValue: number; label?: string | null }
 interface Goal {
   id:          string
   type:        string
@@ -19,6 +20,7 @@ interface Goal {
   title:       string | null
   unitId:      string | null
   userId:      string | null
+  targetRole:  string | null
   startDate:   string
   endDate:     string
   targetValue: number | string
@@ -40,8 +42,18 @@ const TYPES: Option[] = [
 ]
 const SCOPES: Option[] = [
   { value: 'USER', label: 'Vendedor' },
+  { value: 'ROLE', label: 'Cargo/Função' },
   { value: 'UNIT', label: 'Unidade' },
   { value: 'TENANT', label: 'Loja inteira' },
+]
+const ROLES: Option[] = [
+  { value: 'VENDEDOR', label: 'Vendedor' },
+  { value: 'VENDEDOR_LIDER', label: 'Vendedor Líder' },
+  { value: 'GERENTE', label: 'Gerente' },
+  { value: 'GERENTE_GERAL', label: 'Gerente Geral' },
+  { value: 'GERENTE_ADMINISTRATIVO', label: 'Gerente Administrativo' },
+  { value: 'FINANCEIRO', label: 'Financeiro' },
+  { value: 'ADM', label: 'Administrador' },
 ]
 const PERIODS: Option[] = [
   { value: 'DAILY', label: 'Diário' },
@@ -61,7 +73,7 @@ const labelOf = (opts: Option[], v: string) => opts.find((o) => o.value === v)?.
 
 interface GoalForm {
   type: string; scope: string; period: string; title: string
-  unitId: string; userId: string
+  unitId: string; userId: string; targetRole: string
   startDate: string; endDate: string
   targetValue: number; measureUnit: string
   progressive: boolean; levels: GoalLevel[]
@@ -70,7 +82,7 @@ interface GoalForm {
 const today = () => new Date().toISOString().slice(0, 10)
 const emptyForm: GoalForm = {
   type: 'SALES_EXCHANGE', scope: 'USER', period: 'MONTHLY', title: '',
-  unitId: '', userId: '', startDate: today(), endDate: today(),
+  unitId: '', userId: '', targetRole: '', startDate: today(), endDate: today(),
   targetValue: 0, measureUnit: 'QTD', progressive: false, levels: [],
 }
 
@@ -103,6 +115,7 @@ function Modal({
       setForm({
         type: initial.type, scope: initial.scope, period: initial.period,
         title: initial.title ?? '', unitId: initial.unitId ?? '', userId: initial.userId ?? '',
+        targetRole: initial.targetRole ?? '',
         startDate: initial.startDate.slice(0, 10), endDate: initial.endDate.slice(0, 10),
         targetValue: Number(initial.targetValue), measureUnit: initial.measureUnit,
         progressive: initial.progressive, levels: initial.levels ?? [],
@@ -123,6 +136,23 @@ function Modal({
     setForm((prev) => ({ ...prev, levels: [...prev.levels, { level: prev.levels.length + 1, targetValue: 0, label: '' }] }))
   const removeLevel = (i: number) =>
     setForm((prev) => ({ ...prev, levels: prev.levels.filter((_, idx) => idx !== i).map((l, idx) => ({ ...l, level: idx + 1 })) }))
+
+  // Helper para preview da meta mensal
+  let previewCiclo = null
+  if (form.period === 'MONTHLY' && form.startDate) {
+    const parts = form.startDate.split('-')
+    const year = parseInt(parts[0], 10)
+    const month = parseInt(parts[1], 10)
+    if (!isNaN(year) && !isNaN(month)) {
+      const lastDay = new Date(year, month, 0).getDate()
+      const cicloInicio = `01/${String(month).padStart(2, '0')}/${year} 00:00`
+      const cicloFim = `${String(lastDay).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year} 23:59`
+      const nextYear = month === 12 ? year + 1 : year
+      const nextMonth = month === 12 ? 1 : month + 1
+      const proxCiclo = `01/${String(nextMonth).padStart(2, '0')}/${nextYear}`
+      previewCiclo = { cicloInicio, cicloFim, proxCiclo }
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -173,6 +203,15 @@ function Modal({
                 </select>
               </div>
             )}
+            {form.scope === 'ROLE' && (
+              <div className="sm:col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo/Função *</label>
+                <select className={inputClass()} value={form.targetRole} onChange={(e) => set('targetRole', e.target.value)}>
+                  <option value="">Selecione...</option>
+                  {ROLES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            )}
 
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Título (opcional)</label>
@@ -198,8 +237,21 @@ function Modal({
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Fim *</label>
-              <input type="date" className={inputClass()} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} />
+              {form.period === 'MONTHLY' ? (
+                <input type="text" className={cn(inputClass(), 'bg-gray-50 cursor-not-allowed')} value="Recorrente (Sem data final)" disabled />
+              ) : (
+                <input type="date" className={inputClass()} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} />
+              )}
             </div>
+
+            {previewCiclo && (
+              <div className="sm:col-span-2 rounded-xl bg-brand-50 p-4 border border-brand-100 text-sm text-brand-900 space-y-1 shadow-sm">
+                <p className="font-semibold text-brand-800 flex items-center gap-1.5">✨ Meta mensal ativa (recorrente)</p>
+                <p><strong>Ciclo atual:</strong> {previewCiclo.cicloInicio} até {previewCiclo.cicloFim}</p>
+                <p><strong>Próximo reset:</strong> {previewCiclo.cicloFim}:59</p>
+                <p><strong>Próximo ciclo:</strong> {previewCiclo.proxCiclo}</p>
+              </div>
+            )}
 
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Alvo base *</label>
@@ -320,7 +372,9 @@ export default function MetasPage() {
         title: data.title || null,
         unitId: data.scope === 'UNIT' ? data.unitId : null,
         userId: data.scope === 'USER' ? data.userId : null,
-        startDate: data.startDate, endDate: data.endDate,
+        targetRole: data.scope === 'ROLE' ? data.targetRole : null,
+        startDate: data.startDate,
+        endDate: data.period === 'MONTHLY' ? data.startDate : data.endDate,
         targetValue: data.targetValue, measureUnit: data.measureUnit,
         progressive: data.progressive,
         ...(data.progressive
@@ -379,7 +433,7 @@ export default function MetasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Metas</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure metas por vendedor, unidade ou loja, com níveis progressivos.</p>
+          <p className="mt-1 text-sm text-gray-500">Configure metas por vendedor, cargo, unidade ou loja, com níveis progressivos.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800">
           <Plus className="h-4 w-4" />Nova Meta
@@ -421,7 +475,9 @@ export default function MetasPage() {
                 goals.map((g) => (
                   <tr key={g.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{g.title || labelOf(TYPES, g.type)}</td>
-                    <td className="px-4 py-3 text-gray-600">{labelOf(SCOPES, g.scope)}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {g.scope === 'ROLE' && g.targetRole ? `Cargo: ${labelOf(ROLES, g.targetRole)}` : labelOf(SCOPES, g.scope)}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{labelOf(PERIODS, g.period)}</td>
                     <td className="px-4 py-3 tabular-nums text-gray-700">
                       {Number(g.targetValue).toLocaleString('pt-BR')} {g.measureUnit}

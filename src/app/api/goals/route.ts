@@ -40,11 +40,13 @@ export async function GET(req: Request) {
     const status = searchParams.get('status')
     const unitId = searchParams.get('unitId')
     const userId = searchParams.get('userId')
+    const targetRole = searchParams.get('targetRole')
     if (type) filters.type = type
     if (scope) filters.scope = scope
     if (status) filters.status = status
     if (unitId) filters.unitId = unitId
     if (userId) filters.userId = userId
+    if (targetRole) filters.targetRole = targetRole
 
     const goals = await prisma.goal.findMany({
       where: { ...goalReadWhere(user), ...filters },
@@ -82,17 +84,42 @@ export async function POST(req: Request) {
       await assertUnitBelongsToTenant(data.unitId, tenantId, user.role)
     }
 
+    // Evitar duplicidade de meta ativa com os mesmos critérios
+    const duplicate = await prisma.goal.findFirst({
+      where: {
+        tenantId,
+        type:        data.type,
+        scope:       data.scope,
+        period:      data.period,
+        status:      'ATIVA',
+        active:      true,
+        ...(data.scope === 'USER' ? { userId: data.userId } : {}),
+        ...(data.scope === 'ROLE' ? { targetRole: data.targetRole } : {}),
+        ...(data.scope === 'UNIT' ? { unitId: data.unitId } : {}),
+      },
+    })
+    if (duplicate) {
+      return NextResponse.json(
+        { success: false, error: 'Já existe uma meta ativa cadastrada para este mesmo escopo.' },
+        { status: 400 },
+      )
+    }
+
+    const startDate = data.startDate
+    const endDate = data.period === 'MONTHLY' ? new Date('2099-12-31T23:59:59.999Z') : data.endDate
+
     const goal = await prisma.goal.create({
       data: {
         tenantId,
         unitId:      data.scope === 'UNIT' ? data.unitId : null,
         userId:      data.scope === 'USER' ? data.userId : null,
+        targetRole:  data.scope === 'ROLE' ? data.targetRole : null,
         type:        data.type,
         scope:       data.scope,
         period:      data.period,
         title:       data.title ?? null,
-        startDate:   data.startDate,
-        endDate:     data.endDate,
+        startDate,
+        endDate,
         targetValue: data.targetValue,
         measureUnit: data.measureUnit,
         progressive: data.progressive,

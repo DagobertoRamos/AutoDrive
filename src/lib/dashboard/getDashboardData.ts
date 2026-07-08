@@ -667,13 +667,14 @@ async function loadPendencies(ctx: DashboardContext, now: Date, todayStart: Date
 
 async function loadGoals(ctx: DashboardContext) {
   const tenantPart = ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId }
-  const [minhas, unidade, tenant] = await Promise.all([
+  const [minhasUser, minhasRole, unidade, tenant] = await Promise.all([
     prisma.goal.count({ where: { ...tenantPart, status: 'ATIVA', active: true, scope: 'USER', userId: ctx.user.id } }),
+    prisma.goal.count({ where: { ...tenantPart, status: 'ATIVA', active: true, scope: 'ROLE', targetRole: ctx.user.role } }),
     prisma.goal.count({ where: { ...tenantPart, status: 'ATIVA', active: true, scope: 'UNIT', unitId: ctx.unitId ?? NO_MATCH } }),
     prisma.goal.count({ where: { ...tenantPart, status: 'ATIVA', active: true, scope: 'TENANT' } }),
   ])
 
-  return { minhas, unidade, tenant }
+  return { minhas: minhasUser + minhasRole, unidade, tenant }
 }
 
 async function loadRanking(ctx: DashboardContext) {

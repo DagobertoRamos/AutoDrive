@@ -21,14 +21,41 @@ export async function GET(_req: Request) {
     const goals = await prisma.goal.findMany({
       where: { ...goalReadWhere(user), status: 'ATIVA', active: true },
       include: { levels: { orderBy: { level: 'asc' } } },
-      orderBy: [{ scope: 'asc' }, { type: 'asc' }],
+    })
+
+    // Agrupa metas por (type, period) e resolve por prioridade (USER > ROLE > UNIT > TENANT > GLOBAL)
+    const groups: Record<string, typeof goals> = {}
+    for (const g of goals) {
+      const key = `${g.type}_${g.period}`
+      if (!groups[key]) groups[key] = []
+      groups[key].push(g)
+    }
+
+    const scopePriority: Record<string, number> = {
+      USER: 1,
+      ROLE: 2,
+      UNIT: 3,
+      TENANT: 4,
+      GLOBAL: 5,
+    }
+
+    const resolvedGoals: typeof goals = []
+    for (const key in groups) {
+      const sorted = groups[key].sort((a, b) => (scopePriority[a.scope] ?? 99) - (scopePriority[b.scope] ?? 99))
+      resolvedGoals.push(sorted[0])
+    }
+
+    // Ordenar resolvedGoals para manter exibição organizada por escopo e tipo
+    resolvedGoals.sort((a, b) => {
+      if (a.scope !== b.scope) return (scopePriority[a.scope] ?? 99) - (scopePriority[b.scope] ?? 99)
+      return a.type.localeCompare(b.type)
     })
 
     const now = new Date()
     const data = await Promise.all(
-      goals.map(async (goal) => ({
+      resolvedGoals.map(async (goal) => ({
         goal,
-        progress: await computeGoalProgress(goal, now),
+        progress: await computeGoalProgress(goal, now, user.id),
       })),
     )
 
