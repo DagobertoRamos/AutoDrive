@@ -13,6 +13,7 @@ import { CheckCircle2, XCircle, SkipForward, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 import { registerPushToken, consumePushAction, isNativeAndroid, stopNativeRinger } from '@/lib/mobile/push-bridge'
+import { refreshWebPushIfGranted } from '@/lib/mobile/web-push-client'
 
 const POLL_MS = 2000 // detecção rápida da chamada (endpoint leve /my-active-call)
 
@@ -115,8 +116,13 @@ export default function QueueAlertWatcher() {
 
   useEffect(() => {
     void registerPushToken()
+    // iPhone/PWA: mantém a inscrição Web Push VIVA a cada abertura/retorno ao app.
+    // O iOS rotaciona/expira o endpoint da subscription; sem renovar, ela morre e
+    // o envio falha (404/410) → o iPhone fechado deixa de receber a chamada (só
+    // "tocava" com o app aberto). No-op se não houver permissão (não abre prompt).
+    void refreshWebPushIfGranted()
     void processNativeAction()
-    const onResume = () => { if (!document.hidden) void processNativeAction() }
+    const onResume = () => { if (!document.hidden) { void processNativeAction(); void refreshWebPushIfGranted() } }
     document.addEventListener('visibilitychange', onResume)
     window.addEventListener('focus', onResume)
     return () => { document.removeEventListener('visibilitychange', onResume); window.removeEventListener('focus', onResume) }
