@@ -12,6 +12,7 @@ import { notifySellerCalled, notifyNoSellerAvailable } from './notify'
 import { escalateAfterTimeout } from './penalty'
 import { readEscalationConfig } from './escalation-config'
 import { escalateArrival } from './escalation'
+import { getParticipant } from './participants'
 import { canTransitionQueueEntryStatus } from './state-machine'
 
 export interface CallResult {
@@ -98,8 +99,12 @@ export async function callForArrival(opts: {
     !busyIds.has(w.sellerId)
   )
 
+  // Participação (config por colaborador): só chama quem PODE ser vendedor da vez.
+  // Padrão retrocompatível: sem config, canBeVez=true → não muda nada.
+  const eligible = regular.filter((w) => getParticipant(cfg?.config, w.sellerId).canBeVez !== false)
+
   // 1) Tenta um vendedor disponível.
-  for (const cand of regular) {
+  for (const cand of eligible) {
     const res = await tryCall(cand.id, cand.sellerId, opts.reason ?? null, opts.recurring ?? false)
     if (res) return res
   }
