@@ -2808,3 +2808,57 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Comportamento entregue:** vendedor vê apenas leads próprios (`crm.view.own`); gerente/líder vê unidade (`crm.view.unit`); gerência sênior/adm vê tenant (`crm.view.all`). `Leads` permite cadastro manual com deduplicação básica por telefone/e-mail, mudança de etapa e marcação de convertido/perdido. `Kanban` usa os estados já existentes de `MarketingLead`. `Atendimentos` lista `SellerQueueAttendance` no escopo correto e torna visível a ligação fila → CRM. `Configurações` documenta a base reaproveitada e as etapas/origens já existentes nesta fase.
 - **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npx eslint` dos arquivos novos/alterados OK com avisos de `set-state-in-effect` nas páginas client-side; `npm run build` bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.d.ts` durante `prisma generate`.
 - **Riscos/pendências:** esta é uma fase inicial segura, sem novo schema. Ainda faltam timeline dedicada, follow-ups completos, configuração persistida de etapas/origens, integração automática da importação AutoConf → lead CRM e telas mais profundas de detalhe/edição. Como a base usa `MarketingLead`, a próxima fase deve evoluir em cima dela, não criar outra tabela de leads.
+
+### LOG 0207 — 2026-07-08 — Codex (GPT-5) — CRM próxima fase: detalhe do lead, timeline e follow-ups
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
+- **Tarefa:** abrir a próxima fase do CRM em cima da base da Fase 1, entregando detalhe do lead, linha do tempo operacional e tarefas de follow-up sem criar novo schema nem duplicar o fluxo do SDR.
+- **O que foi reaproveitado:** `MarketingLeadTask` para tarefas, `MarketingLeadAssignment` para histórico de atribuição/conversão/perda, `MarketingLeadClaim` para tentativas de assunção, `MarketingLeadSla` para prazos, além dos vínculos já existentes com `Customer`, `Vehicle`, `Deal` e `SellerQueueAttendance`.
+- **O que foi criado/alterado:**
+  - `src/lib/crm/shared.ts`: helper `canAccessLeadByScope` para centralizar a regra own/unit/all também no detalhe.
+  - `src/app/api/crm/leads/[id]/route.ts`: agora também expõe `GET` de detalhe, trazendo lead, relacionamentos, tarefas e timeline consolidada (criação, atribuições, claims, tarefas e SLA) com nomes resolvidos.
+  - `src/app/api/crm/leads/[id]/tasks/route.ts` (NOVO): `GET|POST` de tarefas/follow-ups do lead.
+  - `src/app/api/crm/tasks/[taskId]/route.ts` (NOVO): `PATCH` para concluir/reabrir/editar tarefa.
+  - `src/app/(dashboard)/crm/leads/[id]/page.tsx` (NOVO): tela de detalhe com resumo, vínculos operacionais, formulário de follow-up, lista de tarefas e linha do tempo.
+  - `src/app/(dashboard)/crm/leads/page.tsx`: link rápido `Ver detalhe` por lead e pequeno ajuste de carregamento com `useCallback`.
+- **Comportamento entregue:** a listagem de leads agora abre um detalhe operacional. No detalhe, o usuário vê quem está responsável, unidade, dados do cliente/veículo/negociação quando existirem, último atendimento ligado à fila, cria follow-ups com prazo, conclui/reabre tarefas e enxerga a jornada do lead em ordem cronológica. O backend reaplica exatamente o mesmo escopo do CRM para não permitir escapar do próprio lead/unidade/tenant.
+- **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npx eslint 'src/app/api/crm/**/*.ts' 'src/app/(dashboard)/crm/**/*.tsx' 'src/lib/crm/shared.ts'` OK com warnings advisory de `react-hooks/set-state-in-effect` nas páginas client-side do CRM; `npm run build` segue bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`.
+- **Riscos/pendências:** ainda falta transformar a timeline em algo mais amplo (ex.: contatos reais/WhatsApp/telefonia), persistir configurações de etapas/origens/cadências e ligar a importação AutoConf para nascer lead automaticamente no CRM. Esta fase manteve o escopo seguro, aproveitando só estruturas já existentes.
+
+### LOG 0208 — 2026-07-08 — Codex (GPT-5) — CRM próxima fase: timeline com atividade real (fila + telefonia)
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
+- **Tarefa:** continuar a evolução do detalhe do lead trazendo sinais operacionais reais já existentes no sistema, sem criar novo backend paralelo de comunicação.
+- **O que foi reaproveitado:** `SellerQueueAttendance` vinculado por `leadId`, `TelephonyCall` já vinculado por `leadId/customerId`, além do escopo own/unit/all aberto na Fase 2 do CRM.
+- **O que foi alterado:**
+  - `src/app/api/crm/leads/[id]/route.ts`: detalhe do lead agora também retorna lista de atendimentos do lead e lista de chamadas de telefonia do lead/cliente; a timeline consolidada passou a incluir eventos `ATTENDANCE` e `CALL`.
+  - `src/app/(dashboard)/crm/leads/[id]/page.tsx`: novo bloco visual com **Atendimentos ligados ao lead** e **Chamadas de telefonia**, além da timeline já enriquecida com esses eventos.
+- **Comportamento entregue:** ao abrir um lead, o CRM deixa de mostrar só dados cadastrais e passa a exibir atividade real da operação: quem atendeu esse lead na fila, quando ocorreu, resultado/tipo quando houver; e também chamadas ligadas ao lead/cliente, com direção, status, números, duração, agente e indicação de gravação.
+- **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npx eslint 'src/app/api/crm/**/*.ts' 'src/app/(dashboard)/crm/**/*.tsx' 'src/lib/crm/shared.ts'` OK com os mesmos warnings advisory de `react-hooks/set-state-in-effect` nas páginas client-side; `npm run build` segue bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.js` durante `prisma generate`.
+- **Riscos/pendências:** a timeline agora já tem atividade real de fila e telefonia. Ainda faltam, em passos futuros, integrar comunicações de WhatsApp/notificações quando houver vínculo confiável por lead/metadata, além de fazer a importação AutoConf nascer lead automaticamente no CRM.
+
+### LOG 0209 — 2026-07-08 — Codex (GPT-5) — CRM próxima fase: AutoConf agora nasce/atualiza lead
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
+- **Tarefa:** ligar a importação de negociações do AutoConf ao CRM, para que a integração não crie só `Customer` e `Deal`, mas também sincronize o `MarketingLead` correspondente quando houver dados suficientes.
+- **O que foi alterado:**
+  - `src/app/api/integrations/autoconf/deals/route.ts`: adicionado fluxo de sincronização de lead após create/update do negócio importado.
+  - Reaproveitei o `MarketingLead` existente, com deduplicação conservadora por `customerId`, e-mail e telefone normalizado.
+  - Quando o negócio vem do AutoConf, o importador agora:
+    - resolve `seller.userId` para creditar o responsável no CRM;
+    - cria ou atualiza um lead com `source: 'AUTOCONF'`;
+    - vincula `customerId`, unidade, responsável e observações importadas;
+    - liga o `convertedDealId` ao negócio importado;
+    - marca `CONVERTED` quando a negociação já chegou finalizada, ou `WORKING` quando ainda está em andamento.
+- **Comportamento entregue:** a importação AutoConf deixa de parar no módulo de negociações e passa a alimentar o CRM automaticamente, sem criar tabela nova e sem duplicar o fluxo da fila. Em modo `dryRun`, nada muda; em gravação real, o lead do CRM passa a nascer ou ser atualizado junto com o deal importado.
+- **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npx eslint 'src/app/api/integrations/autoconf/deals/route.ts' 'src/app/api/crm/**/*.ts' 'src/app/(dashboard)/crm/**/*.tsx' 'src/lib/crm/shared.ts'` OK com os mesmos warnings advisory já conhecidos das páginas client-side do CRM; `npm run build` segue bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.d.ts` durante `prisma generate`.
+- **Riscos/pendências:** a sincronização de lead já entra no AutoConf, mas ainda pode evoluir com regras mais finas de etapa/origem/cadência e, no futuro, com reconciliação mais rica de comunicações (WhatsApp/notificações) por metadata.
+
+### LOG 0210 — 2026-07-08 — Claude (Opus 4.8) — Corrige crash ao editar colaboradores de gestão (máscara com null) + error boundary do dashboard
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration, sem mudança de schema/permissões/API.
+- **Tarefa:** Corrigir o erro "Não foi possível carregar / Houve um erro ao abrir o AutoDrive neste dispositivo" que derrubava o app ao **editar** colaboradores de gestão (Dagoberto/GERENTE, Marcelo/ADM, Luciano/GERENTE, Renan/GERENTE_GERAL). Vendedores editavam normal.
+- **Causa raiz:** esses colaboradores têm registro `Seller` com campos de texto **nulos** no banco (`cpf=null`, `whatsapp=null`, `shortName=null`) — criados sem esses dados (vendedores preenchem). O modal de edição chama `maskCPF(form.cpf)`/`maskPhone(form.whatsapp)`, e as máscaras faziam `value.replace(...)` — **`null.replace` lança em tempo de render**. Como o segmento `(dashboard)` **não tinha `error.tsx`**, o throw subia ao `global-error.tsx` e virava a tela geral. (Não era permissão, sessão, enum de cargo, tenant nem PWA — a lista abre porque usa `s.position?.name ?? s.cargo`.)
+- **Correção (causa real, sem gambiarra, sem reduzir segurança):**
+  1. `src/lib/masks.ts` — `maskCPF/maskCNPJ/maskPhone/maskCEP/maskPlate` aceitam `string | null | undefined` e coagem com `String(value ?? '')` (defeito real do util; protege toda a app dessa classe de crash).
+  2. `src/app/(dashboard)/cadastros/vendedores/page.tsx` — ao abrir a edição, coage campos de texto nulos para `''` (`...emptyForm` + coerção de fullName/shortName/cpf/whatsapp/email/unitId). Form/máscaras nunca mais recebem null.
+  3. `src/app/(dashboard)/error.tsx` (NOVO) — error boundary do segmento: erro de render passa a mostrar aviso controlado e recuperável ("Tentar novamente") dentro do app, sem derrubar tudo.
+- **Não alterado:** `/api/sellers/[id]` já tratava vazio (`cpf''`→null, `whatsapp''`→''), então salvar funciona. Nenhuma permissão liberada, nada apagado, sem migration, layout global intacto, CRM/outros módulos intocados.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npm run build` OK. Repro por análise de dados (3 sellers de gestão com cpf/whatsapp nulos) + confirmação de que as máscaras lançavam com null (sem navegador logado daqui).
+- **Pendências:** dados seguem com cpf/whatsapp nulos (correto: "não informado"; UI mostra vazio e permite preencher). Commit sugerido: `fix(colaboradores): corrige crash ao editar cargos de gestão (máscara com null) + error boundary do dashboard`.

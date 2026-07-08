@@ -149,16 +149,16 @@ export function parseKM(value: string | null | undefined): number | null {
 
 // ── Documentos brasileiros ───────────────────────────────────────────────────
 
-export function maskCPF(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 11)
+export function maskCPF(value: string | null | undefined): string {
+  const d = String(value ?? '').replace(/\D/g, '').slice(0, 11)
   return d
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
     .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4')
 }
 
-export function maskCNPJ(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 14)
+export function maskCNPJ(value: string | null | undefined): string {
+  const d = String(value ?? '').replace(/\D/g, '').slice(0, 14)
   return d
     .replace(/(\d{2})(\d)/, '$1.$2')
     .replace(/(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
@@ -166,8 +166,8 @@ export function maskCNPJ(value: string): string {
     .replace(/(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, '$1.$2.$3/$4-$5')
 }
 
-export function maskPhone(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 11)
+export function maskPhone(value: string | null | undefined): string {
+  const d = String(value ?? '').replace(/\D/g, '').slice(0, 11)
   if (d.length <= 10) {
     return d
       .replace(/(\d{2})(\d)/, '($1) $2')
@@ -178,8 +178,8 @@ export function maskPhone(value: string): string {
     .replace(/(\d{5})(\d)/, '$1-$2')
 }
 
-export function maskCEP(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 8)
+export function maskCEP(value: string | null | undefined): string {
+  const d = String(value ?? '').replace(/\D/g, '').slice(0, 8)
   return d.replace(/(\d{5})(\d)/, '$1-$2')
 }
 
@@ -187,8 +187,8 @@ export function maskCEP(value: string): string {
  * Placa Mercosul ou padrão antigo. Aceita ambos. Não força hífen quando o
  * usuário ainda está digitando para não atrapalhar.
  */
-export function maskPlate(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)
+export function maskPlate(value: string | null | undefined): string {
+  return String(value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)
 }
 
 // ── Inteiros genéricos (parcelas, anos, doors, etc.) ─────────────────────────

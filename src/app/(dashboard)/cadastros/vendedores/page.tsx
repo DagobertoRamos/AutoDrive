@@ -229,7 +229,21 @@ function Modal({
     if (open) {
       if (initial) {
         const { id: _id, userId: _uid, unitName: _unitName, position: _p, ...rest } = initial
-        setForm({ ...rest, positionId: initial.positionId ?? null })
+        // Colaboradores antigos/de gestão podem ter campos de texto nulos no banco
+        // (ex.: cpf/whatsapp/apelido). O form (e as máscaras) esperam string —
+        // coage null/undefined para '' para não quebrar a tela de edição.
+        setForm({
+          ...emptyForm,
+          ...rest,
+          fullName: initial.fullName ?? '',
+          shortName: initial.shortName ?? '',
+          cpf: initial.cpf ?? '',
+          whatsapp: initial.whatsapp ?? '',
+          email: initial.email ?? '',
+          unitId: initial.unitId ?? '',
+          cargo: initial.cargo ?? 'VENDEDOR',
+          positionId: initial.positionId ?? null,
+        })
       } else {
         // default: cargo "Vendedor" do sistema
         const defaultPos = positions.find((p) => p.slug === 'vendedor')
