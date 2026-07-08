@@ -13,6 +13,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { queueDate, resolveQueueUnitForRead, getUnitConfig, isQueuePanelFallbackUser } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled, canAccessModuleForUser, isModuleEnabled } from '@/lib/tenant-modules'
+import { sweepExpiredCalls } from '@/lib/seller-queue/call'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +57,22 @@ export async function GET(req: Request) {
       where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } },
       select: { id: true },
     })
+
+    // Auto-cura: expira chamadas VENCIDAS presas na fila desta unidade. O watcher
+    // global (QueueAlertWatcher) consulta este endpoint a cada ~2s em QUALQUER tela
+    // aberta — isto restaura a varredura ambiente que antes vinha do /current (o
+    // watcher passou a usar este endpoint na Fase 1). Só varre quando HÁ chamada
+    // vencida (uma contagem indexada barata no caso normal), evitando que o painel
+    // toque eternamente quando o vendedor chamado não aceita no prazo.
+    if (queue) {
+      const expiredCount = await prisma.sellerQueueAttendance.count({
+        where: { queueId: queue.id, status: 'CALLED', acceptDeadline: { lt: new Date() } },
+      })
+      if (expiredCount > 0) {
+        await sweepExpiredCalls({ tenantId, unitId, queueId: queue.id, actorId: user.id }).catch(() => {})
+      }
+    }
+
     const myAtt = queue
       ? await prisma.sellerQueueAttendance.findFirst({
           where: { queueId: queue.id, sellerId: user.id, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
