@@ -10,10 +10,26 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { CheckCircle2, XCircle, SkipForward, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 import { registerPushToken, consumePushAction, isNativeAndroid, stopNativeRinger } from '@/lib/mobile/push-bridge'
 
-const POLL_MS = 6000
+const POLL_MS = 2000 // detecção rápida da chamada (endpoint leve /my-active-call)
+
+// Rótulos dos tipos de visita para o pop-up (espelha DEFAULT_ATTENDANCE_TYPES).
+const VISIT_LABEL: Record<string, string> = {
+  CLIENTE_PORTA: 'Cliente de porta',
+  INFORMACAO_RAPIDA: 'Informação rápida',
+  AGENDAMENTO: 'Agendamento',
+  RETORNO: 'Retorno',
+  POS_VENDA: 'Pós-venda',
+  RETIRADA_CARRO: 'Retirada de carro',
+  ENTREGA_VEICULO: 'Entrega de veículo',
+  DOCUMENTACAO: 'Documentação',
+  TEST_DRIVE: 'Test-drive',
+  AVALIACAO: 'Avaliação',
+  OUTRO: 'Outro',
+}
 
 function getPosition(): Promise<{ latitude?: number; longitude?: number; accuracyM?: number }> {
   return new Promise((resolve) => {
@@ -25,7 +41,7 @@ function getPosition(): Promise<{ latitude?: number; longitude?: number; accurac
   })
 }
 
-interface Prompt { attId: string; customerName: string | null }
+interface Prompt { attId: string; customerName: string | null; visitType?: string | null; unitName?: string | null; acceptDeadline?: string | null }
 
 export default function QueueAlertWatcher() {
   const alertTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -41,6 +57,17 @@ export default function QueueAlertWatcher() {
   const [err, setErr] = useState<string | null>(null)
   const [rejectMode, setRejectMode] = useState(false)
   const [reason, setReason] = useState('')
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+
+  // Contagem regressiva até o prazo de aceite (só visual).
+  useEffect(() => {
+    if (!prompt?.acceptDeadline) { setSecondsLeft(null); return }
+    const target = new Date(prompt.acceptDeadline).getTime()
+    const tick = () => setSecondsLeft(Math.max(0, Math.ceil((target - Date.now()) / 1000)))
+    tick()
+    const i = setInterval(tick, 1000)
+    return () => clearInterval(i)
+  }, [prompt?.acceptDeadline])
 
   // Para TUDO de uma vez (timers + sirene nativa + título). Direto, sem eventos.
   const stopAll = useCallback(() => {
@@ -121,7 +148,7 @@ export default function QueueAlertWatcher() {
     const poll = async () => {
       if (stopped || noAccess.current) return
       try {
-        const res = await fetch('/api/seller-queue/current', { credentials: 'include' })
+        const res = await fetch('/api/seller-queue/my-active-call', { credentials: 'include' })
         if (res.status === 403) { noAccess.current = true; return }
         if (!res.ok) return
         const data = (await res.json())?.data
@@ -151,7 +178,7 @@ export default function QueueAlertWatcher() {
             // App Android: a notificação de chamada do SISTEMA (CallStyle) é o
             // único "Aceitar/Recusar" — não mostrar o balão interno para não
             // duplicar/conflitar. No PWA/PC (sem notificação nativa), mostra.
-            if (!isNativeAndroid()) setPrompt({ attId: att.id, customerName: att.arrival?.customerName ?? null })
+            if (!isNativeAndroid()) setPrompt({ attId: att.id, customerName: att.arrival?.customerName ?? null, visitType: att.visitType ?? null, unitName: data.unitName ?? null, acceptDeadline: att.acceptDeadline ?? null })
             if (deadlineMs) {
               if (deadlineTimer.current) clearTimeout(deadlineTimer.current)
               deadlineTimer.current = setTimeout(() => { stopAll(); setPrompt(null); fireTimeout(att.id) }, Math.max(0, deadlineMs - Date.now()))
@@ -195,14 +222,29 @@ export default function QueueAlertWatcher() {
 
   if (!prompt) return null
 
+  const visitLabel = prompt.visitType ? (VISIT_LABEL[prompt.visitType] ?? 'Atendimento') : null
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-3 sm:items-center">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-2xl">🔔</span>
-          <h2 className="text-lg font-bold text-gray-900">Você é o vendedor da vez!</h2>
+    <div role="alertdialog" aria-modal="true" className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center">
+      <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-4 ring-brand-500/40">
+        {/* Cabeçalho urgente */}
+        <div className="animate-pulse bg-brand-600 px-5 py-4 text-center">
+          <p className="text-2xl">🔔</p>
+          <h2 className="text-lg font-black uppercase tracking-wide text-white">Você é o vendedor da vez</h2>
         </div>
-        <p className="mb-4 text-sm text-gray-500">{prompt.customerName ? <>Cliente: <strong>{prompt.customerName}</strong>. </> : 'Cliente presencial aguardando. '}Aceite, recuse ou passe a vez.</p>
+
+        <div className="p-5">
+          {/* Detalhes da chamada */}
+          <div className="mb-4 space-y-1.5 rounded-xl border border-gray-100 bg-gray-50 p-3 text-sm">
+            <p className="text-gray-700">Cliente aguardando atendimento{prompt.customerName ? <>: <strong className="text-gray-900">{prompt.customerName}</strong></> : null}.</p>
+            {visitLabel && <p className="text-gray-600">Tipo: <strong className="text-gray-900">{visitLabel}</strong></p>}
+            {prompt.unitName && <p className="text-gray-600">Unidade: <strong className="text-gray-900">{prompt.unitName}</strong></p>}
+            {secondsLeft !== null && (
+              <p className={cn('font-bold tabular-nums', secondsLeft <= 10 ? 'text-red-600' : 'text-brand-700')}>
+                Tempo para responder: {secondsLeft}s
+              </p>
+            )}
+          </div>
 
         {err && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
 
@@ -224,6 +266,7 @@ export default function QueueAlertWatcher() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   )
