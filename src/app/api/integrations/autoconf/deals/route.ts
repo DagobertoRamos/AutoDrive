@@ -17,6 +17,8 @@ import {
 import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
 import { isCommissionEligibleStatus } from '@/lib/commission/status'
 import { getRetornoConfig, computeReturnFromAutoconf, type RetornoConfig } from '@/lib/finance/retorno-config'
+import { normalizePhone } from '@/lib/crm/shared'
+import type { LeadStatus } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -219,6 +221,97 @@ async function resolveCustomerId(tenantId: string, row: AutoconfRow): Promise<st
   return created?.id ?? null
 }
 
+async function resolveAssignedUserId(sellerId: string | null): Promise<string | null> {
+  if (!sellerId) return null
+  const seller = await prisma.seller.findFirst({ where: { id: sellerId }, select: { userId: true } }).catch(() => null)
+  return seller?.userId ?? null
+}
+
+async function syncCrmLeadForAutoconf(args: {
+  tenantId: string
+  unitId: string
+  sellerUserId: string | null
+  customerId: string | null
+  dealId: string
+  row: AutoconfRow
+  dealStatus: string
+  notes: string
+}): Promise<string | null> {
+  const { tenantId, unitId, sellerUserId, customerId, dealId, row, dealStatus, notes } = args
+  const details = row.clienteDetalhes ?? {}
+  const name = safeText(details.nome ?? row.cliente, 180)
+  const rawPhone = safeText(details.telefone ?? row.clienteContato, 30)
+  const phoneDigits = normalizePhone(rawPhone)
+  const email = safeText(details.email ?? row.clienteEmail, 180)
+  const externalId = String(row.externalId)
+  const status: LeadStatus = (() => {
+    if (dealStatus === 'FINALIZADA') return 'CONVERTED'
+    if (dealStatus === 'CANCELADA') return 'LOST'
+    if (dealStatus === 'AGUARDANDO_APROVACAO' || dealStatus === 'AGUARDANDO_CONTRATO' || dealStatus === 'AGUARDANDO_DOCUMENTACAO') return 'QUALIFIED'
+    return sellerUserId ? 'WORKING' : 'ASSIGNED'
+  })()
+
+  const existing = await prisma.marketingLead.findFirst({
+    where: {
+      tenantId,
+      OR: [
+        ...(customerId ? [{ customerId }] : []),
+        ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : []),
+        ...(phoneDigits ? [{ phone: { contains: phoneDigits } }] : []),
+      ],
+    },
+    orderBy: [{ updatedAt: 'desc' }],
+    select: { id: true, metadata: true },
+  }).catch(() => null)
+
+  const metadata = {
+    origin: 'AUTOCONF',
+    externalId,
+    sourceUrl: row.sourceUrl ?? null,
+    importedAt: new Date().toISOString(),
+  }
+
+  const payload = {
+    unitId,
+    assignedToUserId: sellerUserId,
+    customerId,
+    name,
+    phone: rawPhone,
+    email,
+    source: 'AUTOCONF',
+    status,
+    lastContactAt: new Date(),
+    convertedDealId: dealStatus === 'FINALIZADA' ? dealId : null,
+    convertedAt: dealStatus === 'FINALIZADA' ? new Date() : null,
+    lostReason: dealStatus === 'CANCELADA' ? 'Negociação cancelada no AutoConf' : null,
+    notes,
+  }
+
+  if (existing) {
+    const mergedMetadata =
+      existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+        ? { ...(existing.metadata as Record<string, unknown>), ...metadata }
+        : metadata
+    const updated = await prisma.marketingLead.update({
+      where: { id: existing.id },
+      data: { ...payload, metadata: mergedMetadata },
+      select: { id: true },
+    }).catch(() => null)
+    return updated?.id ?? existing.id
+  }
+
+  const created = await prisma.marketingLead.create({
+    data: {
+      tenantId,
+      createdById: sellerUserId,
+      metadata,
+      ...payload,
+    },
+    select: { id: true },
+  }).catch(() => null)
+  return created?.id ?? null
+}
+
 // Campos financeiros derivados dos títulos classificados (financiamento/retorno/
 // despachante) do AutoConf, aplicando o cadastro global de retorno.
 function financeFieldsFor(row: AutoconfRow, config: RetornoConfig): Record<string, unknown> {
@@ -332,6 +425,8 @@ export async function POST(req: Request) {
       const debtRowsTotal = (row.debitos ?? []).reduce((s, d) => s + (num(d.value) ?? 0), 0)
       const firstPayment = (row.pagamentos ?? []).find((p) => (num(p.value) ?? 0) > 0)
       const customerId = dryRun ? null : await resolveCustomerId(tenantId, row)
+      const sellerUserId = dryRun ? null : await resolveAssignedUserId(sellerId)
+      const importedNotes = autoconfNotes(row)
 
       const dealData = {
         tenantId, unitId, sellerId, managerId,
@@ -348,7 +443,7 @@ export async function POST(req: Request) {
         finalizedAt,
         externalId: ext,
         sellerNameFromSheet: row.vendedor ?? null,
-        notes: autoconfNotes(row),
+        notes: importedNotes,
         source: 'AUTOCONF',
         dealNumber,
         // retorno (bruto/ILA/IOF/líquido) + banco + documentação, dos títulos.
@@ -368,7 +463,8 @@ export async function POST(req: Request) {
           seller: sellerId ? row.vendedor : `(NÃO ACHADO: ${row.vendedor ?? '—'})`,
           dealNumber,
         })
-        existing ? updated++ : created++
+        if (existing) updated++
+        else created++
         continue
       }
 
@@ -404,6 +500,16 @@ export async function POST(req: Request) {
             },
           })
         })
+        await syncCrmLeadForAutoconf({
+          tenantId,
+          unitId,
+          sellerUserId,
+          customerId,
+          dealId: savedDealId,
+          row,
+          dealStatus: status,
+          notes: importedNotes,
+        }).catch(() => null)
         if (isCommissionEligibleStatus(status)) {
           try {
             const commission = await recalculateNegotiationCommissions({
@@ -445,6 +551,16 @@ export async function POST(req: Request) {
           })
           return deal.id
         })
+        await syncCrmLeadForAutoconf({
+          tenantId,
+          unitId,
+          sellerUserId,
+          customerId,
+          dealId: savedDealId,
+          row,
+          dealStatus: status,
+          notes: importedNotes,
+        }).catch(() => null)
         if (isCommissionEligibleStatus(status)) {
           try {
             const commission = await recalculateNegotiationCommissions({

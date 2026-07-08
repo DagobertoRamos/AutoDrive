@@ -4,9 +4,265 @@ import { createSafeAuditLog, forbiddenResponse, getSessionUser, unauthorizedResp
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
-import { resolveCrmScope } from '@/lib/crm/shared'
+import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 
 const UPDATABLE_STATUSES = new Set(['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED'])
+
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!await canAccessModuleForUser(user, 'crm')) return forbiddenResponse('Sem acesso ao CRM.')
+  { const gate = await assertModuleEnabled(user, 'crm'); if (gate) return gate }
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
+
+  try {
+    const { id } = await params
+    const scope = await resolveCrmScope(user)
+    if (!scope) return forbiddenResponse('Sem acesso aos leads do CRM.')
+
+    const lead = await prisma.marketingLead.findFirst({
+      where: { id, tenantId },
+      include: {
+        assignments: {
+          orderBy: { createdAt: 'desc' },
+          take: 30,
+          select: {
+            id: true,
+            assignedToUserId: true,
+            assignedByUserId: true,
+            mode: true,
+            status: true,
+            reason: true,
+            respondedAt: true,
+            createdAt: true,
+          },
+        },
+        claims: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: { id: true, userId: true, action: true, succeeded: true, createdAt: true },
+        },
+        slas: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: { id: true, slaSeconds: true, deadline: true, status: true, breachedAt: true, createdAt: true },
+        },
+        tasks: {
+          orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
+          take: 50,
+          select: {
+            id: true,
+            assignedToUserId: true,
+            type: true,
+            title: true,
+            status: true,
+            dueAt: true,
+            completedAt: true,
+            notes: true,
+            createdAt: true,
+          },
+        },
+      },
+    })
+    if (!lead) return NextResponse.json({ success: false, error: 'Lead não encontrado.' }, { status: 404 })
+    if (!canAccessLeadByScope(scope, user, lead)) return forbiddenResponse('Sem acesso a este lead.')
+
+    const userIds = [...new Set([
+      lead.assignedToUserId,
+      lead.createdById,
+      ...lead.assignments.flatMap((item) => [item.assignedToUserId, item.assignedByUserId]),
+      ...lead.claims.map((item) => item.userId),
+      ...lead.tasks.map((item) => item.assignedToUserId),
+    ].filter(Boolean) as string[])]
+
+    const [users, unit, customer, vehicle, deal, attendance] = await Promise.all([
+      userIds.length
+        ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+      lead.unitId ? prisma.unit.findFirst({ where: { id: lead.unitId, tenantId }, select: { id: true, name: true } }) : Promise.resolve(null),
+      lead.customerId ? prisma.customer.findFirst({ where: { id: lead.customerId, tenantId }, select: { id: true, name: true, phone: true, email: true } }) : Promise.resolve(null),
+      lead.vehicleId ? prisma.vehicle.findFirst({ where: { id: lead.vehicleId, tenantId }, select: { id: true, plate: true, brand: true, model: true, modelYear: true } }) : Promise.resolve(null),
+      lead.convertedDealId ? prisma.deal.findFirst({ where: { id: lead.convertedDealId, tenantId }, select: { id: true, dealNumber: true, status: true, type: true, createdAt: true } }) : Promise.resolve(null),
+      prisma.sellerQueueAttendance.findFirst({
+        where: { tenantId, leadId: lead.id },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, sellerId: true, status: true, result: true, calledAt: true, finishedAt: true, dealId: true },
+      }),
+    ])
+
+    const userNames = new Map(users.map((item) => [item.id, item.name]))
+
+    const [attendances, calls] = await Promise.all([
+      prisma.sellerQueueAttendance.findMany({
+        where: { tenantId, leadId: lead.id },
+        orderBy: { calledAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          sellerId: true,
+          status: true,
+          result: true,
+          type: true,
+          visitType: true,
+          calledAt: true,
+          acceptedAt: true,
+          finishedAt: true,
+          dealId: true,
+        },
+      }),
+      prisma.telephonyCall.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { leadId: lead.id },
+            ...(lead.customerId ? [{ customerId: lead.customerId }] : []),
+          ],
+        },
+        orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+        take: 20,
+        select: {
+          id: true,
+          direction: true,
+          status: true,
+          fromNumber: true,
+          toNumber: true,
+          agentUserId: true,
+          source: true,
+          startedAt: true,
+          answeredAt: true,
+          endedAt: true,
+          durationSec: true,
+          createdAt: true,
+          recording: { select: { id: true, status: true } },
+        },
+      }),
+    ])
+
+    for (const sellerId of attendances.map((item) => item.sellerId)) {
+      if (sellerId && !userNames.has(sellerId)) {
+        const seller = await prisma.user.findFirst({ where: { id: sellerId }, select: { id: true, name: true } })
+        if (seller) userNames.set(seller.id, seller.name)
+      }
+    }
+    for (const agentUserId of calls.map((item) => item.agentUserId).filter(Boolean) as string[]) {
+      if (!userNames.has(agentUserId)) {
+        const agent = await prisma.user.findFirst({ where: { id: agentUserId }, select: { id: true, name: true } })
+        if (agent) userNames.set(agent.id, agent.name)
+      }
+    }
+
+    const timeline = [
+      ...calls.map((item) => ({
+        id: `call-${item.id}`,
+        at: item.startedAt ?? item.createdAt,
+        type: 'CALL',
+        title: `Chamada ${String(item.direction).toLowerCase()} ${String(item.status).toLowerCase()}`,
+        detail: `${item.fromNumber ?? 'origem indefinida'} -> ${item.toNumber ?? 'destino indefinido'}${item.durationSec ? ` • ${item.durationSec}s` : ''}`,
+        actorName: item.agentUserId ? userNames.get(item.agentUserId) ?? null : null,
+        ownerName: null,
+      })),
+      ...attendances.map((item) => ({
+        id: `attendance-${item.id}`,
+        at: item.finishedAt ?? item.acceptedAt ?? item.calledAt,
+        type: 'ATTENDANCE',
+        title: `Atendimento ${String(item.status).toLowerCase()}`,
+        detail: [item.type, item.visitType, item.result].filter(Boolean).join(' • ') || null,
+        actorName: userNames.get(item.sellerId) ?? null,
+        ownerName: null,
+      })),
+      ...lead.assignments.map((item) => ({
+        id: `assignment-${item.id}`,
+        at: item.respondedAt ?? item.createdAt,
+        type: 'ASSIGNMENT',
+        title: `Atribuição ${item.status.toLowerCase()}`,
+        detail: item.reason ?? null,
+        actorName: item.assignedByUserId ? userNames.get(item.assignedByUserId) ?? null : null,
+        ownerName: item.assignedToUserId ? userNames.get(item.assignedToUserId) ?? null : null,
+      })),
+      ...lead.claims.map((item) => ({
+        id: `claim-${item.id}`,
+        at: item.createdAt,
+        type: 'CLAIM',
+        title: item.action === 'CLAIMED' ? 'Lead assumido' : item.action === 'LOST_RACE' ? 'Tentativa sem sucesso' : item.action,
+        detail: item.succeeded ? 'Assunção concluída' : null,
+        actorName: userNames.get(item.userId) ?? null,
+        ownerName: null,
+      })),
+      ...lead.tasks.map((item) => ({
+        id: `task-${item.id}`,
+        at: item.completedAt ?? item.dueAt ?? item.createdAt,
+        type: 'TASK',
+        title: item.status === 'DONE' ? `Tarefa concluída: ${item.title}` : `Tarefa ${item.status.toLowerCase()}: ${item.title}`,
+        detail: item.notes ?? null,
+        actorName: item.assignedToUserId ? userNames.get(item.assignedToUserId) ?? null : null,
+        ownerName: null,
+      })),
+      ...lead.slas.map((item) => ({
+        id: `sla-${item.id}`,
+        at: item.breachedAt ?? item.deadline,
+        type: 'SLA',
+        title: item.status === 'BREACHED' ? 'SLA estourado' : `SLA ${item.status.toLowerCase()}`,
+        detail: `Prazo de ${item.slaSeconds} segundos`,
+        actorName: null,
+        ownerName: null,
+      })),
+      {
+        id: `lead-${lead.id}`,
+        at: lead.createdAt,
+        type: 'LEAD',
+        title: 'Lead criado',
+        detail: lead.source ?? null,
+        actorName: lead.createdById ? userNames.get(lead.createdById) ?? null : null,
+        ownerName: lead.assignedToUserId ? userNames.get(lead.assignedToUserId) ?? null : null,
+      },
+    ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        lead: {
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          email: lead.email,
+          source: lead.source,
+          status: lead.status,
+          notes: lead.notes,
+          lostReason: lead.lostReason,
+          assignedToUserId: lead.assignedToUserId,
+          assignedToUserName: lead.assignedToUserId ? userNames.get(lead.assignedToUserId) ?? null : null,
+          unitId: lead.unitId,
+          unitName: unit?.name ?? null,
+          customerId: lead.customerId,
+          vehicleId: lead.vehicleId,
+          convertedDealId: lead.convertedDealId,
+          lastContactAt: lead.lastContactAt,
+          createdAt: lead.createdAt,
+          updatedAt: lead.updatedAt,
+        },
+        relations: { customer, vehicle, deal, attendance },
+        attendances: attendances.map((item) => ({
+          ...item,
+          sellerName: userNames.get(item.sellerId) ?? item.sellerId,
+        })),
+        calls: calls.map((item) => ({
+          ...item,
+          agentUserName: item.agentUserId ? userNames.get(item.agentUserId) ?? null : null,
+          hasRecording: !!item.recording,
+          recordingStatus: item.recording?.status ?? null,
+        })),
+        tasks: lead.tasks.map((item) => ({
+          ...item,
+          assignedToUserName: item.assignedToUserId ? userNames.get(item.assignedToUserId) ?? null : null,
+        })),
+        timeline,
+      },
+    })
+  } catch (err) {
+    return handlePrismaError(err)
+  }
+}
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser()
@@ -23,8 +279,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const scope = await resolveCrmScope(user)
     if (!scope) return forbiddenResponse('Sem acesso aos leads do CRM.')
-    if (scope === 'own' && lead.assignedToUserId !== user.id) return forbiddenResponse('Você só pode editar seus próprios leads.')
-    if (scope === 'unit' && lead.unitId !== user.unitId) return forbiddenResponse('Você só pode editar leads da sua unidade.')
+    if (!canAccessLeadByScope(scope, user, lead)) return forbiddenResponse('Sem acesso a este lead.')
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     const canEditUnit = await canAccessModuleForUser(user, 'crm.lead.edit.unit')

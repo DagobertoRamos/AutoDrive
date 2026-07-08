@@ -12,11 +12,13 @@ interface CockpitData {
     delayedLeads: number
     convertedLeads: number
     lostLeads: number
+    autoconfLeads: number
     totalAttendances: number
     openAttendances: number
     todayAttendances: number
   }
   bySource: Array<{ source: string; total: number }>
+  byStage: Array<{ stage: string; label: string; total: number }>
   bySeller: Array<{ sellerId: string | null; sellerName: string; total: number }>
 }
 
@@ -26,6 +28,7 @@ const CARD_META = [
   { key: 'delayedLeads', label: 'Leads atrasados', icon: Clock3, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
   { key: 'convertedLeads', label: 'Convertidos', icon: Handshake, tone: 'text-green-700 bg-green-50 border-green-100' },
   { key: 'lostLeads', label: 'Perdidos', icon: Columns3, tone: 'text-red-700 bg-red-50 border-red-100' },
+  { key: 'autoconfLeads', label: 'Vindos do AutoConf', icon: Columns3, tone: 'text-violet-700 bg-violet-50 border-violet-100' },
   { key: 'totalAttendances', label: 'Atendimentos', icon: Users, tone: 'text-slate-700 bg-slate-50 border-slate-100' },
   { key: 'openAttendances', label: 'Em atendimento', icon: Activity, tone: 'text-indigo-700 bg-indigo-50 border-indigo-100' },
   { key: 'todayAttendances', label: 'Hoje', icon: Clock3, tone: 'text-cyan-700 bg-cyan-50 border-cyan-100' },
@@ -81,7 +84,7 @@ export default function CrmCockpitPage() {
         })}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
           <h2 className="text-sm font-semibold text-gray-900">Leads por origem</h2>
           <div className="mt-4 space-y-2">
@@ -92,6 +95,18 @@ export default function CrmCockpitPage() {
               </div>
             ))}
             {!loading && !(data?.bySource?.length) && <p className="text-sm text-gray-400">Nenhuma origem registrada ainda.</p>}
+          </div>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
+          <h2 className="text-sm font-semibold text-gray-900">Leads por etapa</h2>
+          <div className="mt-4 space-y-2">
+            {(data?.byStage ?? []).map((item) => (
+              <div key={item.stage} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <span className="text-sm text-gray-700">{item.label}</span>
+                <span className="text-sm font-bold text-gray-900">{item.total}</span>
+              </div>
+            ))}
+            {!loading && !(data?.byStage?.length) && <p className="text-sm text-gray-400">Nenhuma etapa registrada ainda.</p>}
           </div>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">

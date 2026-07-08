@@ -4,7 +4,7 @@ import { forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/a
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
-import { applyCrmAttendanceScope, applyCrmScope, resolveCrmAttendanceScope, resolveCrmScope } from '@/lib/crm/shared'
+import { applyCrmAttendanceScope, applyCrmScope, crmSourceLabel, crmStageLabel, resolveCrmAttendanceScope, resolveCrmScope } from '@/lib/crm/shared'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     const startToday = new Date()
     startToday.setHours(0, 0, 0, 0)
 
-    const [totalLeads, delayedLeads, newLeads, convertedLeads, lostLeads, totalAttendances, openAttendances, todayAttendances, bySource, bySeller] = await Promise.all([
+    const [totalLeads, delayedLeads, newLeads, convertedLeads, lostLeads, totalAttendances, openAttendances, todayAttendances, bySource, bySeller, byStage, autoconfLeads] = await Promise.all([
       prisma.marketingLead.count({ where: leadWhere }),
       prisma.marketingLead.count({ where: { ...leadWhere, status: { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] }, lastContactAt: { lt: new Date(Date.now() - 48 * 60 * 60 * 1000) } } }),
       prisma.marketingLead.count({ where: { ...leadWhere, status: 'NEW' } }),
@@ -33,6 +33,8 @@ export async function GET(req: Request) {
       prisma.sellerQueueAttendance.count({ where: { ...attendanceWhere, calledAt: { gte: startToday } } }),
       prisma.marketingLead.groupBy({ by: ['source'], where: leadWhere, _count: { _all: true }, orderBy: { _count: { source: 'desc' } }, take: 6 }),
       prisma.marketingLead.groupBy({ by: ['assignedToUserId'], where: leadWhere, _count: { _all: true }, orderBy: { _count: { assignedToUserId: 'desc' } }, take: 6 }),
+      prisma.marketingLead.groupBy({ by: ['status'], where: leadWhere, _count: { _all: true }, orderBy: { _count: { status: 'desc' } }, take: 8 }),
+      prisma.marketingLead.count({ where: { ...leadWhere, source: 'AUTOCONF' } }),
     ])
 
     const sellerIds = bySeller.map((item) => item.assignedToUserId).filter((id): id is string => Boolean(id))
@@ -49,11 +51,13 @@ export async function GET(req: Request) {
           delayedLeads,
           convertedLeads,
           lostLeads,
+          autoconfLeads,
           totalAttendances,
           openAttendances,
           todayAttendances,
         },
-        bySource: bySource.map((item) => ({ source: item.source ?? 'Sem origem', total: item._count._all })),
+        bySource: bySource.map((item) => ({ source: crmSourceLabel(item.source), total: item._count._all })),
+        byStage: byStage.map((item) => ({ stage: item.status, label: crmStageLabel(item.status), total: item._count._all })),
         bySeller: bySeller.map((item) => ({ sellerId: item.assignedToUserId, sellerName: item.assignedToUserId ? sellerNames.get(item.assignedToUserId) ?? 'Responsável' : 'Sem responsável', total: item._count._all })),
       },
     })

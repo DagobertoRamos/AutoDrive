@@ -2862,3 +2862,36 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Não alterado:** `/api/sellers/[id]` já tratava vazio (`cpf''`→null, `whatsapp''`→''), então salvar funciona. Nenhuma permissão liberada, nada apagado, sem migration, layout global intacto, CRM/outros módulos intocados.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npm run build` OK. Repro por análise de dados (3 sellers de gestão com cpf/whatsapp nulos) + confirmação de que as máscaras lançavam com null (sem navegador logado daqui).
 - **Pendências:** dados seguem com cpf/whatsapp nulos (correto: "não informado"; UI mostra vazio e permite preencher). Commit sugerido: `fix(colaboradores): corrige crash ao editar cargos de gestão (máscara com null) + error boundary do dashboard`.
+
+### LOG 0211 — 2026-07-08 — Codex (GPT-5) — CRM próxima fase: Cockpit/Kanban mais coerentes com AutoConf
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
+- **Tarefa:** usar melhor o que vem do AutoConf no CRM para que Cockpit e Kanban reflitam a situação real da negociação importada, com etapas/origens mais legíveis e menos códigos crus.
+- **O que foi alterado:**
+  - `src/lib/crm/shared.ts`: helpers `crmStageLabel` e `crmSourceLabel` para padronizar rótulos humanos no CRM.
+  - `src/app/api/integrations/autoconf/deals/route.ts`: refinado o mapeamento AutoConf → `LeadStatus`:
+    - `FINALIZADA` → `CONVERTED`
+    - `CANCELADA` → `LOST`
+    - `AGUARDANDO_APROVACAO` / `AGUARDANDO_CONTRATO` / `AGUARDANDO_DOCUMENTACAO` → `QUALIFIED`
+    - demais casos → `WORKING` quando há responsável, senão `ASSIGNED`
+  - `src/app/api/crm/cockpit/route.ts`: novo agrupamento por etapa (`byStage`) e novo card `autoconfLeads`.
+  - `src/app/(dashboard)/crm/cockpit/page.tsx`: cockpit agora mostra **Leads por etapa** e card de **Vindos do AutoConf**.
+  - `src/app/(dashboard)/crm/kanban/page.tsx`: Kanban agora mostra nomes humanos de etapa/origem e ganhou link direto para o detalhe do lead.
+- **Comportamento entregue:** o CRM deixa de tratar tudo que veio do AutoConf como uma massa genérica em andamento. Leads importados passam a cair em etapas mais úteis para operação, o Cockpit mostra melhor o peso do AutoConf no funil, e o Kanban fica mais claro para leitura diária.
+- **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npx eslint 'src/app/api/integrations/autoconf/deals/route.ts' 'src/app/api/crm/**/*.ts' 'src/app/(dashboard)/crm/**/*.tsx' 'src/lib/crm/shared.ts'` OK com os warnings advisory já conhecidos de `react-hooks/set-state-in-effect` nas páginas client-side; `npm run build` segue bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.d.ts` durante `prisma generate`.
+- **Riscos/pendências:** o mapeamento ainda pode evoluir conforme a operação definir regras mais finas de funil por status/importação. O próximo passo natural é usar esses mesmos sinais para priorização e filtros no CRM, sem depender só de listagem linear.
+
+### LOG 0212 — 2026-07-08 — Codex (GPT-5) — CRM próxima fase: priorização operacional e filtros rápidos
+- **Branch:** `codex-responsividade-base` (worktree `distracted-dhawan-fd8ce5`). Sem migration.
+- **Tarefa:** transformar a lista de leads em uma fila de trabalho mais útil, destacando urgência, origem AutoConf e ausência de contato recente.
+- **O que foi alterado:**
+  - `src/lib/crm/shared.ts`: helpers `crmPriorityLabel` e `crmPriorityTone` para exibição consistente da prioridade.
+  - `src/app/api/crm/leads/route.ts`: enriquecimento dos leads com prioridade derivada em runtime (`URGENT` / `HIGH` / `NORMAL` / `LOW`), além de novos filtros por `source=AUTOCONF` e `priority=...`.
+  - `src/app/(dashboard)/crm/leads/page.tsx`: filtros rápidos por origem e prioridade, cards de apoio (urgentes, alta prioridade, vindos do AutoConf, sem contato recente) e coluna visual de prioridade na tabela.
+- **Regra de prioridade aplicada nesta fase:**
+  - `URGENT`: lead AutoConf ainda não convertido e sem toque há pelo menos 24h.
+  - `HIGH`: sem contato há 48h+ ou ainda em etapa inicial/importante (`NEW`, `ASSIGNED`, `QUALIFIED`).
+  - `NORMAL`: lead ativo sem sinais críticos.
+  - `LOW`: já convertido, perdido ou descartado.
+- **Comportamento entregue:** o CRM agora mostra melhor o que precisa ação primeiro, sem obrigar o usuário a interpretar manualmente uma listagem linear. Também ficou mais fácil isolar rapidamente o que veio do AutoConf e o que está envelhecendo sem contato.
+- **Validações:** `npx tsc --noEmit` OK; `npm test` OK (54 arquivos, 379 testes); `npx eslint 'src/app/api/crm/**/*.ts' 'src/app/(dashboard)/crm/**/*.tsx' 'src/lib/crm/shared.ts' 'src/app/api/integrations/autoconf/deals/route.ts'` OK com os mesmos warnings advisory de `react-hooks/set-state-in-effect` nas páginas client-side; `npm run build` segue bloqueado localmente por `EPERM unlink node_modules/.prisma/client/index.d.ts` durante `prisma generate`.
+- **Riscos/pendências:** a priorização é heurística segura, já útil para operação. O próximo passo natural é permitir ordenação/segmentação por responsável e talvez salvar visões rápidas por perfil/unidade.

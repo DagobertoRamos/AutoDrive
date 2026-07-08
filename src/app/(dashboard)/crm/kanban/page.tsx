@@ -1,7 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { ArrowRight, RefreshCw } from 'lucide-react'
+import { CRM_STAGE_OPTIONS, crmSourceLabel, crmStageLabel } from '@/lib/crm/shared'
 import { cn } from '@/lib/utils'
 
 interface LeadRow {
@@ -14,7 +16,7 @@ interface LeadRow {
   unitName: string | null
 }
 
-const STAGES = ['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED']
+const STAGES = CRM_STAGE_OPTIONS.map((item) => item.value)
 
 export default function CrmKanbanPage() {
   const [rows, setRows] = useState<LeadRow[]>([])
@@ -64,21 +66,26 @@ export default function CrmKanbanPage() {
           return (
             <section key={stage} className="rounded-xl border border-gray-200 bg-white p-3 shadow-card">
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-600">{stage}</h2>
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-600">{crmStageLabel(stage)}</h2>
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600">{stageRows.length}</span>
               </div>
               <div className="space-y-2">
                 {stageRows.map((row) => (
                   <div key={row.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                     <p className="font-medium text-gray-900">{row.name ?? row.phone ?? 'Lead sem nome'}</p>
-                    <p className="mt-1 text-xs text-gray-500">{row.source ?? 'MANUAL'} · {row.assignedToUserName ?? 'Sem responsável'}</p>
+                    <p className="mt-1 text-xs text-gray-500">{crmSourceLabel(row.source)} · {row.assignedToUserName ?? 'Sem responsável'}</p>
                     <p className="text-xs text-gray-400">{row.unitName ?? 'Sem unidade'}</p>
-                    {index < STAGES.length - 1 && (
-                      <button onClick={() => void moveLead(row.id, STAGES[index + 1])} className="mt-3 rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white">
-                        <ArrowRight size={12} className="mr-1 inline" />
-                        Avançar
-                      </button>
-                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link href={`/crm/leads/${row.id}`} className="rounded-lg border border-sky-200 px-2 py-1 text-xs font-medium text-sky-700 hover:bg-white">
+                        Ver detalhe
+                      </Link>
+                      {index < STAGES.length - 1 && (
+                        <button onClick={() => void moveLead(row.id, STAGES[index + 1])} className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white">
+                          <ArrowRight size={12} className="mr-1 inline" />
+                          Avançar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {!loading && stageRows.length === 0 && <div className="rounded-lg border border-dashed border-gray-200 px-3 py-6 text-center text-xs text-gray-400">Sem leads</div>}

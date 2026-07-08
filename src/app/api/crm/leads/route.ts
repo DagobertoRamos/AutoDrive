@@ -6,6 +6,24 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared'
 
+function leadPriorityOf(row: {
+  source: string | null
+  status: string
+  lastContactAt: Date | null
+  convertedDealId: string | null
+  createdAt: Date
+}) {
+  const now = Date.now()
+  const lastTouch = row.lastContactAt?.getTime() ?? row.createdAt.getTime()
+  const hoursWithoutTouch = (now - lastTouch) / 3600000
+  if (row.status === 'CONVERTED') return 'LOW'
+  if (row.status === 'LOST' || row.status === 'DISCARDED') return 'LOW'
+  if (row.source === 'AUTOCONF' && !row.convertedDealId && hoursWithoutTouch >= 24) return 'URGENT'
+  if (hoursWithoutTouch >= 48) return 'HIGH'
+  if (row.status === 'NEW' || row.status === 'ASSIGNED' || row.status === 'QUALIFIED') return 'HIGH'
+  return 'NORMAL'
+}
+
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
@@ -23,9 +41,12 @@ export async function GET(req: Request) {
     const search = sp.get('search')?.trim()
     const status = sp.get('status')?.trim() || undefined
     const onlyDelayed = sp.get('delayed') === 'true'
+    const onlyAutoconf = sp.get('source') === 'AUTOCONF'
+    const priority = sp.get('priority')?.trim() || ''
     const where = applyCrmScope({ tenantId }, scope, user)
 
     if (status) where.status = status as never
+    if (onlyAutoconf) where.source = 'AUTOCONF'
     if (scope === 'all' && sp.get('unitId')) where.unitId = sp.get('unitId')
     if (search) {
       where.OR = [
@@ -40,13 +61,11 @@ export async function GET(req: Request) {
       where.status = { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] }
     }
 
-    const [total, rows, users, units] = await Promise.all([
-      prisma.marketingLead.count({ where }),
+    const [rows, users, units] = await Promise.all([
       prisma.marketingLead.findMany({
         where,
         orderBy: [{ updatedAt: 'desc' }],
-        skip: (page - 1) * perPage,
-        take: perPage,
+        take: 300,
         select: {
           id: true, name: true, phone: true, email: true, source: true, status: true,
           unitId: true, assignedToUserId: true, customerId: true, vehicleId: true,
@@ -61,13 +80,28 @@ export async function GET(req: Request) {
     const userNames = new Map(users.map((item) => [item.id, item.name]))
     const unitNames = new Map(units.map((item) => [item.id, item.name]))
 
-    return NextResponse.json({
-      success: true,
-      data: rows.map((row) => ({
+    const enriched = rows.map((row) => {
+      const priorityLevel = leadPriorityOf(row)
+      return {
         ...row,
+        priority: priorityLevel,
         assignedToUserName: row.assignedToUserId ? userNames.get(row.assignedToUserId) ?? null : null,
         unitName: row.unitId ? unitNames.get(row.unitId) ?? null : null,
-      })),
+      }
+    })
+    const filtered = priority ? enriched.filter((row) => row.priority === priority) : enriched
+    const sorted = filtered.sort((a, b) => {
+      const order = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 }
+      const byPriority = order[a.priority as keyof typeof order] - order[b.priority as keyof typeof order]
+      if (byPriority !== 0) return byPriority
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
+    const total = sorted.length
+    const paged = sorted.slice((page - 1) * perPage, page * perPage)
+
+    return NextResponse.json({
+      success: true,
+      data: paged,
       meta: { total, page, perPage, totalPages: Math.max(1, Math.ceil(total / perPage)), scope },
     })
   } catch (err) {
