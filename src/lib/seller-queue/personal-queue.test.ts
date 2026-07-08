@@ -6,6 +6,8 @@ const { prismaMock, notifyMock } = vi.hoisted(() => ({
     sellerQueueAttendance: { findFirst: vi.fn(), create: vi.fn() },
     sellerQueueEntry: { updateMany: vi.fn(), findUnique: vi.fn() },
     user: { findUnique: vi.fn(), findMany: vi.fn() },
+    sellerQueue: { findUnique: vi.fn() },
+    sellerQueueUnitConfig: { findUnique: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prismaMockTx)),
   },
   notifyMock: { notify: vi.fn().mockResolvedValue(undefined), notifyByRole: vi.fn().mockResolvedValue(undefined) },

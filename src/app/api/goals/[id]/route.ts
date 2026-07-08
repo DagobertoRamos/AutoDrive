@@ -67,6 +67,34 @@ export async function PATCH(req: Request, { params }: Ctx) {
       await assertUnitBelongsToTenant(data.unitId, goal.tenantId, user.role)
     }
 
+    const period = data.period !== undefined ? data.period : goal.period
+    const scope = data.scope !== undefined ? data.scope : goal.scope
+
+    // Evitar duplicidade de outra meta ativa com os mesmos critérios
+    const duplicate = await prisma.goal.findFirst({
+      where: {
+        id:          { not: id },
+        tenantId:    goal.tenantId,
+        type:        data.type !== undefined ? data.type : goal.type,
+        scope,
+        period,
+        status:      'ATIVA',
+        active:      true,
+        ...(scope === 'USER' ? { userId: data.userId !== undefined ? data.userId : goal.userId } : {}),
+        ...(scope === 'ROLE' ? { targetRole: data.targetRole !== undefined ? data.targetRole : goal.targetRole } : {}),
+        ...(scope === 'UNIT' ? { unitId: data.unitId !== undefined ? data.unitId : goal.unitId } : {}),
+      },
+    })
+    if (duplicate) {
+      return NextResponse.json(
+        { success: false, error: 'Já existe outra meta ativa cadastrada para este mesmo escopo.' },
+        { status: 400 },
+      )
+    }
+
+    const startDate = data.startDate !== undefined ? data.startDate : goal.startDate
+    const endDate = period === 'MONTHLY' ? new Date('2099-12-31T23:59:59.999Z') : (data.endDate !== undefined ? data.endDate : goal.endDate)
+
     const updated = await prisma.goal.update({
       where: { id },
       data: {
@@ -76,8 +104,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
         ...(data.title !== undefined ? { title: data.title ?? null } : {}),
         ...(data.unitId !== undefined ? { unitId: data.unitId ?? null } : {}),
         ...(data.userId !== undefined ? { userId: data.userId ?? null } : {}),
-        ...(data.startDate !== undefined ? { startDate: data.startDate } : {}),
-        ...(data.endDate !== undefined ? { endDate: data.endDate } : {}),
+        ...(data.targetRole !== undefined ? { targetRole: data.targetRole ?? null } : {}),
+        startDate,
+        endDate,
         ...(data.targetValue !== undefined ? { targetValue: data.targetValue } : {}),
         ...(data.measureUnit !== undefined ? { measureUnit: data.measureUnit } : {}),
         ...(data.progressive !== undefined ? { progressive: data.progressive } : {}),

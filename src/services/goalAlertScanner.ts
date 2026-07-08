@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { computeGoalProgress } from '@/lib/goals/service'
+import { computeGoalProgress, goalWindow } from '@/lib/goals/service'
 import { notify, notifyByRole } from '@/services/notification.service'
 
 // Só alerta após este % do período decorrido (evita alarme cedo demais).
@@ -78,15 +78,25 @@ export async function scanGoalAlertsForTenant(tenantId: string, now: Date = new 
   const report: GoalAlertReport = { tenantId, scanned: 0, created: 0, skipped: 0, errors: [] }
 
   const goals = await prisma.goal.findMany({
-    where: { tenantId, status: 'ATIVA', active: true, startDate: { lte: now }, endDate: { gte: now } },
+    where: {
+      tenantId,
+      status: 'ATIVA',
+      active: true,
+      startDate: { lte: now },
+      OR: [
+        { endDate: { gte: now } },
+        { period: 'MONTHLY' },
+      ],
+    },
     include: { levels: { orderBy: { level: 'asc' } } },
   })
 
   for (const goal of goals) {
     report.scanned++
     try {
-      const start = goal.startDate.getTime()
-      const end = goal.endDate.getTime()
+      const window = goalWindow(goal, now)
+      const start = window.start.getTime()
+      const end = window.end.getTime()
       const elapsed = end > start ? (now.getTime() - start) / (end - start) : 1
       if (elapsed < MIN_ELAPSED) { report.skipped++; continue }
 
@@ -96,7 +106,7 @@ export async function scanGoalAlertsForTenant(tenantId: string, now: Date = new 
       const expectedPct = elapsed * 100
       if (progress.percent >= expectedPct * PACE_MARGIN) { report.skipped++; continue }
 
-      if (await alreadyAlerted(goal.tenantId, goal.id, goal.startDate)) { report.skipped++; continue }
+      if (await alreadyAlerted(goal.tenantId, goal.id, window.start)) { report.skipped++; continue }
 
       const sent = await dispatchAlert(goal, progress.percent, progress.target, progress.achievedValue)
       if (sent) report.created++

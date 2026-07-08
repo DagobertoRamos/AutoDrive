@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // vi.hoisted: mocks criados antes dos imports (evita TDZ no factory do vi.mock).
 const { prismaMock, authMock } = vi.hoisted(() => ({
   prismaMock: {
-    goal: { findMany: vi.fn(), create: vi.fn() },
+    goal: { findMany: vi.fn(), create: vi.fn(), findFirst: vi.fn() },
     warranty: { findMany: vi.fn(), create: vi.fn() },
     unit: { findFirst: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -45,6 +45,7 @@ beforeEach(() => {
   authMock.mockResolvedValue(session('VENDEDOR', 't1', 'unitA'))
   prismaMock.goal.findMany.mockResolvedValue([])
   prismaMock.goal.create.mockResolvedValue({ id: 'g1', levels: [] })
+  prismaMock.goal.findFirst.mockResolvedValue(null)
   prismaMock.warranty.findMany.mockResolvedValue([])
   prismaMock.warranty.create.mockResolvedValue({ id: 'w1' })
   prismaMock.unit.findFirst.mockResolvedValue({ id: 'unitA' })

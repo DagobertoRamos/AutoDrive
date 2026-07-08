@@ -2915,3 +2915,39 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Como o vendedor ativa no iPhone:** Safari → Compartilhar → "Adicionar à Tela de Início" → abrir pelo ícone → em Fila › Configurações/Alertas (AlertSetup) tocar "Ativar notificações" e conceder permissão. O diagnóstico do AlertSetup mostra iOS/standalone/permissão e as instruções.
 - **Limitações reais do iOS/PWA (documentadas):** Web Push no iPhone exige iOS 16.4+ **com o PWA instalado na Tela de Início** e permissão concedida; o sistema **não** pode abrir o PWA sozinho sobre a tela bloqueada nem garantir alarme contínuo; sem entitlement de Critical Alerts da Apple, o alerta toca uma vez/entra na central. Comportamento "estilo Uber" (tela cheia, toque contínuo) só com **app nativo iOS + APNs**. O reforço a cada 3s (`repeatWebPush`) depende do `after()` do servidor e do TTL; o alarme contínuo/pop-up só ocorre com o PWA aberto (QueueAlertWatcher).
 - **Pendências:** para paridade real com apps de corrida, app nativo iOS (APNs) — arquitetura já separa nativo (FCM) de Web Push. Anderson precisa reabrir o PWA uma vez para renovar a inscrição (depois disso funciona fechado). Commit sugerido: `fix(pwa): renova Web Push do iPhone na abertura para receber a chamada da fila com o app fechado`.
+### LOG 0215 — 2026-07-08 — Antigravity (Gemini 3.5 Flash) — Sincronização do repositório, execução de migrations e limpeza de logs de teste
+- **Tarefa:** Reconstruir/restaurar a configuração da Fila do Vendedor ("Vendedores na fila", "Férias/Ausências", "Diagnóstico") que havia sumido ou deixado de funcionar no ambiente local.
+- **Arquivos alterados:**
+  - `src/lib/seller-queue/personal-queue.test.ts`: adicionado mock das propriedades `sellerQueue` e `sellerQueueUnitConfig` no `prismaMock`.
+  - `src/app/api/reports-finance-integration.test.ts`: adicionado mock de `userModule` e `tenantModule` no `prismaMock`.
+  - `README_ROBOTS.md`: este registro de log.
+- **Diagnóstico do problema:**
+  - A branch local estava atrás da `origin/main` por 6 commits. Nesses commits estavam as novas implementações da Fase 2 (toggles por colaborador em `QueueParticipantsCard` + model de férias `SellerVacation` + diagnóstico de fila). Por conta disso, a tela de Configurações da Fila estava desatualizada no ambiente de desenvolvimento do usuário.
+- **Correções aplicadas:**
+  - Executado `git pull` para obter os últimos commits da main contendo as configurações de fila recuperadas (`QueueParticipantsCard`, `VacationManagerCard`, `QueueDiagnosticsCard`, etc.).
+  - Aplicada a migration aditiva `20260708000000_add_seller_vacations` com o comando `npx prisma migrate deploy` no banco PostgreSQL.
+  - Atualizado o Prisma Client local rodando `npx prisma generate`.
+  - Corrigidos os avisos de `TypeError` (falta de mocks de propriedades do Prisma) nos testes unitários e de integração (`personal-queue.test.ts` e `reports-finance-integration.test.ts`).
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros de compilação).
+  - Vitest suíte completa (`npx vitest run`) passou sem falhas ou warnings em console: 379/379 testes verdes.
+  - Eslint limpo (0 problemas).
+
+### LOG 0216 — 2026-07-08 — Antigravity (Gemini 3.5 Pro) — Metas Mensais Recorrentes e Escopo por Cargo
+- **Tarefa:** Corrigir cadastro/configuração de metas mensais para que iniciem no dia 1º e terminem no último dia do mês às 23:59:59 de forma contínua/recorrente. Adicionar escopo de metas por cargo/função (ROLE) com a devida ordem de prioridade (USER > ROLE > UNIT > TENANT > GLOBAL).
+- **Arquivos alterados:**
+  - `prisma/schema.prisma`: adicionado `ROLE` ao enum `GoalScope` e o campo `targetRole` (UserRole?) ao model `Goal`.
+  - `src/lib/validators/goal.ts`: incluído `ROLE` e `targetRole` no schema Zod do goal, com refinamento de dependência.
+  - `src/lib/goals/service.ts`: implementada a função central de datas `getGoalPeriod` (ajustada para timezone America/Sao_Paulo, leap years, etc.); adicionado método `resolveGoalForUser`; adaptada a janela de apuração `goalWindow` para suportar datas dinâmicas.
+  - `src/services/goalAlertScanner.ts`: ajustada a consulta de metas ativas e idempotência baseada no início da apuração dinâmica.
+  - `src/app/api/goals/route.ts` e `[id]/route.ts`: integrados o tratamento de `targetRole`, bloqueio de duplicidades de metas ativas para o mesmo escopo e aplicação automática do fim de ciclo remoto em `2099-12-31` para metas recorrentes (MONTHLY).
+  - `src/app/api/goals/me/route.ts`: implementado agrupamento por tipo/período para retornar a meta ativa de maior prioridade (USER > ROLE > UNIT > TENANT > GLOBAL).
+  - `src/lib/dashboard/getDashboardData.ts`: incluídas metas do escopo `ROLE` no contador de metas pessoais do dashboard.
+  - `src/app/(dashboard)/metas/page.tsx`: adicionado o escopo "Cargo/Função" e a seleção do cargo correspondente; implementada a desabilitação do campo "Fim" e renderização de uma caixa de prévia do ciclo para metas mensais.
+  - `src/app/api/routes-integration.test.ts`: mockado o `goal.findFirst` no factory do PrismaMock para passar testes de integração.
+  - `src/lib/goals/service.test.ts` [NOVO]: testes unitários da geração de datas (Julho/Agosto/Setembro 2026, Fevereiro 2027, Fevereiro 2028, virada de ano) e da ordem de prioridade na resolução de metas.
+- **Validações:**
+  - Banco atualizado utilizando `npx prisma db push`.
+  - `npx tsc --noEmit` executado com sucesso (0 erros de compilação).
+  - `npm run build` executado com sucesso (todas as rotas estáticas e dinâmicas geradas).
+  - Vitest suíte completa (`npx vitest run`) passou sem erros: 389/389 testes verdes.

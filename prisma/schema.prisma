@@ -3290,6 +3290,7 @@ enum GoalType {
 /// Escopo da meta — define o nível de agregação e os filtros obrigatórios
 enum GoalScope {
   USER // meta individual de um vendedor (filtra tenantId + userId)
+  ROLE // meta por cargo/função (filtra tenantId + targetRole)
   UNIT // meta de uma unidade/filial (filtra tenantId + unitId)
   TENANT // meta da loja/empresa inteira (filtra tenantId)
   GLOBAL // meta da plataforma (apenas MASTER; tenantId nulo)
@@ -3319,6 +3320,7 @@ model Goal {
   tenantId    String? // null = meta GLOBAL (plataforma)
   unitId      String? // preenchido quando scope = UNIT
   userId      String? // preenchido quando scope = USER
+  targetRole  UserRole? // preenchido quando scope = ROLE
   type        GoalType
   scope       GoalScope
   period      GoalPeriod
@@ -3345,6 +3347,7 @@ model Goal {
   @@index([tenantId])
   @@index([unitId])
   @@index([userId])
+  @@index([targetRole])
   @@index([type, scope, period])
   @@index([status])
   @@index([startDate, endDate])
