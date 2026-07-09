@@ -3026,3 +3026,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Feature 2 (busca nos Cadastros):** campo de busca no topo da lista de Colaboradores (filtra por nome, e-mail, CPF, cargo ou loja), com contador "X de Y" e limpar — igual SaaS grande. Filtro client-side sobre a lista já carregada (leve).
 - **Testes:** `npx tsc --noEmit` OK; `npm run build` OK. Não reduz segurança: `acting_tenant` só é honrado para MASTER e a loja é validada no banco; a impersonation já era auditada.
 - **Nota:** para a impersonation ATUAL pegar o cookie, basta recarregar a página (o rehydrate seta) ou reiniciar a impersonation.
+
+### LOG 0227 — 2026-07-08 — Claude (Opus 4.8) — Fila: fix transferência (libera vendedor original + aceita gerente) + quadro "Atendimentos realizados"
+- **Arquivos:** `src/app/api/seller-queue/attendances/[id]/manage/route.ts`, `src/app/(dashboard)/vendedor-da-vez/page.tsx`. Sem migration. + destravamento de dado (Denis).
+- **Bug 1 (transferência deixava o vendedor original travado):** ao transferir, o `manage` reatribuía o atendimento ao destino e marcava a entry do DESTINO, mas **nunca liberava a entry do vendedor ORIGINAL** → ele ficava `IN_ATTENDANCE` sem atendimento (sem botão de finalizar, preso). Confirmado no Denis (entry IN_ATTENDANCE, 0 atendimentos). **Fix:** transferência agora em **transação** que (a) reatribui o atendimento, (b) **libera o vendedor original** (entry → WAITING) e (c) marca o destino. Destravei o dado do Denis (entry → WAITING).
+- **Bug 2 (transferir p/ GERENTE dava erro/404):** o destino era buscado por `Seller` (`seller.userId=...`); gerentes/líderes fora da rotação podem não ter registro Seller → 404. **Fix:** destino resolvido por **User** do tenant (aceita gerente/qualquer colaborador).
+- **Bug 3 (finalizados apareciam em "chamados ativos"):** o dashboard jogava TODOS os atendimentos do dia em "Atendimentos em andamento". **Fix:** separado em **Em andamento** (CALLED/ACCEPTED/IN_ATTENDANCE) × novo quadro **"Atendimentos realizados hoje"** (FINISHED/CANCELED, com contador, cliente, tipo, hora). (O Painel da Unidade já usava `?active=true` e não misturava.)
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (389/389); `npm run build` OK.
+- **Pendências:** nenhuma para estes itens. A transferência p/ gerente agora funciona e o original é liberado.

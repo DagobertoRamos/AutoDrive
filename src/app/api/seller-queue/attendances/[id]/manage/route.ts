@@ -54,15 +54,23 @@ export async function POST(req: Request, { params }: Ctx) {
       const toSellerId = typeof body?.toSellerId === 'string' ? body.toSellerId : ''
       if (!toSellerId) return NextResponse.json({ success: false, error: 'Informe o vendedor de destino.' }, { status: 400 })
       if (toSellerId === att.sellerId) return NextResponse.json({ success: false, error: 'Já é o vendedor atual.' }, { status: 409 })
-      const dest = await prisma.seller.findFirst({ where: { userId: toSellerId, unit: { tenantId } }, select: { id: true } })
-      if (!dest) return NextResponse.json({ success: false, error: 'Vendedor de destino não encontrado nesta loja.' }, { status: 404 })
+      // Destino é qualquer COLABORADOR do tenant (aceita gerente/líder, que podem
+      // não ter registro Seller e ficam fora da rotação — antes exigia Seller e dava 404).
+      const destUser = await prisma.user.findFirst({ where: { id: toSellerId, tenantId }, select: { id: true } })
+      if (!destUser) return NextResponse.json({ success: false, error: 'Colaborador de destino não encontrado nesta loja.' }, { status: 404 })
       const busy = await prisma.sellerQueueAttendance.findFirst({ where: { queueId: att.queueId, sellerId: toSellerId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } }, select: { id: true } })
-      if (busy) return NextResponse.json({ success: false, error: 'O vendedor de destino já está em atendimento.' }, { status: 409 })
+      if (busy) return NextResponse.json({ success: false, error: 'O colaborador de destino já está em atendimento.' }, { status: 409 })
       const cfg = await getUnitConfig(tenantId, att.unitId)
       const timeout = cfg?.acceptTimeoutSeconds ?? 60
       const now = new Date()
-      await prisma.sellerQueueAttendance.update({ where: { id }, data: { sellerId: toSellerId, status: 'CALLED', calledAt: now, acceptDeadline: new Date(now.getTime() + timeout * 1000), acceptedAt: null, startedAt: null } })
-      await prisma.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: toSellerId, status: 'WAITING' }, data: { status: 'CALLED', lastActiveAt: now } }).catch(() => {})
+      const originalSellerId = att.sellerId
+      // Atômico: reatribui o atendimento ao destino, LIBERA o vendedor original
+      // (senão ele fica preso em IN_ATTENDANCE sem atendimento) e marca o destino.
+      await prisma.$transaction(async (tx) => {
+        await tx.sellerQueueAttendance.update({ where: { id }, data: { sellerId: toSellerId, status: 'CALLED', calledAt: now, acceptDeadline: new Date(now.getTime() + timeout * 1000), acceptedAt: null, startedAt: null } })
+        await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: originalSellerId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } }, data: { status: 'WAITING', lastActiveAt: now } })
+        await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: toSellerId, status: 'WAITING' }, data: { status: 'CALLED', lastActiveAt: now } })
+      })
       await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'CALLED', sellerId: toSellerId, actorId: user.id, attendanceId: att.id, reason: 'atendimento transferido pela gestão' })
       await notifySellerCalled({ tenantId, sellerId: toSellerId, timeoutSeconds: timeout, attendanceId: att.id, arrivalId: att.arrivalId, customerName: null, recurring: false, whatsapp: cfg?.alertWhatsapp ?? false })
       await createSafeAuditLog({ userId: user.id, tenantId, action: 'TRANSFER', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })

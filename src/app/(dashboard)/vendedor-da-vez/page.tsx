@@ -404,6 +404,10 @@ export default function FilaOverviewPage() {
   const isMeAttending = myQueueStatus === 'CALLED' || myQueueStatus === 'ACCEPTED' || myQueueStatus === 'IN_ATTENDANCE'
   const isMePaused = myQueueStatus === 'PAUSED'
   const isMeBlocked = myQueueStatus === 'BLOCKED'
+  // Separa os atendimentos do dia: EM ANDAMENTO (ativos) × REALIZADOS (finalizados/
+  // cancelados). Antes tudo caía em "andamento" e os finalizados ficavam misturados.
+  const activeAttendances = attendances.filter((a) => ATTENDING_STATUSES.includes(a.status))
+  const finishedAttendances = attendances.filter((a) => a.status === 'FINISHED' || a.status === 'CANCELED')
   const joinQueueLabel = isMeWaiting
     ? 'Você está na fila'
     : isMeAttending
@@ -1004,9 +1008,9 @@ export default function FilaOverviewPage() {
                   </p>
                 </div>
                 <div className="divide-y divide-gray-100">
-                  {attendances.length === 0 ? (
+                  {activeAttendances.length === 0 ? (
                     <div className="px-4 py-8 text-center text-sm text-gray-400">Nenhum atendimento ativo.</div>
-                  ) : attendances.map((att) => {
+                  ) : activeAttendances.map((att) => {
                     const reminder = reminders?.byAttendance?.[att.id]
                     return (
                     <div key={att.id} className="px-3 sm:px-4 py-3">
@@ -1043,6 +1047,34 @@ export default function FilaOverviewPage() {
                   })}
                 </div>
               </div>
+
+              {finishedAttendances.length > 0 && (
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
+                  <div className="border-b border-gray-100 px-4 py-3">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                      <CheckCircle2 size={16} className="text-green-600" />
+                      Atendimentos realizados hoje
+                      <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">{finishedAttendances.length}</span>
+                    </p>
+                  </div>
+                  <div className="max-h-80 divide-y divide-gray-100 overflow-y-auto">
+                    {finishedAttendances.map((att) => (
+                      <div key={att.id} className="px-3 sm:px-4 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-sm font-medium text-gray-900">{att.sellerName}</p>
+                            <p className="mt-0.5 text-xs text-gray-500 break-words">{att.arrival?.customerName ?? 'Cliente não cadastrado'} · {attendanceTypeLabel(att.type)}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold', att.status === 'CANCELED' ? 'border-gray-200 bg-gray-50 text-gray-500' : 'border-green-200 bg-green-50 text-green-700')}>{att.status === 'CANCELED' ? 'Cancelado' : 'Finalizado'}</span>
+                            {att.finishedAt && <p className="mt-1 text-[10px] tabular-nums text-gray-400">{clockLabel(att.finishedAt)}</p>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {blocks.length > 0 && canManage && (
                 <div className="overflow-hidden rounded-xl border border-red-200 bg-white shadow-card">
