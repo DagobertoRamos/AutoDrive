@@ -20,6 +20,7 @@ import { useNotifications } from '@/hooks/useNotifications'
 import HelpChatLauncher from '@/components/ai/HelpChatLauncher'
 import QueueAlertWatcher from '@/components/seller-queue/QueueAlertWatcher'
 import PendencyAckWatcher from '@/components/pendencies/PendencyAckWatcher'
+import PendencySlaWatcher from '@/components/pendencies/PendencySlaWatcher'
 
 export default function DashboardShell({
   children,
@@ -69,6 +70,7 @@ export default function DashboardShell({
       </div>
       <QueueAlertWatcher />
       <PendencyAckWatcher />
+      <PendencySlaWatcher />
       <HelpChatLauncher />
     </>
   )

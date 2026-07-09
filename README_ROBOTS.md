@@ -3095,3 +3095,17 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Deploy seguro:** `.catch` em toda leitura/escrita do `pendency_events` → pode subir p/ a main ANTES da migration; os eventos só passam a ser gravados/exibidos depois que a migration rodar na Neon.
 - **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (405/405, +6); `npm run build` OK.
 - **Pendências (spec Pendências):** Fase 3 (motor SLA + pop-ups Alta/Urgente), Fase 4 (nagging Crítica), Fase 5 (penalidades — decidido: só AVISA/marca, NÃO suspende a fila de leads). Campos `prazo_comprometido/ultima_cobranca_em/contador_cobrancas/escalonado_para` ficam p/ a Fase 3 (onde são usados), via migration própria.
+
+### LOG 0233 — 2026-07-09 — Claude (Opus 4.8) — Pendências FASE 3: motor de SLA + pop-up bloqueante Alta/Urgente
+- **O quê:** ao entrar no sistema, o responsável por pendência **Alta/Urgente sem prazo comprometido** vê um pop-up **bloqueante** "Em quanto tempo você resolve isso?"; **Urgente com prazo comprometido estourado** gera cobrança "Você disse que resolveria até X. O que aconteceu?". Cada exibição/resposta grava evento na timeline.
+- **Sem migration:** todo o estado (prazo comprometido, adiamentos, cobranças) é **DERIVADO de `pendency_events`** (Fase 2); config de SLA vai no `SystemSetting` JSON. Nada de coluna nova. `Crítica` (enum) fica p/ a Fase 4.
+- **Código:**
+  - `src/lib/pendencies/settings.ts`: novo bloco `slaEngine` (enabled, requireCommitFor, maxDefer, chargeIntervalHours, staleHours) + sanitize/merge/default.
+  - `src/lib/pendencies/sla-engine.ts` (PURO): `decidePendencyPopup()` → 'commit' | 'charge' | 'none'. `sla-engine.test.ts` (9 casos: Média não dispara, Alta/Urgente sem prazo→commit, adiamentos/limite, prazo futuro→none, Urgente estourado→charge, Alta estourada não cobra, throttle, status parado, motor off).
+  - `GET /api/pendencies/action-required`: calcula pop-ups do responsável logado. **Se a tabela pendency_events não existe (migration Fase 2 pendente) → retorna [] (motor desligado)** p/ evitar loop de cobrança sem persistência.
+  - `POST /api/pendencies/[id]/sla-action`: commit (registra prazo + ABERTA→EM_ANDAMENTO), defer (adia c/ motivo, respeita maxDefer), shown (auditoria/throttle), respond (resposta à cobrança). Só o responsável ou gestor+.
+  - `src/components/pendencies/PendencySlaWatcher.tsx`: pop-up bloqueante global (montado no `DashboardShell`), poll 60s + on focus, uma pendência por vez; z-[9998]. Saídas: registrar prazo/resposta, adiar (justificando), abrir na Central.
+  - `PendencyGeneralSettings.tsx`: seção "Motor de SLA / pop-ups" (liga/desliga + maxDefer + intervalo de cobrança + reaparecer) e salva `slaEngine`.
+- **Depende de:** migration `pendency_events` (LOG 0232) aplicada na Neon p/ os eventos gravarem; sem ela o motor fica desligado (seguro).
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (414/414, +9); `npm run build` OK.
+- **Pendências:** Fase 4 (nagging Crítica níveis 1→2→3 + enum CRITICA), Fase 5 (penalidades só avisam/marcam + painel do gestor).

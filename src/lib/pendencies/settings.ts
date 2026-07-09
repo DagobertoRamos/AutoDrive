@@ -29,14 +29,32 @@ export interface PendencyAutoArchiveSettings {
   onlyIfNotReopened: boolean
 }
 
+// Motor de SLA / pop-ups (Fase 3). Governa o pop-up bloqueante de compromisso
+// de prazo (Alta/Urgente) e a cobrança automática quando o prazo estoura.
+export interface PendencySlaEngineSettings {
+  enabled: boolean                       // liga o motor de pop-ups
+  requireCommitFor: PendencyPriorityKey[] // prioridades que exigem prazo comprometido
+  maxDefer: number                       // nº máx. de adiamentos do pop-up de compromisso
+  chargeIntervalHours: number            // intervalo mín. entre cobranças (prazo estourado)
+  staleHours: number                     // Urgente sem atividade há X h → pop-up reaparece
+}
+
 export interface PendencySettings {
   slaByPriority: Record<PendencyPriorityKey, number>
+  slaEngine: PendencySlaEngineSettings
   autoSend: PendencyAutoSendSettings
   autoArchive: PendencyAutoArchiveSettings
 }
 
 export const DEFAULT_PENDENCY_SETTINGS: PendencySettings = {
   slaByPriority: { BAIXA: 4320, MEDIA: 2880, ALTA: 1440, URGENTE: 480 },
+  slaEngine: {
+    enabled: true,
+    requireCommitFor: ['ALTA', 'URGENTE'],
+    maxDefer: 3,
+    chargeIntervalHours: 4,
+    staleHours: 6,
+  },
   autoSend: {
     enabled: false,
     allowedDays: ['MON', 'TUE', 'WED', 'THU', 'FRI'],
@@ -113,10 +131,25 @@ export function sanitizeAutoArchiveSettings(
   }
 }
 
+function sanitizeSlaEngine(raw: unknown, fallback = DEFAULT_PENDENCY_SETTINGS.slaEngine): PendencySlaEngineSettings {
+  const r = asRecord(raw)
+  const req = Array.isArray(r.requireCommitFor)
+    ? r.requireCommitFor.map(String).filter((p) => (PRIORITIES as readonly string[]).includes(p)) as PendencyPriorityKey[]
+    : fallback.requireCommitFor
+  return {
+    enabled: Boolean(r.enabled ?? fallback.enabled),
+    requireCommitFor: req.length ? Array.from(new Set(req)) : fallback.requireCommitFor,
+    maxDefer: clampInt(r.maxDefer, fallback.maxDefer, 20),
+    chargeIntervalHours: clampInt(r.chargeIntervalHours, fallback.chargeIntervalHours, 168),
+    staleHours: clampInt(r.staleHours, fallback.staleHours, 168),
+  }
+}
+
 export function sanitizePendencySettings(raw: unknown, fallback = DEFAULT_PENDENCY_SETTINGS): PendencySettings {
   const body = asRecord(raw)
   return {
     slaByPriority: sanitizeSla(body.slaByPriority, fallback.slaByPriority),
+    slaEngine: sanitizeSlaEngine(body.slaEngine, fallback.slaEngine),
     autoSend: sanitizeAutoSend(body.autoSend, fallback.autoSend),
     autoArchive: sanitizeAutoArchiveSettings(body.autoArchive, fallback.autoArchive),
   }
@@ -129,6 +162,7 @@ export function mergePendencySettings(current: unknown, patch: unknown): Pendenc
     ...base,
     ...patchRecord,
     slaByPriority: { ...base.slaByPriority, ...asRecord(patchRecord.slaByPriority) },
+    slaEngine: { ...base.slaEngine, ...asRecord(patchRecord.slaEngine) },
     autoSend: { ...base.autoSend, ...asRecord(patchRecord.autoSend) },
     autoArchive: { ...base.autoArchive, ...asRecord(patchRecord.autoArchive) },
   }

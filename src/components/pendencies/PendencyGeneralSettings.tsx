@@ -128,6 +128,13 @@ export function PendencyGeneralSettings() {
       : current)
   }
 
+  const slaEngine = settings?.slaEngine
+  const setSlaEngine = <K extends keyof PendencySettings['slaEngine']>(key: K, value: PendencySettings['slaEngine'][K]) => {
+    setSettings((current) => current
+      ? { ...current, slaEngine: { ...current.slaEngine, [key]: value } }
+      : current)
+  }
+
   const save = async () => {
     if (!settings) return
     setSaving(true)
@@ -137,7 +144,7 @@ export function PendencyGeneralSettings() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ autoArchive: settings.autoArchive }),
+        body: JSON.stringify({ autoArchive: settings.autoArchive, slaEngine: settings.slaEngine }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error ?? 'Não foi possível salvar.')
@@ -271,6 +278,31 @@ export function PendencyGeneralSettings() {
                 <span className="text-sm text-gray-700">Ignorar pendências reabertas</span>
               </label>
             </div>
+
+            {/* Motor de SLA / pop-ups (Fase 3) */}
+            {slaEngine && (
+              <div className="rounded-xl border border-orange-100 bg-orange-50/40 p-4 space-y-4">
+                <label className="flex items-center gap-3">
+                  <input type="checkbox" checked={slaEngine.enabled} onChange={(e) => setSlaEngine('enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                  <span className="text-sm font-semibold text-gray-800">Pop-up de prazo para Alta/Urgente (motor de SLA)</span>
+                </label>
+                <p className="text-xs text-gray-500">Ao entrar no sistema, o responsável por uma pendência <b>Alta</b> ou <b>Urgente</b> sem prazo comprometido vê um pop-up bloqueante pedindo o prazo. Urgente com prazo estourado gera cobrança automática.</p>
+                <div className={cn('grid grid-cols-1 gap-4 sm:grid-cols-3', !slaEngine.enabled && 'opacity-55')}>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Máx. de adiamentos</label>
+                    <input type="number" min={0} max={20} disabled={!slaEngine.enabled} className={inputClass} value={slaEngine.maxDefer} onChange={(e) => setSlaEngine('maxDefer', Math.max(0, Number(e.target.value) || 0))} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Intervalo de cobrança (h)</label>
+                    <input type="number" min={1} max={168} disabled={!slaEngine.enabled} className={inputClass} value={slaEngine.chargeIntervalHours} onChange={(e) => setSlaEngine('chargeIntervalHours', Math.max(1, Number(e.target.value) || 1))} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Reaparecer após (h ocioso)</label>
+                    <input type="number" min={1} max={168} disabled={!slaEngine.enabled} className={inputClass} value={slaEngine.staleHours} onChange={(e) => setSlaEngine('staleHours', Math.max(1, Number(e.target.value) || 1))} />
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <div className="flex items-center gap-2 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
