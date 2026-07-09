@@ -41,5 +41,9 @@ declare module 'next-auth/jwt' {
     unitId:             string | null
     tenantId:           string | null
     mustChangePassword?: boolean
+    // Janela deslizante de sessão: timestamp (epoch secs) da última atividade e
+    // flag de expiração por inatividade (política de segurança configurável).
+    lastSeen?:          number
+    expired?:           boolean
   }
 }

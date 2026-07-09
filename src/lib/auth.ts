@@ -61,12 +61,61 @@ function getHeaderValue(
 }
 
 // ---------------------------------------------------------------------------
+// Duração de sessão / janela deslizante
+// ---------------------------------------------------------------------------
+// PROBLEMA que isto resolve: antes o maxAge era fixo em 8h SEM `updateAge`, e o
+// padrão de `updateAge` do NextAuth (24h) é maior que o maxAge — então o token
+// NUNCA era renovado durante a sessão e ela morria "no relógio" às 8h, mesmo
+// com o usuário ativo. Isso derrubava o Painel de Atendimento (que faz poll o
+// tempo todo) e parava a fila.
+//
+// SOLUÇÃO (sem reduzir segurança): sessão DESLIZANTE. `updateAge` baixo faz o
+// token ser reemitido a cada atividade, e a expiração real passa a ser por
+// INATIVIDADE, controlada pela política de segurança (master/security →
+// "Duração da sessão" / "Tempo de inatividade") — que antes era salva mas não
+// tinha efeito nenhum. Sessão ativa (painel/PWA fazendo poll) nunca expira;
+// sessão ociosa expira após a janela configurada.
+const DEFAULT_SESSION_SECS = 8 * 60 * 60 // 8h — igual ao default da SecurityPolicy
+// Teto absoluto do cookie/token (a janela desliza dentro dele). Configurável
+// por env para cenários de quiosque; padrão 30 dias.
+const SESSION_ABSOLUTE_MAX_SECS = Math.max(
+  DEFAULT_SESSION_SECS,
+  Number(process.env.SESSION_MAX_AGE_SECS) || 30 * 24 * 60 * 60,
+)
+// Intervalo de renovação do token (< janela mínima de 15min permitida na UI),
+// garantindo que uma sessão ativa sempre renove antes de "envelhecer".
+const SESSION_UPDATE_AGE_SECS = 5 * 60
+
+// Cache leve da política de segurança — evita 1 query por leitura de sessão.
+let _policyCache: { at: number; idleWindowSecs: number } | null = null
+async function getSessionIdleWindowSecs(): Promise<number> {
+  const now = Date.now()
+  if (_policyCache && now - _policyCache.at < 60_000) return _policyCache.idleWindowSecs
+  try {
+    const p = await prisma.securityPolicy.findFirst({
+      where: { scope: 'GLOBAL' },
+      select: { sessionMaxAgeSecs: true, inactivityTimeoutSecs: true },
+    })
+    const base = p?.sessionMaxAgeSecs && p.sessionMaxAgeSecs > 0 ? p.sessionMaxAgeSecs : DEFAULT_SESSION_SECS
+    // inactivityTimeoutSecs (0 = desligado) pode apertar ainda mais a janela.
+    const inact = p?.inactivityTimeoutSecs && p.inactivityTimeoutSecs > 0 ? p.inactivityTimeoutSecs : base
+    const idle = Math.min(base, inact)
+    _policyCache = { at: now, idleWindowSecs: idle }
+    return idle
+  } catch {
+    // fail-open: uma falha de leitura NUNCA pode deslogar todos os usuários.
+    return _policyCache?.idleWindowSecs ?? DEFAULT_SESSION_SECS
+  }
+}
+
+// ---------------------------------------------------------------------------
 // NextAuth options
 // ---------------------------------------------------------------------------
 export const authOptions: NextAuthOptions = {
   session: {
-    strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 hours
+    strategy:  'jwt',
+    maxAge:    SESSION_ABSOLUTE_MAX_SECS,
+    updateAge: SESSION_UPDATE_AGE_SECS,
   },
 
   pages: {
@@ -195,6 +244,7 @@ export const authOptions: NextAuthOptions = {
     // JWT callback — popula o token com dados extras
     // ------------------------------------------------------------------
     async jwt({ token, user, trigger, session }) {
+      const nowSecs = Math.floor(Date.now() / 1000)
       if (user) {
         token.id                = user.id
         token.role              = (user as { role: UserRole }).role
@@ -202,12 +252,29 @@ export const authOptions: NextAuthOptions = {
         token.unitId            = (user as { unitId: string | null }).unitId
         token.tenantId          = (user as { tenantId: string | null }).tenantId
         token.mustChangePassword = (user as { mustChangePassword?: boolean }).mustChangePassword ?? false
+        token.lastSeen          = nowSecs
+        token.expired           = false
       }
       // Atualização vinda do client via useSession().update(...) — ex.: após
       // trocar a senha no 1º acesso, limpamos o flag para não voltar à tela.
       if (trigger === 'update' && session && typeof session === 'object') {
         const s = session as { mustChangePassword?: boolean }
         if ('mustChangePassword' in s) token.mustChangePassword = s.mustChangePassword ?? false
+      }
+
+      // Janela deslizante de sessão: renova enquanto houver atividade; expira só
+      // após 'idleWindow' de INATIVIDADE. O painel de atendimento faz poll o
+      // tempo todo → nunca fica ocioso → nunca expira. Fail-open.
+      if (typeof token.lastSeen === 'number') {
+        const idleWindow = await getSessionIdleWindowSecs()
+        if (nowSecs - token.lastSeen > idleWindow) {
+          token.expired = true
+        } else {
+          token.lastSeen = nowSecs
+          token.expired  = false
+        }
+      } else {
+        token.lastSeen = nowSecs
       }
       return token
     },
@@ -216,6 +283,11 @@ export const authOptions: NextAuthOptions = {
     // Session callback — expõe dados para o cliente e para rotas API
     // ------------------------------------------------------------------
     async session({ session, token }) {
+      // Sessão expirada por inatividade (política de segurança): devolve sem
+      // usuário para os guards tratarem como não-autenticado e mandarem re-login.
+      if (token.expired) {
+        return { ...session, user: undefined as unknown as typeof session.user, expires: new Date(0).toISOString() }
+      }
       if (!session.user) {
         return session
       }

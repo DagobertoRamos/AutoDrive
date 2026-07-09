@@ -3060,3 +3060,16 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Bug 2 (transferir p/ gerente dava 404):** destino era buscado por `Seller`; gerente/líder fora da rotação pode não ter Seller → 404. Fix: destino resolvido por `User` do tenant.
 - **Bug 3 (finalizados em "chamados ativos"):** o dashboard jogava TODOS os atendimentos do dia em "Em andamento". Fix: separado em Em andamento (ativos) × novo quadro "Atendimentos realizados hoje" (FINISHED/CANCELED).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (389/389); `npm run build` OK.
+
+### LOG 0230 — 2026-07-09 — Claude (Opus 4.8) — Sessão deslizante: Painel de Atendimento fica logado p/ a fila (tempo logado configurável)
+- **Problema:** o Painel de Atendimento (e o PWA) deslogava sozinho e a fila parava. Causa raiz: `authOptions.session` tinha `maxAge: 8h` **sem `updateAge`**. O default de `updateAge` do NextAuth (24h) é maior que o maxAge → o token **nunca era renovado durante a sessão** e ela morria "no relógio" às 8h **mesmo com o usuário ativo** (o painel faz poll o tempo todo e ainda assim caía). Além disso, os campos `SecurityPolicy.sessionMaxAgeSecs` / `inactivityTimeoutSecs` (editáveis em master/security) eram **salvos mas nunca aplicados** ao NextAuth (cosméticos).
+- **Solução (sem reduzir segurança): sessão DESLIZANTE.**
+  - `src/lib/auth.ts`: `session` agora usa `maxAge = SESSION_ABSOLUTE_MAX_SECS` (teto do cookie; env `SESSION_MAX_AGE_SECS`, padrão 30 dias) + `updateAge = 5min` (renova o token a cada atividade). Enquanto houver atividade a sessão se renova sozinha e **não expira** — o painel/PWA em poll fica logado direto.
+  - Expiração passou a ser por **INATIVIDADE**, controlada pela política de segurança: novo leitor cacheado `getSessionIdleWindowSecs()` (cache 60s, **fail-open** — falha de leitura nunca desloga geral) lê `sessionMaxAgeSecs` (janela) e aperta com `inactivityTimeoutSecs` quando > 0.
+  - `callbacks.jwt`: carimba `token.lastSeen` e, a cada leitura, renova se ativo ou marca `token.expired` se passou da janela ociosa.
+  - `callbacks.session`: se `token.expired`, devolve sessão **sem `user`** (fail-closed) → guards mandam re-login.
+  - `src/types/next-auth.d.ts`: JWT ganhou `lastSeen?`/`expired?`.
+  - `src/app/(dashboard)/master/security/page.tsx`: rótulo/ajuda do campo atualizados ("Tempo logado / janela de inatividade" + explicação da sessão deslizante e do painel). O campo agora **tem efeito real**.
+- **Onde configurar:** MASTER → Segurança → Sessão → "Tempo logado / janela de inatividade" (mín. 15min, máx. 7 dias). Sem migration (campos já existiam). Sem coluna nova.
+- **Testes:** `npx tsc --noEmit` OK (0); `npm test` OK (389/389); `npm run build` OK.
+- **Pendências:** duração por-colaborador (por usuário) não implementada — exigiria coluna nova em `User` (evitado por ora: build de deploy não roda migrate). A sessão deslizante global já resolve o painel; per-user pode ser fase futura via JSON de policy se pedido.

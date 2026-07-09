@@ -171,12 +171,16 @@ export default function SecurityPage() {
           <h2 className="flex items-center gap-2 font-semibold text-gray-800 text-sm"><Clock size={14} className="text-slate-600" />Sessão</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Duração máxima (segundos)</label>
+              <label className={labelCls}>Tempo logado / janela de inatividade (segundos)</label>
               <input type="number" min={900} max={604800} className={inputCls}
                 value={policy.sessionMaxAgeSecs ?? 28800}
                 onChange={setNum('sessionMaxAgeSecs')}
               />
-              <p className="mt-1 text-xs text-gray-400">{Math.round((policy.sessionMaxAgeSecs ?? 28800) / 3600)}h</p>
+              <p className="mt-1 text-xs text-gray-400">
+                {Math.round((policy.sessionMaxAgeSecs ?? 28800) / 3600)}h ociosas. A sessão é <b>deslizante</b>: enquanto houver
+                atividade ela se renova sozinha (o Painel de Atendimento fica logado direto p/ a fila funcionar). Só expira após
+                esse tempo <b>sem uso</b>.
+              </p>
             </div>
             <div>
               <label className={labelCls}>Timeout por inatividade (seg, 0 = sem timeout)</label>
