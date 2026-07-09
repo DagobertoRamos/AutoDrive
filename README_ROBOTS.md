@@ -3073,3 +3073,13 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Onde configurar:** MASTER → Segurança → Sessão → "Tempo logado / janela de inatividade" (mín. 15min, máx. 7 dias). Sem migration (campos já existiam). Sem coluna nova.
 - **Testes:** `npx tsc --noEmit` OK (0); `npm test` OK (389/389); `npm run build` OK.
 - **Pendências:** duração por-colaborador (por usuário) não implementada — exigiria coluna nova em `User` (evitado por ora: build de deploy não roda migrate). A sessão deslizante global já resolve o painel; per-user pode ser fase futura via JSON de policy se pedido.
+
+### LOG 0231 — 2026-07-09 — Claude (Opus 4.8) — Pendências FASE 1: fix da busca por placa/negociação
+- **Bug:** "Buscar por placa" em Nova Pendência retornava "Nada encontrado" mesmo com veículo/negociação cadastrados. Causas: (1) `/api/pendencies/lookup` fazia **match EXATO** em `Vehicle.plate` (String livre) → qualquer hífen/caixa/formato divergente falhava; (2) busca por placa **nunca consultava `Deal`** (só `Vehicle`), e `Deal` não tem coluna `plate` — ela vive em `DealVehicle.plate` — então placa não trazia a negociação nem o vendedor; (3) sem equivalência antigo⇄Mercosul; (4) sem tratamento de outra unidade.
+- **Fix:**
+  - Novo `src/lib/plate.ts` (PURO/testável): `normalizePlate` (uppercase, tira hífen/espaço), `canonicalPlate` (5º char letra Mercosul A-J → dígito, p/ colidir antigo⇄Mercosul da mesma placa), `plateMatches` (completa, parcial/prefixo, equivalência de formato), `platePrefix`.
+  - `src/app/api/pendencies/lookup/route.ts` reescrito: normaliza a placa; busca por placa consulta primeiro `DealVehicle`→`Deal` (traz responsável/vendedor) e depois `Vehicle`; pré-filtro barato por prefixo de 3 letras + casamento em memória; ignora só `CANCELADA` (qualquer outro status vale); tenant-scoped, mas se o achado for de OUTRA unidade retorna mesmo assim com `otherUnitName` (a UI avisa em vez de sumir).
+  - `CreatePendencyModal.tsx`: mostra "⚠️ Está em outra unidade: X" quando aplicável.
+  - `src/lib/plate.test.ts`: 10 casos (completa, parcial, minúscula, com/sem traço, antigo⇄Mercosul, negativos, query curta).
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (399/399, +10); `npm run build` OK.
+- **Pendências (spec Pendências, fases 2–5, ainda NÃO feitas):** timeline unificada (2), motor de SLA + pop-ups Alta/Urgente (3), nagging Crítica (4), motor de penalidades + painel do gestor (5). Exigem models/migrations novas (aplicar manual na Neon) e tocam a fila de leads — aguardando aprovação de escopo.

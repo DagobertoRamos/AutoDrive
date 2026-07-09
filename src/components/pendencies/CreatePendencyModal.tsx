@@ -44,7 +44,8 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
         plate: d.plate || p.plate,
         negotiation: d.negotiation || p.negotiation,
       }))
-      setLookupMsg(`✓ ${d.source === 'deal' ? `Negociação ${d.negotiation ?? ''}` : `Veículo ${d.vehicle ?? ''}`}${d.customerName ? ` — ${d.customerName}` : ''} carregado.`)
+      const base = `✓ ${d.source === 'deal' ? `Negociação ${d.negotiation ?? ''}` : `Veículo ${d.vehicle ?? ''}`}${d.customerName ? ` — ${d.customerName}` : ''} carregado.`
+      setLookupMsg(d.otherUnitName ? `${base} ⚠️ Está em outra unidade: ${d.otherUnitName}.` : base)
     } catch { setLookupMsg('') }
   }
   const [remind, setRemind] = useState(true)
