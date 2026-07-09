@@ -79,3 +79,27 @@ export async function pushQueueCall(opts: { sellerId: string; attendanceId: stri
   // iPhone: reforça o "buzz" repetindo a notificação até aceitar/recusar/expirar.
   repeatWebPush(userId, opts.attendanceId, { title, body, data }, opts.timeoutSeconds)
 }
+
+/**
+ * REFORÇO SERVER-SIDE (cron) — reenvia UMA vez o push da chamada para o usuário,
+ * independente do `after()`/cliente. Chamado pelo sweep a cada tick para toda
+ * chamada CALLED ainda pendente: garante que o iPhone (app fechado/bloqueado)
+ * continue recebendo a notificação com som mesmo depois que a função original
+ * já encerrou. `userId` = SellerQueueAttendance.sellerId (que já é o userId).
+ */
+export async function reinforceQueueCallPush(userId: string, attendanceId: string, customerName: string | null, secondsLeft: number): Promise<void> {
+  const title = 'Você é o vendedor da vez 🔔'
+  const body = customerName?.trim() ? `Cliente: ${customerName.trim()} — aceite ou recuse.` : 'Cliente presencial aguardando — aceite ou recuse.'
+  const data = {
+    type: 'QUEUE_CALL',
+    attendanceId,
+    customerName: customerName?.trim() ?? '',
+    timeoutSeconds: String(Math.max(5, secondsLeft)),
+    url: '/vendedor-da-vez/minha-fila',
+    requireInteraction: 'true',
+  }
+  await Promise.all([
+    pushToUser(userId, { title, body, ttlSeconds: Math.max(15, secondsLeft), data }),
+    sendWebPushToUser(userId, { title, body, data }).catch(() => ({ sent: 0 })),
+  ])
+}
