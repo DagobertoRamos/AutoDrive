@@ -1,6 +1,7 @@
 import type { TenantServiceFlags, TenantServiceKey } from '@/lib/tenant-services/types'
 
 export type DashboardRoleKind =
+  | 'MASTER'
   | 'VENDEDOR'
   | 'GERENTE'
   | 'GERENTE_GERAL'

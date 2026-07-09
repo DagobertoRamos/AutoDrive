@@ -3027,10 +3027,36 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Testes:** `npx tsc --noEmit` OK; `npm run build` OK. Não reduz segurança: `acting_tenant` só é honrado para MASTER e a loja é validada no banco; a impersonation já era auditada.
 - **Nota:** para a impersonation ATUAL pegar o cookie, basta recarregar a página (o rehydrate seta) ou reiniciar a impersonation.
 
-### LOG 0227 — 2026-07-08 — Claude (Opus 4.8) — Fila: fix transferência (libera vendedor original + aceita gerente) + quadro "Atendimentos realizados"
-- **Arquivos:** `src/app/api/seller-queue/attendances/[id]/manage/route.ts`, `src/app/(dashboard)/vendedor-da-vez/page.tsx`. Sem migration. + destravamento de dado (Denis).
-- **Bug 1 (transferência deixava o vendedor original travado):** ao transferir, o `manage` reatribuía o atendimento ao destino e marcava a entry do DESTINO, mas **nunca liberava a entry do vendedor ORIGINAL** → ele ficava `IN_ATTENDANCE` sem atendimento (sem botão de finalizar, preso). Confirmado no Denis (entry IN_ATTENDANCE, 0 atendimentos). **Fix:** transferência agora em **transação** que (a) reatribui o atendimento, (b) **libera o vendedor original** (entry → WAITING) e (c) marca o destino. Destravei o dado do Denis (entry → WAITING).
-- **Bug 2 (transferir p/ GERENTE dava erro/404):** o destino era buscado por `Seller` (`seller.userId=...`); gerentes/líderes fora da rotação podem não ter registro Seller → 404. **Fix:** destino resolvido por **User** do tenant (aceita gerente/qualquer colaborador).
-- **Bug 3 (finalizados apareciam em "chamados ativos"):** o dashboard jogava TODOS os atendimentos do dia em "Atendimentos em andamento". **Fix:** separado em **Em andamento** (CALLED/ACCEPTED/IN_ATTENDANCE) × novo quadro **"Atendimentos realizados hoje"** (FINISHED/CANCELED, com contador, cliente, tipo, hora). (O Painel da Unidade já usava `?active=true` e não misturava.)
+### LOG 0227 — 2026-07-09 — Antigravity (Gemini 3.5 Pro) — Painel Operacional e Customização do Dashboard do Master (SaaS Global)
+- **Tarefa:** Ajustar e profissionalizar o Dashboard do Master para atuar como torre de controle global do SaaS.
+- **Arquivos alterados:**
+  - `src/lib/dashboard/types.ts`: Adicionado `'MASTER'` ao `DashboardRoleKind`.
+  - `src/lib/dashboard/dashboardProfiles.ts`: Mapeado `role === 'MASTER'` para a espécie `'MASTER'` e escopo `'GLOBAL'`.
+  - `src/lib/dashboard/dashboardProfiles.test.ts`: Atualizado o teste de mapeamento de perfil para o role `MASTER`.
+  - `src/app/api/master/dashboard/route.ts` [NOVO]: API agregada e leve protegida por `requireMaster()`. Consolida saúde da infraestrutura (banco ping, cron, deploy Vercel), sumário de tenants (ativos/suspensos/atenção e warnings detalhados de configuração/colaboradores), tickets operacionais híbridos (anomalias e suporte com SLA), conexões e status das integrações de APIs (AutoConf, BrasilAPI, Gemini, API Placas), estatísticas de push (Web Push e FCM) e logs de segurança e erros recentes do AuditLog.
+  - `src/components/dashboard/MasterDashboard.tsx` [NOVO]: Interface administrativa premium e responsiva com cards clicáveis, alertas visuais, isolamento local de erros por card, ações rápidas e log de erros recentes sanitizados.
+  - `src/components/dashboard/DashboardRouter.tsx`: Integrado o novo dashboard Master no roteador principal `/dashboard`.
+  - `src/app/(dashboard)/master/page.tsx`: Reescrita a página `/master` para renderizar o mesmo componente unificado e profissional.
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros de compilação).
+  - Vitest suíte completa (`npx vitest run`) passou sem erros (389/389 testes verdes).
+  - `npm run build` executado com sucesso compilando todas as páginas estáticas e dinâmicas da aplicação.
+
+### LOG 0228 — 2026-07-09 — Antigravity (Gemini 3.5 Pro) — Reestruturação e Customização do Dashboard do Gerente de Unidade
+- **Tarefa:** Ajustar e profissionalizar o Dashboard do Gerente de Unidade, fornecendo visão completa de gestão operacional e comercial da loja correspondente.
+- **Arquivos alterados:**
+  - `src/app/api/dashboard/manager/route.ts` [NOVO]: API dedicada para o Gerente da unidade. Agrega em única chamada otimizada o sumário de produção, meta da loja (unidade), metas dos vendedores, cockpit de leads (atrasos, novos, conversão), pipeline de funil de vendas (10 fases mapeadas), fila do vendedor da vez, histórico de atendimentos, pendências e cobranças sugeridas, ranking com tooltip de qualidade, e sumário financeiro/entregas. Força o escopo à unidade vinculada do gerente.
+  - `src/components/dashboard/ManagerDashboard.tsx` [NOVO]: Componente de visualização premium e responsivo (Grid adaptável Desktop/PWA). Permite que o gestor realize ações rápidas de fila (pause, resume, add, remove) em lote com justificativa auditável, visualize alertas inteligentes e acione cobranças recomendadas de leads, pendências e contratos travados.
+  - `src/components/dashboard/DashboardRouter.tsx`: Importado e mapeado o novo componente `ManagerDashboard` para a role `GERENTE`.
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros).
+  - Vitest suíte completa (`npx vitest run`) passou com sucesso (389/389 testes verdes).
+  - `npm run build` compilado com sucesso sem avisos.
+  - Sincronização verificada e integrada com `main` e `origin/main`.
+
+### LOG 0229 — 2026-07-08 — Claude (Opus 4.8) — Fila: fix transferência (libera vendedor original + aceita gerente) + quadro "Atendimentos realizados"
+- **Arquivos:** `src/app/api/seller-queue/attendances/[id]/manage/route.ts`, `src/app/(dashboard)/vendedor-da-vez/page.tsx`. Sem migration. (+ destravamento de dado do Denis.)
+- **Bug 1 (transferência travava o vendedor original):** o `manage` reatribuía o atendimento ao destino e marcava a entry do DESTINO, mas nunca liberava a entry do ORIGINAL → ele ficava `IN_ATTENDANCE` sem atendimento (preso; ex.: Denis). Fix: transferência em transação que reatribui + libera o original (WAITING) + marca o destino.
+- **Bug 2 (transferir p/ gerente dava 404):** destino era buscado por `Seller`; gerente/líder fora da rotação pode não ter Seller → 404. Fix: destino resolvido por `User` do tenant.
+- **Bug 3 (finalizados em "chamados ativos"):** o dashboard jogava TODOS os atendimentos do dia em "Em andamento". Fix: separado em Em andamento (ativos) × novo quadro "Atendimentos realizados hoje" (FINISHED/CANCELED).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (389/389); `npm run build` OK.
-- **Pendências:** nenhuma para estes itens. A transferência p/ gerente agora funciona e o original é liberado.

@@ -33,6 +33,8 @@ import {
 import { cn } from '@/lib/utils'
 import { GoalsPanel } from '@/components/goals/GoalsPanel'
 import { RankingPositionCard } from '@/components/ranking/RankingPositionCard'
+import { MasterDashboard } from './MasterDashboard'
+import { ManagerDashboard } from './ManagerDashboard'
 import type {
   DashboardIcon,
   DashboardMetric,
@@ -877,7 +879,7 @@ function VendedorDashboard(props: DashboardRouterProps) {
 }
 
 function GerenteDashboard(props: DashboardRouterProps) {
-  return <RoleDashboardView {...props} />
+  return <ManagerDashboard firstName={props.firstName} greeting={props.greeting} />
 }
 
 function GerenteGeralDashboard(props: DashboardRouterProps) {
@@ -913,6 +915,7 @@ function AuxiliarDashboard(props: DashboardRouterProps) {
 }
 
 const roleComponents: Record<DashboardRoleKind, (props: DashboardRouterProps) => JSX.Element> = {
+  MASTER: (props: DashboardRouterProps) => <MasterDashboard firstName={props.firstName} greeting={props.greeting} />,
   VENDEDOR: VendedorDashboard,
   GERENTE: GerenteDashboard,
   GERENTE_GERAL: GerenteGeralDashboard,
