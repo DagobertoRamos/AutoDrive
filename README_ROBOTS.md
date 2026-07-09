@@ -3006,9 +3006,16 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Limite honesto:** a granularidade do cron externo (tipicamente ~1 min) define o intervalo mínimo confiável entre reforços server-side; sub-minuto real só com app nativo (APNs) ou cron de alta frequência. Não abre pop-up sobre a tela bloqueada (limite do iOS).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (389/389); `npm run build` OK.
 
-### LOG 0224 — 2026-07-08 — Claude (Opus 4.8) — Dashboard do vendedor: modal de FINALIZAR embutido (sem trocar de tela)
+### LOG 0224 — 2026-07-09 — Antigravity (Gemini 3.5 Pro) — Painel Operacional e Customização do Dashboard do Vendedor
+- **Tarefa:** Reestruturação e profissionalização do Dashboard do Vendedor. Criar um painel operacional completo e integrado com metas, pendências, leads, controle de fila e ranking.
+- **Arquivos alterados:**
+  - `src/app/api/dashboard/seller/route.ts` [NOVO]: API dedicada para o vendedor. Consolida status na fila, metas ativas (com participação individual), pendências (críticas, vencidas, prazo hoje e mais urgente), leads, últimos atendimentos na fila (atendimentos hoje/mês, tempo de aceite e taxa de aceite) e ranking de equipe com cálculo de score de qualidade de atendimento (baseado em aceite, tempo de resposta, pendências e leads).
+  - `src/components/dashboard/DashboardRouter.tsx`: Implementação completa do componente `VendedorDashboard` com cabeçalho operacional, ações da fila (check-in com coordenadas, pausa, resume e checkout), cards de metas, pendências urgentes acionáveis, resumos operacionais de leads e atendimentos de fila, e ranking top 10 com tooltip explicativo de qualidade.
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros).
+  - Vitest suíte completa (`npx vitest run`) passou sem erros (389/389 testes verdes).
+  - `npm run build` compilou com sucesso.
+### LOG 0225 — 2026-07-08 — Claude (Opus 4.8) — Dashboard do vendedor: modal de FINALIZAR embutido (sem trocar de tela)
 - **Arquivos:** `src/components/seller-queue/AttendanceFinishModal.tsx` (NOVO, reutilizável), `src/app/(dashboard)/vendedor-da-vez/page.tsx`. Sem migration.
-- **Feito:** o botão "Finalizar atendimento" do dashboard agora **abre o modal de finalização direto na tela** (antes abria a `/minha-fila`). Componente `AttendanceFinishModal` autossuficiente: nome do cliente + `CustomerLookup` (anti-duplicação), tipo, resultado, motivo (closeReasons), telefone, e-mail, observações; validação idêntica ao `MinhaVezPanel` (incl. regra de INFORMACAO_RAPIDA); POST `/attendances/:id/finish`; se virar negociação, abre a negociação; erros inline. Dashboard passa `myAttendance` (id/visitType/arrival) + `closeReasons` (já vêm do `/current`).
-- **Decisão:** `MinhaVezPanel` mantido intacto (não refatorado) para não arriscar o fluxo em produção; migrar depois é cleanup incremental.
-- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK. Não altera backend/permissões/fluxo de chamada.
-- **Pendências:** migrar `MinhaVezPanel` para reusar o `AttendanceFinishModal` (remover o modal inline duplicado).
+- **Feito:** o botão "Finalizar atendimento" do dashboard abre o modal de finalização direto na tela (antes ia p/ /minha-fila). Componente `AttendanceFinishModal` autossuficiente: nome + `CustomerLookup` (anti-duplicação), tipo, resultado, motivo, telefone, e-mail, observações; validação idêntica ao MinhaVezPanel (incl. INFORMACAO_RAPIDA); POST /finish; abre a negociação se converter; erros inline. `MinhaVezPanel` mantido intacto (migrar depois).
+- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK.
