@@ -391,6 +391,7 @@ function Modal({
 
 export default function VendedoresPage() {
   const [sellers, setSellers] = useState<Seller[]>([])
+  const [search, setSearch] = useState('')
   const [units, setUnits] = useState<Unit[]>([])
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
@@ -476,6 +477,12 @@ export default function VendedoresPage() {
     }
   }
 
+  const q = search.trim().toLowerCase()
+  const filteredSellers = q
+    ? sellers.filter((s) => [s.fullName, s.email, s.cpf, s.cargo, s.position?.name, s.unitName, units.find((u) => u.id === s.unitId)?.name]
+        .some((v) => (v ?? '').toLowerCase().includes(q)))
+    : sellers
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -525,6 +532,23 @@ export default function VendedoresPage() {
       )}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-100 p-3">
+          <div className="relative max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nome, e-mail, CPF, cargo ou loja…"
+              className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-gray-100" aria-label="Limpar busca">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {q && <p className="mt-1.5 px-0.5 text-[11px] text-gray-400">{filteredSellers.length} de {sellers.length} colaborador(es)</p>}
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
@@ -543,15 +567,18 @@ export default function VendedoresPage() {
                     ))}
                   </tr>
                 ))
-              ) : sellers.length === 0 ? (
+              ) : filteredSellers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
-                    Nenhum vendedor cadastrado.{' '}
-                    <button onClick={openCreate} className="text-brand-600 hover:underline">Adicionar agora</button>
+                    {q ? (
+                      <>Nenhum colaborador encontrado para “{search.trim()}”.</>
+                    ) : (
+                      <>Nenhum vendedor cadastrado.{' '}<button onClick={openCreate} className="text-brand-600 hover:underline">Adicionar agora</button></>
+                    )}
                   </td>
                 </tr>
               ) : (
-                sellers.map((s) => (
+                filteredSellers.map((s) => (
                   <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
