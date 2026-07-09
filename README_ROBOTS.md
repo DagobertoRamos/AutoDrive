@@ -2966,3 +2966,9 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Tipo:** operação de DADOS em produção (Neon), sem código. Complementa o LOG 0217.
 - **Feito:** alinhado `user.role` + `seller.cargo` + `user.positionId` ao `baseRole` da posição para todos os colaboradores com Seller+posição divergentes (nunca MASTER; sem rebaixar gestão sênior — verificado no dry-run). **3 corrigidos:** CESAR (Motorista) VENDEDOR→USUARIO, JESSE (Preparador) cargo→USUARIO, LUCIANA (Auxiliar Geral) cargo→USUARIO. **Divergências restantes: 0.**
 - **Resultado:** cadastros agora consistentes (posição = fonte do papel). Anderson já estava correto (VENDEDOR_LIDER) do LOG 0217.
+
+### LOG 0219 — 2026-07-08 — Claude (Opus 4.8) — PWA: cadência de push da chamada — de 3s fixo para escalonado (anti-spam)
+- **Branch:** `codex-responsividade-base`. Sem migration/schema.
+- **Verificação pedida:** confirmar se o push da chamada estava sendo enviado a cada 2-3s. **Estava:** `repeatWebPush` em `src/lib/push/queue-push.ts` reenviava Web Push **a cada 3s** (até 9 vezes/~27s). Isso contraria o próprio spec ("push remoto a cada 2-3s não deve ser regra padrão") — o iOS/navegador limitam/coalescem pushes muito frequentes e gastam bateria.
+- **Correção:** trocado o intervalo fixo de 3s por uma **cadência ESCALONADA** de reforços em **5s, 12s, 25s, 45s** (só os que cabem no prazo do aceite), sempre parando ao aceitar/recusar/expirar. Resultado: ~5 envios espaçados em vez de 9 a cada 3s — insistente, porém sem spam. O alarme contínuo a 2-3s permanece **apenas LOCAL** (som/pop-up do `QueueAlertWatcher`, com o PWA aberto), como manda o spec. Auditado: não há outro loop de push remoto a 2-3s no sistema.
+- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK. Não altera Android/FCM, envio, SW nem o fluxo da fila.

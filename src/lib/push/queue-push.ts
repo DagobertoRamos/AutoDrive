@@ -11,15 +11,19 @@ import { sendWebPushToUser, type WebPushPayload } from './web-push'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-// iPhone/PWA: a Apple não permite alarme contínuo. Para ficar insistente,
-// REENVIAMOS a notificação a cada poucos segundos enquanto o atendimento segue
-// CHAMANDO (para sozinho ao aceitar/recusar/expirar). Roda em 2º plano (after).
+// iPhone/PWA: a Apple não permite alarme contínuo. Para ficar insistente sem
+// virar SPAM, REFORÇAMOS a notificação em uma cadência ESCALONADA (não a cada
+// 2-3s — o iOS/navegador limitam/juntam pushes muito frequentes e gastam
+// bateria). O alarme contínuo (2-3s) fica só no LOCAL, quando o PWA está aberto
+// (QueueAlertWatcher). Para sozinho ao aceitar/recusar/expirar. Roda em 2º plano.
+const REINFORCE_AT_SECONDS = [5, 12, 25, 45] // reforços após a 1ª notificação (0s)
 function repeatWebPush(userId: string, attendanceId: string, payload: WebPushPayload, maxSeconds: number): void {
+  const schedule = REINFORCE_AT_SECONDS.filter((s) => s < Math.max(5, maxSeconds))
   const run = async () => {
-    const intervalMs = 3000
-    const rounds = Math.min(9, Math.floor((Math.min(30, Math.max(9, maxSeconds)) * 1000) / intervalMs))
-    for (let i = 0; i < rounds; i++) {
-      await sleep(intervalMs)
+    let prevMs = 0
+    for (const atSec of schedule) {
+      await sleep(atSec * 1000 - prevMs)
+      prevMs = atSec * 1000
       const att = await prisma.sellerQueueAttendance.findUnique({ where: { id: attendanceId }, select: { status: true } }).catch(() => null)
       if (!att || att.status !== 'CALLED') return // aceitou/recusou/venceu → para
       await sendWebPushToUser(userId, payload).catch(() => {})
