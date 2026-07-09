@@ -3041,3 +3041,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - `npx tsc --noEmit` executado com sucesso (0 erros de compilação).
   - Vitest suíte completa (`npx vitest run`) passou sem erros (389/389 testes verdes).
   - `npm run build` executado com sucesso compilando todas as páginas estáticas e dinâmicas da aplicação.
+
+### LOG 0228 — 2026-07-09 — Antigravity (Gemini 3.5 Pro) — Reestruturação e Customização do Dashboard do Gerente de Unidade
+- **Tarefa:** Ajustar e profissionalizar o Dashboard do Gerente de Unidade, fornecendo visão completa de gestão operacional e comercial da loja correspondente.
+- **Arquivos alterados:**
+  - `src/app/api/dashboard/manager/route.ts` [NOVO]: API dedicada para o Gerente da unidade. Agrega em única chamada otimizada o sumário de produção, meta da loja (unidade), metas dos vendedores, cockpit de leads (atrasos, novos, conversão), pipeline de funil de vendas (10 fases mapeadas), fila do vendedor da vez, histórico de atendimentos, pendências e cobranças sugeridas, ranking com tooltip de qualidade, e sumário financeiro/entregas. Força o escopo à unidade vinculada do gerente.
+  - `src/components/dashboard/ManagerDashboard.tsx` [NOVO]: Componente de visualização premium e responsivo (Grid adaptável Desktop/PWA). Permite que o gestor realize ações rápidas de fila (pause, resume, add, remove) em lote com justificativa auditável, visualize alertas inteligentes e acione cobranças recomendadas de leads, pendências e contratos travados.
+  - `src/components/dashboard/DashboardRouter.tsx`: Importado e mapeado o novo componente `ManagerDashboard` para a role `GERENTE`.
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros).
+  - Vitest suíte completa (`npx vitest run`) passou com sucesso (389/389 testes verdes).
+  - `npm run build` compilado com sucesso sem avisos.
+  - Sincronização verificada e integrada com `main` e `origin/main`.
