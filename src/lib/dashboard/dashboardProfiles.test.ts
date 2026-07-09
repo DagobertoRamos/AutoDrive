@@ -19,7 +19,7 @@ describe('resolveDashboardProfile', () => {
     expect(profile('VENDEDOR_LIDER')).toBe('VENDEDOR')
     expect(profile('GERENTE_GERAL')).toBe('GERENTE_GERAL')
     expect(profile('ADM')).toBe('ADMIN')
-    expect(profile('MASTER')).toBe('ADMIN')
+    expect(profile('MASTER')).toBe('MASTER')
     expect(profile('FINANCEIRO')).toBe('FINANCEIRO')
   })
 

@@ -59,7 +59,8 @@ function inferOperationalRole(input: DashboardProfileInput): DashboardRoleKind |
 }
 
 function defaultRoleKind(role: UserRole): DashboardRoleKind {
-  if (role === 'MASTER' || role === 'ADM' || role === 'GERENTE_ADMINISTRATIVO') return 'ADMIN'
+  if (role === 'MASTER') return 'MASTER'
+  if (role === 'ADM' || role === 'GERENTE_ADMINISTRATIVO') return 'ADMIN'
   if (role === 'GERENTE_GERAL') return 'GERENTE_GERAL'
   if (role === 'GERENTE') return 'GERENTE'
   if (role === 'VENDEDOR' || role === 'VENDEDOR_LIDER') return 'VENDEDOR'
@@ -81,6 +82,10 @@ function scopeFor(kind: DashboardRoleKind, role: UserRole): DashboardScopeKind {
 }
 
 const ROLE_LABEL: Record<DashboardRoleKind, { label: string; description: string }> = {
+  MASTER: {
+    label: 'Painel Master',
+    description: 'Administração global do SaaS AutoDrive, saúde do sistema, tenants e infraestrutura.',
+  },
   VENDEDOR: {
     label: 'Dashboard do Vendedor',
     description: 'Metas próprias, ranking, propostas, leads e pendências do dia.',

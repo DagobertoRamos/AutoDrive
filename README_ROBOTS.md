@@ -3026,3 +3026,18 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Feature 2 (busca nos Cadastros):** campo de busca no topo da lista de Colaboradores (filtra por nome, e-mail, CPF, cargo ou loja), com contador "X de Y" e limpar — igual SaaS grande. Filtro client-side sobre a lista já carregada (leve).
 - **Testes:** `npx tsc --noEmit` OK; `npm run build` OK. Não reduz segurança: `acting_tenant` só é honrado para MASTER e a loja é validada no banco; a impersonation já era auditada.
 - **Nota:** para a impersonation ATUAL pegar o cookie, basta recarregar a página (o rehydrate seta) ou reiniciar a impersonation.
+
+### LOG 0227 — 2026-07-09 — Antigravity (Gemini 3.5 Pro) — Painel Operacional e Customização do Dashboard do Master (SaaS Global)
+- **Tarefa:** Ajustar e profissionalizar o Dashboard do Master para atuar como torre de controle global do SaaS.
+- **Arquivos alterados:**
+  - `src/lib/dashboard/types.ts`: Adicionado `'MASTER'` ao `DashboardRoleKind`.
+  - `src/lib/dashboard/dashboardProfiles.ts`: Mapeado `role === 'MASTER'` para a espécie `'MASTER'` e escopo `'GLOBAL'`.
+  - `src/lib/dashboard/dashboardProfiles.test.ts`: Atualizado o teste de mapeamento de perfil para o role `MASTER`.
+  - `src/app/api/master/dashboard/route.ts` [NOVO]: API agregada e leve protegida por `requireMaster()`. Consolida saúde da infraestrutura (banco ping, cron, deploy Vercel), sumário de tenants (ativos/suspensos/atenção e warnings detalhados de configuração/colaboradores), tickets operacionais híbridos (anomalias e suporte com SLA), conexões e status das integrações de APIs (AutoConf, BrasilAPI, Gemini, API Placas), estatísticas de push (Web Push e FCM) e logs de segurança e erros recentes do AuditLog.
+  - `src/components/dashboard/MasterDashboard.tsx` [NOVO]: Interface administrativa premium e responsiva com cards clicáveis, alertas visuais, isolamento local de erros por card, ações rápidas e log de erros recentes sanitizados.
+  - `src/components/dashboard/DashboardRouter.tsx`: Integrado o novo dashboard Master no roteador principal `/dashboard`.
+  - `src/app/(dashboard)/master/page.tsx`: Reescrita a página `/master` para renderizar o mesmo componente unificado e profissional.
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros de compilação).
+  - Vitest suíte completa (`npx vitest run`) passou sem erros (389/389 testes verdes).
+  - `npm run build` executado com sucesso compilando todas as páginas estáticas e dinâmicas da aplicação.
