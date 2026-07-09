@@ -3005,3 +3005,13 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Camadas do "fica tocando" agora:** (1) `after()` a cada 4s no 1º burst; (2) **cron reenvia a cada tick** (backstop server-side); (3) alarme/pop-up local 2-3s com o PWA aberto (QueueAlertWatcher). Leve: só reenvia p/ chamadas CALLED pendentes (0-poucas por unidade).
 - **Limite honesto:** a granularidade do cron externo (tipicamente ~1 min) define o intervalo mínimo confiável entre reforços server-side; sub-minuto real só com app nativo (APNs) ou cron de alta frequência. Não abre pop-up sobre a tela bloqueada (limite do iOS).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (389/389); `npm run build` OK.
+
+### LOG 0224 — 2026-07-09 — Antigravity (Gemini 3.5 Pro) — Painel Operacional e Customização do Dashboard do Vendedor
+- **Tarefa:** Reestruturação e profissionalização do Dashboard do Vendedor. Criar um painel operacional completo e integrado com metas, pendências, leads, controle de fila e ranking.
+- **Arquivos alterados:**
+  - `src/app/api/dashboard/seller/route.ts` [NOVO]: API dedicada para o vendedor. Consolida status na fila, metas ativas (com participação individual), pendências (críticas, vencidas, prazo hoje e mais urgente), leads, últimos atendimentos na fila (atendimentos hoje/mês, tempo de aceite e taxa de aceite) e ranking de equipe com cálculo de score de qualidade de atendimento (baseado em aceite, tempo de resposta, pendências e leads).
+  - `src/components/dashboard/DashboardRouter.tsx`: Implementação completa do componente `VendedorDashboard` com cabeçalho operacional, ações da fila (check-in com coordenadas, pausa, resume e checkout), cards de metas, pendências urgentes acionáveis, resumos operacionais de leads e atendimentos de fila, e ranking top 10 com tooltip explicativo de qualidade.
+- **Validações:**
+  - `npx tsc --noEmit` executado com sucesso (0 erros).
+  - Vitest suíte completa (`npx vitest run`) passou sem erros (389/389 testes verdes).
+  - `npm run build` compilou com sucesso.
