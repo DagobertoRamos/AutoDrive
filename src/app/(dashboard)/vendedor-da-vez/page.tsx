@@ -26,6 +26,7 @@ import {
   LogOut,
   PhoneCall,
   Play,
+  Pause,
   Hand,
   RefreshCw,
   Settings,
@@ -592,6 +593,29 @@ export default function FilaOverviewPage() {
     }
   }
 
+  // Pausar a própria posição (mantém o lugar na fila; não recebe chamada enquanto pausado).
+  const pauseSelf = async () => {
+    if (!isMeWaiting) { flash('Só é possível pausar quando você está aguardando na fila.', false); return }
+    setBusy('pause-self')
+    try {
+      const r = await postJson('/api/seller-queue/pause', {})
+      if (!r.ok) { flash(r.error ?? 'Não foi possível pausar.', false); return }
+      await refreshAfter('Você pausou — sua posição na fila foi mantida.')
+    } finally { setBusy(null) }
+  }
+
+  // Sair da fila (check-out). Perde a posição.
+  const checkOutSelf = async () => {
+    if (!isMeWaiting && !isMePaused) return
+    if (!window.confirm('Sair da fila de atendimento agora? Você perde a posição atual.')) return
+    setBusy('checkout-self')
+    try {
+      const r = await postJson('/api/seller-queue/check-out', {})
+      if (!r.ok) { flash(r.error ?? 'Não foi possível sair da fila.', false); return }
+      await refreshAfter('Você saiu da fila.')
+    } finally { setBusy(null) }
+  }
+
   const startAttendanceFor = async (sellerId?: string) => {
     const reason = requireReason('Iniciar atendimento sem cliente cadastrado')
     if (!reason) { flash('Motivo obrigatório.', false); return }
@@ -807,6 +831,34 @@ export default function FilaOverviewPage() {
                       <Crown size={16} />
                       Verificar vez
                     </button>
+                    {/* Finalizar o próprio atendimento (abre a Minha Fila, com o fluxo de finalização). */}
+                    {myQueueStatus === 'IN_ATTENDANCE' && (
+                      <a href="/vendedor-da-vez/minha-fila" className="col-span-full flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700">
+                        <CheckCircle2 size={16} />
+                        Finalizar atendimento
+                      </a>
+                    )}
+                    {/* Pausar: mantém a posição, não recebe chamada (só quando aguardando). */}
+                    {isMeWaiting && (
+                      <button onClick={pauseSelf} disabled={busy === 'pause-self'} className="btn-secondary justify-center py-2.5 text-sm">
+                        {busy === 'pause-self' ? <RefreshCw size={16} className="animate-spin" /> : <Pause size={16} className="text-amber-600" />}
+                        Pausar
+                      </button>
+                    )}
+                    {/* Retomar: quando pausado (também dá pelo botão "Voltar para a fila"). */}
+                    {isMePaused && (
+                      <button onClick={enterQueue} disabled={busy === 'enter-queue'} className="btn-secondary justify-center py-2.5 text-sm">
+                        {busy === 'enter-queue' ? <RefreshCw size={16} className="animate-spin" /> : <Play size={16} className="text-green-600" />}
+                        Retomar
+                      </button>
+                    )}
+                    {/* Sair da fila (check-out) — quando está na fila ou pausado. */}
+                    {(isMeWaiting || isMePaused) && (
+                      <button onClick={checkOutSelf} disabled={busy === 'checkout-self'} className="btn-secondary justify-center py-2.5 text-sm">
+                        {busy === 'checkout-self' ? <RefreshCw size={16} className="animate-spin" /> : <LogOut size={16} className="text-red-600" />}
+                        Sair da fila
+                      </button>
+                    )}
                   </>
                 )}
                 {/* Painel da Loja (TV) — visível a qualquer um que enxerga a fila

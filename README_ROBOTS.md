@@ -2991,3 +2991,9 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Arquivo:** `src/lib/push/queue-push.ts`. Sem migration.
 - **Mudança (a pedido):** o reforço da notificação da chamada passou de ~10s para **1 push a cada 4s**, indo **até o prazo cadastrado** (`acceptTimeoutSeconds`) e **parando** ao aceitar/recusar/expirar (checa o status a cada iteração). Trava de segurança em 1800s contra prazo mal configurado.
 - **Ressalva serverless:** o reforço roda em 2º plano (`after`) enquanto a função vive; prazos muito longos podem não completar todos os reforços (limite de execução da Vercel), mas cada tela aberta/painel também mantém o alerta e a auto-cura. `npx tsc --noEmit` OK.
+
+### LOG 0222 — 2026-07-08 — Claude (Opus 4.8) — Dashboard do vendedor: botões Pausar / Retomar / Sair da fila / Finalizar atendimento
+- **Arquivo:** `src/app/(dashboard)/vendedor-da-vez/page.tsx`. Sem migration.
+- **Problema:** o dashboard do vendedor (PWA e PC) só tinha "Entrar na fila" + "Verificar vez" — faltavam as ações próprias (pausar, sair da fila, finalizar atendimento). Os endpoints já existiam (`/pause`, `/check-out`, `/resume`, `/attendances/[id]/finish`), mas a UI não os expunha (finalizar só existia no `MinhaVezPanel` da `/minha-fila`).
+- **Feito:** botões **state-aware** no bloco `canUseOwnQueue` (só para quem pode entrar na fila): **Pausar** (quando aguardando → `/pause`, mantém a posição), **Retomar** (quando pausado → `/resume`), **Sair da fila** (aguardando/pausado → `/check-out`, com confirmação), **Finalizar atendimento** (quando IN_ATTENDANCE → abre `/vendedor-da-vez/minha-fila`, onde está o fluxo completo de finalização). Handlers reusam `postJson`/`refreshAfter`/`flash` já existentes; validações self já garantidas no backend (gate `sellerQueue.checkIn`, só a própria entry).
+- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK. Não altera gestão/painel/permissões nem o fluxo de chamada.
