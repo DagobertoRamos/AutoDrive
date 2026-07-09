@@ -3083,3 +3083,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - `src/lib/plate.test.ts`: 10 casos (completa, parcial, minúscula, com/sem traço, antigo⇄Mercosul, negativos, query curta).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (399/399, +10); `npm run build` OK.
 - **Pendências (spec Pendências, fases 2–5, ainda NÃO feitas):** timeline unificada (2), motor de SLA + pop-ups Alta/Urgente (3), nagging Crítica (4), motor de penalidades + painel do gestor (5). Exigem models/migrations novas (aplicar manual na Neon) e tocam a fila de leads — aguardando aprovação de escopo.
+
+### LOG 0232 — 2026-07-09 — Claude (Opus 4.8) — Pendências FASE 2: timeline unificada (pendency_events) + UI
+- **O quê:** fonte de verdade única p/ a linha do tempo da pendência e base de auditoria das próximas fases (SLA/nagging/penalidades).
+- **Schema (aditivo):** novo `model PendencyEvent` (`pendency_events`) — id, tenantId, pendencyId, type (CREATED|STATUS_CHANGED|RESPONSE|PRIORITY_CHANGED|DUE_CHANGED|COMMITMENT|POPUP_SHOWN|POPUP_DISMISSED|ESCALATED|PENALTY_APPLIED|PENALTY_REMOVED|REMINDER_SENT|ASSIGNED), authorId/authorName (snapshot), content, prev/new de status/prioridade/prazo, createdAt. Relation `events` em `Pendency`. **Migration:** `prisma/migrations/20260709120000_add_pendency_events/` — **APLICAR MANUAL na Neon** (`prisma migrate deploy`); o build de deploy não roda migrate.
+- **Código:**
+  - `src/lib/pendencies/events.ts`: `logPendencyEvent()` (grava evento, **tolerante a migration pendente** — try/catch no-op) + PUROS `buildTimeline()` (mescla events+status_history+comments+notification_logs, ordena desc) e `eventLabel()` (rótulos PT). `src/lib/pendencies/events.test.ts` (6 casos).
+  - `GET /api/pendencies/[id]/timeline`: mescla as 4 fontes, cada uma `.catch(()=>[])` (nada quebra sem a migration). Tenant-scoped.
+  - Instrumentado: criação (`CREATED`) e escalonamento (`ESCALATED` + `PRIORITY_CHANGED`). Demais pontos (resolve/review/assign/due) entram nas fases seguintes conforme necessário.
+  - `PendencyModal.tsx`: aba Histórico agora consome `/timeline` (status + prioridade/prazo + pop-ups + escalonamento + penalidades + respostas + envios), com ícone/cor por grupo. **Sem regressão** se a tabela ainda não existir (mostra status/comentários/envios normalmente).
+- **Deploy seguro:** `.catch` em toda leitura/escrita do `pendency_events` → pode subir p/ a main ANTES da migration; os eventos só passam a ser gravados/exibidos depois que a migration rodar na Neon.
+- **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (405/405, +6); `npm run build` OK.
+- **Pendências (spec Pendências):** Fase 3 (motor SLA + pop-ups Alta/Urgente), Fase 4 (nagging Crítica), Fase 5 (penalidades — decidido: só AVISA/marca, NÃO suspende a fila de leads). Campos `prazo_comprometido/ultima_cobranca_em/contador_cobrancas/escalonado_para` ficam p/ a Fase 3 (onde são usados), via migration própria.

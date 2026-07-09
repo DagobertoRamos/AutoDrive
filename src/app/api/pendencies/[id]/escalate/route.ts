@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { logPendencyEvent, PENDENCY_EVENT } from '@/lib/pendencies/events'
 
 const schema = z.object({
   reason: z.string().min(5, 'Motivo do escalonamento é obrigatório (mín. 5 caracteres)'),
@@ -88,6 +89,12 @@ export async function POST(
         reason:          `ESCALONAMENTO: ${reason}`,
       },
     })
+
+    // Timeline unificada: registra o escalonamento e a subida de prioridade.
+    await logPendencyEvent({ tenantId: pendency.tenantId, pendencyId: id, type: PENDENCY_EVENT.ESCALATED, authorId: session.user.id, authorName: session.user.name, content: reason })
+    if (newPriority !== pendency.priority) {
+      await logPendencyEvent({ tenantId: pendency.tenantId, pendencyId: id, type: PENDENCY_EVENT.PRIORITY_CHANGED, authorId: session.user.id, authorName: session.user.name, prevPriority: pendency.priority, newPriority })
+    }
 
     // Notifica gerência/ADM
     if (pendency.tenantId) {

@@ -11,6 +11,7 @@ import type { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { isPendencyManagerPlus, notDeletedPendencyWhere } from '@/lib/pendencies/access'
+import { logPendencyEvent, PENDENCY_EVENT } from '@/lib/pendencies/events'
 
 const NO_MATCH = '__pendency_no_match__'
 
@@ -221,6 +222,18 @@ export async function POST(req: NextRequest) {
         changedByUserId:session.user.id,
       },
     }).catch(() => {})
+
+    // Timeline unificada
+    await logPendencyEvent({
+      tenantId:   pendency.tenantId,
+      pendencyId: pendency.id,
+      type:       PENDENCY_EVENT.CREATED,
+      authorId:   session.user.id,
+      authorName: session.user.name,
+      newStatus:  'ABERTA',
+      newPriority: pendency.priority,
+      newDueDate: pendency.dueDate,
+    })
 
     // Audit log
     await prisma.auditLog.create({

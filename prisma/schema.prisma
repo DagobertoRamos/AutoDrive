@@ -1880,6 +1880,7 @@ model Pendency {
   messages        PendencyMessage[]
   messageReturns  MessageReturn[]
   comments        PendencyComment[]
+  events          PendencyEvent[]
 
   @@index([tenantId])
   @@index([status])
@@ -1966,6 +1967,34 @@ model PendencyComment {
 
   @@index([pendencyId])
   @@map("pendency_comments")
+}
+
+// Timeline unificada da pendência (fonte de verdade p/ auditoria e cobranças).
+// Complementa status_history/comments/notification_logs com os eventos que antes
+// não tinham casa: mudança de prioridade/prazo, pop-up exibido/ignorado,
+// compromisso de prazo, escalonamento e penalidade aplicada/removida.
+model PendencyEvent {
+  id           String    @id @default(cuid())
+  tenantId     String?
+  pendencyId   String
+  type         String    // CREATED | STATUS_CHANGED | RESPONSE | PRIORITY_CHANGED | DUE_CHANGED | COMMITMENT | POPUP_SHOWN | POPUP_DISMISSED | ESCALATED | PENALTY_APPLIED | PENALTY_REMOVED | REMINDER_SENT | ASSIGNED
+  authorId     String?   // usuário que gerou (null = sistema)
+  authorName   String?   // snapshot p/ exibir sem join (autor pode sair da base)
+  content      String?   @db.Text // texto livre (resposta/justificativa) ou payload
+  prevStatus   String?
+  newStatus    String?
+  prevPriority String?
+  newPriority  String?
+  prevDueDate  DateTime?
+  newDueDate   DateTime?
+  createdAt    DateTime  @default(now())
+
+  pendency Pendency @relation(fields: [pendencyId], references: [id], onDelete: Cascade)
+
+  @@index([pendencyId, createdAt])
+  @@index([tenantId])
+  @@index([type])
+  @@map("pendency_events")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

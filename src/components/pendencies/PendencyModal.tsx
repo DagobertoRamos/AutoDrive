@@ -22,19 +22,15 @@ type Tab = 'detalhes' | 'historico' | 'respostas' | 'envios'
 interface PushLog { id: string; channel: string; status: string; sentCount: number; detail: string | null; createdAt: string }
 interface ModalMessageReturn { profileName?: string | null; messageBody?: string | null; createdAt: string | Date }
 
-// Rótulos em PT dos status (para a linha do tempo do histórico).
-const STATUS_PT: Record<string, string> = {
-  ABERTA: 'Aberta', EM_ANDAMENTO: 'Em andamento', AGUARDANDO_RESPOSTA: 'Aguardando resposta',
-  PAUSADA: 'Pausada', FINALIZADA: 'Finalizada', REATIVADA: 'Reativada', CANCELADA: 'Arquivada',
-  VENCIDA: 'Vencida',
-}
-const stPt = (s?: string | null) => (s ? (STATUS_PT[s] ?? s) : '—')
+// Cor do marcador e ícone por grupo de evento da timeline unificada.
+const TIMELINE_DOT: Record<string, string> = { status: 'bg-brand-400', comment: 'bg-gray-300', event: 'bg-amber-400', send: 'bg-sky-400' }
+const TIMELINE_ICON: Record<string, string> = { status: '🔄', comment: '💬', event: '⚡', send: '🔔' }
 
 const ARCHIVE_ROLES = new Set(['MASTER', 'ADM', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'])
 const DELETE_ROLES = new Set(['MASTER', 'ADM', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'GERENTE_GERAL'])
 
-// Item unificado da linha do tempo (transição de status OU comentário/ciente).
-interface TimelineItem { kind: 'status' | 'comment'; createdAt: string; by?: string | null; previousStatus?: string | null; newStatus?: string; reason?: string | null; content?: string }
+// Item unificado da linha do tempo (vem mesclado do endpoint /timeline).
+interface TimelineItem { id: string; kind: string; type: string; at: string; by?: string | null; title: string; detail?: string | null }
 
 export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalProps) {
   const { data: session } = useSession()
@@ -61,25 +57,15 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
     fetch(`/api/pendencies/${pendency.id}/logs`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).then((j) => setPushLogs(j?.data ?? [])).catch(() => {})
   }, [tab, pendency.id])
 
-  // O objeto vindo da LISTA não traz o histórico. Buscamos o DETALHE (transições
-  // de status + observações) e os COMENTÁRIOS, e juntamos tudo numa só linha do
-  // tempo — do cadastro até a resolução/arquivamento.
+  // Timeline unificada (status + prioridade/prazo + pop-ups + escalonamento +
+  // penalidades + respostas + envios), mesclada no servidor em /timeline.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const [detRes, comRes] = await Promise.all([
-          fetch(`/api/pendencies/${pendency.id}`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).catch(() => null),
-          fetch(`/api/pendencies/${pendency.id}/comment`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).catch(() => null),
-        ])
+        const res = await fetch(`/api/pendencies/${pendency.id}/timeline`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null).catch(() => null)
         if (cancelled) return
-        const hist = (detRes?.data?.statusHistory ?? []) as Array<{ previousStatus?: string | null; newStatus: string; reason?: string | null; createdAt: string; changedByUser?: { name?: string | null } | null }>
-        const coms = (comRes?.data ?? []) as Array<{ content: string; createdAt: string; user?: { name?: string | null } | null }>
-        const items: TimelineItem[] = [
-          ...hist.map((h) => ({ kind: 'status' as const, createdAt: h.createdAt, by: h.changedByUser?.name ?? null, previousStatus: h.previousStatus, newStatus: h.newStatus, reason: h.reason ?? null })),
-          ...coms.map((c) => ({ kind: 'comment' as const, createdAt: c.createdAt, by: c.user?.name ?? null, content: c.content })),
-        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        setTimeline(items)
+        setTimeline((res?.data ?? []) as TimelineItem[])
       } catch { /* silencioso */ }
     })()
     return () => { cancelled = true }
@@ -268,28 +254,20 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                 <p className="text-sm text-gray-400 text-center py-8">Nenhum histórico registrado.</p>
               ) : (
                 timeline.map((it, i) => (
-                  <div key={i} className="flex gap-3">
+                  <div key={it.id} className="flex gap-3">
                     <div className="flex flex-col items-center">
-                      <div className={cn('h-2.5 w-2.5 rounded-full mt-1 shrink-0', it.kind === 'comment' ? 'bg-gray-300' : 'bg-brand-400')} />
+                      <div className={cn('h-2.5 w-2.5 rounded-full mt-1 shrink-0', TIMELINE_DOT[it.kind] ?? 'bg-brand-400')} />
                       {i < timeline.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 my-1" />}
                     </div>
                     <div className="pb-3 min-w-0">
                       <p className="text-xs text-gray-400">
-                        {formatRelativeTime(new Date(it.createdAt))}
+                        {formatRelativeTime(new Date(it.at))}
                         {it.by && <span className="text-gray-400"> · {it.by}</span>}
                       </p>
-                      {it.kind === 'status' ? (
-                        <>
-                          <p className="text-sm text-gray-700">
-                            <span className="font-medium">{stPt(it.previousStatus)}</span>
-                            {' → '}
-                            <span className="font-medium text-brand-700">{stPt(it.newStatus)}</span>
-                          </p>
-                          {it.reason && <p className="text-xs text-gray-500 mt-0.5 italic">&quot;{it.reason}&quot;</p>}
-                        </>
-                      ) : (
-                        <p className="text-sm text-gray-700"><span className="text-gray-400 mr-1">💬</span>{it.content}</p>
-                      )}
+                      <p className="text-sm font-medium text-gray-700">
+                        <span className="mr-1">{TIMELINE_ICON[it.kind] ?? '•'}</span>{it.title}
+                      </p>
+                      {it.detail && <p className="text-xs text-gray-500 mt-0.5 italic">&quot;{it.detail}&quot;</p>}
                     </div>
                   </div>
                 ))
