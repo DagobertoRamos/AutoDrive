@@ -44,6 +44,7 @@ import FilasIndividuaisUnidade from '@/components/seller-queue/FilasIndividuaisU
 import QueueRanking from '@/components/seller-queue/QueueRanking'
 import VerificarVezModal from '@/components/seller-queue/VerificarVezModal'
 import AttendanceReminderModal, { type AttendanceReminderData } from '@/components/seller-queue/AttendanceReminderModal'
+import AttendanceFinishModal from '@/components/seller-queue/AttendanceFinishModal'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { ensureNotifyPermission, playSound, setAlertVolume, unlockAudio } from '@/lib/seller-queue/alert-client'
 
@@ -97,6 +98,8 @@ interface CurrentData {
     reorder?: boolean
   }
   onVacation?: boolean
+  myAttendance?: { id: string; status: string; visitType?: string | null; arrival?: { customerName: string | null; customerPhone: string | null; customerEmail: string | null } | null } | null
+  closeReasons?: string[]
 }
 
 interface Attendance {
@@ -291,6 +294,7 @@ export default function FilaOverviewPage() {
   const roleCanManage = !!user?.role && MANAGE_ROLES.includes(user.role)
 
   const [current, setCurrent] = useState<CurrentData | null>(null)
+  const [finishOpen, setFinishOpen] = useState(false)
   const [attendances, setAttendances] = useState<Attendance[]>([])
   const [events, setEvents] = useState<QueueEvent[]>([])
   const [reports, setReports] = useState<ReportData | null>(null)
@@ -831,12 +835,12 @@ export default function FilaOverviewPage() {
                       <Crown size={16} />
                       Verificar vez
                     </button>
-                    {/* Finalizar o próprio atendimento (abre a Minha Fila, com o fluxo de finalização). */}
-                    {myQueueStatus === 'IN_ATTENDANCE' && (
-                      <a href="/vendedor-da-vez/minha-fila" className="col-span-full flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700">
+                    {/* Finalizar o próprio atendimento — modal embutido no dashboard. */}
+                    {myQueueStatus === 'IN_ATTENDANCE' && current?.myAttendance?.id && (
+                      <button onClick={() => setFinishOpen(true)} className="col-span-full flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700">
                         <CheckCircle2 size={16} />
                         Finalizar atendimento
-                      </a>
+                      </button>
                     )}
                     {/* Pausar: mantém a posição, não recebe chamada (só quando aguardando). */}
                     {isMeWaiting && (
@@ -1137,6 +1141,16 @@ export default function FilaOverviewPage() {
 
       {checkTurnOpen && <VerificarVezModal onClose={() => setCheckTurnOpen(false)} onChanged={load} />}
       {reminders?.myReminder && <AttendanceReminderModal reminder={reminders.myReminder} onClose={() => setReminders((r) => r ? { ...r, myReminder: null } : r)} onChanged={load} />}
+      {finishOpen && current?.myAttendance?.id && (
+        <AttendanceFinishModal
+          attendanceId={current.myAttendance.id}
+          visitType={current.myAttendance.visitType}
+          arrival={current.myAttendance.arrival}
+          closeReasons={current.closeReasons}
+          onClose={() => setFinishOpen(false)}
+          onFinished={() => { setFinishOpen(false); void load() }}
+        />
+      )}
 
       {/* Modal de Marcar Atendendo (Gestor) */}
       {markAttendingOpen && (

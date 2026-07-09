@@ -3005,3 +3005,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Camadas do "fica tocando" agora:** (1) `after()` a cada 4s no 1º burst; (2) **cron reenvia a cada tick** (backstop server-side); (3) alarme/pop-up local 2-3s com o PWA aberto (QueueAlertWatcher). Leve: só reenvia p/ chamadas CALLED pendentes (0-poucas por unidade).
 - **Limite honesto:** a granularidade do cron externo (tipicamente ~1 min) define o intervalo mínimo confiável entre reforços server-side; sub-minuto real só com app nativo (APNs) ou cron de alta frequência. Não abre pop-up sobre a tela bloqueada (limite do iOS).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (389/389); `npm run build` OK.
+
+### LOG 0224 — 2026-07-08 — Claude (Opus 4.8) — Dashboard do vendedor: modal de FINALIZAR embutido (sem trocar de tela)
+- **Arquivos:** `src/components/seller-queue/AttendanceFinishModal.tsx` (NOVO, reutilizável), `src/app/(dashboard)/vendedor-da-vez/page.tsx`. Sem migration.
+- **Feito:** o botão "Finalizar atendimento" do dashboard agora **abre o modal de finalização direto na tela** (antes abria a `/minha-fila`). Componente `AttendanceFinishModal` autossuficiente: nome do cliente + `CustomerLookup` (anti-duplicação), tipo, resultado, motivo (closeReasons), telefone, e-mail, observações; validação idêntica ao `MinhaVezPanel` (incl. regra de INFORMACAO_RAPIDA); POST `/attendances/:id/finish`; se virar negociação, abre a negociação; erros inline. Dashboard passa `myAttendance` (id/visitType/arrival) + `closeReasons` (já vêm do `/current`).
+- **Decisão:** `MinhaVezPanel` mantido intacto (não refatorado) para não arriscar o fluxo em produção; migrar depois é cleanup incremental.
+- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK. Não altera backend/permissões/fluxo de chamada.
+- **Pendências:** migrar `MinhaVezPanel` para reusar o `AttendanceFinishModal` (remover o modal inline duplicado).
