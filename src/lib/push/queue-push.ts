@@ -13,14 +13,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 // iPhone/PWA: a Apple NÃO permite alarme contínuo nem pop-up sobre a tela
 // bloqueada (isso é só app nativo/APNs). O melhor viável é REFORÇAR a
-// notificação de tempos em tempos enquanto a chamada segue pendente — cada
-// notificação toca o som do sistema e vibra na tela bloqueada, aproximando o
-// "fica tocando". Cadência ~10s (persistente, mas não spam de 2-3s, que o iOS
-// coalesce e penaliza). Para sozinho ao aceitar/recusar/expirar. Roda em 2º plano.
-const REINFORCE_STEP_SECONDS = 10
-const REINFORCE_MAX_SECONDS = 120 // teto de reforços (depois disso o escalonamento assume)
+// notificação enquanto a chamada segue pendente — cada notificação toca o som
+// do sistema e vibra na tela bloqueada. Cadência: 1 push a CADA 4s, até vencer
+// o prazo cadastrado (acceptTimeoutSeconds), parando ao aceitar/recusar/expirar.
+// (Obs.: em serverless, o reforço em 2º plano roda enquanto a função vive —
+// prazos muito longos podem não completar todos os reforços.)
+const REINFORCE_STEP_SECONDS = 4
+const REINFORCE_SAFETY_CAP_SECONDS = 1800 // trava de segurança contra prazo mal configurado
 function reinforceSchedule(maxSeconds: number): number[] {
-  const limit = Math.min(Math.max(5, maxSeconds) - 2, REINFORCE_MAX_SECONDS)
+  const limit = Math.min(Math.max(4, maxSeconds) - 1, REINFORCE_SAFETY_CAP_SECONDS)
   const out: number[] = []
   for (let t = REINFORCE_STEP_SECONDS; t <= limit; t += REINFORCE_STEP_SECONDS) out.push(t)
   return out

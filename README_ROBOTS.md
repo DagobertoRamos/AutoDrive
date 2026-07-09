@@ -2986,3 +2986,8 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Para o vendedor no iPhone:** instalar o PWA (Compartilhar → Adicionar à Tela de Início), abrir pelo ícone, ativar notificações; reabrir uma vez para atualizar o SW/inscrição.
 - **Conclusão honesta:** com PWA dá para NOTIFICAR na tela bloqueada com som repetido + botões + abrir a decisão. Para "idêntico ao Android" (pop-up automático sobre a tela bloqueada e toque contínuo real), **só com app nativo iOS** — a arquitetura já separa nativo (FCM/APNs) do Web Push para esse próximo passo.
 - **Pendências:** app nativo iOS (APNs + Critical Alerts/CallKit) para paridade total; testes em iPhone real por você.
+
+### LOG 0221 — 2026-07-08 — Claude (Opus 4.8) — Push da chamada: reforço a cada 4s até o prazo cadastrado
+- **Arquivo:** `src/lib/push/queue-push.ts`. Sem migration.
+- **Mudança (a pedido):** o reforço da notificação da chamada passou de ~10s para **1 push a cada 4s**, indo **até o prazo cadastrado** (`acceptTimeoutSeconds`) e **parando** ao aceitar/recusar/expirar (checa o status a cada iteração). Trava de segurança em 1800s contra prazo mal configurado.
+- **Ressalva serverless:** o reforço roda em 2º plano (`after`) enquanto a função vive; prazos muito longos podem não completar todos os reforços (limite de execução da Vercel), mas cada tela aberta/painel também mantém o alerta e a auto-cura. `npx tsc --noEmit` OK.
