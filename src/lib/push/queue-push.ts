@@ -11,14 +11,22 @@ import { sendWebPushToUser, type WebPushPayload } from './web-push'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-// iPhone/PWA: a Apple não permite alarme contínuo. Para ficar insistente sem
-// virar SPAM, REFORÇAMOS a notificação em uma cadência ESCALONADA (não a cada
-// 2-3s — o iOS/navegador limitam/juntam pushes muito frequentes e gastam
-// bateria). O alarme contínuo (2-3s) fica só no LOCAL, quando o PWA está aberto
-// (QueueAlertWatcher). Para sozinho ao aceitar/recusar/expirar. Roda em 2º plano.
-const REINFORCE_AT_SECONDS = [5, 12, 25, 45] // reforços após a 1ª notificação (0s)
+// iPhone/PWA: a Apple NÃO permite alarme contínuo nem pop-up sobre a tela
+// bloqueada (isso é só app nativo/APNs). O melhor viável é REFORÇAR a
+// notificação de tempos em tempos enquanto a chamada segue pendente — cada
+// notificação toca o som do sistema e vibra na tela bloqueada, aproximando o
+// "fica tocando". Cadência ~10s (persistente, mas não spam de 2-3s, que o iOS
+// coalesce e penaliza). Para sozinho ao aceitar/recusar/expirar. Roda em 2º plano.
+const REINFORCE_STEP_SECONDS = 10
+const REINFORCE_MAX_SECONDS = 120 // teto de reforços (depois disso o escalonamento assume)
+function reinforceSchedule(maxSeconds: number): number[] {
+  const limit = Math.min(Math.max(5, maxSeconds) - 2, REINFORCE_MAX_SECONDS)
+  const out: number[] = []
+  for (let t = REINFORCE_STEP_SECONDS; t <= limit; t += REINFORCE_STEP_SECONDS) out.push(t)
+  return out
+}
 function repeatWebPush(userId: string, attendanceId: string, payload: WebPushPayload, maxSeconds: number): void {
-  const schedule = REINFORCE_AT_SECONDS.filter((s) => s < Math.max(5, maxSeconds))
+  const schedule = reinforceSchedule(maxSeconds)
   const run = async () => {
     let prevMs = 0
     for (const atSec of schedule) {
@@ -59,6 +67,8 @@ export async function pushQueueCall(opts: { sellerId: string; attendanceId: stri
     attendanceId: opts.attendanceId,
     customerName: opts.customerName?.trim() ?? '',
     timeoutSeconds: String(opts.timeoutSeconds),
+    url: '/vendedor-da-vez/minha-fila', // deep-link: abre direto a tela de decisão
+    requireInteraction: 'true',         // a notificação não some sozinha
   }
   // Nativo (Android/iOS) via FCM + PWA/iPhone via Web Push.
   await Promise.all([
