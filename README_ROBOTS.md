@@ -3269,3 +3269,9 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Deploy seguro:** tudo tolerante (`.catch`) — sem a migration, o dedup segue funcionando (só não grava candidatos) e a aba mostra vazio.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (430/430, +8); `npm run build` OK.
 - **Próximo:** F3 (Pipelines + Kanban pro), F4, F5. E a MESCLAGEM efetiva (com preservação de histórico) numa fase dedicada.
+
+### LOG 0250 — 2026-07-09 — Claude (Opus 4.8) — Mensagem clara p/ P2021 (tabela ausente / migração pendente)
+- **Sintoma:** usuário viu "Erro de banco de dados. [P2021]" (ao salvar config do CRM). Causa: as migrations `crm_f1_config`/`crm_f2_merge_candidates` ainda NÃO foram aplicadas na Neon; um caminho de ESCRITA (upsert de etapa/etiqueta) bate numa tabela inexistente e o `handlePrismaError` devolvia só o código cru.
+- **Fix:** adicionei `P2021` ao `PRISMA_CODE_MAP` (`src/lib/prisma-errors.ts`) → mensagem clara: "Este recurso ainda não foi ativado no banco (tabela ausente). É preciso aplicar a migração pendente — fale com o administrador." (status 503). Vale p/ qualquer módulo.
+- **Causa raiz permanece:** rodar `npx prisma migrate deploy` na Neon (aplica crm_f1_config, crm_f2_merge_candidates, e as pendentes: pendency_events, pendency_penalties, seller_attendance_authorizations, seller_vacations).
+- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK.

@@ -16,6 +16,7 @@ const PRISMA_CODE_MAP: Record<string, { message: string; status: number }> = {
   P2006: { message: 'Tipo de dado incorreto. Verifique campos numéricos e datas.', status: 400 },
   P2011: { message: 'Campo obrigatório está nulo. Verifique todos os campos obrigatórios.', status: 400 },
   P2012: { message: 'Campo obrigatório ausente no payload enviado.', status: 400 },
+  P2021: { message: 'Este recurso ainda não foi ativado no banco de dados (tabela ausente). É preciso aplicar a migração pendente na base — fale com o administrador.', status: 503 },
   P2025: { message: 'Registro não encontrado.', status: 404 },
 }
 
