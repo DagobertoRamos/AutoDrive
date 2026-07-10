@@ -4430,6 +4430,61 @@ model MarketingLead {
   @@map("marketing_leads")
 }
 
+// ── CRM Reforma F1: config de Etapas + Etiquetas + Temperatura ───────────────
+// Aditivo e tolerante. As ETAPAS continuam sendo o enum LeadStatus (código
+// imutável usado por integrações); CrmStage só guarda nome exibido/cor/ordem/
+// ativo por tenant. Sem registro → usa os defaults (CRM_STAGE_OPTIONS).
+model CrmStage {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String // LeadStatus: NEW | ASSIGNED | WORKING | QUALIFIED | CONVERTED | LOST | DISCARDED | RECYCLED
+  displayName String
+  color       String? // hex (#RRGGBB)
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  category    String? // OPEN | CONVERTED | LOST | DISQUALIFIED | RECYCLED | ARCHIVED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("crm_stages")
+}
+
+model CrmTag {
+  id          String       @id @default(cuid())
+  tenantId    String
+  name        String
+  color       String?
+  description String?
+  category    String?
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  leads       CrmLeadTag[]
+
+  @@index([tenantId, active])
+  @@map("crm_tags")
+}
+
+// N:N lead↔etiqueta. leadId é FK SOFT p/ MarketingLead (padrão do módulo — não
+// altera o model MarketingLead, evita migration na tabela quente de leads).
+model CrmLeadTag {
+  id              String   @id @default(cuid())
+  tenantId        String
+  leadId          String
+  tagId           String
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  tag CrmTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, tagId])
+  @@index([leadId])
+  @@index([tagId])
+  @@map("crm_lead_tags")
+}
+
 model MarketingSdrTeam {
   id          String               @id @default(cuid())
   tenantId    String

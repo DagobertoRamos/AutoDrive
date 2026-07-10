@@ -3236,3 +3236,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Como habilitar recepção (Luciana/Jesse):** no cadastro do colaborador, marcar **"Chamar vendedor da vez"** (`queue.call_current_seller`) — aí o botão aparece. (Se já estava marcado, agora aparece por causa da Causa 1.)
 - **Arquivos:** `src/app/(dashboard)/vendedor-da-vez/page.tsx`, `src/lib/modules-catalog.ts`.
 - **Testes:** `npx tsc --noEmit` OK; `npm run build` OK.
+
+### LOG 0247 — 2026-07-09 — Claude (Opus 4.8) — CRM Reforma FASE 1: Central de Config (Etapas + Etiquetas + Temperatura)
+- **Diagnóstico (entregue ao usuário):** o CRM já é robusto — `MarketingLead` (central, com assignments/claims/tasks/slas/calls/metadata), `Customer` (cpf/phone/email), `LeadStatus` (NEW…RECYCLED = os códigos do próprio prompt), SDR (policies/teams/members/distribute), Kanban/Cockpit/Leads/Atendimentos, `detectRecurringCustomer` (dedup básico por telefone), permissões `crm.*`. A tela `/crm/configuracoes` era só informativa. **Decisão:** reusar MarketingLead+Customer; nada paralelo. Enum LeadStatus segue como código imutável das etapas; CrmStage só guarda nome/cor/ordem/ativo.
+- **F1 entregue (aditivo, tolerante, migration manual na Neon):**
+  - **Schema/migration `20260709220000_crm_f1_config`:** `CrmStage`, `CrmTag`, `CrmLeadTag` (FK soft p/ lead — NÃO toca marketing_leads). **Temperatura** vive em `MarketingLead.metadata.temperature` (sem coluna nova).
+  - `src/lib/crm/config.ts`: `loadStages` (defaults CRM_STAGE_OPTIONS + overrides, tolerante), `CRM_TEMPERATURES`, `readTemperature`.
+  - APIs: `GET/PUT /api/crm/config/stages`; `GET/POST /api/crm/config/tags` + `PATCH/DELETE /[id]` (desativa se usada, não apaga); `POST/DELETE /api/crm/leads/[id]/tags` (aplica/remove, escopo do lead); `PATCH /api/crm/leads/[id]/temperature`. Config gated por `crm.settings.manage`; aplicação por escopo do lead.
+  - UI: `/crm/configuracoes` virou **central em abas** (Visão geral · Etapas · Etiquetas funcionais; roadmap das próximas áreas listado). Etapas: renomear/cor/ordem/ativar. Etiquetas: CRUD.
+- **Deploy seguro:** tudo `.catch`/defaults → sobe antes da migration (mostra etapas padrão; etiquetas vazias). Aplicar `20260709220000_crm_f1_config` na Neon p/ persistir config e etiquetas.
+- **Próximo passo imediato (ainda F1):** exibir temperatura + etiquetas NO card do Kanban e no detalhe do lead (as APIs já existem).
+- **Fases seguintes:** F2 Identidade&Dedup, F3 Pipelines+Kanban pro, F4 SLA/Follow-up+Distribuição+Timeline, F5 Automações+Motivos+Auditoria+Relatórios.
+- **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
