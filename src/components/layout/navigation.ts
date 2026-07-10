@@ -32,6 +32,7 @@ import {
   Briefcase,
   Wrench,
   ShieldCheck,
+  ShieldAlert,
   UserCircle,
   // Comissões
   Calculator,
@@ -215,6 +216,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Painel', href: '/pendencias/central',        icon: Inbox,         module: 'pendencies.central' },
       { label: 'Minhas Pendências',     href: '/pendencias/minhas',         icon: ClipboardList, module: 'pendencies' },
       { label: 'Gerência',              href: '/pendencias/gerencia',       icon: UserCog,       module: 'pendencies.manage' },
+      { label: 'Penalidades',           href: '/pendencias/penalidades',    icon: ShieldAlert,   module: 'pendencies.manage' },
       { label: 'Vendedor',              href: '/pendencias/vendedor',       icon: UserSquare,    module: 'pendencies' },
       { label: 'Configurações',         href: '/pendencias/configuracoes', icon: Settings,      module: 'stock.pendencies.configure' },
       { label: 'Configurações Gerais',  href: '/pendencias/configuracoes/gerais', icon: ShieldCheck, module: 'pendencies.settings' },

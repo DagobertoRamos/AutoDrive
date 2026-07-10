@@ -21,6 +21,7 @@ import HelpChatLauncher from '@/components/ai/HelpChatLauncher'
 import QueueAlertWatcher from '@/components/seller-queue/QueueAlertWatcher'
 import PendencyAckWatcher from '@/components/pendencies/PendencyAckWatcher'
 import PendencySlaWatcher from '@/components/pendencies/PendencySlaWatcher'
+import PendencyCriticalBanner from '@/components/pendencies/PendencyCriticalBanner'
 
 export default function DashboardShell({
   children,
@@ -63,6 +64,7 @@ export default function DashboardShell({
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <ImpersonationBanner />
           <SystemBannerBar />
+          <PendencyCriticalBanner />
           <Topbar />
           <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-6">{children}</main>
         </div>

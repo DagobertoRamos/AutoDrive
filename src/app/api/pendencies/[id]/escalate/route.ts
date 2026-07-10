@@ -90,8 +90,10 @@ export async function POST(
       },
     })
 
-    // Timeline unificada: registra o escalonamento e a subida de prioridade.
+    // Timeline unificada: registra o escalonamento, a subida de prioridade e o
+    // marco de Crítica (severity=CRITICAL) — inicia o relógio do nagging.
     await logPendencyEvent({ tenantId: pendency.tenantId, pendencyId: id, type: PENDENCY_EVENT.ESCALATED, authorId: session.user.id, authorName: session.user.name, content: reason })
+    await logPendencyEvent({ tenantId: pendency.tenantId, pendencyId: id, type: PENDENCY_EVENT.CRITICAL_RAISED, authorId: session.user.id, authorName: session.user.name, content: `escalonada por ${session.user.name ?? 'gestão'}` })
     if (newPriority !== pendency.priority) {
       await logPendencyEvent({ tenantId: pendency.tenantId, pendencyId: id, type: PENDENCY_EVENT.PRIORITY_CHANGED, authorId: session.user.id, authorName: session.user.name, prevPriority: pendency.priority, newPriority })
     }

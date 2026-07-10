@@ -37,6 +37,12 @@ export interface PendencySlaEngineSettings {
   maxDefer: number                       // nº máx. de adiamentos do pop-up de compromisso
   chargeIntervalHours: number            // intervalo mín. entre cobranças (prazo estourado)
   staleHours: number                     // Urgente sem atividade há X h → pop-up reaparece
+  // Nagging / Crítica (Fase 4)
+  overdueStrikesForCritical: number      // nº de prazos comprometidos estourados → Crítica
+  criticalStaleHours: number             // Urgente sem resposta há X h → Crítica
+  naggingL2Hours: number                 // em Crítica há N h → nível 2 (modal + push)
+  naggingL3Hours: number                 // em Crítica há N h → nível 3 (escala + penalidade)
+  naggingPushIntervalMinutes: number     // intervalo do push no nível 2
 }
 
 export interface PendencySettings {
@@ -54,6 +60,11 @@ export const DEFAULT_PENDENCY_SETTINGS: PendencySettings = {
     maxDefer: 3,
     chargeIntervalHours: 4,
     staleHours: 6,
+    overdueStrikesForCritical: 2,
+    criticalStaleHours: 12,
+    naggingL2Hours: 2,
+    naggingL3Hours: 6,
+    naggingPushIntervalMinutes: 45,
   },
   autoSend: {
     enabled: false,
@@ -142,6 +153,11 @@ function sanitizeSlaEngine(raw: unknown, fallback = DEFAULT_PENDENCY_SETTINGS.sl
     maxDefer: clampInt(r.maxDefer, fallback.maxDefer, 20),
     chargeIntervalHours: clampInt(r.chargeIntervalHours, fallback.chargeIntervalHours, 168),
     staleHours: clampInt(r.staleHours, fallback.staleHours, 168),
+    overdueStrikesForCritical: clampInt(r.overdueStrikesForCritical, fallback.overdueStrikesForCritical, 10),
+    criticalStaleHours: clampInt(r.criticalStaleHours, fallback.criticalStaleHours, 336),
+    naggingL2Hours: clampInt(r.naggingL2Hours, fallback.naggingL2Hours, 336),
+    naggingL3Hours: clampInt(r.naggingL3Hours, fallback.naggingL3Hours, 336),
+    naggingPushIntervalMinutes: clampInt(r.naggingPushIntervalMinutes, fallback.naggingPushIntervalMinutes, 1440),
   }
 }
 

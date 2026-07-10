@@ -3117,3 +3117,20 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Causa 3 (avatar "AD"):** `Topbar` usa `initials || 'AD'`; quando `User.name` é nulo (colaborador criado só com `Seller.fullName`), aparecia o "AD" padrão do app. **Fix:** no `authorize`, `name` cai para o começo do e-mail quando não há nome (nunca vazio).
 - **Arquivos:** `src/app/api/dashboard/seller/route.ts`, `src/lib/dashboard/dashboardProfiles.ts`, `src/lib/auth.ts`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (414/414); `npm run build` OK. Obs.: fallback de nome só vale em novos logins (sessão existente mantém o nome antigo até relogar).
+
+### LOG 0235 — 2026-07-09 — Claude (Opus 4.8) — Pendências FASES 4+5: nagging da Crítica + penalidades (só avisa/marca)
+- **Crítica = `severity='CRITICAL'`** (já existente) — NÃO mexi no enum PendencyPriority (sem migration de enum). Relógio do nagging começa no 1º evento `CRITICAL_RAISED`.
+- **Fase 4 (nagging):**
+  - `src/lib/pendencies/nagging.ts` (PURO): `shouldBecomeCritical` (2 prazos comprometidos estourados OU Urgente sem resposta há X h), `criticalSince`, `criticalLevel` (0/1/2/3). `nagging.test.ts` (8 casos).
+  - Config nova em `slaEngine`: overdueStrikesForCritical(2), criticalStaleHours(12), naggingL2Hours(2), naggingL3Hours(6), naggingPushIntervalMinutes(45).
+  - `src/lib/pendencies/nagging-sweep.ts` (`runPendencyNaggingSweep`): eleva a Crítica (evento + notifica), Nível 2 = push periódico, Nível 3 = escala p/ gestão + penalidade. Idempotente; **tolerante a migration** (sem pendency_events/pendency_penalties, não age). Ligado ao cron `tick`.
+  - Nível 1 (banner fixo): `PendencyCriticalBanner` no topo do `DashboardShell`. Nível 2 (modal bloqueante): `PendencySlaWatcher` agora também trata `critical`. `action-required` retorna `{ popups, critical }`.
+  - `escalate` agora registra `CRITICAL_RAISED` (inicia o relógio quando a gestão eleva manualmente).
+- **Fase 5 (penalidades) — DECISÃO: só AVISA/marca, NÃO suspende a fila de leads:**
+  - Novo `model PendencyPenalty` (`pendency_penalties`) — migration `20260709160000_add_pendency_penalties` (**aplicar manual na Neon**; aditiva, tolerante).
+  - Aplicada no Nível 3 (após avisos 1–3): tipo `WARN_MANAGER`, avisa vendedor + gestor, registra na timeline. Uma ativa por pendência.
+  - `GET /api/pendencies/penalties` (painel gestor) + `POST /api/pendencies/penalties/[id]/remove` (reversível com justificativa obrigatória → evento + notifica vendedor).
+  - Página `/pendencias/penalidades` (gestor+) + link no menu Pendências → Penalidades.
+- **Migrations pendentes na Neon:** `pendency_events` (LOG 0232) **e** `pendency_penalties` (esta). Sem elas o motor não age (seguro).
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422, +8); `npm run build` OK.
+- **Concluído o spec de Pendências (Fases 1–5).** Futuro possível: integrar contagem de penalidades ao score do ranking (hoje aparece no painel do gestor).

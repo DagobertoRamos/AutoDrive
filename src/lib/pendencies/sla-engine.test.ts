@@ -3,7 +3,7 @@ import { decidePendencyPopup } from './sla-engine'
 import { PENDENCY_EVENT } from './events'
 import type { PendencySlaEngineSettings } from './settings'
 
-const cfg: PendencySlaEngineSettings = { enabled: true, requireCommitFor: ['ALTA', 'URGENTE'], maxDefer: 3, chargeIntervalHours: 4, staleHours: 6 }
+const cfg: PendencySlaEngineSettings = { enabled: true, requireCommitFor: ['ALTA', 'URGENTE'], maxDefer: 3, chargeIntervalHours: 4, staleHours: 6, overdueStrikesForCritical: 2, criticalStaleHours: 12, naggingL2Hours: 2, naggingL3Hours: 6, naggingPushIntervalMinutes: 45 }
 const now = new Date('2026-07-09T12:00:00Z')
 
 describe('decidePendencyPopup', () => {

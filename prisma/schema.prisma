@@ -1881,6 +1881,7 @@ model Pendency {
   messageReturns  MessageReturn[]
   comments        PendencyComment[]
   events          PendencyEvent[]
+  penalties       PendencyPenalty[]
 
   @@index([tenantId])
   @@index([status])
@@ -1995,6 +1996,32 @@ model PendencyEvent {
   @@index([tenantId])
   @@index([type])
   @@map("pendency_events")
+}
+
+// Penalidade por pendência Crítica não tratada (Fase 5). DECISÃO: só AVISA/marca
+// — NÃO suspende a fila de leads (desacoplado do Vendedor da Vez). Reversível
+// manualmente por gestor com justificativa. Alimenta o painel do gestor e o score.
+model PendencyPenalty {
+  id              String    @id @default(cuid())
+  tenantId        String?
+  unitId          String?
+  pendencyId      String?
+  sellerUserId    String    // usuário penalizado (User.id)
+  type            String    // WARN_MANAGER | MARK (registro no score) — nunca bloqueia
+  reason          String?
+  active          Boolean   @default(true)
+  appliedByUserId String?   // null = sistema (após níveis 1–3)
+  removedByUserId String?
+  removedReason   String?
+  removedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  pendency Pendency? @relation(fields: [pendencyId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, active])
+  @@index([sellerUserId, active])
+  @@index([pendencyId])
+  @@map("pendency_penalties")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

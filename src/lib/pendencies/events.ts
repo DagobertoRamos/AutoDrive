@@ -22,6 +22,7 @@ export const PENDENCY_EVENT = {
   POPUP_SHOWN:      'POPUP_SHOWN',
   POPUP_DISMISSED:  'POPUP_DISMISSED',
   ESCALATED:        'ESCALATED',
+  CRITICAL_RAISED:  'CRITICAL_RAISED',
   PENALTY_APPLIED:  'PENALTY_APPLIED',
   PENALTY_REMOVED:  'PENALTY_REMOVED',
   REMINDER_SENT:    'REMINDER_SENT',
@@ -111,6 +112,7 @@ export function eventLabel(e: {
     case PENDENCY_EVENT.POPUP_SHOWN:      return 'Pop-up de cobrança exibido'
     case PENDENCY_EVENT.POPUP_DISMISSED:  return 'Pop-up adiado/ignorado'
     case PENDENCY_EVENT.ESCALATED:        return 'Escalonada para gestão'
+    case PENDENCY_EVENT.CRITICAL_RAISED:  return 'Elevada a CRÍTICA'
     case PENDENCY_EVENT.PENALTY_APPLIED:  return 'Penalidade aplicada'
     case PENDENCY_EVENT.PENALTY_REMOVED:  return 'Penalidade removida'
     case PENDENCY_EVENT.REMINDER_SENT:    return 'Lembrete enviado'
