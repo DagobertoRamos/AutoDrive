@@ -3187,3 +3187,13 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - **Só a gestão opera a fila individual:** `POST /api/seller-queue/personal-queue/[id]` (start/transfer/cancel/priority/reschedule) agora exige `sellerQueue.manage` (**gerente+**) — antes o vendedor podia `start/cancel` a própria. UI `MinhaFilaIndividual` esconde os botões p/ não-gestão e mostra "Aguardando a gestão liberar" (o vendedor só acompanha). Anti-fraude: o vendedor não manipula a própria fila.
 - **Arquivos:** `src/lib/seller-queue/dashboard.ts`, `src/lib/seller-queue/personal-queue.ts`, `src/app/api/seller-queue/personal-queue/[id]/route.ts`, `src/components/seller-queue/MinhaFilaIndividual.tsx`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0242 — 2026-07-09 — Claude (Opus 4.8) — Fila individual: opção de "colocar na fila individual" (não chamar agora)
+- **Sintoma:** "não consigo colocar clientes na fila individual; clico em chamar diz que está chamando, clico em play diz que já está em atendimento."
+- **Causa:** cliente direcionado (Responsável/Agendamento/Pós-venda) só entrava na fila individual quando o vendedor estava OCUPADO. Com o vendedor LIVRE, o sistema **chamava na hora** (callSpecificSeller → "está chamando") — não dava p/ MONTAR a fila individual de um vendedor livre. E "Iniciar" (play) num item barrava com "já está em atendimento" enquanto houvesse chamada/atendimento pendente (isAgentBusy).
+- **Fix:** nova opção `toPersonalQueue` — quando marcada, o cliente vai DIRETO para a fila individual do colaborador **mesmo com ele livre** (não chama agora; a gestão inicia depois com "Iniciar").
+  - `createArrivalSchema` ganhou `toPersonalQueue?: boolean`; `customer-arrivals` força `enqueuePersonalItem` quando `toPersonalQueue` (independe do `agentState`).
+  - `ClienteNaLojaPanel`: checkbox "Colocar na fila individual (não chamar agora)" nos modos direcionados (Responsável/Pós-vendas/Agendamento) + envia a flag; a mensagem de sucesso já indica "fila individual".
+- **Comportamento mantido:** sem marcar, segue como antes (livre → chama; ocupado → fila individual). "Iniciar" segue só p/ gestão (LOG 0241) e só quando o vendedor não está em outro atendimento.
+- **Arquivos:** `src/lib/validators/seller-queue.ts`, `src/app/api/seller-queue/customer-arrivals/route.ts`, `src/components/seller-queue/ClienteNaLojaPanel.tsx`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.

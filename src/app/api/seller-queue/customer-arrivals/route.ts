@@ -106,8 +106,11 @@ export async function POST(req: Request) {
       // FILA INDIVIDUAL (Fase 2): responsável LIVRE → chama na hora. Se está
       // OCUPADO/PAUSADO/FORA, o cliente NÃO fura a fila principal nem some —
       // entra na FILA INDIVIDUAL dele. Pausado/fora também avisa a gestão.
+      // `toPersonalQueue` força ir p/ a fila individual mesmo com o vendedor
+      // livre (a gestão monta a fila do vendedor sem chamar agora).
       const agentState = await getAgentQueueState(queue.id, d.targetSellerId)
-      if (agentState !== 'FREE') {
+      const forceQueue = d.toPersonalQueue === true
+      if (forceQueue || agentState !== 'FREE') {
         const itemType: PersonalItemType = mode === 'POS_VENDAS' ? 'POS_VENDA' : mode === 'AGENDAMENTO' ? 'AGENDAMENTO' : 'RETORNO'
         const item = await enqueuePersonalItem({
           tenantId, unitId, agentUserId: d.targetSellerId, itemType, createdByUserId: user.id,

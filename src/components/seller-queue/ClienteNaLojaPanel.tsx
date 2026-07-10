@@ -37,6 +37,7 @@ export default function ClienteNaLojaPanel() {
   const [form, setForm] = useState({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false })
   const [mode, setMode] = useState<Mode>('NORMAL')
   const [targetSellerId, setTargetSellerId] = useState('')
+  const [toPersonalQueue, setToPersonalQueue] = useState(false)
   const [callable, setCallable] = useState<Callable[]>([])
   const [items, setItems] = useState<Arrival[]>([])
   const [loading, setLoading] = useState(true)
@@ -83,7 +84,7 @@ export default function ClienteNaLojaPanel() {
     try {
       const res = await fetch('/api/seller-queue/customer-arrivals', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ customerName: name, customerPhone: form.customerPhone, customerEmail: form.customerEmail.trim(), customerIsWhatsapp: form.isWhatsapp, notes: form.notes || null, mode, targetSellerId: mode === 'NORMAL' ? null : targetSellerId, customerId: pickedCustomerId || undefined, leadId: pickedLeadId || undefined }),
+        body: JSON.stringify({ customerName: name, customerPhone: form.customerPhone, customerEmail: form.customerEmail.trim(), customerIsWhatsapp: form.isWhatsapp, notes: form.notes || null, mode, targetSellerId: mode === 'NORMAL' ? null : targetSellerId, toPersonalQueue: mode !== 'NORMAL' ? toPersonalQueue : undefined, customerId: pickedCustomerId || undefined, leadId: pickedLeadId || undefined }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { flash(j?.error ?? 'Não foi possível registrar.', false); return }
@@ -95,7 +96,7 @@ export default function ClienteNaLojaPanel() {
         const okMsg = mode === 'POS_VENDAS' ? 'Cliente registrado — colaborador em pós-vendas (pausado).' : mode === 'AGENDAMENTO' ? 'Agendamento iniciado — colaborador em atendimento.' : mode === 'SPECIFIC' ? 'Cliente registrado — colaborador chamado!' : 'Cliente registrado — vendedor da vez foi chamado!'
         flash(call?.ok ? okMsg : `Cliente registrado. ${call?.reason ?? 'Aguardando vendedor.'}`, !!call?.ok)
       }
-      setForm({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false }); setTargetSellerId(''); setPickedCustomerId(null); setPickedLeadId(null); await load()
+      setForm({ customerName: '', customerPhone: '', customerEmail: '', notes: '', isWhatsapp: false }); setTargetSellerId(''); setToPersonalQueue(false); setPickedCustomerId(null); setPickedLeadId(null); await load()
     } catch { flash('Erro de rede.', false) } finally { setSaving(false) }
   }
 
@@ -122,6 +123,10 @@ export default function ClienteNaLojaPanel() {
                   <option key={c.sellerId} value={c.sellerId}>{c.name}{c.positionName ? ` — ${c.positionName}` : ''}{c.inQueue ? ' (na fila)' : c.queueStatus ? ` (${c.queueStatus.toLowerCase()})` : ' (fora da fila)'}</option>
                 ))}
               </select>
+              <label className="mt-2 flex items-start gap-2 text-xs text-gray-600">
+                <input type="checkbox" checked={toPersonalQueue} onChange={(e) => setToPersonalQueue(e.target.checked)} className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                <span>Colocar na <b>fila individual</b> do colaborador (não chamar agora — a gestão inicia depois). Use para montar a fila de um vendedor mesmo que ele esteja livre.</span>
+              </label>
             </div>
           )}
           <div className="relative sm:col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={form.customerName} onChange={(e) => typeField('customerName', e.target.value)} onBlur={() => set('customerName', capitalizeName(form.customerName))} placeholder="Ex.: Dagoberto Ramos de Francisco" /><CustomerLookup query={form.customerName} onPick={pickMatch} /></div>
