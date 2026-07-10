@@ -3217,3 +3217,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Resultado:** clicar em **Chamar** num vendedor que está atendendo põe o cliente na fila individual dele automaticamente (o que o usuário pediu). Complementa a opção `toPersonalQueue` do Cliente na Loja (LOG 0242) e o modelo de operação dono/flag/gerente+ (LOG 0243).
 - **Arquivos:** `src/app/api/seller-queue/call-specific/route.ts`, `src/app/(dashboard)/vendedor-da-vez/page.tsx`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0245 — 2026-07-09 — Claude (Opus 4.8) — Regra: só volta à fila principal ao ZERAR a fila individual; ao finalizar, TOCA o próximo
+- **Regra do usuário:** o vendedor só volta para a fila principal quando finalizar TODOS os atendimentos (fila individual zerada). Ao finalizar (com nome+telefone+resultado obrigatórios), a 1ª coisa é **TOCAR para aceitar o próximo** da fila individual.
+- **Finalização (`/attendances/[id]/finish`):** conta itens `AGUARDANDO` na fila individual do vendedor. Se **>0**: NÃO volta à fila principal (só contabiliza) e, após concluir o item atual, chama `callNextPersonalItem` → cria atendimento **CALLED** + dispara alerta/push (o `QueueAlertWatcher` faz o pop-up de aceitar tocar). Se **0**: volta à rotação como antes (consome a vez / mantém posição). Retorna `nextPersonalCalled`.
+- **`callNextPersonalItem` (novo, personal-queue.ts):** pega o próximo item AGUARDANDO (prioridade↓, chegada↑), cria atendimento CALLED com prazo de aceite, marca o item CHAMADO+attendanceId, tira o vendedor da rotação (entry CALLED) e `notifySellerCalled` (toca/push). `concludePersonalItemByAttendance` agora conclui itens CHAMADO **e** EM_ATENDIMENTO.
+- **Sweep (anti-bug):** `sweepExpiredCalls` agora DETECTA chamadas da fila individual (item CHAMADO ligado ao atendimento). No timeout, **devolve o item à fila individual do vendedor** (AGUARDANDO) e NÃO penaliza, NÃO move p/ o fim, NÃO re-roteia o cliente p/ outro vendedor (o cliente é dele).
+- **Validação nome+telefone+resultado:** o `AttendanceFinishModal` já exige nome + telefone (≥10 díg.) + observações p/ atendimentos normais (RETORNO/AGENDAMENTO/POS_VENDA da fila individual) — só INFORMACAO_RAPIDA é leniente.
+- **Arquivos:** `personal-queue.ts`, `attendances/[id]/finish/route.ts`, `call.ts`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.

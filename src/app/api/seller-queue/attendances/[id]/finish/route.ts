@@ -17,7 +17,7 @@ import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
 import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
 import { readAttendanceTypesConfig, typeConsumesTurn } from '@/lib/seller-queue/attendance-types-config'
 import { ensureAttendanceLead } from '@/lib/seller-queue/lead'
-import { concludePersonalItemByAttendance, listPersonalQueueForAgent } from '@/lib/seller-queue/personal-queue'
+import { concludePersonalItemByAttendance, listPersonalQueueForAgent, callNextPersonalItem } from '@/lib/seller-queue/personal-queue'
 import type { SellerAttendanceType, SellerAttendanceResult } from '@prisma/client'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 
@@ -88,6 +88,16 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     }
 
+    // REGRA: o vendedor só VOLTA para a fila principal quando ZERAR a fila
+    // individual. Se ainda há clientes na fila individual dele, ele NÃO retorna
+    // à rotação — em vez disso, o próximo item é CHAMADO (toca p/ aceitar) logo
+    // abaixo. Conta os itens ainda aguardando (o item deste atendimento já está
+    // CHAMADO/EM_ATENDIMENTO, então não entra nessa contagem).
+    const pendingPersonalCount = await prisma.agentPersonalQueueItem.count({
+      where: { tenantId, unitId: att.unitId, agentUserId: att.sellerId, status: 'AGUARDANDO' },
+    }).catch(() => 0)
+    const hasPendingPersonal = pendingPersonalCount > 0
+
     await prisma.$transaction(async (tx) => {
       await tx.sellerQueueAttendance.update({
         where: { id: att.id },
@@ -97,12 +107,15 @@ export async function POST(req: Request, { params }: Ctx) {
           dealId: d.dealId ?? null, leadId: d.leadId ?? null, notes: d.notes ?? null,
         },
       })
-      // "Consome a vez": tipo que consome → vai ao FIM da fila (padrão). Tipo que
-      // NÃO consome (ex.: agendamento/retorno/documentação, conforme config) →
-      // volta a AGUARDAR mantendo a posição (não perde a vez).
-      if (consumesTurn) {
+      if (hasPendingPersonal) {
+        // NÃO volta p/ a fila principal (ainda tem cliente na fila individual).
+        // Só contabiliza o atendimento; o próximo item vai TOCAR abaixo.
+        await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: att.sellerId }, data: { attendanceCount: { increment: 1 }, lastActiveAt: new Date() } })
+      } else if (consumesTurn) {
+        // "Consome a vez": vai ao FIM da fila (padrão).
         await moveEntryToEnd(tx, att.queueId, att.sellerId, { countAttendance: true })
       } else {
+        // Tipo que NÃO consome → volta a AGUARDAR mantendo a posição.
         await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: att.sellerId, status: { in: ['IN_ATTENDANCE', 'CALLED'] } }, data: { status: 'WAITING', pausedAt: null, lastActiveAt: new Date() } })
       }
       if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'DONE' } })
@@ -141,13 +154,20 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     }
 
-    // Fila individual (Fase 2): conclui o item ligado a este atendimento (se houver)
-    // e informa quantos clientes ainda aguardam na fila individual do vendedor,
-    // para a UI sugerir "iniciar o próximo".
+    // Fila individual: conclui o item ligado a este atendimento (se houver).
     await concludePersonalItemByAttendance(att.id).catch(() => {})
+
+    // REGRA: se ainda há clientes na fila individual, TOCA para o vendedor aceitar
+    // o PRÓXIMO (não volta à fila principal). Só zerando a fila individual é que
+    // ele retorna à rotação (já tratado acima no update da entry).
+    let nextPersonalCalled = false
+    if (hasPendingPersonal) {
+      const next = await callNextPersonalItem({ tenantId, unitId: att.unitId, agentUserId: att.sellerId, actorId: user.id }).catch(() => ({ called: false }))
+      nextPersonalCalled = next.called
+    }
     const personalQueuePending = await listPersonalQueueForAgent(tenantId, att.unitId, att.sellerId).then((l) => l.length).catch(() => 0)
 
-    return NextResponse.json({ success: true, data: { leadId: out?.leadId ?? null, dealId: out?.dealId ?? null, customerId: out?.customerId ?? null, personalQueuePending } })
+    return NextResponse.json({ success: true, data: { leadId: out?.leadId ?? null, dealId: out?.dealId ?? null, customerId: out?.customerId ?? null, personalQueuePending, nextPersonalCalled } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
     return handlePrismaError(err)

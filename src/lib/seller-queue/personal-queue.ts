@@ -7,8 +7,9 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { getOrCreateQueue, logQueueEvent } from '@/lib/seller-queue/queue'
+import { getOrCreateQueue, logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
 import { notify, notifyByRole } from '@/services/notification.service'
+import { notifySellerCalled } from '@/lib/seller-queue/notify'
 
 export type PersonalItemType = 'AGENDAMENTO' | 'RETORNO' | 'POS_VENDA' | 'OUTRO'
 
@@ -299,9 +300,56 @@ export async function reschedulePersonalItem(opts: { tenantId: string; itemId: s
  *  (se houver) — mantém a fila individual consistente com o ciclo de atendimento. */
 export async function concludePersonalItemByAttendance(attendanceId: string): Promise<void> {
   await prisma.agentPersonalQueueItem.updateMany({
-    where: { attendanceId, status: 'EM_ATENDIMENTO' },
+    where: { attendanceId, status: { in: ['CHAMADO', 'EM_ATENDIMENTO'] } },
     data: { status: 'CONCLUIDO', finishedAt: new Date() },
   }).catch(() => {})
+}
+
+const ITEM_TO_VISIT: Record<PersonalItemType, string> = {
+  AGENDAMENTO: 'AGENDAMENTO', RETORNO: 'RETORNO', POS_VENDA: 'POS_VENDA', OUTRO: 'OUTRO',
+}
+
+/**
+ * TOCA para o vendedor aceitar o PRÓXIMO cliente da sua fila individual: cria um
+ * atendimento CALLED (com prazo de aceite) e dispara o alerta/push — igual a uma
+ * chamada normal. Usado ao FINALIZAR um atendimento quando ainda há itens na fila
+ * individual (o vendedor só volta à fila principal quando ela zera). Não toca se
+ * já houver atendimento ativo. Retorna { called, attendanceId, itemId }.
+ */
+export async function callNextPersonalItem(opts: {
+  tenantId: string; unitId: string; agentUserId: string; actorId: string
+}): Promise<{ called: boolean; attendanceId?: string; itemId?: string }> {
+  const item = await prisma.agentPersonalQueueItem.findFirst({
+    where: { tenantId: opts.tenantId, unitId: opts.unitId, agentUserId: opts.agentUserId, status: 'AGUARDANDO' },
+    orderBy: [{ priority: 'desc' }, { queuedAt: 'asc' }],
+  })
+  if (!item) return { called: false }
+
+  const queue = await getOrCreateQueue(opts.tenantId, opts.unitId)
+  const busy = await prisma.sellerQueueAttendance.findFirst({
+    where: { queueId: queue.id, sellerId: opts.agentUserId, status: { in: ['CALLED', 'ACCEPTED', 'IN_ATTENDANCE'] } },
+    select: { id: true },
+  })
+  if (busy) return { called: false }
+
+  const cfg = await getUnitConfig(opts.tenantId, opts.unitId).catch(() => null)
+  const timeout = cfg?.acceptTimeoutSeconds ?? 60
+  const now = new Date()
+  const att = await prisma.sellerQueueAttendance.create({
+    data: {
+      tenantId: opts.tenantId, unitId: opts.unitId, queueId: queue.id, sellerId: opts.agentUserId,
+      arrivalId: item.arrivalId ?? null, visitType: ITEM_TO_VISIT[item.itemType as PersonalItemType] ?? 'OUTRO',
+      status: 'CALLED', calledAt: now, acceptDeadline: new Date(now.getTime() + timeout * 1000),
+      leadId: item.leadId ?? null, dealId: item.dealId ?? null, customerId: item.customerId ?? null,
+      createdById: opts.actorId,
+    },
+  })
+  await prisma.agentPersonalQueueItem.update({ where: { id: item.id }, data: { status: 'CHAMADO', attendanceId: att.id } })
+  // Sai da rotação principal: fica CALLED (aguardando o próprio aceite).
+  await prisma.sellerQueueEntry.updateMany({ where: { queueId: queue.id, sellerId: opts.agentUserId }, data: { status: 'CALLED', lastActiveAt: now } }).catch(() => {})
+  await logQueueEvent({ tenantId: opts.tenantId, unitId: opts.unitId, queueId: queue.id, type: 'CALLED', sellerId: opts.agentUserId, actorId: opts.actorId, attendanceId: att.id, reason: `fila individual (${item.itemType})` })
+  await notifySellerCalled({ tenantId: opts.tenantId, sellerId: opts.agentUserId, timeoutSeconds: timeout, attendanceId: att.id, arrivalId: item.arrivalId, customerName: item.customerName, recurring: item.itemType === 'RETORNO' }).catch(() => {})
+  return { called: true, attendanceId: att.id, itemId: item.id }
 }
 
 /** Avisa a gestão quando um item cai numa fila individual de quem está fora/pausado. */
