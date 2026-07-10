@@ -3141,3 +3141,14 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Causa 2 (submit 403 latente):** `manage-seller` mapeia `mark_attending → 'queue.mark_seller_attending'`, permissão que **não existia** no matriz — então só passava via `isUserQueueResponsible` (que é false p/ líder não-configurado). **Fix:** adicionei `queue.mark_seller_attending` ao `Module` e ao `MODULE_PERMISSIONS` (MASTER/ADM/GERENTE*/GERENTE/VENDEDOR_LIDER), espelhando quem vê o botão. `canAccessModuleForUser` usa `canAccessModule` como base → líder passa.
 - **Arquivos:** `src/app/(dashboard)/vendedor-da-vez/page.tsx`, `src/lib/permissions.ts`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0237 — 2026-07-09 — Claude (Opus 4.8) — Fix: "Testar push" (teste de atenção) não chegava no celular do vendedor
+- **Sintoma:** gestor dispara "Teste de atenção" para um vendedor (ex.: Bruno) e não chega nada.
+- **Causa:** `POST /api/seller-queue/test-attention` chamava `notify(..., channels: ['APP_WEB'])` — só o **sininho in-app**, que aparece apenas com o app ABERTO/polling. **Nunca enviava push de verdade** (FCM Android / Web Push iPhone/PWA). Com o app fechado, nada chegava.
+- **Fix:**
+  - `channels: ['APP_WEB', 'APP_MOBILE', 'PUSH']` + `metadata.priority: 'high'` → agora dispara o push real (o canal `PUSH` chama `sendGenericPush` = FCM + Web Push).
+  - Diagnóstico: a rota conta os aparelhos ativos do alvo (`mobileDevice` ANDROID/IOS/WEBPUSH) e devolve `devices`/`totalDevices`/`warning`. Se o vendedor **não tem nenhum aparelho registrado** (motivo mais comum), o gestor recebe um aviso claro em vez de "sucesso" enganoso.
+  - `vendedor-da-vez/testes/page.tsx`: mostra o aviso (ou o nº de aparelhos Android/iPhone) no toast.
+- **Arquivos:** `src/app/api/seller-queue/test-attention/route.ts`, `src/app/(dashboard)/vendedor-da-vez/testes/page.tsx`.
+- **Nota:** se ainda não chegar mesmo com aparelho registrado, verificar (a) VAPID/FIREBASE no ambiente, (b) a permissão de notificação concedida no aparelho do vendedor, (c) preferência de push do usuário.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.

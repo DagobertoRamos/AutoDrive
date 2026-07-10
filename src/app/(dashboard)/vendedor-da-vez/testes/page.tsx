@@ -107,7 +107,14 @@ export default function QueueTestsPage() {
       })
       const j = await res.json().catch(() => ({}))
       if (res.ok) {
-        flash('Teste de atenção enviado com sucesso! ⚠️', true)
+        if (j?.warning) {
+          // Enviou, mas o alvo não tem aparelho registrado → não vai chegar push.
+          flash(j.warning, false)
+        } else {
+          const d = j?.devices
+          const detail = d ? ` (Android ${d.android} · iPhone/PWA ${d.webpush + d.ios})` : ''
+          flash(`Teste de atenção enviado!${detail} ⚠️`, true)
+        }
         loadHistory()
       } else {
         flash(j?.error ?? 'Falha ao enviar teste de atenção.', false)

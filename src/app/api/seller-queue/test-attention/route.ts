@@ -78,6 +78,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Vendedor não encontrado nesta loja.' }, { status: 404 })
     }
 
+    // Dispositivos registrados do alvo (Android/iOS via FCM + iPhone/PWA via Web
+    // Push). Se não houver NENHUM, o push nunca chega (motivo mais comum de
+    // "disparei e não chegou") — devolvemos isso p/ o gestor saber.
+    const devices = await prisma.mobileDevice.findMany({
+      where: { userId: sellerId, isActive: true },
+      select: { platform: true },
+    }).catch(() => [] as { platform: string }[])
+    const deviceCounts = {
+      android: devices.filter((d) => d.platform === 'ANDROID').length,
+      ios:     devices.filter((d) => d.platform === 'IOS').length,
+      webpush: devices.filter((d) => d.platform === 'WEBPUSH').length,
+    }
+    const totalDevices = deviceCounts.android + deviceCounts.ios + deviceCounts.webpush
+
+    // Manda o PUSH DE VERDADE (FCM + Web Push) além do aviso in-app. Antes só ia
+    // 'APP_WEB' (sininho), que só aparece com o app ABERTO — por isso não chegava.
     await notify({
       userId: sellerId,
       tenantId,
@@ -85,8 +101,8 @@ export async function POST(req: Request) {
       title: 'Teste de atenção! ⚠️',
       message: `Enviado por ${user.name}. Responda agora mesmo para testar notificações, vibração e som.`,
       actionUrl: '/vendedor-da-vez/testes',
-      metadata: { kind: 'test_attention', sentAt: new Date().toISOString() },
-      channels: ['APP_WEB'],
+      metadata: { kind: 'test_attention', sentAt: new Date().toISOString(), priority: 'high' },
+      channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
     })
 
     const queue = await prisma.sellerQueue.findFirst({
@@ -104,7 +120,14 @@ export async function POST(req: Request) {
       reason: `Teste de atenção enviado para o vendedor ${targetSeller.user?.name ?? sellerId}`
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      devices: deviceCounts,
+      totalDevices,
+      warning: totalDevices === 0
+        ? `${targetSeller.user?.name ?? 'O vendedor'} não tem nenhum aparelho registrado para push. Peça para ele abrir o app/PWA e permitir notificações.`
+        : null,
+    })
   } catch (err) {
     return handlePrismaError(err)
   }
