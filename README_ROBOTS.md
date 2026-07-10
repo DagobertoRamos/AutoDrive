@@ -3275,3 +3275,14 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Fix:** adicionei `P2021` ao `PRISMA_CODE_MAP` (`src/lib/prisma-errors.ts`) → mensagem clara: "Este recurso ainda não foi ativado no banco (tabela ausente). É preciso aplicar a migração pendente — fale com o administrador." (status 503). Vale p/ qualquer módulo.
 - **Causa raiz permanece:** rodar `npx prisma migrate deploy` na Neon (aplica crm_f1_config, crm_f2_merge_candidates, e as pendentes: pendency_events, pendency_penalties, seller_attendance_authorizations, seller_vacations).
 - **Testes:** `npx tsc --noEmit` OK; `npm run build` OK.
+
+### LOG 0251 — 2026-07-10 — Gravity (Gemini 3.5 Pro) — Leitura de CRLV e Preenchimento Automático: Commit A (Núcleo Determinístico)
+- **Tarefa:** Implementar as estruturas canônicas e funções determinísticas de validação e normalização do CRLV/CRLV-e.
+- **Arquivos criados:**
+  - `src/lib/crlv/types.ts`: Modelagem e interfaces TypeScript para campos extraídos (`VehicleExtractedField`), dados do veículo (`ExtractedVehicle`), fontes (`ExtractionSource`) e payload da extração (`VehicleDocumentExtractionResult`).
+  - `src/lib/crlv/schemas.ts`: Schemas Zod para validar as 5 chaves de configuração sob `SystemSetting` (`general:v1`, `providers:v1`, `field_rules:v1`, `mappings:v1`, `tenant_access:v1`) com controle estrito de metadados (`schemaVersion`, `revision`, `updatedAt`, `updatedByUserId`).
+  - `src/lib/crlv/deterministic.ts`: Funções determinísticas puras de classificação de tipo de veículo (CAR, MOTORCYCLE, TRUCK) com base em espécies/aliases, conversão de cilindrada para motorização (`CATALOG_DERIVED`), e resolvedor de transmissão baseado em keywords estritas de versão.
+  - `src/lib/crlv/deterministic.test.ts`: Suíte de testes unitários com 15 asserções cobrindo toda a normalização, classificação e fallback.
+- **Testes:**
+  - `npx vitest run src/lib/crlv/deterministic.test.ts` OK (15/15 verdes).
+
