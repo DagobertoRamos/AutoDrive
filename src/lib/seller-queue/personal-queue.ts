@@ -68,11 +68,15 @@ export async function enqueuePersonalItem(opts: EnqueueOpts) {
 
   const label = PERSONAL_TYPE_LABEL[opts.itemType]
   const who = opts.customerName ? `: ${opts.customerName}` : ''
+  // Push REAL (FCM + Web Push) além do sininho — o vendedor pode estar em
+  // atendimento com o app em 2º plano; precisa ser avisado como uma chamada normal.
   await notify({
     userId: opts.agentUserId, tenantId: opts.tenantId, type: 'INFO',
-    title: `${label} na sua fila`,
-    message: `${label}${who} entrou na sua fila individual. Inicie quando estiver livre.`,
-    actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'],
+    title: `🔔 ${label} na sua fila`,
+    message: `${label}${who} entrou na sua fila individual. A gestão libera o atendimento.`,
+    actionUrl: '/vendedor-da-vez/minha-fila',
+    metadata: { kind: 'personal_queue', priority: 'high' },
+    channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
   }).catch(() => {})
 
   return item

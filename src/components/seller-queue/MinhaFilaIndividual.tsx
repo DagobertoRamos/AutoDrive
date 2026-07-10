@@ -8,8 +8,12 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSession } from 'next-auth/react'
 import { ListChecks, Play, X, RefreshCw, Clock, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// Só a gestão (gerente+) opera a fila individual; o vendedor apenas acompanha.
+const MANAGE_ROLES = new Set(['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'])
 
 interface Item {
   id: string
@@ -37,6 +41,8 @@ function waitLabel(s: number) {
 }
 
 export default function MinhaFilaIndividual({ onChanged }: { onChanged?: () => void }) {
+  const { data: session } = useSession()
+  const canManage = MANAGE_ROLES.has((session?.user as { role?: string })?.role ?? '')
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -82,17 +88,21 @@ export default function MinhaFilaIndividual({ onChanged }: { onChanged?: () => v
               <p className="break-words text-sm font-medium text-gray-900">{it.customerName ?? 'Cliente'}</p>
               <p className="flex items-center gap-1 text-xs text-gray-400"><Clock size={11} />aguardando {waitLabel(it.waitingSeconds)}</p>
             </div>
-            <div className="grid gap-1.5 min-[380px]:grid-cols-[1fr_auto_auto] sm:flex sm:justify-end">
-              <button
-                onClick={() => act(it.id, 'start')}
-                disabled={busyId === it.id}
-                className={cn('flex min-h-9 items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold', i === 0 ? 'bg-brand-600 text-white hover:bg-brand-700' : 'border border-brand-300 text-brand-700 hover:bg-brand-50')}
-              >
-                {busyId === it.id ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}{i === 0 ? 'Iniciar próximo' : 'Iniciar'}
-              </button>
-              <button onClick={() => act(it.id, 'reschedule')} disabled={busyId === it.id} className="min-h-9 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Atender depois (manda para o fim da fila)"><History size={14} className="mx-auto" /></button>
-              <button onClick={() => act(it.id, 'cancel')} disabled={busyId === it.id} className="min-h-9 rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Cancelar"><X size={14} className="mx-auto" /></button>
-            </div>
+            {canManage ? (
+              <div className="grid gap-1.5 min-[380px]:grid-cols-[1fr_auto_auto] sm:flex sm:justify-end">
+                <button
+                  onClick={() => act(it.id, 'start')}
+                  disabled={busyId === it.id}
+                  className={cn('flex min-h-9 items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold', i === 0 ? 'bg-brand-600 text-white hover:bg-brand-700' : 'border border-brand-300 text-brand-700 hover:bg-brand-50')}
+                >
+                  {busyId === it.id ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}{i === 0 ? 'Iniciar próximo' : 'Iniciar'}
+                </button>
+                <button onClick={() => act(it.id, 'reschedule')} disabled={busyId === it.id} className="min-h-9 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Atender depois (manda para o fim da fila)"><History size={14} className="mx-auto" /></button>
+                <button onClick={() => act(it.id, 'cancel')} disabled={busyId === it.id} className="min-h-9 rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Cancelar"><X size={14} className="mx-auto" /></button>
+              </div>
+            ) : (
+              <span className="text-[11px] font-medium text-gray-400 sm:text-right">Aguardando a gestão liberar</span>
+            )}
           </li>
         ))}
       </ul>

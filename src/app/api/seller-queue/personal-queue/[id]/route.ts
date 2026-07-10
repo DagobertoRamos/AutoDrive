@@ -1,9 +1,9 @@
 // =============================================================================
 // POST /api/seller-queue/personal-queue/:id — ações num item da fila individual.
-// Body: { action: 'start' | 'transfer' | 'cancel', toUserId? }
-//   start    : sellerQueue.attend — inicia o atendimento do item (responsável ou gestão).
-//   transfer : sellerQueue.manage — transfere para outro colaborador (gestão).
-//   cancel   : sellerQueue.attend — cancela (o responsável ou a gestão).
+// Body: { action: 'start' | 'transfer' | 'cancel' | 'priority' | 'reschedule', toUserId? }
+// DECISÃO DE PRODUTO: SÓ A GESTÃO (gerente+) puxa/atende/transfere/cancela itens
+// da fila individual — o vendedor apenas VÊ a sua (GET). Evita o vendedor
+// manipular a própria fila (anti-fraude). Gate único: sellerQueue.manage.
 // Tenant-scoped. Auditado.
 // =============================================================================
 
@@ -20,7 +20,8 @@ type Ctx = { params: Promise<{ id: string }> }
 export async function POST(req: Request, { params }: Ctx) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'sellerQueue.attend')) return forbiddenResponse('Sem acesso à fila.')
+  // Só a gestão opera a fila individual (puxar/atender/transferir/cancelar).
+  if (!canAccessModule(user.role, 'sellerQueue.manage')) return forbiddenResponse('Apenas a gestão pode operar a fila individual.')
   { const gate = await assertModuleEnabled(user, 'sellerQueue.attend'); if (gate) return gate }
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))

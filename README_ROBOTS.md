@@ -3179,3 +3179,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Limite conhecido:** Android/desktop renderizam os botões; iOS varia — quando não renderiza, tocar o corpo abre o painel p/ decidir.
 - **Arquivos:** `src/app/api/seller-queue/attendance-auth/route.ts`, `public/sw.js`.
 - **Testes:** `npx tsc --noEmit` OK; `node -c public/sw.js` OK; `npm run build` OK.
+
+### LOG 0241 — 2026-07-09 — Claude (Opus 4.8) — Quadro de atendimentos com nome do vendedor + fila individual (push + gestão-only)
+- **Nome do vendedor no quadro "Atendimentos em andamento" (pedido):** `getQueueDashboardData` retornava os atendimentos CRUS (sem `sellerName`, sem `arrival`, e com `visitType` em vez de `type`) → o quadro ficava sem nome e "Cliente não cadastrado". Agora o loader inclui `arrival` e resolve o nome (Seller.fullName → User.name → começo do e-mail) e mapeia `type`. Os botões que o pedido cita (líder+ **cobrar** = "Enviar lembrete agora"; **Finalizar atendimento**) já existiam (LOG 0238) e continuam.
+- **Fila individual do vendedor (pedido — "ainda com problemas"):**
+  - **Aviso ao vendedor ocupado:** quando um cliente direcionado (agendamento/retorno/pós-venda) entra na fila individual de um vendedor que está atendendo, o `enqueuePersonalItem` mandava só `APP_WEB` (sininho). Agora manda **push real (FCM+WebPush)** + `priority high` → ele é avisado como numa chamada normal, mesmo com o app em 2º plano.
+  - **Só a gestão opera a fila individual:** `POST /api/seller-queue/personal-queue/[id]` (start/transfer/cancel/priority/reschedule) agora exige `sellerQueue.manage` (**gerente+**) — antes o vendedor podia `start/cancel` a própria. UI `MinhaFilaIndividual` esconde os botões p/ não-gestão e mostra "Aguardando a gestão liberar" (o vendedor só acompanha). Anti-fraude: o vendedor não manipula a própria fila.
+- **Arquivos:** `src/lib/seller-queue/dashboard.ts`, `src/lib/seller-queue/personal-queue.ts`, `src/app/api/seller-queue/personal-queue/[id]/route.ts`, `src/components/seller-queue/MinhaFilaIndividual.tsx`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
