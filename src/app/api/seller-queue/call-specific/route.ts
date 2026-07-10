@@ -16,6 +16,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
 import { getOrCreateQueue, logQueueEvent, unitFromRequest } from '@/lib/seller-queue/queue'
 import { callSpecificSeller } from '@/lib/seller-queue/call'
+import { getAgentQueueState, enqueuePersonalItem } from '@/lib/seller-queue/personal-queue'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export async function POST(req: Request) {
@@ -51,6 +52,20 @@ export async function POST(req: Request) {
     })
     await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CUSTOMER_ARRIVED', actorId: user.id, arrivalId: arrival.id, reason: 'chamada específica' })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CALL_SPECIFIC', entity: 'SellerQueueAttendance', entityId: sellerId, userName: user.name, userRole: user.role })
+
+    // Se o colaborador está OCUPADO/PAUSADO/FORA, o cliente NÃO some nem falha:
+    // entra na FILA INDIVIDUAL dele (o vendedor é avisado por push). Livre → chama.
+    const agentState = await getAgentQueueState(queue.id, sellerId)
+    if (agentState !== 'FREE') {
+      const item = await enqueuePersonalItem({
+        tenantId, unitId, agentUserId: sellerId, itemType: 'RETORNO', createdByUserId: user.id,
+        customerName: null, arrivalId: arrival.id, source: 'chamar-especifico',
+        notes: reason ?? null,
+      })
+      await prisma.sellerQueueCustomerArrival.update({ where: { id: arrival.id }, data: { status: 'ASSIGNED', notes: 'Fila individual (chamada específica)' } }).catch(() => {})
+      await logQueueEvent({ tenantId, unitId, queueId: queue.id, type: 'CUSTOMER_ARRIVED', sellerId, actorId: user.id, arrivalId: arrival.id, reason: `fila individual (${agentState})` })
+      return NextResponse.json({ success: true, data: { arrivalId: arrival.id, personalQueued: true, itemId: item.id, agentState } }, { status: 201 })
+    }
 
     const call = await callSpecificSeller({ tenantId, unitId, queueId: queue.id, arrivalId: arrival.id, actorId: user.id, sellerId, reason })
 

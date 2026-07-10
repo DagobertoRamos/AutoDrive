@@ -3209,3 +3209,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Onde fica no dashboard:** as filas individuais já ficam no painel do Vendedor da Vez (o próprio vendedor vê "Minha fila individual" quando TEM itens; gestão/flag vê "Filas individuais da unidade"). Vazio = não aparece (por isso "não estava achando").
 - **Arquivos:** `participants.ts`, `personal-queue.ts`, `personal-queue/[id]/route.ts`, `current/route.ts`, `MinhaFilaIndividual.tsx`, `QueueParticipantsCard.tsx`, `vendedor-da-vez/page.tsx`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0244 — 2026-07-09 — Claude (Opus 4.8) — "Chamar" um vendedor ocupado agora manda o cliente p/ a FILA INDIVIDUAL (era o bug real)
+- **Sintoma persistente:** "não consigo colocar cliente na fila individual". Causa REAL encontrada: o botão **"Chamar"** por vendedor (na lista de participantes) chama `POST /api/seller-queue/call-specific` → `callSpecificSeller`, que **RECUSA** vendedor ocupado com "Este colaborador já está em atendimento" (não enfileirava). Ou seja, chamar um vendedor que está atendendo simplesmente falhava — nunca ia p/ a fila individual.
+- **Fix:** `call-specific` agora checa `getAgentQueueState`; se o vendedor está OCUPADO/PAUSADO/FORA, **enfileira na fila individual** dele (`enqueuePersonalItem`, itemType RETORNO, com push ao vendedor) em vez de falhar; LIVRE → chama como antes. Retorna `personalQueued`.
+- **UI:** o handler `callSpecific` da página mostra "está ocupado — cliente foi para a FILA INDIVIDUAL dele" quando enfileira; erro real da chamada quando `call.ok===false`.
+- **Resultado:** clicar em **Chamar** num vendedor que está atendendo põe o cliente na fila individual dele automaticamente (o que o usuário pediu). Complementa a opção `toPersonalQueue` do Cliente na Loja (LOG 0242) e o modelo de operação dono/flag/gerente+ (LOG 0243).
+- **Arquivos:** `src/app/api/seller-queue/call-specific/route.ts`, `src/app/(dashboard)/vendedor-da-vez/page.tsx`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.

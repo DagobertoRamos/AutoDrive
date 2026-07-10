@@ -659,7 +659,10 @@ export default function FilaOverviewPage() {
     try {
       const r = await postJson('/api/seller-queue/call-specific', { sellerId, reason })
       if (!r.ok) { flash(r.error ?? 'Falha ao chamar vendedor.', false); return }
-      await refreshAfter(`${sellerName} foi chamado.`)
+      const data = r.data as { personalQueued?: boolean; call?: { ok?: boolean; reason?: string } } | undefined
+      if (data?.personalQueued) await refreshAfter(`${sellerName} está ocupado — cliente foi para a FILA INDIVIDUAL dele.`)
+      else if (data?.call && data.call.ok === false) flash(data.call.reason ?? 'Não foi possível chamar.', false)
+      else await refreshAfter(`${sellerName} foi chamado.`)
     } finally {
       setBusy(null)
     }
