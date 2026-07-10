@@ -3134,3 +3134,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Migrations pendentes na Neon:** `pendency_events` (LOG 0232) **e** `pendency_penalties` (esta). Sem elas o motor não age (seguro).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422, +8); `npm run build` OK.
 - **Concluído o spec de Pendências (Fases 1–5).** Futuro possível: integrar contagem de penalidades ao score do ranking (hoje aparece no painel do gestor).
+
+### LOG 0236 — 2026-07-09 — Claude (Opus 4.8) — Fix: líder não via a lista de vendedores em "Marcar atendendo"
+- **Sintoma:** logado como VENDEDOR_LIDER, ao clicar em "Marcar atendendo" o select de vendedores vinha vazio.
+- **Causa 1 (lista vazia):** em `vendedor-da-vez/page.tsx`, o botão aparece via `canManage` (que inclui permissões de LÍDER), mas a lista `callable` só era buscada `if (roleCanManage)` — e `roleCanManage`/`MANAGE_ROLES` **não inclui VENDEDOR_LIDER**. Logo o líder via o botão mas nunca a lista. **Fix:** extraí `loadCallable()` e passei a carregá-la **sob demanda ao abrir o modal** (`openMarkAttendingModal`, se `callable` vazio), além da carga do gestor — funciona p/ qualquer papel que veja o botão.
+- **Causa 2 (submit 403 latente):** `manage-seller` mapeia `mark_attending → 'queue.mark_seller_attending'`, permissão que **não existia** no matriz — então só passava via `isUserQueueResponsible` (que é false p/ líder não-configurado). **Fix:** adicionei `queue.mark_seller_attending` ao `Module` e ao `MODULE_PERMISSIONS` (MASTER/ADM/GERENTE*/GERENTE/VENDEDOR_LIDER), espelhando quem vê o botão. `canAccessModuleForUser` usa `canAccessModule` como base → líder passa.
+- **Arquivos:** `src/app/(dashboard)/vendedor-da-vez/page.tsx`, `src/lib/permissions.ts`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.

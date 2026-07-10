@@ -320,13 +320,19 @@ export default function FilaOverviewPage() {
   })
   const [callable, setCallable] = useState<{ sellerId: string; name: string; queueStatus: string | null }[]>([])
 
+  // Carrega a lista de colaboradores chamáveis. Usado tanto na carga (gestor)
+  // quanto sob demanda ao abrir "Marcar atendendo" — assim o VENDEDOR LÍDER
+  // (que vê o botão via permissões de líder, mas não é MANAGE_ROLE) também
+  // recebe a lista, que antes só era buscada quando roleCanManage.
+  const loadCallable = () => {
+    fetch('/api/seller-queue/callable', { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (j?.success) setCallable(j.data ?? []) })
+      .catch(() => {})
+  }
+
   useEffect(() => {
-    if (roleCanManage) {
-      fetch('/api/seller-queue/callable', { credentials: 'include' })
-        .then((r) => r.ok ? r.json() : null)
-        .then((j) => { if (j?.success) setCallable(j.data ?? []) })
-        .catch(() => {})
-    }
+    if (roleCanManage) loadCallable()
   }, [roleCanManage])
 
   const callDaVez = async () => {
@@ -344,6 +350,8 @@ export default function FilaOverviewPage() {
   }
 
   const openMarkAttendingModal = (visitType: string) => {
+    // Garante a lista de vendedores mesmo p/ quem não é MANAGE_ROLE (ex.: líder).
+    if (callable.length === 0) loadCallable()
     setMarkAttendingForm({
       sellerId: '',
       visitType,

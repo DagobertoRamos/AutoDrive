@@ -170,6 +170,7 @@ export type Module =
   | 'queue.resume_self'
   | 'queue.pause_other'
   | 'queue.resume_other'
+  | 'queue.mark_seller_attending'
   | 'queue.remove_participant'
   | 'queue.add_participant'
   | 'queue.block_participant'
@@ -722,6 +723,7 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'queue.resume_self': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'], actions: ['update'] },
   'queue.pause_other': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
   'queue.resume_other': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
+  'queue.mark_seller_attending': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['create', 'update'] },
   'queue.remove_participant': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['delete'] },
   'queue.add_participant': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['create'] },
   'queue.block_participant': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
