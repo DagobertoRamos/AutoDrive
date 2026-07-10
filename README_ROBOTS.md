@@ -3248,3 +3248,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Próximo passo imediato (ainda F1):** exibir temperatura + etiquetas NO card do Kanban e no detalhe do lead (as APIs já existem).
 - **Fases seguintes:** F2 Identidade&Dedup, F3 Pipelines+Kanban pro, F4 SLA/Follow-up+Distribuição+Timeline, F5 Automações+Motivos+Auditoria+Relatórios.
 - **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0248 — 2026-07-09 — Claude (Opus 4.8) — CRM F1 (parte visual): temperatura + etiquetas no Kanban e no detalhe do lead
+- **Kanban (`/crm/kanban`):** passou a usar as ETAPAS CONFIGURADAS (`/api/crm/config/stages`) — nome, cor e ordem por tenant (só ativas; "Avançar" segue a ordem configurada). Cada card mostra o **emoji da temperatura** e as **etiquetas** (chips coloridas).
+- **Lista de leads (`GET /api/crm/leads`):** cada card agora traz `temperature` (de metadata) + `tags` (CrmLeadTag→CrmTag ativas) — só p/ a página atual, tolerante a migration pendente.
+- **Detalhe do lead (`/crm/leads/[id]`):** bloco de **Temperatura** (Quente/Morno/Frio/Sem classificação — uma ativa, clique troca via `PATCH /temperature`) + **Etiquetas** (chips com remover + select "Adicionar etiqueta" das disponíveis, via `POST/DELETE /tags`). `GET /api/crm/leads/[id]` agora retorna `temperature`, `tags`, `availableTags`.
+- **Shared:** `CRM_TEMPERATURES` (const PURA client-safe) movida p/ `@/lib/crm/shared`; `config.ts` reexporta. Zero risco de puxar prisma p/ o client.
+- **Deploy seguro:** tudo tolerante — sem a migration `crm_f1_config`, o Kanban mostra etapas padrão e cards sem etiqueta; nada quebra.
+- **F1 completa** (config + visual). Próximo: F2 (Identidade & Deduplicação).
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.

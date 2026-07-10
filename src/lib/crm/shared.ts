@@ -16,6 +16,18 @@ export const CRM_STAGE_OPTIONS = [
 export type CrmStageValue = typeof CRM_STAGE_OPTIONS[number]['value']
 export type CrmScope = 'own' | 'unit' | 'all'
 
+// Temperatura do lead (F1) — const PURA (client-safe). Separada das etiquetas.
+export const CRM_TEMPERATURES = [
+  { value: 'HOT', label: 'Quente', color: '#ef4444', emoji: '🔥' },
+  { value: 'WARM', label: 'Morno', color: '#f59e0b', emoji: '🌤️' },
+  { value: 'COLD', label: 'Frio', color: '#3b82f6', emoji: '❄️' },
+  { value: 'UNCLASSIFIED', label: 'Sem classificação', color: '#9ca3af', emoji: '⚪' },
+] as const
+export type CrmTemperatureValue = (typeof CRM_TEMPERATURES)[number]['value']
+export function crmTemperature(value: string | null | undefined) {
+  return CRM_TEMPERATURES.find((t) => t.value === value) ?? CRM_TEMPERATURES[3]
+}
+
 export function crmStageLabel(value: string | null | undefined): string {
   return CRM_STAGE_OPTIONS.find((item) => item.value === value)?.label ?? (value || 'Sem etapa')
 }

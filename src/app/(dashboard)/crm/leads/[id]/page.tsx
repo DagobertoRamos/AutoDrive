@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { use, useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Clock3, History, RefreshCw, Save, UserCheck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock3, History, RefreshCw, Save, UserCheck, Tag as TagIcon, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { CRM_TEMPERATURES } from '@/lib/crm/shared'
 
 interface LeadDetail {
   id: string
@@ -19,7 +20,10 @@ interface LeadDetail {
   convertedDealId: string | null
   lastContactAt: string | null
   createdAt: string
+  temperature: string | null
 }
+
+interface CrmTag { id: string; name: string; color: string | null }
 
 interface LeadTask {
   id: string
@@ -81,6 +85,8 @@ interface LeadPayload {
   }>
   tasks: LeadTask[]
   timeline: TimelineItem[]
+  tags: CrmTag[]
+  availableTags: CrmTag[]
 }
 
 const panelCls = 'rounded-2xl border border-gray-200 bg-white p-4 shadow-card'
@@ -110,6 +116,20 @@ export default function CrmLeadDetailPage({ params }: { params: Promise<{ id: st
   }, [load])
 
   const pendingTasks = useMemo(() => payload?.tasks.filter((item) => item.status !== 'DONE') ?? [], [payload])
+
+  const setTemperature = async (temperature: string) => {
+    await fetch(`/api/crm/leads/${leadId}/temperature`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ temperature }) })
+    await load()
+  }
+  const addTag = async (tagId: string) => {
+    if (!tagId) return
+    await fetch(`/api/crm/leads/${leadId}/tags`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ tagId }) })
+    await load()
+  }
+  const removeTag = async (tagId: string) => {
+    await fetch(`/api/crm/leads/${leadId}/tags?tagId=${encodeURIComponent(tagId)}`, { method: 'DELETE', credentials: 'include' })
+    await load()
+  }
 
   const createTask = async () => {
     if (!leadId) return
@@ -174,6 +194,45 @@ export default function CrmLeadDetailPage({ params }: { params: Promise<{ id: st
               <h2 className="mt-1 text-lg font-semibold text-gray-900">{lead?.status ?? 'Sem etapa'}</h2>
             </div>
             <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">{lead?.source ?? 'MANUAL'}</span>
+          </div>
+
+          {/* Temperatura (uma ativa) — separada das etiquetas */}
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Temperatura</p>
+            <div className="flex flex-wrap gap-1.5">
+              {CRM_TEMPERATURES.map((t) => {
+                const active = (lead?.temperature ?? 'UNCLASSIFIED') === t.value
+                return (
+                  <button key={t.value} onClick={() => void setTemperature(t.value)} className={cn('flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition', active ? 'text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} style={active ? { background: t.color, borderColor: t.color } : { borderColor: '#e5e7eb' }}>
+                    <span>{t.emoji}</span>{t.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Etiquetas (várias) */}
+          <div className="mt-4">
+            <p className="mb-1.5 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500"><TagIcon size={12} />Etiquetas</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(payload?.tags ?? []).map((t) => (
+                <span key={t.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700">
+                  <span className="h-2 w-2 rounded-full" style={{ background: t.color ?? '#9ca3af' }} />{t.name}
+                  <button onClick={() => void removeTag(t.id)} className="text-gray-400 hover:text-red-600"><X size={11} /></button>
+                </span>
+              ))}
+              {(() => {
+                const applied = new Set((payload?.tags ?? []).map((t) => t.id))
+                const options = (payload?.availableTags ?? []).filter((t) => !applied.has(t.id))
+                if (options.length === 0) return (payload?.tags ?? []).length === 0 ? <span className="text-xs text-gray-400">Nenhuma etiqueta. Cadastre em Configurações do CRM.</span> : null
+                return (
+                  <select onChange={(e) => { void addTag(e.target.value); e.currentTarget.selectedIndex = 0 }} className="rounded-full border border-dashed border-gray-300 bg-white px-2 py-1 text-xs text-gray-500 focus:border-brand-500 focus:outline-none">
+                    <option value=""> + Adicionar etiqueta</option>
+                    {options.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                )
+              })()}
+            </div>
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">

@@ -5,14 +5,9 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { CRM_STAGE_OPTIONS } from '@/lib/crm/shared'
+import { CRM_STAGE_OPTIONS, CRM_TEMPERATURES } from '@/lib/crm/shared'
 
-export const CRM_TEMPERATURES = [
-  { value: 'HOT', label: 'Quente', color: '#ef4444' },
-  { value: 'WARM', label: 'Morno', color: '#f59e0b' },
-  { value: 'COLD', label: 'Frio', color: '#3b82f6' },
-  { value: 'UNCLASSIFIED', label: 'Sem classificação', color: '#9ca3af' },
-] as const
+export { CRM_TEMPERATURES }
 export type CrmTemperature = (typeof CRM_TEMPERATURES)[number]['value']
 
 const DEFAULT_STAGE_CATEGORY: Record<string, string> = {

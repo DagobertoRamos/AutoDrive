@@ -5,6 +5,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared'
+import { readTemperature } from '@/lib/crm/config'
 
 function leadPriorityOf(row: {
   source: string | null
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
           id: true, name: true, phone: true, email: true, source: true, status: true,
           unitId: true, assignedToUserId: true, customerId: true, vehicleId: true,
           convertedDealId: true, lostReason: true, notes: true, lastContactAt: true,
-          createdAt: true, updatedAt: true,
+          createdAt: true, updatedAt: true, metadata: true,
         },
       }),
       prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true } }),
@@ -99,9 +100,28 @@ export async function GET(req: Request) {
     const total = sorted.length
     const paged = sorted.slice((page - 1) * perPage, page * perPage)
 
+    // F1: temperatura (metadata) + etiquetas (CrmLeadTag) por card. Só p/ a página
+    // atual (barato) e tolerante à migration pendente.
+    const leadIds = paged.map((p) => p.id)
+    const tagLinks = leadIds.length
+      ? await prisma.crmLeadTag.findMany({ where: { leadId: { in: leadIds } }, select: { leadId: true, tag: { select: { id: true, name: true, color: true, active: true } } } }).catch(() => [])
+      : []
+    const tagsByLead = new Map<string, { id: string; name: string; color: string | null }[]>()
+    for (const l of tagLinks) {
+      if (!l.tag?.active) continue
+      const arr = tagsByLead.get(l.leadId) ?? []
+      arr.push({ id: l.tag.id, name: l.tag.name, color: l.tag.color })
+      tagsByLead.set(l.leadId, arr)
+    }
+    const data = paged.map(({ metadata, ...rest }) => ({
+      ...rest,
+      temperature: readTemperature(metadata),
+      tags: tagsByLead.get(rest.id) ?? [],
+    }))
+
     return NextResponse.json({
       success: true,
-      data: paged,
+      data,
       meta: { total, page, perPage, totalPages: Math.max(1, Math.ceil(total / perPage)), scope },
     })
   } catch (err) {

@@ -5,6 +5,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
+import { readTemperature } from '@/lib/crm/config'
 
 const UPDATABLE_STATUSES = new Set(['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED'])
 
@@ -218,6 +219,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
     ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
 
+    // F1: etiquetas aplicadas + etiquetas disponíveis (tolerante a migration).
+    const [appliedTags, availableTags] = await Promise.all([
+      prisma.crmLeadTag.findMany({ where: { leadId: lead.id }, select: { tag: { select: { id: true, name: true, color: true, active: true } } } }).catch(() => []),
+      prisma.crmTag.findMany({ where: { tenantId, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, color: true } }).catch(() => []),
+    ])
+    const tags = appliedTags.filter((t) => t.tag).map((t) => ({ id: t.tag!.id, name: t.tag!.name, color: t.tag!.color }))
+
     return NextResponse.json({
       success: true,
       data: {
@@ -240,7 +248,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           lastContactAt: lead.lastContactAt,
           createdAt: lead.createdAt,
           updatedAt: lead.updatedAt,
+          temperature: readTemperature(lead.metadata),
         },
+        tags,
+        availableTags,
         relations: { customer, vehicle, deal, attendance },
         attendances: attendances.map((item) => ({
           ...item,
