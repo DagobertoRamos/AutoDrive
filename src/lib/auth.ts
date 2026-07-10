@@ -226,7 +226,9 @@ export const authOptions: NextAuthOptions = {
         // 7. Retorna os dados que irão para o JWT callback
         return {
           id:                user.id,
-          name:              user.name,
+          // Fallback p/ nunca ficar vazio (senão o avatar mostra o "AD" padrão e
+          // a saudação fica sem nome). Usa o começo do e-mail quando não há nome.
+          name:              user.name || user.email?.split('@')[0] || 'Usuário',
           email:             user.email,
           role:              user.role as UserRole,
           status:            user.status as UserStatus,

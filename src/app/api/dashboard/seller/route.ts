@@ -51,7 +51,10 @@ function getGoalStatus(percent: number, start: Date, end: Date, now: Date): 'no 
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (user.role !== 'VENDEDOR' && user.role !== 'MASTER') {
+  // O DashboardRouter manda VENDEDOR e VENDEDOR_LIDER para o dashboard do vendedor;
+  // a API precisa aceitar os dois (antes recusava o líder → 403 → dashboard não carregava).
+  const SELLER_ROLES = new Set(['VENDEDOR', 'VENDEDOR_LIDER', 'MASTER'])
+  if (!SELLER_ROLES.has(user.role)) {
     return forbiddenResponse('Apenas vendedores podem acessar este dashboard.')
   }
 

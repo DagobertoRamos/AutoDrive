@@ -3109,3 +3109,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Depende de:** migration `pendency_events` (LOG 0232) aplicada na Neon p/ os eventos gravarem; sem ela o motor fica desligado (seguro).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (414/414, +9); `npm run build` OK.
 - **Pendências:** Fase 4 (nagging Crítica níveis 1→2→3 + enum CRITICA), Fase 5 (penalidades só avisam/marcam + painel do gestor).
+
+### LOG 0234 — 2026-07-09 — Claude (Opus 4.8) — Fix: dashboard do vendedor não carregava (líder → 403) + avatar "AD"
+- **Sintoma:** vendedor loga, avatar mostra "AD" e o dashboard não carrega.
+- **Causa 1 (não carrega):** `GET /api/dashboard/seller` só aceitava `VENDEDOR`/`MASTER`, mas o `DashboardRouter` manda **`VENDEDOR_LIDER`** para o `VendedorDashboard` (defaultRoleKind mapeia líder→VENDEDOR). Resultado: líder (ex.: Anderson) caía em 403 "Apenas vendedores…" → tela vermelha "Falha ao carregar". **Fix:** gate aceita `VENDEDOR`, `VENDEDOR_LIDER`, `MASTER`.
+- **Causa 2 (misroute):** `inferOperationalRole` reclassificava por TEXTO do cargo/posição — um VENDEDOR com cargo contendo "estoque/documentação/administrativo" ia para COMPRAS/AUXILIAR (dashboard vazio). **Fix:** em `resolveDashboardProfile`, VENDEDOR/VENDEDOR_LIDER **sempre** vê o dashboard do vendedor (exceção: membro de SDR).
+- **Causa 3 (avatar "AD"):** `Topbar` usa `initials || 'AD'`; quando `User.name` é nulo (colaborador criado só com `Seller.fullName`), aparecia o "AD" padrão do app. **Fix:** no `authorize`, `name` cai para o começo do e-mail quando não há nome (nunca vazio).
+- **Arquivos:** `src/app/api/dashboard/seller/route.ts`, `src/lib/dashboard/dashboardProfiles.ts`, `src/lib/auth.ts`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (414/414); `npm run build` OK. Obs.: fallback de nome só vale em novos logins (sessão existente mantém o nome antigo até relogar).

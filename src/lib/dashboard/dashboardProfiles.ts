@@ -133,7 +133,14 @@ const ROLE_LABEL: Record<DashboardRoleKind, { label: string; description: string
 }
 
 export function resolveDashboardProfile(input: DashboardProfileInput): DashboardProfile {
-  const roleKind = inferOperationalRole(input) ?? defaultRoleKind(input.role)
+  const baseKind = defaultRoleKind(input.role)
+  // Vendedor (e líder) SEMPRE vê o dashboard do vendedor — a inferência por texto
+  // do cargo/posição (ex.: "estoque", "documentação") não deve reclassificá-lo e
+  // mandá-lo para um dashboard vazio. Exceção: membro de SDR/pré-vendas.
+  const roleKind =
+    baseKind === 'VENDEDOR' && !input.isSdrMember
+      ? 'VENDEDOR'
+      : inferOperationalRole(input) ?? baseKind
   const scope = scopeFor(roleKind, input.role)
   const copy = ROLE_LABEL[roleKind]
   const scopeLabel =
