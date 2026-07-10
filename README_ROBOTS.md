@@ -3171,3 +3171,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Migrations pendentes na Neon (acumuladas):** pendency_events, pendency_penalties, **seller_attendance_authorizations**. Código sobe seguro; recursos ligam após aplicar.
 - **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
 - **Possível refino futuro:** botões Aprovar/Recusar nativos NA notificação push (hoje o push abre o painel p/ decidir) — exigiria handler no `sw.js` como o da chamada da fila.
+
+### LOG 0240 — 2026-07-09 — Claude (Opus 4.8) — Autorização de atendimento: botões Aprovar/Recusar NATIVOS na notificação push
+- **Refino do LOG 0239:** o líder+/gerência agora aprova/recusa o pedido de agendamento/retorno **direto na notificação** (sem abrir o app), igual à chamada da fila.
+- **Push:** `attendance-auth` (POST) passou a mandar `metadata.pushType='AUTH_REQUEST'` + `pushData.authId` → chega ao `sw.js` como `type:'AUTH_REQUEST'` com `authId`.
+- **`public/sw.js`:** para `AUTH_REQUEST` mostra as ações `✅ Aprovar` / `❌ Recusar` (tag por `auth-<id>`, requireInteraction). No `notificationclick`, `auth_approve`/`auth_reject` fazem `POST /api/seller-queue/attendance-auth/<id>/decide` (recusar usa motivo padrão "Recusado pela notificação", que satisfaz a auditoria). Falha/sessão expirada → abre o painel (fallback).
+- **Limite conhecido:** Android/desktop renderizam os botões; iOS varia — quando não renderiza, tocar o corpo abre o painel p/ decidir.
+- **Arquivos:** `src/app/api/seller-queue/attendance-auth/route.ts`, `public/sw.js`.
+- **Testes:** `npx tsc --noEmit` OK; `node -c public/sw.js` OK; `npm run build` OK.

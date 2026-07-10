@@ -67,7 +67,8 @@ export async function POST(req: Request) {
       title: '🔐 Autorização de atendimento',
       message: `${user.name} pediu para atender ${label}: ${customerName}. Aprove ou recuse.`,
       actionUrl: '/vendedor-da-vez?authRequest=' + auth.id,
-      metadata: { kind: 'attendance_auth', authId: auth.id, priority: 'high' },
+      // pushType/pushData chegam ao service worker (sw.js) → botões nativos Aprovar/Recusar.
+      metadata: { kind: 'attendance_auth', authId: auth.id, priority: 'high', pushType: 'AUTH_REQUEST', pushData: { authId: auth.id } },
       channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
     }).catch(() => {})))
 
