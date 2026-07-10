@@ -3197,3 +3197,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Comportamento mantido:** sem marcar, segue como antes (livre → chama; ocupado → fila individual). "Iniciar" segue só p/ gestão (LOG 0241) e só quando o vendedor não está em outro atendimento.
 - **Arquivos:** `src/lib/validators/seller-queue.ts`, `src/app/api/seller-queue/customer-arrivals/route.ts`, `src/components/seller-queue/ClienteNaLojaPanel.tsx`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0243 — 2026-07-09 — Claude (Opus 4.8) — Fila individual: quem opera = dono + líder/vendedor com flag no cadastro + gerente+
+- **Refina o LOG 0241** (que deixara SÓ gerente+). Novo modelo de quem ATENDE/opera a fila individual:
+  - **Dono** (o vendedor chamado) sempre atende os PRÓPRIOS itens.
+  - **Gerente+** sempre opera tudo.
+  - **Flag no cadastro** `canPullPersonalQueue` (novo) libera vendedor/líder a operar (inclusive de outros).
+- **Flag por-colaborador:** `ParticipantFlags.canPullPersonalQueue` (default **false**, opt-in) em `participants.ts` (JSON `config.participants[sellerId]`, sem migration). Coluna "Opera fila" na `QueueParticipantsCard` (o cadastro de vendedores na fila).
+- **Permissão:** `personal-queue/[id]` voltou a `sellerQueue.attend` no gate e agora autoriza por **dono OU gerente+ OU flag**; passa `canOperate` p/ as libs (`startPersonalItem`/cancel/priority/reschedule ganharam `canOperate?`); `transfer` exige `canOperate`.
+- **UI:** `MinhaFilaIndividual` (fila do próprio) volta a mostrar os botões (o dono atende os próprios). `FilasIndividuaisUnidade` usa `readOnly={!canOperatePersonalQueue}` — nova permissão `operatePersonalQueue` no `/current` (gerente+ OU flag). Líder com o flag opera a unidade; sem o flag, vê só leitura.
+- **Onde fica no dashboard:** as filas individuais já ficam no painel do Vendedor da Vez (o próprio vendedor vê "Minha fila individual" quando TEM itens; gestão/flag vê "Filas individuais da unidade"). Vazio = não aparece (por isso "não estava achando").
+- **Arquivos:** `participants.ts`, `personal-queue.ts`, `personal-queue/[id]/route.ts`, `current/route.ts`, `MinhaFilaIndividual.tsx`, `QueueParticipantsCard.tsx`, `vendedor-da-vez/page.tsx`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.

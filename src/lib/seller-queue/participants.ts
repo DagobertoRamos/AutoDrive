@@ -17,6 +17,7 @@ export interface ParticipantFlags {
   canReceiveRetiradaEntrega: boolean  // retirada/entrega de carro
   individualQueue: boolean            // participa da fila individual
   escalatable: boolean                // pode ser escalonado
+  canPullPersonalQueue: boolean       // pode OPERAR a fila individual (atender/transferir/finalizar) — inclusive de outros
 }
 
 export const PARTICIPANT_DEFAULTS: ParticipantFlags = {
@@ -29,6 +30,7 @@ export const PARTICIPANT_DEFAULTS: ParticipantFlags = {
   canReceiveRetiradaEntrega: true,
   individualQueue: true,
   escalatable: true,
+  canPullPersonalQueue: false, // opt-in: por padrão só a gestão opera a fila individual de outros
 }
 
 const FLAG_KEYS = Object.keys(PARTICIPANT_DEFAULTS) as (keyof ParticipantFlags)[]

@@ -90,6 +90,7 @@ interface CurrentData {
     viewLogs?: boolean
     panelView?: boolean
     personalQueuesViewUnit?: boolean
+    operatePersonalQueue?: boolean
     pauseOther?: boolean
     resumeOther?: boolean
     addParticipant?: boolean
@@ -409,6 +410,9 @@ export default function FilaOverviewPage() {
   const canViewAlertAll = Boolean(queuePerms?.sendAlertAll || roleCanManage)
   const canSendQueueAlert = Boolean(queuePerms?.sendAlertAll || roleCanManage)
   const canViewUnitPersonalQueues = Boolean(canManage || queuePerms?.personalQueuesViewUnit || queuePerms?.panelView)
+  // Quem pode OPERAR a fila individual da unidade (atender/transferir/finalizar):
+  // gestão ou quem tem o flag no cadastro (líder/vendedor autorizado).
+  const canOperatePersonalQueue = Boolean(canManage || queuePerms?.operatePersonalQueue)
   const canUseOwnQueue = current?.canCheckIn === true
   const myQueueStatus = current?.me?.blocked ? 'BLOCKED' : current?.me?.status ?? null
   const isMeWaiting = myQueueStatus === 'WAITING' || myQueueStatus === 'NEXT'
@@ -1136,7 +1140,7 @@ export default function FilaOverviewPage() {
 
           <section className="grid min-w-0 gap-4 xl:grid-cols-[1fr_0.95fr]">
             <div className="space-y-4">
-              {canViewUnitPersonalQueues ? <FilasIndividuaisUnidade onChanged={load} readOnly={!canManage} /> : <MinhaFilaIndividual onChanged={load} />}
+              {canViewUnitPersonalQueues ? <FilasIndividuaisUnidade onChanged={load} readOnly={!canOperatePersonalQueue} /> : <MinhaFilaIndividual onChanged={load} />}
             </div>
 
             <div className="space-y-4">

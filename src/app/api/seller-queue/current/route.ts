@@ -11,6 +11,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/a
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { queueDate, resolveQueueUnitForRead, getUnitConfig, isQueuePanelFallbackUser } from '@/lib/seller-queue/queue'
+import { getParticipant } from '@/lib/seller-queue/participants'
 import { getActiveQueueBlock } from '@/lib/seller-queue/penalty'
 import { getActivePosVenda } from '@/lib/seller-queue/pos-vendas'
 import { assertModuleEnabled, canAccessModuleForUser, getDisabledModules, isModuleEnabled } from '@/lib/tenant-modules'
@@ -112,6 +113,9 @@ export async function GET(req: Request) {
       unblockParticipant: isQueueResponsible || await canAccessModuleForUser(user, 'queue.unblock_participant'),
       reorder: isQueueResponsible || await canAccessModuleForUser(user, 'queue.reorder'),
       manageSettings: isQueueResponsible || await canAccessModuleForUser(user, 'queue.manage_settings'),
+      // Operar a fila individual (atender/transferir/finalizar de outros): gestão
+      // OU quem tem o flag `canPullPersonalQueue` no cadastro (líder/vendedor).
+      operatePersonalQueue: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'].includes(user.role) || getParticipant(ucfg?.config, user.id).canPullPersonalQueue,
     }
     const queue = await prisma.sellerQueue.findUnique({ where: { tenantId_unitId_date: { tenantId, unitId, date: queueDate() } } })
     const unitName = unitScope.unitName

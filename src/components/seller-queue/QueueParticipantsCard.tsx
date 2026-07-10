@@ -23,6 +23,7 @@ interface Flags {
   canReceiveRetiradaEntrega: boolean
   individualQueue: boolean
   escalatable: boolean
+  canPullPersonalQueue: boolean
 }
 interface Seller { sellerId: string; name: string; role?: string; positionName?: string | null; queueStatus?: string | null; inQueue?: boolean }
 
@@ -35,6 +36,7 @@ const COLS: { key: keyof Flags; label: string; title: string }[] = [
   { key: 'canReceivePosVenda', label: 'Pós-venda', title: 'Recebe pós-venda' },
   { key: 'canReceiveRetiradaEntrega', label: 'Retirada', title: 'Recebe retirada/entrega de carro' },
   { key: 'individualQueue', label: 'Fila indiv.', title: 'Participa da fila individual' },
+  { key: 'canPullPersonalQueue', label: 'Opera fila', title: 'Pode atender/transferir/finalizar itens da fila individual (inclusive de outros vendedores). O dono sempre atende os próprios; a gestão sempre pode.' },
   { key: 'escalatable', label: 'Escalona', title: 'Pode ser escalonado' },
 ]
 
