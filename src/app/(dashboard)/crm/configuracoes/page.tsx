@@ -8,7 +8,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Settings, Save, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, GripVertical } from 'lucide-react'
+import Link from 'next/link'
+import { Settings, Save, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, GripVertical, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
@@ -17,13 +18,14 @@ const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 te
 interface Stage { code: string; displayName: string; color: string; order: number; active: boolean; category: string }
 interface Tag { id: string; name: string; color: string | null; description: string | null; active: boolean }
 
-type TabId = 'overview' | 'stages' | 'tags'
+type TabId = 'overview' | 'stages' | 'tags' | 'duplicates'
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: 'overview', label: 'Visão geral', icon: Settings },
   { id: 'stages', label: 'Etapas', icon: Columns3 },
   { id: 'tags', label: 'Etiquetas', icon: TagIcon },
+  { id: 'duplicates', label: 'Duplicidades', icon: Copy },
 ]
-const SOON = ['Temperaturas', 'Tipos de lead', 'Origens', 'Distribuição', 'SLA e follow-up', 'Campos obrigatórios', 'Motivos de encerramento', 'Duplicidades', 'Automações', 'Permissões', 'Auditoria']
+const SOON = ['Temperaturas', 'Tipos de lead', 'Origens', 'Distribuição', 'SLA e follow-up', 'Campos obrigatórios', 'Motivos de encerramento', 'Automações', 'Permissões', 'Auditoria']
 
 export default function CrmConfiguracoesPage() {
   const { data: session } = useSession()
@@ -48,6 +50,58 @@ export default function CrmConfiguracoesPage() {
       {tab === 'overview' && <Overview />}
       {tab === 'stages' && <StagesTab canManage={canManage} />}
       {tab === 'tags' && <TagsTab canManage={canManage} />}
+      {tab === 'duplicates' && <DuplicatesTab />}
+    </div>
+  )
+}
+
+interface DupLead { id: string; name?: string | null; phone?: string | null; email?: string | null; status?: string; source?: string | null }
+interface DupItem { id: string; matchType: string; reason: string | null; createdAt: string; lead: DupLead; matchedLead: DupLead | null }
+
+function DuplicatesTab() {
+  const [items, setItems] = useState<DupItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const r = await fetch('/api/crm/duplicates', { credentials: 'include' }).then((x) => x.json()); setItems(r?.data ?? []) }
+    catch { /* noop */ } finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const dismiss = async (id: string) => {
+    setBusy(id)
+    try { await fetch(`/api/crm/duplicates/${id}/dismiss`, { method: 'POST', credentials: 'include' }); await load() } finally { setBusy(null) }
+  }
+
+  const who = (l: DupLead) => l.name || l.phone || l.email || l.id.slice(-6)
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
+      <div className="mb-3 flex items-center justify-between">
+        <div><h2 className="text-sm font-semibold text-gray-900">Duplicidades para revisar</h2><p className="text-xs text-gray-500">Detecção em modo alerta — o sistema NÃO mescla nem apaga sozinho. Você revisa e decide.</p></div>
+        <button onClick={load} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
+      </div>
+      {loading ? <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-100" />)}</div> : items.length === 0 ? (
+        <p className="py-8 text-center text-sm text-gray-400">Nenhuma duplicidade pendente. 🎉</p>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((it) => (
+            <li key={it.id} className="rounded-lg border border-amber-100 bg-amber-50/40 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-gray-700">
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">{it.matchType}</span>{' '}
+                  <Link href={`/crm/leads/${it.lead.id}`} className="font-semibold text-sky-700 hover:underline">{who(it.lead)}</Link>
+                  {it.matchedLead && <> ↔ <Link href={`/crm/leads/${it.matchedLead.id}`} className="font-semibold text-sky-700 hover:underline">{who(it.matchedLead)}</Link></>}
+                </p>
+                <button onClick={() => dismiss(it.id)} disabled={busy === it.id} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Dispensar</button>
+              </div>
+              {it.reason && <p className="mt-1 text-xs text-gray-500">{it.reason}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

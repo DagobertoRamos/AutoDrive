@@ -4467,6 +4467,26 @@ model CrmTag {
   @@map("crm_tags")
 }
 
+// CRM F2 — candidato à MESCLAGEM (duplicidade detectada em modo ALERTA). Não
+// mescla nem apaga nada; só registra p/ revisão do gestor.
+model CrmMergeCandidate {
+  id                String    @id @default(cuid())
+  tenantId          String
+  leadId            String // lead novo que disparou o alerta
+  matchType         String // HARD | SOFT
+  matchedLeadId     String?
+  matchedCustomerId String?
+  reason            String?
+  status            String    @default("PENDING") // PENDING | MERGED | DISMISSED
+  resolvedByUserId  String?
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([tenantId, status])
+  @@index([leadId])
+  @@map("crm_merge_candidates")
+}
+
 // N:N lead↔etiqueta. leadId é FK SOFT p/ MarketingLead (padrão do módulo — não
 // altera o model MarketingLead, evita migration na tabela quente de leads).
 model CrmLeadTag {

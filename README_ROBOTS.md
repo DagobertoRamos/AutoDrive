@@ -3257,3 +3257,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Deploy seguro:** tudo tolerante — sem a migration `crm_f1_config`, o Kanban mostra etapas padrão e cards sem etiqueta; nada quebra.
 - **F1 completa** (config + visual). Próximo: F2 (Identidade & Deduplicação).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0249 — 2026-07-09 — Claude (Opus 4.8) — CRM Reforma FASE 2: Identidade & Deduplicação (modo ALERTA)
+- **Objetivo:** não duplicar a PESSOA; reusar o contato; idempotência de integração; detectar duplicidade sem bloquear/mesclar (spec F2 = modo alerta).
+- **`src/lib/crm/identity.ts` (PURO, 8 testes):** `normCpf`/`isValidCpf` (reusa br-docs), `normPhone` (tira DDI 55/0, nacional), `phoneKey` (últimos 8), `normEmail`, `normName` (sem acento, tokens ordenados), `nameSimilarity` (Jaccard), `externalKey` (source+externalLeadId).
+- **`src/lib/crm/dedup.ts`:** `resolveIdentity(tenantId, input)` → idempotência por source+externalLeadId (metadata JSON), reuso de contato por CPF válido/telefone/e-mail, HARD (lead aberto mesmo telefone / contato mesmo CPF) e SOFT (mesmo e-mail em outro lead). Só LEITURA/classificação.
+- **`POST /api/crm/leads`** agora: resolve identidade; **idempotente** (mesmo source+externalLeadId devolve o lead existente); **reusa customerId** (não cria pessoa nova); registra **candidatos à mesclagem** (`CrmMergeCandidate`) p/ OUTROS leads (alerta). O dedup por telefone/e-mail que já existia (atualiza lead aberto) foi preservado.
+- **Schema/migration `20260709230000_crm_f2_merge_candidates`:** `CrmMergeCandidate` (leadId, matchType, matchedLeadId, reason, status PENDING/MERGED/DISMISSED). **Aplicar manual na Neon.**
+- **APIs:** `GET /api/crm/duplicates` (fila de revisão, gestor+) + `POST /api/crm/duplicates/[id]/dismiss`.
+- **UI:** nova aba **"Duplicidades"** na Central de Config do CRM — lista os pares suspeitos (lead ↔ lead), com "Dispensar" e links p/ os leads. NÃO mescla nem apaga (fase futura).
+- **Deploy seguro:** tudo tolerante (`.catch`) — sem a migration, o dedup segue funcionando (só não grava candidatos) e a aba mostra vazio.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (430/430, +8); `npm run build` OK.
+- **Próximo:** F3 (Pipelines + Kanban pro), F4, F5. E a MESCLAGEM efetiva (com preservação de histórico) numa fase dedicada.

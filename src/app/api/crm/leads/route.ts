@@ -6,6 +6,19 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared'
 import { readTemperature } from '@/lib/crm/config'
+import { resolveIdentity, type DedupMatch } from '@/lib/crm/dedup'
+
+// F2 alerta: registra candidatos à mesclagem p/ OUTROS leads (não bloqueia).
+async function flagMergeCandidates(tenantId: string, leadId: string, matches: DedupMatch[]): Promise<void> {
+  for (const m of matches) {
+    if (!m.leadId || m.leadId === leadId) continue
+    await prisma.crmMergeCandidate.upsert({
+      where: { id: `${leadId}_${m.leadId}` },
+      create: { id: `${leadId}_${m.leadId}`, tenantId, leadId, matchType: 'SOFT', matchedLeadId: m.leadId, reason: m.reason, status: 'PENDING' },
+      update: {},
+    }).catch(() => {})
+  }
+}
 
 function leadPriorityOf(row: {
   source: string | null
@@ -144,9 +157,18 @@ export async function POST(req: Request) {
     const email = String(body.email ?? '').trim() || null
     const source = String(body.source ?? 'MANUAL').trim() || 'MANUAL'
     const notes = String(body.notes ?? '').trim() || null
+    const cpf = body.cpf ? String(body.cpf) : null
+    const externalLeadId = body.externalLeadId ? String(body.externalLeadId) : null
     const explicitAssigned = body.assignedToUserId ? String(body.assignedToUserId) : null
     if (!name && !phone && !email) {
       return NextResponse.json({ success: false, error: 'Informe nome, telefone ou e-mail.' }, { status: 400 })
+    }
+
+    // F2 — resolução de identidade (modo alerta). Idempotência por integração,
+    // reuso de contato existente e detecção de duplicidade (sem bloquear).
+    const identity = await resolveIdentity(tenantId, { cpf, phone, email, name, source, externalLeadId })
+    if (identity.idempotentLeadId) {
+      return NextResponse.json({ success: true, data: { id: identity.idempotentLeadId, idempotent: true } })
     }
 
     const canEditUnit = await canAccessModuleForUser(user, 'crm.lead.edit.unit')
@@ -166,7 +188,7 @@ export async function POST(req: Request) {
           ...(phoneDigits ? [{ phone: { contains: phoneDigits } }] : []),
         ],
       },
-      select: { id: true, assignedToUserId: true },
+      select: { id: true, assignedToUserId: true, customerId: true },
       orderBy: { updatedAt: 'desc' },
     })
 
@@ -178,12 +200,15 @@ export async function POST(req: Request) {
           ...(phone ? { phone } : {}),
           ...(email ? { email } : {}),
           ...(notes ? { notes } : {}),
+          // Reusa o contato existente (não cria pessoa nova) quando o lead ainda não tinha.
+          ...(identity.customerId && !existing.customerId ? { customerId: identity.customerId } : {}),
           lastContactAt: new Date(),
           ...(canTransfer ? { assignedToUserId } : {}),
         },
       })
       await createSafeAuditLog({ userId: user.id, tenantId, action: 'CRM_LEAD_DEDUP', entity: 'MarketingLead', entityId: updated.id, userName: user.name, userRole: user.role })
-      return NextResponse.json({ success: true, data: { id: updated.id, deduplicated: true } })
+      await flagMergeCandidates(tenantId, updated.id, identity.softMatches)
+      return NextResponse.json({ success: true, data: { id: updated.id, deduplicated: true, customerReused: !!identity.customerId } })
     }
 
     const lead = await prisma.marketingLead.create({
@@ -198,12 +223,17 @@ export async function POST(req: Request) {
         status: 'NEW',
         assignedToUserId,
         createdById: user.id,
-        metadata: { origin: 'CRM_MANUAL' },
+        // Reusa contato existente (identidade) se houver — não cria pessoa duplicada.
+        ...(identity.customerId ? { customerId: identity.customerId } : {}),
+        metadata: { origin: 'CRM_MANUAL', ...(externalLeadId ? { externalLeadId } : {}), ...(cpf ? { cpf } : {}) },
       },
     })
 
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE', entity: 'MarketingLead', entityId: lead.id, userName: user.name, userRole: user.role })
-    return NextResponse.json({ success: true, data: { id: lead.id, deduplicated: false } }, { status: 201 })
+    // Alerta de duplicidade (não bloqueia): registra candidatos p/ revisão.
+    const alertMatches = [...identity.softMatches, ...(identity.hardMatch?.leadId ? [identity.hardMatch] : [])]
+    await flagMergeCandidates(tenantId, lead.id, alertMatches)
+    return NextResponse.json({ success: true, data: { id: lead.id, deduplicated: false, customerReused: !!identity.customerId, duplicateAlerts: alertMatches.filter((m) => m.leadId).length } }, { status: 201 })
   } catch (err) {
     return handlePrismaError(err)
   }
