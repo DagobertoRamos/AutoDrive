@@ -3226,3 +3226,13 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Validação nome+telefone+resultado:** o `AttendanceFinishModal` já exige nome + telefone (≥10 díg.) + observações p/ atendimentos normais (RETORNO/AGENDAMENTO/POS_VENDA da fila individual) — só INFORMACAO_RAPIDA é leniente.
 - **Arquivos:** `personal-queue.ts`, `attendances/[id]/finish/route.ts`, `call.ts`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0246 — 2026-07-09 — Claude (Opus 4.8) — "Chamar da vez" aparece p/ quem tem permissão de chamar (não só gestão) + rótulo do cadastro corrigido
+- **Sintoma:** colaboradores (recepção) marcados no cadastro não veem "Chamar vendedor" no dashboard.
+- **Causa 1:** o botão **"Chamar da vez"** estava dentro do bloco `{canManage && ...}` (só gestão) — quem tinha só a permissão de CHAMAR (`callCurrentSeller`) não via. (O "Chamar" por vendedor na lista já usava `canCallCurrent`, mas o principal não.)
+  - **Fix:** "Chamar da vez" agora é gated por `canCallCurrent` (callCurrentSeller || gestão), fora do bloco de gestão.
+- **Causa 2 (o que confunde no cadastro):** no catálogo de módulos, `sellerQueue.view` estava rotulado **"Ver fila / chamar vendedor da vez"**, mas essa chave só dá VER; chamar é a chave separada `queue.call_current_seller` ("Chamar vendedor da vez", nível 1). O admin marcava a errada.
+  - **Fix:** rótulo de `sellerQueue.view` corrigido para "Ver a fila (para chamar, marque também 'Chamar vendedor da vez')".
+- **Como habilitar recepção (Luciana/Jesse):** no cadastro do colaborador, marcar **"Chamar vendedor da vez"** (`queue.call_current_seller`) — aí o botão aparece. (Se já estava marcado, agora aparece por causa da Causa 1.)
+- **Arquivos:** `src/app/(dashboard)/vendedor-da-vez/page.tsx`, `src/lib/modules-catalog.ts`.
+- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK.

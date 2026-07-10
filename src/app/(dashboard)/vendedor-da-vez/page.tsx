@@ -906,12 +906,16 @@ export default function FilaOverviewPage() {
                   <Tv size={16} className="text-indigo-600" />
                   Painel da Loja
                 </a>
+                {/* Chamar da vez: qualquer um com permissão de chamar (não só gestão) —
+                    ex.: recepção/atendente com "Chamar vendedor da vez" no cadastro. */}
+                {canCallCurrent && (
+                  <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm">
+                    <PhoneCall size={16} className="text-amber-600 animate-pulse" />
+                    Chamar da vez
+                  </button>
+                )}
                 {canManage && (
                   <>
-                    <button onClick={callDaVez} disabled={calling || busy === 'quick-call'} className="btn-secondary justify-center py-2.5 text-sm">
-                      <PhoneCall size={16} className="text-amber-600 animate-pulse" />
-                      Chamar da vez
-                    </button>
                     {/* 4. Marcar atendendo */}
                     <button onClick={() => openMarkAttendingModal('CLIENTE_PORTA')} className="btn-secondary justify-center py-2.5 text-sm">
                       <UserCheck size={16} className="text-blue-600" />

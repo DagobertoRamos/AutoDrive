@@ -58,7 +58,7 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'marketing.telephony.recordings', label: 'Gravações' },
   ] },
   { area: 'Comercial — Fila de Atendimento', features: [
-    { key: 'sellerQueue.view', label: 'Ver fila / chamar vendedor da vez' },
+    { key: 'sellerQueue.view', label: 'Ver a fila (para chamar, marque também "Chamar vendedor da vez")' },
     { key: 'sellerQueue.checkIn', label: 'Entrar na fila (ser chamado p/ atender)' },
     { key: 'sellerQueue.customerArrived', label: 'Cliente na loja' },
     { key: 'sellerQueue.attend', label: 'Atender' },
