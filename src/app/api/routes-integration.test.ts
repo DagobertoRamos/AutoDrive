@@ -21,6 +21,9 @@ const { prismaMock, authMock } = vi.hoisted(() => ({
     sellerQueueAttendance: { findMany: vi.fn() },
     rankingRule: { findFirst: vi.fn() },
     commissionCalculation: { findMany: vi.fn(), groupBy: vi.fn() },
+    sellerQueueUnitConfig: { findMany: vi.fn() },
+    sellerQueuePenalty: { findMany: vi.fn() },
+    sellerQueueFraudFlag: { findMany: vi.fn() },
   },
   authMock: vi.fn(),
 }))
@@ -64,6 +67,9 @@ beforeEach(() => {
   prismaMock.rankingRule.findFirst.mockResolvedValue(null)
   prismaMock.commissionCalculation.findMany.mockResolvedValue([])
   prismaMock.commissionCalculation.groupBy.mockResolvedValue([])
+  prismaMock.sellerQueueUnitConfig.findMany.mockResolvedValue([])
+  prismaMock.sellerQueuePenalty.findMany.mockResolvedValue([])
+  prismaMock.sellerQueueFraudFlag.findMany.mockResolvedValue([])
 })
 
 describe('/api/goals', () => {

@@ -3286,3 +3286,19 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Testes:**
   - `npx vitest run src/lib/crlv/deterministic.test.ts` OK (15/15 verdes).
 
+### LOG 0252 — 2026-07-10 — Gravity (Gemini 3.5 Pro) — Leitura de CRLV e Preenchimento Automático: Commit B (PDF Nativo e API de Extração)
+- **Tarefa:** Implementar parser posicional de texto de PDF nativo, controle de cache/duplicados via hash SHA-256 e endpoint backend orquestrador de extrações e consenso.
+- **Arquivos criados/alterados:**
+  - `prisma/schema.prisma`: Adicionada tabela `VehicleDocumentExtraction` para armazenar transações de leitura e permitir uploads em etapas (Single Upload).
+  - `src/lib/crlv/types.ts`: Adicionadas interfaces complementares e retro-compatíveis com campos legados (`predominantColor`, `fuel`, `power`, `displacement`, `vehicleType`).
+  - `src/lib/crlv/settings.ts` [NOVO]: Serviço de configurações que consolida e valida com Zod as chaves divididas sob `SystemSetting` com metadados de controle.
+  - `src/lib/crlv/parser.ts`: Implementada reconstrução posicional de linhas por Y (±5px) e ordenação X crescente para PDF nativo. Adicionados validadores mod11 para Renavam, placa Mercosul e chassi.
+  - `src/lib/crlv/parser.test.ts` [NOVO]: Suíte de testes unitários validando consensus, formatação, layout e regexes (8/8 verdes).
+  - `src/app/api/evaluations/vehicle-document/extract/route.ts`: Endpoint orquestrador completo. Suporta upload inicial com SHA-256 (reuso do cache se conf=high), geração de execução com `requiresOcr` e segunda passada para mesclar observações de OCR/QR do client com auditoria e consenso no backend.
+  - `src/app/api/routes-integration.test.ts`: Mocked novas tabelas de conformidade para permitir execução verde da suíte geral.
+- **Testes:**
+  - `npx tsc --noEmit` OK (0 erros).
+  - `npx vitest run` OK (457/457 testes verdes).
+  - `npm run build` OK (compilado Next.js com sucesso).
+
+

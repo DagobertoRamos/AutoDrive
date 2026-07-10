@@ -64,6 +64,13 @@ export interface ExtractedVehicle {
   options?: string[]
   ownerName?: string | null
   ownerDocument?: string | null
+
+  // Propriedades legadas para compatibilidade retroativa
+  predominantColor?: string | null
+  fuel?: string | null
+  power?: string | null
+  displacement?: string | null
+  vehicleType?: 'CARRO' | 'MOTO' | 'CAMINHAO' | null
 }
 
 export interface VehicleDocumentExtractionResult {
@@ -81,3 +88,17 @@ export interface VehicleDocumentExtractionResult {
   processingTimeMs: number
   createdAt: string
 }
+
+export type ExtractionConfidence = 'low' | 'medium' | 'high'
+
+export interface ExtractionResult {
+  success: boolean
+  extracted: boolean
+  confidence: ExtractionConfidence
+  source: ExtractionSource
+  vehicle: ExtractedVehicle
+  missingFields: string[]
+  warnings: string[]
+  message: string
+}
+

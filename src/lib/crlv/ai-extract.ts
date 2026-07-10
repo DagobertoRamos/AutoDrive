@@ -152,7 +152,7 @@ export async function extractWithAI(buffer: Buffer, mimeType: string): Promise<E
     success: true,
     extracted,
     confidence,
-    source: 'ocr',
+    source: 'EXTERNAL_AI',
     vehicle,
     missingFields: missing,
     warnings: missing.length ? [`Campos críticos não localizados: ${missing.join(', ')}`] : [],

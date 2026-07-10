@@ -5353,3 +5353,17 @@ model SellerQueueFraudFlag {
   @@index([createdAt])
   @@map("seller_queue_fraud_flags")
 }
+
+model VehicleDocumentExtraction {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  documentHash  String   @unique
+  nativeText    String?
+  extractedData Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([documentHash])
+  @@map("vehicle_document_extractions")
+}
+
