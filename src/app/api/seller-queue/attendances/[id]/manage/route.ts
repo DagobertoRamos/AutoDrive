@@ -33,7 +33,7 @@ export async function POST(req: Request, { params }: Ctx) {
     }
     const permissionByAction: Record<string, string> = {
       transfer: 'queue.transfer_attendance',
-      finish: 'queue.finish_other_attendance',
+      finish: 'queue.finish_seller_attendance', // líder+ pode finalizar (não cancelar/excluir)
       reopen: 'queue.takeover_attendance',
       cancel: 'queue.finish_other_attendance',
       delete: 'queue.finish_other_attendance',

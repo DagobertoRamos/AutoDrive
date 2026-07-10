@@ -402,6 +402,8 @@ export default function FilaOverviewPage() {
   const queuePerms = current?.permissions
   const canCallCurrent = Boolean(queuePerms?.callCurrentSeller || roleCanManage)
   const canManage = Boolean(roleCanManage || queuePerms?.pauseOther || queuePerms?.resumeOther || queuePerms?.removeParticipant || queuePerms?.blockParticipant || queuePerms?.reorder)
+  // Líder+ pode FINALIZAR o atendimento de outro vendedor (não cancelar/excluir).
+  const canFinishOther = Boolean(roleCanManage || user?.role === 'VENDEDOR_LIDER')
   const canViewLogs = Boolean(queuePerms?.viewLogs || roleCanManage)
   const canViewAlertAll = Boolean(queuePerms?.sendAlertAll || roleCanManage)
   const canSendQueueAlert = Boolean(queuePerms?.sendAlertAll || roleCanManage)
@@ -719,6 +721,19 @@ export default function FilaOverviewPage() {
       const r = await postJson(`/api/seller-queue/reminders/${attendanceId}`, { action: 'send-now', reason })
       if (!r.ok) { flash(r.error ?? 'Falha ao enviar lembrete.', false); return }
       await refreshAfter('Lembrete enviado.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Líder+/gestão finaliza o atendimento de OUTRO vendedor (ele volta à fila).
+  const finishOtherAttendance = async (attendanceId: string, sellerName: string) => {
+    if (!window.confirm(`Finalizar o atendimento de ${sellerName}? O vendedor volta para a fila.`)) return
+    setBusy(`finish-${attendanceId}`)
+    try {
+      const r = await postJson(`/api/seller-queue/attendances/${attendanceId}/manage`, { action: 'finish' })
+      if (!r.ok) { flash(r.error ?? 'Não foi possível finalizar.', false); return }
+      await refreshAfter('Atendimento finalizado.')
     } finally {
       setBusy(null)
     }
@@ -1043,11 +1058,18 @@ export default function FilaOverviewPage() {
                         {reminder?.escalatedAt && <span className="font-semibold text-red-600">escalado</span>}
                         {!att.arrival?.customerName && <span className="font-semibold text-red-600">cadastro obrigatório</span>}
                       </div>
-                      {canSendQueueAlert && (
-                        <div className="mt-2">
-                          <button onClick={() => sendReminderNow(att.id, att.sellerName)} disabled={busy === `reminder-${att.id}`} className="rounded-lg border border-amber-200 px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60">
-                            {busy === `reminder-${att.id}` ? 'Enviando...' : 'Enviar lembrete agora'}
-                          </button>
+                      {(canSendQueueAlert || canFinishOther) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {canSendQueueAlert && (
+                            <button onClick={() => sendReminderNow(att.id, att.sellerName)} disabled={busy === `reminder-${att.id}`} className="rounded-lg border border-amber-200 px-2 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60">
+                              {busy === `reminder-${att.id}` ? 'Enviando...' : 'Enviar lembrete agora'}
+                            </button>
+                          )}
+                          {canFinishOther && (
+                            <button onClick={() => finishOtherAttendance(att.id, att.sellerName)} disabled={busy === `finish-${att.id}`} className="rounded-lg border border-green-200 px-2 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50 disabled:opacity-60">
+                              {busy === `finish-${att.id}` ? 'Finalizando...' : 'Finalizar atendimento'}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

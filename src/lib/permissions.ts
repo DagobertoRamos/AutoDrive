@@ -166,6 +166,7 @@ export type Module =
   | 'queue.transfer_attendance'
   | 'queue.takeover_attendance'
   | 'queue.finish_other_attendance'
+  | 'queue.finish_seller_attendance'
   | 'queue.pause_self'
   | 'queue.resume_self'
   | 'queue.pause_other'
@@ -719,6 +720,8 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'queue.transfer_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
   'queue.takeover_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
   'queue.finish_other_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'], actions: ['update'] },
+  // Finalizar o atendimento de OUTRO vendedor (líder+). Não permite cancelar/excluir.
+  'queue.finish_seller_attendance': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },
   'queue.pause_self': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'], actions: ['update'] },
   'queue.resume_self': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'], actions: ['update'] },
   'queue.pause_other': { roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'], actions: ['update'] },

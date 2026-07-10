@@ -3152,3 +3152,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Arquivos:** `src/app/api/seller-queue/test-attention/route.ts`, `src/app/(dashboard)/vendedor-da-vez/testes/page.tsx`.
 - **Nota:** se ainda não chegar mesmo com aparelho registrado, verificar (a) VAPID/FIREBASE no ambiente, (b) a permissão de notificação concedida no aparelho do vendedor, (c) preferência de push do usuário.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+
+### LOG 0238 — 2026-07-09 — Claude (Opus 4.8) — Líder finaliza atendimento de outro vendedor + cache do ranking (dashboard mais rápido)
+- **Líder+ finaliza atendimento (pedido):** o quadro "Atendimentos em andamento" só tinha "Enviar lembrete". Agora tem **"Finalizar atendimento"** p/ líder+/gestão (o vendedor volta à fila). Nova permissão `queue.finish_seller_attendance` (MASTER/ADM/GERENTE*/GERENTE/**VENDEDOR_LIDER**) — o `manage` action `finish` passou a usá-la; cancelar/excluir seguem gestão-only (`queue.finish_other_attendance`). Client: `canFinishOther = roleCanManage || role VENDEDOR_LIDER` + handler `finishOtherAttendance` (confirm → manage finish).
+- **Dashboard lento (perf):** `computeRanking` (varre vendedores + deals + qualidade da fila) era chamado **até 3× por carga do dashboard do vendedor** (summary p/ roteamento + rota do vendedor tenant/unidade) e a cada refresh, **sem cache**. Adicionei cache em memória TTL 30s (`_rankingCache`, chave tenant|unit|period|janela) em `src/lib/ranking/service.ts` (impl virou `computeRankingUncached`, wrapper `computeRanking` mantém a mesma assinatura → zero mudança nos call-sites). 30s de staleness é imperceptível no ranking e corta o custo repetido.
+- **Arquivos:** `src/lib/permissions.ts`, `src/app/api/seller-queue/attendances/[id]/manage/route.ts`, `src/app/(dashboard)/vendedor-da-vez/page.tsx`, `src/lib/ranking/service.ts`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+- **Pendente (mesmo pedido):** botão de "atender agendamento/retorno" com autorização do líder+ via app (anti-fraude) — aguardando definição do fluxo antes de construir.

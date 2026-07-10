@@ -276,7 +276,36 @@ export interface RankingResult {
  * Calcula o ranking de um tenant (geral ou de uma unidade) num período.
  * Não persiste — use persistRanking para gravar o cache.
  */
+// Cache leve (TTL 30s) do ranking. O cálculo é caro (varre vendedores + deals +
+// qualidade da fila) e é chamado até 3× por carregamento do dashboard (summary
+// p/ roteamento + rota do vendedor tenant/unidade) e a cada refresh. O ranking
+// muda devagar, então 30s de staleness é imperceptível e corta o custo repetido.
+// Como sistemas grandes: caches curtos em cima de agregações pesadas.
+interface RankingCacheEntry { at: number; data: RankingResult }
+const _rankingCache = new Map<string, RankingCacheEntry>()
+const RANKING_TTL_MS = 30_000
+
 export async function computeRanking(opts: {
+  tenantId: string
+  unitId?:  string | null
+  period:   GoalPeriod
+  now:      Date
+  start?:   Date
+  end?:     Date
+}): Promise<RankingResult> {
+  const win = resolvePeriodWindow(opts.period, opts.now, opts.start, opts.end)
+  const key = `${opts.tenantId}|${opts.unitId ?? ''}|${opts.period}|${win.start.getTime()}|${win.end.getTime()}`
+  const hit = _rankingCache.get(key)
+  if (hit && Date.now() - hit.at < RANKING_TTL_MS) return hit.data
+  const data = await computeRankingUncached(opts)
+  _rankingCache.set(key, { at: Date.now(), data })
+  if (_rankingCache.size > 200) {
+    for (const k of _rankingCache.keys()) { _rankingCache.delete(k); if (_rankingCache.size <= 100) break }
+  }
+  return data
+}
+
+async function computeRankingUncached(opts: {
   tenantId: string
   unitId?:  string | null
   period:   GoalPeriod
