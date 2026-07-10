@@ -31,7 +31,7 @@ export interface StepDocumentoVeiculoProps {
 type UploadState =
   | { kind: 'idle' }
   | { kind: 'uploading' }
-  | { kind: 'reading' }
+  | { kind: 'reading'; message?: string }
   | { kind: 'success';  file: File; confidence: ExtractionConfidence; message: string }
   | { kind: 'partial';  file: File; confidence: ExtractionConfidence; missing: string[]; message: string }
   | { kind: 'failure';  message: string; file?: File }
@@ -49,6 +49,66 @@ function confidenceLabel(c: ExtractionConfidence): string {
   if (c === 'high')   return 'alta'
   if (c === 'medium') return 'média'
   return 'baixa'
+}
+
+function preprocessCanvasForOcr(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imgData.data
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+
+    // Convert to grayscale
+    let gray = 0.299 * r + 0.587 * g + 0.114 * b
+
+    // Enhancing contrast: dynamic thresholding
+    if (gray < 130) {
+      gray = 0
+    } else {
+      gray = 255
+    }
+
+    data[i] = gray
+    data[i + 1] = gray
+    data[i + 2] = gray
+  }
+
+  ctx.putImageData(imgData, 0, 0)
+  return canvas
+}
+
+async function renderImageToCanvas(file: File): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.src = URL.createObjectURL(file)
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      let scale = 1.0
+      // Limita dimensões para no máximo 2000px para evitar estouro de memória no mobile
+      if (img.width > 2000 || img.height > 2000) {
+        scale = Math.min(2000 / img.width, 2000 / img.height)
+      }
+      canvas.width = img.width * scale
+      canvas.height = img.height * scale
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas)
+      } else {
+        reject(new Error('Falha ao obter contexto 2D do Canvas.'))
+      }
+      URL.revokeObjectURL(img.src)
+    }
+    img.onerror = (err) => {
+      reject(err)
+      URL.revokeObjectURL(img.src)
+    }
+  })
 }
 
 export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
@@ -74,7 +134,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
     form.append('file', file)
     if (props.evaluationId) form.append('evaluationId', props.evaluationId)
 
-    setState({ kind: 'reading' })
+    setState({ kind: 'reading', message: 'Lendo documento...' })
     try {
       const r = await fetch('/api/evaluations/vehicle-document/extract', {
         method: 'POST',
@@ -93,6 +153,166 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       const vehicle: ExtractedVehicle       = (d as { vehicle?: ExtractedVehicle }).vehicle ?? {}
       const missing: string[]               = ((d as { missingFields?: string[] }).missingFields ?? [])
       const message: string                 = (d as { message?: string }).message ?? ''
+      
+      const requiresOcr: boolean            = Boolean((d as any).requiresOcr)
+      const documentId: string              = (d as any).documentId ?? ''
+      const documentHash: string            = (d as any).documentHash ?? ''
+      const extractionRunId: string         = (d as any).extractionRunId ?? ''
+
+      // Se for necessário OCR/QR Code local (client-side)
+      if (requiresOcr) {
+        setState({ kind: 'reading', message: 'Inicializando OCR e QR local...' })
+        let ocrText = ''
+        let qrContent = ''
+
+        try {
+          if (file.type === 'application/pdf') {
+            const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+            pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+
+            const arrayBuffer = await file.arrayBuffer()
+            const loadingTask = pdfjs.getDocument({
+              data: new Uint8Array(arrayBuffer),
+              useSystemFonts: true,
+              disableFontFace: true,
+              verbosity: 0,
+            })
+            const pdf = await loadingTask.promise
+            const totalPages = Math.min(pdf.numPages, 3)
+
+            const { createWorker } = await import('tesseract.js')
+            const worker = await createWorker('por', 1, {
+              workerPath: '/tesseract/worker.min.js',
+              corePath: '/tesseract/tesseract-core-lstm.js',
+              langPath: window.location.origin + '/tessdata/v1',
+              gzip: true,
+            })
+
+            try {
+              for (let p = 1; p <= totalPages; p++) {
+                setState({ kind: 'reading', message: `Executando OCR local (página ${p}/${totalPages})...` })
+                const page = await pdf.getPage(p)
+                const viewport = page.getViewport({ scale: 1.5 })
+                const canvas = document.createElement('canvas')
+                canvas.width = viewport.width
+                canvas.height = viewport.height
+                const ctx = canvas.getContext('2d')
+                if (!ctx) throw new Error('Falha ao obter contexto do Canvas.')
+
+                await page.render({
+                  canvasContext: ctx,
+                  viewport: viewport,
+                } as any).promise
+
+                // Tenta decodificar QR Code
+                if (!qrContent) {
+                  try {
+                    const { BrowserQRCodeReader } = await import('@zxing/browser')
+                    const reader = new BrowserQRCodeReader()
+                    const qrResult = await reader.decodeFromCanvas(canvas)
+                    qrContent = qrResult.getText()
+                  } catch { /* sem qr */ }
+                }
+
+                // Pré-processa imagem do Canvas para o OCR
+                preprocessCanvasForOcr(canvas)
+
+                // Roda o Tesseract
+                const { data: { text } } = await worker.recognize(canvas)
+                ocrText += text + '\n'
+              }
+            } finally {
+              await worker.terminate()
+            }
+          } else {
+            // Imagem nativa
+            setState({ kind: 'reading', message: 'Processando imagem local...' })
+            const canvas = await renderImageToCanvas(file)
+
+            if (!qrContent) {
+              try {
+                const { BrowserQRCodeReader } = await import('@zxing/browser')
+                const reader = new BrowserQRCodeReader()
+                const qrResult = await reader.decodeFromCanvas(canvas)
+                qrContent = qrResult.getText()
+              } catch { /* sem qr */ }
+            }
+
+            preprocessCanvasForOcr(canvas)
+
+            const { createWorker } = await import('tesseract.js')
+            const worker = await createWorker('por', 1, {
+              workerPath: '/tesseract/worker.min.js',
+              corePath: '/tesseract/tesseract-core-lstm.js',
+              langPath: window.location.origin + '/tessdata/v1',
+              gzip: true,
+            })
+
+            try {
+              const { data: { text } } = await worker.recognize(canvas)
+              ocrText = text
+            } finally {
+              await worker.terminate()
+            }
+          }
+
+          // Envia observações brutas de volta para o backend sem reenviar o arquivo original
+          setState({ kind: 'reading', message: 'Cruzando consenso no servidor...' })
+          const ocrRes = await fetch('/api/evaluations/vehicle-document/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              documentId,
+              documentHash,
+              extractionRunId,
+              ocrText,
+              qrContent,
+              isClientResult: true,
+            }),
+          })
+          const ocrData = await ocrRes.json().catch(() => ({}))
+
+          if (!ocrRes.ok) {
+            setState({ kind: 'failure', file, message: ocrData.error ?? 'Falha ao processar o resultado do OCR local.' })
+            return
+          }
+
+          const ocrExtracted: boolean = Boolean(ocrData.extracted)
+          const ocrConf: ExtractionConfidence = ocrData.confidence ?? 'low'
+          const ocrSrc: ExtractionSource = ocrData.source ?? 'ocr'
+          const ocrVehicle: ExtractedVehicle = ocrData.vehicle ?? {}
+          const ocrMissing: string[] = ocrData.missingFields ?? []
+          const ocrMessage: string = ocrData.message ?? ''
+
+          if (!ocrExtracted) {
+            setState({ kind: 'failure', file, message: ocrMessage || 'Não foi possível extrair dados por OCR.' })
+            return
+          }
+
+          onExtracted(ocrVehicle, ocrSrc, ocrConf)
+
+          if (props.evaluationId) {
+            try {
+              const att = new FormData()
+              att.append('file', file)
+              att.append('kind', 'CRLV')
+              att.append('category', 'CRLV')
+              await fetch(`/api/evaluations/${props.evaluationId}/attachments`, { method: 'POST', body: att })
+            } catch { /* silent */ }
+          }
+
+          if (ocrMissing.length > 0) {
+            setState({ kind: 'partial', file, confidence: ocrConf, missing: ocrMissing, message: ocrMessage })
+          } else {
+            setState({ kind: 'success', file, confidence: ocrConf, message: ocrMessage || 'Documento processado por OCR local.' })
+          }
+          return
+
+        } catch (ocrErr) {
+          setState({ kind: 'failure', file, message: `Falha no processamento OCR/QR: ${(ocrErr as Error)?.message}` })
+          return
+        }
+      }
 
       if (!extracted) {
         setState({ kind: 'failure', file, message: message || 'Não foi possível extrair dados deste arquivo.' })

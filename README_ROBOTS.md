@@ -3301,4 +3301,19 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - `npx vitest run` OK (457/457 testes verdes).
   - `npm run build` OK (compilado Next.js com sucesso).
 
+### LOG 0253 — 2026-07-10 — Gravity (Gemini 3.5 Pro) — Leitura de CRLV e Preenchimento Automático: Commit C (OCR e QR Code)
+- **Tarefa:** Implementar workers locais de OCR (Tesseract.js) e QR Code scanner (@zxing/browser) rodando inteiramente client-side de forma sequencial com pré-processamento de contraste/nitidez via Canvas.
+- **Arquivos criados/alterados:**
+  - `package.json` / `package-lock.json`: Instalados `tesseract.js`, `@zxing/browser` e `@zxing/library`.
+  - `public/pdf.worker.min.mjs` [NOVO]: Hospedagem offline local do worker do PDF.js para renderização de páginas no cliente.
+  - `public/tesseract/*` [NOVO]: Hospedagem offline local dos workers do Tesseract (`worker.min.js`, `tesseract-core-lstm.js`, `tesseract-core-lstm.wasm`).
+  - `public/tessdata/v1/por.traineddata.gz` [NOVO]: Modelo de dados de reconhecimento de texto em português compactado com gzip (~1.0MB).
+  - `src/app/(dashboard)/estoque/avaliacao/_components/StepDocumentoVeiculo.tsx`: Orquestração do fluxo client-side. Se a primeira passada da API retornar `requiresOcr: true`, o componente renderiza o arquivo (imagem ou PDF via canvas), roda o QR Code scanner, aplica filtro de grayscale e thresholding de alto contraste no canvas, executa Tesseract.js localmente no worker em concorrência de 1 e envia apenas as observações de texto brutas de volta com `documentId` e `documentHash`.
+  - `README_ROBOTS.md`: Atualização do histórico técnico de commits.
+- **Testes:**
+  - `npx tsc --noEmit` OK (0 erros de tipagem).
+  - `npx vitest run` OK (457/457 testes verdes).
+  - `npm run build` OK (compilado Next.js em produção com sucesso).
+
+
 
