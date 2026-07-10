@@ -1998,6 +1998,32 @@ model PendencyEvent {
   @@map("pendency_events")
 }
 
+// Anti-fraude: pedido de autorização p/ o VENDEDOR atender agendamento/retorno
+// (que fura a rotação da fila). Fica PENDENTE até um líder+/gerência aprovar —
+// só então o atendimento é criado. Reprovável com motivo. Auditável.
+model SellerAttendanceAuthorization {
+  id              String    @id @default(cuid())
+  tenantId        String
+  unitId          String
+  requesterUserId String    // vendedor solicitante (User.id)
+  visitType       String    // AGENDAMENTO | RETORNO
+  customerName    String?
+  customerPhone   String?
+  customerEmail   String?
+  notes           String?
+  status          String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELED | EXPIRED
+  decidedByUserId String?
+  decidedAt       DateTime?
+  decisionReason  String?
+  attendanceId    String?   // atendimento criado na aprovação
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime?
+
+  @@index([tenantId, unitId, status])
+  @@index([requesterUserId, status])
+  @@map("seller_attendance_authorizations")
+}
+
 // Penalidade por pendência Crítica não tratada (Fase 5). DECISÃO: só AVISA/marca
 // — NÃO suspende a fila de leads (desacoplado do Vendedor da Vez). Reversível
 // manualmente por gestor com justificativa. Alimenta o painel do gestor e o score.

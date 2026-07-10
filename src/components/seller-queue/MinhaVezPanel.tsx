@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { QrScanner } from '@/components/seller-queue/QrScanner'
 import AlertSetupBanner from '@/components/seller-queue/AlertSetupBanner'
 import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
+import RequestAttendanceAuth from '@/components/seller-queue/RequestAttendanceAuth'
 import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { unlockAudio, ensureNotifyPermission, stopCriticalAlert, criticalAlert } from '@/lib/seller-queue/alert-client'
@@ -229,6 +230,9 @@ export default function MinhaVezPanel() {
           </div>
         </div>
       )}
+
+      {/* Atender agendamento/retorno (precisa de autorização do líder+/gerência) */}
+      {me && !att && <RequestAttendanceAuth />}
 
       {/* Em atendimento — finalizar */}
       {att?.status === 'IN_ATTENDANCE' && (

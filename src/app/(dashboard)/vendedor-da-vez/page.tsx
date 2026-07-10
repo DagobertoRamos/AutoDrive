@@ -45,6 +45,7 @@ import QueueRanking from '@/components/seller-queue/QueueRanking'
 import VerificarVezModal from '@/components/seller-queue/VerificarVezModal'
 import AttendanceReminderModal, { type AttendanceReminderData } from '@/components/seller-queue/AttendanceReminderModal'
 import AttendanceFinishModal from '@/components/seller-queue/AttendanceFinishModal'
+import AttendanceAuthApprovals from '@/components/seller-queue/AttendanceAuthApprovals'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { ensureNotifyPermission, playSound, setAlertVolume, unlockAudio } from '@/lib/seller-queue/alert-client'
 
@@ -1023,6 +1024,9 @@ export default function FilaOverviewPage() {
             </div>
 
             <div className="space-y-4">
+              {/* Anti-fraude: pedidos de agendamento/retorno aguardando o líder+/gerência. */}
+              {canFinishOther && <AttendanceAuthApprovals />}
+
               <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
                 <div className="border-b border-gray-100 px-4 py-3">
                   <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">

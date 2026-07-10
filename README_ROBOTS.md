@@ -3159,3 +3159,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Arquivos:** `src/lib/permissions.ts`, `src/app/api/seller-queue/attendances/[id]/manage/route.ts`, `src/app/(dashboard)/vendedor-da-vez/page.tsx`, `src/lib/ranking/service.ts`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
 - **Pendente (mesmo pedido):** botão de "atender agendamento/retorno" com autorização do líder+ via app (anti-fraude) — aguardando definição do fluxo antes de construir.
+
+### LOG 0239 — 2026-07-09 — Claude (Opus 4.8) — Anti-fraude: autorização de agendamento/retorno (líder+ aprova via app)
+- **Pedido:** vendedor tem botão p/ atender AGENDAMENTO/RETORNO (que fura a rotação), mas **precisa de autorização** do líder+/gerência. Decisões do usuário: **bloqueia até aprovar** · **push Aprovar/Recusar + painel** · **líder + gerência autorizam** (nunca o próprio solicitante).
+- **Modelo:** novo `model SellerAttendanceAuthorization` (`seller_attendance_authorizations`) — status PENDING→APPROVED/REJECTED, requester, visitType, cliente, decidedBy, motivo, attendanceId. **Migration `20260709190000_add_attendance_authorization` (aplicar manual na Neon).**
+- **APIs:**
+  - `POST /api/seller-queue/attendance-auth` (vendedor, gate sellerQueue.attend): cria pedido PENDENTE (1 por vez), notifica aprovadores da unidade com **push real (FCM+WebPush) + sininho**.
+  - `GET /api/seller-queue/attendance-auth` (gate sellerQueue.lead): lista pendentes da unidade.
+  - `POST /api/seller-queue/attendance-auth/[id]/decide` (gate sellerQueue.lead): aprovar **cria o atendimento** (mesma mecânica do "marcar atendendo") ou recusar c/ motivo; **o solicitante não pode decidir o próprio**; notifica o vendedor (push) do resultado. Auditado.
+- **UI:** `RequestAttendanceAuth` (botão+modal do vendedor no `MinhaVezPanel`, quando presente e sem atendimento ativo) · `AttendanceAuthApprovals` (lista Aprovar/Recusar no painel do Vendedor da Vez, só p/ líder+/gerência via `canFinishOther`).
+- **Migrations pendentes na Neon (acumuladas):** pendency_events, pendency_penalties, **seller_attendance_authorizations**. Código sobe seguro; recursos ligam após aplicar.
+- **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (422/422); `npm run build` OK.
+- **Possível refino futuro:** botões Aprovar/Recusar nativos NA notificação push (hoje o push abre o painel p/ decidir) — exigiria handler no `sw.js` como o da chamada da fila.
