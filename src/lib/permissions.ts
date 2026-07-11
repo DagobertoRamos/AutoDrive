@@ -126,6 +126,14 @@ export type Module =
   | 'crm.lead.edit.own'
   | 'crm.lead.edit.unit'
   | 'crm.lead.transfer'
+  | 'crm.lead.transfer.own'
+  | 'crm.lead.archive'
+  | 'crm.lead.recycle'
+  | 'crm.lead.merge'
+  | 'crm.interaction.create'
+  | 'crm.visit.manage'
+  | 'crm.vehicle.manage'
+  | 'crm.deal.link'
   | 'crm.lead.convert'
   | 'crm.lead.mark_lost'
   | 'crm.lead.delete'
@@ -603,9 +611,43 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
     actions: ['read', 'update'],
   },
+  // Transferir leads da unidade/escopo (gerente+).
   'crm.lead.transfer': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER'],
     actions: ['read', 'update'],
+  },
+  // Vendedor transfere somente o seu próprio lead.
+  'crm.lead.transfer.own': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO', 'USUARIO_LIDER'],
+    actions: ['read', 'update'],
+  },
+  'crm.lead.archive': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['update'],
+  },
+  'crm.lead.recycle': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['update'],
+  },
+  'crm.lead.merge': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['update'],
+  },
+  'crm.interaction.create': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
+    actions: ['read', 'create'],
+  },
+  'crm.visit.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'create', 'update'],
+  },
+  'crm.vehicle.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'create', 'update'],
+  },
+  'crm.deal.link': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR'],
+    actions: ['read', 'create', 'update'],
   },
   'crm.lead.convert': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],

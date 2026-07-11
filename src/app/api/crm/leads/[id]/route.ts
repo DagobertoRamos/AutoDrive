@@ -220,12 +220,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
     ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
 
-    // F1: etiquetas aplicadas + etiquetas disponíveis (tolerante a migration).
-    const [appliedTags, availableTags] = await Promise.all([
+    // F1: etiquetas + Workspace Fase A: próxima visita, leads de interesse (3),
+    // resumo mais recente, deals vinculados — tudo em lote tolerante a migration.
+    const [appliedTags, availableTags, nextVisitArr, vehicleInterests, latestSummary, linkedDeals] = await Promise.all([
       prisma.crmLeadTag.findMany({ where: { leadId: lead.id }, select: { tag: { select: { id: true, name: true, color: true, active: true } } } }).catch(() => []),
       prisma.crmTag.findMany({ where: { tenantId, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, color: true } }).catch(() => []),
+      prisma.crmLeadVisit.findMany({ where: { tenantId, leadId: lead.id, status: { in: ['SCHEDULED','CONFIRMED'] }, scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, take: 1 }).catch(() => []),
+      prisma.crmLeadVehicle.findMany({ where: { tenantId, leadId: lead.id, removedAt: null }, orderBy: [{ isPrimary: 'desc' }, { addedAt: 'asc' }], take: 5 }).catch(() => []),
+      prisma.crmLeadSummary.findFirst({ where: { tenantId, leadId: lead.id }, orderBy: { version: 'desc' } }).catch(() => null),
+      prisma.crmLeadDeal.findMany({ where: { tenantId, leadId: lead.id }, orderBy: [{ isPrimary: 'desc' }, { linkedAt: 'desc' }] }).catch(() => []),
     ])
     const tags = appliedTags.filter((t) => t.tag).map((t) => ({ id: t.tag!.id, name: t.tag!.name, color: t.tag!.color }))
+    const nextVisit = nextVisitArr[0] ?? null
 
     return NextResponse.json({
       success: true,
@@ -250,9 +256,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           createdAt: lead.createdAt,
           updatedAt: lead.updatedAt,
           temperature: readTemperature(lead.metadata),
+          leadNumber: (lead as { leadNumber?: number | null }).leadNumber ?? null,
         },
         tags,
         availableTags,
+        // Workspace 360° Fase A — dados adicionais em lote (tolerantes a migration pendente).
+        workspace: {
+          nextVisit,
+          vehicleInterests,
+          linkedDeals,
+          latestSummary,
+        },
         relations: { customer, vehicle, deal, attendance },
         attendances: attendances.map((item) => ({
           ...item,

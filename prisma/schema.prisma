@@ -5379,3 +5379,143 @@ model VehicleDocumentExtraction {
   @@map("vehicle_document_extractions")
 }
 
+
+// =============================================================================
+// CRM Workspace 360° — Fase A: satélites do lead (FK soft p/ marketing_leads).
+// Todas as tabelas usam FKs soft (leadId sem relação Prisma formal) para não
+// tocar na tabela marketing_leads quente. Aditivas e tolerantes.
+// =============================================================================
+
+// Interação registrada no lead (ligação, WhatsApp, nota, proposta, visita, etc.)
+model CrmLeadInteraction {
+  id               String    @id @default(cuid())
+  tenantId         String
+  leadId           String    // FK soft → marketing_leads.id
+  type             String    // CALL | WHATSAPP | EMAIL | NOTE | VISIT | PROPOSAL | FINANCING | OTHER
+  channel          String?
+  result           String?   // ex: NO_ANSWER | CONTACT_MADE | PROPOSAL_SENT | VISIT_SCHEDULED | CONVERTED
+  summary          String?   @db.Text
+  objections       String?   @db.Text
+  nextAction       String?
+  nextActionAt     DateTime?
+  nextActionUserId String?
+  discussedVehicle String?
+  authorId         String
+  authorName       String?   // snapshot
+  occurredAt       DateTime
+  createdAt        DateTime  @default(now())
+
+  @@index([tenantId, leadId, occurredAt])
+  @@map("crm_lead_interactions")
+}
+
+// Resumo comercial estruturado do lead (versionado: cada update cria nova linha)
+model CrmLeadSummary {
+  id              String    @id @default(cuid())
+  tenantId        String
+  leadId          String    // FK soft → marketing_leads.id
+  version         Int       @default(1)
+  // Campos estruturados do resumo
+  objective       String?   @db.Text  // objetivo do cliente
+  desiredVehicle  String?             // veículo desejado (textual)
+  hasTradeIn      Boolean   @default(false)
+  tradeInVehicle  String?             // veículo de troca (textual)
+  tradeInValue    Decimal?  @db.Decimal(12,2)
+  budget          Decimal?  @db.Decimal(12,2)
+  downPayment     Decimal?  @db.Decimal(12,2)
+  monthlyPayment  Decimal?  @db.Decimal(12,2)
+  paymentMethod   String?   // CASH | FINANCING | CONSORTIUM | OTHER
+  purchaseTimeline String?  // IMMEDIATE | 15_DAYS | 30_DAYS | 60_DAYS | FUTURE
+  objections      String?   @db.Text
+  competitors     String?
+  narrative       String?   @db.Text  // resumo narrativo livre
+  authorId        String
+  authorName      String?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId, leadId, version])
+  @@map("crm_lead_summaries")
+}
+
+// Negociações vinculadas ao lead (N:M, pois 1 lead pode ter N deals)
+model CrmLeadDeal {
+  id              String    @id @default(cuid())
+  tenantId        String
+  leadId          String    // FK soft → marketing_leads.id
+  dealId          String    // FK soft → deals.id
+  isPrimary       Boolean   @default(false)
+  linkedByUserId  String?
+  linkedAt        DateTime  @default(now())
+
+  @@unique([leadId, dealId])
+  @@index([tenantId, leadId])
+  @@index([dealId])
+  @@map("crm_lead_deals")
+}
+
+// Visitas agendadas ao lead
+model CrmLeadVisit {
+  id              String    @id @default(cuid())
+  tenantId        String
+  leadId          String    // FK soft → marketing_leads.id
+  unitId          String?
+  hostUserId      String?   // vendedor anfitrião
+  scheduledAt     DateTime
+  durationMinutes Int       @default(60)
+  status          String    @default("SCHEDULED") // SCHEDULED | CONFIRMED | RESCHEDULED | COMPLETED | NO_SHOW | CANCELLED
+  objective       String?
+  vehicleRef      String?   // veículo que será demonstrado
+  clientConfirmed Boolean   @default(false)
+  notes           String?   @db.Text
+  rescheduleCount Int       @default(0)
+  cancelReason    String?
+  completedAt     DateTime?
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId, leadId])
+  @@index([tenantId, scheduledAt])
+  @@map("crm_lead_visits")
+}
+
+// Veículos de interesse múltiplos por lead (N:M)
+model CrmLeadVehicle {
+  id              String    @id @default(cuid())
+  tenantId        String
+  leadId          String    // FK soft → marketing_leads.id
+  vehicleId       String?   // FK soft → vehicles.id (nulo se genérico)
+  // Snapshot do interesse (persiste mesmo se veículo sair do estoque)
+  brand           String?
+  model           String?
+  version         String?
+  year            Int?
+  plate           String?
+  priceViewed     Decimal?  @db.Decimal(12,2)
+  interest        String    @default("PRIMARY") // PRIMARY | ALTERNATIVE | DISQUALIFIED
+  status          String    @default("INTERESTED") // INTERESTED | PROPOSAL_SENT | VISITED | DISQUALIFIED
+  isPrimary       Boolean   @default(false)
+  notes           String?
+  addedByUserId   String?
+  addedAt         DateTime  @default(now())
+  removedAt       DateTime? // soft remove: mantém histórico
+  removedReason   String?
+
+  @@unique([leadId, vehicleId])
+  @@index([tenantId, leadId])
+  @@map("crm_lead_vehicles")
+}
+
+// Avaliações vinculadas ao lead
+model CrmLeadEvaluation {
+  id             String   @id @default(cuid())
+  tenantId       String
+  leadId         String   // FK soft → marketing_leads.id
+  evaluationId   String   // FK soft → vehicle_evaluations.id
+  linkedByUserId String?
+  linkedAt       DateTime @default(now())
+
+  @@unique([leadId, evaluationId])
+  @@index([tenantId, leadId])
+  @@map("crm_lead_evaluations")
+}
