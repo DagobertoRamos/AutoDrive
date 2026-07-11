@@ -66,6 +66,7 @@ export async function PUT(req: Request) {
       if (d.panelSound !== undefined) mergedConfig.panelSound = d.panelSound
       if (d.responsibleUserIds !== undefined) mergedConfig.responsibleUserIds = d.responsibleUserIds
       if (d.compliancePilot !== undefined) mergedConfig.compliancePilot = d.compliancePilot
+      if (d.quality !== undefined) mergedConfig.quality = d.quality
     }
 
     const data = {

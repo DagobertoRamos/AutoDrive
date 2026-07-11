@@ -86,7 +86,7 @@ export default function QueueDiagnosticsCard() {
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-blue-700"><Inbox size={13} />Pendências abertas</div>
             <div className="mt-1 text-2xl font-bold text-blue-900">{complianceSummary.openCompliancePendencies}</div>
-            <div className="mt-1 text-[11px] text-blue-800">Origem `SELLER_QUEUE_COMPLIANCE`</div>
+            <div className="mt-1 text-[11px] text-blue-800">Geradas pelo módulo de conformidade da fila</div>
           </div>
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Pendências resolvidas</div>
