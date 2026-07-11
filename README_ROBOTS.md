@@ -3503,3 +3503,40 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Bug: Timer debounce kanban sem cleanup no unmount** — `debTimer.current` não era limpo ao desmontar o componente do Kanban (React memory leak). Adicionado `useEffect(() => () => clearTimeout(...), [])`.
 - **Varredura ampla executada:** tsc (0 erros), 494 testes (9 suites: ranking, seller-queue, pendencies, CRM, CRLV, plate, validadores, extraction-flow, routes-integration), build, imports circulares (nenhum), N+1 nas novas rotas (nenhum detectado), console.log em produção nos novos arquivos (zero), guard de archive com metadata correto (já fixado em LOG 0261).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
+
+### LOG 0263 — 2026-07-11 — Claude (Opus 4.8) — Conformidade e Penalidades: Central única + enforcement da fila + estornos
+
+#### MAPA ANTES (problemas identificados)
+- 3 "menus" concorrentes sem central clara: Tipos e avisos (/pendencias/configuracoes), Central e automações (/pendencias/configuracoes/gerais), Penalidades (/pendencias/penalidades — que são de Pendências, NÃO da fila)
+- Sem rota canônica para conformidade da fila → 404
+- Sem enforcement: SellerQueuePenalty.endsAt não impedia o vendedor de ser chamado
+- Sem expiry automático de penalidades
+
+#### SOLUÇÃO
+
+**fix(navigation): Consolidar menus**
+- Adicionado "Conformidade e Penalidades" → `/vendedor-da-vez/conformidade` na Fila de Atendimento
+- Renomeado "Penalidades" → "Penalidades de Pendências" (deixa claro que é módulo diferente)
+- Renomeado "Central e automações" → "Configurações" (único menu de config de pendências)
+- Removido "Tipos e avisos" como entrada separada (conteúdo já está em /pendencias/configuracoes)
+
+**feat(compliance): Central operacional em `/vendedor-da-vez/conformidade`**
+Abas: Visão Geral · Ocorrências · Penalidades · Restrições da Fila · Minha Conformidade
+- APIs: `/api/seller-queue/compliance/{overview,occurrences,penalties,my}`
+- `POST /occurrences/[id]/decide` — CONFIRMED (cria SellerQueuePenalty + notifica vendedor) ou DISMISSED; gate sellerQueue.manage
+- `POST /penalties/[id]/reverse` — estorno (cria entrada negativa, inativa original, notifica, audita)
+- Visão Geral: cards contáveis + lista de restrições ativas clicáveis
+- Ocorrências: filtros por status, "Analisar" inline com decisão e motivo
+- Penalidades: toggle ativo/histórico, botão Estornar para gestão
+- Restrições: lista vendedores com `endsAt >= now`
+- Minha Conformidade: pontos, restrição ativa, ocorrências, penalidades próprias
+
+**feat(queue): Enforcement de restrição baseado em pontos**
+- `callForArrival` em `call.ts`: exclui vendedores com `SellerQueuePenalty.active=true AND endsAt >= now` da rotação de chamadas
+- Vendedor restrito não recebe chamada da fila; sem penalidades ativas → comportamento inalterado (retrocompatível)
+
+**feat(queue): Expiração automática de penalidades**
+- `runPenaltyExpirySweep()` no cron tick: ativa=false quando `endsAt <= now`; notifica o vendedor ao expirar
+- Evita bloqueio indefinido por falha de job
+
+**Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK

@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { runQueueSweepAll } from '@/lib/seller-queue/sweep-job'
 import { processAttendanceReminders } from '@/lib/seller-queue/reminders'
 import { runQueueComplianceSweep } from '@/lib/seller-queue/compliance'
+import { runPenaltyExpirySweep } from '@/lib/seller-queue/penalty-expiry'
 import { sendDuePendencyReminders } from '@/lib/pendencies/reminders'
 import { runPendencyNaggingSweep } from '@/lib/pendencies/nagging-sweep'
 import { archiveResolvedPendenciesJob } from '@/lib/pendencies/auto-archive'
@@ -39,6 +40,7 @@ async function tick() {
     await safe('queueSweep', () => runQueueSweepAll()),
     await safe('queueReminders', () => processAttendanceReminders({})),
     await safe('queueCompliance', () => runQueueComplianceSweep()),
+    await safe('penaltyExpiry', () => runPenaltyExpirySweep()),
     await safe('pendencyReminders', () => sendDuePendencyReminders()),
     await safe('pendencyNagging', () => runPendencyNaggingSweep()),
     await safe('pendencyAutoArchive', () => archiveResolvedPendenciesJob()),

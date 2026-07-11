@@ -101,7 +101,21 @@ export async function callForArrival(opts: {
 
   // Participação (config por colaborador): só chama quem PODE ser vendedor da vez.
   // Padrão retrocompatível: sem config, canBeVez=true → não muda nada.
-  const eligible = regular.filter((w) => getParticipant(cfg?.config, w.sellerId).canBeVez !== false)
+  const participating = regular.filter((w) => getParticipant(cfg?.config, w.sellerId).canBeVez !== false)
+
+  // Conformidade: exclui vendedores com restrição operacional ativa (SellerQueuePenalty
+  // com active=true e endsAt > now). Só usa penalidades CONFIRMADAS (não candidatos).
+  const nowTime = new Date()
+  const restricted = participating.length > 0
+    ? new Set(
+        (await prisma.sellerQueuePenalty.findMany({
+          where: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: { in: participating.map(w => w.sellerId) }, active: true, endsAt: { gte: nowTime } },
+          select: { sellerId: true },
+        }).catch(() => []))
+        .map(p => p.sellerId)
+      )
+    : new Set<string>()
+  const eligible = participating.filter(w => !restricted.has(w.sellerId))
 
   // 1) Tenta um vendedor disponível.
   for (const cand of eligible) {
