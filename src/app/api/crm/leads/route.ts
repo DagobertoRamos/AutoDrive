@@ -59,7 +59,10 @@ export async function GET(req: Request) {
     const sourceFilter = sp.get('source')?.trim() || ''
     const priority = sp.get('priority')?.trim() || ''
     const temperature = sp.get('temperature')?.trim() || ''
-    const where = applyCrmScope({ tenantId, deletedAt: null }, scope, user)
+    // NOTA: deletedAt ausente da query intencionalmente até a migration
+    // crm_card_lead_number_softdelete ser aplicada na Neon. Após aplicar, voltar:
+    //   applyCrmScope({ tenantId, deletedAt: null }, scope, user)
+    const where = applyCrmScope({ tenantId }, scope, user)
 
     if (status) where.status = status as never
     // Filtro de origem: 'AUTOCONF' é legado; agora aceita qualquer valor de source.
