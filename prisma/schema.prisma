@@ -1131,32 +1131,37 @@ model ContractParseResult {
 
 /// Negociação — unidade central do módulo comercial
 model Deal {
-  id         String     @id @default(cuid())
-  dealNumber String? // número legível da negociação (ex: NEG-2026-001)
-  tenantId   String?
-  unitId     String?
-  sellerId   String?
-  managerId  String? // gerente responsável (User.id)
-  customerId String? // Customer vinculado
-  personId   String? // Person universal PF/PJ
-  type       DealType   @default(VENDA)
-  status     DealStatus @default(RASCUNHO)
-  source     String?    @default("MANUAL") // MANUAL, PLANILHA, API
+  id                  String     @id @default(cuid())
+  dealNumber          String? // número legível da negociação (ex: NEG-2026-001)
+  tenantId            String?
+  unitId              String?
+  sellerId            String?
+  managerId           String? // gerente responsável (User.id)
+  customerId          String? // Customer vinculado
+  personId            String? // Person universal PF/PJ
+  type                DealType   @default(VENDA)
+  status              DealStatus @default(RASCUNHO)
+  source              String?    @default("MANUAL") // MANUAL, PLANILHA, API, AUTOCONF
+  // Hashes por-seção do snapshot importado (customer, vehicles, debits, payments,
+  // history, appointments). Se o hash da seção não mudou entre importações, a
+  // seção é PULADA (não deleta nem recria filhos) e a comissão NÃO é recalculada.
+  // Elimina churn e ruído no ranking. Fase 2 do importador V2.
+  sourceSectionHashes Json?
 
   // ── Valores financeiros expandidos ───────────────────────────────────────
-  saleAmount       Decimal? @db.Decimal(12, 2) // valor de venda
-  purchaseAmount   Decimal? @db.Decimal(12, 2) // valor de compra
-  financedAmount   Decimal? @db.Decimal(12, 2) // valor financiado
-  documentationFee Decimal? @db.Decimal(12, 2) // taxa de documentação
+  saleAmount          Decimal? @db.Decimal(12, 2) // valor de venda
+  purchaseAmount      Decimal? @db.Decimal(12, 2) // valor de compra
+  financedAmount      Decimal? @db.Decimal(12, 2) // valor financiado
+  documentationFee    Decimal? @db.Decimal(12, 2) // taxa de documentação
   documentationPaidBy String? // LOJA | CLIENTE (loja paga = cortesia, sem comissão)
-  warrantyPaidBy String? // LOJA | CLIENTE — quem paga a garantia (loja paga = cortesia)
-  signalAmount     Decimal? @db.Decimal(12, 2) // sinal / entrada
-  payoffAmount     Decimal? @db.Decimal(12, 2) // quitação do veículo recebido
-  discountAmount   Decimal? @db.Decimal(12, 2) // desconto concedido
-  servicesAmount   Decimal? @db.Decimal(12, 2) // total de serviços adicionais
-  marginAmount     Decimal? @db.Decimal(12, 2) // margem calculada
-  paymentBank      String? // banco/financeira
-  paymentType      String? // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, MISTO
+  warrantyPaidBy      String? // LOJA | CLIENTE — quem paga a garantia (loja paga = cortesia)
+  signalAmount        Decimal? @db.Decimal(12, 2) // sinal / entrada
+  payoffAmount        Decimal? @db.Decimal(12, 2) // quitação do veículo recebido
+  discountAmount      Decimal? @db.Decimal(12, 2) // desconto concedido
+  servicesAmount      Decimal? @db.Decimal(12, 2) // total de serviços adicionais
+  marginAmount        Decimal? @db.Decimal(12, 2) // margem calculada
+  paymentBank         String? // banco/financeira
+  paymentType         String? // ENTRADA, FINANCIAMENTO, PIX, DINHEIRO, CARTAO, MISTO
 
   // ── Retorno financeiro (etapa de financiamento) ──────────────────────────
   // financedAmount (acima) = valor financiado / base do retorno.
@@ -1224,11 +1229,11 @@ model Deal {
   updatedAt DateTime @updatedAt
 
   // Relations
-  tenant           Tenant?               @relation(fields: [tenantId], references: [id])
-  seller           Seller?               @relation(fields: [sellerId], references: [id])
-  customer         Customer?             @relation(fields: [customerId], references: [id])
-  person           Person?               @relation("DealCustomerPerson", fields: [personId], references: [id])
-  manager          User?                 @relation("DealManager", fields: [managerId], references: [id])
+  tenant           Tenant?                     @relation(fields: [tenantId], references: [id])
+  seller           Seller?                     @relation(fields: [sellerId], references: [id])
+  customer         Customer?                   @relation(fields: [customerId], references: [id])
+  person           Person?                     @relation("DealCustomerPerson", fields: [personId], references: [id])
+  manager          User?                       @relation("DealManager", fields: [managerId], references: [id])
   vehicles         DealVehicle[]
   debts            DealDebt[]
   payments         DealPayment[]
@@ -1238,15 +1243,15 @@ model Deal {
   auditLogs        DealAuditLog[]
   releaseRequests  DealReleaseRequest[]
   appointments     Appointment[]
-  pendencies       Pendency[]            @relation("DealPendencies")
-  contracts        Contract[]            @relation("DealContracts")
-  sheetImportRows  SheetImportRow[]      @relation("DealSheetRows")
+  pendencies       Pendency[]                  @relation("DealPendencies")
+  contracts        Contract[]                  @relation("DealContracts")
+  sheetImportRows  SheetImportRow[]            @relation("DealSheetRows")
   discountRequests DealDiscountRequest[]
   changes          DealChange[]
   reopenLogs       DealReopenLog[]
   attachments      DealAttachment[]
   documents        DealDocument[]
-  financeProposals FinanceProposal[]     @relation("DealFinanceProposals")
+  financeProposals FinanceProposal[]           @relation("DealFinanceProposals")
   returnSnapshots  ReturnCalculationSnapshot[]
 
   @@index([tenantId])
@@ -1284,6 +1289,11 @@ model DealVehicle {
   notes          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  // ID externo do veículo no sistema de origem (ex.: AutoConf veículo 1028221).
+  // Habilita upsert por-filho preservando o histórico e a associação FK do veículo
+  // do estoque. Fase 2 do importador V2.
+  source         String?
+  externalId     String?
 
   // Relations
   deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -1291,6 +1301,7 @@ model DealVehicle {
 
   @@index([dealId])
   @@index([dealId, role])
+  @@index([externalId])
   @@map("deal_vehicles")
 }
 
@@ -1338,35 +1349,35 @@ model DealAuditLog {
 }
 
 model ReturnCalculationSnapshot {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   tenantId             String
   negotiationId        String
   financingId          String?
-  baseAmount           Decimal  @db.Decimal(14, 2)
-  returnPercent        Decimal  @db.Decimal(7, 4)
-  returnMinPercent     Decimal  @db.Decimal(7, 4)
-  returnMaxPercent     Decimal  @db.Decimal(7, 4)
-  grossReturnAmount    Decimal  @db.Decimal(14, 2)
+  baseAmount           Decimal   @db.Decimal(14, 2)
+  returnPercent        Decimal   @db.Decimal(7, 4)
+  returnMinPercent     Decimal   @db.Decimal(7, 4)
+  returnMaxPercent     Decimal   @db.Decimal(7, 4)
+  grossReturnAmount    Decimal   @db.Decimal(14, 2)
   ilaSettingId         String?
   ilaCompetenceMonth   Int?
   ilaCompetenceYear    Int?
-  ilaPercent           Decimal? @db.Decimal(7, 4)
-  ilaDiscountAmount    Decimal  @db.Decimal(14, 2)
+  ilaPercent           Decimal?  @db.Decimal(7, 4)
+  ilaDiscountAmount    Decimal   @db.Decimal(14, 2)
   iofRuleId            String?
   iofStartDate         DateTime?
   iofEndDate           DateTime?
-  iofPercent           Decimal? @db.Decimal(7, 4)
-  iofDiscountAmount    Decimal  @db.Decimal(14, 2)
-  netReturnAmount      Decimal  @db.Decimal(14, 2)
-  commissionBaseAmount Decimal  @db.Decimal(14, 2) @default(0)
+  iofPercent           Decimal?  @db.Decimal(7, 4)
+  iofDiscountAmount    Decimal   @db.Decimal(14, 2)
+  netReturnAmount      Decimal   @db.Decimal(14, 2)
+  commissionBaseAmount Decimal   @default(0) @db.Decimal(14, 2)
   operationDate        DateTime
-  status               String   @default("CALCULADO")
+  status               String    @default("CALCULADO")
   calculatedBy         String?
-  calculatedAt         DateTime @default(now())
+  calculatedAt         DateTime  @default(now())
   settingsVersion      String?
   snapshotJson         Json
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   deal Deal @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
 
@@ -1388,10 +1399,16 @@ model DealDebt {
   responsavel String? // quem paga: COMPRADOR, VENDEDOR, LOJA
   notes       String?
   createdAt   DateTime  @default(now())
+  // ID externo do sistema de origem (ex.: AutoConf débito 451510) — habilita
+  // upsert por-filho em vez de deleteMany+createMany, preservando edições
+  // manuais. Único por (dealId, source, externalId). Fase 2 do importador V2.
+  source      String? // AUTOCONF | MANUAL | PLANILHA (informativo)
+  externalId  String?
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([dealId])
+  @@index([externalId])
   @@map("deal_debts")
 }
 
@@ -1432,11 +1449,16 @@ model DealPayment {
   createdById             String?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime? @updatedAt
+  // ID externo (ex.: AutoConf pagamento 1195697) — habilita upsert por-filho,
+  // preserva o registro original entre importações. Fase 2 do V2.
+  source                  String?
+  externalId              String?
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([dealId])
   @@index([tenantId])
+  @@index([externalId])
   @@map("deal_payments")
 }
 
@@ -1863,25 +1885,25 @@ model Pendency {
   updatedAt         DateTime         @updatedAt
 
   // Relations
-  responsible     Seller                  @relation("SellerPendencies", fields: [responsibleId], references: [id])
-  manager         Manager?                @relation("ManagerPendencies", fields: [managerId], references: [id])
-  unit            Unit                    @relation(fields: [unitId], references: [id])
-  resolvedByUser  User?                   @relation("ResolvedByUser", fields: [resolvedByUserId], references: [id])
-  assignedUser    User?                   @relation("AssignedPendencies", fields: [assignedUserId], references: [id])
-  validatedByUser User?                   @relation("ValidatedPendencies", fields: [validatedByUserId], references: [id])
-  escalatedByUser User?                   @relation("EscalatedByUser", fields: [escalatedByUserId], references: [id])
-  customer        Customer?               @relation(fields: [customerId], references: [id])
-  vehicleRef      Vehicle?                @relation(fields: [vehicleId], references: [id])
-  contract        Contract?               @relation(fields: [contractId], references: [id])
-  deal            Deal?                   @relation("DealPendencies", fields: [dealId], references: [id])
-  template        WhatsappTemplate?       @relation(fields: [templateId], references: [id])
-  statusHistory   PendencyStatusHistory[]
+  responsible      Seller                    @relation("SellerPendencies", fields: [responsibleId], references: [id])
+  manager          Manager?                  @relation("ManagerPendencies", fields: [managerId], references: [id])
+  unit             Unit                      @relation(fields: [unitId], references: [id])
+  resolvedByUser   User?                     @relation("ResolvedByUser", fields: [resolvedByUserId], references: [id])
+  assignedUser     User?                     @relation("AssignedPendencies", fields: [assignedUserId], references: [id])
+  validatedByUser  User?                     @relation("ValidatedPendencies", fields: [validatedByUserId], references: [id])
+  escalatedByUser  User?                     @relation("EscalatedByUser", fields: [escalatedByUserId], references: [id])
+  customer         Customer?                 @relation(fields: [customerId], references: [id])
+  vehicleRef       Vehicle?                  @relation(fields: [vehicleId], references: [id])
+  contract         Contract?                 @relation(fields: [contractId], references: [id])
+  deal             Deal?                     @relation("DealPendencies", fields: [dealId], references: [id])
+  template         WhatsappTemplate?         @relation(fields: [templateId], references: [id])
+  statusHistory    PendencyStatusHistory[]
   notificationLogs PendencyNotificationLog[]
-  messages        PendencyMessage[]
-  messageReturns  MessageReturn[]
-  comments        PendencyComment[]
-  events          PendencyEvent[]
-  penalties       PendencyPenalty[]
+  messages         PendencyMessage[]
+  messageReturns   MessageReturn[]
+  comments         PendencyComment[]
+  events           PendencyEvent[]
+  penalties        PendencyPenalty[]
 
   @@index([tenantId])
   @@index([status])
@@ -1978,9 +2000,9 @@ model PendencyEvent {
   id           String    @id @default(cuid())
   tenantId     String?
   pendencyId   String
-  type         String    // CREATED | STATUS_CHANGED | RESPONSE | PRIORITY_CHANGED | DUE_CHANGED | COMMITMENT | POPUP_SHOWN | POPUP_DISMISSED | ESCALATED | PENALTY_APPLIED | PENALTY_REMOVED | REMINDER_SENT | ASSIGNED
-  authorId     String?   // usuário que gerou (null = sistema)
-  authorName   String?   // snapshot p/ exibir sem join (autor pode sair da base)
+  type         String // CREATED | STATUS_CHANGED | RESPONSE | PRIORITY_CHANGED | DUE_CHANGED | COMMITMENT | POPUP_SHOWN | POPUP_DISMISSED | ESCALATED | PENALTY_APPLIED | PENALTY_REMOVED | REMINDER_SENT | ASSIGNED
+  authorId     String? // usuário que gerou (null = sistema)
+  authorName   String? // snapshot p/ exibir sem join (autor pode sair da base)
   content      String?   @db.Text // texto livre (resposta/justificativa) ou payload
   prevStatus   String?
   newStatus    String?
@@ -2005,8 +2027,8 @@ model SellerAttendanceAuthorization {
   id              String    @id @default(cuid())
   tenantId        String
   unitId          String
-  requesterUserId String    // vendedor solicitante (User.id)
-  visitType       String    // AGENDAMENTO | RETORNO
+  requesterUserId String // vendedor solicitante (User.id)
+  visitType       String // AGENDAMENTO | RETORNO
   customerName    String?
   customerPhone   String?
   customerEmail   String?
@@ -2015,7 +2037,7 @@ model SellerAttendanceAuthorization {
   decidedByUserId String?
   decidedAt       DateTime?
   decisionReason  String?
-  attendanceId    String?   // atendimento criado na aprovação
+  attendanceId    String? // atendimento criado na aprovação
   createdAt       DateTime  @default(now())
   expiresAt       DateTime?
 
@@ -2032,11 +2054,11 @@ model PendencyPenalty {
   tenantId        String?
   unitId          String?
   pendencyId      String?
-  sellerUserId    String    // usuário penalizado (User.id)
-  type            String    // WARN_MANAGER | MARK (registro no score) — nunca bloqueia
+  sellerUserId    String // usuário penalizado (User.id)
+  type            String // WARN_MANAGER | MARK (registro no score) — nunca bloqueia
   reason          String?
   active          Boolean   @default(true)
-  appliedByUserId String?   // null = sistema (após níveis 1–3)
+  appliedByUserId String? // null = sistema (após níveis 1–3)
   removedByUserId String?
   removedReason   String?
   removedAt       DateTime?
@@ -4418,8 +4440,8 @@ model MarketingLead {
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
   // CRM Card F4 — número público do lead (sequencial por tenant) + soft delete.
-  leadNumber       Int?                      // ex.: 1234 → exibido como #1234. Unique por tenant via @@unique.
-  deletedAt        DateTime?                 // soft delete: preenchido = excluído logicamente.
+  leadNumber       Int? // ex.: 1234 → exibido como #1234. Unique por tenant via @@unique.
+  deletedAt        DateTime? // soft delete: preenchido = excluído logicamente.
   deletedByUserId  String?
   deleteReason     String?
   assignments      MarketingLeadAssignment[]
@@ -5104,26 +5126,26 @@ model SellerQueueEntry {
 
 // Cliente que chegou na loja. Qualquer vendedor presente registra; NÃO escolhe quem atende.
 model SellerQueueCustomerArrival {
-  id                String   @id @default(cuid())
-  tenantId          String
-  unitId            String
-  queueId           String
-  registeredById    String // quem clicou "cliente na loja"
-  customerName      String?
-  customerPhone     String?
-  customerEmail     String?
-  customerIsWhatsapp Boolean @default(false)
-  customerId        String? // Customer vinculado (recorrente)
-  leadId            String? // lead aberto (recorrente)
-  recurring         Boolean  @default(false)
-  suggestedSellerId String? // vendedor responsável (recorrente)
-  requestedSellerId String? // cliente pediu pelo nome (exige confirmação/regra)
-  status            String   @default("PENDING") // PENDING | CALLING | ASSIGNED | DONE | CANCELED
-  notes             String?
-  escalationLevel   Int? // índice do nível de escalonamento atual (config)
-  escalationAttempt Int? // tentativa dentro do nível atual
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  tenantId           String
+  unitId             String
+  queueId            String
+  registeredById     String // quem clicou "cliente na loja"
+  customerName       String?
+  customerPhone      String?
+  customerEmail      String?
+  customerIsWhatsapp Boolean  @default(false)
+  customerId         String? // Customer vinculado (recorrente)
+  leadId             String? // lead aberto (recorrente)
+  recurring          Boolean  @default(false)
+  suggestedSellerId  String? // vendedor responsável (recorrente)
+  requestedSellerId  String? // cliente pediu pelo nome (exige confirmação/regra)
+  status             String   @default("PENDING") // PENDING | CALLING | ASSIGNED | DONE | CANCELED
+  notes              String?
+  escalationLevel    Int? // índice do nível de escalonamento atual (config)
+  escalationAttempt  Int? // tentativa dentro do nível atual
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   queue       SellerQueue             @relation(fields: [queueId], references: [id], onDelete: Cascade)
   attendances SellerQueueAttendance[]
@@ -5246,14 +5268,14 @@ model SellerQueueUnitConfig {
   recurringCustomerRule         String   @default("RESPONSIBLE") // RESPONSIBLE | QUEUE
   requestByNameRequiresApproval Boolean  @default(true)
   // Avisos/alertas da fila (configuráveis pelo ADM por unidade).
-  alertSound                    Boolean  @default(true)  // som em loop na tela do vendedor da vez
+  alertSound                    Boolean  @default(true) // som em loop na tela do vendedor da vez
   alertSoundType                String   @default("siren") // modelo do som (siren|beep|chime|alarm|bell|soft)
-  alertBrowserPush              Boolean  @default(true)  // notificação do navegador (aba minimizada)
-  alertWhatsapp                 Boolean  @default(true)  // WhatsApp ao vendedor da vez (best-effort)
-  alertWhatsappManagers         Boolean  @default(true)  // WhatsApp à gestão em timeout/sem vendedor
-  alertRepeatSeconds            Int      @default(10)    // intervalo do som/alerta repetido até aceitar
-  allowChooseSeller             Boolean  @default(true)  // gestão pode escolher o vendedor (auto-organização)
-  config                        Json?    // extras por unidade (ex.: estratégia anti-abuso autoBlock)
+  alertBrowserPush              Boolean  @default(true) // notificação do navegador (aba minimizada)
+  alertWhatsapp                 Boolean  @default(true) // WhatsApp ao vendedor da vez (best-effort)
+  alertWhatsappManagers         Boolean  @default(true) // WhatsApp à gestão em timeout/sem vendedor
+  alertRepeatSeconds            Int      @default(10) // intervalo do som/alerta repetido até aceitar
+  allowChooseSeller             Boolean  @default(true) // gestão pode escolher o vendedor (auto-organização)
+  config                        Json? // extras por unidade (ex.: estratégia anti-abuso autoBlock)
   updatedById                   String?
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
@@ -5386,23 +5408,23 @@ model VehicleDocumentExtraction {
 // =============================================================================
 
 model QualityEvent {
-  id              String    @id @default(cuid())
-  tenantId        String
-  sellerId        String    // User.id do vendedor penalizado
-  unitId          String?   // null = global (não vinculado a uma unidade)
-  category        String    // PENDENCY | LEAD | ATTENDANCE | ADMIN | QUEUE | MANUAL
-  type            String    // tipo específico (ver constantes em lib/quality/types.ts)
-  points          Int       // negativo = penalidade; positivo = estorno/correção
-  reason          String    // descrição para o vendedor ver
-  referenceId     String?   // id da entidade origem (pendencyId, leadId, etc.)
-  referenceType   String?   // 'Pendency' | 'MarketingLead' | 'Attendance' | ...
-  appliedById     String?   // User.id de quem aplicou (null = sistema automático)
-  appliedAt       DateTime  @default(now()) // permite retroativo (manager pode backdatear)
-  active          Boolean   @default(true)
-  reversedById    String?   // User.id de quem estornou
-  reversedAt      DateTime?
-  reversedReason  String?
-  metadata        Json?
+  id             String    @id @default(cuid())
+  tenantId       String
+  sellerId       String // User.id do vendedor penalizado
+  unitId         String? // null = global (não vinculado a uma unidade)
+  category       String // PENDENCY | LEAD | ATTENDANCE | ADMIN | QUEUE | MANUAL
+  type           String // tipo específico (ver constantes em lib/quality/types.ts)
+  points         Int // negativo = penalidade; positivo = estorno/correção
+  reason         String // descrição para o vendedor ver
+  referenceId    String? // id da entidade origem (pendencyId, leadId, etc.)
+  referenceType  String? // 'Pendency' | 'MarketingLead' | 'Attendance' | ...
+  appliedById    String? // User.id de quem aplicou (null = sistema automático)
+  appliedAt      DateTime  @default(now()) // permite retroativo (manager pode backdatear)
+  active         Boolean   @default(true)
+  reversedById   String? // User.id de quem estornou
+  reversedAt     DateTime?
+  reversedReason String?
+  metadata       Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -5424,10 +5446,10 @@ model QualityEvent {
 model CrmLeadInteraction {
   id               String    @id @default(cuid())
   tenantId         String
-  leadId           String    // FK soft → marketing_leads.id
-  type             String    // CALL | WHATSAPP | EMAIL | NOTE | VISIT | PROPOSAL | FINANCING | OTHER
+  leadId           String // FK soft → marketing_leads.id
+  type             String // CALL | WHATSAPP | EMAIL | NOTE | VISIT | PROPOSAL | FINANCING | OTHER
   channel          String?
-  result           String?   // ex: NO_ANSWER | CONTACT_MADE | PROPOSAL_SENT | VISIT_SCHEDULED | CONVERTED
+  result           String? // ex: NO_ANSWER | CONTACT_MADE | PROPOSAL_SENT | VISIT_SCHEDULED | CONVERTED
   summary          String?   @db.Text
   objections       String?   @db.Text
   nextAction       String?
@@ -5435,7 +5457,7 @@ model CrmLeadInteraction {
   nextActionUserId String?
   discussedVehicle String?
   authorId         String
-  authorName       String?   // snapshot
+  authorName       String? // snapshot
   occurredAt       DateTime
   createdAt        DateTime  @default(now())
 
@@ -5445,27 +5467,27 @@ model CrmLeadInteraction {
 
 // Resumo comercial estruturado do lead (versionado: cada update cria nova linha)
 model CrmLeadSummary {
-  id              String    @id @default(cuid())
-  tenantId        String
-  leadId          String    // FK soft → marketing_leads.id
-  version         Int       @default(1)
+  id               String   @id @default(cuid())
+  tenantId         String
+  leadId           String // FK soft → marketing_leads.id
+  version          Int      @default(1)
   // Campos estruturados do resumo
-  objective       String?   @db.Text  // objetivo do cliente
-  desiredVehicle  String?             // veículo desejado (textual)
-  hasTradeIn      Boolean   @default(false)
-  tradeInVehicle  String?             // veículo de troca (textual)
-  tradeInValue    Decimal?  @db.Decimal(12,2)
-  budget          Decimal?  @db.Decimal(12,2)
-  downPayment     Decimal?  @db.Decimal(12,2)
-  monthlyPayment  Decimal?  @db.Decimal(12,2)
-  paymentMethod   String?   // CASH | FINANCING | CONSORTIUM | OTHER
-  purchaseTimeline String?  // IMMEDIATE | 15_DAYS | 30_DAYS | 60_DAYS | FUTURE
-  objections      String?   @db.Text
-  competitors     String?
-  narrative       String?   @db.Text  // resumo narrativo livre
-  authorId        String
-  authorName      String?
-  createdAt       DateTime  @default(now())
+  objective        String?  @db.Text // objetivo do cliente
+  desiredVehicle   String? // veículo desejado (textual)
+  hasTradeIn       Boolean  @default(false)
+  tradeInVehicle   String? // veículo de troca (textual)
+  tradeInValue     Decimal? @db.Decimal(12, 2)
+  budget           Decimal? @db.Decimal(12, 2)
+  downPayment      Decimal? @db.Decimal(12, 2)
+  monthlyPayment   Decimal? @db.Decimal(12, 2)
+  paymentMethod    String? // CASH | FINANCING | CONSORTIUM | OTHER
+  purchaseTimeline String? // IMMEDIATE | 15_DAYS | 30_DAYS | 60_DAYS | FUTURE
+  objections       String?  @db.Text
+  competitors      String?
+  narrative        String?  @db.Text // resumo narrativo livre
+  authorId         String
+  authorName       String?
+  createdAt        DateTime @default(now())
 
   @@index([tenantId, leadId, version])
   @@map("crm_lead_summaries")
@@ -5473,13 +5495,13 @@ model CrmLeadSummary {
 
 // Negociações vinculadas ao lead (N:M, pois 1 lead pode ter N deals)
 model CrmLeadDeal {
-  id              String    @id @default(cuid())
-  tenantId        String
-  leadId          String    // FK soft → marketing_leads.id
-  dealId          String    // FK soft → deals.id
-  isPrimary       Boolean   @default(false)
-  linkedByUserId  String?
-  linkedAt        DateTime  @default(now())
+  id             String   @id @default(cuid())
+  tenantId       String
+  leadId         String // FK soft → marketing_leads.id
+  dealId         String // FK soft → deals.id
+  isPrimary      Boolean  @default(false)
+  linkedByUserId String?
+  linkedAt       DateTime @default(now())
 
   @@unique([leadId, dealId])
   @@index([tenantId, leadId])
@@ -5491,14 +5513,14 @@ model CrmLeadDeal {
 model CrmLeadVisit {
   id              String    @id @default(cuid())
   tenantId        String
-  leadId          String    // FK soft → marketing_leads.id
+  leadId          String // FK soft → marketing_leads.id
   unitId          String?
-  hostUserId      String?   // vendedor anfitrião
+  hostUserId      String? // vendedor anfitrião
   scheduledAt     DateTime
   durationMinutes Int       @default(60)
   status          String    @default("SCHEDULED") // SCHEDULED | CONFIRMED | RESCHEDULED | COMPLETED | NO_SHOW | CANCELLED
   objective       String?
-  vehicleRef      String?   // veículo que será demonstrado
+  vehicleRef      String? // veículo que será demonstrado
   clientConfirmed Boolean   @default(false)
   notes           String?   @db.Text
   rescheduleCount Int       @default(0)
@@ -5515,28 +5537,28 @@ model CrmLeadVisit {
 
 // Veículos de interesse múltiplos por lead (N:M)
 model CrmLeadVehicle {
-  id              String    @id @default(cuid())
-  tenantId        String
-  leadId          String    // FK soft → marketing_leads.id
-  vehicleId       String?   // FK soft → vehicles.id (nulo se genérico)
+  id            String    @id @default(cuid())
+  tenantId      String
+  leadId        String // FK soft → marketing_leads.id
+  vehicleId     String? // FK soft → vehicles.id (nulo se genérico)
   // Snapshot do interesse (persiste mesmo se veículo sair do estoque)
-  brand           String?
-  model           String?
-  version         String?
-  year            Int?
-  plate           String?
-  priceViewed     Decimal?  @db.Decimal(12,2)
-  interest        String    @default("PRIMARY") // PRIMARY | ALTERNATIVE | DISQUALIFIED
-  status          String    @default("INTERESTED") // INTERESTED | PROPOSAL_SENT | VISITED | DISQUALIFIED
+  brand         String?
+  model         String?
+  version       String?
+  year          Int?
+  plate         String?
+  priceViewed   Decimal?  @db.Decimal(12, 2)
+  interest      String    @default("PRIMARY") // PRIMARY | ALTERNATIVE | DISQUALIFIED
+  status        String    @default("INTERESTED") // INTERESTED | PROPOSAL_SENT | VISITED | DISQUALIFIED
   // Tipo de negócio: COMPRA (cliente quer comprar), TROCA (cliente tem veículo p/ troca),
   // VENDA (cliente quer vender pra loja), CONSIGNACAO (consignação), AVALIACAO (só avaliar)
-  role            String    @default("COMPRA") // COMPRA | TROCA | VENDA | CONSIGNACAO | AVALIACAO
-  isPrimary       Boolean   @default(false)
-  notes           String?
-  addedByUserId   String?
-  addedAt         DateTime  @default(now())
-  removedAt       DateTime? // soft remove: mantém histórico
-  removedReason   String?
+  role          String    @default("COMPRA") // COMPRA | TROCA | VENDA | CONSIGNACAO | AVALIACAO
+  isPrimary     Boolean   @default(false)
+  notes         String?
+  addedByUserId String?
+  addedAt       DateTime  @default(now())
+  removedAt     DateTime? // soft remove: mantém histórico
+  removedReason String?
 
   @@unique([leadId, vehicleId])
   @@index([tenantId, leadId])
@@ -5547,12 +5569,39 @@ model CrmLeadVehicle {
 model CrmLeadEvaluation {
   id             String   @id @default(cuid())
   tenantId       String
-  leadId         String   // FK soft → marketing_leads.id
-  evaluationId   String   // FK soft → vehicle_evaluations.id
+  leadId         String // FK soft → marketing_leads.id
+  evaluationId   String // FK soft → vehicle_evaluations.id
   linkedByUserId String?
   linkedAt       DateTime @default(now())
 
   @@unique([leadId, evaluationId])
   @@index([tenantId, leadId])
   @@map("crm_lead_evaluations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Catálogo canônico de produtos/tipos de sistemas externos (AutoConf, etc.).
+// Cada entrada mapeia um ID externo (tipo de débito / produto Gestauto) para
+// uma categoria canônica do AutoDrive. Preserva SEMPRE o nome/código originais
+// (nunca inventa nem descarta). Se aparece um tipo novo, cria como category=OTHER
+// para o admin mapear depois. Fase 2 do importador V2.
+model AutoconfProductMap {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  sourceSystem         String // AUTOCONF
+  externalTipoDebitoId String? // ex.: "12260" (+150EX 2anos)
+  externalProdutoId    String? // ex.: "95" (2 ANOS EXCELLENCE) — só quando é garantia Gestauto
+  externalLabel        String // rótulo original (nunca substitui)
+  canonicalCategory    String   @default("OTHER") // WARRANTY | DOCUMENTATION | FINANCING_PAYOFF | INSPECTION | LICENSING | TAX | FINE | ACCESSORY | SERVICE | OTHER
+  canonicalProductId   String? // FK opcional para produto cadastrado no AutoDrive (garantias)
+  autoMapped           Boolean  @default(false) // true = por regra; false = confirmado por admin
+  active               Boolean  @default(true)
+  firstSeenAt          DateTime @default(now())
+  lastSeenAt           DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([tenantId, sourceSystem, externalTipoDebitoId, externalProdutoId], name: "autoconf_product_map_uk", map: "autoconf_product_map_uk")
+  @@index([tenantId])
+  @@index([tenantId, sourceSystem])
+  @@map("autoconf_product_map")
 }
