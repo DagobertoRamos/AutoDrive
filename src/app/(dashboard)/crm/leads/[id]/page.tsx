@@ -186,6 +186,230 @@ function InteractionForm({ leadId, onSaved }: { leadId: string; onSaved: () => v
   )
 }
 
+// ── Visit status config ────────────────────────────────────────────────────────
+const VISIT_STATUS_CFG: Record<string,{ label:string; cls:string }> = {
+  SCHEDULED:    { label: 'Agendada',     cls: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300' },
+  CONFIRMED:    { label: 'Confirmada',   cls: 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300' },
+  RESCHEDULED:  { label: 'Reagendada',  cls: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300' },
+  COMPLETED:    { label: 'Realizada',   cls: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300' },
+  NO_SHOW:      { label: 'Não compareceu', cls: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' },
+  CANCELLED:    { label: 'Cancelada',   cls: 'border-gray-200 bg-gray-50 text-gray-500 dark:border-white/10 dark:bg-slate-800 dark:text-gray-400' },
+}
+
+// ── ActivitiesTab ──────────────────────────────────────────────────────────────
+function ActivitiesTab({ leadId, workspace, tasks, onRefresh }: { leadId: string; workspace: Workspace; tasks: Task[]; onRefresh: () => void }) {
+  const [visits, setVisits]         = useState<VisitItem[]>([])
+  const [showSchedule, setShowSched] = useState(false)
+  const [rescheduleId, setReschedId] = useState<string | null>(null)
+  const [busy, setBusy]             = useState<string | null>(null)
+
+  // Formulário de agendamento
+  const [schedForm, setSchedForm] = useState({ scheduledAt: '', objective: '', vehicleRef: '', notes: '', durationMinutes: 60 })
+  const [schedErr, setSchedErr]   = useState('')
+  const [schedBusy, setSchedBusy] = useState(false)
+
+  // Formulário de reagendamento
+  const [reschedForm, setReschedForm] = useState({ scheduledAt: '', reason: '' })
+  const [reschedErr, setReschedErr]   = useState('')
+
+  const loadVisits = useCallback(async () => {
+    const r = await fetch(`/api/crm/leads/${leadId}/visits`, { credentials: 'include' }).then(x => x.json()).catch(() => null)
+    setVisits((r?.data ?? []) as VisitItem[])
+  }, [leadId])
+
+  useEffect(() => { void loadVisits() }, [loadVisits])
+
+  const doAction = async (visitId: string, action: string, extra?: Record<string,unknown>) => {
+    setBusy(visitId)
+    try {
+      const res = await fetch(`/api/crm/leads/${leadId}/visits/${visitId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action, ...extra }) })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j?.error ?? 'Falha na ação.'); return }
+      await loadVisits(); onRefresh()
+    } finally { setBusy(null) }
+  }
+
+  const scheduleVisit = async () => {
+    if (!schedForm.scheduledAt) { setSchedErr('Informe a data e hora.'); return }
+    setSchedBusy(true); setSchedErr('')
+    try {
+      const res = await fetch(`/api/crm/leads/${leadId}/visits`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...schedForm, scheduledAt: new Date(schedForm.scheduledAt).toISOString() }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setSchedErr(j?.error ?? 'Falha ao agendar.'); return }
+      setShowSched(false); setSchedForm({ scheduledAt: '', objective: '', vehicleRef: '', notes: '', durationMinutes: 60 })
+      await loadVisits(); onRefresh()
+    } finally { setSchedBusy(false) }
+  }
+
+  const doReschedule = async (visitId: string) => {
+    if (!reschedForm.scheduledAt) { setReschedErr('Informe a nova data.'); return }
+    await doAction(visitId, 'reschedule', { scheduledAt: new Date(reschedForm.scheduledAt).toISOString(), reason: reschedForm.reason })
+    setReschedId(null); setReschedForm({ scheduledAt: '', reason: '' })
+  }
+
+  const now = Date.now()
+  const active = visits.filter(v => ['SCHEDULED','CONFIRMED','RESCHEDULED'].includes(v.status))
+  const past   = visits.filter(v => !['SCHEDULED','CONFIRMED','RESCHEDULED'].includes(v.status))
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Calendar size={15} />Visitas e atividades</h3>
+        <button onClick={() => setShowSched(v => !v)} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+          <Plus size={12} />Agendar visita
+        </button>
+      </div>
+
+      {/* Formulário de agendamento */}
+      {showSchedule && (
+        <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 dark:border-brand-900/50 dark:bg-brand-950/30">
+          <h4 className="mb-3 text-sm font-semibold text-brand-800 dark:text-brand-300">Nova visita</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Data e hora *</label>
+              <input type="datetime-local" value={schedForm.scheduledAt} onChange={e => setSchedForm(f => ({ ...f, scheduledAt: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Duração (min)</label>
+              <input type="number" min={15} max={480} value={schedForm.durationMinutes} onChange={e => setSchedForm(f => ({ ...f, durationMinutes: Number(e.target.value) }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Veículo para demonstração</label>
+              <input placeholder="Ex.: Fiat Mobi Like 1.0" value={schedForm.vehicleRef} onChange={e => setSchedForm(f => ({ ...f, vehicleRef: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Objetivo</label>
+              <input placeholder="Ex.: Teste drive, apresentação de proposta…" value={schedForm.objective} onChange={e => setSchedForm(f => ({ ...f, objective: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Observações</label>
+              <textarea rows={2} value={schedForm.notes} onChange={e => setSchedForm(f => ({ ...f, notes: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            </div>
+          </div>
+          {schedErr && <p className="mt-1 text-[11px] text-red-600">{schedErr}</p>}
+          <div className="mt-3 flex gap-2">
+            <button onClick={() => setShowSched(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-white/10">Cancelar</button>
+            <button onClick={scheduleVisit} disabled={schedBusy} className="flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+              {schedBusy ? <Loader2 size={12} className="animate-spin" /> : <Calendar size={12} />}Agendar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Visitas ativas */}
+      {active.map(v => {
+        const st = VISIT_STATUS_CFG[v.status] ?? VISIT_STATUS_CFG.SCHEDULED
+        const isPast = new Date(v.scheduledAt).getTime() < now
+        const isToday = new Date(v.scheduledAt).toDateString() === new Date().toDateString()
+        return (
+          <div key={v.id} className={cn('rounded-xl border p-4', st.cls)}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={cn('rounded-md px-1.5 py-0.5 text-[9px] font-bold border', st.cls)}>{st.label}</span>
+                  {isToday && <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">Hoje!</span>}
+                  {isPast && !isToday && <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-900 dark:text-red-300">Atrasada</span>}
+                </div>
+                <p className="mt-1.5 text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{fmtDT(v.scheduledAt)}</p>
+                {v.objective   && <p className="mt-0.5 text-[12px] text-gray-600 dark:text-gray-300">{v.objective}</p>}
+                {v.vehicleRef  && <p className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400"><Car size={10} />{v.vehicleRef}</p>}
+                {v.clientConfirmed && <p className="mt-1 text-[10px] font-semibold text-green-700 dark:text-green-400">✓ Confirmado pelo cliente</p>}
+              </div>
+            </div>
+            {/* Ações por status */}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {v.status !== 'CONFIRMED' && (
+                <button disabled={busy === v.id} onClick={() => void doAction(v.id, 'confirm')} className="rounded-md border border-green-300 bg-white px-2 py-1 text-[10px] font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50 dark:border-green-800 dark:bg-slate-700 dark:text-green-300">
+                  ✓ Confirmar
+                </button>
+              )}
+              <button disabled={busy === v.id} onClick={() => void doAction(v.id, 'arrive')} className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:bg-slate-700 dark:text-blue-300">
+                Chegou
+              </button>
+              <button disabled={busy === v.id} onClick={() => void doAction(v.id, 'complete')} className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:bg-slate-700 dark:text-emerald-300">
+                Realizada
+              </button>
+              <button disabled={busy === v.id} onClick={() => void doAction(v.id, 'no_show')} className="rounded-md border border-red-300 bg-white px-2 py-1 text-[10px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:bg-slate-700 dark:text-red-300">
+                Não compareceu
+              </button>
+              <button disabled={busy === v.id} onClick={() => setReschedId(rescheduleId === v.id ? null : v.id)} className="rounded-md border border-amber-300 bg-white px-2 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800 dark:bg-slate-700 dark:text-amber-300">
+                Reagendar
+              </button>
+              <button disabled={busy === v.id} onClick={() => { if (window.confirm('Cancelar esta visita?')) void doAction(v.id, 'cancel', { reason: 'Cancelado pelo usuário' }) }} className="rounded-md border border-gray-300 bg-white px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:bg-slate-700 dark:text-gray-300">
+                Cancelar
+              </button>
+            </div>
+            {/* Formulário de reagendamento inline */}
+            {rescheduleId === v.id && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                <p className="mb-2 text-[11px] font-semibold text-amber-800 dark:text-amber-300">Reagendar visita</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Nova data e hora *</label>
+                    <input type="datetime-local" value={reschedForm.scheduledAt} onChange={e => setReschedForm(f => ({ ...f, scheduledAt: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo</label>
+                    <input value={reschedForm.reason} onChange={e => setReschedForm(f => ({ ...f, reason: e.target.value }))} placeholder="Opcional" className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                  </div>
+                </div>
+                {reschedErr && <p className="mt-1 text-[10px] text-red-600">{reschedErr}</p>}
+                <div className="mt-2 flex gap-2">
+                  <button onClick={() => setReschedId(null)} className="rounded px-2 py-1 text-[10px] text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-600">Cancelar</button>
+                  <button onClick={() => void doReschedule(v.id)} disabled={busy === v.id} className="rounded bg-amber-600 px-3 py-1 text-[10px] font-semibold text-white hover:bg-amber-700 disabled:opacity-50">Confirmar reagendamento</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Tarefas pendentes */}
+      {tasks.filter(t => t.status === 'PENDING').map(t => (
+        <div key={t.id} className="rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-slate-800">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[13px] font-medium text-gray-900 dark:text-white">{t.title}</p>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">Pendente</span>
+          </div>
+          {t.dueAt && <p className="mt-0.5 text-[11px] tabular-nums text-gray-500 dark:text-gray-400">{fmtDT(t.dueAt)}</p>}
+        </div>
+      ))}
+
+      {/* Visitas encerradas */}
+      {past.length > 0 && (
+        <details className="group rounded-xl border border-gray-100 dark:border-white/5">
+          <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-[12px] font-medium text-gray-500 dark:text-gray-400">
+            Histórico de visitas ({past.length})
+            <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
+          </summary>
+          <div className="space-y-2 px-4 pb-4">
+            {past.map(v => {
+              const st = VISIT_STATUS_CFG[v.status] ?? VISIT_STATUS_CFG.CANCELLED
+              return (
+                <div key={v.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-white/5 dark:bg-slate-800/40">
+                  <div className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="text-gray-700 dark:text-gray-300 tabular-nums">{fmtDT(v.scheduledAt)}</span>
+                    <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold border', st.cls)}>{st.label}</span>
+                  </div>
+                  {v.objective && <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{v.objective}</p>}
+                </div>
+              )
+            })}
+          </div>
+        </details>
+      )}
+
+      {active.length === 0 && tasks.filter(t => t.status === 'PENDING').length === 0 && past.length === 0 && (
+        <div className="py-12 text-center">
+          <Calendar size={28} className="mx-auto mb-2 text-gray-200 dark:text-gray-600" strokeWidth={1.5} />
+          <p className="text-sm text-gray-400">Nenhuma visita ou atividade registrada.</p>
+          <button onClick={() => setShowSched(true)} className="mt-2 text-xs text-brand-600 hover:underline">Agendar a primeira visita</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function LeadWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = use(params)
@@ -470,30 +694,7 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
 
           {/* ── Tab: Atividades ── */}
           {tab === 'activities' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Visitas e tarefas</h3>
-                <button onClick={() => setShowInteraction(true)} className="flex items-center gap-1 text-xs text-brand-600 hover:underline"><Plus size={12} />Registrar</button>
-              </div>
-              {workspace.nextVisit && (
-                <div className="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/30">
-                  <p className="text-xs font-semibold text-green-700 dark:text-green-400">Próxima visita</p>
-                  <p className="mt-1 text-sm font-bold text-green-900 dark:text-green-200">{fmtDT(workspace.nextVisit.scheduledAt)}</p>
-                  {workspace.nextVisit.objective && <p className="text-[12px] text-green-700 dark:text-green-400">{workspace.nextVisit.objective}</p>}
-                  {workspace.nextVisit.vehicleRef && <p className="mt-1 flex items-center gap-1 text-[11px] text-green-600"><Car size={10} />{workspace.nextVisit.vehicleRef}</p>}
-                </div>
-              )}
-              {tasks?.map(t => (
-                <div key={t.id} className={cn('rounded-xl border p-3 text-[12px]', t.status === 'DONE' ? 'border-gray-100 bg-gray-50 opacity-60 dark:border-white/5 dark:bg-slate-800/40' : 'border-gray-200 bg-white dark:border-white/10 dark:bg-slate-800')}>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-gray-900 dark:text-white">{t.title}</p>
-                    <span className={cn('rounded-full border px-1.5 py-0.5 text-[9px] font-semibold', t.status === 'DONE' ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>{t.status === 'DONE' ? 'Concluída' : 'Pendente'}</span>
-                  </div>
-                  {t.dueAt && <p className="mt-0.5 text-gray-500 tabular-nums">{fmtDT(t.dueAt)}</p>}
-                </div>
-              ))}
-              {!tasks?.length && !workspace.nextVisit && <p className="py-8 text-center text-sm text-gray-400">Nenhuma atividade registrada.</p>}
-            </div>
+            <ActivitiesTab leadId={leadId} workspace={workspace} tasks={tasks ?? []} onRefresh={load} />
           )}
 
           {/* ── Tab: Veículos ── */}
