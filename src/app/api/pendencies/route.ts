@@ -181,6 +181,16 @@ export async function POST(req: NextRequest) {
     }
     { const gate = await assertModuleEnabled(session.user, 'pendencies'); if (gate) return gate }
 
+    // Guard de qualidade: limite de pendências não resolvidas.
+    try {
+      const { checkUnresolvedPendenciesLimit, loadUnitCfgForSeller } = await import('@/lib/quality/score')
+      const unitCfg = await loadUnitCfgForSeller(session.user.tenantId ?? '', session.user.unitId ?? null)
+      const check = await checkUnresolvedPendenciesLimit(session.user.id, session.user.tenantId ?? '', unitCfg)
+      if (check.exceeded) {
+        return NextResponse.json({ success: false, error: `Você possui ${check.count} pendências em aberto (máximo ${check.max}). Resolva as pendências existentes antes de criar novas.`, code: 'QUALITY_LIMIT' }, { status: 422 })
+      }
+    } catch { /* guard é best-effort */ }
+
     const body   = await req.json()
     const parsed = createSchema.safeParse(body)
     if (!parsed.success) {

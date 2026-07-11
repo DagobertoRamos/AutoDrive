@@ -5379,6 +5379,40 @@ model VehicleDocumentExtraction {
   @@map("vehicle_document_extractions")
 }
 
+// =============================================================================
+// SISTEMA DE QUALIDADE GLOBAL — Score unificado por vendedor.
+// Cobre pendências, leads, atendimentos, administração, fila e manual.
+// Negative points = penalidade. Positive points = correção/estorno.
+// =============================================================================
+
+model QualityEvent {
+  id              String    @id @default(cuid())
+  tenantId        String
+  sellerId        String    // User.id do vendedor penalizado
+  unitId          String?   // null = global (não vinculado a uma unidade)
+  category        String    // PENDENCY | LEAD | ATTENDANCE | ADMIN | QUEUE | MANUAL
+  type            String    // tipo específico (ver constantes em lib/quality/types.ts)
+  points          Int       // negativo = penalidade; positivo = estorno/correção
+  reason          String    // descrição para o vendedor ver
+  referenceId     String?   // id da entidade origem (pendencyId, leadId, etc.)
+  referenceType   String?   // 'Pendency' | 'MarketingLead' | 'Attendance' | ...
+  appliedById     String?   // User.id de quem aplicou (null = sistema automático)
+  appliedAt       DateTime  @default(now()) // permite retroativo (manager pode backdatear)
+  active          Boolean   @default(true)
+  reversedById    String?   // User.id de quem estornou
+  reversedAt      DateTime?
+  reversedReason  String?
+  metadata        Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, sellerId])
+  @@index([tenantId])
+  @@index([referenceId])
+  @@index([appliedAt])
+  @@map("quality_events")
+}
 
 // =============================================================================
 // CRM Workspace 360° — Fase A: satélites do lead (FK soft p/ marketing_leads).

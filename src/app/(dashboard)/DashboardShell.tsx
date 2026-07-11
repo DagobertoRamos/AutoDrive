@@ -22,6 +22,7 @@ import QueueAlertWatcher from '@/components/seller-queue/QueueAlertWatcher'
 import PendencyAckWatcher from '@/components/pendencies/PendencyAckWatcher'
 import PendencySlaWatcher from '@/components/pendencies/PendencySlaWatcher'
 import PendencyCriticalBanner from '@/components/pendencies/PendencyCriticalBanner'
+import QualityScoreWatcher from '@/components/quality/QualityScoreWatcher'
 
 export default function DashboardShell({
   children,
@@ -73,6 +74,7 @@ export default function DashboardShell({
       <QueueAlertWatcher />
       <PendencyAckWatcher />
       <PendencySlaWatcher />
+      <QualityScoreWatcher />
       <HelpChatLauncher />
     </>
   )

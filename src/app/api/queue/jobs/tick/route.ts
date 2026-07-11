@@ -19,6 +19,7 @@ import { sendDuePendencyReminders } from '@/lib/pendencies/reminders'
 import { runPendencyNaggingSweep } from '@/lib/pendencies/nagging-sweep'
 import { archiveResolvedPendenciesJob } from '@/lib/pendencies/auto-archive'
 import { dispatchScheduledAvisos } from '@/lib/comunicacao/scheduled-avisos'
+import { runQualityAutoSweep } from '@/lib/quality/auto-sweep'
 
 function authorized(req: Request): boolean {
   const header = req.headers.get('x-cron-secret') ?? ''
@@ -45,6 +46,7 @@ async function tick() {
     await safe('pendencyNagging', () => runPendencyNaggingSweep()),
     await safe('pendencyAutoArchive', () => archiveResolvedPendenciesJob()),
     await safe('scheduledAvisos', () => dispatchScheduledAvisos()),
+    await safe('qualityAutoSweep', () => runQualityAutoSweep()),
   ]
   return { success: true, durationMs: Date.now() - startedAt, jobs }
 }
