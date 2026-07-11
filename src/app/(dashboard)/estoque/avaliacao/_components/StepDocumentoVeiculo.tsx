@@ -24,6 +24,61 @@ import {
   AlertTriangle, CheckCircle, Clock,
 } from 'lucide-react'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
+import type { ExtractResultField } from '@/lib/crlv/pipeline/shared/types'
+
+async function calculateFileSha256(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer()
+  const digest = await crypto.subtle.digest('SHA-256', buffer)
+
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+function getSafeFields(payload: unknown): Record<string, ExtractResultField> {
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    !('fields' in payload) ||
+    !payload.fields ||
+    typeof payload.fields !== 'object' ||
+    Array.isArray(payload.fields)
+  ) {
+    return {}
+  }
+  return payload.fields as Record<string, ExtractResultField>
+}
+
+function mapToCanonical(fields: Record<string, ExtractResultField>): ExtractedVehicle {
+  const result: any = {}
+  
+  const mapField = (srcKey: string, destKey: string, type: 'string' | 'number' = 'string') => {
+    if (fields[srcKey]) {
+      const val = fields[srcKey].validatedValue ?? fields[srcKey].normalizedValue
+      if (val !== null && val !== undefined && val !== '') {
+        if (type === 'number') {
+          const num = Number(val)
+          if (!isNaN(num)) result[destKey] = num
+        } else {
+          result[destKey] = val
+        }
+      }
+    }
+  }
+
+  mapField('placa', 'plate')
+  mapField('renavam', 'renavam')
+  mapField('chassi', 'chassis')
+  mapField('anoFabricacao', 'manufactureYear', 'number')
+  mapField('anoModelo', 'modelYear', 'number')
+
+  return result as ExtractedVehicle
+}
+
+function mapExtractionSource(strategy: string): ExtractionSource {
+  if (strategy === 'CLIENT_OCR') return 'ocr'
+  return 'pdf-text'
+}
 
 // ── Tipos públicos ────────────────────────────────────────────────────────────
 
@@ -246,7 +301,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
             fileName: file.name,
             mimeType: file.type,
             size: file.size,
-            fileHash: 'dummyhash1234567890123456789012345678901234567890123456789012345' // skip hashing here for MVP, handled properly in a real client utils
+            fileHash: await calculateFileSha256(file)
           })
         });
         const initData = await initRes.json();
@@ -261,10 +316,18 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
           fd.append('processingId', initData.processingId);
           fd.append('file', file);
           const srvRes = await fetch('/api/evaluations/vehicle-document/extract/server-native', { method: 'POST', body: fd });
+          
+          if (!srvRes.ok) {
+            const errData = await srvRes.json().catch(() => ({}));
+            throw new Error(errData.error || 'Falha no processamento servidor');
+          }
+          
           const srvData = await srvRes.json();
-          if (srvData.status === 'COMPLETED' || Object.keys(srvData.fields).length > 0) {
-            onExtracted(srvData.fields, srvData.strategyUsed, 'high');
-            setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(srvData.fields).length, message: 'Extração V2 concluída' });
+          const safeFields = getSafeFields(srvData);
+          
+          if (srvData.status === 'COMPLETED' || Object.keys(safeFields).length > 0) {
+            onExtracted(mapToCanonical(safeFields), mapExtractionSource(srvData.strategyUsed), 'high');
+            setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(safeFields).length, message: 'Extração V2 concluída' });
             return;
           }
         }
@@ -287,13 +350,18 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
             language: 'por'
           })
         });
+        if (!txtRes.ok) {
+          const errData = await txtRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Falha ao salvar resultado');
+        }
         const txtData = await txtRes.json();
+        const safeTxtFields = getSafeFields(txtData);
         
-        if (txtData.status === 'COMPLETED' || Object.keys(txtData.fields).length > 0) {
-          onExtracted(txtData.fields, txtData.strategyUsed, 'high');
-          setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(txtData.fields).length, message: 'Extração V2 concluída' });
+        if (txtData.status === 'COMPLETED' || Object.keys(safeTxtFields).length > 0) {
+          onExtracted(mapToCanonical(safeTxtFields), mapExtractionSource(txtData.strategyUsed), 'high');
+          setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(safeTxtFields).length, message: 'Extração V2 concluída' });
         } else {
-          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'V2: ' + txtData.message });
+          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'V2: ' + (txtData.message || 'Dados não encontrados') });
         }
 
       } catch (e: any) {

@@ -3798,3 +3798,41 @@ Base da branch: main
 
 **Decisão:** A V2 continua desligada em Produção. Branch isolada e preparada para QA físico.
 
+
+## 8. Correção de Erro em Produção - Nullable Fields & Hash Client (11 de Julho de 2026)
+Agente: Antigravity
+Branch: fix/document-reader-v2-real-hash-null-fields
+
+**Causa-Raiz Confirmada:**
+1. O frontend V2 enviava um \dummyhash\ estático no payload HTTP \/init\.
+2. O servidor calculava o hash real, resultando em rejeição \Hash mismatch\.
+3. A rota respondia com erro (Status 400), mas o frontend chamava \Object.keys(payload.fields)\ sem validar \ok\.
+4. Isso gerava a falha fatal \TypeError: Cannot convert undefined or null to object\.
+5. Falta de mapeamento dos campos (V2 retorna estrutura detalhada, frontend V1 esperava os canônicos achatados).
+
+**Arquivos Alterados:**
+- \src/app/(dashboard)/estoque/avaliacao/_components/StepDocumentoVeiculo.tsx\
+- \src/app/api/evaluations/vehicle-document/extract/init/route.ts\
+- \src/app/api/evaluations/vehicle-document/extract/server-native/route.ts\
+- \src/app/api/evaluations/vehicle-document/extract/text-result/route.ts\
+
+**Ações Corretivas Executadas:**
+- Implementação de Hash \SHA-256\ real via \crypto.subtle\ nativo no navegador (para arquivos pesados).
+- Adicionado parse defensivo para todas as respostas V2 (sem uso cego de \Object.keys\).
+- Implementado mapeamento isolado da interface \ExtractedVehicle\ e source (V2 -> V1 schema compatível).
+- Validação completa de Autenticação (\getServerAuthSession\) injetada nas três rotas para proteção Multi-Tenant.
+- Comportamento gracefully degraded: Se houver mismatch, timeout ou erro de JSON, o fluxo cancela e reverte de imediato para \MANUAL_REQUIRED\.
+
+**Testes Executados:**
+- Eslint nas rotas e pipeline: 0 Erros.
+- Typecheck (\	sc --noEmit\): Passou.
+- Next.js Build (\
+pm run build\): Concluído e linkado limpo.
+
+**Confirmações de Segurança:**
+- A **V1 permaneceu intacta** e funcionando com exclusividade para o sistema.
+- A **V2 continua desligada** (feature flag oculta, uso condicional para administradores, failback).
+
+**Limitações Reais:**
+- Dispositivos antigos que não possuam acesso amplo a memórias longas para \Web Crypto API\ poderão falhar na criptografia (nestes casos o catch direciona para manual).
+

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { TextResultSchema } from '@/lib/crlv/pipeline/shared/schemas';
 import { ProcessingSessionService } from '@/lib/crlv/pipeline/server/ProcessingSessionService.server';
 import { DocumentExtractionOrchestrator } from '@/lib/crlv/pipeline/server/DocumentExtractionOrchestrator.server';
+import { getServerAuthSession } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
@@ -10,7 +11,15 @@ export async function POST(req: Request) {
     
     const session = await ProcessingSessionService.getSession(data.processingId);
     
-    // Auth validation omitted for MVP, would check user ID matches session
+    const authSession = await getServerAuthSession();
+    if (!authSession?.user?.tenantId) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    if (session.tenantId !== authSession.user.tenantId && authSession.user.role !== 'MASTER') {
+      return NextResponse.json({ error: 'Acesso negado à sessão' }, { status: 403 });
+    }
+
     const result = await DocumentExtractionOrchestrator.handleClientTextResult(
       session, 
       data.pages, 

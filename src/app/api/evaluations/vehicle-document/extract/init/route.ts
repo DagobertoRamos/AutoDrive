@@ -3,6 +3,7 @@ import { ExtractInitSchema } from '@/lib/crlv/pipeline/shared/schemas';
 import { FileValidationService } from '@/lib/crlv/pipeline/server/FileValidationService.server';
 import { ProcessingSessionService } from '@/lib/crlv/pipeline/server/ProcessingSessionService.server';
 import { MAX_FILE_SIZE, MAX_TEXT_RESULT_PAGES, MAX_TEXT_RESULT_BODY_BYTES } from '@/lib/crlv/pipeline/shared/constants';
+import { getServerAuthSession } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
@@ -12,9 +13,13 @@ export async function POST(req: Request) {
     FileValidationService.validateSize(data.size);
     FileValidationService.validateMimeType(data.mimeType);
     
-    // Hardcoded mock user/tenant for now if auth is missing
-    const tenantId = 'AD-7K92P00LJ01'; 
-    const userId = 'SYSTEM';
+    const authSession = await getServerAuthSession();
+    if (!authSession?.user?.tenantId || !authSession?.user?.id) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+    
+    const tenantId = authSession.user.tenantId;
+    const userId = authSession.user.id;
 
     const session = await ProcessingSessionService.createSession({
       tenantId,
