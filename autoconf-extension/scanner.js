@@ -917,7 +917,7 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
       let snapshot = null
       try {
         const raw = preliminaryRows[i].autoconfListaRaw
-        snapshot = await window.AutoconfSnapshot.buildNegotiationSnapshot(raw, { includePhotos: false })
+        snapshot = await window.AutoconfSnapshot.buildNegotiationSnapshot(raw, { includePhotos: true })
       } catch (e) { snapshot = null }
       // Vendedor real ainda vem do /resumo (barato) — os endpoints edit não expõem.
       const detalhesLite = await fetchDetalhesNegociacao(preliminaryRows[i]).catch(() => null)

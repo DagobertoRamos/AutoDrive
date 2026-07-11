@@ -1294,6 +1294,7 @@ model DealVehicle {
   // do estoque. Fase 2 do importador V2.
   source         String?
   externalId     String?
+  photos         Json?
 
   // Relations
   deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)

@@ -468,6 +468,16 @@ async function buildNegotiationSnapshot(listaRaw, opts) {
     }
   }
 
+  // Mescla fotos completas em cada veículo (dedup por UUID já feita em fetchVehicleDetail).
+  if (vehicleDetails && Array.isArray(vehicles)) {
+    const detailMap = new Map(vehicleDetails.filter((d) => d && d.externalId).map((d) => [String(d.externalId), d]))
+    for (const v of vehicles) {
+      if (!v || !v.externalId) continue
+      const det = detailMap.get(String(v.externalId))
+      if (det && Array.isArray(det.fotos)) v.photos = det.fotos
+    }
+  }
+
   const anySectionPartial = [customer, ...(Array.isArray(vehicles) ? vehicles : [vehicles]), ...(debitsPack.debits || []), ...(Array.isArray(payments) ? payments : [payments]), appointments, history]
     .some((s) => s && s.partial)
 
@@ -489,7 +499,6 @@ async function buildNegotiationSnapshot(listaRaw, opts) {
     },
     customer,
     vehicles,
-    vehicleDetails, // null se includePhotos=false
     debits: debitsPack.debits || [],
     catalogos: debitsPack.catalogos || {},
     payments,
@@ -513,6 +522,7 @@ function _pickVehicleRow(v) {
     ano: v?.ano ?? null,
     origem: v?.origem || null,
     fotos: v?.fotosThumb || [],
+    photos: v?.photos || null,
   }
 }
 
