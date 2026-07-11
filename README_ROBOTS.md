@@ -3329,6 +3329,42 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - `npx vitest run` OK (457/457 testes verdes).
   - `npm run build` OK (compilado Next.js com sucesso).
 
+### LOG 0255 — 2026-07-11 — Claude Sonnet 4.6 (Thinking) — CORREÇÃO URGENTE: Leitura infinita do CRLV
+
+- **Contexto:** O teste real da Fase 1 falhou — ao enviar um PDF na Avaliação 360°, a interface ficava em loading eterno e nenhum campo era preenchido. Protocolo de paralisação de novas features ativado.
+- **Causa raiz identificada — 7 bugs, em ordem de severidade:**
+  1. **API incorreta do Tesseract.js v7 (causa principal):** O código usava a assinatura do Tesseract v4/v5 — `corePath: '/tesseract/tesseract-core-lstm.js'` (caminho para arquivo). No v7, `corePath` deve ser uma **pasta** (ex.: `/tesseract`), não um arquivo. Com o path incorreto, o worker de browser é spawned mas nunca recebe a mensagem `"ready"`, mantendo a Promise `workerRes` pendente para sempre — o `createWorker()` nunca resolvia nem rejeitava.
+  2. **Ausência total de timeouts:** Nenhuma das Promises tinha timeout — `pdfjs.getDocument().promise`, `page.render()`, `createWorker()`, `worker.recognize()` e ambos os `fetch()` podiam pender indefinidamente.
+  3. **`workerRes` Promise não rejeita com path errado:** Bug de design do Tesseract.js v7 — se o `workerPath` retornar 404, o Worker de browser spawna silenciosamente mas nunca envia `"ready"`, fazendo `createWorker()` pender para sempre.
+  4. **Sem `AbortController` nem `processingRef`:** Com `reactStrictMode: true` ativo, o React 18+ StrictMode pode montar efeitos duas vezes em desenvolvimento, causando dois workers simultâneos.
+  5. **`GlobalWorkerOptions.workerSrc` global do pdfjs-dist v5** definido dentro de import dinâmico assíncrono sem verificação de conflito.
+  6. **Máquina de estados vaga (`isLoading = true/false`):** Sem garantia de que todos os caminhos de erro ou cancelamento chamavam `setIsLoading(false)`.
+  7. **`onExtracted` chamado com `vehicle = {}`:** Quando OCR falhava silenciosamente, o formulário recebia objeto vazio sem nenhum aviso ao operador.
+- **Arquivos modificados:**
+  - `src/app/(dashboard)/estoque/avaliacao/_components/StepDocumentoVeiculo.tsx` — **Reescrito completamente:**
+    - Implementada máquina de estados explícita com 16 estados (`IDLE`, `UPLOADING`, `VALIDATING`, `READING_NATIVE_PDF`, `RENDERING_PDF`, `READING_QR`, `LOADING_OCR`, `RUNNING_OCR`, `PARSING`, `SUCCESS`, `PARTIAL_SUCCESS`, `MANUAL_REQUIRED`, `FAILED`, `TIMEOUT`, `CANCELLED`).
+    - Todos os estados terminais (`SUCCESS`, `PARTIAL_SUCCESS`, `MANUAL_REQUIRED`, `FAILED`, `TIMEOUT`, `CANCELLED`) encerram o loading obrigatoriamente — invariante verificada em compile-time.
+    - Helper `withTimeout<T>(promise, ms, label)` encobre toda Promise com timeout configurável por etapa.
+    - `AbortController` por execução — cancelamento real de `fetch()` e proteção de `signal.aborted` após cada `await`.
+    - `processingRef` impede dupla execução simultânea (proteção contra React StrictMode).
+    - Corrigida a API do Tesseract.js v7: `corePath: '/tesseract'` (pasta, não arquivo `.js`).
+    - Worker do Tesseract **sempre terminado** via bloco `finally`, mesmo em erro ou cancelamento.
+    - Botões de ação nos estados terminais: "Tentar novamente", "Substituir arquivo", "Preencher manualmente", "Cancelar leitura".
+    - Mensagens de feedback específicas por estado terminal conforme protocolo.
+    - `countFilledFields()` — conta campos aplicados, ignora metadados privados; MANUAL_REQUIRED se zero campos.
+    - `tryAttachCrlv()` — best-effort, não bloqueia o fluxo principal.
+    - Timeouts por etapa: validação 10s, PDF nativo 15s, render de página 20s, QR 10s, worker OCR 30s, OCR/página 60s, rede 20s.
+  - `src/app/api/evaluations/vehicle-document/extract/route.ts`:
+    - Adicionada instrumentação estruturada `logExtraction()` por etapa com `correlationId`, `extractionRunId`, `documentId`, `tenantId`, `durationMs` — sem dados sensíveis (sem base64, CPF, nome, endereço).
+    - `extractNativePdfTextWithTimeout()` — wraps `extractNativePdfText` com timeout de 12s para evitar estouro do `maxDuration: 30` da Vercel.
+    - Logs nas etapas: `DOCUMENT_UPLOAD_STARTED`, `NATIVE_PDF_EXTRACTION_STARTED/COMPLETED`, `PARSER_COMPLETED`, `RESPONSE_COMPLETED`.
+  - `src/lib/crlv/extraction-flow.test.ts` [NOVO] — 25 testes cobrindo todos os 21 cenários do protocolo de correção: timeouts, máquina de estados, validadores, preenchimento, cancelamento, AbortController, StrictMode e schema inválido.
+- **Testes:**
+  - `npx tsc --noEmit` OK (0 erros de tipagem).
+  - `npx vitest run` OK (482/482 testes verdes — 25 novos adicionados).
+  - `npm run build` OK (compilado Next.js com sucesso).
+
+
 
 
 

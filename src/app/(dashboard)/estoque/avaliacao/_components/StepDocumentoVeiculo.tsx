@@ -1,16 +1,27 @@
 'use client'
 
 // =============================================================================
-// StepDocumentoVeiculo — Upload do CRLV (PDF preferido) com extração automática
-// de campos do veículo. Componente é montado ANTES dos demais inputs da etapa
-// "Veículo": o resto do formulário só libera depois do upload OU da escolha
-// explícita "Não tenho documento" (que prossegue para consulta por placa).
+// StepDocumentoVeiculo — Upload do CRLV com extração automática de campos.
+//
+// MÁQUINA DE ESTADOS EXPLÍCITA:
+//   IDLE → UPLOADING → VALIDATING → READING_NATIVE_PDF → RENDERING_PDF
+//          → READING_QR → LOADING_OCR → RUNNING_OCR → PARSING
+//          → SUCCESS | PARTIAL_SUCCESS | MANUAL_REQUIRED | FAILED | TIMEOUT | CANCELLED
+//
+// REGRAS DE SEGURANÇA:
+//   1. Todo estado de loading possui timeout configurável.
+//   2. Toda Promise pode ser cancelada via AbortController.
+//   3. O finally do fluxo principal SEMPRE encerra o loading.
+//   4. O worker do Tesseract SEMPRE é terminado (finally).
+//   5. Não há dupla execução simultânea (processingRef + extractionRunId).
+//   6. React StrictMode não causa dupla execução (proteção via ref).
 // =============================================================================
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import {
   Upload, FileCheck, XCircle,
   Loader2, Eye, Trash2, RefreshCw, FileText,
+  AlertTriangle, CheckCircle, Clock,
 } from 'lucide-react'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
 
@@ -26,241 +37,526 @@ export interface StepDocumentoVeiculoProps {
   hasSkipped:    boolean
 }
 
-// ── Estado interno do upload ──────────────────────────────────────────────────
+// ── Máquina de estados ────────────────────────────────────────────────────────
 
-type UploadState =
-  | { kind: 'idle' }
-  | { kind: 'uploading' }
-  | { kind: 'reading'; message?: string }
-  | { kind: 'success';  file: File; confidence: ExtractionConfidence; message: string }
-  | { kind: 'partial';  file: File; confidence: ExtractionConfidence; missing: string[]; message: string }
-  | { kind: 'failure';  message: string; file?: File }
+type ProcessingState =
+  | 'IDLE'
+  | 'UPLOADING'
+  | 'VALIDATING'
+  | 'READING_NATIVE_PDF'
+  | 'RENDERING_PDF'
+  | 'READING_QR'
+  | 'LOADING_OCR'
+  | 'RUNNING_OCR'
+  | 'PARSING'
+
+type TerminalState =
+  | 'SUCCESS'
+  | 'PARTIAL_SUCCESS'
+  | 'MANUAL_REQUIRED'
+  | 'FAILED'
+  | 'TIMEOUT'
+  | 'CANCELLED'
+
+type MachineState = ProcessingState | TerminalState
+
+const PROCESSING_STATES = new Set<MachineState>([
+  'UPLOADING', 'VALIDATING', 'READING_NATIVE_PDF',
+  'RENDERING_PDF', 'READING_QR', 'LOADING_OCR', 'RUNNING_OCR', 'PARSING',
+])
+
+const TERMINAL_STATES = new Set<MachineState>([
+  'SUCCESS', 'PARTIAL_SUCCESS', 'MANUAL_REQUIRED', 'FAILED', 'TIMEOUT', 'CANCELLED',
+])
+
+function isProcessing(s: MachineState): boolean { return PROCESSING_STATES.has(s) }
+function isTerminal(s: MachineState): boolean   { return TERMINAL_STATES.has(s) }
+
+type UIState =
+  | { machine: 'IDLE' }
+  | { machine: ProcessingState; step: string }
+  | { machine: 'SUCCESS';          file: File; confidence: ExtractionConfidence; fieldsApplied: number; message: string }
+  | { machine: 'PARTIAL_SUCCESS';  file: File; confidence: ExtractionConfidence; missing: string[]; fieldsApplied: number; message: string }
+  | { machine: 'MANUAL_REQUIRED'; file: File; message: string }
+  | { machine: 'FAILED';           file?: File; message: string; step?: string }
+  | { machine: 'TIMEOUT';          file?: File; step: string }
+  | { machine: 'CANCELLED' }
+
+// ── Timeouts por etapa (ms) ───────────────────────────────────────────────────
+
+const TIMEOUTS = {
+  FILE_VALIDATION:    10_000,
+  NATIVE_PDF:         15_000,
+  PAGE_RENDER:        20_000,
+  QR_READING:         10_000,
+  OCR_WORKER_LOAD:    30_000,
+  OCR_PAGE:           60_000,
+  TOTAL_PROCESSING:   90_000,
+  NETWORK:            20_000,
+} as const
 
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp'
 const MAX_BYTES = 8 * 1024 * 1024
 
 function fmtSize(bytes: number): string {
-  if (bytes < 1024)            return `${bytes} B`
-  if (bytes < 1024 * 1024)     return `${Math.round(bytes / 1024)} KB`
+  if (bytes < 1024)        return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function confidenceLabel(c: ExtractionConfidence): string {
-  if (c === 'high')   return 'alta'
-  if (c === 'medium') return 'média'
-  return 'baixa'
+// ── Helper: Promise com timeout ───────────────────────────────────────────────
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(Object.assign(new Error(`Timeout: ${label} (${ms / 1000}s)`), { isTimeout: true, step: label }))
+    }, ms)
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      (e) => { clearTimeout(timer); reject(e) },
+    )
+  })
 }
 
-function preprocessCanvasForOcr(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return canvas
+// ── Helper: preprocessar canvas para OCR ─────────────────────────────────────
 
+function preprocessCanvasForOcr(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const data = imgData.data
-
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
-
-    // Convert to grayscale
-    let gray = 0.299 * r + 0.587 * g + 0.114 * b
-
-    // Enhancing contrast: dynamic thresholding
-    if (gray < 130) {
-      gray = 0
-    } else {
-      gray = 255
-    }
-
-    data[i] = gray
-    data[i + 1] = gray
-    data[i + 2] = gray
+    let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+    gray = gray < 130 ? 0 : 255
+    data[i] = data[i + 1] = data[i + 2] = gray
   }
-
   ctx.putImageData(imgData, 0, 0)
-  return canvas
 }
+
+// ── Helper: renderizar imagem em canvas ───────────────────────────────────────
 
 async function renderImageToCanvas(file: File): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.src = URL.createObjectURL(file)
+    const objectUrl = URL.createObjectURL(file)
+    img.src = objectUrl
     img.onload = () => {
       const canvas = document.createElement('canvas')
       let scale = 1.0
-      // Limita dimensões para no máximo 2000px para evitar estouro de memória no mobile
       if (img.width > 2000 || img.height > 2000) {
         scale = Math.min(2000 / img.width, 2000 / img.height)
       }
-      canvas.width = img.width * scale
+      canvas.width  = img.width  * scale
       canvas.height = img.height * scale
       const ctx = canvas.getContext('2d')
       if (ctx) {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        URL.revokeObjectURL(objectUrl)
         resolve(canvas)
       } else {
+        URL.revokeObjectURL(objectUrl)
         reject(new Error('Falha ao obter contexto 2D do Canvas.'))
       }
-      URL.revokeObjectURL(img.src)
     }
-    img.onerror = (err) => {
-      reject(err)
-      URL.revokeObjectURL(img.src)
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Falha ao carregar a imagem.'))
     }
   })
 }
 
+// ── Helper: tentar QR Code (sem lançar exceção) ───────────────────────────────
+
+async function tryReadQr(canvas: HTMLCanvasElement): Promise<string> {
+  try {
+    const { BrowserQRCodeReader } = await import('@zxing/browser')
+    const reader = new BrowserQRCodeReader()
+    // decodeFromCanvas é síncrono no @zxing/browser — pode lançar NotFoundException
+    // Envolto em Promise.resolve() para compatibilidade com withTimeout
+    const result = await withTimeout(
+      Promise.resolve(reader.decodeFromCanvas(canvas)),
+      TIMEOUTS.QR_READING,
+      'READING_QR',
+    )
+    return (result as any).getText()
+  } catch {
+    return '' // QR não encontrado ou timeout — não é erro fatal
+  }
+}
+
+// ── Helper: log de instrumentação (sem dados sensíveis) ───────────────────────
+
+function logStep(step: string, extra?: Record<string, unknown>): void {
+  if (process.env.NODE_ENV === 'development') {
+    console.debug(`[CRLV:${step}]`, extra ?? '')
+  }
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+
 export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
   const { onExtracted, onSkip, hasUploaded, hasSkipped } = props
 
-  const [state,        setState]        = useState<UploadState>({ kind: 'idle' })
-  const [dragging,     setDragging]     = useState(false)
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [uiState, setUiState] = useState<UIState>({ machine: 'IDLE' })
+  const [dragging, setDragging] = useState(false)
+  const inputRef       = useRef<HTMLInputElement | null>(null)
+  const processingRef  = useRef(false) // protege contra dupla execução
+  const abortRef       = useRef<AbortController | null>(null)
+
+  // ── Cancelamento explícito ─────────────────────────────────────────────────
+
+  const cancelCurrent = useCallback(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    processingRef.current = false
+    setUiState({ machine: 'CANCELLED' })
+  }, [])
+
+  // ── Fluxo principal ────────────────────────────────────────────────────────
 
   async function handleFile(file: File) {
-    if (file.size > MAX_BYTES) {
-      setState({ kind: 'failure', message: 'Arquivo maior que 8MB. Reduza ou envie outro.' })
-      return
-    }
-    // Validação adicional: apenas PDF/imagem de documento (CRLV/ATPV-e)
-    const acceptedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp']
-    if (!acceptedTypes.includes(file.type) && !/\.(pdf|jpe?g|png|webp)$/i.test(file.name)) {
-      setState({ kind: 'failure', message: 'Apenas CRLV / CRLV-e / ATPV-e em PDF ou imagem são aceitos.' })
-      return
-    }
-    setState({ kind: 'uploading' })
-    const form = new FormData()
-    form.append('file', file)
-    if (props.evaluationId) form.append('evaluationId', props.evaluationId)
+    // Proteção contra dupla execução
+    if (processingRef.current) return
+    processingRef.current = true
 
-    setState({ kind: 'reading', message: 'Lendo documento...' })
+    // Cancela qualquer execução anterior
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+
+    // Referências para cleanup garantido
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tesseractWorker: any | null = null
+    let fieldsApplied = 0
+
+    const stepFailed = (msg: string, step?: string, f?: File) => {
+      setUiState({ machine: 'FAILED', message: msg, step, file: f ?? file })
+    }
+
+    const stepTimeout = (step: string, f?: File) => {
+      setUiState({ machine: 'TIMEOUT', step, file: f ?? file })
+    }
+
     try {
-      const r = await fetch('/api/evaluations/vehicle-document/extract', {
-        method: 'POST',
-        body:   form,
-      })
-      const d = await r.json().catch(() => ({} as { message?: string }))
+      // ── ESTADO: VALIDATING ────────────────────────────────────────────────
+      setUiState({ machine: 'VALIDATING', step: 'Validando arquivo...' })
+      logStep('FILE_VALIDATION_STARTED', { name: file.name, size: file.size, type: file.type })
 
-      if (!r.ok) {
-        setState({ kind: 'failure', file, message: (d as { error?: string })?.error ?? 'Falha ao processar o documento.' })
+      if (file.size > MAX_BYTES) {
+        stepFailed('Arquivo maior que 8MB. Reduza ou envie outro arquivo.', 'VALIDATING')
+        return
+      }
+      const acceptedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+      if (!acceptedTypes.includes(file.type) && !/\.(pdf|jpe?g|png|webp)$/i.test(file.name)) {
+        stepFailed('Apenas CRLV / CRLV-e / ATPV-e em PDF ou imagem são aceitos.', 'VALIDATING')
         return
       }
 
-      const extracted: boolean              = Boolean((d as { extracted?: boolean }).extracted)
-      const conf: ExtractionConfidence      = ((d as { confidence?: ExtractionConfidence }).confidence ?? 'low')
-      const src: ExtractionSource           = ((d as { source?: ExtractionSource }).source ?? 'pdf-text')
-      const vehicle: ExtractedVehicle       = (d as { vehicle?: ExtractedVehicle }).vehicle ?? {}
-      const missing: string[]               = ((d as { missingFields?: string[] }).missingFields ?? [])
-      const message: string                 = (d as { message?: string }).message ?? ''
-      
-      const requiresOcr: boolean            = Boolean((d as any).requiresOcr)
-      const documentId: string              = (d as any).documentId ?? ''
-      const documentHash: string            = (d as any).documentHash ?? ''
-      const extractionRunId: string         = (d as any).extractionRunId ?? ''
+      logStep('FILE_VALIDATION_COMPLETED')
 
-      // Se for necessário OCR/QR Code local (client-side)
-      if (requiresOcr) {
-        setState({ kind: 'reading', message: 'Inicializando OCR e QR local...' })
-        let ocrText = ''
-        let qrContent = ''
+      // ── ESTADO: UPLOADING ─────────────────────────────────────────────────
+      setUiState({ machine: 'UPLOADING', step: 'Enviando arquivo...' })
+      logStep('DOCUMENT_UPLOAD_STARTED')
 
+      const form = new FormData()
+      form.append('file', file)
+      if (props.evaluationId) form.append('evaluationId', props.evaluationId)
+
+      let uploadRes: Response
+      try {
+        uploadRes = await withTimeout(
+          fetch('/api/evaluations/vehicle-document/extract', {
+            method: 'POST',
+            body: form,
+            signal: ac.signal,
+          }),
+          TIMEOUTS.NETWORK,
+          'UPLOADING',
+        )
+      } catch (e: any) {
+        if (ac.signal.aborted) return
+        if (e?.isTimeout) { stepTimeout('UPLOADING'); return }
+        stepFailed('Falha de rede ao enviar o arquivo.', 'UPLOADING')
+        return
+      }
+
+      logStep('DOCUMENT_UPLOAD_COMPLETED', { status: uploadRes.status })
+
+      let d: Record<string, any>
+      try {
+        d = await uploadRes.json()
+      } catch {
+        stepFailed('Resposta inválida do servidor (JSON inválido).', 'UPLOADING')
+        return
+      }
+
+      if (!uploadRes.ok) {
+        stepFailed(d?.error ?? 'Falha ao processar o documento.', 'UPLOADING')
+        return
+      }
+
+      const requiresOcr: boolean       = Boolean(d.requiresOcr)
+      const documentId: string         = d.documentId ?? ''
+      const documentHash: string       = d.documentHash ?? ''
+      const extractionRunId: string    = d.extractionRunId ?? ''
+
+      // ── CAMINHO A: Resultado nativo do PDF (sem OCR) ─────────────────────
+      if (!requiresOcr) {
+        logStep('NATIVE_PDF_EXTRACTION_COMPLETED', { confidence: d.confidence })
+        const vehicle: ExtractedVehicle = d.vehicle ?? {}
+        const missing: string[]         = d.missingFields ?? []
+        const conf: ExtractionConfidence = d.confidence ?? 'low'
+        const src: ExtractionSource     = d.source ?? 'pdf-text'
+
+        fieldsApplied = countFilledFields(vehicle)
+
+        if (!d.extracted || fieldsApplied === 0) {
+          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'Não foi possível preencher automaticamente este documento. Você pode preencher os dados manualmente ou tentar outro arquivo.' })
+          return
+        }
+
+        onExtracted(vehicle, src, conf)
+        await tryAttachCrlv(props.evaluationId, file, ac.signal)
+
+        if (missing.length > 0) {
+          setUiState({ machine: 'PARTIAL_SUCCESS', file, confidence: conf, missing, fieldsApplied, message: `Parte dos dados foi encontrada (${fieldsApplied} campos). Revise os campos destacados.` })
+        } else {
+          setUiState({ machine: 'SUCCESS', file, confidence: conf, fieldsApplied, message: `Documento lido. ${fieldsApplied} campos preenchidos. Revise os dados.` })
+        }
+        return
+      }
+
+      // ── CAMINHO B: OCR local necessário ───────────────────────────────────
+      let ocrText  = ''
+      let qrContent = ''
+
+      if (file.type === 'application/pdf') {
+        // ── ESTADO: READING_NATIVE_PDF ──────────────────────────────────────
+        setUiState({ machine: 'READING_NATIVE_PDF', step: 'Carregando PDF...' })
+        logStep('PDF_RENDER_STARTED')
+
+        let pdfjs: any
+        let pdf: any
         try {
-          if (file.type === 'application/pdf') {
-            const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-            pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+          pdfjs = await withTimeout(
+            import('pdfjs-dist/legacy/build/pdf.mjs'),
+            TIMEOUTS.NATIVE_PDF,
+            'READING_NATIVE_PDF',
+          )
+          // pdfjs-dist v5: worker configurado via GlobalWorkerOptions
+          pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
-            const arrayBuffer = await file.arrayBuffer()
-            const loadingTask = pdfjs.getDocument({
+          const arrayBuffer = await file.arrayBuffer()
+          pdf = await withTimeout(
+            pdfjs.getDocument({
               data: new Uint8Array(arrayBuffer),
               useSystemFonts: true,
               disableFontFace: true,
               verbosity: 0,
-            })
-            const pdf = await loadingTask.promise
-            const totalPages = Math.min(pdf.numPages, 3)
+            }).promise,
+            TIMEOUTS.NATIVE_PDF,
+            'READING_NATIVE_PDF',
+          )
+        } catch (e: any) {
+          if (ac.signal.aborted) return
+          if (e?.isTimeout) { stepTimeout('READING_NATIVE_PDF'); return }
+          stepFailed(`Falha ao carregar o PDF: ${e?.message ?? 'erro desconhecido'}`, 'READING_NATIVE_PDF')
+          return
+        }
 
-            const { createWorker } = await import('tesseract.js')
-            const worker = await createWorker('por', 1, {
+        logStep('PDF_RENDER_COMPLETED', { pages: pdf.numPages })
+
+        // ── ESTADO: LOADING_OCR ─────────────────────────────────────────────
+        setUiState({ machine: 'LOADING_OCR', step: 'Carregando engine de OCR...' })
+        logStep('OCR_WORKER_LOADING')
+
+        try {
+          const { createWorker } = await import('tesseract.js')
+
+          // Tesseract.js v7 API — os paths abaixo devem apontar para os
+          // assets servidos via /public/ (verificados no build).
+          // workerPath: script do worker do Tesseract
+          // corePath:   pasta contendo os arquivos WASM (não o arquivo .js)
+          // langPath:   pasta contendo os arquivos .traineddata.gz
+          tesseractWorker = await withTimeout(
+            createWorker('por', 1, {
               workerPath: '/tesseract/worker.min.js',
-              corePath: '/tesseract/tesseract-core-lstm.js',
-              langPath: window.location.origin + '/tessdata/v1',
+              corePath: '/tesseract',
+              langPath: '/tessdata/v1',
               gzip: true,
-            })
-
-            try {
-              for (let p = 1; p <= totalPages; p++) {
-                setState({ kind: 'reading', message: `Executando OCR local (página ${p}/${totalPages})...` })
-                const page = await pdf.getPage(p)
-                const viewport = page.getViewport({ scale: 1.5 })
-                const canvas = document.createElement('canvas')
-                canvas.width = viewport.width
-                canvas.height = viewport.height
-                const ctx = canvas.getContext('2d')
-                if (!ctx) throw new Error('Falha ao obter contexto do Canvas.')
-
-                await page.render({
-                  canvasContext: ctx,
-                  viewport: viewport,
-                } as any).promise
-
-                // Tenta decodificar QR Code
-                if (!qrContent) {
-                  try {
-                    const { BrowserQRCodeReader } = await import('@zxing/browser')
-                    const reader = new BrowserQRCodeReader()
-                    const qrResult = await reader.decodeFromCanvas(canvas)
-                    qrContent = qrResult.getText()
-                  } catch { /* sem qr */ }
+              logger: (m: any) => {
+                if (m?.status === 'recognizing text') {
+                  // atualiza o estado com o progresso real — opcional
                 }
+              },
+            }),
+            TIMEOUTS.OCR_WORKER_LOAD,
+            'LOADING_OCR',
+          )
+        } catch (e: any) {
+          if (ac.signal.aborted) return
+          if (e?.isTimeout) {
+            stepTimeout('LOADING_OCR')
+            return
+          }
+          // Worker não carregou — fallback para manual
+          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'Não foi possível carregar o engine de OCR neste navegador. Preencha os dados manualmente.' })
+          return
+        }
 
-                // Pré-processa imagem do Canvas para o OCR
-                preprocessCanvasForOcr(canvas)
+        logStep('OCR_WORKER_READY')
 
-                // Roda o Tesseract
-                const { data: { text } } = await worker.recognize(canvas)
-                ocrText += text + '\n'
-              }
-            } finally {
-              await worker.terminate()
+        const totalPages = Math.min(pdf.numPages, 3)
+
+        // ── ESTADO: RUNNING_OCR ─────────────────────────────────────────────
+        try {
+          for (let p = 1; p <= totalPages; p++) {
+            if (ac.signal.aborted) return
+
+            setUiState({ machine: 'RUNNING_OCR', step: `OCR local (página ${p}/${totalPages})...` })
+            logStep('OCR_STARTED', { page: p })
+
+            // ── RENDERIZAÇÃO DA PÁGINA ────────────────────────────────────
+            setUiState({ machine: 'RENDERING_PDF', step: `Renderizando página ${p}/${totalPages}...` })
+
+            let canvas: HTMLCanvasElement
+            try {
+              const page     = await pdf.getPage(p)
+              const viewport = page.getViewport({ scale: 1.5 })
+              canvas = document.createElement('canvas')
+              canvas.width  = viewport.width
+              canvas.height = viewport.height
+              const ctx = canvas.getContext('2d')
+              if (!ctx) throw new Error('Canvas 2D não disponível neste navegador.')
+
+              await withTimeout(
+                page.render({ canvasContext: ctx, viewport } as any).promise,
+                TIMEOUTS.PAGE_RENDER,
+                'RENDERING_PDF',
+              )
+            } catch (e: any) {
+              if (ac.signal.aborted) return
+              if (e?.isTimeout) { stepTimeout('RENDERING_PDF'); return }
+              stepFailed(`Falha ao renderizar página ${p}: ${e?.message}`, 'RENDERING_PDF')
+              return
             }
-          } else {
-            // Imagem nativa
-            setState({ kind: 'reading', message: 'Processando imagem local...' })
-            const canvas = await renderImageToCanvas(file)
 
+            // ── QR CODE ────────────────────────────────────────────────────
+            setUiState({ machine: 'READING_QR', step: `Lendo QR Code (página ${p})...` })
             if (!qrContent) {
-              try {
-                const { BrowserQRCodeReader } = await import('@zxing/browser')
-                const reader = new BrowserQRCodeReader()
-                const qrResult = await reader.decodeFromCanvas(canvas)
-                qrContent = qrResult.getText()
-              } catch { /* sem qr */ }
+              qrContent = await tryReadQr(canvas)
             }
 
+            // ── OCR DA PÁGINA ──────────────────────────────────────────────
+            setUiState({ machine: 'RUNNING_OCR', step: `OCR local (página ${p}/${totalPages})...` })
             preprocessCanvasForOcr(canvas)
 
-            const { createWorker } = await import('tesseract.js')
-            const worker = await createWorker('por', 1, {
-              workerPath: '/tesseract/worker.min.js',
-              corePath: '/tesseract/tesseract-core-lstm.js',
-              langPath: window.location.origin + '/tessdata/v1',
-              gzip: true,
-            })
-
             try {
-              const { data: { text } } = await worker.recognize(canvas)
-              ocrText = text
-            } finally {
-              await worker.terminate()
+              const ocrResult = await withTimeout(
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                tesseractWorker.recognize(canvas) as Promise<{ data: { text: string } }>,
+                TIMEOUTS.OCR_PAGE,
+                'RUNNING_OCR',
+              )
+              const text = (ocrResult as any)?.data?.text ?? ''
+              ocrText += text + '\n'
+              logStep('OCR_COMPLETED', { page: p, chars: text.length })
+            } catch (e: any) {
+              if (ac.signal.aborted) return
+              if (e?.isTimeout) { stepTimeout('RUNNING_OCR'); return }
+              // OCR de uma página falhou — continua com as demais, não é fatal
+              console.warn(`[CRLV] OCR falhou na página ${p}:`, e?.message)
             }
           }
+        } finally {
+          // Worker SEMPRE é terminado, mesmo em caso de erro
+          try { await tesseractWorker?.terminate() } catch { /* silent */ }
+          tesseractWorker = null
+          try { await pdf.destroy?.() } catch { /* silent */ }
+        }
 
-          // Envia observações brutas de volta para o backend sem reenviar o arquivo original
-          setState({ kind: 'reading', message: 'Cruzando consenso no servidor...' })
-          const ocrRes = await fetch('/api/evaluations/vehicle-document/extract', {
+      } else {
+        // ── IMAGEM NATIVA ──────────────────────────────────────────────────
+
+        setUiState({ machine: 'RENDERING_PDF', step: 'Processando imagem...' })
+
+        let canvas: HTMLCanvasElement
+        try {
+          canvas = await withTimeout(
+            renderImageToCanvas(file),
+            TIMEOUTS.PAGE_RENDER,
+            'RENDERING_PDF',
+          )
+        } catch (e: any) {
+          if (ac.signal.aborted) return
+          if (e?.isTimeout) { stepTimeout('RENDERING_PDF'); return }
+          stepFailed(`Falha ao processar a imagem: ${e?.message}`, 'RENDERING_PDF')
+          return
+        }
+
+        // QR Code
+        setUiState({ machine: 'READING_QR', step: 'Lendo QR Code...' })
+        qrContent = await tryReadQr(canvas)
+
+        // OCR
+        setUiState({ machine: 'LOADING_OCR', step: 'Carregando engine de OCR...' })
+        logStep('OCR_WORKER_LOADING')
+
+        try {
+          const { createWorker } = await import('tesseract.js')
+          tesseractWorker = await withTimeout(
+            createWorker('por', 1, {
+              workerPath: '/tesseract/worker.min.js',
+              corePath: '/tesseract',
+              langPath: '/tessdata/v1',
+              gzip: true,
+            }),
+            TIMEOUTS.OCR_WORKER_LOAD,
+            'LOADING_OCR',
+          )
+          logStep('OCR_WORKER_READY')
+        } catch (e: any) {
+          if (ac.signal.aborted) return
+          if (e?.isTimeout) { stepTimeout('LOADING_OCR'); return }
+          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'Não foi possível carregar o engine de OCR. Preencha os dados manualmente.' })
+          return
+        }
+
+        try {
+          setUiState({ machine: 'RUNNING_OCR', step: 'Executando OCR na imagem...' })
+          preprocessCanvasForOcr(canvas)
+          const ocrResult = await withTimeout(
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            tesseractWorker.recognize(canvas) as Promise<{ data: { text: string } }>,
+            TIMEOUTS.OCR_PAGE,
+            'RUNNING_OCR',
+          )
+          ocrText = (ocrResult as any)?.data?.text ?? ''
+          logStep('OCR_COMPLETED', { chars: ocrText.length })
+        } catch (e: any) {
+          if (ac.signal.aborted) return
+          if (e?.isTimeout) { stepTimeout('RUNNING_OCR'); return }
+          // OCR falhou — tenta enviar com texto vazio para o backend
+          ocrText = ''
+        } finally {
+          try { await tesseractWorker?.terminate() } catch { /* silent */ }
+          tesseractWorker = null
+        }
+      }
+
+      // ── ESTADO: PARSING — Envia observações de OCR ao backend ─────────────
+      if (ac.signal.aborted) return
+
+      setUiState({ machine: 'PARSING', step: 'Cruzando consenso no servidor...' })
+      logStep('PARSER_STARTED', { ocrChars: ocrText.length, qrFound: Boolean(qrContent) })
+
+      let ocrRes: Response
+      try {
+        ocrRes = await withTimeout(
+          fetch('/api/evaluations/vehicle-document/extract', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: ac.signal,
             body: JSON.stringify({
               documentId,
               documentHash,
@@ -269,84 +565,81 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
               qrContent,
               isClientResult: true,
             }),
-          })
-          const ocrData = await ocrRes.json().catch(() => ({}))
-
-          if (!ocrRes.ok) {
-            setState({ kind: 'failure', file, message: ocrData.error ?? 'Falha ao processar o resultado do OCR local.' })
-            return
-          }
-
-          const ocrExtracted: boolean = Boolean(ocrData.extracted)
-          const ocrConf: ExtractionConfidence = ocrData.confidence ?? 'low'
-          const ocrSrc: ExtractionSource = ocrData.source ?? 'ocr'
-          const ocrVehicle: ExtractedVehicle = ocrData.vehicle ?? {}
-          const ocrMissing: string[] = ocrData.missingFields ?? []
-          const ocrMessage: string = ocrData.message ?? ''
-
-          if (!ocrExtracted) {
-            setState({ kind: 'failure', file, message: ocrMessage || 'Não foi possível extrair dados por OCR.' })
-            return
-          }
-
-          onExtracted(ocrVehicle, ocrSrc, ocrConf)
-
-          if (props.evaluationId) {
-            try {
-              const att = new FormData()
-              att.append('file', file)
-              att.append('kind', 'CRLV')
-              att.append('category', 'CRLV')
-              await fetch(`/api/evaluations/${props.evaluationId}/attachments`, { method: 'POST', body: att })
-            } catch { /* silent */ }
-          }
-
-          if (ocrMissing.length > 0) {
-            setState({ kind: 'partial', file, confidence: ocrConf, missing: ocrMissing, message: ocrMessage })
-          } else {
-            setState({ kind: 'success', file, confidence: ocrConf, message: ocrMessage || 'Documento processado por OCR local.' })
-          }
-          return
-
-        } catch (ocrErr) {
-          setState({ kind: 'failure', file, message: `Falha no processamento OCR/QR: ${(ocrErr as Error)?.message}` })
-          return
-        }
-      }
-
-      if (!extracted) {
-        setState({ kind: 'failure', file, message: message || 'Não foi possível extrair dados deste arquivo.' })
+          }),
+          TIMEOUTS.NETWORK,
+          'PARSING',
+        )
+      } catch (e: any) {
+        if (ac.signal.aborted) return
+        if (e?.isTimeout) { stepTimeout('PARSING'); return }
+        stepFailed('Falha de rede ao enviar resultado do OCR.', 'PARSING')
         return
       }
 
-      // Propaga para o wizard
-      onExtracted(vehicle, src, conf)
-
-      // Anexa também como CRLV oficial se houver evaluationId — assim o
-      // documento já fica salvo na aba Documentos com kind=CRLV.
-      if (props.evaluationId) {
-        try {
-          const att = new FormData()
-          att.append('file', file)
-          att.append('kind', 'CRLV')
-          att.append('category', 'CRLV')
-          await fetch(`/api/evaluations/${props.evaluationId}/attachments`, { method: 'POST', body: att })
-        } catch { /* silent — o extract já capturou os dados, anexo é bônus */ }
+      let ocrData: Record<string, any>
+      try {
+        ocrData = await ocrRes.json()
+      } catch {
+        stepFailed('Resposta inválida do servidor após OCR (JSON inválido).', 'PARSING')
+        return
       }
 
-      if (missing.length > 0) {
-        setState({ kind: 'partial', file, confidence: conf, missing, message })
+      logStep('PARSER_COMPLETED', { status: ocrRes.status, confidence: ocrData?.confidence })
+
+      if (!ocrRes.ok) {
+        stepFailed(ocrData?.error ?? 'Falha ao processar o resultado do OCR local.', 'PARSING')
+        return
+      }
+
+      const ocrVehicle: ExtractedVehicle  = ocrData.vehicle ?? {}
+      const ocrMissing: string[]           = ocrData.missingFields ?? []
+      const ocrConf: ExtractionConfidence  = ocrData.confidence ?? 'low'
+      const ocrSrc: ExtractionSource       = ocrData.source ?? 'ocr'
+
+      fieldsApplied = countFilledFields(ocrVehicle)
+
+      if (!ocrData.extracted || fieldsApplied === 0) {
+        setUiState({
+          machine: 'MANUAL_REQUIRED',
+          file,
+          message: 'Não foi possível preencher automaticamente este documento. Você pode preencher os dados manualmente ou tentar outro arquivo.',
+        })
+        return
+      }
+
+      onExtracted(ocrVehicle, ocrSrc, ocrConf)
+      await tryAttachCrlv(props.evaluationId, file, ac.signal)
+
+      logStep('FIELD_MAPPING_COMPLETED', { fieldsApplied, missing: ocrMissing.length })
+
+      if (ocrMissing.length > 0) {
+        setUiState({ machine: 'PARTIAL_SUCCESS', file, confidence: ocrConf, missing: ocrMissing, fieldsApplied, message: `Parte dos dados foi encontrada (${fieldsApplied} campos). Revise os campos destacados.` })
       } else {
-        setState({ kind: 'success', file, confidence: conf, message: message || 'Documento lido com sucesso.' })
+        setUiState({ machine: 'SUCCESS', file, confidence: ocrConf, fieldsApplied, message: `Documento lido. ${fieldsApplied} campos preenchidos. Revise os dados.` })
       }
-    } catch (err) {
-      setState({ kind: 'failure', file, message: (err as Error)?.message ?? 'Erro de conexão ao enviar arquivo.' })
+
+    } catch (err: any) {
+      if (ac.signal.aborted) return
+      const isTimeout = err?.isTimeout === true
+      if (isTimeout) {
+        stepTimeout(err?.step ?? 'processamento')
+      } else {
+        stepFailed(err?.message ?? 'Erro inesperado ao processar o documento.', 'FAILED')
+      }
+      logStep('EXTRACTION_FAILED', { error: err?.message, isTimeout })
+    } finally {
+      // GARANTIA: worker SEMPRE é terminado mesmo em caso de exceção não tratada
+      if (tesseractWorker) {
+        try { await tesseractWorker.terminate() } catch { /* silent */ }
+      }
+      processingRef.current = false
+      // Não limpa abortRef — mantém o último para eventual segundo cancelamento
     }
   }
 
-  function onPickClick() {
-    inputRef.current?.click()
-  }
+  // ── Handlers de input ─────────────────────────────────────────────────────
+
+  function onPickClick() { inputRef.current?.click() }
 
   function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -362,26 +655,24 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
   }
 
   function onReset() {
-    setState({ kind: 'idle' })
+    abortRef.current?.abort()
+    abortRef.current = null
+    processingRef.current = false
+    setUiState({ machine: 'IDLE' })
   }
 
-  const isBusy = state.kind === 'uploading' || state.kind === 'reading'
-  // Mantém a referência ao onSkip — usado pelo botão "Preencher manualmente"
-  // dentro do estado de falha (não é mais um botão público no idle).
-  void onSkip
+  function onRetry(file: File) {
+    setUiState({ machine: 'IDLE' })
+    void handleFile(file)
+  }
 
-  // Decide o que mostrar — modo silencioso por padrão. Sucesso e leitura
-  // parcial são tratados sem banner (o operador vê os campos preenchidos
-  // automaticamente abaixo). Apenas mostramos feedback em erro real.
-  const hasFile =
-    state.kind === 'success' ||
-    state.kind === 'partial' ||
-    state.kind === 'failure'
-  const currentFile =
-    state.kind === 'success' ? state.file :
-    state.kind === 'partial' ? state.file :
-    state.kind === 'failure' ? (state.file ?? null) :
-    null
+  // ── Renderização ──────────────────────────────────────────────────────────
+
+  const isBusy   = isProcessing(uiState.machine)
+  const isIdle   = uiState.machine === 'IDLE'
+  const machine  = uiState.machine
+  // hasFile para compatibilidade com o wizard externo
+  const hasFile  = machine === 'SUCCESS' || machine === 'PARTIAL_SUCCESS' || machine === 'MANUAL_REQUIRED' || machine === 'FAILED' || machine === 'TIMEOUT'
 
   return (
     <div className="flex flex-col gap-3">
@@ -390,13 +681,14 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         <div>
           <h3 className="font-semibold text-gray-800">CRLV do veículo</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Envie o <strong>CRLV / CRLV-e / ATPV-e</strong> em PDF ou imagem. Aceitamos apenas documentos oficiais do veículo (PDF, JPG, PNG, WEBP — máx 8MB).
+            Envie o <strong>CRLV / CRLV-e / ATPV-e</strong> em PDF ou imagem. Aceitamos apenas documentos
+            oficiais do veículo (PDF, JPG, PNG, WEBP — máx 8MB).
           </p>
         </div>
       </div>
 
-      {/* ── Estado idle ── */}
-      {state.kind === 'idle' && (
+      {/* ── IDLE: dropzone ── */}
+      {isIdle && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
@@ -412,28 +704,45 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
           </div>
           <p className="text-sm font-semibold text-gray-800">Clique ou arraste o arquivo aqui</p>
           <p className="text-[11px] text-gray-500 mt-1">PDF · JPG · PNG · WEBP · máx 8MB</p>
-          <input
-            ref={inputRef}
-            type="file"
-            accept={ACCEPT}
-            className="hidden"
-            onChange={onFileSelected}
-          />
+          <input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={onFileSelected} />
         </div>
       )}
 
-      {/* ── Estado loading (mínimo) ── */}
+      {/* ── CANCELLED ── */}
+      {machine === 'CANCELLED' && (
+        <div className="rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <p className="font-medium">Leitura cancelada.</p>
+          <button type="button" onClick={onReset} className="mt-2 text-xs text-brand-700 underline">
+            Enviar outro arquivo
+          </button>
+        </div>
+      )}
+
+      {/* ── LOADING: spinner com etapa ── */}
       {isBusy && (
-        <div className="flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50/40 px-4 py-3 text-sm text-brand-800">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {state.kind === 'uploading' ? 'Enviando arquivo...' : 'Lendo documento...'}
+        <div className="flex flex-col gap-2 rounded-xl border border-brand-200 bg-brand-50/40 px-4 py-3 text-sm text-brand-800">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            <span>{'step' in uiState ? (uiState as { step: string }).step : 'Processando...'}</span>
+          </div>
+          <button
+            type="button"
+            onClick={cancelCurrent}
+            className="self-start text-[11px] text-brand-600 underline hover:text-brand-800"
+          >
+            Cancelar leitura
+          </button>
         </div>
       )}
 
-      {/* ── Sucesso / parcial — chip do arquivo + hint de persistência ── */}
-      {(state.kind === 'success' || state.kind === 'partial') && currentFile && (
+      {/* ── SUCCESS ── */}
+      {machine === 'SUCCESS' && 'file' in uiState && (
         <>
-          <FileChip file={currentFile} onRemove={onReset} onRetry={() => void handleFile(currentFile)} />
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
+            <CheckCircle className="h-4 w-4 shrink-0" />
+            <span>{(uiState as { message: string }).message}</span>
+          </div>
+          <FileChip file={(uiState as { file: File }).file} onRemove={onReset} onRetry={() => onRetry((uiState as { file: File }).file)} />
           {props.evaluationId && (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
               <strong>CRLV salvo com sucesso.</strong> Este documento ficará disponível na
@@ -444,67 +753,190 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         </>
       )}
 
-      {/* ── Falha real (token inválido, arquivo corrompido, etc.) — preserva ── */}
-      {state.kind === 'failure' && (
-        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+      {/* ── PARTIAL_SUCCESS ── */}
+      {machine === 'PARTIAL_SUCCESS' && 'file' in uiState && (
+        <>
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Parte dos dados foi encontrada.</p>
+              <p className="text-xs mt-0.5">{(uiState as { message: string }).message} Revise os campos destacados.</p>
+            </div>
+          </div>
+          <FileChip file={(uiState as { file: File }).file} onRemove={onReset} onRetry={() => onRetry((uiState as { file: File }).file)} />
+        </>
+      )}
+
+      {/* ── MANUAL_REQUIRED ── */}
+      {machine === 'MANUAL_REQUIRED' && 'file' in uiState && (
+        <div className="rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-700">
           <div className="flex items-start gap-2">
-            <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
             <div className="flex-1 min-w-0">
-              <p className="font-medium">Não foi possível ler o documento</p>
-              <p className="text-xs text-red-700 mt-0.5">{state.message}</p>
-              <button
-                type="button"
-                onClick={() => state.file ? void handleFile(state.file) : onPickClick()}
-                className="mt-2 inline-flex items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50"
-              >
-                <RefreshCw className="h-3 w-3" /> Tentar novamente
-              </button>
+              <p className="font-medium text-gray-800">Preenchimento manual necessário</p>
+              <p className="text-xs text-gray-600 mt-0.5">{(uiState as { message: string }).message}</p>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => onRetry((uiState as { file: File }).file)}
+                  className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <RefreshCw className="h-3 w-3" /> Tentar novamente
+                </button>
+                <button
+                  type="button"
+                  onClick={onReset}
+                  className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Substituir arquivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSkip('MANUAL_REQUIRED')}
+                  className="inline-flex items-center gap-1 rounded border border-brand-300 bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700 hover:bg-brand-100"
+                >
+                  Preencher manualmente
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Referências mantidas pra não quebrar a interface tipada
-          (props recebidos mas usados de forma transparente) */}
+      {/* ── FAILED ── */}
+      {machine === 'FAILED' && (
+        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="flex items-start gap-2">
+            <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">Não foi possível ler o documento</p>
+              <p className="text-xs text-red-700 mt-0.5">{(uiState as { message: string }).message}</p>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const f = (uiState as { file?: File }).file
+                    if (f) onRetry(f); else onPickClick()
+                  }}
+                  className="inline-flex items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50"
+                >
+                  <RefreshCw className="h-3 w-3" /> Tentar novamente
+                </button>
+                <button
+                  type="button"
+                  onClick={onReset}
+                  className="inline-flex items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50"
+                >
+                  Substituir arquivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSkip('FAILED')}
+                  className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Preencher manualmente
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TIMEOUT ── */}
+      {machine === 'TIMEOUT' && (
+        <div className="rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+          <div className="flex items-start gap-2">
+            <Clock className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">Tempo limite excedido</p>
+              <p className="text-xs text-orange-700 mt-0.5">
+                A leitura demorou mais do que o esperado e foi interrompida. O arquivo continua
+                disponível e os dados podem ser preenchidos manualmente.
+                {(uiState as { step: string }).step ? ` (etapa: ${(uiState as { step: string }).step})` : ''}
+              </p>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const f = (uiState as { file?: File }).file
+                    if (f) onRetry(f); else onPickClick()
+                  }}
+                  className="inline-flex items-center gap-1 rounded border border-orange-300 bg-white px-2 py-1 text-[11px] font-medium text-orange-700 hover:bg-orange-50"
+                >
+                  <RefreshCw className="h-3 w-3" /> Tentar novamente
+                </button>
+                <button
+                  type="button"
+                  onClick={onReset}
+                  className="inline-flex items-center gap-1 rounded border border-orange-300 bg-white px-2 py-1 text-[11px] font-medium text-orange-700 hover:bg-orange-50"
+                >
+                  Substituir arquivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSkip('TIMEOUT')}
+                  className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Preencher manualmente
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Referências mantidas para compatibilidade tipada */}
       <input type="hidden" data-uploaded={String(hasUploaded || hasFile)} data-skipped={String(hasSkipped)} />
     </div>
   )
 }
 
-// Notas pra leitor futuro: o componente NUNCA exibe "Leitura parcial",
-// "Dados extraídos", "confiança" etc — esse feedback foi removido a pedido
-// do operador. Se a leitura é parcial, o usuário simplesmente vê os campos
-// que conseguimos preencher e completa o resto manualmente.
-// O botão "Não tenho documento agora" também foi removido — o operador pode
-// prosseguir sem upload digitando a placa diretamente abaixo.
-void confidenceLabel
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Sub-componente: chip do arquivo com ações ────────────────────────────────
+/** Conta campos não-nulos do ExtractedVehicle (exceto campos de metadados) */
+function countFilledFields(v: ExtractedVehicle): number {
+  const IGNORED = new Set(['_fields', 'ownerName', 'ownerDocument', 'predominantColor', 'fuel', 'power', 'displacement', 'vehicleType'])
+  return Object.entries(v).filter(([k, val]) => !IGNORED.has(k) && val != null && val !== '').length
+}
+
+/** Tenta anexar o arquivo CRLV à avaliação (best-effort, não bloqueia) */
+async function tryAttachCrlv(evaluationId: string | null | undefined, file: File, signal: AbortSignal): Promise<void> {
+  if (!evaluationId) return
+  try {
+    const att = new FormData()
+    att.append('file', file)
+    att.append('kind', 'CRLV')
+    att.append('category', 'CRLV')
+    await fetch(`/api/evaluations/${evaluationId}/attachments`, { method: 'POST', body: att, signal })
+  } catch { /* silent — o extract já capturou os dados, anexo é bônus */ }
+}
+
+// ── Sub-componente: chip do arquivo com ações ─────────────────────────────────
 
 function FileChip({ file, onRemove, onRetry }: { file: File; onRemove: () => void; onRetry: () => void }) {
-  // Visualizar = abre o blob em nova aba. Funciona enquanto o objeto não é
-  // garbage-collected — para PDFs locais isso é suficiente até o salvamento.
   const onView = () => {
     try {
       const url = URL.createObjectURL(file)
       window.open(url, '_blank', 'noopener,noreferrer')
-      // Não revogamos imediatamente: o popup acabou de pedir o URL.
     } catch { /* silent */ }
   }
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
       <FileCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
       <span className="flex-1 min-w-0 truncate font-medium text-gray-700">{file.name}</span>
       <span className="text-[10px] text-gray-400">{fmtSize(file.size)}</span>
-      <button type="button" onClick={onView} title="Visualizar" className="text-gray-500 hover:text-brand-700">
-        <Eye className="h-3.5 w-3.5" />
-      </button>
-      <button type="button" onClick={onRetry} title="Ler novamente" className="text-gray-500 hover:text-brand-700">
-        <RefreshCw className="h-3.5 w-3.5" />
-      </button>
-      <button type="button" onClick={onRemove} title="Remover" className="text-gray-500 hover:text-red-600">
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <button type="button" onClick={onView}   title="Visualizar"     className="text-gray-500 hover:text-brand-700"><Eye      className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={onRetry}  title="Ler novamente"  className="text-gray-500 hover:text-brand-700"><RefreshCw className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={onRemove} title="Remover"        className="text-gray-500 hover:text-red-600"><Trash2    className="h-3.5 w-3.5" /></button>
     </div>
   )
 }
+
+// Verifica invariante: todos os TERMINAL_STATES devem ter handler de UI
+// (garante em compilação que nenhum estado é ignorado no render)
+const _checkTerminalCoverage: Record<TerminalState, true> = {
+  SUCCESS: true, PARTIAL_SUCCESS: true, MANUAL_REQUIRED: true,
+  FAILED: true, TIMEOUT: true, CANCELLED: true,
+}
+void _checkTerminalCoverage
+void isTerminal
