@@ -29,15 +29,16 @@ import {
   validateChassis,
   validateRenavam,
   parseCrlvText,
+  parseCrlvByCoordinates,
   buildExtractedField,
-  extractNativePdfText,
+  extractNativePdfData,
 } from '@/lib/crlv/parser'
 import {
   classifyVehicleCategory,
   getEngineCommercialLabel,
   resolveTransmissionType,
 } from '@/lib/crlv/deterministic'
-import { VehicleExtractedField, ExtractedVehicle } from '@/lib/crlv/types'
+import { VehicleExtractedField, ExtractedVehicle, PositionedToken } from '@/lib/crlv/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -92,12 +93,12 @@ function logExtraction(
 
 // ── Timeout para extração nativa do PDF (evita estouro do maxDuration Vercel) ──
 
-async function extractNativePdfTextWithTimeout(buffer: Buffer, timeoutMs = 12_000): Promise<string> {
-  return new Promise<string>((resolve) => {
-    const timer = setTimeout(() => resolve(''), timeoutMs)
-    extractNativePdfText(buffer)
-      .then((text) => { clearTimeout(timer); resolve(text) })
-      .catch(() => { clearTimeout(timer); resolve('') })
+async function extractNativePdfDataWithTimeout(buffer: Buffer, timeoutMs = 12_000): Promise<{ text: string, tokens: PositionedToken[] }> {
+  return new Promise<{ text: string, tokens: PositionedToken[] }>((resolve) => {
+    const timer = setTimeout(() => resolve({ text: '', tokens: [] }), timeoutMs)
+    extractNativePdfData(buffer)
+      .then((data) => { clearTimeout(timer); resolve(data) })
+      .catch(() => { clearTimeout(timer); resolve({ text: '', tokens: [] }) })
   })
 }
 
@@ -442,11 +443,19 @@ export async function POST(req: NextRequest) {
   // 3. Se for PDF, tenta extrair o texto de forma nativa e estruturada
   if (mimeType === 'application/pdf') {
     logExtraction('NATIVE_PDF_EXTRACTION_STARTED', { correlationId, tenantId: session.user.tenantId ?? undefined, extra: { mimeType, sizeBytes: buffer.byteLength } })
-    const nativeText = await extractNativePdfTextWithTimeout(buffer)
+    const { text: nativeText, tokens } = await extractNativePdfDataWithTimeout(buffer)
     logExtraction('NATIVE_PDF_EXTRACTION_COMPLETED', { correlationId, durationMs: Date.now() - t0, extra: { nativeTextLength: nativeText.length } })
     if (nativeText) {
-      // Faz o parsing das regexes sobre o texto nativo
-      const parsed = parseCrlvText(nativeText, settings.mappings)
+      // Faz o parsing por coordenadas sobre os tokens do PDF
+      let parsed = parseCrlvByCoordinates(tokens, settings.mappings)
+      
+      // Fallback para texto caso falhe
+      if (!parsed.plate && !parsed.chassis) {
+        const parsedFallback = parseCrlvText(nativeText, settings.mappings)
+        if (parsedFallback.plate || parsedFallback.chassis) {
+          parsed = parsedFallback
+        }
+      }
 
       // Monta os campos iniciais
       const fields: Record<string, VehicleExtractedField<any>> = {}
@@ -579,6 +588,28 @@ export async function POST(req: NextRequest) {
           documentId,
           documentHash,
         })
+      }
+
+      // Determina se o texto nativo era suficiente para abortar o fallback de OCR
+      const anchors = ['RENAVAM', 'PLACA', 'FABRICA', 'MODELO', 'MARCA', 'CHASSI', 'COR', 'COMBUST']
+      let anchorCount = 0
+      anchors.forEach(a => { if (new RegExp(a, 'i').test(nativeText)) anchorCount++ })
+      const isNativeSufficient = nativeText.length >= 400 && anchorCount >= 5
+
+      if (isNativeSufficient) {
+         logExtraction('RESPONSE_COMPLETED', { correlationId, durationMs: Date.now() - t0, status: 'native-mismatch', extra: { fieldsCount: Object.keys(fields).length } })
+         return NextResponse.json({
+           extracted: true,
+           requiresOcr: false,
+           confidence,
+           source: 'pdf-text',
+           vehicle: toVehicleObject(fields),
+           missingFields: missing,
+           message: 'PDF digital não gerou um preenchimento perfeito. Verifique os dados.',
+           extractionRunId: record.id,
+           documentId,
+           documentHash,
+         })
       }
 
       // Caso contrário, retorna exigindo OCR complementar no client

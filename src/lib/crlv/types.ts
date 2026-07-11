@@ -23,6 +23,28 @@ export type ValidationStatus =
   | 'NEEDS_REVIEW'
   | 'CONFIRMED'
 
+export interface PositionedToken {
+  text: string
+  normalizedText: string
+  x: number
+  y: number
+  width: number
+  height: number
+  page: number
+}
+
+export type PlateSource =
+  | "DOCUMENT_NATIVE_PDF"
+  | "DOCUMENT_OCR"
+  | "VIO_VERIFIED"
+  | "MANUAL"
+  | "PLATE_API"
+
+export type PlateLookupPolicy =
+  | "SUPPRESS"
+  | "MANUAL_ONLY"
+  | "AUTOMATIC"
+
 export type VehicleCategory = 'CAR' | 'MOTORCYCLE' | 'TRUCK' | 'OTHER' | 'UNKNOWN'
 
 export interface VehicleExtractedField<T = string | number | null> {

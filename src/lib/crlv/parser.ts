@@ -12,8 +12,8 @@ import {
   ExtractionSource,
   ValidationStatus,
   VehicleCategory,
-  VehicleDocumentExtractionResult,
   VehicleExtractedField,
+  PositionedToken,
 } from './types'
 import {
   normalizeText,
@@ -97,6 +97,196 @@ export function reconstructVisualText(items: any[]): string {
   })
 
   return lineTexts.join('\n')
+}
+
+/**
+ * Normaliza um token extraindo do texto bruto tudo que for alfanumérico.
+ */
+function normalizeTokenText(text: string): string {
+  return text.trim().toUpperCase().replace(/[\s\-_.:,;]/g, '')
+}
+
+/**
+ * Converte itens brutos do PDF.js em PositionedToken.
+ */
+export function extractPositionedTokens(items: any[], page: number): PositionedToken[] {
+  const tokens: PositionedToken[] = []
+  for (const item of items) {
+    if (!item || typeof item.str !== 'string') continue
+    const text = item.str.trim()
+    if (!text) continue
+    const transform = item.transform || [0, 0, 0, 0, 0, 0]
+    tokens.push({
+      text,
+      normalizedText: normalizeTokenText(text),
+      x: transform[4] ?? 0,
+      y: transform[5] ?? 0,
+      width: item.width ?? 0,
+      height: item.height ?? 0,
+      page,
+    })
+  }
+  return tokens
+}
+
+/**
+ * Parser por Coordenadas (CRLV Digital).
+ * Busca os valores associando rótulos (âncoras) com os textos geometricamente
+ * abaixo ou à direita deles, respeitando o formato de duas colunas do documento.
+ */
+export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any): ExtractedVehicle {
+  const v: ExtractedVehicle = {}
+
+  // 1. Agrupar em linhas (tolerância Y de 5pt)
+  const toleranceY = 5
+  const lines: { y: number; tokens: PositionedToken[] }[] = []
+
+  for (const token of tokens) {
+    let line = lines.find((l) => Math.abs(l.y - token.y) <= toleranceY)
+    if (!line) {
+      line = { y: token.y, tokens: [] }
+      lines.push(line)
+    }
+    line.tokens.push(token)
+  }
+
+  // Ordena linhas de cima para baixo
+  lines.sort((a, b) => b.y - a.y)
+  lines.forEach((l) => l.tokens.sort((a, b) => a.x - b.x))
+
+  // Função auxiliar para procurar um valor próximo a uma âncora
+  const findValueNextToOrBelow = (anchorRegex: RegExp, ignoreRegex?: RegExp, maxDistX = 300, maxDistY = 30): string | null => {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      for (let j = 0; j < line.tokens.length; j++) {
+        const token = line.tokens[j]
+        if (anchorRegex.test(token.normalizedText)) {
+          
+          // Primeiro, tenta encontrar na mesma linha, à direita
+          for (let k = j + 1; k < line.tokens.length; k++) {
+            const nextToken = line.tokens[k]
+            if (nextToken.x - token.x > maxDistX) break // Muito longe à direita
+            if (ignoreRegex && ignoreRegex.test(nextToken.normalizedText)) continue
+            return nextToken.text
+          }
+
+          // Depois, procura nas linhas de baixo, mantendo X próximo (mesma coluna)
+          for (let k = i + 1; k < lines.length; k++) {
+            const nextLine = lines[k]
+            if (line.y - nextLine.y > maxDistY) break // Muito abaixo
+            
+            for (const belowToken of nextLine.tokens) {
+               // Verifica se está "abaixo" (na mesma coluna X +- margem)
+               if (belowToken.x >= token.x - 20 && belowToken.x <= token.x + 100) {
+                 if (ignoreRegex && ignoreRegex.test(belowToken.normalizedText)) continue
+                 return belowToken.text
+               }
+            }
+          }
+        }
+      }
+    }
+    return null
+  }
+
+  // Busca de campos
+
+  // Placa Atual (Cuidado com PLACA ANTERIOR)
+  // A âncora "PLACA" pode conflitar com "PLACA ANTERIOR". Procuramos a exata.
+  const placaRaw = findValueNextToOrBelow(/^PLACA$/, /^ANTERIOR/)
+  if (placaRaw && validatePlate(placaRaw)) v.plate = placaRaw.replace(/[^A-Z0-9]/gi, '')
+
+  // RENAVAM
+  const renavamRaw = findValueNextToOrBelow(/RENAVAM/)
+  if (renavamRaw && validateRenavam(renavamRaw)) v.renavam = renavamRaw.replace(/[^\d]/g, '')
+
+  // CHASSI
+  const chassiRaw = findValueNextToOrBelow(/CHASSI/)
+  if (chassiRaw && validateChassis(chassiRaw)) v.chassis = chassiRaw.replace(/[^A-Z0-9]/gi, '')
+
+  // MARCA / MODELO / VERSÃO
+  const mmvRaw = findValueNextToOrBelow(/MARCAMODELO/)
+  if (mmvRaw) {
+    v.brandModelVersionRaw = mmvRaw
+    const slashIdx = mmvRaw.indexOf('/')
+    if (slashIdx > 0) {
+      const brandRaw = mmvRaw.slice(0, slashIdx).trim()
+      const rest = mmvRaw.slice(slashIdx + 1).trim()
+      const normBrand = mappings?.brands?.[brandRaw.toUpperCase()] ?? brandRaw
+      v.brand = normalizeText(normBrand)
+
+      const parts = rest.split(/\s+/).filter(Boolean)
+      if (parts.length > 0) {
+        v.model = parts[0]
+        if (parts.length > 1) {
+          v.version = parts.slice(1).join(' ')
+        }
+      }
+    } else {
+      v.model = mmvRaw.trim()
+    }
+  }
+
+  // ANO FABRICAÇÃO E ANO MODELO
+  const anoFabRaw = findValueNextToOrBelow(/ANOFABRICA[CÇ][AÃ]O/)
+  if (anoFabRaw) v.manufactureYear = parseInt(anoFabRaw.replace(/[^\d]/g, ''), 10)
+
+  const anoModRaw = findValueNextToOrBelow(/ANOMODELO/)
+  if (anoModRaw) v.modelYear = parseInt(anoModRaw.replace(/[^\d]/g, ''), 10)
+
+  // COR PREDOMINANTE
+  const corRaw = findValueNextToOrBelow(/CORPREDOMINANTE/)
+  if (corRaw) v.color = corRaw
+
+  // COMBUSTÍVEL
+  const combRaw = findValueNextToOrBelow(/COMBUST[IÍ]VEL/)
+  if (combRaw) {
+    const txt = combRaw.toUpperCase()
+    if (/\bALCOOL[\s\/]+GASOLINA\b|\bFLEX\b|\bBI[\s\-]?COMBUST/i.test(txt)) v.fuelType = 'FLEX'
+    else if (/\bGASOLINA\b/i.test(txt)) v.fuelType = 'GASOLINA'
+    else if (/\bDIESEL\b/i.test(txt)) v.fuelType = 'DIESEL'
+    else if (/\bH[ÍI]BRID/i.test(txt)) v.fuelType = 'HÍBRIDO'
+    else if (/\bEL[ÉE]TRIC/i.test(txt)) v.fuelType = 'ELÉTRICO'
+    else if (/\bETANOL\b|\bALCOOL\b/i.test(txt)) v.fuelType = 'ETANOL'
+    else if (/\bGNV\b/i.test(txt)) v.fuelType = 'GNV'
+
+    if (v.fuelType && mappings?.fuels?.[v.fuelType]) {
+      v.fuelType = mappings.fuels[v.fuelType]
+    }
+  }
+
+  // ESPÉCIE / TIPO
+  const espRaw = findValueNextToOrBelow(/ESP[EÉ]CIETIPO/)
+  if (espRaw) v.officialSpeciesType = espRaw
+
+  // CARROCERIA
+  const carrocRaw = findValueNextToOrBelow(/CARROCERIA/)
+  if (carrocRaw) {
+    if (/N[AÃ]OAPLIC[AÁ]VEL/i.test(carrocRaw.replace(/\s+/g, ''))) {
+       v.bodyType = 'NÃO APLICÁVEL'
+    } else {
+       const KNOWN_BODY = ['SEDAN', 'HATCH', 'SUV', 'PICAPE', 'PICKUP', 'CAMINHONETE']
+       for (const body of KNOWN_BODY) {
+         if (new RegExp(`\\b${body}\\b`, 'i').test(carrocRaw)) {
+           v.bodyType = body
+           break
+         }
+       }
+    }
+  }
+
+  // POTÊNCIA E CILINDRADA
+  const potRaw = findValueNextToOrBelow(/POT[EÊ]NCIACILINDRADA/)
+  if (potRaw) {
+    const potCilRe = /(?<!\d)(\d{2,4})\s*CV\s*[\/]\s*(\d{3,5})(?!\d)/i
+    const pcMatch = potCilRe.exec(potRaw.toUpperCase())
+    if (pcMatch) {
+      v.powerCv = Number(pcMatch[1])
+      v.displacementCc = Number(pcMatch[2])
+    }
+  }
+
+  return v
 }
 
 // Helper: aplica regex e devolve o primeiro grupo capturado (trim) ou undefined.
@@ -347,7 +537,7 @@ export function buildExtractedField<T>(
 
 // ── Reconstrução e Leitura de PDF no Servidor ───────────────────────────────
 
-export async function extractNativePdfText(buffer: Buffer): Promise<string> {
+export async function extractNativePdfData(buffer: Buffer): Promise<{ text: string, tokens: PositionedToken[] }> {
   try {
     const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
     const loadingTask = pdfjs.getDocument({
@@ -359,16 +549,29 @@ export async function extractNativePdfText(buffer: Buffer): Promise<string> {
     })
     const doc = await loadingTask.promise
     const pieces: string[] = []
+    let allTokens: PositionedToken[] = []
+    
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i)
       const content = await page.getTextContent()
       const text = reconstructVisualText(content.items)
+      const tokens = extractPositionedTokens(content.items, i)
       pieces.push(text)
+      allTokens = allTokens.concat(tokens)
     }
     try { await doc.destroy?.() } catch { /* silent */ }
-    return pieces.join('\n').trim()
+    return { text: pieces.join('\n').trim(), tokens: allTokens }
   } catch (e) {
     console.warn('[CRLV parser] pdfjs-dist falhou na extração nativa:', e)
-    return ''
+    return { text: '', tokens: [] }
   }
+}
+
+/** 
+ * Mantido por compatibilidade com `route.ts`, mas descontinuado 
+ * em favor de `extractNativePdfData`.
+ */
+export async function extractNativePdfText(buffer: Buffer): Promise<string> {
+  const { text } = await extractNativePdfData(buffer)
+  return text
 }

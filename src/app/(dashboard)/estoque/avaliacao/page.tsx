@@ -414,6 +414,7 @@ function AvaliacaoForm() {
   // ── Etapa 1 — Placa ─────────────────────────────────────────────────────────
   const [plate,        setPlate]        = useState('')
   const [plateDisplay, setPlateDisplay] = useState('')
+  const [plateLookupPolicy, setPlateLookupPolicy] = useState<'AUTOMATIC' | 'SUPPRESS'>('AUTOMATIC')
 
   // ── Etapa 2 — Veículo ────────────────────────────────────────────────────────
   const [combo, setCombo] = useState<VehicleComboSelection>({
@@ -811,6 +812,7 @@ function AvaliacaoForm() {
 
     // Placa
     if (data.plate && !plate) {
+      setPlateLookupPolicy('SUPPRESS')
       setPlate(data.plate)
       setPlateDisplay(data.plate)
       mark('plate')
@@ -1227,8 +1229,15 @@ function AvaliacaoForm() {
               <Field label="Placa" required hint="Digite a placa (formato XXX-XXXX antiga ou XXX1X23 Mercosul). Buscamos os dados automaticamente." badge={getFieldBadge('plate', plate)}>
                 <PlateInput
                   value={plate}
-                  onChange={(normal, display) => { setPlate(normal); setPlateDisplay(display) }}
+                  onChange={(normal, display) => { 
+                    setPlate(normal); 
+                    setPlateDisplay(display);
+                    // Quando o usuário alterar manualmente, retoma o lookup automático
+                    setPlateLookupPolicy('AUTOMATIC')
+                  }}
                   onLookupResult={handleLookupResult}
+                  lookupPolicy={plateLookupPolicy}
+                  lookupReason="DOCUMENT_AUTOFILL"
                 />
               </Field>
             </div>

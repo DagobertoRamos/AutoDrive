@@ -42,6 +42,18 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    const lookupReason = searchParams.get('lookupReason')
+    if (lookupReason === 'DOCUMENT_AUTOFILL') {
+      return NextResponse.json({
+        success: true,
+        found: true,
+        status: 'SKIPPED',
+        reason: 'DOCUMENT_DATA_ALREADY_AVAILABLE',
+        creditsConsumed: 0,
+        data: null
+      })
+    }
+
     // Audit log assíncrono — não bloqueia a resposta
     const tenantId = user.tenantId ?? 'MASTER'
     createSafeAuditLog({

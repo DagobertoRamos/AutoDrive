@@ -30,6 +30,18 @@ export async function GET(
     return NextResponse.json({ ok: false, found: false, error: 'Placa inválida.' }, { status: 400 })
   }
 
+  const { searchParams } = new URL(_req.url)
+  const lookupReason = searchParams.get('lookupReason')
+
+  // Se for autopreenchimento de documento, recusa a busca paga para economizar créditos
+  if (lookupReason === 'DOCUMENT_AUTOFILL') {
+    return NextResponse.json({
+      status: 'SKIPPED',
+      reason: 'DOCUMENT_DATA_ALREADY_AVAILABLE',
+      creditsConsumed: 0
+    })
+  }
+
   // ── Caminho 1: API Placas (wdapi2) ────────────────────────────────────────
   if (await isPlacasConfigured()) {
     const r = await consultPlate(plate)

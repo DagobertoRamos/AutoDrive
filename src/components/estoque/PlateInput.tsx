@@ -16,6 +16,8 @@ interface PlateInputProps {
   onChange: (normalized: string, display: string) => void
   onLookupResult?: (data: VehicleLookupData | null, status: LookupStatus) => void
   disabled?: boolean
+  lookupPolicy?: 'AUTOMATIC' | 'SUPPRESS'
+  lookupReason?: string
 }
 
 const STATUS_CONFIG: Record<LookupStatus, { icon: React.ReactNode; text: string; className: string } | null> = {
@@ -45,7 +47,7 @@ const STATUS_CONFIG: Record<LookupStatus, { icon: React.ReactNode; text: string;
 /** Delay em ms antes de disparar a consulta após a última tecla */
 const DEBOUNCE_MS = 600
 
-export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateInputProps) {
+export function PlateInput({ value, onChange, onLookupResult, disabled, lookupPolicy = 'AUTOMATIC', lookupReason }: PlateInputProps) {
   const [display,    setDisplay]    = useState('')
   const [status,     setStatus]     = useState<LookupStatus>('idle')
   const [lastLooked, setLastLooked] = useState('')
@@ -64,7 +66,13 @@ export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateI
     setLastLooked(plate)
 
     try {
-      const url = `/api/vehicles/lookup-by-plate?plate=${encodeURIComponent(plate)}${force ? '&refresh=true' : ''}`
+      const qs = new URLSearchParams()
+      qs.set('plate', plate)
+      if (force) qs.set('refresh', 'true')
+      if (lookupPolicy === 'SUPPRESS' && lookupReason) {
+        qs.set('lookupReason', lookupReason)
+      }
+      const url = `/api/vehicles/lookup-by-plate?${qs.toString()}`
       const res  = await fetch(url)
       const data = await res.json()
 
@@ -105,8 +113,8 @@ export function PlateInput({ value, onChange, onLookupResult, disabled }: PlateI
     // Cancela debounce anterior
     if (debounceRef.current) clearTimeout(debounceRef.current)
 
-    // Dispara consulta quando placa ficar válida
-    if (isValidPlate(normal)) {
+    // Dispara consulta quando placa ficar válida e não estiver suprimida
+    if (isValidPlate(normal) && lookupPolicy !== 'SUPPRESS') {
       debounceRef.current = setTimeout(() => doLookup(normal), DEBOUNCE_MS)
     }
   }
