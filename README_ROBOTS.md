@@ -3382,3 +3382,21 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Deploy seguro:** defaults irrestritos → nada quebra sem a migration nem sem configuração explícita do admin.
 - **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (465/465, +12); `npm run build` OK.
 - **Pendente:** Pipelines (multi-funil) como sub-fase dedicada; depois F4 (SLA/Follow-up+Distribuição+Timeline) e F5 (Automações+Motivos+Auditoria+Relatórios).
+
+### LOG 0252 — 2026-07-10 — Claude (Opus 4.8) — Kanban CRM: layout profissional, preenche a página, auto-ajustável
+- **Problema:** Kanban usava `grid-cols-4/8` fixo — não preenchia a largura real disponível, colapsava mal com muitas etapas, e não tinha altura controlada (não rolava por coluna).
+- **Solução — layout profissional:**
+  - `flex-row` com colunas `flex: 1 1 0; min-width: 240px; max-width: 360px`: preenche igualmente com poucas etapas, scroll horizontal com muitas.
+  - Escape negativo de padding do shell (`margin: -0.75rem / -1rem / -1.5rem` em breakpoints) + `height: calc(100dvh - topbar)` para o board preencher a tela.
+  - Cada coluna tem `overflow-y: auto` (`.col-cards`) — scroll independente por etapa.
+  - Header "sticky" dentro da coluna com `border-top-color` da cor configurada da etapa.
+- **Visual:**
+  - Barra superior com título, contadores, setas de scroll e botão atualizar.
+  - Fundo do board: `#EDF0F5` (azul-cinza frio, leitura de "escolhido" vs cinza genérico).
+  - Cards com `.lead-card:hover { box-shadow + translateY(-1px) }` e ações (Ver/Avançar) com `opacity:0 → 1` no hover desktop (sempre visíveis no mobile).
+  - Traço lateral colorido pela temperatura (vermelho/âmbar/azul) — sutil, não emoji dominante.
+  - Contagem de leads no cabeçalho como badge colorido pela cor da etapa.
+  - Skeletons de loading respeitam o layout final (mesma estrutura).
+  - Suporte dark/light via token CSS `--kb-bg` e classes dark.
+- **Arquivo:** `src/app/(dashboard)/crm/kanban/page.tsx`.
+- **Testes:** `npx tsc --noEmit` OK; `npm run build` OK.
