@@ -93,6 +93,8 @@ const LASTRUN_KEY = 'autoconfLastRun'
 const ALARM = 'autoconfAutoUpdate'
 const AUTODRIVE = 'https://auto-drive-mocha.vercel.app'
 const BATCH_SIZE = 5
+const CHECKPOINT_KEY = 'autoconfSyncCheckpoint'
+const BACKOFF_KEY = 'autoconfBackoff'
 
 const getLocal = (keys) => new Promise((r) => chrome.storage.local.get(keys, r))
 const setLocal = (obj) => new Promise((r) => chrome.storage.local.set(obj, r))
@@ -127,7 +129,7 @@ function sendToTab(tabId, msg) {
 async function ensureContentScript(tabId) {
   const ping = await sendToTab(tabId, { action: 'loginStatus' })
   if (ping.ok) return true
-  try { await chrome.scripting.executeScript({ target: { tabId }, files: ['scanner.js'] }); await sleep(400); return true } catch (e) { return false }
+  try { await chrome.scripting.executeScript({ target: { tabId }, files: ['snapshot.js', 'scanner.js'] }); await sleep(400); return true } catch (e) { return false }
 }
 
 // Enxuga o payload igual ao popup (mantém só o que a API lê).
@@ -142,6 +144,7 @@ function slimRowForApi(row) {
     veiculosSaida: row.veiculosSaida, veiculosEntrada: row.veiculosEntrada, saleAmount: row.saleAmount, purchaseAmount: row.purchaseAmount,
     pagamentos: stripRaw(row.pagamentos), debitos: stripRaw(row.debitos), financeiro: row.financeiro,
     totalPagamentosDetalhe: row.totalPagamentosDetalhe, totalDebitosDetalhe: row.totalDebitosDetalhe, sourceUrl: row.sourceUrl,
+    v2Snapshot: row.v2Snapshot || null,
   }
 }
 function chunkArray(arr, size) { const out = []; for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size)); return out }
@@ -168,7 +171,23 @@ async function sendBatch(rows, token, filters, period, acc, tag) {
 async function importRows(rows, token, filters, period) {
   const acc = { created: 0, updated: 0, skipped: 0, unmatchedSeller: 0, commissionGenerated: 0, errors: 0 }
   const batches = chunkArray(rows.map(slimRowForApi), BATCH_SIZE)
-  for (let i = 0; i < batches.length; i++) await sendBatch(batches[i], token, filters, period, acc, String(i + 1))
+  const st = await getLocal(CHECKPOINT_KEY)
+  const checkpoint = st[CHECKPOINT_KEY] || null
+  let startBatch = 0
+  if (checkpoint && checkpoint.period === (period?.periodLabel || '') && checkpoint.totalRows === rows.length) {
+    startBatch = checkpoint.nextBatch || 0
+    acc.created = checkpoint.acc?.created || 0
+    acc.updated = checkpoint.acc?.updated || 0
+    acc.skipped = checkpoint.acc?.skipped || 0
+    acc.errors = checkpoint.acc?.errors || 0
+    acc.unmatchedSeller = checkpoint.acc?.unmatchedSeller || 0
+    acc.commissionGenerated = checkpoint.acc?.commissionGenerated || 0
+  }
+  for (let i = startBatch; i < batches.length; i++) {
+    await sendBatch(batches[i], token, filters, period, acc, String(i + 1))
+    await setLocal({ [CHECKPOINT_KEY]: { period: period?.periodLabel || '', totalRows: rows.length, nextBatch: i + 1, acc: { ...acc }, at: Date.now() } })
+  }
+  await chrome.storage.local.remove(CHECKPOINT_KEY)
   return acc
 }
 
@@ -178,8 +197,10 @@ async function runAutoUpdate(opts) {
   if (autoRunning) return
   autoRunning = true
   try {
-    const st = await getLocal([AUTO_KEY, FILTER_KEY, CREDS_KEY, TOKEN_KEY])
+    const st = await getLocal([AUTO_KEY, FILTER_KEY, CREDS_KEY, TOKEN_KEY, BACKOFF_KEY])
     const cfg = st[AUTO_KEY] || {}
+    const backoff = st[BACKOFF_KEY] || { consecutiveFailures: 0, nextAllowedAt: 0 }
+    if (!force && backoff.nextAllowedAt > Date.now()) return
     if (!force && cfg.enabled !== true) return
     const token = st[TOKEN_KEY]
     if (!token) { await setLastRun(false, 'Sem token do AutoDrive salvo.'); return }
@@ -213,9 +234,21 @@ async function runAutoUpdate(opts) {
     if (!rows.length) { await setLastRun(true, 'Nada novo para importar no período.'); return }
 
     const acc = await importRows(rows, token, scan.res.filters, scan.res.period)
-    await setLastRun(!acc.errors, `Importado: +${acc.created} criadas, ${acc.updated} atualizadas, ${acc.skipped} puladas, ${acc.commissionGenerated} comissões${acc.errors ? `, ${acc.errors} erro(s)` : ''}.`)
+    const ok = !acc.errors
+    await setLastRun(ok, `Importado: +${acc.created} criadas, ${acc.updated} atualizadas, ${acc.skipped} puladas, ${acc.commissionGenerated} comissões${acc.errors ? `, ${acc.errors} erro(s)` : ''}.`)
+    if (ok) await setLocal({ [BACKOFF_KEY]: { consecutiveFailures: 0, nextAllowedAt: 0 } })
+    else {
+      const failures = (backoff.consecutiveFailures || 0) + 1
+      const delayMs = Math.min(failures * failures * 60000, 3600000)
+      await setLocal({ [BACKOFF_KEY]: { consecutiveFailures: failures, nextAllowedAt: Date.now() + delayMs } })
+    }
   } catch (e) {
     await setLastRun(false, 'Erro: ' + (e?.message || e))
+    const st2 = await getLocal(BACKOFF_KEY)
+    const b = st2[BACKOFF_KEY] || { consecutiveFailures: 0 }
+    const failures = (b.consecutiveFailures || 0) + 1
+    const delayMs = Math.min(failures * failures * 60000, 3600000)
+    await setLocal({ [BACKOFF_KEY]: { consecutiveFailures: failures, nextAllowedAt: Date.now() + delayMs } })
   } finally {
     autoRunning = false
   }

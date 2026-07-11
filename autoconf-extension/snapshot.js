@@ -670,4 +670,6 @@ window.AutoconfSnapshot = {
     fetchDebitsSnapshot, fetchPaymentsSnapshot, fetchAppointmentsSnapshot, fetchHistorySnapshot,
     _paymentTypeFromAction, _extractFormFields, _money, _parseBrDate, _iso,
   },
+  setV2Flag: (enabled) => chrome.storage.local.set({ autoconfImportPipelineV2: !!enabled }),
+  getV2Flag: () => new Promise((r) => chrome.storage.local.get('autoconfImportPipelineV2', (d) => r(!!d.autoconfImportPipelineV2))),
 }

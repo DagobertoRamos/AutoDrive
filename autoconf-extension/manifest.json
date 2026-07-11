@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AutoConf → AutoDrive (importador de negociações)",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Busca negociações filtradas do AutoConf (sessão logada) e importa no AutoDrive para gerar comissão. Atualização automática por minutos + auto-login.",
   "permissions": ["storage", "activeTab", "downloads", "alarms", "scripting", "tabs"],
   "host_permissions": ["https://app.autoconf.com.br/*", "https://auto-drive-mocha.vercel.app/*"],
