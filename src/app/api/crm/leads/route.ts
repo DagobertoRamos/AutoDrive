@@ -56,7 +56,6 @@ export async function GET(req: Request) {
     const status = sp.get('status')?.trim() || undefined
     const onlyDelayed = sp.get('delayed') === 'true'
     const sourceFilter = sp.get('source')?.trim() || ''
-    const onlyAutoconf = sourceFilter === 'AUTOCONF'
     const priority = sp.get('priority')?.trim() || ''
     const temperature = sp.get('temperature')?.trim() || ''
     const where = applyCrmScope({ tenantId }, scope, user)
@@ -64,7 +63,12 @@ export async function GET(req: Request) {
     if (status) where.status = status as never
     // Filtro de origem: 'AUTOCONF' é legado; agora aceita qualquer valor de source.
     if (sourceFilter) where.source = sourceFilter
-    if (scope === 'all' && sp.get('unitId')) where.unitId = sp.get('unitId')
+    // Filtro de responsável: só honrado para scope != 'own' (não fura o escopo).
+    const sellerFilter = sp.get('assignedToUserId')?.trim()
+    if (sellerFilter && scope !== 'own') where.assignedToUserId = sellerFilter
+    // Filtro de unidade: só para scope 'all'.
+    const unitFilter = sp.get('unitId')?.trim()
+    if (unitFilter && scope === 'all') where.unitId = unitFilter
     if (temperature) {
       // Temperatura vive em metadata.temperature (JSON field — busca aproximada).
       // Filtramos em memória abaixo (não há índice no campo JSON no Neon).

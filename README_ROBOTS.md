@@ -3416,3 +3416,17 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - Dark mode completo via classes dark.
 - **Arquivos:** `src/app/api/crm/leads/route.ts`, `src/app/(dashboard)/crm/leads/page.tsx`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.
+
+### LOG 0254 — 2026-07-10 — Claude (Opus 4.8) — CRM Leads: filtros scope-aware (cargo) + catalog CRM + /crm/context
+- **Problema:** o escopo de visibilidade já era enforçado no servidor, mas a UI não adaptava: vendedor via filtro de "responsável" (que não servia p/ ele), e os módulos CRM não estavam no catálogo (sem override por colaborador no cadastro).
+- **`src/lib/modules-catalog.ts`:** nova área **"CRM — Relacionamento e Leads"** com todos os módulos CRM (`crm`, `crm.view.own`, `crm.view.unit`, `crm.view.all`, criação, edição, transfer, kanban, settings, SDR). Isso permite override por colaborador no cadastro: ex. liberar `crm.view.unit` para um VENDEDOR específico.
+- **`GET /api/crm/context`:** novo endpoint — devolve `scope`, identidade do usuário e as listas de `sellers`/`units` adequadas ao scope (scope 'own' → sellers=[]; scope 'all' → todas as unidades). Elimina a lógica de carregamento de listas do frontend.
+- **`GET /api/crm/leads`:** `assignedToUserId` e `unitId` agora são honrados como filtros (com guardas de escopo: seller só p/ scope!=own, unit só p/ scope=all); `onlyAutoconf` removido (source genérico já cobre); headers limpos.
+- **`src/app/(dashboard)/crm/leads/page.tsx` — reescrita scope-aware:**
+  - Busca o contexto em `/api/crm/context` uma vez (scope + listas).
+  - **Filtra só o que o cargo permite**: filtro "Responsável" → só aparece para scope!=own; filtro "Unidade" → só para scope=all. Coluna "Responsável" na tabela idem.
+  - Painel de filtros com seções Origem, Prioridade, Temperatura + Responsável (scope≠own) + Unidade (scope=all) — quantidade dinâmica de colunas no grid.
+  - Chips de etapa sempre visíveis na linha 2.
+  - Cabeçalho adapta o subtítulo: "Seus leads" / "Leads da sua unidade" / "Todos os leads da empresa".
+  - Filtros no banco: `assignedToUserId`, `unitId` (server-side, não fura escopo).
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.
