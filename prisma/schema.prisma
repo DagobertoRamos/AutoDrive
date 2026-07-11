@@ -1253,6 +1253,7 @@ model Deal {
   documents        DealDocument[]
   financeProposals FinanceProposal[]           @relation("DealFinanceProposals")
   returnSnapshots  ReturnCalculationSnapshot[]
+  historyEntries   DealHistoryEntry[]
 
   @@index([tenantId])
   @@index([unitId])
@@ -1294,6 +1295,7 @@ model DealVehicle {
   // do estoque. Fase 2 do importador V2.
   source         String?
   externalId     String?
+  photos         Json?
 
   // Relations
   deal    Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -1303,6 +1305,25 @@ model DealVehicle {
   @@index([dealId, role])
   @@index([externalId])
   @@map("deal_vehicles")
+}
+
+/// Histórico de movimentações importado do sistema de origem (ex.: AutoConf).
+/// Cada entrada é identificada por externalId + source para dedup.
+model DealHistoryEntry {
+  id         String   @id @default(cuid())
+  dealId     String
+  source     String?
+  externalId String?
+  userName   String?
+  dateLabel  String?
+  summary    String?  @db.VarChar(500)
+  createdAt  DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([externalId])
+  @@map("deal_history_entries")
 }
 
 /// Serviços adicionais vinculados à negociação

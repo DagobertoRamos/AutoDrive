@@ -320,8 +320,16 @@ chrome.runtime.onMessage.addListener((req) => {
   if (req?.type === 'progress') log(req.msg)
 })
 
-chrome.storage.local.get(['autoconfToken', FILTER_KEY, AUTO_KEY, CREDS_KEY], (r) => {
+// Flag do pipeline V2 (Fase 1): consumo dos endpoints Blade reais em vez de scraping do resumo.
+// Fica em chrome.storage.local para o content script (scanner.js) ler em cada varredura.
+const V2_FLAG_KEY = 'autoconfImportPipelineV2'
+$('pipelineV2').addEventListener('change', () => {
+  chrome.storage.local.set({ [V2_FLAG_KEY]: $('pipelineV2').checked }, () => log(`Pipeline V2: ${$('pipelineV2').checked ? 'ligado' : 'desligado'}.`))
+})
+
+chrome.storage.local.get(['autoconfToken', FILTER_KEY, AUTO_KEY, CREDS_KEY, V2_FLAG_KEY], (r) => {
   if (r.autoconfToken) $('token').value = r.autoconfToken
+  $('pipelineV2').checked = r[V2_FLAG_KEY] === true
   const creds = r[CREDS_KEY] || {}
   if (creds.email) $('acEmail').value = creds.email
   if (creds.password) $('acPassword').value = creds.password

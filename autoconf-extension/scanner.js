@@ -6,6 +6,15 @@
 
 const STATUS_ALVO = ['Finalizada', 'Pendente Contrato', 'Pendente NFe']
 const MAX_PAGES = 500
+// V2 pipeline (Fase 1): consome os endpoints Blade descobertos em vez do
+// scraping do resumo. Fica atrás de uma flag para permitir rollback instantâneo
+// para o pipeline antigo. Lê a flag do chrome.storage.local em cada varredura.
+const FLAG_V2_KEY = 'autoconfImportPipelineV2'
+async function _readV2Flag() {
+  try {
+    return await new Promise((resolve) => chrome.storage.local.get(FLAG_V2_KEY, (o) => resolve(o?.[FLAG_V2_KEY] === true)))
+  } catch { return false }
+}
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -894,8 +903,42 @@ async function scanDeals({ dryRun = true, filters = {} } = {}) {
 
   if (hitPageLimit) warnings.push('A busca atingiu o limite de páginas. Refine o filtro ou aumente MAX_PAGES com cuidado.')
 
-  progress(`Lendo detalhes reais de ${preliminaryRows.length} negociações candidatas...`)
+  const v2Enabled = await _readV2Flag()
+  progress(`Lendo detalhes reais de ${preliminaryRows.length} negociações candidatas${v2Enabled ? ' (pipeline V2 ativo)' : ''}...`)
   for (let i = 0; i < preliminaryRows.length; i++) {
+    // ── Pipeline V2 (Fase 1): consome os endpoints Blade descobertos ─────────
+    // Só o vendedor + datas + status continuam vindo do resumo (a extração é
+    // barata e revalida o que os endpoints edit não cobrem — vendedor está num
+    // <select> do /resumo, não em cada tela do wizard). Todo o resto (cliente,
+    // veículos com papel real, débitos com IDs, pagamentos com tipo real,
+    // agendamentos, histórico completo) vem do snapshot V2. Se qualquer seção
+    // falhar, marca `partial: true` e usa o pipeline antigo como fallback.
+    if (v2Enabled && window.AutoconfSnapshot?.buildNegotiationSnapshot) {
+      let snapshot = null
+      try {
+        const raw = preliminaryRows[i].autoconfListaRaw
+        snapshot = await window.AutoconfSnapshot.buildNegotiationSnapshot(raw, { includePhotos: true })
+      } catch (e) { snapshot = null }
+      // Vendedor real ainda vem do /resumo (barato) — os endpoints edit não expõem.
+      const detalhesLite = await fetchDetalhesNegociacao(preliminaryRows[i]).catch(() => null)
+      preliminaryRows[i].vendedor = detalhesLite?.vendedor || preliminaryRows[i].vendedor
+      preliminaryRows[i].dataNegociacao = detalhesLite?.dataNegociacao || preliminaryRows[i].aprovadoEm || preliminaryRows[i].criadoEm || null
+      preliminaryRows[i].dataNegociacaoIso = detalhesLite?.dataNegociacaoIso || isoDate(preliminaryRows[i].dataNegociacao) || preliminaryRows[i].criadoEmIso || null
+      preliminaryRows[i].aprovadoEm = detalhesLite?.aprovadoEm || preliminaryRows[i].aprovadoEm || null
+      preliminaryRows[i].aprovadoEmIso = detalhesLite?.aprovadoEmIso || isoDate(preliminaryRows[i].aprovadoEm)
+      preliminaryRows[i].finalizadoEm = detalhesLite?.finalizadoEm || null
+      preliminaryRows[i].finalizadoEmIso = detalhesLite?.finalizadoEmIso || isoDate(preliminaryRows[i].finalizadoEm)
+      if (snapshot && !snapshot.partial) {
+        preliminaryRows[i] = window.AutoconfSnapshot.rowFromSnapshot(snapshot, preliminaryRows[i])
+        preliminaryRows[i].autoconfDetalhes = detalhesLite || null
+        if (i % 5 === 0 || i === preliminaryRows.length - 1) progress(`V2 detalhes: ${i + 1}/${preliminaryRows.length}.`, { partial: i + 1 })
+        await sleep(150)
+        continue
+      }
+      // Snapshot parcial/falhou → cai no pipeline antigo, mas preserva o que veio.
+      if (snapshot) preliminaryRows[i].v2Snapshot = snapshot
+    }
+    // ── Pipeline legado (fallback / V2 desligado) ────────────────────────────
     const detalhes = await fetchDetalhesNegociacao(preliminaryRows[i])
     preliminaryRows[i].vendedor = detalhes?.vendedor || preliminaryRows[i].vendedor
     preliminaryRows[i].dataNegociacao = detalhes?.dataNegociacao || preliminaryRows[i].aprovadoEm || preliminaryRows[i].criadoEm || null
