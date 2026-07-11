@@ -43,6 +43,64 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
+// ── Instrumentação de logs estruturados por etapa (sem dados sensíveis) ───────
+
+type LogStep =
+  | 'DOCUMENT_UPLOAD_STARTED'
+  | 'DOCUMENT_UPLOAD_COMPLETED'
+  | 'FILE_VALIDATION_STARTED'
+  | 'FILE_VALIDATION_COMPLETED'
+  | 'NATIVE_PDF_EXTRACTION_STARTED'
+  | 'NATIVE_PDF_EXTRACTION_COMPLETED'
+  | 'PARSER_STARTED'
+  | 'PARSER_COMPLETED'
+  | 'FIELD_MAPPING_STARTED'
+  | 'FIELD_MAPPING_COMPLETED'
+  | 'RESPONSE_STARTED'
+  | 'RESPONSE_COMPLETED'
+  | 'EXTRACTION_FAILED'
+  | 'EXTRACTION_TIMEOUT'
+
+function logExtraction(
+  step: LogStep,
+  ctx: {
+    correlationId: string
+    extractionRunId?: string
+    documentId?: string
+    tenantId?: string
+    durationMs?: number
+    status?: string
+    error?: string
+    extra?: Record<string, unknown>
+  },
+) {
+  // Nunca registrar: base64, CPF, nome do proprietário, endereço, secrets
+  console.log(JSON.stringify({
+    ts:           new Date().toISOString(),
+    service:      'crlv-extract',
+    step,
+    correlationId: ctx.correlationId,
+    extractionRunId: ctx.extractionRunId,
+    documentId:   ctx.documentId,
+    tenantId:     ctx.tenantId,
+    durationMs:   ctx.durationMs,
+    status:       ctx.status ?? 'ok',
+    error:        ctx.error,
+    ...ctx.extra,
+  }))
+}
+
+// ── Timeout para extração nativa do PDF (evita estouro do maxDuration Vercel) ──
+
+async function extractNativePdfTextWithTimeout(buffer: Buffer, timeoutMs = 12_000): Promise<string> {
+  return new Promise<string>((resolve) => {
+    const timer = setTimeout(() => resolve(''), timeoutMs)
+    extractNativePdfText(buffer)
+      .then((text) => { clearTimeout(timer); resolve(text) })
+      .catch(() => { clearTimeout(timer); resolve('') })
+  })
+}
+
 /**
  * Mapeia os campos da extração para um objeto simplificado ExtractedVehicle
  */
@@ -120,6 +178,9 @@ function getMissingCriticalFields(fields: Record<string, VehicleExtractedField<a
 }
 
 export async function POST(req: NextRequest) {
+  const correlationId = crypto.randomUUID()
+  const t0 = Date.now()
+
   const session = await getServerAuthSession()
   if (!session) {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
@@ -140,6 +201,8 @@ export async function POST(req: NextRequest) {
   }
 
   const contentType = (req.headers.get('content-type') ?? '').toLowerCase()
+
+  logExtraction('DOCUMENT_UPLOAD_STARTED', { correlationId, tenantId: session.user.tenantId ?? undefined })
 
   // ───────────────────────────────────────────────────────────────────────────
   // FLUXO B: Processar Observações de OCR / QR do Cliente (Segunda Passada)
@@ -378,7 +441,9 @@ export async function POST(req: NextRequest) {
 
   // 3. Se for PDF, tenta extrair o texto de forma nativa e estruturada
   if (mimeType === 'application/pdf') {
-    const nativeText = await extractNativePdfText(buffer)
+    logExtraction('NATIVE_PDF_EXTRACTION_STARTED', { correlationId, tenantId: session.user.tenantId ?? undefined, extra: { mimeType, sizeBytes: buffer.byteLength } })
+    const nativeText = await extractNativePdfTextWithTimeout(buffer)
+    logExtraction('NATIVE_PDF_EXTRACTION_COMPLETED', { correlationId, durationMs: Date.now() - t0, extra: { nativeTextLength: nativeText.length } })
     if (nativeText) {
       // Faz o parsing das regexes sobre o texto nativo
       const parsed = parseCrlvText(nativeText, settings.mappings)
@@ -452,6 +517,8 @@ export async function POST(req: NextRequest) {
       const status = missing.length === 0 && !hasInvalid ? 'SUCCESS' : 'PARTIAL'
       const confidence = missing.length === 0 ? 'high' : (fields.plate?.validationStatus === 'VALID' && (fields.chassis?.validationStatus === 'VALID' || fields.renavam?.validationStatus === 'VALID')) ? 'medium' : 'low'
 
+      logExtraction('PARSER_COMPLETED', { correlationId, durationMs: Date.now() - t0, status, extra: { missingCount: missing.length, confidence } })
+
       const extractedData = {
         status,
         confidence,
@@ -500,6 +567,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
 
       if (isHighConfidence) {
+        logExtraction('RESPONSE_COMPLETED', { correlationId, durationMs: Date.now() - t0, status: 'high-confidence', extra: { fieldsCount: Object.keys(fields).length } })
         return NextResponse.json({
           extracted: true,
           confidence,
