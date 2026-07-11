@@ -186,6 +186,250 @@ function InteractionForm({ leadId, onSaved }: { leadId: string; onSaved: () => v
   )
 }
 
+// ── VehiclesTab (Fase C) ───────────────────────────────────────────────────────
+function VehiclesTab({ leadId, workspace, onRefresh }: { leadId: string; workspace: Workspace; onRefresh: () => void }) {
+  const [vehicles, setVehicles] = useState<VehicleItem[]>(workspace.vehicleInterests)
+  const [evaluations, setEvaluations] = useState<{id:string;status:string;plate:string|null;brand:string|null;model:string|null;evaluatedValue:unknown;createdAt:string}[]>([])
+  const [showEvalForm, setShowEvalForm] = useState(false)
+  const [evalForm, setEvalForm] = useState({ plate: '', brand: '', model: '', km: '', ownerName: '' })
+  const [evalBusy, setEvalBusy] = useState(false)
+  const [evalErr, setEvalErr] = useState('')
+
+  useEffect(() => { setVehicles(workspace.vehicleInterests) }, [workspace.vehicleInterests])
+  useEffect(() => {
+    fetch(`/api/crm/leads/${leadId}/evaluations`, { credentials: 'include' }).then(r => r.json()).then(j => setEvaluations(j?.data?.map((l: {evaluation: unknown}) => l.evaluation).filter(Boolean) ?? [])).catch(() => {})
+  }, [leadId])
+
+  const startEval = async () => {
+    setEvalBusy(true); setEvalErr('')
+    try {
+      const res = await fetch(`/api/crm/leads/${leadId}/evaluations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...evalForm, km: evalForm.km ? Number(evalForm.km) : undefined }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setEvalErr(j?.error ?? 'Falha ao iniciar avaliação.'); return }
+      setShowEvalForm(false); setEvalForm({ plate: '', brand: '', model: '', km: '', ownerName: '' })
+      onRefresh()
+      // Recarrega avaliações.
+      fetch(`/api/crm/leads/${leadId}/evaluations`, { credentials: 'include' }).then(r => r.json()).then(j2 => setEvaluations(j2?.data?.map((l: {evaluation: unknown}) => l.evaluation).filter(Boolean) ?? [])).catch(() => {})
+    } finally { setEvalBusy(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Veículos de interesse */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+        <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={15} />Veículos de interesse</h3>
+        {vehicles.filter(v => !v.removedAt).length === 0 ? (
+          <p className="text-[12px] text-gray-400 italic">Nenhum veículo de interesse cadastrado.</p>
+        ) : vehicles.filter(v => !v.removedAt).map(v => (
+          <div key={v.id} className="mb-2 flex items-center gap-3 rounded-lg border border-gray-100 p-2.5 dark:border-white/5">
+            <Car size={16} className="shrink-0 text-gray-400" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[v.brand, v.model, v.version].filter(Boolean).join(' ') || '—'}</p>
+              {v.plate && <p className="font-mono text-[10px] text-gray-400">{v.plate}</p>}
+            </div>
+            <div className="flex items-center gap-1">
+              {v.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-slate-700 dark:text-gray-400">{v.status}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Avaliações (veículo do cliente) */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={15} />Veículo do cliente / Avaliações</h3>
+          <button onClick={() => setShowEvalForm(v => !v)} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+            <Plus size={12} />Iniciar avaliação
+          </button>
+        </div>
+
+        {showEvalForm && (
+          <div className="mb-4 rounded-lg border border-brand-100 bg-brand-50/60 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+            <p className="mb-2 text-[11px] font-semibold text-brand-700 dark:text-brand-300">Dados do veículo do cliente</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <input placeholder="Placa" value={evalForm.plate} onChange={e => setEvalForm(f => ({ ...f, plate: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <input placeholder="Marca" value={evalForm.brand} onChange={e => setEvalForm(f => ({ ...f, brand: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <input placeholder="Modelo" value={evalForm.model} onChange={e => setEvalForm(f => ({ ...f, model: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <input type="number" placeholder="KM" value={evalForm.km} onChange={e => setEvalForm(f => ({ ...f, km: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <input placeholder="Nome do proprietário" value={evalForm.ownerName} onChange={e => setEvalForm(f => ({ ...f, ownerName: e.target.value }))} className="sm:col-span-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            </div>
+            {evalErr && <p className="mt-1 text-[11px] text-red-600">{evalErr}</p>}
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => setShowEvalForm(false)} className="rounded px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700">Cancelar</button>
+              <button onClick={startEval} disabled={evalBusy} className="flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+                {evalBusy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}Iniciar avaliação 360°
+              </button>
+            </div>
+          </div>
+        )}
+
+        {evaluations.length === 0 ? (
+          <p className="text-[12px] text-gray-400 italic">Nenhuma avaliação vinculada.</p>
+        ) : evaluations.map(ev => (
+          <div key={ev.id} className="mb-2 flex items-center justify-between rounded-lg border border-gray-100 p-2.5 dark:border-white/5">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[ev.brand, ev.model].filter(Boolean).join(' ') || ev.plate || 'Avaliação'}</p>
+              <p className="text-[10px] tabular-nums text-gray-400">{fmtDT(ev.createdAt)} · {ev.status}</p>
+            </div>
+            <Link href={`/estoque/avaliacoes/${ev.id}`} className="ml-3 shrink-0 text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── DealsTab (Fase D/E) ────────────────────────────────────────────────────────
+function DealsTab({ leadId, workspace, lead, onRefresh }: { leadId: string; workspace: Workspace; lead: LeadDetail; onRefresh: () => void }) {
+  const [linkId, setLinkId] = useState('')
+  const [linking, setLinking] = useState(false)
+
+  const linkDeal = async () => {
+    if (!linkId.trim()) return
+    setLinking(true)
+    try {
+      await fetch(`/api/crm/leads/${leadId}/deals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ dealId: linkId.trim() }) })
+      setLinkId(''); onRefresh()
+    } finally { setLinking(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Handshake size={15} />Negociações vinculadas</h3>
+        <Link href={`/negociacoes/nova?leadId=${leadId}`} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"><Plus size={12} />Nova negociação</Link>
+      </div>
+
+      {workspace.linkedDeals.length === 0 ? (
+        <p className="py-6 text-center text-sm text-gray-400">Nenhuma negociação vinculada.</p>
+      ) : workspace.linkedDeals.map(dl => (
+        <div key={dl.id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-slate-800">
+          <Handshake size={18} className="shrink-0 text-gray-400" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-gray-900 dark:text-white">{dl.deal?.dealNumber ?? `NEG-${dl.dealId.slice(-8)}`}</p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">{dl.deal?.status ?? '—'} · {dl.deal?.type ?? '—'}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {dl.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
+            {dl.deal && <Link href={`/negociacoes/${dl.dealId}`} className="text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>}
+          </div>
+        </div>
+      ))}
+
+      {/* Vincular existente */}
+      <div className="flex gap-2">
+        <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID ou número da negociação existente" className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white" />
+        <button onClick={linkDeal} disabled={linking || !linkId.trim()} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:bg-slate-800 dark:text-gray-300">Vincular</button>
+      </div>
+    </div>
+  )
+}
+
+// ── ActionModal (Fase D/E — conversão, insucesso, reciclar, arquivar, unificar) ─
+const LOSS_REASONS = ['Sem resposta','Número inválido','Sem interesse','Preço','Avaliação da troca','Financiamento não aprovado','Entrada insuficiente','Veículo vendido','Veículo indisponível','Comprou no concorrente','Desistiu','Documentação','Prazo','Localização','Atendimento','Outro']
+
+function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: LeadDetail; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('')
+  const [note, setNote] = useState('')
+  const [competitor, setCompetitor] = useState('')
+  const [recycleAt, setRecycleAt] = useState('')
+  const [mergeId, setMergeId] = useState('')
+  const [dealId, setDealId] = useState(lead.convertedDealId ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const titles: Record<string,string> = { convert:'Marcar como sucesso', lose:'Marcar como perdido', recycle:'Reciclar / Compra futura', archive:'Arquivar lead', merge:'Unificar leads' }
+
+  const submit = async () => {
+    setBusy(true); setErr('')
+    try {
+      let url = '', body: Record<string,unknown> = {}
+      if (action === 'convert') { url = 'convert'; body = { dealId: dealId || null, note } }
+      else if (action === 'lose') { url = 'lose'; body = { outcome: 'LOST', reason, note, competitor } }
+      else if (action === 'recycle') { url = 'lose'; body = { outcome: 'RECYCLED', reason: reason || 'Compra futura', note, recycleAt: recycleAt || null } }
+      else if (action === 'archive') { url = 'archive'; body = { reason } }
+      else if (action === 'merge') { url = 'merge'; body = { secondaryLeadId: mergeId, reason } }
+      const res = await fetch(`/api/crm/leads/${lead.id}/${url}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setErr(j?.error ?? 'Falha na operação.'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800" onClick={e => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 dark:text-white">{titles[action] ?? action}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+
+        <div className="space-y-3">
+          {action === 'convert' && (
+            <>
+              <p className="text-[12px] text-gray-500 dark:text-gray-400">Sucesso = conversão em negociação. Não libera comissão ou ranking.</p>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">ID da negociação (opcional)</label>
+                <input value={dealId} onChange={e => setDealId(e.target.value)} placeholder="ID ou número da negociação" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              </div>
+            </>
+          )}
+
+          {(action === 'lose' || action === 'recycle') && (
+            <>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo *</label>
+                <select value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
+                  <option value="">— Selecione —</option>
+                  {LOSS_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              {action === 'lose' && (
+                <input value={competitor} onChange={e => setCompetitor(e.target.value)} placeholder="Concorrente (opcional)" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              )}
+              {action === 'recycle' && (
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Data de retorno</label>
+                  <input type="date" value={recycleAt} onChange={e => setRecycleAt(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                </div>
+              )}
+            </>
+          )}
+
+          {(action === 'archive' || action === 'merge') && (
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo *</label>
+              <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            </div>
+          )}
+
+          {action === 'merge' && (
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">ID do lead secundário (que será absorvido) *</label>
+              <input value={mergeId} onChange={e => setMergeId(e.target.value)} placeholder="ID do lead duplicado" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <p className="mt-1 text-[10px] text-gray-400">O lead secundário será marcado como UNIFICADO. Todo o histórico e atividades migrarão para este lead.</p>
+            </div>
+          )}
+
+          {action !== 'merge' && (
+            <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Observação (opcional)" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+          )}
+
+          {err && <p className="text-[11px] text-red-600">{err}</p>}
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm dark:border-white/10 dark:text-gray-300">Cancelar</button>
+          <button onClick={submit} disabled={busy} className={cn('flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-50', action === 'convert' ? 'bg-emerald-600 hover:bg-emerald-700' : action === 'merge' ? 'bg-purple-600 hover:bg-purple-700' : action === 'archive' ? 'bg-gray-700 hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700')}>
+            {busy ? <Loader2 size={14} className="mx-auto animate-spin" /> : titles[action]}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Visit status config ────────────────────────────────────────────────────────
 const VISIT_STATUS_CFG: Record<string,{ label:string; cls:string }> = {
   SCHEDULED:    { label: 'Agendada',     cls: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300' },
@@ -418,6 +662,7 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('summary')
   const [showTransfer, setShowTransfer] = useState(false)
+  const [activeAction, setActiveAction] = useState<string | null>(null)
   const [showInteraction, setShowInteraction] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -508,6 +753,11 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
                 <div role="menu" className="absolute right-0 top-9 z-30 min-w-[180px] rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-800">
                   {[
                     ['Transferir lead', () => { setMenuOpen(false); setShowTransfer(true) }],
+                    ['Marcar como sucesso', () => { setMenuOpen(false); setActiveAction('convert') }],
+                    ['Marcar como perdido', () => { setMenuOpen(false); setActiveAction('lose') }],
+                    ['Reciclar / Compra futura', () => { setMenuOpen(false); setActiveAction('recycle') }],
+                    ['Arquivar lead', () => { setMenuOpen(false); setActiveAction('archive') }],
+                    ['Unificar com outro lead', () => { setMenuOpen(false); setActiveAction('merge') }],
                     ['Editar lead', () => { setMenuOpen(false) }],
                   ].map(([label, action]) => (
                     <button key={String(label)} role="menuitem" onClick={() => (action as () => void)()} className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-700">{String(label)}</button>
@@ -699,55 +949,20 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
 
           {/* ── Tab: Veículos ── */}
           {tab === 'vehicles' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Veículos de interesse</h3>
-                <button className="flex items-center gap-1 text-xs text-brand-600 hover:underline"><Plus size={12} />Adicionar</button>
-              </div>
-              {workspace.vehicleInterests.length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-400">Nenhum veículo de interesse cadastrado.</p>
-              ) : workspace.vehicleInterests.map(v => (
-                <div key={v.id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-slate-800">
-                  <Car size={20} className="shrink-0 text-gray-400" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 dark:text-white">{[v.brand, v.model, v.version].filter(Boolean).join(' ') || 'Veículo não especificado'}</p>
-                    {v.plate && <p className="font-mono text-[11px] text-gray-400">{v.plate}</p>}
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {v.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
-                    <span className="text-[10px] text-gray-400">{v.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <VehiclesTab leadId={leadId} workspace={workspace} onRefresh={load} />
           )}
 
           {/* ── Tab: Negociações ── */}
           {tab === 'deals' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Negociações vinculadas</h3>
-                <Link href={`/negociacoes/nova?leadId=${leadId}`} className="flex items-center gap-1 text-xs text-brand-600 hover:underline"><Plus size={12} />Nova negociação</Link>
-              </div>
-              {workspace.linkedDeals.length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-400">Nenhuma negociação vinculada.</p>
-              ) : workspace.linkedDeals.map(dl => (
-                <div key={dl.id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-slate-800">
-                  <Handshake size={18} className="shrink-0 text-gray-400" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 dark:text-white">{dl.deal?.dealNumber ?? `NEG-${dl.dealId.slice(-8)}`}</p>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{dl.deal?.status ?? '—'} · {dl.deal?.type ?? '—'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {dl.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
-                    {dl.deal && <Link href={`/negociacoes/${dl.dealId}`} className="text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <DealsTab leadId={leadId} workspace={workspace} lead={lead} onRefresh={load} />
           )}
         </div>
       </div>
+
+      {/* ── Modais D/E (conversão, insucesso, arquivo, unificação) ── */}
+      {activeAction && (
+        <ActionModal action={activeAction} lead={lead} onClose={() => setActiveAction(null)} onDone={() => { setActiveAction(null); void load() }} />
+      )}
     </div>
   )
 }

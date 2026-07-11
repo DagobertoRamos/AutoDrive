@@ -3486,3 +3486,10 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Arquivos:** `src/app/api/crm/leads/[id]/visits/[visitId]/route.ts` (novo), `src/app/(dashboard)/crm/leads/[id]/page.tsx`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
 - **Próximas fases:** C (veículo do cliente + Avaliação 360°), D (conversão/insucesso/reciclagem/arquivamento), E (unificação de duplicados).
+
+### LOG 0260 — 2026-07-11 — Claude (Opus 4.8) — CRM Workspace 360° Fases C+D+E: avaliações, conversão, insucesso, arquivamento, unificação
+- **Fase C (veículo do cliente + avaliação):** `GET/POST /[id]/evaluations` — lista avaliações vinculadas; POST cria via `VehicleEvaluation` (reutiliza o fluxo oficial) e grava vínculo em `CrmLeadEvaluation`. `VehiclesTab` separado em dois blocos: veículos de interesse (lista) + veículo do cliente (formulário de avaliação com placa/marca/modelo/km/proprietário, link para abrir avaliação em `/estoque/avaliacoes/[id]`). Não cria automaticamente estoque.
+- **Fase D (ciclo de vida comercial):** `POST /[id]/convert` (CONVERTED — grava interação, vincula deal, audita; NÃO mexe em comissão/ranking), `POST /[id]/lose` (LOST/DISCARDED/RECYCLED — motivo obrigatório, reciclagem cria task de follow-up na data informada), `POST /[id]/archive` (soft — metadata.archived, proibido se tiver deal vinculado sem aviso).
+- **Fase E (unificação):** `GET/POST /[id]/merge` — GET preview do que será movido; POST executa em transação: migra tasks/tags/interações/visitas/veículos/summaries/deals, marca secundário DISCARDED+metadata.mergedInto, atualiza CrmMergeCandidate, registra interação no principal, audita.
+- **UI:** `ActionModal` (Fase D/E) acessível pelo menu ⋮ — Marcar como sucesso / Perdido / Reciclar / Arquivar / Unificar; campos adaptados por ação (motivo, concorrente, data de retorno, ID do secundário). `VehiclesTab` com formulário de avaliação. `DealsTab` com vínculo de negociação existente.
+- **Nenhum serviço quebrado.** Testes: `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
