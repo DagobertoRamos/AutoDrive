@@ -308,6 +308,7 @@ export default function CrmKanbanPage() {
   }, [debSearch, fSeller, fUnit])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => () => { if (debTimer.current) clearTimeout(debTimer.current) }, [])
 
   const moveLead = async (leadId: string, nextStatus: string) => {
     setError(null); setMovingId(leadId)

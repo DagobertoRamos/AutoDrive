@@ -3498,3 +3498,8 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Bug 1 (temperatura):** workspace page usava `patchLead({ metadata: { temperature } })` — o PATCH do lead aceita `metadata` mas sobrescreveria os outros campos (archived, etc). Corrigido: usa o endpoint dedicado `PATCH /[id]/temperature` que faz merge correto.
 - **Bug 2 (archive select):** `archive/route.ts` não incluía `metadata` no select do lead — `currentMeta` sempre seria `undefined`, e o spread do metadata arquivado não funcionaria. Corrigido: `metadata: true` adicionado ao select.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
+
+### LOG 0262 — 2026-07-11 — Claude (Opus 4.8) — Varredura de bugs + fix memory leak timer kanban
+- **Bug: Timer debounce kanban sem cleanup no unmount** — `debTimer.current` não era limpo ao desmontar o componente do Kanban (React memory leak). Adicionado `useEffect(() => () => clearTimeout(...), [])`.
+- **Varredura ampla executada:** tsc (0 erros), 494 testes (9 suites: ranking, seller-queue, pendencies, CRM, CRLV, plate, validadores, extraction-flow, routes-integration), build, imports circulares (nenhum), N+1 nas novas rotas (nenhum detectado), console.log em produção nos novos arquivos (zero), guard de archive com metadata correto (já fixado em LOG 0261).
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
