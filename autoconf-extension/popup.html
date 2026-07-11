@@ -57,6 +57,12 @@
   </div>
 
   <div class="section">
+    <h2>Pipeline de importação</h2>
+    <p class="sub" style="margin:2px 0 6px">Pipeline V2 consome os endpoints reais do AutoConf (cliente, veículos, débitos, pagamentos, agendamento, histórico) em vez do scraping do resumo. Muito mais completo, mas está em teste — deixe DESLIGADO se precisar do comportamento anterior.</p>
+    <label class="check" style="font-size:12px; color:var(--ink)"><input id="pipelineV2" type="checkbox" /><span><strong>Usar pipeline V2</strong> (recomendado a partir da v0.5.0)</span></label>
+  </div>
+
+  <div class="section">
     <h2>Login do AutoConf (auto-login)</h2>
     <p class="sub" style="margin:2px 0 6px">Se a sessão cair, a extensão loga sozinha. Guardado só neste navegador (não é enviado ao AutoDrive).</p>
     <div class="row" style="margin-top:4px">
