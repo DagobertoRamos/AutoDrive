@@ -551,76 +551,27 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // Se obtivemos alta confiança, já encerra sem pedir OCR local
+      // PDF com texto nativo NUNCA deve solicitar OCR local.
+      // OCR só é cabível para imagens e PDFs escaneados (sem camada de texto).
+      // Se o parser não extraiu todos os campos, o usuário revisa manualmente —
+      // mas não tentamos carregar Tesseract em cima de um documento já legível.
       const isHighConfidence = status === 'SUCCESS' && confidence === 'high'
-      
-      // Registra auditoria
-      await prisma.auditLog.create({
-        data: {
-          tenantId: session.user.tenantId,
-          userId: session.user.id,
-          userName: session.user.name,
-          userRole: session.user.role,
-          action: 'CREATE',
-          entity: 'VehicleDocumentExtraction',
-          entityId: record.id,
-          status: 'SUCCESS',
-          afterData: {
-            documentHash,
-            mimeType,
-            status,
-            confidence,
-            isHighConfidence,
-          } as any,
-        },
-      }).catch(() => {})
-
-      if (isHighConfidence) {
-        logExtraction('RESPONSE_COMPLETED', { correlationId, durationMs: Date.now() - t0, status: 'high-confidence', extra: { fieldsCount: Object.keys(fields).length } })
-        return NextResponse.json({
-          extracted: true,
-          confidence,
-          source: 'pdf-text',
-          vehicle: toVehicleObject(fields),
-          missingFields: missing,
-          message: 'Documento em PDF nativo lido com sucesso.',
-          extractionRunId: record.id,
-          documentId,
-          documentHash,
-        })
-      }
-
-      // Determina se o texto nativo era suficiente para abortar o fallback de OCR
-      const anchors = ['RENAVAM', 'PLACA', 'FABRICA', 'MODELO', 'MARCA', 'CHASSI', 'COR', 'COMBUST']
-      let anchorCount = 0
-      anchors.forEach(a => { if (new RegExp(a, 'i').test(nativeText)) anchorCount++ })
-      const isNativeSufficient = nativeText.length >= 400 && anchorCount >= 5
-
-      if (isNativeSufficient) {
-         logExtraction('RESPONSE_COMPLETED', { correlationId, durationMs: Date.now() - t0, status: 'native-mismatch', extra: { fieldsCount: Object.keys(fields).length } })
-         return NextResponse.json({
-           extracted: true,
-           requiresOcr: false,
-           confidence,
-           source: 'pdf-text',
-           vehicle: toVehicleObject(fields),
-           missingFields: missing,
-           message: 'PDF digital não gerou um preenchimento perfeito. Verifique os dados.',
-           extractionRunId: record.id,
-           documentId,
-           documentHash,
-         })
-      }
-
-      // Caso contrário, retorna exigindo OCR complementar no client
+      logExtraction('RESPONSE_COMPLETED', {
+        correlationId,
+        durationMs: Date.now() - t0,
+        status: isHighConfidence ? 'high-confidence' : 'partial-native',
+        extra: { fieldsCount: Object.keys(fields).length, missingCount: missing.length },
+      })
       return NextResponse.json({
         extracted: true,
-        requiresOcr: true,
+        requiresOcr: false,
         confidence,
         source: 'pdf-text',
         vehicle: toVehicleObject(fields),
         missingFields: missing,
-        message: 'PDF digital com texto parcial. Executando OCR local para complementar.',
+        message: missing.length === 0
+          ? 'Documento em PDF nativo lido com sucesso.'
+          : `Documento lido (${Object.keys(fields).length - missing.length} campos). Revise os campos destacados.`,
         extractionRunId: record.id,
         documentId,
         documentHash,
