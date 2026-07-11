@@ -132,6 +132,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Painel da Unidade',         href: '/vendedor-da-vez/painel',                   icon: LayoutDashboard, module: 'sellerQueue.lead' },
       { label: 'Relatórios',                href: '/vendedor-da-vez/relatorios',               icon: BarChart3,       module: 'sellerQueue.reports' },
       { label: 'Conformidade e Penalidades',href: '/vendedor-da-vez/conformidade',             icon: ShieldAlert,     module: 'sellerQueue.reports' },
+      { label: 'Score de Qualidade',        href: '/vendedor-da-vez/qualidade',                icon: ShieldAlert,     module: 'sellerQueue.view' },
       { label: 'Configurações',             href: '/vendedor-da-vez/configuracoes',            icon: Settings,        module: 'sellerQueue.settings' },
     ],
   },
