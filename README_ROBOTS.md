@@ -3439,7 +3439,6 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Kanban (`crm/kanban/page.tsx`):** adicionado filtro de Vendedor e Unidade na barra superior (via `/api/crm/context`); filtros passados no fetch de leads; usam scope para decidir se aparecem.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.
 
-<<<<<<< HEAD
 ### LOG 0256 — 2026-07-10 — Claude (Opus 4.8) — CRM Kanban: card profissional (número, veículo, visita, etiquetas, temperatura BOILING, soft delete, menu 3 pontos)
 - **Diagnóstico entregue:** MarketingLead NÃO tem leadNumber nem soft delete. Vehicle vinculado por vehicleId (FK soft, sem relação Prisma). Próxima visita é MarketingLeadTask com dueAt+status=PENDING. Negociação é Deal via convertedDealId. Sem crm.lead.delete. Temperatura apenas HOT/WARM/COLD/UNCLASSIFIED (BOILING inexistente). Tudo enriquecido em LOTE (zero N+1).
 - **Schema/migration `20260710100000_crm_card_lead_number_softdelete`:** `leadNumber Int?` (@@unique tenantId+leadNumber) + `deletedAt/deletedByUserId/deleteReason`. **Aplicar manual na Neon.**
@@ -3458,15 +3457,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Cockpit:** subtítulo "Escopo atual: own/unit/all" → "Todos os dados da empresa" / "Dados da sua unidade" / "Seus dados" / "Visão geral".
 - **Arquivos:** `src/app/(dashboard)/crm/atendimentos/page.tsx`, `src/app/(dashboard)/crm/kanban/page.tsx`, `src/app/(dashboard)/crm/cockpit/page.tsx`, `src/app/api/crm/attendances/route.ts`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
-=======
-### LOG 0256 — 2026-07-10 — Codex (GPT-5) — Pendências: ajuste de navegação e fallback amigável nas configurações
+
+### LOG 0258 — 2026-07-10 — Codex (GPT-5) — Pendências: ajuste de navegação e fallback amigável nas configurações
 - **Escopo:** correção pontual na área de Pendências para eliminar o 404 confuso nas configurações e deixar claro que existem duas telas com propósitos diferentes.
 - **Arquivos alterados:**
   - `src/components/layout/navigation.ts`: renomeados os itens do menu de Pendências para **"Tipos e avisos"** (`/pendencias/configuracoes`) e **"Central e automações"** (`/pendencias/configuracoes/gerais`), reduzindo ambiguidade.
   - `src/app/(dashboard)/pendencias/configuracoes/gerais/page.tsx`: quando o usuário não tem acesso ao módulo `pendencies.settings` ou a funcionalidade está desligada na loja, a rota deixa de cair em `404` e redireciona para `/pendencias/configuracoes?info=central-indisponivel`.
   - `src/app/(dashboard)/pendencias/configuracoes/page.tsx`: adicionado aviso explicando a diferença entre as duas telas e mensagem contextual quando o usuário é redirecionado da área geral.
 - **Resultado:** a loja continua usando normalmente a configuração operacional de pendências; a configuração mais sensível da Central não “some” mais com erro 404 para quem não pode acessá-la.
->>>>>>> 7f73daf (Ajustar configuracoes de pendencias)
+
 
 ### LOG 0258 — 2026-07-10 — Claude (Opus 4.8) — CRM Workspace 360° Fase A: fundação, transferência, interações, resumo, visitas, veículos, negociações
 - **Diagnóstico completo entregue** antes de codar: MarketingLead + tasks + assignments já existem; faltavam N:M para veículos de interesse, negociações múltiplas, interações ricas, resumo comercial, visitas estruturadas e avaliações. Decisão: tabelas satélite com FK soft (não toca marketing_leads quente).
@@ -3551,3 +3550,63 @@ Abas: Visão Geral · Ocorrências · Penalidades · Restrições da Fila · Min
 - **Próximas ações interativas:** lista de tasks pendentes com tipo (Follow-up/Ligação/WhatsApp/E-mail/Visita), data, responsável, botão ✓ e caixa de comentário para vendedor/gerente/SDR interagirem. Formulário de criação de nova ação. Concluídas ficam em `<details>` recolhível. Enter no comentário finaliza a task.
 - **Alertas / Pendências vinculadas:** seção para criar pendência de visita agendada, follow-up, acompanhamento ou alimentar sistema, com link direto para a Central de Pendências. Suporte a lembrete automático.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
+
+### LOG 0259 — 2026-07-10 — Codex (GPT-5) — CRM Workspace 360 FASE A: fundação do workspace do lead
+- **Frente atual desta IA:** abertura da trilha do **Lead Workspace 360** sem misturar com outras frentes; esta entrega cobre apenas a **FASE A** do prompt mestre.
+- **Diagnóstico consolidado:** o detalhe do lead já existia, mas ainda operava como tela simples. A base de dados e os vínculos já disponíveis no sistema eram suficientes para iniciar o workspace sem criar estruturas paralelas.
+- **`src/app/api/crm/leads/[id]/route.ts`:**
+  - enriquecido o payload com **DTO de resumo** (`openTasks`, `completedTasks`, `duplicateCandidates`, `timelineEvents`, `nextTask`);
+  - adicionadas **permissões calculadas** no payload (`canEdit`, `canTransfer`, `canDelete`);
+  - expostos `leadNumber`, `sourceLabel` e `stageDisplayName` no bloco do lead para o cabeçalho e a leitura operacional.
+- **`src/app/(dashboard)/crm/leads/[id]/page.tsx`:**
+  - reestruturada a tela para um **workspace-base** com cabeçalho fixo, métricas rápidas e navegação por abas;
+  - criada a base de **edição do lead** respeitando permissão real do usuário;
+  - organizada a visualização em **Resumo**, **Linha do tempo**, **Atividades**, **Veículos** e **Dados e auditoria**;
+  - mantidos e reposicionados os blocos já existentes de tarefas, atendimentos, chamadas e timeline, agora em formato mais operacional.
+- **Resultado funcional:** o lead passa a ter uma fundação de workspace 360 pronta para receber, nas próximas fases, transferências, interações estruturadas, visitas, avaliações, negociações múltiplas e merge.
+
+### LOG 0260 — 2026-07-10 — Codex (GPT-5) — CRM Workspace 360 FASE B: transferência, interação e auditoria do lead
+- **Frente atual desta IA:** continuação direta da trilha do **Lead Workspace 360**, agora na **FASE B**, sem abrir fluxos paralelos.
+- **`src/app/api/crm/leads/[id]/route.ts`:**
+  - o detalhe do lead passou a devolver **resumo comercial** por tipo de interação;
+  - foram adicionados **candidatos de transferência** por unidade;
+  - a rota agora distingue **transferência** de atualização comum e grava auditoria com origem, destino e motivo;
+  - o proprietário do lead passou a poder transferir o próprio lead e a gestão segue podendo redistribuir leads da unidade.
+- **`src/app/api/crm/leads/[id]/interactions/route.ts`:**
+  - nova rota para registrar interações estruturadas do lead (`ligação`, `WhatsApp`, `nota`, `proposta`, `resumo`, `follow-up`, `correção`);
+  - toda interação atualiza `lastContactAt` e gera auditoria explícita em `AuditLog`.
+- **`src/app/(dashboard)/crm/leads/[id]/page.tsx`:**
+  - adicionada área operacional de **transferência do lead** com motivo;
+  - adicionada área de **registro de interação** com resumo, detalhe e próximo passo;
+  - o workspace agora exibe **histórico recente de interações** e um resumo comercial derivado dessas ações.
+- **Resultado funcional:** o workspace do lead deixa de ser apenas consulta e passa a registrar movimentação comercial real, com rastreabilidade mínima e pronta para as próximas fases de visitas, avaliações e negociações.
+
+### LOG 0261 — 2026-07-10 — Codex (GPT-5) — CRM Workspace 360 FASE C: visitas e follow-ups sobre a base existente
+- **Frente atual desta IA:** evolução da trilha do **Lead Workspace 360** para a **FASE C**, reaproveitando `MarketingLeadTask` como fonte oficial das visitas e follow-ups, sem migration nova.
+- **`src/app/api/crm/leads/[id]/route.ts`:**
+  - adicionado **resumo de visitas** no payload (`nextVisit`, agendadas, concluídas, no-show e canceladas);
+  - a próxima visita agora sobe para o resumo operacional do lead.
+- **`src/app/api/crm/tasks/[taskId]/route.ts`:**
+  - ajustes para tratar status operacionais de visita (`CONFIRMED`, `RESCHEDULED`, `CANCELED`, `NO_SHOW`) com auditoria melhor e `completedAt` nos estados terminais.
+- **`src/app/(dashboard)/crm/leads/[id]/page.tsx`:**
+  - adicionada área de **agendamento de visita** dentro do workspace;
+  - o usuário consegue marcar andamento da visita com **confirmar**, **reagendar**, **cancelar**, **concluir** e **no-show**;
+  - métricas rápidas e bloco de resumo passaram a mostrar a situação das visitas/follow-ups do lead.
+- **Resultado funcional:** o workspace do lead passa a concentrar também a cadência operacional de visitas e retornos, já com histórico básico e visão de próxima ação.
+
+### LOG 0262 — 2026-07-10 — Codex (GPT-5) — CRM Workspace 360 FASE D: veículos e avaliação vinculados ao lead
+- **Frente atual desta IA:** evolução da trilha do **Lead Workspace 360** para a **FASE D**, sem migration nova na tabela quente de leads.
+- **Decisão estrutural:** como `MarketingLead` ainda só possui `vehicleId` único, os **múltiplos veículos do lead** passaram a ser mantidos no `metadata` do próprio lead. O **veículo principal de interesse** continua promovido para `vehicleId`, preservando compatibilidade com o restante do CRM.
+- **Novos arquivos:**
+  - `src/lib/crm/lead-vehicles.ts`: leitura/escrita tipada dos blocos `workspaceVehicles` e `workspaceEvaluations` no `metadata` do lead.
+  - `src/app/api/crm/leads/[id]/vehicles/route.ts`: operações de adicionar/atualizar veículo do lead, remover e definir principal.
+  - `src/app/api/crm/leads/[id]/evaluations/start/route.ts`: inicia uma **Avaliação 360 real** já vinculada ao lead e ao veículo escolhido, sem mandar automaticamente o veículo para o estoque.
+- **`src/app/api/crm/leads/[id]/route.ts`:**
+  - o payload do workspace agora devolve **veículos do lead** (interesse x veículo do cliente) e **avaliações vinculadas**;
+  - o vínculo da avaliação passa a ficar rastreável no próprio workspace.
+- **`src/app/(dashboard)/crm/leads/[id]/page.tsx`:**
+  - adicionada área para cadastrar **vários veículos**;
+  - o usuário pode diferenciar **veículo de interesse** e **veículo do cliente**;
+  - um veículo de interesse pode ser marcado como **principal**;
+  - foi adicionada a ação **Iniciar avaliação**, abrindo a Avaliação 360 vinculada ao lead.
+- **Resultado funcional:** o lead agora aceita múltiplos veículos, distingue interesse x veículo do cliente, mantém um principal e consegue iniciar avaliação vinculada, sem colocar o veículo automaticamente no estoque.
