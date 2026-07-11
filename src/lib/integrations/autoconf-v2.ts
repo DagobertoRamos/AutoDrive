@@ -271,7 +271,7 @@ export interface V2ApplyResult {
   sectionsSkipped: string[]
   commissionShouldRecalculate: boolean
   hashes: Record<string, string>
-  counts: { vehiclesCreated: number; vehiclesUpdated: number; vehiclesWithPhotos: number; paymentsCreated: number; paymentsUpdated: number; debitsCreated: number; debitsUpdated: number; catalogEntries: number }
+  counts: { vehiclesCreated: number; vehiclesUpdated: number; vehiclesWithPhotos: number; paymentsCreated: number; paymentsUpdated: number; debitsCreated: number; debitsUpdated: number; historyCreated: number; catalogEntries: number }
 }
 
 export async function applyV2Snapshot(
@@ -304,7 +304,7 @@ export async function applyV2Snapshot(
 
   const sectionsChanged: string[] = []
   const sectionsSkipped: string[] = []
-  const counts = { vehiclesCreated: 0, vehiclesUpdated: 0, vehiclesWithPhotos: 0, paymentsCreated: 0, paymentsUpdated: 0, debitsCreated: 0, debitsUpdated: 0, catalogEntries: 0 }
+  const counts = { vehiclesCreated: 0, vehiclesUpdated: 0, vehiclesWithPhotos: 0, paymentsCreated: 0, paymentsUpdated: 0, debitsCreated: 0, debitsUpdated: 0, historyCreated: 0, catalogEntries: 0 }
 
   const roleFallback = dealType === 'COMPRA' ? 'COMPRADO' : dealType === 'CONSIGNACAO' ? 'CONSIGNADO' : 'VENDIDO'
 
@@ -360,9 +360,34 @@ export async function applyV2Snapshot(
     sectionsSkipped.push('payments')
   }
 
-  // ── Histórico (apenas hash — persistência real fica pra Fase 3+ com tabela dedicada) ──
-  if (existingHashes?.history === historyHash) sectionsSkipped.push('history')
-  else sectionsChanged.push('history')
+  // ── Histórico ───────────────────────────────────────────────────────────
+  if (existingHashes?.history === historyHash) {
+    sectionsSkipped.push('history')
+  } else if (Array.isArray(snapshot.history) && snapshot.history.length) {
+    for (const h of snapshot.history) {
+      if (!h?.externalId) continue
+      const existing = await tx.dealHistoryEntry.findFirst({
+        where: { dealId, source, externalId: h.externalId },
+        select: { id: true },
+      })
+      if (!existing) {
+        await tx.dealHistoryEntry.create({
+          data: {
+            dealId,
+            source,
+            externalId: h.externalId,
+            userName: h.usuarioNome ?? null,
+            dateLabel: h.dataLabel ?? null,
+            summary: (h.resumo ?? '').slice(0, 500) || null,
+          },
+        })
+        counts.historyCreated++
+      }
+    }
+    sectionsChanged.push('history')
+  } else {
+    sectionsSkipped.push('history')
+  }
 
   // ── Grava hashes atualizados no Deal ────────────────────────────────────
   await tx.deal.update({ where: { id: dealId }, data: { sourceSectionHashes: newHashes as never } })
