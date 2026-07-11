@@ -3493,3 +3493,8 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Fase E (unificação):** `GET/POST /[id]/merge` — GET preview do que será movido; POST executa em transação: migra tasks/tags/interações/visitas/veículos/summaries/deals, marca secundário DISCARDED+metadata.mergedInto, atualiza CrmMergeCandidate, registra interação no principal, audita.
 - **UI:** `ActionModal` (Fase D/E) acessível pelo menu ⋮ — Marcar como sucesso / Perdido / Reciclar / Arquivar / Unificar; campos adaptados por ação (motivo, concorrente, data de retorno, ID do secundário). `VehiclesTab` com formulário de avaliação. `DealsTab` com vínculo de negociação existente.
 - **Nenhum serviço quebrado.** Testes: `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
+
+### LOG 0261 — 2026-07-11 — Claude (Opus 4.8) — Bug fixes: temperatura sobrescrevia metadata + archive missing metadata select
+- **Bug 1 (temperatura):** workspace page usava `patchLead({ metadata: { temperature } })` — o PATCH do lead aceita `metadata` mas sobrescreveria os outros campos (archived, etc). Corrigido: usa o endpoint dedicado `PATCH /[id]/temperature` que faz merge correto.
+- **Bug 2 (archive select):** `archive/route.ts` não incluía `metadata` no select do lead — `currentMeta` sempre seria `undefined`, e o spread do metadata arquivado não funcionaria. Corrigido: `metadata: true` adicionado ao select.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.

@@ -785,7 +785,7 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Temp.</span>
             <div className="flex gap-1">
               {CRM_TEMPERATURES.filter(t => t.value !== 'UNCLASSIFIED').map(t => (
-                <button key={t.value} onClick={() => void patchLead({ metadata: { temperature: t.value } })} title={t.label}
+                <button key={t.value} onClick={() => void fetch(`/api/crm/leads/${leadId}/temperature`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({temperature:t.value})}).then(()=>load())} title={t.label}
                   className={cn('h-5 w-5 rounded-full border-2 transition', lead.temperature === t.value ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent hover:scale-105')}
                   style={{ background: t.color }} />
               ))}

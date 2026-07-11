@@ -22,7 +22,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   try {
-    const lead = await prisma.marketingLead.findFirst({ where: { id, tenantId }, select: { id: true, assignedToUserId: true, unitId: true, status: true, convertedDealId: true } })
+    const lead = await prisma.marketingLead.findFirst({ where: { id, tenantId }, select: { id: true, assignedToUserId: true, unitId: true, status: true, convertedDealId: true, metadata: true } })
     if (!lead) return NextResponse.json({ success: false, error: 'Lead não encontrado.' }, { status: 404 })
     const scope = await resolveCrmScope(user)
     if (!scope || !canAccessLeadByScope(scope, user, lead)) return forbiddenResponse('Sem acesso a este lead.')
