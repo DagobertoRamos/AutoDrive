@@ -20,6 +20,7 @@ export async function GET(req: Request) {
     const sp = new URL(req.url).searchParams
     const page = Math.max(1, Number(sp.get('page') ?? 1))
     const perPage = Math.min(100, Math.max(1, Number(sp.get('perPage') ?? 50)))
+    const search = sp.get('search')?.trim()
     const status = sp.get('status')?.trim() || undefined
     const result = sp.get('result')?.trim() || undefined
     const type = sp.get('type')?.trim() || undefined
@@ -41,6 +42,14 @@ export async function GET(req: Request) {
         ...(from ? { gte: new Date(from) } : {}),
         ...(to ? { lte: new Date(new Date(to).getTime() + 86400000 - 1) } : {}),
       }
+    }
+    // Busca textual: nome/telefone do cliente (via arrival) ou ID de negociação.
+    if (search) {
+      where.OR = [
+        { arrival: { customerName: { contains: search, mode: 'insensitive' } } },
+        { arrival: { customerPhone: { contains: search } } },
+        { leadId: { contains: search } },
+      ]
     }
 
     const total = await prisma.sellerQueueAttendance.count({ where })

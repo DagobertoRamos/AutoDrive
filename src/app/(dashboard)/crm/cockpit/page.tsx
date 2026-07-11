@@ -59,7 +59,11 @@ export default function CrmCockpitPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Cockpit CRM</h1>
           <p className="mt-0.5 text-sm text-gray-500">
-            {loading ? 'Atualizando indicadores...' : `Escopo atual: ${data?.scope ?? 'crm'}`}
+            {loading ? 'Atualizando indicadores…' : (
+              data?.scope === 'all'  ? 'Todos os dados da empresa' :
+              data?.scope === 'unit' ? 'Dados da sua unidade' :
+              data?.scope === 'own'  ? 'Seus dados' : 'Visão geral'
+            )}
           </p>
         </div>
         <button onClick={() => void load()} disabled={loading} className="btn-secondary text-xs">

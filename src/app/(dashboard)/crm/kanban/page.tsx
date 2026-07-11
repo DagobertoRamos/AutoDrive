@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Calendar, Car, ChevronLeft, ChevronRight, MoreVertical, RefreshCw, Trash2, User, X } from 'lucide-react'
+import { Calendar, Car, ChevronLeft, ChevronRight, Loader2, MoreVertical, RefreshCw, Search, Trash2, User, X } from 'lucide-react'
 import { crmSourceLabel, crmTemperature, CRM_TEMPERATURES } from '@/lib/crm/shared'
 import { cn } from '@/lib/utils'
 
@@ -267,9 +267,17 @@ export default function CrmKanbanPage() {
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
+  const [search, setSearch]     = useState('')
+  const [debSearch, setDebSearch] = useState('')
   const [fSeller, setFSeller]   = useState('')
   const [fUnit, setFUnit]       = useState('')
   const boardRef = useRef<HTMLDivElement>(null)
+  const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleSearch = (v: string) => {
+    setSearch(v)
+    if (debTimer.current) clearTimeout(debTimer.current)
+    debTimer.current = setTimeout(() => setDebSearch(v), 350)
+  }
 
   useEffect(() => {
     fetch('/api/crm/context', { credentials: 'include' })
@@ -286,8 +294,9 @@ export default function CrmKanbanPage() {
     setLoading(true)
     try {
       const params = new URLSearchParams({ perPage: '200' })
-      if (fSeller) params.set('assignedToUserId', fSeller)
-      if (fUnit)   params.set('unitId', fUnit)
+      if (debSearch) params.set('search', debSearch)
+      if (fSeller)   params.set('assignedToUserId', fSeller)
+      if (fUnit)     params.set('unitId', fUnit)
       const [leadsRes, stagesRes] = await Promise.all([
         fetch(`/api/crm/leads?${params}`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
         fetch('/api/crm/config/stages', { credentials: 'include' }).then(r => r.json()).catch(() => null),
@@ -296,7 +305,7 @@ export default function CrmKanbanPage() {
       const st: StageCfg[] = (stagesRes?.data ?? []).filter((s: StageCfg) => s.active).sort((a: StageCfg, b: StageCfg) => a.order - b.order)
       setStages(st)
     } finally { setLoading(false) }
-  }, [fSeller, fUnit])
+  }, [debSearch, fSeller, fUnit])
 
   useEffect(() => { void load() }, [load])
 
@@ -360,6 +369,20 @@ export default function CrmKanbanPage() {
               {ctx.units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
+        </div>
+
+        {/* Busca unificada */}
+        <div className="relative w-full sm:max-w-[280px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          {loading && debSearch && <Loader2 size={12} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
+          {search && !loading && (
+            <button onClick={() => { setSearch(''); setDebSearch('') }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
+          )}
+          <input
+            value={search} onChange={e => handleSearch(e.target.value)}
+            placeholder="Buscar leads…"
+            className="h-8 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-8 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+          />
         </div>
 
         <div className="flex items-center gap-2">

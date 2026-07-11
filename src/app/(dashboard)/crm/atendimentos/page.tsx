@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Sliders, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, Sliders, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AttRow {
@@ -20,20 +20,34 @@ interface CrmCtx {
   units: { id: string; name: string }[]
 }
 
-const STATUS_OPTS = ['CALLED','ACCEPTED','IN_ATTENDANCE','FINISHED','REJECTED','EXPIRED']
-const RESULT_OPTS = ['CONVERTED_TO_NEGOTIATION','SCHEDULED_RETURN','NO_INTEREST','LOST','DUPLICATED','FORWARDED_TO_RESPONSIBLE','INVALID_ATTENDANCE']
-const RESULT_LABEL: Record<string,string> = {
-  CONVERTED_TO_NEGOTIATION:'Convertido', SCHEDULED_RETURN:'Retorno agendado',
-  NO_INTEREST:'Sem interesse', LOST:'Perdido', DUPLICATED:'Duplicado',
-  FORWARDED_TO_RESPONSIBLE:'Encaminhado', INVALID_ATTENDANCE:'Inválido',
-}
+const STATUS_OPTS: { value: string; label: string }[] = [
+  { value: 'CALLED',        label: 'Chamado' },
+  { value: 'ACCEPTED',      label: 'Aceito' },
+  { value: 'IN_ATTENDANCE', label: 'Em atendimento' },
+  { value: 'FINISHED',      label: 'Finalizado' },
+  { value: 'REJECTED',      label: 'Recusado' },
+  { value: 'EXPIRED',       label: 'Expirado' },
+]
+const STATUS_LABEL: Record<string,string> = Object.fromEntries(STATUS_OPTS.map(s => [s.value, s.label]))
+
+const RESULT_OPTS: { value: string; label: string }[] = [
+  { value: 'CONVERTED_TO_NEGOTIATION',  label: 'Convertido em negociação' },
+  { value: 'SCHEDULED_RETURN',          label: 'Retorno agendado' },
+  { value: 'NO_INTEREST',               label: 'Sem interesse' },
+  { value: 'LOST',                      label: 'Perdido' },
+  { value: 'DUPLICATED',                label: 'Duplicado' },
+  { value: 'FORWARDED_TO_RESPONSIBLE',  label: 'Encaminhado ao responsável' },
+  { value: 'INVALID_ATTENDANCE',        label: 'Atendimento inválido' },
+]
+const RESULT_LABEL: Record<string,string> = Object.fromEntries(RESULT_OPTS.map(r => [r.value, r.label]))
+
 const STATUS_TONE: Record<string,string> = {
-  FINISHED:'bg-emerald-50 text-emerald-700 border-emerald-200',
-  IN_ATTENDANCE:'bg-blue-50 text-blue-700 border-blue-200',
-  ACCEPTED:'bg-sky-50 text-sky-700 border-sky-200',
-  CALLED:'bg-amber-50 text-amber-700 border-amber-200',
-  REJECTED:'bg-red-50 text-red-700 border-red-200',
-  EXPIRED:'bg-gray-100 text-gray-500 border-gray-200',
+  FINISHED:      'bg-emerald-50 text-emerald-700 border-emerald-200',
+  IN_ATTENDANCE: 'bg-blue-50 text-blue-700 border-blue-200',
+  ACCEPTED:      'bg-sky-50 text-sky-700 border-sky-200',
+  CALLED:        'bg-amber-50 text-amber-700 border-amber-200',
+  REJECTED:      'bg-red-50 text-red-700 border-red-200',
+  EXPIRED:       'bg-gray-100 text-gray-500 border-gray-200',
 }
 
 export default function CrmAttendancesPage() {
@@ -43,6 +57,8 @@ export default function CrmAttendancesPage() {
   const [loading, setLoading]   = useState(true)
   const [page, setPage]         = useState(1)
 
+  const [search, setSearch]     = useState('')
+  const [debSearch, setDebSearch] = useState('')
   const [fStatus, setFStatus]   = useState('')
   const [fResult, setFResult]   = useState('')
   const [fSeller, setFSeller]   = useState('')
@@ -50,16 +66,23 @@ export default function CrmAttendancesPage() {
   const [fFrom, setFFrom]       = useState('')
   const [fTo, setFTo]           = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
+  const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleSearch = (v: string) => {
+    setSearch(v)
+    if (debTimer.current) clearTimeout(debTimer.current)
+    debTimer.current = setTimeout(() => setDebSearch(v), 350)
+  }
 
   useEffect(() => {
     fetch('/api/crm/context', { credentials: 'include' })
       .then(r => r.json()).then(j => { if (j?.data) setCtx(j.data) }).catch(() => {})
   }, [])
 
-  const load = useCallback(async (p = 1) => {
+  const load = useCallback(async (p: number = 1) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: String(p), perPage: '50' })
+      if (debSearch) params.set('search', debSearch)
       if (fStatus) params.set('status', fStatus)
       if (fResult) params.set('result', fResult)
       if (fSeller) params.set('sellerId', fSeller)
@@ -71,7 +94,7 @@ export default function CrmAttendancesPage() {
       setRows(json?.data ?? [])
       setMeta(json?.meta ?? null)
     } finally { setLoading(false) }
-  }, [fStatus, fResult, fSeller, fUnit, fFrom, fTo])
+  }, [debSearch, fStatus, fResult, fSeller, fUnit, fFrom, fTo])
 
   useEffect(() => { setPage(1); void load(1) }, [load])
   const goPage = (p: number) => { setPage(p); void load(p) }
@@ -101,8 +124,20 @@ export default function CrmAttendancesPage() {
         </div>
       </div>
 
-      {/* Filtros */}
+      {/* Busca + Filtros */}
       <div className="space-y-2">
+        {/* Busca unificada */}
+        <div className="relative">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          {loading && debSearch && <Loader2 size={13} className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
+          {search && !loading && <button onClick={() => { setSearch(''); setDebSearch('') }} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
+          <input
+            value={search} onChange={e => handleSearch(e.target.value)}
+            placeholder="Buscar por cliente, telefone…"
+            className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-white/15 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+          />
+        </div>
+
         {/* Linha de chips rápidos + botão painel */}
         <div className="flex flex-wrap items-center gap-1.5">
           <button onClick={() => setPanelOpen(v => !v)}
@@ -115,15 +150,15 @@ export default function CrmAttendancesPage() {
             {activeCount > 0 && <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand-600 px-1 text-[9px] font-bold text-white">{activeCount}</span>}
           </button>
 
-          {/* Status como chips de acesso rápido */}
-          {['', ...STATUS_OPTS].map(s => (
-            <button key={s || 'all'} onClick={() => setFStatus(s)}
+          {/* Status como chips de acesso rápido — em português */}
+          {[{ value: '', label: 'Todos' }, ...STATUS_OPTS].map(s => (
+            <button key={s.value || 'all'} onClick={() => setFStatus(s.value)}
               className={cn('rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition',
-                fStatus === s
-                  ? s ? cn(STATUS_TONE[s] ?? '', 'border-current') : 'border-gray-800 bg-gray-800 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
+                fStatus === s.value
+                  ? s.value ? cn(STATUS_TONE[s.value] ?? '', 'border-current') : 'border-gray-800 bg-gray-800 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
                   : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-white/15 dark:bg-slate-800 dark:text-gray-400'
               )}>
-              {s || 'Todos'}
+              {s.label}
             </button>
           ))}
           {activeCount > 0 && <button onClick={clearAll} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-500"><X size={11} />Limpar</button>}
@@ -138,11 +173,11 @@ export default function CrmAttendancesPage() {
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">Resultado</p>
                 <div className="flex flex-wrap gap-1">
                   {RESULT_OPTS.map(r => (
-                    <button key={r} onClick={() => setFResult(v => v === r ? '' : r)}
+                    <button key={r.value} onClick={() => setFResult(v => v === r.value ? '' : r.value)}
                       className={cn('rounded-md border px-2 py-1 text-[11px] font-medium transition',
-                        fResult === r ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-white/10 dark:bg-slate-700 dark:text-gray-300'
+                        fResult === r.value ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-white/10 dark:bg-slate-700 dark:text-gray-300'
                       )}>
-                      {RESULT_LABEL[r] ?? r}
+                      {r.label}
                     </button>
                   ))}
                 </div>
@@ -228,7 +263,7 @@ export default function CrmAttendancesPage() {
                   <td className="px-4 py-3 text-[11px] text-gray-500 dark:text-gray-400">{row.visitType ?? row.type ?? '—'}</td>
                   <td className="px-4 py-3">
                     <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold', STATUS_TONE[row.status] ?? 'bg-gray-100 text-gray-600 border-gray-200')}>
-                      {row.status}
+                      {STATUS_LABEL[row.status] ?? row.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-[11px] text-gray-500 dark:text-gray-400">
