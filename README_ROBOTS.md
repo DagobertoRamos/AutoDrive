@@ -3439,6 +3439,7 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Kanban (`crm/kanban/page.tsx`):** adicionado filtro de Vendedor e Unidade na barra superior (via `/api/crm/context`); filtros passados no fetch de leads; usam scope para decidir se aparecem.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.
 
+<<<<<<< HEAD
 ### LOG 0256 — 2026-07-10 — Claude (Opus 4.8) — CRM Kanban: card profissional (número, veículo, visita, etiquetas, temperatura BOILING, soft delete, menu 3 pontos)
 - **Diagnóstico entregue:** MarketingLead NÃO tem leadNumber nem soft delete. Vehicle vinculado por vehicleId (FK soft, sem relação Prisma). Próxima visita é MarketingLeadTask com dueAt+status=PENDING. Negociação é Deal via convertedDealId. Sem crm.lead.delete. Temperatura apenas HOT/WARM/COLD/UNCLASSIFIED (BOILING inexistente). Tudo enriquecido em LOTE (zero N+1).
 - **Schema/migration `20260710100000_crm_card_lead_number_softdelete`:** `leadNumber Int?` (@@unique tenantId+leadNumber) + `deletedAt/deletedByUserId/deleteReason`. **Aplicar manual na Neon.**
@@ -3457,3 +3458,12 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Cockpit:** subtítulo "Escopo atual: own/unit/all" → "Todos os dados da empresa" / "Dados da sua unidade" / "Seus dados" / "Visão geral".
 - **Arquivos:** `src/app/(dashboard)/crm/atendimentos/page.tsx`, `src/app/(dashboard)/crm/kanban/page.tsx`, `src/app/(dashboard)/crm/cockpit/page.tsx`, `src/app/api/crm/attendances/route.ts`.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
+=======
+### LOG 0256 — 2026-07-10 — Codex (GPT-5) — Pendências: ajuste de navegação e fallback amigável nas configurações
+- **Escopo:** correção pontual na área de Pendências para eliminar o 404 confuso nas configurações e deixar claro que existem duas telas com propósitos diferentes.
+- **Arquivos alterados:**
+  - `src/components/layout/navigation.ts`: renomeados os itens do menu de Pendências para **"Tipos e avisos"** (`/pendencias/configuracoes`) e **"Central e automações"** (`/pendencias/configuracoes/gerais`), reduzindo ambiguidade.
+  - `src/app/(dashboard)/pendencias/configuracoes/gerais/page.tsx`: quando o usuário não tem acesso ao módulo `pendencies.settings` ou a funcionalidade está desligada na loja, a rota deixa de cair em `404` e redireciona para `/pendencias/configuracoes?info=central-indisponivel`.
+  - `src/app/(dashboard)/pendencias/configuracoes/page.tsx`: adicionado aviso explicando a diferença entre as duas telas e mensagem contextual quando o usuário é redirecionado da área geral.
+- **Resultado:** a loja continua usando normalmente a configuração operacional de pendências; a configuração mais sensível da Central não “some” mais com erro 404 para quem não pode acessá-la.
+>>>>>>> 7f73daf (Ajustar configuracoes de pendencias)

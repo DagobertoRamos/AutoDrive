@@ -11,17 +11,17 @@ export default async function PendencyGeneralSettingsPage() {
   if (!session?.user) redirect('/login')
 
   if (!canAccessModule(session.user.role, 'pendencies.settings')) {
-    notFound()
+    redirect('/pendencias/configuracoes?info=central-indisponivel')
   }
 
   if (session.user.role !== 'MASTER' && session.user.tenantId) {
     const enabled = await isModuleEnabled(session.user.tenantId, 'pendencies.settings')
-    if (!enabled) notFound()
+    if (!enabled) redirect('/pendencias/configuracoes?info=central-indisponivel')
   }
 
   if (session.user.id) {
     const denied = await isModuleDeniedForUser(session.user.id, 'pendencies.settings')
-    if (denied) notFound()
+    if (denied) redirect('/pendencias/configuracoes?info=central-indisponivel')
   }
 
   return <PendencyGeneralSettings />

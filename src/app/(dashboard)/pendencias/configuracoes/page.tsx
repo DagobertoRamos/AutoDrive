@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import { Settings, Plus, Pencil, Trash2, X, Save, Lock, Power, Clock, Send, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -46,9 +47,11 @@ const slaText = (min: number) => {
 
 export default function PendencyConfigPage() {
   const { data: session } = useSession()
+  const searchParams = useSearchParams()
   const role = (session?.user as { role?: string })?.role
   const allowed = !role || CONFIG_ROLES.includes(role)
   const isMaster = role === 'MASTER'
+  const info = searchParams.get('info')
 
   // ── Tipos/opções ──
   const [options, setOptions] = useState<Option[]>([])
@@ -127,6 +130,16 @@ export default function PendencyConfigPage() {
       <div>
         <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Settings size={20} className="text-brand-600" />Configurações de Pendências</h1>
         <p className="mt-0.5 text-sm text-gray-500">Defina os tipos de pendência, os SLAs padrão por prioridade e a janela de envio automático.</p>
+      </div>
+
+      {info === 'central-indisponivel' && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          A área <strong>Central e automações</strong> fica disponível apenas para perfis com acesso à administração geral da Central. Nesta tela você continua podendo ajustar os <strong>tipos de pendência</strong>, os <strong>SLAs padrão</strong> e os <strong>avisos automáticos</strong> da loja.
+        </div>
+      )}
+
+      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        <strong>Como funciona:</strong> <span className="font-medium">Tipos e avisos</span> controla cadastro de tipos, SLA e regras de envio. Já <span className="font-medium">Central e automações</span> controla o comportamento geral da Central, como arquivamento automático e motor de SLA.
       </div>
 
       {/* ── Seção A: Tipos/opções de pendência ── */}
