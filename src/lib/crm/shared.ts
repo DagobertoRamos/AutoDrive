@@ -18,10 +18,11 @@ export type CrmScope = 'own' | 'unit' | 'all'
 
 // Temperatura do lead (F1) — const PURA (client-safe). Separada das etiquetas.
 export const CRM_TEMPERATURES = [
-  { value: 'HOT', label: 'Quente', color: '#ef4444', emoji: '🔥' },
-  { value: 'WARM', label: 'Morno', color: '#f59e0b', emoji: '🌤️' },
-  { value: 'COLD', label: 'Frio', color: '#3b82f6', emoji: '❄️' },
-  { value: 'UNCLASSIFIED', label: 'Sem classificação', color: '#9ca3af', emoji: '⚪' },
+  { value: 'BOILING',       label: 'Fervendo',          color: '#dc2626', badge: 'bg-red-600   text-white', emoji: '🔴' },
+  { value: 'HOT',           label: 'Quente',             color: '#f97316', badge: 'bg-orange-500 text-white', emoji: '🔥' },
+  { value: 'WARM',          label: 'Morno',              color: '#f59e0b', badge: 'bg-amber-400  text-white', emoji: '🌤️' },
+  { value: 'COLD',          label: 'Frio',               color: '#3b82f6', badge: 'bg-blue-500   text-white', emoji: '❄️' },
+  { value: 'UNCLASSIFIED',  label: 'Não classificado',   color: '#9ca3af', badge: 'bg-gray-300   text-gray-700 dark:bg-gray-600 dark:text-gray-200', emoji: '⚪' },
 ] as const
 export type CrmTemperatureValue = (typeof CRM_TEMPERATURES)[number]['value']
 export function crmTemperature(value: string | null | undefined) {

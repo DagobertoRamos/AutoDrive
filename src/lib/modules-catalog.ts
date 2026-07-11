@@ -92,6 +92,7 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'crm.lead.transfer', label: 'Transferir leads para outro vendedor', level: 2, sensitive: true },
     { key: 'crm.lead.convert',  label: 'Converter lead em negociação', level: 2 },
     { key: 'crm.lead.mark_lost',label: 'Marcar lead como perdido' },
+    { key: 'crm.lead.delete',   label: 'Excluir lead (soft delete com auditoria)', level: 3, sensitive: true },
     { key: 'crm.kanban.view.own',  label: 'Kanban — ver os próprios' },
     { key: 'crm.kanban.view.unit', label: 'Kanban — ver a unidade', level: 2 },
     { key: 'crm.kanban.move.own',  label: 'Kanban — mover os próprios' },

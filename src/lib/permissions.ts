@@ -128,6 +128,7 @@ export type Module =
   | 'crm.lead.transfer'
   | 'crm.lead.convert'
   | 'crm.lead.mark_lost'
+  | 'crm.lead.delete'
   | 'crm.kanban.view.own'
   | 'crm.kanban.view.unit'
   | 'crm.kanban.move.own'
@@ -613,6 +614,10 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'crm.lead.mark_lost': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read', 'update'],
+  },
+  'crm.lead.delete': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['delete'],
   },
   'crm.kanban.view.own': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],

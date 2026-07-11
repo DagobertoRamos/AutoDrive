@@ -3438,3 +3438,15 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 - **Atendimentos (`crm/atendimentos/page.tsx`) — reescrita completa scope-aware:** filtros de Status (chips), Resultado, Período (de/até), Vendedor (scope≠own), Unidade (scope=all) — exatamente os que cabem no cargo. Paginação numérica. Dark mode. Coluna "Vendedor" aparece só p/ quem vê mais de um.
 - **Kanban (`crm/kanban/page.tsx`):** adicionado filtro de Vendedor e Unidade na barra superior (via `/api/crm/context`); filtros passados no fetch de leads; usam scope para decidir se aparecem.
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.
+
+### LOG 0256 — 2026-07-10 — Claude (Opus 4.8) — CRM Kanban: card profissional (número, veículo, visita, etiquetas, temperatura BOILING, soft delete, menu 3 pontos)
+- **Diagnóstico entregue:** MarketingLead NÃO tem leadNumber nem soft delete. Vehicle vinculado por vehicleId (FK soft, sem relação Prisma). Próxima visita é MarketingLeadTask com dueAt+status=PENDING. Negociação é Deal via convertedDealId. Sem crm.lead.delete. Temperatura apenas HOT/WARM/COLD/UNCLASSIFIED (BOILING inexistente). Tudo enriquecido em LOTE (zero N+1).
+- **Schema/migration `20260710100000_crm_card_lead_number_softdelete`:** `leadNumber Int?` (@@unique tenantId+leadNumber) + `deletedAt/deletedByUserId/deleteReason`. **Aplicar manual na Neon.**
+- **`src/lib/crm/lead-number.ts`:** `assignLeadNumber` — atribui sequencial via MAX(leadNumber)+1, tolerante a migration pendente.
+- **CRM_TEMPERATURES:** adicionado `BOILING` (Fervendo, vermelho #dc2626) + campo `badge` CSS por temperatura. `UNCLASSIFIED` → texto "Não classificado".
+- **`crm.lead.delete`:** nova permissão (MASTER/ADM/GERENTE+), adicionada ao catálogo e ao permissions.ts.
+- **GET /api/crm/leads:** enrich em lote (Promise.all): Vehicle (brand/model/version/plate/year), Deal (id/dealNumber/status), próxima MarketingLeadTask (PENDING, dueAt mais próximo), CrmLeadTag — ZERO N+1. Exclui `deletedAt IS NOT NULL` da lista.
+- **POST /api/crm/leads/[id]/delete:** soft delete com motivo obrigatório, auditoria, guarda de scope + permissão no backend.
+- **Card (`LeadCard`):** #número (ou id truncado fallback) · badge de temperatura com texto+cor · nome do cliente · veículo (marca modelo versão + placa formatada) · próxima tarefa/visita (isToday=âmbar, isOverdue=vermelho, futuro=neutro) · data criação · etiquetas (máx 2 visíveis + "+N" tooltip) · responsável+origem · ações (Ver detalhes; Ver negociação só quando existir) · menu 3 pontos (Ver lead; Excluir — só com permissão). Modal de confirmação de exclusão com motivo. Sem botão "Avançar".
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.
+- **Pendências migration Neon (acumuladas):** crm_f1_config, crm_f2_merge_candidates, crm_f3_stage_transitions, `crm_card_lead_number_softdelete`, seller_attendance_authorizations, pendency_events, pendency_penalties, seller_vacations.

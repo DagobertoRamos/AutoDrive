@@ -4417,16 +4417,23 @@ model MarketingLead {
   createdById      String?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
+  // CRM Card F4 — número público do lead (sequencial por tenant) + soft delete.
+  leadNumber       Int?                      // ex.: 1234 → exibido como #1234. Unique por tenant via @@unique.
+  deletedAt        DateTime?                 // soft delete: preenchido = excluído logicamente.
+  deletedByUserId  String?
+  deleteReason     String?
   assignments      MarketingLeadAssignment[]
   claims           MarketingLeadClaim[]
   tasks            MarketingLeadTask[]
   slas             MarketingLeadSla[]
   calls            TelephonyCall[]
 
+  @@unique([tenantId, leadNumber])
   @@index([tenantId])
   @@index([status])
   @@index([assignedToUserId])
   @@index([unitId])
+  @@index([deletedAt])
   @@map("marketing_leads")
 }
 

@@ -7,6 +7,7 @@ import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-module
 import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared'
 import { readTemperature } from '@/lib/crm/config'
 import { resolveIdentity, type DedupMatch } from '@/lib/crm/dedup'
+import { assignLeadNumber } from '@/lib/crm/lead-number'
 
 // F2 alerta: registra candidatos à mesclagem p/ OUTROS leads (não bloqueia).
 async function flagMergeCandidates(tenantId: string, leadId: string, matches: DedupMatch[]): Promise<void> {
@@ -58,7 +59,7 @@ export async function GET(req: Request) {
     const sourceFilter = sp.get('source')?.trim() || ''
     const priority = sp.get('priority')?.trim() || ''
     const temperature = sp.get('temperature')?.trim() || ''
-    const where = applyCrmScope({ tenantId }, scope, user)
+    const where = applyCrmScope({ tenantId, deletedAt: null }, scope, user)
 
     if (status) where.status = status as never
     // Filtro de origem: 'AUTOCONF' é legado; agora aceita qualquer valor de source.
@@ -101,7 +102,7 @@ export async function GET(req: Request) {
           id: true, name: true, phone: true, email: true, source: true, status: true,
           unitId: true, assignedToUserId: true, customerId: true, vehicleId: true,
           convertedDealId: true, lostReason: true, notes: true, lastContactAt: true,
-          createdAt: true, updatedAt: true, metadata: true,
+          createdAt: true, updatedAt: true, metadata: true, leadNumber: true,
         },
       }),
       prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true } }),
@@ -111,12 +112,32 @@ export async function GET(req: Request) {
     const userNames = new Map(users.map((item) => [item.id, item.name]))
     const unitNames = new Map(units.map((item) => [item.id, item.name]))
 
-    // Enriquecer com veículo vinculado (busca em lote, tolerante a vehicleId nulo).
-    const vehicleIds = [...new Set(rows.map(r => r.vehicleId).filter((v): v is string => Boolean(v)))]
-    const vehicles = vehicleIds.length
-      ? await prisma.vehicle.findMany({ where: { id: { in: vehicleIds } }, select: { id: true, plate: true, brand: true, model: true } }).catch(() => [])
-      : []
+    // Enriquecer em LOTE (zero N+1): veículo, deal, próxima tarefa (visita), etiquetas.
+    const vehicleIds   = [...new Set(rows.map(r => r.vehicleId).filter((v): v is string => !!v))]
+    const dealIds      = [...new Set(rows.map(r => r.convertedDealId).filter((v): v is string => !!v))]
+    const leadIds      = rows.map(r => r.id)
+    const [vehicles, deals, tasks, tagLinks] = await Promise.all([
+      vehicleIds.length ? prisma.vehicle.findMany({ where: { id: { in: vehicleIds } }, select: { id: true, plate: true, brand: true, model: true, version: true, year: true, modelYear: true } }).catch(() => []) : Promise.resolve([]),
+      dealIds.length ? prisma.deal.findMany({ where: { id: { in: dealIds } }, select: { id: true, dealNumber: true, status: true } }).catch(() => []) : Promise.resolve([]),
+      // Próxima tarefa PENDENTE por lead (apenas visitas/follow-up, mais próxima do agora).
+      prisma.marketingLeadTask.findMany({ where: { leadId: { in: leadIds }, status: 'PENDING', dueAt: { not: null } }, select: { leadId: true, id: true, type: true, dueAt: true }, orderBy: { dueAt: 'asc' } }).catch(() => [] as { leadId: string | null; id: string; type: string; dueAt: Date | null }[]),
+      prisma.crmLeadTag.findMany({ where: { leadId: { in: leadIds } }, select: { leadId: true, tag: { select: { id: true, name: true, color: true, active: true } } } }).catch(() => []),
+    ])
     const vehicleMap = new Map(vehicles.map(v => [v.id, v]))
+    const dealMap    = new Map(deals.map(d => [d.id, d]))
+    // Primeira tarefa pendente por lead.
+    const nextTaskByLead = new Map<string, typeof tasks[0]>()
+    for (const t of tasks) {
+      if (t.leadId && !nextTaskByLead.has(t.leadId)) nextTaskByLead.set(t.leadId, t)
+    }
+    const tagsByLead = new Map<string, { id: string; name: string; color: string | null }[]>()
+    for (const l of tagLinks) {
+      if (!l.tag?.active) continue
+      const arr = tagsByLead.get(l.leadId) ?? []; arr.push({ id: l.tag.id, name: l.tag.name, color: l.tag.color }); tagsByLead.set(l.leadId, arr)
+    }
+
+    const now2 = Date.now()
+    const ONE_DAY = 86_400_000
 
     const enriched = rows.map((row) => {
       const priorityLevel = leadPriorityOf(row)
@@ -125,9 +146,23 @@ export async function GET(req: Request) {
       return {
         ...row,
         vehicleLabel,
+        vehicle: veh ? { brand: veh.brand, model: veh.model, version: veh.version, plate: veh.plate, year: veh.modelYear ?? veh.year } : null,
         priority: priorityLevel,
         assignedToUserName: row.assignedToUserId ? userNames.get(row.assignedToUserId) ?? null : null,
         unitName: row.unitId ? unitNames.get(row.unitId) ?? null : null,
+        leadNumber: row.leadNumber ?? null,
+        // Negociação vinculada (summary)
+        deal: row.convertedDealId ? (dealMap.get(row.convertedDealId) ?? null) : null,
+        // Próxima tarefa/visita pendente
+        nextTask: (() => {
+          const t = nextTaskByLead.get(row.id)
+          if (!t?.dueAt) return null
+          const due = t.dueAt.getTime()
+          const diff = due - now2
+          return { id: t.id, type: t.type, dueAt: t.dueAt, isToday: diff >= 0 && diff < ONE_DAY, isOverdue: diff < 0 }
+        })(),
+        // Etiquetas (já enriquecidas em lote)
+        tags: tagsByLead.get(row.id) ?? [],
       }
     })
     // Busca por veículo em memória: o WHERE do banco já retornou leads por campos
@@ -154,23 +189,10 @@ export async function GET(req: Request) {
     const total = sorted.length
     const paged = sorted.slice((page - 1) * perPage, page * perPage)
 
-    // F1: temperatura (metadata) + etiquetas (CrmLeadTag) por card. Só p/ a página
-    // atual (barato) e tolerante à migration pendente.
-    const leadIds = paged.map((p) => p.id)
-    const tagLinks = leadIds.length
-      ? await prisma.crmLeadTag.findMany({ where: { leadId: { in: leadIds } }, select: { leadId: true, tag: { select: { id: true, name: true, color: true, active: true } } } }).catch(() => [])
-      : []
-    const tagsByLead = new Map<string, { id: string; name: string; color: string | null }[]>()
-    for (const l of tagLinks) {
-      if (!l.tag?.active) continue
-      const arr = tagsByLead.get(l.leadId) ?? []
-      arr.push({ id: l.tag.id, name: l.tag.name, color: l.tag.color })
-      tagsByLead.set(l.leadId, arr)
-    }
+    // temperatura, etiquetas, vehicle, deal, nextTask já vêm do enrich em lote acima.
     const data = paged.map(({ metadata, ...rest }) => ({
       ...rest,
       temperature: readTemperature(metadata),
-      tags: tagsByLead.get(rest.id) ?? [],
     }))
 
     return NextResponse.json({
@@ -271,6 +293,8 @@ export async function POST(req: Request) {
     })
 
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE', entity: 'MarketingLead', entityId: lead.id, userName: user.name, userRole: user.role })
+    // Atribui número público ao lead (tolerante — não bloqueia a criação).
+    void assignLeadNumber(lead.id, tenantId)
     // Alerta de duplicidade (não bloqueia): registra candidatos p/ revisão.
     const alertMatches = [...identity.softMatches, ...(identity.hardMatch?.leadId ? [identity.hardMatch] : [])]
     await flagMergeCandidates(tenantId, lead.id, alertMatches)
