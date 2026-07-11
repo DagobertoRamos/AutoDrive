@@ -83,6 +83,24 @@ function toVehicleObject(fields: Record<string, VehicleExtractedField<any>>): Ex
   else if (group === 'TRUCK') vehicleTypePt = 'CAMINHAO'
   v.vehicleType = vehicleTypePt
 
+  // Salva metadados dos campos originais para badges na UI
+  const metadata: Record<string, { validationStatus: VehicleExtractedField<any>['validationStatus']; source: string }> = {}
+  for (const [key, field] of Object.entries(fields)) {
+    if (field) {
+      metadata[key] = {
+        validationStatus: field.validationStatus,
+        source: field.source,
+      }
+    }
+  }
+  if (fields.color) metadata.predominantColor = { validationStatus: fields.color.validationStatus, source: fields.color.source }
+  if (fields.fuelType) metadata.fuel = { validationStatus: fields.fuelType.validationStatus, source: fields.fuelType.source }
+  if (fields.powerCv) metadata.power = { validationStatus: fields.powerCv.validationStatus, source: fields.powerCv.source }
+  if (fields.displacementCc) metadata.displacement = { validationStatus: fields.displacementCc.validationStatus, source: fields.displacementCc.source }
+  if (fields.vehicleGroup) metadata.vehicleType = { validationStatus: fields.vehicleGroup.validationStatus, source: fields.vehicleGroup.source }
+
+  v._fields = metadata
+
   return v
 }
 

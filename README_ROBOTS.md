@@ -3315,5 +3315,20 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - `npx vitest run` OK (457/457 testes verdes).
   - `npm run build` OK (compilado Next.js em produção com sucesso).
 
+### LOG 0254 — 2026-07-11 — Gravity (Gemini 3.5 Pro) — Leitura de CRLV e Preenchimento Automático: Commit D (Interface da Avaliação 360°)
+- **Tarefa:** Implementar as origens e badges de status para inputs preenchidos via documento no formulário de avaliação do veículo.
+- **Arquivos criados/alterados:**
+  - `src/lib/crlv/types.ts`: Adicionada propriedade opcional `_fields` ao `ExtractedVehicle` contendo o mapeamento de metadados (`validationStatus` e `source`) de cada campo para a interface do usuário.
+  - `src/app/api/evaluations/vehicle-document/extract/route.ts`: Atualizado `toVehicleObject` para preencher `v._fields` com o status do consenso e a origem de cada campo processado.
+  - `src/app/(dashboard)/estoque/avaliacao/page.tsx`: 
+    - Modificado o componente `Field` para receber a propriedade opcional `badge`.
+    - Criada a função helper `getFieldBadge` que renderiza dinamicamente as tags de status (`[Lido do PDF]`, `[OCR]`, `[Revisar]` e `[Conflito]`) com cores correspondentes.
+    - O badge de origem é ocultado automaticamente no momento em que o operador altera o valor do campo preenchido na interface, garantindo feedback dinâmico e preciso.
+- **Testes:**
+  - `npx tsc --noEmit` OK (0 erros de tipagem).
+  - `npx vitest run` OK (457/457 testes verdes).
+  - `npm run build` OK (compilado Next.js com sucesso).
+
+
 
 

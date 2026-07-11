@@ -282,14 +282,17 @@ function getEngineOptions(tipo: 'CARRO' | 'MOTO' | 'CAMINHAO'): string[] {
 const inputCls = 'rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full'
 const selectCls = inputCls
 
-function Field({ label, required, hint, children }: {
-  label: string; required?: boolean; hint?: string; children: React.ReactNode
+function Field({ label, required, hint, badge, children }: {
+  label: string; required?: boolean; hint?: string; badge?: React.ReactNode; children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-gray-600">
-        {label}{required && <span className="ml-0.5 text-red-500">*</span>}
-      </label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-xs font-medium text-gray-600">
+          {label}{required && <span className="ml-0.5 text-red-500">*</span>}
+        </label>
+        {badge}
+      </div>
       {children}
       {hint && <p className="text-xs text-gray-400">{hint}</p>}
     </div>
@@ -855,6 +858,57 @@ function AvaliacaoForm() {
     setDocumentSkipped(true)
   }, [])
 
+  function getFieldBadge(fieldName: string, currentValue: string | null | undefined) {
+    const fieldMeta = extractedData?._fields?.[fieldName]
+    if (!fieldMeta) return null
+
+    // Recupera valor extraído para comparação
+    let extractedVal = (extractedData as any)[fieldName]
+    
+    // Normaliza comparação para evitar falsos negativos por espaço ou case
+    const curNorm = (currentValue ?? '').trim().toLowerCase()
+    const extNorm = (extractedVal != null ? String(extractedVal) : '').trim().toLowerCase()
+
+    if (curNorm !== extNorm) {
+      // Se o usuário modificou o valor preenchido, oculta o badge
+      return null
+    }
+
+    const { validationStatus, source } = fieldMeta
+
+    if (validationStatus === 'CONFLICT') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] font-semibold text-red-700 border border-red-200">
+          Conflito
+        </span>
+      )
+    }
+    if (validationStatus === 'NEEDS_REVIEW' || validationStatus === 'INVALID') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 border border-amber-200">
+          Revisar
+        </span>
+      )
+    }
+
+    if (source === 'pdf-text') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 border border-blue-200">
+          Lido do PDF
+        </span>
+      )
+    }
+    if (source === 'ocr') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700 border border-purple-200">
+          OCR
+        </span>
+      )
+    }
+
+    return null
+  }
+
   // ── Sync FIPE quando ComboBox seleciona versão ────────────────────────────────
   useEffect(() => {
     if (combo.fipeValue != null) setFipeValue(numberToBRLMask(combo.fipeValue))
@@ -1170,7 +1224,7 @@ function AvaliacaoForm() {
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Placa do veículo" icon={<Car className="h-5 w-5" />}>
             <div className="max-w-md">
-              <Field label="Placa" required hint="Digite a placa (formato XXX-XXXX antiga ou XXX1X23 Mercosul). Buscamos os dados automaticamente.">
+              <Field label="Placa" required hint="Digite a placa (formato XXX-XXXX antiga ou XXX1X23 Mercosul). Buscamos os dados automaticamente." badge={getFieldBadge('plate', plate)}>
                 <PlateInput
                   value={plate}
                   onChange={(normal, display) => { setPlate(normal); setPlateDisplay(display) }}
@@ -1219,7 +1273,7 @@ function AvaliacaoForm() {
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Marca, modelo e ano" icon={<Car className="h-5 w-5" />}>
             <Grid cols={2}>
-              <Field label="Marca" required hint={brandLoading ? 'Carregando marcas...' : `${fipeBrands.length} marcas`}>
+              <Field label="Marca" required hint={brandLoading ? 'Carregando marcas...' : `${fipeBrands.length} marcas`} badge={getFieldBadge('brand', brandName)}>
                 <select
                   className={selectCls}
                   value={brandCode}
@@ -1237,7 +1291,7 @@ function AvaliacaoForm() {
                   ))}
                 </select>
               </Field>
-              <Field label="Modelo" required hint={modelLoading ? 'Carregando modelos...' : (brandCode ? `${fipeModels.length} modelos` : 'Selecione a marca primeiro')}>
+              <Field label="Modelo" required hint={modelLoading ? 'Carregando modelos...' : (brandCode ? `${fipeModels.length} modelos` : 'Selecione a marca primeiro')} badge={getFieldBadge('model', modelName)}>
                 <select
                   className={selectCls}
                   value={modelCode}
@@ -1257,19 +1311,19 @@ function AvaliacaoForm() {
                   ))}
                 </select>
               </Field>
-              <Field label="Versão / Trim (opcional)">
+              <Field label="Versão / Trim (opcional)" badge={getFieldBadge('version', version)}>
                 <input value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} placeholder="Ex: TSI 1.0 Flex Aut." />
               </Field>
-              <Field label="Cor">
+              <Field label="Cor" badge={getFieldBadge('predominantColor', color)}>
                 <input value={color} onChange={(e) => setColor(e.target.value)} className={inputCls} placeholder="Prata" />
               </Field>
-              <Field label="Ano Fabricação">
+              <Field label="Ano Fabricação" badge={getFieldBadge('manufactureYear', year)}>
                 <select className={selectCls} value={year} onChange={(e) => setYear(e.target.value)}>
                   <option value="">Selecione</option>
                   {ANOS.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </Field>
-              <Field label="Ano Modelo">
+              <Field label="Ano Modelo" badge={getFieldBadge('modelYear', yearModel)}>
                 <select className={selectCls} value={yearModel} onChange={(e) => setYearModel(e.target.value)}>
                   <option value="">Selecione</option>
                   {ANOS.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -1283,7 +1337,7 @@ function AvaliacaoForm() {
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Identificação">
             <Grid cols={2}>
-              <Field label="Renavam">
+              <Field label="Renavam" badge={getFieldBadge('renavam', renavam)}>
                 <input
                   value={renavam}
                   onChange={(e) => setRenavam(e.target.value.replace(/\D/g, '').slice(0, 11))}
@@ -1292,7 +1346,7 @@ function AvaliacaoForm() {
                   inputMode="numeric"
                 />
               </Field>
-              <Field label="Chassi">
+              <Field label="Chassi" badge={getFieldBadge('chassis', chassi)}>
                 <input
                   value={chassi}
                   onChange={(e) => setChassi(e.target.value.toUpperCase().slice(0, 17))}
@@ -1318,6 +1372,7 @@ function AvaliacaoForm() {
                       ? 'Cilindrada em cc (150cc — 1.000cc+)'
                       : 'Cilindrada em litros (1.0 — 6.0+)'
                 }
+                badge={getFieldBadge('displacement', engine)}
               >
                 <select className={selectCls} value={engine} onChange={(e) => setEngine(e.target.value)}>
                   <option value="">Selecione</option>
@@ -1326,7 +1381,7 @@ function AvaliacaoForm() {
                   ))}
                 </select>
               </Field>
-              <Field label="Potência" hint="Em cv (cavalo-vapor)">
+              <Field label="Potência" hint="Em cv (cavalo-vapor)" badge={getFieldBadge('power', power)}>
                 <select className={selectCls} value={power} onChange={(e) => setPower(e.target.value)}>
                   <option value="">Selecione</option>
                   {POWER_OPTIONS.map((opt) => (
@@ -1348,14 +1403,14 @@ function AvaliacaoForm() {
                   {TIPOS_CARROCERIA.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="Combustível">
+              <Field label="Combustível" badge={getFieldBadge('fuel', fuel)}>
                 <select className={selectCls} value={fuel} onChange={(e) => setFuel(e.target.value)}>
                   <option value="">Selecione</option>
                   <option>Flex</option><option>Gasolina</option><option>Etanol</option>
                   <option>Diesel</option><option>Elétrico</option><option>Híbrido</option><option>GNV</option>
                 </select>
               </Field>
-              <Field label="Câmbio">
+              <Field label="Câmbio" badge={getFieldBadge('transmissionType', transmission)}>
                 <select className={selectCls} value={transmission} onChange={(e) => setTransmission(e.target.value)}>
                   <option value="">Selecione</option>
                   <option>Manual</option><option>Automático</option><option>Automatizado</option>

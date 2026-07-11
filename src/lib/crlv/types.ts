@@ -71,6 +71,7 @@ export interface ExtractedVehicle {
   power?: string | null
   displacement?: string | null
   vehicleType?: 'CARRO' | 'MOTO' | 'CAMINHAO' | null
+  _fields?: Record<string, { validationStatus: ValidationStatus; source: string }> | null
 }
 
 export interface VehicleDocumentExtractionResult {
