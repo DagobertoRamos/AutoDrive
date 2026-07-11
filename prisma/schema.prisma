@@ -4201,6 +4201,9 @@ model DocumentProcessingJob {
   errorMessage    String?
   providerUsed    String?
   createdByUserId String?
+  documentHash    String?
+  expiresAt       DateTime?
+  metadata        Json?
   processedAt     DateTime?
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt

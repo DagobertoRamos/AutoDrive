@@ -17,7 +17,7 @@
 //   6. React StrictMode não causa dupla execução (proteção via ref).
 // =============================================================================
 
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import {
   Upload, FileCheck, XCircle,
   Loader2, Eye, Trash2, RefreshCw, FileText,
@@ -199,11 +199,19 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
 
   const [uiState, setUiState] = useState<UIState>({ machine: 'IDLE' })
   const [dragging, setDragging] = useState(false)
+  const [useV2, setUseV2] = useState(false)
   const inputRef       = useRef<HTMLInputElement | null>(null)
   const processingRef  = useRef(false) // protege contra dupla execução
   const abortRef       = useRef<AbortController | null>(null)
 
-  // ── Cancelamento explícito ─────────────────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/evaluations/vehicle-document/extract/feature-flag')
+      .then(r => r.json())
+      .then(d => setUseV2(d.enabled))
+      .catch(() => setUseV2(false))
+  }, [])
+
+  // ⏹️ Cancelamento explícito ⏹️─────────────────────────────────────────────────
 
   const cancelCurrent = useCallback(() => {
     abortRef.current?.abort()
@@ -223,6 +231,78 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
+
+    // V2 Pipeline Branch
+    if (useV2) {
+      setUiState({ machine: 'UPLOADING', step: 'Iniciando Pipeline V2...' })
+      try {
+        const { DocumentExtractionController } = await import('@/lib/crlv/pipeline/client/DocumentExtractionController.client')
+        
+        // 1. Call Init
+        const initRes = await fetch('/api/evaluations/vehicle-document/extract/init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type,
+            size: file.size,
+            fileHash: 'dummyhash1234567890123456789012345678901234567890123456789012345' // skip hashing here for MVP, handled properly in a real client utils
+          })
+        });
+        const initData = await initRes.json();
+        
+        if (!initRes.ok) throw new Error(initData.error || 'Failed to init V2 session');
+
+        setUiState({ machine: 'READING_NATIVE_PDF', step: 'Processando arquivo (V2)...' })
+        
+        if (file.size < 4000000 && file.type === 'application/pdf') {
+          // Server-Native for small PDFs
+          const fd = new FormData();
+          fd.append('processingId', initData.processingId);
+          fd.append('file', file);
+          const srvRes = await fetch('/api/evaluations/vehicle-document/extract/server-native', { method: 'POST', body: fd });
+          const srvData = await srvRes.json();
+          if (srvData.status === 'COMPLETED' || Object.keys(srvData.fields).length > 0) {
+            onExtracted(srvData.fields, srvData.strategyUsed, 'high');
+            setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(srvData.fields).length, message: 'Extração V2 concluída' });
+            return;
+          }
+        }
+        
+        // Client Flow
+        const clientRes = await DocumentExtractionController.processClientSide(file, initData);
+        setUiState({ machine: 'PARSING', step: 'Enviando resultado (V2)...' })
+        
+        const txtRes = await fetch('/api/evaluations/vehicle-document/extract/text-result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            processingId: initData.processingId,
+            processingToken: initData.processingToken,
+            source: clientRes.source,
+            pages: clientRes.pages,
+            pdfjsVersion: 'V2',
+            durationMs: 100,
+            tesseractVersion: 'V2',
+            language: 'por'
+          })
+        });
+        const txtData = await txtRes.json();
+        
+        if (txtData.status === 'COMPLETED' || Object.keys(txtData.fields).length > 0) {
+          onExtracted(txtData.fields, txtData.strategyUsed, 'high');
+          setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(txtData.fields).length, message: 'Extração V2 concluída' });
+        } else {
+          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'V2: ' + txtData.message });
+        }
+
+      } catch (e: any) {
+        setUiState({ machine: 'FAILED', file, message: String(e) })
+      } finally {
+        processingRef.current = false
+      }
+      return;
+    }
 
     // Referências para cleanup garantido
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -940,3 +1020,4 @@ const _checkTerminalCoverage: Record<TerminalState, true> = {
 }
 void _checkTerminalCoverage
 void isTerminal
+
