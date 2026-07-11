@@ -23,19 +23,34 @@ interface StageCfg { code: string; displayName: string; color: string; order: nu
 // Temperature dot (subtle, não emoji)
 const TEMP_COLORS: Record<string, string> = { HOT: '#ef4444', WARM: '#f59e0b', COLD: '#3b82f6' }
 
+interface CrmCtx {
+  scope: string; sellers: { id: string; name: string | null }[]; units: { id: string; name: string }[]
+}
+
 export default function CrmKanbanPage() {
+  const [ctx, setCtx]         = useState<CrmCtx | null>(null)
   const [rows, setRows]       = useState<LeadRow[]>([])
   const [stages, setStages]   = useState<StageCfg[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
+  const [fSeller, setFSeller] = useState('')
+  const [fUnit, setFUnit]     = useState('')
   const boardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch('/api/crm/context', { credentials: 'include' })
+      .then(r => r.json()).then(j => { if (j?.data) setCtx(j.data) }).catch(() => {})
+  }, [])
 
   const load = async () => {
     setLoading(true)
     try {
+      const params = new URLSearchParams({ perPage: '200' })
+      if (fSeller) params.set('assignedToUserId', fSeller)
+      if (fUnit)   params.set('unitId', fUnit)
       const [leadsRes, stagesRes] = await Promise.all([
-        fetch('/api/crm/leads?perPage=200', { credentials: 'include' }).then(r => r.json()).catch(() => null),
+        fetch(`/api/crm/leads?${params}`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
         fetch('/api/crm/config/stages', { credentials: 'include' }).then(r => r.json()).catch(() => null),
       ])
       setRows(leadsRes?.data ?? [])
@@ -47,7 +62,7 @@ export default function CrmKanbanPage() {
       setLoading(false)
     }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load() }, [fSeller, fUnit])
 
   const moveLead = async (leadId: string, nextStatus: string) => {
     setError(null); setMovingId(leadId)
@@ -102,6 +117,24 @@ export default function CrmKanbanPage() {
               {loading ? 'Carregando…' : `${totalLeads} leads · ${stages.length} etapas`}
             </p>
           </div>
+          {/* Filtros de escopo: vendedor só para quem vê mais de um; unidade só para 'all' */}
+          {ctx && ctx.sellers.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <User size={13} className="shrink-0 text-gray-400" />
+              <select value={fSeller} onChange={e => setFSeller(e.target.value)}
+                className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-gray-200">
+                <option value="">Todos</option>
+                {ctx.sellers.map(s => <option key={s.id} value={s.id}>{s.name ?? s.id}</option>)}
+              </select>
+            </div>
+          )}
+          {ctx && ctx.units.length > 0 && (
+            <select value={fUnit} onChange={e => setFUnit(e.target.value)}
+              className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-gray-200">
+              <option value="">Todas unidades</option>
+              {ctx.units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {error && (

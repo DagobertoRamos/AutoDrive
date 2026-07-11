@@ -9,7 +9,7 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
-import { resolveCrmScope } from '@/lib/crm/shared'
+import { resolveCrmScope, resolveCrmAttendanceScope } from '@/lib/crm/shared'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,24 +20,29 @@ export async function GET(req: Request) {
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
 
-  const scope = await resolveCrmScope(user)
-  if (!scope) return forbiddenResponse('Sem acesso aos leads.')
+  const [scope, attendanceScope] = await Promise.all([
+    resolveCrmScope(user),
+    resolveCrmAttendanceScope(user),
+  ])
+  if (!scope && !attendanceScope) return forbiddenResponse('Sem acesso ao CRM.')
+  // Usa o scope mais amplo para carregar as listas de filtros.
+  const effectiveScope = scope ?? attendanceScope
 
   // Carrega as listas de filtros somente para quem pode ver além dos próprios.
   const [sellers, units] = await Promise.all([
-    scope !== 'own'
+    effectiveScope !== 'own'
       ? prisma.user.findMany({
           where: {
             tenantId,
             status: 'ATIVO',
-            ...(scope === 'unit' && user.unitId ? { unitId: user.unitId } : {}),
+            ...(effectiveScope === 'unit' && user.unitId ? { unitId: user.unitId } : {}),
           },
           select: { id: true, name: true, role: true },
           orderBy: { name: 'asc' },
           take: 200,
         }).catch(() => [])
       : Promise.resolve([]),
-    scope === 'all'
+    effectiveScope === 'all'
       ? prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }).catch(() => [])
       : Promise.resolve([]),
   ])
@@ -45,7 +50,8 @@ export async function GET(req: Request) {
   return NextResponse.json({
     success: true,
     data: {
-      scope,
+      scope: scope ?? 'own',
+      attendanceScope: attendanceScope ?? 'own',
       userId: user.id,
       userName: user.name,
       unitId: user.unitId,

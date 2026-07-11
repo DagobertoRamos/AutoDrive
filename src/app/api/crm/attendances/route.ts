@@ -18,12 +18,20 @@ export async function GET(req: Request) {
     const scope = await resolveCrmAttendanceScope(user)
     if (!scope) return forbiddenResponse('Sem acesso aos atendimentos do CRM.')
     const sp = new URL(req.url).searchParams
+    const page = Math.max(1, Number(sp.get('page') ?? 1))
+    const perPage = Math.min(100, Math.max(1, Number(sp.get('perPage') ?? 50)))
     const status = sp.get('status')?.trim() || undefined
     const result = sp.get('result')?.trim() || undefined
     const type = sp.get('type')?.trim() || undefined
     const from = sp.get('from')
     const to = sp.get('to')
     const where = applyCrmAttendanceScope({ tenantId }, scope, user)
+
+    // Filtros de responsável e unidade — com guarda de scope (não fura o escopo).
+    const sellerFilter = sp.get('sellerId')?.trim()
+    if (sellerFilter && scope !== 'own') where.sellerId = sellerFilter
+    const unitFilter = sp.get('unitId')?.trim()
+    if (unitFilter && scope === 'all') where.unitId = unitFilter
 
     if (status) where.status = status as never
     if (result) where.result = result as never
@@ -35,10 +43,12 @@ export async function GET(req: Request) {
       }
     }
 
+    const total = await prisma.sellerQueueAttendance.count({ where })
     const rows = await prisma.sellerQueueAttendance.findMany({
       where,
       orderBy: [{ calledAt: 'desc' }],
-      take: 300,
+      skip: (page - 1) * perPage,
+      take: perPage,
       include: {
         arrival: { select: { customerName: true, customerPhone: true, recurring: true } },
       },
@@ -70,7 +80,7 @@ export async function GET(req: Request) {
         customerPhone: row.arrival?.customerPhone ?? null,
         recurring: row.arrival?.recurring ?? false,
       })),
-      meta: { scope, total: rows.length },
+      meta: { scope, total, page, perPage, totalPages: Math.max(1, Math.ceil(total / perPage)) },
     })
   } catch (err) {
     return handlePrismaError(err)

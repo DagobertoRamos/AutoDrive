@@ -3430,3 +3430,11 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - Cabeçalho adapta o subtítulo: "Seus leads" / "Leads da sua unidade" / "Todos os leads da empresa".
   - Filtros no banco: `assignedToUserId`, `unitId` (server-side, não fura escopo).
 - **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.
+
+### LOG 0255 — 2026-07-10 — Claude (Opus 4.8) — CRM: Gerente+ vê todos + filtros scope-aware em Atendimentos e Kanban
+- **Gerente vê todos os leads (`crm.view.all`):** `GERENTE` adicionado à role list de `crm.view.all`. Como `resolveCrmScope` verifica 'all' primeiro, o gerente passa a ter scope 'all' (e não mais só 'unit'). O mesmo vale para `resolveCrmAttendanceScope` (que também verifica `crm.view.all`). Override por colaborador continua disponível no cadastro via catálogo de módulos.
+- **`/api/crm/attendances`:** filtros `sellerId`/`unitId` com guarda de scope (igual às leads); paginação real (`total + skip + take`); retorna `meta.totalPages` p/ a UI paginar.
+- **`/api/crm/context`:** passa a resolver também `attendanceScope` (resultado do `resolveCrmAttendanceScope`) e o expõe no payload, além do `scope` de leads. Usa o scope mais amplo p/ montar as listas de sellers/units.
+- **Atendimentos (`crm/atendimentos/page.tsx`) — reescrita completa scope-aware:** filtros de Status (chips), Resultado, Período (de/até), Vendedor (scope≠own), Unidade (scope=all) — exatamente os que cabem no cargo. Paginação numérica. Dark mode. Coluna "Vendedor" aparece só p/ quem vê mais de um.
+- **Kanban (`crm/kanban/page.tsx`):** adicionado filtro de Vendedor e Unidade na barra superior (via `/api/crm/context`); filtros passados no fetch de leads; usam scope para decidir se aparecem.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.

@@ -587,7 +587,7 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     actions: ['read'],
   },
   'crm.view.all': {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO'],
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
     actions: ['read'],
   },
   'crm.lead.create': {
