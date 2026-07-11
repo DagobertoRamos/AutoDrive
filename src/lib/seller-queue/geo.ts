@@ -56,14 +56,19 @@ export function evaluatePresence(cfg: PresenceConfig | null, input: PresenceInpu
   }
 
   // GPS / geofence.
-  if (input.latitude != null && input.longitude != null && methods.includes('GPS')) {
+  if (methods.includes('GPS')) {
+    // Geofence não configurada → nada a validar → permite (GPS é opcional neste caso).
     if (cfg.geofenceLat == null || cfg.geofenceLng == null) {
-      return { ok: false, method: 'GPS', reason: 'Geofence da unidade não configurada.' }
+      return { ok: true, method: 'GPS', reason: 'Geofence não configurada — presença liberada.' }
     }
-    const d = haversineMeters(input.latitude, input.longitude, cfg.geofenceLat, cfg.geofenceLng)
-    const dist = Math.round(d)
-    if (d <= cfg.geofenceRadiusM) return { ok: true, method: 'GPS', distanceM: dist }
-    return { ok: false, method: 'GPS', distanceM: dist, reason: `Fora do raio da loja (${dist}m > ${cfg.geofenceRadiusM}m).` }
+    // Coordenadas fornecidas → valida distância.
+    if (input.latitude != null && input.longitude != null) {
+      const d = haversineMeters(input.latitude, input.longitude, cfg.geofenceLat, cfg.geofenceLng)
+      const dist = Math.round(d)
+      if (d <= cfg.geofenceRadiusM) return { ok: true, method: 'GPS', distanceM: dist }
+      return { ok: false, method: 'GPS', distanceM: dist, reason: `Fora do raio da loja (${dist}m > ${cfg.geofenceRadiusM}m).` }
+    }
+    // Geofence configurada mas nenhuma coordenada enviada → tenta outros métodos.
   }
 
   // Dispositivo reconhecido.

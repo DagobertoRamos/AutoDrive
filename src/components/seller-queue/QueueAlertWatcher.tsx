@@ -52,6 +52,7 @@ export default function QueueAlertWatcher() {
   const isCalled = useRef(false)
   const noAccess = useRef(false)
   const handledAttId = useRef<string | null>(null) // chamada já tratada pelo usuário → não re-alertar
+  const busyRef = useRef(false) // evita fechar popup durante submissão ativa (race GPS × deadline)
 
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [busy, setBusy] = useState(false)
@@ -188,13 +189,20 @@ export default function QueueAlertWatcher() {
             if (!isNativeAndroid()) setPrompt({ attId: att.id, customerName: att.arrival?.customerName ?? null, visitType: att.visitType ?? null, unitName: data.unitName ?? null, acceptDeadline: att.acceptDeadline ?? null })
             if (deadlineMs) {
               if (deadlineTimer.current) clearTimeout(deadlineTimer.current)
-              deadlineTimer.current = setTimeout(() => { stopAll(); setPrompt(null); fireTimeout(att.id) }, Math.max(0, deadlineMs - Date.now()))
+              deadlineTimer.current = setTimeout(() => {
+                stopAll()
+                // Não fecha o popup se o vendedor está no meio de uma submissão
+                // (ex.: GPS demorando 8s + prazo vencendo ao mesmo tempo).
+                // Nesse caso o popup permanece até a resposta da API (ok ou erro).
+                if (!busyRef.current) setPrompt(null)
+                fireTimeout(att.id)
+              }, Math.max(0, deadlineMs - Date.now()))
             }
           }
         } else {
           // Prazo venceu sem ação → para, fecha e avança a fila.
           if (isCalled.current) stopAll()
-          setPrompt(null)
+          if (!busyRef.current) setPrompt(null)
           fireTimeout(att.id)
         }
       } catch { /* noop */ }
@@ -211,19 +219,25 @@ export default function QueueAlertWatcher() {
     const attId = prompt.attId
     stopAll()                       // para alarme/sirene IMEDIATAMENTE
     handledAttId.current = attId    // não volta a tocar para esta chamada
-    setBusy(true); setErr(null)
+    busyRef.current = true; setBusy(true); setErr(null)
     try {
       const res = await fetch(`/api/seller-queue/attendances/${attId}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       const j = await res.json().catch(() => ({}))
-      if (!res.ok) { setErr(j?.error ?? 'Não foi possível concluir.'); return } // mantém pop-up p/ tentar de novo (ex.: longe da loja)
+      if (!res.ok) {
+        // Mantém o pop-up visível para tentar de novo (ex.: longe da loja, 409 de race).
+        // Se o deadline fechou o popup enquanto o GPS buscava, reabre com o erro.
+        setPrompt((prev) => prev ?? { attId, customerName: null, visitType: null, unitName: null, acceptDeadline: null })
+        setErr(j?.error ?? 'Não foi possível concluir.')
+        return
+      }
       setPrompt(null); setRejectMode(false); setReason('')
       // Aceitou → vai direto para a Minha Fila (atendimento em andamento).
       if (path === 'accept' && !window.location.pathname.includes('/vendedor-da-vez/minha-fila')) {
         window.location.assign('/vendedor-da-vez/minha-fila')
       }
-    } catch { setErr('Erro de rede. Tente de novo.') } finally { setBusy(false) }
+    } catch { setErr('Erro de rede. Tente de novo.') } finally { busyRef.current = false; setBusy(false) }
   }
-  const accept = async () => { setBusy(true); const pos = await getPosition(); await act('accept', pos) }
+  const accept = async () => { busyRef.current = true; setBusy(true); const pos = await getPosition(); await act('accept', pos) }
   const reject = async () => { if (!reason.trim()) { setErr('Informe o motivo da recusa.'); return } await act('reject', { reason: reason.trim() }) }
   const pass = async () => { await act('reject', { reason: 'Passou a vez' }) }
 
