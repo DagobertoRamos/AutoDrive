@@ -364,7 +364,7 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
     const brandSlashRe = /(?<![A-Z0-9])([A-Z]{2,12})\s*\/\s*([A-Z][A-Z0-9\s\-\.]{2,80}?)(?=\s{2,}|\n|\r|$|[a-z])/g
     for (const m of text.matchAll(brandSlashRe)) {
       const brandRaw = m[1].trim()
-      let rest = m[2].trim()
+      const rest = m[2].trim()
       const ignore = ['ANO', 'PESO', 'PBT', 'CMT', 'POT', 'POTENCIA', 'POTÊNCIA', 'CILINDRADA']
       if (ignore.includes(brandRaw)) continue
       mmv = `${brandRaw}/${rest}`
