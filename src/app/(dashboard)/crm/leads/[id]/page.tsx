@@ -20,7 +20,8 @@ import { CRM_TEMPERATURES, CRM_STAGE_OPTIONS, crmSourceLabel, crmTemperature } f
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag    { id: string; name: string; color: string | null }
 interface VisitItem  { id: string; scheduledAt: string; status: string; objective: string | null; vehicleRef: string | null; clientConfirmed: boolean }
-interface VehicleItem { id: string; vehicleId: string | null; brand: string | null; model: string | null; version: string | null; plate: string | null; isPrimary: boolean; status: string; interest: string; removedAt: string | null }
+interface VehicleItem { id: string; vehicleId: string | null; brand: string | null; model: string | null; version: string | null; plate: string | null; isPrimary: boolean; status: string; interest: string; role: string; removedAt: string | null }
+interface PendencyRef  { id: string; type: string; status: string; priority: string; dueDate: string | null; description: string | null; createdAt: string }
 interface DealLink   { id: string; dealId: string; isPrimary: boolean; linkedAt: string; deal: { id: string; dealNumber: string | null; status: string; type: string } | null }
 interface Summary    { id: string; version: number; objective: string | null; desiredVehicle: string | null; hasTradeIn: boolean; narrative: string | null; authorName: string | null; createdAt: string }
 interface Interaction { id: string; type: string; channel: string | null; result: string | null; summary: string | null; authorName: string | null; occurredAt: string }
@@ -182,6 +183,341 @@ function InteractionForm({ leadId, onSaved }: { leadId: string; onSaved: () => v
       <button onClick={save} disabled={busy} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
         {busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}Registrar
       </button>
+    </div>
+  )
+}
+
+// ── SummaryTab — Resumo editável + histórico + próximas ações + veículos ─────
+const ROLE_LABELS: Record<string,string> = { COMPRA:'Compra', TROCA:'Troca', VENDA:'Venda p/ loja', CONSIGNACAO:'Consignação', AVALIACAO:'Avaliação' }
+const ROLE_CLS:   Record<string,string>  = { COMPRA:'bg-blue-50 text-blue-700', TROCA:'bg-amber-50 text-amber-700', VENDA:'bg-emerald-50 text-emerald-700', CONSIGNACAO:'bg-purple-50 text-purple-700', AVALIACAO:'bg-gray-100 text-gray-600' }
+const TASK_TYPE_ICONS: Record<string,string> = { CALL:'📞', EMAIL:'✉️', WHATSAPP:'💬', FOLLOW_UP:'📋', VISIT:'🚗', OTHER:'•' }
+const PEND_TYPE_LABELS: Record<string,string> = { VISITA_AGENDADA:'Visita agendada', FOLLOWUP:'Follow-up', ALIMENTAR_SISTEMA:'Alimentar sistema', ACOMPANHAMENTO:'Acompanhamento', PENDENCIA:'Pendência' }
+
+function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, relations, onRefresh }: {
+  leadId: string; lead: LeadDetail; workspace: Workspace; tasks: Task[]
+  interactions: Interaction[]; timeline: TimelineItem[]
+  relations: { customer: { name: string | null } | null; deal: { dealNumber: string | null } | null }
+  onRefresh: () => void
+}) {
+  // Resumo comercial
+  const [narrative, setNarrative] = useState('')
+  const [savingNarr, setSavingNarr] = useState(false)
+  const [summaryHistory, setSummaryHistory] = useState<Summary[]>([])
+  const [showSummaryHistory, setShowSummaryHistory] = useState(false)
+
+  // Próximas ações
+  const [tasksList, setTasksList] = useState<Task[]>(tasks)
+  const [showTaskForm, setShowTaskForm] = useState(false)
+  const [taskForm, setTaskForm] = useState({ title: '', type: 'FOLLOW_UP', dueAt: '', notes: '', assignedToUserId: '' })
+  const [savingTask, setSavingTask] = useState(false)
+  const [taskComment, setTaskComment] = useState<Record<string,string>>({})
+
+  // Pendências vinculadas
+  const [pendencies, setPendencies] = useState<PendencyRef[]>([])
+  const [showPendencyForm, setShowPendencyForm] = useState(false)
+  const [pendencyForm, setPendencyForm] = useState({ title: '', type: 'FOLLOWUP', dueDate: '', priority: 'MEDIA', remind: false })
+  const [savingPend, setSavingPend] = useState(false)
+
+  // Veículos rápidos
+  const [showVehicleForm, setShowVehicleForm] = useState(false)
+  const [vehicleForm, setVehicleForm] = useState({ brand: '', model: '', plate: '', role: 'COMPRA', isPrimary: true })
+  const [savingVehicle, setSavingVehicle] = useState(false)
+
+  useEffect(() => { setTasksList(tasks) }, [tasks])
+
+  useEffect(() => {
+    fetch(`/api/crm/leads/${leadId}/pendency`, { credentials: 'include' }).then(r => r.json()).then(j => setPendencies(j?.data ?? [])).catch(() => {})
+    fetch(`/api/crm/leads/${leadId}/summary`, { credentials: 'include' }).then(r => r.json()).then(j => setSummaryHistory(j?.data?.history ?? [])).catch(() => {})
+  }, [leadId])
+
+  const saveNarrative = async () => {
+    if (!narrative.trim()) return
+    setSavingNarr(true)
+    try {
+      await fetch(`/api/crm/leads/${leadId}/summary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ narrative: narrative.trim() }) })
+      setNarrative('')
+      const r = await fetch(`/api/crm/leads/${leadId}/summary`, { credentials: 'include' }).then(x => x.json()).catch(() => null)
+      setSummaryHistory(r?.data?.history ?? [])
+      onRefresh()
+    } finally { setSavingNarr(false) }
+  }
+
+  const completeTask = async (t: Task) => {
+    const res = await fetch(`/api/crm/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status: t.status === 'DONE' ? 'PENDING' : 'DONE', notes: taskComment[t.id] || t.notes }) })
+    if (res.ok) { onRefresh() }
+  }
+
+  const createTask = async () => {
+    if (!taskForm.title.trim()) return
+    setSavingTask(true)
+    try {
+      await fetch(`/api/crm/leads/${leadId}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...taskForm, dueAt: taskForm.dueAt || null }) })
+      setTaskForm({ title: '', type: 'FOLLOW_UP', dueAt: '', notes: '', assignedToUserId: '' }); setShowTaskForm(false); onRefresh()
+    } finally { setSavingTask(false) }
+  }
+
+  const createPendency = async () => {
+    if (!pendencyForm.title.trim()) return
+    setSavingPend(true)
+    try {
+      const res = await fetch(`/api/crm/leads/${leadId}/pendency`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(pendencyForm) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(j?.error ?? 'Falha ao criar pendência.'); return }
+      setPendencies(prev => [j.data, ...prev]); setShowPendencyForm(false); setPendencyForm({ title: '', type: 'FOLLOWUP', dueDate: '', priority: 'MEDIA', remind: false })
+    } finally { setSavingPend(false) }
+  }
+
+  const createVehicle = async () => {
+    setSavingVehicle(true)
+    try {
+      await fetch(`/api/crm/leads/${leadId}/vehicles`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(vehicleForm) })
+      setVehicleForm({ brand: '', model: '', plate: '', role: 'COMPRA', isPrimary: true }); setShowVehicleForm(false); onRefresh()
+    } finally { setSavingVehicle(false) }
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+
+      {/* ── Coluna esquerda: dados + veículos + próximas ações ── */}
+      <div className="space-y-4">
+
+        {/* Dados do lead */}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+          <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">Dados do lead</h3>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+            {[['Cliente', lead.name],['Telefone', lead.phone],['E-mail', lead.email],['Origem', crmSourceLabel(lead.source)],['Criado em', fmtDT(lead.createdAt)],['Responsável', lead.assignedToUserName],['Unidade', lead.unitName],['Cliente vinculado', relations.customer?.name]].map(([k, v]) => (
+              <div key={String(k)}><dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{k}</dt><dd className="text-gray-700 dark:text-gray-300 truncate">{v ?? '—'}</dd></div>
+            ))}
+          </dl>
+          {lead.notes && <div className="mt-3 rounded-lg bg-gray-50 p-3 text-[12px] text-gray-600 dark:bg-slate-800 dark:text-gray-300">{lead.notes}</div>}
+        </div>
+
+        {/* Veículos de interesse */}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={14} />Veículos de interesse</h3>
+            <button onClick={() => setShowVehicleForm(v => !v)} className="flex items-center gap-1 text-[11px] text-brand-600 hover:underline"><Plus size={11} />Adicionar</button>
+          </div>
+
+          {showVehicleForm && (
+            <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-3 space-y-2 dark:border-brand-900/30 dark:bg-brand-950/20">
+              <div className="grid grid-cols-2 gap-2">
+                <input placeholder="Marca" value={vehicleForm.brand} onChange={e => setVehicleForm(f => ({...f, brand: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                <input placeholder="Modelo / versão" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({...f, model: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                <input placeholder="Placa" value={vehicleForm.plate} onChange={e => setVehicleForm(f => ({...f, plate: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                <select value={vehicleForm.role} onChange={e => setVehicleForm(f => ({...f, role: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
+                  {Object.entries(ROLE_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={vehicleForm.isPrimary} onChange={e => setVehicleForm(f => ({...f, isPrimary: e.target.checked}))} className="rounded border-gray-300" />Principal</label>
+                <button onClick={createVehicle} disabled={savingVehicle} className="ml-auto rounded-lg bg-brand-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{savingVehicle ? <Loader2 size={11} className="animate-spin inline" /> : 'Salvar'}</button>
+                <button onClick={() => setShowVehicleForm(false)} className="text-[11px] text-gray-500 hover:text-gray-700">Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {workspace.vehicleInterests.filter(v => !v.removedAt).map(v => (
+            <div key={v.id} className="mb-2 flex items-center gap-2 rounded-lg border border-gray-100 p-2.5 dark:border-white/5">
+              <Car size={14} className="shrink-0 text-gray-400" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-medium text-gray-900 dark:text-white">{[v.brand, v.model].filter(Boolean).join(' ') || 'Veículo'}</p>
+                {v.plate && <p className="font-mono text-[10px] text-gray-400">{v.plate}</p>}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold', ROLE_CLS[v.role] ?? 'bg-gray-100 text-gray-500')}>{ROLE_LABELS[v.role] ?? v.role}</span>
+                {v.isPrimary && <span className="rounded bg-brand-100 px-1 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
+              </div>
+            </div>
+          ))}
+          {workspace.vehicleInterests.filter(v => !v.removedAt).length === 0 && (
+            <p className="text-[12px] text-gray-400 italic">Nenhum veículo cadastrado.</p>
+          )}
+        </div>
+
+        {/* Próximas ações */}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Clock size={14} className="text-amber-500" />Próximas ações {tasksList.filter(t=>t.status==='PENDING').length > 0 && <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">{tasksList.filter(t=>t.status==='PENDING').length}</span>}</h3>
+            <button onClick={() => setShowTaskForm(v => !v)} className="flex items-center gap-1 text-[11px] text-brand-600 hover:underline"><Plus size={11} />Nova ação</button>
+          </div>
+
+          {showTaskForm && (
+            <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-3 space-y-2 dark:border-brand-900/30 dark:bg-brand-950/20">
+              <input placeholder="Título da ação *" value={taskForm.title} onChange={e => setTaskForm(f=>({...f,title:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <div className="grid grid-cols-2 gap-2">
+                <select value={taskForm.type} onChange={e => setTaskForm(f=>({...f,type:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
+                  {[['FOLLOW_UP','Follow-up'],['CALL','Ligação'],['WHATSAPP','WhatsApp'],['EMAIL','E-mail'],['VISIT','Visita'],['OTHER','Outro']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <input type="datetime-local" value={taskForm.dueAt} onChange={e => setTaskForm(f=>({...f,dueAt:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              </div>
+              <textarea rows={2} placeholder="Observação" value={taskForm.notes} onChange={e => setTaskForm(f=>({...f,notes:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <div className="flex gap-2">
+                <button onClick={createTask} disabled={savingTask||!taskForm.title.trim()} className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{savingTask ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}Salvar</button>
+                <button onClick={() => setShowTaskForm(false)} className="text-[11px] text-gray-500">Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {tasksList.filter(t => t.status === 'PENDING').map(t => (
+            <div key={t.id} className="mb-2 rounded-lg border border-amber-100 bg-amber-50/60 p-3 dark:border-amber-900/30 dark:bg-amber-950/20">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="shrink-0 text-base leading-none mt-0.5">{TASK_TYPE_ICONS[t.type] ?? '•'}</span>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-gray-900 dark:text-white">{t.title}</p>
+                    {t.assignedToUserName && <p className="text-[11px] text-gray-500 dark:text-gray-400"><User size={10} className="inline mr-0.5" />{t.assignedToUserName}</p>}
+                    {t.notes && <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2">{t.notes}</p>}
+                    {t.dueAt && <p className="mt-0.5 text-[10px] tabular-nums text-amber-600 dark:text-amber-400"><Clock size={10} className="inline mr-0.5" />{fmtDT(t.dueAt)}</p>}
+                  </div>
+                </div>
+                <button onClick={() => completeTask(t)} title="Marcar como concluída" className="shrink-0 rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 hover:border-green-300 hover:bg-green-50 hover:text-green-700 dark:border-white/10 dark:bg-slate-700">
+                  <CheckCircle2 size={14} />
+                </button>
+              </div>
+              {/* Caixa de interação do vendedor/gerente/SDR */}
+              <div className="mt-2 flex gap-1.5">
+                <input value={taskComment[t.id] ?? ''} onChange={e => setTaskComment(prev => ({...prev, [t.id]: e.target.value}))} placeholder="Comentário ou resultado…" className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-white/15 dark:bg-slate-700 dark:text-white" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); completeTask(t) } }} />
+                <button onClick={() => completeTask(t)} className="rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700">OK</button>
+              </div>
+            </div>
+          ))}
+
+          {tasksList.filter(t => t.status === 'DONE').length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[11px] text-gray-400 hover:text-gray-600">{tasksList.filter(t=>t.status==='DONE').length} concluída(s)</summary>
+              {tasksList.filter(t=>t.status==='DONE').map(t => (
+                <div key={t.id} className="mt-1 flex items-center gap-2 rounded-lg bg-gray-50 p-2 text-[11px] text-gray-500 dark:bg-slate-800 line-through opacity-60">
+                  <CheckCircle2 size={12} className="shrink-0 text-emerald-500" />{t.title}
+                  {t.dueAt && <span className="ml-auto tabular-nums">{fmtDT(t.dueAt)}</span>}
+                </div>
+              ))}
+            </details>
+          )}
+
+          {tasksList.length === 0 && !showTaskForm && (
+            <p className="text-[12px] text-gray-400 italic">Nenhuma próxima ação. Crie uma acima.</p>
+          )}
+        </div>
+
+        {/* Pendências vinculadas */}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><FileText size={14} className="text-purple-500" />Alertas / Pendências</h3>
+            <button onClick={() => setShowPendencyForm(v => !v)} className="flex items-center gap-1 text-[11px] text-brand-600 hover:underline"><Plus size={11} />Nova</button>
+          </div>
+
+          {showPendencyForm && (
+            <div className="mb-3 rounded-lg border border-purple-100 bg-purple-50/40 p-3 space-y-2 dark:border-purple-900/30 dark:bg-purple-950/20">
+              <input placeholder="Título *" value={pendencyForm.title} onChange={e => setPendencyForm(f=>({...f,title:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <div className="grid grid-cols-2 gap-2">
+                <select value={pendencyForm.type} onChange={e => setPendencyForm(f=>({...f,type:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
+                  {Object.entries(PEND_TYPE_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <select value={pendencyForm.priority} onChange={e => setPendencyForm(f=>({...f,priority:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
+                  {[['URGENTE','Urgente'],['ALTA','Alta'],['MEDIA','Média'],['BAIXA','Baixa']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <input type="date" value={pendencyForm.dueDate} onChange={e => setPendencyForm(f=>({...f,dueDate:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <label className="flex items-center gap-2 text-[12px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={pendencyForm.remind} onChange={e => setPendencyForm(f=>({...f,remind:e.target.checked}))} className="rounded border-gray-300" />Lembrete automático por push</label>
+              <div className="flex gap-2">
+                <button onClick={createPendency} disabled={savingPend||!pendencyForm.title.trim()} className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 disabled:opacity-50">{savingPend ? <Loader2 size={11} className="animate-spin" /> : 'Criar pendência'}</button>
+                <button onClick={() => setShowPendencyForm(false)} className="text-[11px] text-gray-500">Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {pendencies.length === 0 ? (
+            <p className="text-[12px] text-gray-400 italic">Nenhuma pendência vinculada.</p>
+          ) : pendencies.map(p => (
+            <div key={p.id} className="mb-2 flex items-center gap-2 rounded-lg border border-gray-100 p-2.5 dark:border-white/5 text-[12px]">
+              <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold shrink-0', p.priority==='URGENTE'?'bg-red-100 text-red-700':p.priority==='ALTA'?'bg-amber-100 text-amber-700':'bg-gray-100 text-gray-600')}>{p.priority}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{PEND_TYPE_LABELS[p.type] ?? p.type}</p>
+                {p.description && <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{p.description}</p>}
+              </div>
+              <div className="shrink-0 text-right">
+                <p className={cn('text-[10px] font-semibold', p.status==='ABERTA'?'text-amber-600':'text-gray-400')}>{p.status}</p>
+                {p.dueDate && <p className="text-[10px] tabular-nums text-gray-400">{new Date(p.dueDate).toLocaleDateString('pt-BR')}</p>}
+              </div>
+              <Link href={`/pendencias/central?id=${p.id}`} className="shrink-0 text-[10px] font-medium text-sky-600 hover:underline">Ver</Link>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Coluna direita: resumo comercial + histórico ── */}
+      <div className="space-y-4">
+
+        {/* Caixa de resumo — digitar e salvar */}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+          <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><FileText size={15} />Resumo comercial</h3>
+
+          {/* Última versão */}
+          {workspace.latestSummary?.narrative && (
+            <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/40 p-3 text-[12px] text-gray-700 dark:border-brand-900/30 dark:bg-brand-950/20 dark:text-gray-300">
+              <p className="line-clamp-4 whitespace-pre-wrap">{workspace.latestSummary.narrative}</p>
+              <p className="mt-2 text-[10px] text-gray-400">v{workspace.latestSummary.version} · {workspace.latestSummary.authorName} · {fmtDT(workspace.latestSummary.createdAt)}</p>
+            </div>
+          )}
+
+          {/* Caixa de nova entrada */}
+          <textarea
+            rows={4}
+            value={narrative}
+            onChange={e => setNarrative(e.target.value)}
+            placeholder="Escreva aqui o que aconteceu na conversa, objeções, interesse do cliente, próximos passos…"
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm placeholder-gray-400 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button onClick={saveNarrative} disabled={savingNarr || !narrative.trim()} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+              {savingNarr ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}Salvar resumo
+            </button>
+            {narrative.trim() && <button onClick={() => setNarrative('')} className="text-[12px] text-gray-400 hover:text-gray-600">Limpar</button>}
+          </div>
+        </div>
+
+        {/* Histórico de resumos + interações (linha do tempo) */}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Clock size={14} />Histórico</h3>
+            {summaryHistory.length > 0 && (
+              <button onClick={() => setShowSummaryHistory(v => !v)} className="text-[11px] text-brand-600 hover:underline">{showSummaryHistory ? 'Ocultar versões' : `Ver ${summaryHistory.length} versão(ões)`}</button>
+            )}
+          </div>
+
+          {/* Versões anteriores do resumo */}
+          {showSummaryHistory && summaryHistory.map(s => (
+            <div key={s.id} className="mb-2 rounded-lg border border-gray-100 bg-gray-50 p-3 text-[12px] dark:border-white/5 dark:bg-slate-800">
+              <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{s.narrative}</p>
+              <p className="mt-1 text-[10px] text-gray-400">v{s.version} · {s.authorName} · {fmtDT(s.createdAt)}</p>
+            </div>
+          ))}
+
+          {/* Linha do tempo unificada (interações + timeline) */}
+          <div className="space-y-0">
+            {[
+              ...interactions.map(i => ({ id:'i_'+i.id, at: i.occurredAt, type: i.type, title: INT_LABELS[i.type] ?? i.type, detail: i.summary, actorName: i.authorName })),
+              ...(timeline ?? [])
+            ].sort((a,b) => new Date(b.at).getTime() - new Date(a.at).getTime()).map((ev, idx, arr) => (
+              <div key={ev.id+idx} className="flex gap-2.5">
+                <div className="flex flex-col items-center">
+                  <div className="mt-1.5 h-2 w-2 rounded-full bg-brand-300 shrink-0" />
+                  {idx < arr.length - 1 && <div className="mt-1 w-px flex-1 bg-gray-100 dark:bg-slate-700 min-h-[16px]" />}
+                </div>
+                <div className="pb-3 min-w-0 flex-1">
+                  <p className="text-[10px] text-gray-400 tabular-nums">{fmtDT(ev.at)}{ev.actorName ? ` · ${ev.actorName}` : ''}</p>
+                  <p className="text-[12px] font-medium text-gray-800 dark:text-gray-200">{ev.title}</p>
+                  {ev.detail && <p className="mt-0.5 text-[11px] text-gray-600 dark:text-gray-300 line-clamp-3 whitespace-pre-wrap">{ev.detail}</p>}
+                </div>
+              </div>
+            ))}
+            {(!interactions.length && !timeline?.length) && (
+              <p className="py-4 text-center text-[12px] text-gray-400">Nenhuma interação registrada ainda.</p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -845,79 +1181,7 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
         <div className="mt-4">
           {/* ── Tab: Resumo ── */}
           {tab === 'summary' && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {/* Dados do lead */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
-                <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">Dados do lead</h3>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-                  {[
-                    ['Cliente', lead.name],
-                    ['Telefone', lead.phone],
-                    ['E-mail', lead.email],
-                    ['Origem', crmSourceLabel(lead.source)],
-                    ['Criado em', fmtDT(lead.createdAt)],
-                    ['Responsável', lead.assignedToUserName],
-                    ['Unidade', lead.unitName],
-                    ['Cliente vinculado', relations.customer?.name],
-                  ].map(([k, v]) => (
-                    <div key={String(k)}>
-                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{k}</dt>
-                      <dd className="text-gray-700 dark:text-gray-300 truncate">{v ?? '—'}</dd>
-                    </div>
-                  ))}
-                </dl>
-                {lead.notes && (
-                  <div className="mt-3 rounded-lg bg-gray-50 p-3 text-[12px] text-gray-600 dark:bg-slate-800 dark:text-gray-300">{lead.notes}</div>
-                )}
-              </div>
-
-              {/* Resumo comercial */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><FileText size={15} />Resumo comercial</h3>
-                  <Link href={`/crm/leads/${leadId}#summary-edit`} className="text-[11px] text-brand-600 hover:underline">Editar</Link>
-                </div>
-                {workspace.latestSummary ? (
-                  <div className="space-y-2 text-[12px]">
-                    {workspace.latestSummary.objective && <p className="text-gray-700 dark:text-gray-300"><b>Objetivo:</b> {workspace.latestSummary.objective}</p>}
-                    {workspace.latestSummary.desiredVehicle && <p className="text-gray-700 dark:text-gray-300"><b>Veículo desejado:</b> {workspace.latestSummary.desiredVehicle}</p>}
-                    {workspace.latestSummary.hasTradeIn && <p className="text-amber-700 dark:text-amber-400 font-medium">Possui veículo de troca</p>}
-                    {workspace.latestSummary.narrative && <p className="mt-2 rounded-lg bg-gray-50 p-3 text-gray-600 dark:bg-slate-800 dark:text-gray-300">{workspace.latestSummary.narrative}</p>}
-                    <p className="text-[10px] text-gray-400">v{workspace.latestSummary.version} · por {workspace.latestSummary.authorName} · {fmtDT(workspace.latestSummary.createdAt)}</p>
-                  </div>
-                ) : (
-                  <p className="text-[12px] text-gray-400 italic">Nenhum resumo registrado ainda.</p>
-                )}
-              </div>
-
-              {/* Tarefas pendentes */}
-              {pendingTasks.length > 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-800 dark:bg-amber-950/20">
-                  <h3 className="mb-2 text-sm font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2"><Clock size={14} />Próximas ações ({pendingTasks.length})</h3>
-                  {pendingTasks.slice(0, 3).map(t => (
-                    <div key={t.id} className="mb-1.5 flex items-center justify-between text-[12px]">
-                      <span className="text-gray-700 dark:text-gray-300 truncate">{t.title}</span>
-                      {t.dueAt && <span className="ml-2 shrink-0 tabular-nums text-gray-500">{fmtDT(t.dueAt)}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Veículo de interesse principal */}
-              {workspace.vehicleInterests.length > 0 && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
-                  <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={14} />Veículo de interesse</h3>
-                  {workspace.vehicleInterests.slice(0, 2).map(v => (
-                    <div key={v.id} className="mb-2 flex items-center gap-2 text-[12px]">
-                      {v.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
-                      <span className="text-gray-700 dark:text-gray-300">{[v.brand, v.model, v.version].filter(Boolean).join(' ')}</span>
-                      {v.plate && <span className="font-mono text-[10px] text-gray-400">{v.plate}</span>}
-                    </div>
-                  ))}
-                  {workspace.vehicleInterests.length > 2 && <p className="text-[11px] text-gray-400">+{workspace.vehicleInterests.length - 2} mais</p>}
-                </div>
-              )}
-            </div>
+            <SummaryTab leadId={leadId} lead={lead} workspace={workspace} tasks={pendingTasks} interactions={interactions} timeline={timeline ?? []} relations={relations} onRefresh={load} />
           )}
 
           {/* ── Tab: Histórico ── */}

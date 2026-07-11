@@ -3540,3 +3540,14 @@ Abas: Visão Geral · Ocorrências · Penalidades · Restrições da Fila · Min
 - Evita bloqueio indefinido por falha de job
 
 **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK
+
+### LOG 0264 — 2026-07-11 — Claude (Opus 4.8) — CRM Lead: resumo editável + histórico + veículos com tipo + ações interativas + pendências
+
+- **Problema (screenshot):** no detalhe do lead só apareciam dados estáticos + "Resumo comercial" vazio sem forma de editar + "Próximas ações" sem interação.
+- **Schema/migration `20260711120000_crm_vehicle_role_field`:** campo `role` em `CrmLeadVehicle` (COMPRA|TROCA|VENDA|CONSIGNACAO|AVALIACAO, default COMPRA). Distingue o tipo de negócio do veículo de interesse. Aplicar manual na Neon.
+- **`POST /api/crm/leads/[id]/pendency`:** cria pendência na Central de Pendências vinculada ao lead (`originModule='CRM'`, `originRecordId=leadId`). Registra interação na linha do tempo. Usa `remind` p/ lembrete automático por push. `GET` lista pendências do lead.
+- **`SummaryTab` — Resumo editável + histórico:** textarea com botão "Salvar resumo" → chama `POST /summary` (append-only, versões imutáveis). Exibe a última versão no topo. Botão "Ver N versão(ões)" expande o histórico completo. Linha do tempo unificada (interações + timeline) logo abaixo, cronológica reversa.
+- **Veículos de interesse (inline no Resumo):** formulário rápido com Marca, Modelo, Placa e **Tipo** (Compra/Troca/Venda p/ loja/Consignação/Avaliação) + checkbox Principal. Badge colorido por tipo no card. Campo `role` salvo via `POST /vehicles` (atualizado).
+- **Próximas ações interativas:** lista de tasks pendentes com tipo (Follow-up/Ligação/WhatsApp/E-mail/Visita), data, responsável, botão ✓ e caixa de comentário para vendedor/gerente/SDR interagirem. Formulário de criação de nova ação. Concluídas ficam em `<details>` recolhível. Enter no comentário finaliza a task.
+- **Alertas / Pendências vinculadas:** seção para criar pendência de visita agendada, follow-up, acompanhamento ou alimentar sistema, com link direto para a Central de Pendências. Suporte a lembrete automático.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (494/494); `npm run build` OK.

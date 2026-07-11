@@ -1,0 +1,2 @@
+-- CRM: campo role no CrmLeadVehicle (COMPRA|TROCA|VENDA|CONSIGNACAO|AVALIACAO). Aditivo.
+ALTER TABLE "crm_lead_vehicles" ADD COLUMN IF NOT EXISTS "role" TEXT NOT NULL DEFAULT 'COMPRA';

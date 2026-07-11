@@ -5494,6 +5494,9 @@ model CrmLeadVehicle {
   priceViewed     Decimal?  @db.Decimal(12,2)
   interest        String    @default("PRIMARY") // PRIMARY | ALTERNATIVE | DISQUALIFIED
   status          String    @default("INTERESTED") // INTERESTED | PROPOSAL_SENT | VISITED | DISQUALIFIED
+  // Tipo de negócio: COMPRA (cliente quer comprar), TROCA (cliente tem veículo p/ troca),
+  // VENDA (cliente quer vender pra loja), CONSIGNACAO (consignação), AVALIACAO (só avaliar)
+  role            String    @default("COMPRA") // COMPRA | TROCA | VENDA | CONSIGNACAO | AVALIACAO
   isPrimary       Boolean   @default(false)
   notes           String?
   addedByUserId   String?

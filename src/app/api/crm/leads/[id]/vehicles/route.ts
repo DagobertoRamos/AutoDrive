@@ -59,6 +59,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       version: b?.version ?? snapshot?.version ?? null, year: b?.year ?? snapshot?.year ?? null,
       plate: b?.plate ?? snapshot?.plate ?? null, priceViewed: b?.priceViewed ?? null,
       interest: b?.interest ?? 'PRIMARY', status: 'INTERESTED',
+      role: ['COMPRA','TROCA','VENDA','CONSIGNACAO','AVALIACAO'].includes(String(b?.role ?? '')) ? String(b.role) : 'COMPRA',
       isPrimary: Boolean(b?.isPrimary), notes: b?.notes ? String(b.notes).trim() : null,
       addedByUserId: user.id,
     }})
