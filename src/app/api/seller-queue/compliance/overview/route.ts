@@ -9,7 +9,8 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { canAccessModule } from '@/lib/permissions'
-import { unitFromRequest } from '@/lib/seller-queue/queue'
+import { unitFromRequest, getUnitConfig } from '@/lib/seller-queue/queue'
+import { readCompliancePilotConfig } from '@/lib/seller-queue/compliance'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,9 @@ export async function GET(req: Request) {
   const to   = sp.get('to')   ? new Date(sp.get('to')!)   : new Date()
 
   try {
+    const unitCfg = await getUnitConfig(tenantId, unitId ?? '')
+    const complianceCfg = readCompliancePilotConfig(unitCfg?.config)
+
     const baseWhere = { tenantId, ...(unitId ? { unitId } : {}) }
     const [
       pendingFlags,
@@ -58,6 +62,7 @@ export async function GET(req: Request) {
       success: true,
       data: {
         period: { from, to },
+        complianceEnabled: complianceCfg.enabled,
         occurrences: { pending: pendingFlags, confirmed: confirmedFlags, dismissed: dismissedFlags, total: pendingFlags + confirmedFlags + dismissedFlags },
         penalties: { active: activePenalties, expired: expiredPenalties, totalActivePoints: totalPoints._sum.points ?? 0 },
         restrictions: restrictions.map(r => ({ ...r, sellerName: nameMap.get(r.sellerId) ?? r.sellerId })),
