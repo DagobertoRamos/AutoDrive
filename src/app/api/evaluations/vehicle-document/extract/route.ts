@@ -440,187 +440,164 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. Se for PDF, tenta extrair o texto de forma nativa e estruturada
+  // ── 3. PDF — processamento exclusivamente no servidor ─────────────────────
+  // REGRA ARQUITETURAL: PDFs NUNCA disparam OCR no browser.
+  // Se a extração nativa falhar (pdfjs timeout/import), devolvemos os dados
+  // que conseguimos (mesmo que vazios) e o usuário preenche manualmente.
+  // Tesseract no browser é reservado apenas para imagens.
   if (mimeType === 'application/pdf') {
-    logExtraction('NATIVE_PDF_EXTRACTION_STARTED', { correlationId, tenantId: session.user.tenantId ?? undefined, extra: { mimeType, sizeBytes: buffer.byteLength } })
+    logExtraction('NATIVE_PDF_EXTRACTION_STARTED', {
+      correlationId,
+      tenantId: session.user.tenantId ?? undefined,
+      extra: { mimeType, sizeBytes: buffer.byteLength },
+    })
+
     const { text: nativeText, tokens } = await extractNativePdfDataWithTimeout(buffer)
-    logExtraction('NATIVE_PDF_EXTRACTION_COMPLETED', { correlationId, durationMs: Date.now() - t0, extra: { nativeTextLength: nativeText.length } })
-    if (nativeText) {
-      // Faz o parsing por coordenadas sobre os tokens do PDF
-      let parsed = parseCrlvByCoordinates(tokens, settings.mappings)
-      
-      // Fallback para texto caso falhe
-      if (!parsed.plate && !parsed.chassis) {
-        const parsedFallback = parseCrlvText(nativeText, settings.mappings)
-        if (parsedFallback.plate || parsedFallback.chassis) {
-          parsed = parsedFallback
-        }
-      }
 
-      // Monta os campos iniciais
-      const fields: Record<string, VehicleExtractedField<any>> = {}
-      const keys = [
-        'plate', 'chassis', 'renavam', 'manufactureYear', 'modelYear',
-        'brand', 'model', 'version', 'color', 'fuelType', 'powerCv',
-        'displacementCc', 'officialSpeciesType', 'bodyType', 'ownerName', 'ownerDocument'
-      ]
+    logExtraction('NATIVE_PDF_EXTRACTION_COMPLETED', {
+      correlationId,
+      durationMs: Date.now() - t0,
+      extra: { nativeTextLength: nativeText.length, tokenCount: tokens.length },
+    })
 
-      for (const k of keys) {
-        fields[k] = buildExtractedField(
-          k,
-          (parsed as any)[k],
-          undefined, // sem OCR por enquanto
-          'NATIVE_PDF_TEXT',
-          settings.fieldRules
-        )
-      }
-
-      // Derivações
-      const officialSpecies = fields.officialSpeciesType?.normalizedValue
-      const displacement = fields.displacementCc?.normalizedValue
-      const versionStr = fields.version?.normalizedValue || fields.model?.normalizedValue || ''
-
-      const vehicleCategory = classifyVehicleCategory(officialSpecies, fields.bodyType?.normalizedValue, settings.mappings?.speciesTypes)
-      fields['vehicleGroup'] = {
-        field: 'vehicleGroup',
-        rawValue: vehicleCategory,
-        normalizedValue: vehicleCategory,
-        displayValue: vehicleCategory,
-        source: 'CATALOG_DERIVED',
-        provider: 'autodrive-catalog',
-        confidence: 0.9,
-        requiresReview: false,
-        validationStatus: 'VALID',
-      }
-
-      const engineResult = getEngineCommercialLabel(displacement, settings.mappings?.displacements)
-      const engineLabel = engineResult.label
-      fields['engineCommercialLabel'] = {
-        field: 'engineCommercialLabel',
-        rawValue: engineLabel,
-        normalizedValue: engineLabel,
-        displayValue: engineLabel ?? '',
-        source: 'CATALOG_DERIVED',
-        provider: 'autodrive-catalog',
-        confidence: 0.8,
-        requiresReview: engineResult.requiresReview,
-        validationStatus: 'VALID',
-      }
-
-      const transmissionResult = resolveTransmissionType(versionStr, settings.mappings?.transmissions)
-      const transmission = transmissionResult.type
-      fields['transmissionType'] = {
-        field: 'transmissionType',
-        rawValue: transmission,
-        normalizedValue: transmission,
-        displayValue: transmission ?? '',
-        source: 'CATALOG_DERIVED',
-        provider: 'autodrive-catalog',
-        confidence: 0.8,
-        requiresReview: transmissionResult.requiresReview,
-        validationStatus: 'VALID',
-      }
-
-      const missing = getMissingCriticalFields(fields)
-      const hasInvalid = Object.values(fields).some((f) => f.validationStatus === 'INVALID')
-      const status = missing.length === 0 && !hasInvalid ? 'SUCCESS' : 'PARTIAL'
-      const confidence = missing.length === 0 ? 'high' : (fields.plate?.validationStatus === 'VALID' && (fields.chassis?.validationStatus === 'VALID' || fields.renavam?.validationStatus === 'VALID')) ? 'medium' : 'low'
-
-      logExtraction('PARSER_COMPLETED', { correlationId, durationMs: Date.now() - t0, status, extra: { missingCount: missing.length, confidence } })
-
-      const extractedData = {
-        status,
-        confidence,
-        missingFields: missing,
-        fields,
-      }
-
-      // Cria a transação de extração no banco
-      const record = await prisma.vehicleDocumentExtraction.upsert({
-        where: { documentHash },
-        create: {
-          id: extractionRunId,
-          tenantId: session.user.tenantId,
-          documentHash,
-          nativeText,
-          extractedData: extractedData as any,
-        },
-        update: {
-          nativeText,
-          extractedData: extractedData as any,
-        },
-      })
-
-      // PDF com texto nativo NUNCA deve solicitar OCR local.
-      // OCR só é cabível para imagens e PDFs escaneados (sem camada de texto).
-      // Se o parser não extraiu todos os campos, o usuário revisa manualmente —
-      // mas não tentamos carregar Tesseract em cima de um documento já legível.
-      const isHighConfidence = status === 'SUCCESS' && confidence === 'high'
-      logExtraction('RESPONSE_COMPLETED', {
-        correlationId,
-        durationMs: Date.now() - t0,
-        status: isHighConfidence ? 'high-confidence' : 'partial-native',
-        extra: { fieldsCount: Object.keys(fields).length, missingCount: missing.length },
-      })
-      return NextResponse.json({
-        extracted: true,
-        requiresOcr: false,
-        confidence,
-        source: 'pdf-text',
-        vehicle: toVehicleObject(fields),
-        missingFields: missing,
-        message: missing.length === 0
-          ? 'Documento em PDF nativo lido com sucesso.'
-          : `Documento lido (${Object.keys(fields).length - missing.length} campos). Revise os campos destacados.`,
-        extractionRunId: record.id,
-        documentId,
-        documentHash,
-      })
+    // Tenta parser por coordenadas (preferencial para CRLV-e digital)
+    let parsed: ExtractedVehicle = {}
+    if (tokens.length > 0) {
+      parsed = parseCrlvByCoordinates(tokens, settings.mappings)
     }
+
+    // Fallback: parser por regex no texto linearizado
+    if (nativeText && !parsed.plate && !parsed.chassis) {
+      const byText = parseCrlvText(nativeText, settings.mappings)
+      if (byText.plate || byText.chassis || byText.renavam) {
+        parsed = byText
+      }
+    }
+
+    // Monta os campos com buildExtractedField
+    const fields: Record<string, VehicleExtractedField<any>> = {}
+    const keys = [
+      'plate', 'chassis', 'renavam', 'manufactureYear', 'modelYear',
+      'brand', 'model', 'version', 'color', 'fuelType', 'powerCv',
+      'displacementCc', 'officialSpeciesType', 'bodyType', 'ownerName', 'ownerDocument',
+    ]
+    for (const k of keys) {
+      fields[k] = buildExtractedField(
+        k,
+        (parsed as any)[k],
+        undefined,
+        'NATIVE_PDF_TEXT',
+        settings.fieldRules,
+      )
+    }
+
+    // Derivações catalográficas
+    const officialSpecies = fields.officialSpeciesType?.normalizedValue
+    const displacement    = fields.displacementCc?.normalizedValue
+    const versionStr      = fields.version?.normalizedValue || fields.model?.normalizedValue || ''
+
+    const vehicleCategory = classifyVehicleCategory(officialSpecies, fields.bodyType?.normalizedValue, settings.mappings?.speciesTypes)
+    fields['vehicleGroup'] = {
+      field: 'vehicleGroup', rawValue: vehicleCategory, normalizedValue: vehicleCategory,
+      displayValue: vehicleCategory, source: 'CATALOG_DERIVED', provider: 'autodrive-catalog',
+      confidence: 0.9, requiresReview: false, validationStatus: 'VALID',
+    }
+
+    const engineResult = getEngineCommercialLabel(displacement, settings.mappings?.displacements)
+    fields['engineCommercialLabel'] = {
+      field: 'engineCommercialLabel', rawValue: engineResult.label, normalizedValue: engineResult.label,
+      displayValue: engineResult.label ?? '', source: 'CATALOG_DERIVED', provider: 'autodrive-catalog',
+      confidence: 0.8, requiresReview: engineResult.requiresReview, validationStatus: 'VALID',
+    }
+
+    const transmissionResult = resolveTransmissionType(versionStr, settings.mappings?.transmissions)
+    fields['transmissionType'] = {
+      field: 'transmissionType', rawValue: transmissionResult.type, normalizedValue: transmissionResult.type,
+      displayValue: transmissionResult.type ?? '', source: 'CATALOG_DERIVED', provider: 'autodrive-catalog',
+      confidence: 0.8, requiresReview: transmissionResult.requiresReview, validationStatus: 'VALID',
+    }
+
+    const missing    = getMissingCriticalFields(fields)
+    const hasInvalid = Object.values(fields).some((f) => f.validationStatus === 'INVALID')
+    const status     = missing.length === 0 && !hasInvalid ? 'SUCCESS' : 'PARTIAL'
+    const confidence = missing.length === 0
+      ? 'high'
+      : (fields.plate?.validationStatus === 'VALID' && (fields.chassis?.validationStatus === 'VALID' || fields.renavam?.validationStatus === 'VALID'))
+        ? 'medium'
+        : 'low'
+
+    // Persiste a extração
+    const record = await prisma.vehicleDocumentExtraction.upsert({
+      where:  { documentHash },
+      create: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields } as any },
+      update: { nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields } as any },
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: session.user.tenantId, userId: session.user.id,
+        userName: session.user.name, userRole: session.user.role,
+        action: 'CREATE', entity: 'VehicleDocumentExtraction', entityId: record.id,
+        status: 'SUCCESS',
+        afterData: { documentHash, mimeType, status, confidence, nativeTextLength: nativeText.length } as any,
+      },
+    }).catch(() => {})
+
+    logExtraction('RESPONSE_COMPLETED', {
+      correlationId,
+      durationMs: Date.now() - t0,
+      status: status === 'SUCCESS' ? 'high-confidence' : nativeText ? 'partial-native' : 'no-text',
+      extra: { missingCount: missing.length, confidence, nativeTextLength: nativeText.length },
+    })
+
+    // PDFs nunca pedem OCR do browser — requiresOcr sempre false
+    return NextResponse.json({
+      extracted:   true,
+      requiresOcr: false,
+      confidence,
+      source:      nativeText ? 'pdf-text' : 'manual',
+      vehicle:     toVehicleObject(fields),
+      missingFields: missing,
+      message: !nativeText
+        ? 'Não foi possível ler o texto deste PDF no servidor. Verifique se o arquivo não está protegido e preencha os dados manualmente.'
+        : status === 'SUCCESS'
+          ? 'Documento em PDF lido com sucesso.'
+          : `Documento lido parcialmente (${keys.length - missing.length} de ${keys.length} campos). Revise os itens destacados.`,
+      extractionRunId: record.id,
+      documentId,
+      documentHash,
+    })
   }
 
-  // 4. Se for imagem ou PDF escaneado (sem texto nativo)
+  // ── 4. Imagem — OCR no browser (Tesseract) ──────────────────────────────────
   const record = await prisma.vehicleDocumentExtraction.upsert({
-    where: { documentHash },
-    create: {
-      id: extractionRunId,
-      tenantId: session.user.tenantId,
-      documentHash,
-      nativeText: null,
-      extractedData: null as any,
-    },
+    where:  { documentHash },
+    create: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: null, extractedData: null as any },
     update: {},
   })
 
-  // Registra auditoria de inicialização de OCR
   await prisma.auditLog.create({
     data: {
-      tenantId: session.user.tenantId,
-      userId: session.user.id,
-      userName: session.user.name,
-      userRole: session.user.role,
-      action: 'CREATE',
-      entity: 'VehicleDocumentExtraction',
-      entityId: record.id,
+      tenantId: session.user.tenantId, userId: session.user.id,
+      userName: session.user.name, userRole: session.user.role,
+      action: 'CREATE', entity: 'VehicleDocumentExtraction', entityId: record.id,
       status: 'SUCCESS',
-      afterData: {
-        documentHash,
-        mimeType,
-        requiresOcr: true,
-      } as any,
+      afterData: { documentHash, mimeType, requiresOcr: true } as any,
     },
   }).catch(() => {})
 
   return NextResponse.json({
-    extracted: true,
+    extracted:   true,
     requiresOcr: true,
-    confidence: 'low',
-    source: 'ocr',
-    vehicle: {},
+    confidence:  'low',
+    source:      'ocr',
+    vehicle:     {},
     missingFields: ['plate', 'chassis', 'renavam', 'model', 'manufactureYear', 'modelYear'],
-    message: 'Processando documento via OCR e QR Code local.',
+    message:     'Processando imagem via OCR e QR Code local.',
     extractionRunId: record.id,
     documentId,
     documentHash,
   })
 }
+
+

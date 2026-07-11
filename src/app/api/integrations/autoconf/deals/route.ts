@@ -18,6 +18,7 @@ import { recalculateNegotiationCommissions } from '@/lib/commission-generator'
 import { isCommissionEligibleStatus } from '@/lib/commission/status'
 import { getRetornoConfig, computeReturnFromAutoconf, type RetornoConfig } from '@/lib/finance/retorno-config'
 import { normalizePhone } from '@/lib/crm/shared'
+import { applyV2Snapshot, type V2Snapshot } from '@/lib/integrations/autoconf-v2'
 import type { LeadStatus } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -453,7 +454,16 @@ export async function POST(req: Request) {
       const paymentCreates = (savedDealId: string) => paymentsFor(row, tenantId, savedDealId)
       const debtCreates = (savedDealId: string) => debtsFor(row, savedDealId)
       const warrantyServiceCreates = (savedDealId: string) => warrantyServicesFor(row, savedDealId)
-      const existing = await prisma.deal.findFirst({ where: { tenantId, dealNumber }, select: { id: true } })
+      // sourceSectionHashes é coluna nova (Fase 2, migration aditiva); se ainda
+      // não foi aplicada, findFirst pode ignorá-la ou lançar. Usa raw fallback.
+      let existing: { id: string; sourceSectionHashes: unknown } | null = null
+      try {
+        existing = await prisma.deal.findFirst({ where: { tenantId, dealNumber }, select: { id: true, sourceSectionHashes: true } }) as never
+      } catch {
+        const legacy = await prisma.deal.findFirst({ where: { tenantId, dealNumber }, select: { id: true } })
+        existing = legacy ? { id: legacy.id, sourceSectionHashes: null } : null
+      }
+      const v2Snapshot = (row as AutoconfRow & { v2Snapshot?: V2Snapshot }).v2Snapshot ?? null
 
       if (dryRun) {
         results.push({
@@ -470,17 +480,43 @@ export async function POST(req: Request) {
 
       if (existing) {
         const savedDealId = existing.id
-        await prisma.$transaction(async (tx) => {
+        // V2: quando snapshot tem IDs e schema suporta, tenta upsert por-filho.
+        // O resultado diz quais seções mudaram → se nada mudou, pula o pipeline
+        // legado (deleteMany+createMany) inteiro nessa seção. Comissão só recalcula
+        // se veículos/pagamentos/débitos mudaram.
+        const v2Result = await prisma.$transaction(async (tx) => {
           await tx.deal.update({ where: { id: savedDealId }, data: dealData })
-          await tx.dealVehicle.deleteMany({ where: { dealId: savedDealId } })
-          if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: savedDealId, ...v })) })
+          const applied = v2Snapshot
+            ? await applyV2Snapshot(prisma, tx, {
+                dealId: savedDealId,
+                tenantId,
+                snapshot: v2Snapshot,
+                existingHashes: (existing?.sourceSectionHashes as Record<string, string> | null) ?? null,
+                dealType: type,
+              }).catch(() => null)
+            : null
+
+          // Seções NÃO cobertas pela V2 (por falta de IDs no snapshot ou por V2 desligada)
+          // continuam a ir pelo pipeline legado. Isso preserva comportamento atual
+          // para importações que ainda não têm v2Snapshot completo (compatível).
+          const vehiclesV2Applied = applied?.sectionsChanged.includes('vehicles') === true
+          const paymentsV2Applied = applied?.sectionsChanged.includes('payments') === true
+          const debitsV2Applied = applied?.sectionsChanged.includes('debits') === true
+          const vehiclesV2Skipped = applied?.sectionsSkipped.includes('vehicles') === true
+          const paymentsV2Skipped = applied?.sectionsSkipped.includes('payments') === true
+          const debitsV2Skipped = applied?.sectionsSkipped.includes('debits') === true
+
+          if (!vehiclesV2Applied && !vehiclesV2Skipped) {
+            await tx.dealVehicle.deleteMany({ where: { dealId: savedDealId } })
+            if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: savedDealId, ...v })) })
+          }
           const payments = paymentCreates(savedDealId)
-          if (payments.length) {
+          if (!paymentsV2Applied && !paymentsV2Skipped && payments.length) {
             await tx.dealPayment.deleteMany({ where: { dealId: savedDealId } })
             await tx.dealPayment.createMany({ data: payments as never })
           }
           const debts = debtCreates(savedDealId)
-          if (debts.length) {
+          if (!debitsV2Applied && !debitsV2Skipped && debts.length) {
             await tx.dealDebt.deleteMany({ where: { dealId: savedDealId } })
             await tx.dealDebt.createMany({ data: debts as never })
           }
@@ -496,9 +532,10 @@ export async function POST(req: Request) {
               action: 'AUTOCONF_IMPORT',
               field: 'autoconf',
               newValue: `AutoConf ${ext}`,
-              metadata: auditMetadata(row) as never,
+              metadata: { ...(auditMetadata(row) as Record<string, unknown>), v2Applied: !!applied, v2SectionsChanged: applied?.sectionsChanged ?? null, v2SectionsSkipped: applied?.sectionsSkipped ?? null } as never,
             },
           })
+          return applied
         })
         await syncCrmLeadForAutoconf({
           tenantId,
@@ -510,7 +547,11 @@ export async function POST(req: Request) {
           dealStatus: status,
           notes: importedNotes,
         }).catch(() => null)
-        if (isCommissionEligibleStatus(status)) {
+        // Comissão: quando V2 aplicou e afirmou que nada relevante mudou, PULA o
+        // recálculo (economia + estabilidade do ranking). Caso contrário (V2 não
+        // aplicou / mudou algo relevante), recalcula como sempre.
+        const shouldRecalcCommission = isCommissionEligibleStatus(status) && (!v2Result || v2Result.commissionShouldRecalculate)
+        if (shouldRecalcCommission) {
           try {
             const commission = await recalculateNegotiationCommissions({
               dealId: savedDealId,
@@ -531,11 +572,30 @@ export async function POST(req: Request) {
       } else {
         const savedDealId = await prisma.$transaction(async (tx) => {
           const deal = await tx.deal.create({ data: dealData })
-          if (vehicles.length) await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: deal.id, ...v })) })
+          // V2: aplica upsert por-filho quando snapshot presente + schema suporta.
+          // No CREATE ainda não há filhos → todos os "upsert" vão criar registros
+          // e gravam sourceSectionHashes; no próximo import, se nada mudar, PULA.
+          const applied = v2Snapshot
+            ? await applyV2Snapshot(prisma, tx, {
+                dealId: deal.id,
+                tenantId,
+                snapshot: v2Snapshot,
+                existingHashes: null,
+                dealType: type,
+              }).catch(() => null)
+            : null
+
+          const vehiclesV2Applied = applied?.sectionsChanged.includes('vehicles') === true
+          const paymentsV2Applied = applied?.sectionsChanged.includes('payments') === true
+          const debitsV2Applied = applied?.sectionsChanged.includes('debits') === true
+
+          if (!vehiclesV2Applied && vehicles.length) {
+            await tx.dealVehicle.createMany({ data: vehicles.map((v) => ({ dealId: deal.id, ...v })) })
+          }
           const payments = paymentCreates(deal.id)
-          if (payments.length) await tx.dealPayment.createMany({ data: payments as never })
+          if (!paymentsV2Applied && payments.length) await tx.dealPayment.createMany({ data: payments as never })
           const debts = debtCreates(deal.id)
-          if (debts.length) await tx.dealDebt.createMany({ data: debts as never })
+          if (!debitsV2Applied && debts.length) await tx.dealDebt.createMany({ data: debts as never })
           const warrantyServices = warrantyServiceCreates(deal.id)
           if (warrantyServices.length) await tx.dealService.createMany({ data: warrantyServices as never })
           await tx.dealAuditLog.create({
@@ -546,7 +606,7 @@ export async function POST(req: Request) {
               action: 'AUTOCONF_IMPORT',
               field: 'autoconf',
               newValue: `AutoConf ${ext}`,
-              metadata: auditMetadata(row) as never,
+              metadata: { ...(auditMetadata(row) as Record<string, unknown>), v2Applied: !!applied, v2SectionsChanged: applied?.sectionsChanged ?? null } as never,
             },
           })
           return deal.id

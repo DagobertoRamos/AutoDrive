@@ -56,12 +56,22 @@ function Item({ ok, icon, title, desc, cta, onClick }: ItemProps) {
   )
 }
 
-export default function AlertSetup({ scope = 'queue' }: { scope?: 'queue' | 'general' }) {
+export default function AlertSetup({
+  scope = 'queue',
+  testButtonVariant = 'primary',
+}: {
+  scope?: 'queue' | 'general'
+  testButtonVariant?: 'primary' | 'secondary'
+}) {
   const [status, setStatus] = useState<AlertStatus | null>(null)
   const [native, setNative] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
   const [testMsg, setTestMsg] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
+  const testButtonCls =
+    testButtonVariant === 'secondary'
+      ? 'mt-1 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60'
+      : 'mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-60'
 
   const testarAlerta = async () => {
     setTesting(true); setTestMsg(null)
@@ -89,11 +99,17 @@ export default function AlertSetup({ scope = 'queue' }: { scope?: 'queue' | 'gen
   }, [])
 
   useEffect(() => {
-    void refresh()
+    const timer = window.setTimeout(() => {
+      void refresh()
+    }, 0)
     const onVis = () => { if (!document.hidden) void refresh() }
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('focus', onVis)
-    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', onVis) }
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('focus', onVis)
+    }
   }, [refresh])
 
   if (loading) {
@@ -101,7 +117,7 @@ export default function AlertSetup({ scope = 'queue' }: { scope?: 'queue' | 'gen
   }
 
   if (!native) {
-    return <WebPushSetup scope={scope} testarAlerta={testarAlerta} testing={testing} testMsg={testMsg} />
+    return <WebPushSetup scope={scope} testarAlerta={testarAlerta} testing={testing} testMsg={testMsg} testButtonCls={testButtonCls} />
   }
 
   const allOk = status ? status.notifications && status.batteryUnrestricted && status.fullScreen : false
@@ -132,7 +148,7 @@ export default function AlertSetup({ scope = 'queue' }: { scope?: 'queue' | 'gen
         </div>
       )}
 
-      <button onClick={() => void testarAlerta()} disabled={testing} className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-60">
+      <button onClick={() => void testarAlerta()} disabled={testing} className={testButtonCls}>
         {testing ? <Loader2 size={16} className="animate-spin" /> : <BellRing size={16} />}
         Enviar alerta de teste para este celular
       </button>
@@ -148,20 +164,33 @@ export default function AlertSetup({ scope = 'queue' }: { scope?: 'queue' | 'gen
   )
 }
 
-function WebPushSetup({ scope, testarAlerta, testing, testMsg }: { scope: 'queue' | 'general'; testarAlerta: () => Promise<void>; testing: boolean; testMsg: string | null }) {
-  const [perm, setPerm] = useState<string>('default')
+function WebPushSetup({
+  scope,
+  testarAlerta,
+  testing,
+  testMsg,
+  testButtonCls,
+}: {
+  scope: 'queue' | 'general'
+  testarAlerta: () => Promise<void>
+  testing: boolean
+  testMsg: string | null
+  testButtonCls: string
+}) {
+  const [perm, setPerm] = useState<string>(() => notificationPermission())
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
-  const [env, setEnv] = useState<{ supported: boolean; ios: boolean; standalone: boolean }>({ supported: false, ios: false, standalone: false })
+  const [env] = useState<{ supported: boolean; ios: boolean; standalone: boolean }>(() => ({
+    supported: webPushSupported(),
+    ios: isIOS(),
+    standalone: isStandalonePWA(),
+  }))
 
   useEffect(() => {
-    const st = isStandalonePWA()
-    setEnv({ supported: webPushSupported(), ios: isIOS(), standalone: st })
-    setPerm(notificationPermission())
-    if (st && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    if (env.standalone && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       void enableWebPush().then((r) => { if (r.ok) setMsg('✅ Notificações ativas neste aparelho.'); else setMsg('⚠️ ' + (r.reason || 'reative as notificações abaixo.')) })
     }
-  }, [])
+  }, [env.standalone])
 
   const ativar = async () => {
     setBusy(true); setMsg(null)
@@ -216,7 +245,7 @@ function WebPushSetup({ scope, testarAlerta, testing, testMsg }: { scope: 'queue
 
           {perm === 'granted' && (
             <>
-              <button onClick={() => void testarAlerta()} disabled={testing} className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-60">
+              <button onClick={() => void testarAlerta()} disabled={testing} className={testButtonCls}>
                 {testing ? <Loader2 size={16} className="animate-spin" /> : <BellRing size={16} />} Enviar alerta de teste para este aparelho
               </button>
               {testMsg && <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">{testMsg}</div>}
