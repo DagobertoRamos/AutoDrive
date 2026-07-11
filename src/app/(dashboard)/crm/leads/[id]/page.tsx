@@ -9,13 +9,15 @@
 
 import Link from 'next/link'
 import { use, useCallback, useEffect, useRef, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import {
-  ArrowLeft, ArrowRight, Calendar, Car, CheckCircle2, ChevronDown, ChevronRight,
-  Clock, FileText, Handshake, Loader2, MessageSquare, MoreVertical, Phone,
-  Plus, RefreshCw, Tag as TagIcon, Thermometer, User, X, XCircle,
+  ArrowLeft, Calendar, Car, CheckCircle2, ChevronRight,
+  Clock, FileText, Handshake, Loader2, MessageSquare, MoreVertical, Pencil,
+  Plus, RefreshCw, Trash2, User, X,
 } from 'lucide-react'
-import { cn, formatDate } from '@/lib/utils'
-import { CRM_TEMPERATURES, CRM_STAGE_OPTIONS, crmSourceLabel, crmTemperature } from '@/lib/crm/shared'
+import { cn } from '@/lib/utils'
+import { CRM_TEMPERATURES, crmSourceLabel, crmTemperature } from '@/lib/crm/shared'
+import type { CrmStageConfig } from '@/lib/crm/config'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag    { id: string; name: string; color: string | null }
@@ -522,90 +524,142 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
   )
 }
 
-// ── VehiclesTab (Fase C) ───────────────────────────────────────────────────────
-function VehiclesTab({ leadId, workspace, onRefresh }: { leadId: string; workspace: Workspace; onRefresh: () => void }) {
-  const [vehicles, setVehicles] = useState<VehicleItem[]>(workspace.vehicleInterests)
-  const [evaluations, setEvaluations] = useState<{id:string;status:string;plate:string|null;brand:string|null;model:string|null;evaluatedValue:unknown;createdAt:string}[]>([])
+// ── VehiclesTab — CRUD completo: interesse + avaliação + editar + excluir ──────
+const BLANK_VEH = { brand:'', model:'', version:'', plate:'', role:'COMPRA', isPrimary:false, notes:'' }
+const BLANK_EVAL = { plate:'', brand:'', model:'', km:'', ownerName:'' }
+type EvalItem = { id:string; status:string; plate:string|null; brand:string|null; model:string|null; evaluatedValue:unknown; createdAt:string }
+
+function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspace:Workspace; onRefresh:()=>void }) {
+  const [showVehForm, setShowVehForm] = useState(false)
+  const [editVeh, setEditVeh] = useState<VehicleItem|null>(null)
+  const [vehForm, setVehForm] = useState(BLANK_VEH)
+  const [vehBusy, setVehBusy] = useState(false)
   const [showEvalForm, setShowEvalForm] = useState(false)
-  const [evalForm, setEvalForm] = useState({ plate: '', brand: '', model: '', km: '', ownerName: '' })
+  const [evalForm, setEvalForm] = useState(BLANK_EVAL)
   const [evalBusy, setEvalBusy] = useState(false)
   const [evalErr, setEvalErr] = useState('')
+  const [evals, setEvals] = useState<EvalItem[]>([])
 
-  useEffect(() => { setVehicles(workspace.vehicleInterests) }, [workspace.vehicleInterests])
-  useEffect(() => {
-    fetch(`/api/crm/leads/${leadId}/evaluations`, { credentials: 'include' }).then(r => r.json()).then(j => setEvaluations(j?.data?.map((l: {evaluation: unknown}) => l.evaluation).filter(Boolean) ?? [])).catch(() => {})
-  }, [leadId])
+  const reloadEvals = useCallback(() => {
+    fetch(`/api/crm/leads/${leadId}/evaluations`,{credentials:'include'}).then(r=>r.json()).then(j=>setEvals(j?.data?.map((l:{evaluation:unknown})=>l.evaluation).filter(Boolean)??[])).catch(()=>{})
+  },[leadId])
+  useEffect(()=>{ reloadEvals() },[reloadEvals])
+
+  const saveVehicle = async () => {
+    setVehBusy(true)
+    try {
+      if (editVeh) {
+        // Update: usa PATCH no id do veículo (remove + recria pois não há PATCH na API atual)
+        await fetch(`/api/crm/leads/${leadId}/vehicles/${editVeh.id}`, { method:'DELETE', credentials:'include' }).catch(()=>{})
+      }
+      await fetch(`/api/crm/leads/${leadId}/vehicles`,{ method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(vehForm) })
+      setShowVehForm(false); setEditVeh(null); setVehForm(BLANK_VEH); onRefresh()
+    } finally { setVehBusy(false) }
+  }
+
+  const removeVehicle = async (v: VehicleItem) => {
+    if (!window.confirm(`Remover veículo "${[v.brand,v.model].filter(Boolean).join(' ') || v.plate}"?`)) return
+    await fetch(`/api/crm/leads/${leadId}/vehicles/${v.id}`, { method:'DELETE', credentials:'include' }).catch(()=>{})
+    onRefresh()
+  }
+
+  const startEdit = (v: VehicleItem) => {
+    setEditVeh(v); setVehForm({ brand:v.brand??'', model:v.model??'', version:v.version??'', plate:v.plate??'', role:v.role, isPrimary:v.isPrimary, notes:'' }); setShowVehForm(true)
+  }
 
   const startEval = async () => {
     setEvalBusy(true); setEvalErr('')
     try {
-      const res = await fetch(`/api/crm/leads/${leadId}/evaluations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...evalForm, km: evalForm.km ? Number(evalForm.km) : undefined }) })
-      const j = await res.json().catch(() => ({}))
-      if (!res.ok) { setEvalErr(j?.error ?? 'Falha ao iniciar avaliação.'); return }
-      setShowEvalForm(false); setEvalForm({ plate: '', brand: '', model: '', km: '', ownerName: '' })
-      onRefresh()
-      // Recarrega avaliações.
-      fetch(`/api/crm/leads/${leadId}/evaluations`, { credentials: 'include' }).then(r => r.json()).then(j2 => setEvaluations(j2?.data?.map((l: {evaluation: unknown}) => l.evaluation).filter(Boolean) ?? [])).catch(() => {})
+      const res = await fetch(`/api/crm/leads/${leadId}/evaluations`,{ method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({...evalForm, km: evalForm.km ? Number(evalForm.km):undefined}) })
+      const j = await res.json().catch(()=>({}))
+      if (!res.ok) { setEvalErr(j?.error??'Falha.'); return }
+      setShowEvalForm(false); setEvalForm(BLANK_EVAL); reloadEvals(); onRefresh()
     } finally { setEvalBusy(false) }
   }
 
+  const active = workspace.vehicleInterests.filter(v=>!v.removedAt)
+
   return (
     <div className="space-y-4">
-      {/* Veículos de interesse */}
+
+      {/* Veículos de interesse — CRUD */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={15} />Veículos de interesse</h3>
-        {vehicles.filter(v => !v.removedAt).length === 0 ? (
-          <p className="text-[12px] text-gray-400 italic">Nenhum veículo de interesse cadastrado.</p>
-        ) : vehicles.filter(v => !v.removedAt).map(v => (
-          <div key={v.id} className="mb-2 flex items-center gap-3 rounded-lg border border-gray-100 p-2.5 dark:border-white/5">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={15} />Veículos de interesse</h3>
+          <button onClick={()=>{setEditVeh(null);setVehForm(BLANK_VEH);setShowVehForm(v=>!v)}} className="flex items-center gap-1 text-[11px] text-brand-600 hover:underline"><Plus size={11} />Adicionar</button>
+        </div>
+
+        {showVehForm && (
+          <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-3 space-y-2 dark:border-brand-900/30 dark:bg-brand-950/20">
+            <p className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">{editVeh ? 'Editar veículo' : 'Novo veículo de interesse'}</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {[['brand','Marca'],['model','Modelo'],['version','Versão'],['plate','Placa']].map(([k,l])=>(
+                <input key={k} placeholder={l} value={(vehForm as unknown as Record<string,string>)[k]} onChange={e=>setVehForm(f=>({...f,[k]:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              ))}
+              <select value={vehForm.role} onChange={e=>setVehForm(f=>({...f,role:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
+                {Object.entries(ROLE_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <label className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={vehForm.isPrimary} onChange={e=>setVehForm(f=>({...f,isPrimary:e.target.checked}))} className="rounded border-gray-300" />Veículo principal</label>
+            <div className="flex gap-2">
+              <button onClick={saveVehicle} disabled={vehBusy} className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{vehBusy?<Loader2 size={11} className="animate-spin"/>:<CheckCircle2 size={11}/>}Salvar</button>
+              <button onClick={()=>{setShowVehForm(false);setEditVeh(null)}} className="text-[11px] text-gray-500">Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {active.length === 0 && !showVehForm ? (
+          <p className="text-[12px] text-gray-400 italic">Nenhum veículo cadastrado. Clique em Adicionar.</p>
+        ) : active.map(v => (
+          <div key={v.id} className="mb-2 group flex items-center gap-3 rounded-lg border border-gray-100 p-2.5 hover:border-gray-200 dark:border-white/5 dark:hover:border-white/10">
             <Car size={16} className="shrink-0 text-gray-400" />
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[v.brand, v.model, v.version].filter(Boolean).join(' ') || '—'}</p>
+              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[v.brand,v.model,v.version].filter(Boolean).join(' ')||'—'}</p>
               {v.plate && <p className="font-mono text-[10px] text-gray-400">{v.plate}</p>}
             </div>
-            <div className="flex items-center gap-1">
-              {v.isPrimary && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
-              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-slate-700 dark:text-gray-400">{v.status}</span>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold', ROLE_CLS[v.role]??'bg-gray-100 text-gray-500')}>{ROLE_LABELS[v.role]??v.role}</span>
+              {v.isPrimary && <span className="rounded bg-brand-100 px-1 py-0.5 text-[9px] font-bold text-brand-700 dark:bg-brand-900 dark:text-brand-300">Principal</span>}
+              {/* Ações — aparecem no hover */}
+              <button onClick={()=>startEdit(v)} className="opacity-0 group-hover:opacity-100 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-slate-700 transition-opacity" title="Editar"><Pencil size={12}/></button>
+              <button onClick={()=>removeVehicle(v)} className="opacity-0 group-hover:opacity-100 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 transition-opacity" title="Remover"><Trash2 size={12}/></button>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Avaliações (veículo do cliente) */}
+      {/* Avaliações — nova + lista */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Car size={15} />Veículo do cliente / Avaliações</h3>
-          <button onClick={() => setShowEvalForm(v => !v)} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
-            <Plus size={12} />Iniciar avaliação
-          </button>
+          <button onClick={()=>setShowEvalForm(v=>!v)} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"><Plus size={12}/>Nova avaliação</button>
         </div>
 
         {showEvalForm && (
           <div className="mb-4 rounded-lg border border-brand-100 bg-brand-50/60 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
-            <p className="mb-2 text-[11px] font-semibold text-brand-700 dark:text-brand-300">Dados do veículo do cliente</p>
+            <p className="mb-2 text-[11px] font-semibold text-brand-700 dark:text-brand-300">Veículo do cliente para avaliação</p>
             <div className="grid gap-2 sm:grid-cols-3">
-              <input placeholder="Placa" value={evalForm.plate} onChange={e => setEvalForm(f => ({ ...f, plate: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-              <input placeholder="Marca" value={evalForm.brand} onChange={e => setEvalForm(f => ({ ...f, brand: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-              <input placeholder="Modelo" value={evalForm.model} onChange={e => setEvalForm(f => ({ ...f, model: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-              <input type="number" placeholder="KM" value={evalForm.km} onChange={e => setEvalForm(f => ({ ...f, km: e.target.value }))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-              <input placeholder="Nome do proprietário" value={evalForm.ownerName} onChange={e => setEvalForm(f => ({ ...f, ownerName: e.target.value }))} className="sm:col-span-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              {[['plate','Placa'],['brand','Marca'],['model','Modelo'],['ownerName','Proprietário']].map(([k,l])=>(
+                <input key={k} placeholder={l} value={(evalForm as Record<string,string>)[k]} onChange={e=>setEvalForm(f=>({...f,[k]:e.target.value}))} className={cn('rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white', k==='ownerName'&&'sm:col-span-2')} />
+              ))}
+              <input type="number" placeholder="KM" value={evalForm.km} onChange={e=>setEvalForm(f=>({...f,km:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
             </div>
             {evalErr && <p className="mt-1 text-[11px] text-red-600">{evalErr}</p>}
             <div className="mt-2 flex gap-2">
-              <button onClick={() => setShowEvalForm(false)} className="rounded px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700">Cancelar</button>
+              <button onClick={()=>setShowEvalForm(false)} className="rounded px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100">Cancelar</button>
               <button onClick={startEval} disabled={evalBusy} className="flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
-                {evalBusy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}Iniciar avaliação 360°
+                {evalBusy?<Loader2 size={12} className="animate-spin"/>:<CheckCircle2 size={12}/>}Iniciar avaliação 360°
               </button>
             </div>
           </div>
         )}
 
-        {evaluations.length === 0 ? (
+        {evals.length===0 ? (
           <p className="text-[12px] text-gray-400 italic">Nenhuma avaliação vinculada.</p>
-        ) : evaluations.map(ev => (
+        ) : evals.map(ev=>(
           <div key={ev.id} className="mb-2 flex items-center justify-between rounded-lg border border-gray-100 p-2.5 dark:border-white/5">
             <div className="min-w-0">
-              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[ev.brand, ev.model].filter(Boolean).join(' ') || ev.plate || 'Avaliação'}</p>
+              <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[ev.brand,ev.model].filter(Boolean).join(' ')||ev.plate||'Avaliação'}</p>
               <p className="text-[10px] tabular-nums text-gray-400">{fmtDT(ev.createdAt)} · {ev.status}</p>
             </div>
             <Link href={`/estoque/avaliacoes/${ev.id}`} className="ml-3 shrink-0 text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>
@@ -991,10 +1045,20 @@ function ActivitiesTab({ leadId, workspace, tasks, onRefresh }: { leadId: string
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+// Roles que podem alterar a etapa do lead (vendedor SÓ visualiza).
+const STAGE_CHANGE_ROLES = new Set(['MASTER','ADM','GERENTE_GERAL','GERENTE_ADMINISTRATIVO','GERENTE','VENDEDOR_LIDER','USUARIO_LIDER'])
+// SDR também pode mover etapa.
+const SDR_ROLES = new Set(['MASTER','ADM','GERENTE_GERAL','GERENTE_ADMINISTRATIVO','GERENTE','VENDEDOR_LIDER','USUARIO_LIDER'])
+
 export default function LeadWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = use(params)
+  const { data: session } = useSession()
+  const userRole = (session?.user as { role?: string })?.role ?? ''
+  const canChangeStage = STAGE_CHANGE_ROLES.has(userRole)
+
   const [payload, setPayload] = useState<Payload | null>(null)
   const [interactions, setInteractions] = useState<Interaction[]>([])
+  const [stages, setStages] = useState<CrmStageConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('summary')
   const [showTransfer, setShowTransfer] = useState(false)
@@ -1002,6 +1066,13 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
   const [showInteraction, setShowInteraction] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Carrega etapas configuradas (mesmas do Kanban).
+  useEffect(() => {
+    fetch('/api/crm/config/stages', { credentials: 'include' }).then(r => r.json())
+      .then(j => { if (j?.data) setStages((j.data as CrmStageConfig[]).filter(s => s.active).sort((a,b) => a.order - b.order)) })
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     if (!leadId) return
@@ -1110,10 +1181,30 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
         {/* Barra de status + etapa */}
         <div className="flex flex-wrap items-center gap-4 px-5 py-2.5">
           <div className="flex items-center gap-2">
+            {/* Ponto colorido da etapa atual */}
+            {(() => {
+              const cur = stages.find(s => s.code === lead.status)
+              return cur ? <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cur.color }} title={cur.displayName} /> : null
+            })()}
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Etapa</span>
-            <select value={lead.status} onChange={e => void patchLead({ status: e.target.value })} className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-700 dark:text-gray-200">
-              {CRM_STAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            {/* Somente gerente+/SDR podem mudar; vendedor vê badge somente-leitura */}
+            {canChangeStage ? (
+              <select
+                value={lead.status}
+                onChange={e => void patchLead({ status: e.target.value })}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-700 dark:text-gray-200"
+              >
+                {stages.length > 0
+                  ? stages.map(s => <option key={s.code} value={s.code}>{s.displayName}</option>)
+                  : /* fallback enquanto carrega */
+                    [['NEW','Novo'],['ASSIGNED','Tentando contato'],['WORKING','Contatado'],['QUALIFIED','Qualificado'],['CONVERTED','Convertido'],['LOST','Perdido'],['DISCARDED','Desqualificado'],['RECYCLED','Reaberto']].map(([v,l]) => <option key={v} value={v}>{l}</option>)
+                }
+              </select>
+            ) : (
+              <span className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 dark:border-white/10 dark:bg-slate-700 dark:text-gray-200">
+                {stages.find(s => s.code === lead.status)?.displayName ?? lead.status}
+              </span>
+            )}
           </div>
 
           {/* Temperatura */}

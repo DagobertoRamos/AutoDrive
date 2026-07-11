@@ -15,6 +15,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { convertLeadSchema } from '@/lib/validators/marketing'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { syncDealVehiclesToLead } from '@/lib/crm/vehicle-sync'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -46,6 +47,8 @@ export async function POST(req: Request, { params }: Ctx) {
         data: { tenantId: tid, leadId: id, assignedToUserId: lead.assignedToUserId, assignedByUserId: user.id, mode: 'MANUAL', status: 'CONVERTED', reason: d.notes ?? null, respondedAt: new Date() },
       })
     })
+    // Sync veículos da negociação → lead (best-effort).
+    if (d.dealId) await syncDealVehiclesToLead(d.dealId, id, tid)
     await createSafeAuditLog({ userId: user.id, tenantId: tid, action: 'CONVERT', entity: 'MarketingLead', entityId: id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true })
   } catch (err) {
