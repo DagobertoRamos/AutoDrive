@@ -55,18 +55,31 @@ export async function GET(req: Request) {
     const search = sp.get('search')?.trim()
     const status = sp.get('status')?.trim() || undefined
     const onlyDelayed = sp.get('delayed') === 'true'
-    const onlyAutoconf = sp.get('source') === 'AUTOCONF'
+    const sourceFilter = sp.get('source')?.trim() || ''
+    const onlyAutoconf = sourceFilter === 'AUTOCONF'
     const priority = sp.get('priority')?.trim() || ''
+    const temperature = sp.get('temperature')?.trim() || ''
     const where = applyCrmScope({ tenantId }, scope, user)
 
     if (status) where.status = status as never
-    if (onlyAutoconf) where.source = 'AUTOCONF'
+    // Filtro de origem: 'AUTOCONF' é legado; agora aceita qualquer valor de source.
+    if (sourceFilter) where.source = sourceFilter
     if (scope === 'all' && sp.get('unitId')) where.unitId = sp.get('unitId')
+    if (temperature) {
+      // Temperatura vive em metadata.temperature (JSON field — busca aproximada).
+      // Filtramos em memória abaixo (não há índice no campo JSON no Neon).
+    }
     if (search) {
+      const digits = search.replace(/\D/g, '')
+      // MarketingLead não tem relação Prisma formal com Vehicle/Customer (FKs soft).
+      // Buscamos nos campos diretos do lead. Busca por veículo é feita em memória
+      // (enrich com Vehicle após o select).
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
-        { email: { contains: search, mode: 'insensitive' } },
+        { name:   { contains: search, mode: 'insensitive' } },
+        { phone:  { contains: search } },
+        ...(digits.length >= 6 ? [{ phone: { contains: digits } }] : []),
+        { email:  { contains: search, mode: 'insensitive' } },
+        { notes:  { contains: search, mode: 'insensitive' } },
         { source: { contains: search, mode: 'insensitive' } },
       ]
     }
@@ -94,16 +107,40 @@ export async function GET(req: Request) {
     const userNames = new Map(users.map((item) => [item.id, item.name]))
     const unitNames = new Map(units.map((item) => [item.id, item.name]))
 
+    // Enriquecer com veículo vinculado (busca em lote, tolerante a vehicleId nulo).
+    const vehicleIds = [...new Set(rows.map(r => r.vehicleId).filter((v): v is string => Boolean(v)))]
+    const vehicles = vehicleIds.length
+      ? await prisma.vehicle.findMany({ where: { id: { in: vehicleIds } }, select: { id: true, plate: true, brand: true, model: true } }).catch(() => [])
+      : []
+    const vehicleMap = new Map(vehicles.map(v => [v.id, v]))
+
     const enriched = rows.map((row) => {
       const priorityLevel = leadPriorityOf(row)
+      const veh = row.vehicleId ? vehicleMap.get(row.vehicleId) : null
+      const vehicleLabel = veh ? [veh.brand, veh.model, veh.plate].filter(Boolean).join(' ').trim() : null
       return {
         ...row,
+        vehicleLabel,
         priority: priorityLevel,
         assignedToUserName: row.assignedToUserId ? userNames.get(row.assignedToUserId) ?? null : null,
         unitName: row.unitId ? unitNames.get(row.unitId) ?? null : null,
       }
     })
-    const filtered = priority ? enriched.filter((row) => row.priority === priority) : enriched
+    // Busca por veículo em memória: o WHERE do banco já retornou leads por campos
+    // diretos. Aqui adicionamos leads cujo veículo vinculado bate no search term
+    // (placa/marca/modelo) e não foram capturados pelo WHERE do banco.
+    let enrichedFiltered = enriched
+    if (search) {
+      const s = search.toLowerCase()
+      const byDb = new Set(enriched.map(r => r.id))
+      const extraFromVehicle = enriched.filter(r => r.vehicleLabel?.toLowerCase().includes(s) && !byDb.has(r.id))
+      enrichedFiltered = [...enriched, ...extraFromVehicle]
+    }
+    let filtered = priority ? enrichedFiltered.filter((row) => row.priority === priority) : enrichedFiltered
+    // Temperatura: filtra em memória (metadata é JSON — sem índice no campo)
+    if (temperature) {
+      filtered = filtered.filter((row) => readTemperature(row.metadata) === temperature)
+    }
     const sorted = filtered.sort((a, b) => {
       const order = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 }
       const byPriority = order[a.priority as keyof typeof order] - order[b.priority as keyof typeof order]

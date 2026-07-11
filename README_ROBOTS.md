@@ -3400,3 +3400,19 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
   - Suporte dark/light via token CSS `--kb-bg` e classes dark.
 - **Arquivo:** `src/app/(dashboard)/crm/kanban/page.tsx`.
 - **Testes:** `npx tsc --noEmit` OK; `npm run build` OK.
+
+### LOG 0253 — 2026-07-10 — Claude (Opus 4.8) — CRM Leads: escopo por papel + filtro profissional (search + chips)
+- **Escopo por papel (confirmado):** `GET /api/crm/leads` já usava `resolveCrmScope` + `applyCrmScope` → vendedor (`crm.view.own`) vê só `assignedToUserId = user.id`; gerente vê a unidade; ADM/GG vê tudo. Enforçado no servidor. A página agora sinaliza "(apenas os seus)" quando o scope for restrito.
+- **Busca ampliada:** o search agora inclui `source` e `notes`. Veículo vinculado (placa/marca/modelo) é buscado em memória após enrich em lote. Filtro de origem passou de `AUTOCONF`-only para qualquer `source`. Filtro de temperatura (metadata JSON) em memória. Suporte a `source` e `temperature` como query params.
+- **API:** enrich com `Vehicle` em lote (busca separada p/ os `vehicleIds` presentes na página, tolerante a nulo). Retorna `vehicleLabel` (marca modelo placa) nos dados.
+- **Página `leads/page.tsx` — reescrita completa:**
+  - **Busca unificada** com debounce 380ms, ícone de loading, botão de limpar — ocupa topo sem atrapalhar outros elementos.
+  - **Chips de etapa** sempre visíveis (rápido: clique muda o filtro sem abrir painel).
+  - **Painel de filtros expandível** (Origem · Prioridade · Temperatura) — chips coloridos por categoria, não selects arcaicos.
+  - Contador de filtros ativos no botão; "Limpar" aparece só quando há filtros.
+  - **Tabela:** colunas vetadas, ações (Ver/Converter/Perder) só no hover do grupo `opacity-0 → 1`; veículo abaixo do contato; temperatura como dot colorido; paginação numérica (7 páginas visíveis) com Next/Prev.
+  - **Criação rápida** colapsável (nome + telefone + Enter → cria).
+  - Skeletons de loading que respeitam o layout real.
+  - Dark mode completo via classes dark.
+- **Arquivos:** `src/app/api/crm/leads/route.ts`, `src/app/(dashboard)/crm/leads/page.tsx`.
+- **Testes:** `npx tsc --noEmit` OK; `npm test` OK (490/490); `npm run build` OK.
