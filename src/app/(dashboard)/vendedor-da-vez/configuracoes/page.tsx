@@ -38,6 +38,10 @@ interface PanelSoundConfig {
   enabled: boolean; repeatUntilAccepted: boolean; repeatSeconds: number; refreshSeconds: number; volume: number; soundType: string;
   playOnDashboard: boolean; onlyStorePanel: boolean; muteOutsideHours: boolean; requireManualActivation: boolean; wakeLock: boolean; showHiddenWarning: boolean;
 }
+interface CompliancePilotConfig {
+  enabled: boolean; notifyManagers: boolean; autoCreateManagerPendency: boolean; requireConfirmedFraudForRanking: boolean;
+  timeoutPoints: number; confirmedFraudMediumPoints: number; confirmedFraudHighPoints: number; reviewWindowDays: number;
+}
 interface Cfg {
   active: boolean; presenceMethods: string[]; geofenceLat: number | null; geofenceLng: number | null; geofenceRadiusM: number;
   qrSecret: string | null; acceptTimeoutSeconds: number; requireRevalidationOnAccept: boolean;
@@ -55,11 +59,13 @@ interface Cfg {
   attendanceReminder: AttendanceReminderConfig
   queuePush: QueuePushConfig
   panelSound: PanelSoundConfig
+  compliancePilot: CompliancePilotConfig
 }
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
 const DEFAULT_ATTENDANCE_REMINDER: AttendanceReminderConfig = { enabled: true, firstAfterMinutes: 15, repeatIntervalSeconds: 300, maxReminders: 6, escalateAfter: 3, autoEscalate: true, requireFinishOnNo: true, allowSnooze: false, logEveryReminder: true }
 const DEFAULT_QUEUE_PUSH: QueuePushConfig = { enabled: true, intervalSeconds: 300, targetScope: 'CURRENT_SELLER', maxRetries: 6, resendUntil: 'ACKNOWLEDGED', antiSpamUserLimit: 8, antiSpamAttendanceLimit: 6, antiSpamQueueLimit: 60, antiSpamWindowMinutes: 10, allowedStartTime: null, allowedEndTime: null, allowOutsideHoursForAdmins: true, urgency: 'HIGH', sound: true }
 const DEFAULT_PANEL_SOUND: PanelSoundConfig = { enabled: true, repeatUntilAccepted: true, repeatSeconds: 3, refreshSeconds: 3, volume: 80, soundType: 'siren', playOnDashboard: false, onlyStorePanel: true, muteOutsideHours: false, requireManualActivation: true, wakeLock: true, showHiddenWarning: true }
+const DEFAULT_COMPLIANCE_PILOT: CompliancePilotConfig = { enabled: false, notifyManagers: true, autoCreateManagerPendency: true, requireConfirmedFraudForRanking: true, timeoutPoints: 2, confirmedFraudMediumPoints: 8, confirmedFraudHighPoints: 20, reviewWindowDays: 7 }
 const limits = QUEUE_CONFIG_LIMITS
 
 // Editor de lista de motivos (chips). Usado para encerrar lead e negociação.
@@ -86,7 +92,7 @@ function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: 
     </div>
   )
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', responsibleUserIds: [], autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH, panelSound: DEFAULT_PANEL_SOUND }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', responsibleUserIds: [], autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH, panelSound: DEFAULT_PANEL_SOUND, compliancePilot: DEFAULT_COMPLIANCE_PILOT }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -121,6 +127,10 @@ function validateCfg(c: Cfg): string | null {
     validateRange(c.panelSound.repeatSeconds, 'Intervalo do toque do Painel da Loja', 1, 30, 'segundos') ??
     validateRange(c.panelSound.refreshSeconds, 'Intervalo de atualização do Painel da Loja', 3, 60, 'segundos') ??
     validateRange(c.panelSound.volume, 'Volume do alerta do Painel da Loja', 0, 100, '%') ??
+    validateRange(c.compliancePilot.timeoutPoints, 'Pontos por timeout', limits.complianceTimeoutPoints.min, limits.complianceTimeoutPoints.max, 'pontos') ??
+    validateRange(c.compliancePilot.confirmedFraudMediumPoints, 'Pontos por fraude média confirmada', limits.complianceFraudMediumPoints.min, limits.complianceFraudMediumPoints.max, 'pontos') ??
+    validateRange(c.compliancePilot.confirmedFraudHighPoints, 'Pontos por fraude alta confirmada', limits.complianceFraudHighPoints.min, limits.complianceFraudHighPoints.max, 'pontos') ??
+    validateRange(c.compliancePilot.reviewWindowDays, 'Janela de revisão de conformidade', limits.complianceReviewWindowDays.min, limits.complianceReviewWindowDays.max, 'dias') ??
     validateRange(c.maxPauseMinutes, 'Tempo de pausa/ausência', limits.maxPauseMinutes.min, limits.maxPauseMinutes.max, 'minutos') ??
     validateRange(c.infoRapidaTimeLimitMinutes, 'Limite de tempo da informação rápida', 1, 60, 'minutos')
   )
@@ -149,7 +159,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', responsibleUserIds: j.data.config?.responsibleUserIds ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) }, panelSound: { ...DEFAULT_PANEL_SOUND, ...(j.data.config?.panelSound ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', responsibleUserIds: j.data.config?.responsibleUserIds ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) }, panelSound: { ...DEFAULT_PANEL_SOUND, ...(j.data.config?.panelSound ?? {}) }, compliancePilot: { ...DEFAULT_COMPLIANCE_PILOT, ...(j.data.config?.compliancePilot ?? {}) } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -422,6 +432,27 @@ export default function ConfiguracoesFilaPage() {
 
       {/* Diagnóstico dos colaboradores: push/dispositivos + presença (gestão) — Fase 3 */}
       <QueueDiagnosticsCard />
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><ShieldAlert size={16} className="text-amber-600" />Conformidade operacional da fila</h2>
+        <p className="-mt-2 text-xs text-gray-500">Modo piloto: transforma suspeitas e reincidências da fila em revisão gerencial, pendência rastreável e desconto controlado no ranking geral.</p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.compliancePilot.enabled} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativar piloto de conformidade</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.compliancePilot.notifyManagers} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, notifyManagers: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Avisar gestão quando houver revisão</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.compliancePilot.autoCreateManagerPendency} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, autoCreateManagerPendency: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Abrir pendência automática</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.compliancePilot.requireConfirmedFraudForRanking} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, requireConfirmedFraudForRanking: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Só descontar fraude confirmada no ranking</label>
+        </div>
+
+        <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4', !cfg.compliancePilot.enabled && 'pointer-events-none opacity-50')}>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Pontos por timeout</label><input type="number" min={limits.complianceTimeoutPoints.min} max={limits.complianceTimeoutPoints.max} className={inputCls} value={cfg.compliancePilot.timeoutPoints} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, timeoutPoints: Number(e.target.value) || 0 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Fraude média confirmada</label><input type="number" min={limits.complianceFraudMediumPoints.min} max={limits.complianceFraudMediumPoints.max} className={inputCls} value={cfg.compliancePilot.confirmedFraudMediumPoints} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, confirmedFraudMediumPoints: Number(e.target.value) || 0 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Fraude alta confirmada</label><input type="number" min={limits.complianceFraudHighPoints.min} max={limits.complianceFraudHighPoints.max} className={inputCls} value={cfg.compliancePilot.confirmedFraudHighPoints} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, confirmedFraudHighPoints: Number(e.target.value) || 0 })} /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Janela de revisão (dias)</label><input type="number" min={limits.complianceReviewWindowDays.min} max={limits.complianceReviewWindowDays.max} className={inputCls} value={cfg.compliancePilot.reviewWindowDays} onChange={(e) => set('compliancePilot', { ...cfg.compliancePilot, reviewWindowDays: Number(e.target.value) || 1 })} /></div>
+        </div>
+
+        <p className="text-[11px] text-gray-400">Timeout conta como evento operacional confiável. Suspeitas médias e altas entram em revisão pela gestão e podem virar pendência auditável. O ranking só sente fraude confirmada, salvo se você desligar essa proteção.</p>
+      </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
         <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><ShieldAlert size={16} className="text-brand-600" />Bloqueio por reincidência (anti-abuso)</h2>

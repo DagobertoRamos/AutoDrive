@@ -54,6 +54,15 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
 
     const now = new Date()
     const newStatus = action === 'approve' ? 'FINALIZADA' : 'REATIVADA'
+    const complianceReview =
+      pendency.originModule === 'SELLER_QUEUE_COMPLIANCE' && pendency.originRecordId
+        ? {
+            fraudStatus: action === 'approve' ? 'CONFIRMED' : 'DISMISSED',
+            reason: action === 'approve'
+              ? 'Ocorrência confirmada pela gerência via Central de Pendências.'
+              : `Ocorrência descartada pela gerência via Central de Pendências. Motivo: ${reason}`,
+          }
+        : null
 
     await Promise.all([
       prisma.pendency.update({
@@ -69,6 +78,36 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       prisma.auditLog.create({
         data: { userId: session.user.id, userName: session.user.name, userRole: session.user.role, action: 'UPDATE', entity: 'Pendency', entityId: params.id, beforeData: { status: pendency.status }, afterData: { status: newStatus, review: action, reason: reason || undefined } },
       }).catch(() => {}),
+      complianceReview
+        ? prisma.sellerQueueFraudFlag.update({
+            where: { id: pendency.originRecordId! },
+            data: {
+              status: complianceReview.fraudStatus,
+              reviewedAt: now,
+              reviewedById: session.user.id,
+              detail: pendency.description
+                ? `${pendency.description} | ${complianceReview.reason}`
+                : complianceReview.reason,
+            },
+          }).catch(() => null)
+        : Promise.resolve(null),
+      complianceReview
+        ? prisma.auditLog.create({
+            data: {
+              userId: session.user.id,
+              userName: session.user.name,
+              userRole: session.user.role,
+              action: action === 'approve' ? 'QUEUE_COMPLIANCE_CONFIRM' : 'QUEUE_COMPLIANCE_DISMISS',
+              entity: 'SellerQueueFraudFlag',
+              entityId: pendency.originRecordId!,
+              afterData: {
+                status: complianceReview.fraudStatus,
+                pendencyId: params.id,
+                reason: complianceReview.reason,
+              },
+            },
+          }).catch(() => {})
+        : Promise.resolve(null),
     ])
 
     // Avisa o responsável do resultado.

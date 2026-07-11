@@ -2,7 +2,8 @@
 // GET /api/seller-queue/reports — relatórios da fila (últimos N dias).
 // Gate: sellerQueue.reports. ?days=7 &unitId=. Tenant/unit-scoped.
 // Retorna: por vendedor (atendidos/timeouts/recusas + tempo médio de aceite),
-// clientes presenciais (total/recorrentes), suspeitas (fraude) e penalidades.
+// clientes presenciais (total/recorrentes), suspeitas (fraude), penalidades e
+// um resumo gerencial do piloto de conformidade da fila.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -14,6 +15,8 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { unitFromRequest } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { applyRankingParticipationFilter } from '@/lib/ranking/participation'
+import { computeComplianceAdjustments, readCompliancePilotConfig } from '@/lib/seller-queue/compliance'
+import { getPrimaryRiskReason, getRecommendedAction } from '@/lib/seller-queue/reporting'
 
 // Cache curto em memória: o ranking de N dias é a consulta mais cara do módulo.
 // Com vários da unidade olhando o dashboard, todos batem aqui a cada 30s em fases
@@ -33,6 +36,10 @@ function reportCacheGet(key: string): unknown | null {
 function reportCacheSet(key: string, data: unknown) {
   if (reportCache.size > 500) { const now = Date.now(); for (const [k, v] of reportCache) if (v.expires <= now) reportCache.delete(k) }
   reportCache.set(key, { data, expires: Date.now() + REPORT_TTL_MS })
+}
+
+function formatTrendDay(date: Date) {
+  return date.toISOString().slice(0, 10)
 }
 
 export async function GET(req: Request) {
@@ -62,12 +69,69 @@ export async function GET(req: Request) {
 
   try {
     const attWhere = { tenantId, unitId, calledAt: dateRange, ...(sellerFilter ? { sellerId: sellerFilter } : {}) }
-    const [attendances, arrivals, fraud, penalties] = await Promise.all([
+    const [unitConfig, attendances, arrivals, fraud, complianceCases, penalties, compliancePendencies] = await Promise.all([
+      prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } }, select: { config: true } }),
       prisma.sellerQueueAttendance.findMany({ where: attWhere, select: { sellerId: true, status: true, calledAt: true, acceptedAt: true }, take: 5000 }),
       prisma.sellerQueueCustomerArrival.findMany({ where: { tenantId, unitId, createdAt: dateRange }, select: { recurring: true, createdAt: true }, take: 5000 }),
       prisma.sellerQueueFraudFlag.findMany({ where: { tenantId, unitId, status: 'OPEN', createdAt: dateRange }, orderBy: { createdAt: 'desc' }, take: 200 }),
+      prisma.sellerQueueFraudFlag.findMany({
+        where: { tenantId, unitId, createdAt: dateRange },
+        select: { id: true, sellerId: true, status: true, severity: true, reviewedAt: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }),
       prisma.sellerQueuePenalty.findMany({ where: { tenantId, unitId, active: true, createdAt: dateRange }, take: 500 }),
+      prisma.pendency.findMany({
+        where: {
+          tenantId,
+          unitId,
+          originModule: 'SELLER_QUEUE_COMPLIANCE',
+          createdAt: dateRange,
+        },
+        select: { id: true, status: true, severity: true, originRecordId: true, createdAt: true },
+        take: 500,
+      }),
     ])
+    const compliancePilot = readCompliancePilotConfig(unitConfig?.config)
+    const dailyTrendMap = new Map<string, { label: string; cases: number; confirmed: number; dismissed: number }>()
+    const rangeEnd = until ?? new Date()
+    const cursor = new Date(since)
+    cursor.setHours(0, 0, 0, 0)
+    const endDay = new Date(rangeEnd)
+    endDay.setHours(0, 0, 0, 0)
+    while (cursor <= endDay) {
+      const key = formatTrendDay(cursor)
+      dailyTrendMap.set(key, {
+        label: cursor.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        cases: 0,
+        confirmed: 0,
+        dismissed: 0,
+      })
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    for (const complianceCase of complianceCases) {
+      const dayKey = formatTrendDay(complianceCase.createdAt)
+      const bucket = dailyTrendMap.get(dayKey)
+      if (!bucket) continue
+      bucket.cases += 1
+      if (complianceCase.status === 'CONFIRMED') bucket.confirmed += 1
+      if (complianceCase.status === 'DISMISSED') bucket.dismissed += 1
+    }
+    const complianceTrend = [...dailyTrendMap.values()]
+    const complianceSellerMap = new Map<string, { sellerId: string; cases: number; confirmed: number; highSeverity: number }>()
+    for (const complianceCase of complianceCases) {
+      if (!complianceCase.sellerId) continue
+      const current = complianceSellerMap.get(complianceCase.sellerId) ?? {
+        sellerId: complianceCase.sellerId,
+        cases: 0,
+        confirmed: 0,
+        highSeverity: 0,
+      }
+      current.cases += 1
+      if (complianceCase.status === 'CONFIRMED') current.confirmed += 1
+      if (complianceCase.severity === 'HIGH') current.highSeverity += 1
+      complianceSellerMap.set(complianceCase.sellerId, current)
+    }
 
     // Agrega por vendedor.
     type Agg = { finished: number; timeouts: number; rejected: number; called: number; acceptMs: number; acceptN: number }
@@ -86,15 +150,64 @@ export async function GET(req: Request) {
       const us = await prisma.user.findMany({ where: { id: { in: sellerIds } }, select: { id: true, name: true } })
       us.forEach((u) => names.set(u.id, u.name))
     }
+    const complianceSellerIds = [...complianceSellerMap.keys()].filter((id) => !names.has(id))
+    if (complianceSellerIds.length) {
+      const complianceUsers = await prisma.user.findMany({ where: { id: { in: complianceSellerIds } }, select: { id: true, name: true } })
+      complianceUsers.forEach((u) => names.set(u.id, u.name))
+    }
+    const complianceAdjustments = await computeComplianceAdjustments({
+      tenantId,
+      unitId,
+      window: { start: since, end: until ?? new Date() },
+    })
     const bySellerRaw = sellerIds.map((id) => {
       const a = by.get(id)!
-      return { sellerId: id, sellerName: names.get(id) ?? id, finished: a.finished, timeouts: a.timeouts, rejected: a.rejected, called: a.called, avgAcceptSeconds: a.acceptN ? Math.round(a.acceptMs / a.acceptN / 1000) : null }
+      const compliance = complianceAdjustments.get(id)
+      return {
+        sellerId: id,
+        sellerName: names.get(id) ?? id,
+        finished: a.finished,
+        timeouts: a.timeouts,
+        rejected: a.rejected,
+        called: a.called,
+        avgAcceptSeconds: a.acceptN ? Math.round(a.acceptMs / a.acceptN / 1000) : null,
+        compliancePoints: compliance?.points ?? 0,
+        complianceTimeouts: compliance?.timeoutEvents ?? 0,
+        complianceConfirmedFrauds: compliance?.confirmedFrauds ?? 0,
+        compliancePendingFrauds: compliance?.pendingFrauds ?? 0,
+      }
     })
     const bySeller = (await applyRankingParticipationFilter(bySellerRaw, {
       tenantId,
       unitId,
       rankingType: 'ATTENDANCE',
     })).sort((x, y) => y.finished - x.finished)
+    const complianceRiskBySeller = [...complianceSellerMap.values()]
+      .map((entry) => {
+        const ranking = bySeller.find((seller) => seller.sellerId === entry.sellerId)
+        const compliancePoints = ranking?.compliancePoints ?? 0
+        const riskScore = (entry.cases * 2) + (entry.confirmed * 3) + (entry.highSeverity * 4) + Math.min(compliancePoints, 30)
+        const primaryReason = getPrimaryRiskReason({
+          highSeverity: entry.highSeverity,
+          confirmed: entry.confirmed,
+          cases: entry.cases,
+          compliancePoints,
+        })
+        const recommendedAction = getRecommendedAction(primaryReason)
+        return {
+          sellerId: entry.sellerId,
+          sellerName: names.get(entry.sellerId) ?? entry.sellerId,
+          cases: entry.cases,
+          confirmed: entry.confirmed,
+          highSeverity: entry.highSeverity,
+          compliancePoints,
+          riskScore,
+          primaryReason,
+          recommendedAction,
+        }
+      })
+      .sort((a, b) => b.riskScore - a.riskScore || b.confirmed - a.confirmed || b.cases - a.cases)
+      .slice(0, 5)
 
     // Consolidado por unidade (loja inteira) — só para quem enxerga o tenant.
     let byUnit: { unitId: string; unitName: string; called: number; finished: number; timeouts: number }[] = []
@@ -119,6 +232,44 @@ export async function GET(req: Request) {
     const data = {
       days,
       tenantWide,
+      compliancePilot: {
+        enabled: compliancePilot.enabled,
+        notifyManagers: compliancePilot.notifyManagers,
+        autoCreateManagerPendency: compliancePilot.autoCreateManagerPendency,
+        requireConfirmedFraudForRanking: compliancePilot.requireConfirmedFraudForRanking,
+      },
+      complianceSummary: {
+        openFraudFlags: fraud.length,
+        highSeverityFlags: fraud.filter((f) => f.severity === 'HIGH').length,
+        mediumSeverityFlags: fraud.filter((f) => f.severity === 'MEDIUM').length,
+        casesByStatus: {
+          open: complianceCases.filter((f) => f.status === 'OPEN').length,
+          confirmed: complianceCases.filter((f) => f.status === 'CONFIRMED').length,
+          dismissed: complianceCases.filter((f) => f.status === 'DISMISSED').length,
+        },
+        casesBySeverity: {
+          high: complianceCases.filter((f) => f.severity === 'HIGH').length,
+          medium: complianceCases.filter((f) => f.severity === 'MEDIUM').length,
+          low: complianceCases.filter((f) => f.severity === 'LOW').length,
+        },
+        reviewedCases: complianceCases.filter((f) => f.reviewedAt != null).length,
+        openCompliancePendencies: compliancePendencies.filter((p) => !['FINALIZADA', 'CANCELADA'].includes(p.status)).length,
+        resolvedCompliancePendencies: compliancePendencies.filter((p) => ['FINALIZADA', 'CANCELADA'].includes(p.status)).length,
+        totalCases: complianceCases.length,
+        latestPendencyAt: compliancePendencies.map((p) => p.createdAt).sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
+        trend: complianceTrend,
+        topSellers: [...complianceSellerMap.values()]
+          .map((entry) => ({
+            sellerId: entry.sellerId,
+            sellerName: names.get(entry.sellerId) ?? entry.sellerId,
+            cases: entry.cases,
+            confirmed: entry.confirmed,
+            highSeverity: entry.highSeverity,
+          }))
+          .sort((a, b) => b.cases - a.cases || b.confirmed - a.confirmed)
+          .slice(0, 5),
+        riskBySeller: complianceRiskBySeller,
+      },
       byUnit,
       totals: {
         arrivals: arrivals.length,

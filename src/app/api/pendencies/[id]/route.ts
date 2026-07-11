@@ -75,7 +75,87 @@ export async function GET(req: Request, ctxArg: { params: { id: string } | Promi
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
     }
 
-    return NextResponse.json({ success: true, data: pendency })
+    let complianceCase: Record<string, unknown> | null = null
+    if (pendency.originModule === 'SELLER_QUEUE_COMPLIANCE' && pendency.originRecordId) {
+      const flag = await prisma.sellerQueueFraudFlag.findUnique({
+        where: { id: pendency.originRecordId },
+        select: {
+          id: true,
+          kind: true,
+          severity: true,
+          status: true,
+          detail: true,
+          sellerId: true,
+          actorId: true,
+          attendanceId: true,
+          arrivalId: true,
+          reviewedAt: true,
+          reviewedById: true,
+          metadata: true,
+          createdAt: true,
+        },
+      })
+
+      if (flag) {
+        const [sellerUser, actorUser, attendance, arrival, relatedPendencies] = await Promise.all([
+          flag.sellerId ? prisma.user.findUnique({ where: { id: flag.sellerId }, select: { id: true, name: true } }) : Promise.resolve(null),
+          flag.actorId ? prisma.user.findUnique({ where: { id: flag.actorId }, select: { id: true, name: true } }) : Promise.resolve(null),
+          flag.attendanceId ? prisma.sellerQueueAttendance.findUnique({
+            where: { id: flag.attendanceId },
+            select: {
+              id: true,
+              status: true,
+              result: true,
+              visitType: true,
+              calledAt: true,
+              acceptedAt: true,
+              startedAt: true,
+              finishedAt: true,
+              notes: true,
+            },
+          }) : Promise.resolve(null),
+          flag.arrivalId ? prisma.sellerQueueCustomerArrival.findUnique({
+            where: { id: flag.arrivalId },
+            select: {
+              id: true,
+              customerName: true,
+              customerPhone: true,
+              recurring: true,
+              status: true,
+              createdAt: true,
+            },
+          }) : Promise.resolve(null),
+          prisma.pendency.findMany({
+            where: {
+              tenantId: pendency.tenantId,
+              originModule: 'SELLER_QUEUE_COMPLIANCE',
+              originRecordId: flag.id,
+            },
+            select: { id: true, status: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          }),
+        ])
+
+        complianceCase = {
+          flagId: flag.id,
+          kind: flag.kind,
+          severity: flag.severity,
+          status: flag.status,
+          detail: flag.detail,
+          createdAt: flag.createdAt,
+          reviewedAt: flag.reviewedAt,
+          metadata: flag.metadata,
+          seller: sellerUser,
+          actor: actorUser,
+          attendance,
+          arrival,
+          relatedPendencies,
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, data: pendency, complianceCase })
   } catch {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }

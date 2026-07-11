@@ -20,6 +20,9 @@ export interface RankingEntry {
   metrics: RankingMetrics; totalPoints: number; qualityScore: number
   /** Pontos da fila de atendimento (qualidade), já somados em totalPoints. */
   queuePoints?: number
+  /** Ajuste de conformidade operacional, já somado em totalPoints. */
+  compliancePoints?: number
+  notes?: string[]
 }
 interface RankingData {
   scope: 'GENERAL' | 'UNIT'
@@ -83,6 +86,7 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
                 {COLS.map((c) => <th key={c.key} className="px-3 py-3 text-right">{c.label}</th>)}
                 <th className="px-3 py-3 text-right">Qualidade</th>
                 <th className="px-3 py-3 text-right" title="Pontuação de qualidade da fila de atendimento (somada nos pontos)">Fila</th>
+                <th className="px-3 py-3 text-right" title="Ajuste do piloto de conformidade operacional (somado nos pontos)">Conform.</th>
                 <th className="px-4 py-3 text-right">Pontos</th>
               </tr>
             </thead>
@@ -96,7 +100,7 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
                   </tr>
                 ))
               ) : !data || data.entries.length === 0 ? (
-                <tr><td colSpan={12} className="py-12 text-center text-sm text-gray-400">Sem dados de ranking no período.</td></tr>
+                <tr><td colSpan={13} className="py-12 text-center text-sm text-gray-400">Sem dados de ranking no período.</td></tr>
               ) : (
                 data.entries.map((e) => (
                   <tr key={e.userId} className={cn('border-b border-gray-100 hover:bg-gray-50', e.userId === highlightUserId && 'bg-brand-50/40')}>
@@ -117,6 +121,7 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
                     ))}
                     <td className="px-3 py-3 text-right tabular-nums text-gray-600">{e.qualityScore}%</td>
                     <td className="px-3 py-3 text-right tabular-nums text-gray-600">{e.queuePoints ?? 0}</td>
+                    <td className={cn('px-3 py-3 text-right tabular-nums', (e.compliancePoints ?? 0) < 0 ? 'text-red-600' : 'text-gray-600')}>{e.compliancePoints ?? 0}</td>
                     <td className="px-4 py-3 text-right font-bold tabular-nums text-brand-700">{e.totalPoints}</td>
                   </tr>
                 ))
@@ -128,6 +133,9 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
 
       {data?.notes && data.notes.length > 0 && (
         <p className="text-xs text-gray-400">Observações: {data.notes.join(' · ')}</p>
+      )}
+      {data?.entries?.some((entry) => (entry.compliancePoints ?? 0) !== 0) && (
+        <p className="text-xs text-gray-500">`Conform.` mostra o impacto do piloto de conformidade operacional já aplicado no total de pontos.</p>
       )}
     </>
   )

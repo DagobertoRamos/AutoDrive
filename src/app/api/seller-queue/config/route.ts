@@ -52,7 +52,7 @@ export async function PUT(req: Request) {
     // Estratégia anti-abuso vai no campo JSON `config` (sem coluna nova). Mescla
     // com o que já houver lá para não apagar outros extras.
     let mergedConfig: Record<string, unknown> | undefined
-    if (d.autoBlock !== undefined || d.allowSellerFinish !== undefined || d.leadCloseReasons !== undefined || d.negotiationReasons !== undefined || d.maxPauseMinutes !== undefined || d.autoSchedule !== undefined || d.attendanceReminder !== undefined || d.queuePush !== undefined || d.panelSound !== undefined || d.responsibleUserIds !== undefined) {
+    if (d.autoBlock !== undefined || d.allowSellerFinish !== undefined || d.leadCloseReasons !== undefined || d.negotiationReasons !== undefined || d.maxPauseMinutes !== undefined || d.autoSchedule !== undefined || d.attendanceReminder !== undefined || d.queuePush !== undefined || d.panelSound !== undefined || d.responsibleUserIds !== undefined || d.compliancePilot !== undefined) {
       const existing = await prisma.sellerQueueUnitConfig.findUnique({ where: { tenantId_unitId: { tenantId, unitId } }, select: { config: true } })
       mergedConfig = { ...((existing?.config as Record<string, unknown>) ?? {}) }
       if (d.autoBlock !== undefined) mergedConfig.autoBlock = d.autoBlock
@@ -65,6 +65,7 @@ export async function PUT(req: Request) {
       if (d.queuePush !== undefined) mergedConfig.queuePush = d.queuePush
       if (d.panelSound !== undefined) mergedConfig.panelSound = d.panelSound
       if (d.responsibleUserIds !== undefined) mergedConfig.responsibleUserIds = d.responsibleUserIds
+      if (d.compliancePilot !== undefined) mergedConfig.compliancePilot = d.compliancePilot
     }
 
     const data = {

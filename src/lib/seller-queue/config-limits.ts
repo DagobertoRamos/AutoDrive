@@ -10,4 +10,8 @@ export const QUEUE_CONFIG_LIMITS = {
   queuePushAntiSpamAttendanceLimit: { min: 1, max: 100 },
   queuePushAntiSpamQueueLimit: { min: 1, max: 500 },
   queuePushAntiSpamWindowMinutes: { min: 1, max: 1440 },
+  complianceTimeoutPoints: { min: 0, max: 20 },
+  complianceFraudMediumPoints: { min: 0, max: 100 },
+  complianceFraudHighPoints: { min: 0, max: 200 },
+  complianceReviewWindowDays: { min: 1, max: 30 },
 } as const

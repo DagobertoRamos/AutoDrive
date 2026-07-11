@@ -18,6 +18,39 @@ interface PendencyModalProps {
   onRefresh: () => void
 }
 
+interface ComplianceCaseDetails {
+  flagId: string
+  kind: string
+  severity: string
+  status: string
+  detail?: string | null
+  createdAt: string
+  reviewedAt?: string | null
+  metadata?: Record<string, unknown> | null
+  seller?: { id: string; name: string } | null
+  actor?: { id: string; name: string } | null
+  attendance?: {
+    id: string
+    status: string
+    result?: string | null
+    visitType?: string | null
+    calledAt: string
+    acceptedAt?: string | null
+    startedAt?: string | null
+    finishedAt?: string | null
+    notes?: string | null
+  } | null
+  arrival?: {
+    id: string
+    customerName?: string | null
+    customerPhone?: string | null
+    recurring?: boolean | null
+    status?: string | null
+    createdAt: string
+  } | null
+  relatedPendencies?: Array<{ id: string; status: string; createdAt: string }>
+}
+
 type Tab = 'detalhes' | 'historico' | 'respostas' | 'envios'
 interface PushLog { id: string; channel: string; status: string; sentCount: number; detail: string | null; createdAt: string }
 interface ModalMessageReturn { profileName?: string | null; messageBody?: string | null; createdAt: string | Date }
@@ -50,6 +83,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
   const [remindMsg, setRemindMsg] = useState('')
   const [pushLogs, setPushLogs] = useState<PushLog[]>([])
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
+  const [complianceCase, setComplianceCase] = useState<ComplianceCaseDetails | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -243,6 +277,53 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                 <div className="sm:col-span-2">
                   <p className="mb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">Observações</p>
                   <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">{pendency.notes}</p>
+                </div>
+              )}
+              {pendency.originModule === 'SELLER_QUEUE_COMPLIANCE' && complianceCase && (
+                <div className="sm:col-span-2">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Evidências da conformidade</p>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="Ocorrência" value={complianceCase.kind} />
+                      <Field label="Severidade" value={complianceCase.severity} />
+                      <Field label="Status da flag" value={complianceCase.status} />
+                      <Field label="Criada em" value={formatDate(new Date(complianceCase.createdAt))} />
+                      <Field label="Colaborador envolvido" value={complianceCase.seller?.name ?? null} />
+                      <Field label="Ação executada por" value={complianceCase.actor?.name ?? null} />
+                      <Field label="Atendimento vinculado" value={complianceCase.attendance?.id ?? null} mono />
+                      <Field label="Chegada vinculada" value={complianceCase.arrival?.id ?? null} mono />
+                      <Field label="Cliente da chegada" value={complianceCase.arrival?.customerName ?? null} />
+                      <Field label="Telefone da chegada" value={complianceCase.arrival?.customerPhone ?? null} />
+                      <Field label="Status do atendimento" value={complianceCase.attendance?.status ?? null} />
+                      <Field label="Resultado do atendimento" value={complianceCase.attendance?.result ?? null} />
+                    </div>
+                    {complianceCase.detail && (
+                      <div className="mt-3">
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Descrição da suspeita</p>
+                        <p className="rounded-lg bg-white/80 p-3 text-sm text-gray-700">{complianceCase.detail}</p>
+                      </div>
+                    )}
+                    {complianceCase.attendance?.notes && (
+                      <div className="mt-3">
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Observações do atendimento</p>
+                        <p className="rounded-lg bg-white/80 p-3 text-sm text-gray-700">{complianceCase.attendance.notes}</p>
+                      </div>
+                    )}
+                    {(complianceCase.relatedPendencies ?? []).length > 0 && (
+                      <div className="mt-3">
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Pendências ligadas a esta ocorrência</p>
+                        <div className="space-y-1">
+                          {complianceCase.relatedPendencies!.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 text-sm text-gray-700">
+                              <span className="font-mono text-xs text-gray-500">#{item.id.slice(-8)}</span>
+                              <span>{item.status}</span>
+                              <span className="text-xs text-gray-400">{formatRelativeTime(new Date(item.createdAt))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

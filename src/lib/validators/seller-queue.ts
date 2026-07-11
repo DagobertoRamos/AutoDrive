@@ -168,6 +168,16 @@ export const configSchema = z.object({
     message: 'O bloqueio diário deve exigir mais perdas que o bloqueio temporário.',
     path: ['strikesForDailyBlock'],
   }).optional(),
+  compliancePilot: z.object({
+    enabled: z.boolean(),
+    notifyManagers: z.boolean(),
+    autoCreateManagerPendency: z.boolean(),
+    requireConfirmedFraudForRanking: z.boolean(),
+    timeoutPoints: z.number().int('Os pontos por timeout devem ser um número inteiro.').min(limits.complianceTimeoutPoints.min, 'Os pontos por timeout não podem ser negativos.').max(limits.complianceTimeoutPoints.max, 'Os pontos por timeout devem ser no máximo 20.'),
+    confirmedFraudMediumPoints: z.number().int('Os pontos de fraude média devem ser um número inteiro.').min(limits.complianceFraudMediumPoints.min, 'Os pontos de fraude média não podem ser negativos.').max(limits.complianceFraudMediumPoints.max, 'Os pontos de fraude média devem ser no máximo 100.'),
+    confirmedFraudHighPoints: z.number().int('Os pontos de fraude alta devem ser um número inteiro.').min(limits.complianceFraudHighPoints.min, 'Os pontos de fraude alta não podem ser negativos.').max(limits.complianceFraudHighPoints.max, 'Os pontos de fraude alta devem ser no máximo 200.'),
+    reviewWindowDays: z.number().int('A janela de revisão deve ser um número inteiro.').min(limits.complianceReviewWindowDays.min, 'A janela de revisão deve ser de no mínimo 1 dia.').max(limits.complianceReviewWindowDays.max, 'A janela de revisão deve ser de no máximo 30 dias.'),
+  }).optional(),
   // Novas configurações para a Fila Automática / Modo Anti-Briga
   infoRapidaConsumesTurn:      z.enum(['NO', 'YES', 'TIME_LIMIT']).optional(),
   infoRapidaTimeLimitMinutes:  z.number().int().min(1).max(120).optional(),

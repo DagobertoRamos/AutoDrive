@@ -11,6 +11,7 @@ import type { GoalPeriod, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { aggregateAchieved, type AggregationWindow } from '@/lib/goals/aggregators'
 import { computeQueueScores } from '@/lib/seller-queue/quality'
+import { computeComplianceAdjustments } from '@/lib/seller-queue/compliance'
 import { applyRankingParticipationFilter, getRankingExcludedUnits } from '@/lib/ranking/participation'
 
 // ── Defaults (espelham a especificação) ───────────────────────────────────────
@@ -72,6 +73,8 @@ export interface RankingEntry {
   metrics:      RankingMetrics
   /** Pontos da fila de atendimento (qualidade), somados em totalPoints. */
   queuePoints:  number
+  /** Ajuste de conformidade operacional da fila (modo piloto). */
+  compliancePoints: number
   totalPoints:  number
   qualityScore: number
   rank:         number
@@ -345,6 +348,7 @@ async function computeRankingUncached(opts: {
 
   // Pontuação de qualidade da fila de atendimento (por USER id), mesma janela.
   const queueScores = await computeQueueScores({ tenantId, unitId, window, excludeUnitIds: excludedUnits })
+  const complianceAdjustments = await computeComplianceAdjustments({ tenantId, unitId, window, excludeUnitIds: excludedUnits })
 
   const allNotes = new Set<string>()
   const rawEntries: RankingEntry[] = []
@@ -353,6 +357,8 @@ async function computeRankingUncached(opts: {
     const { metrics, notes } = await computeSellerMetrics(tenantId, unitId, s.id, window, unitId ? [] : excludedUnits)
     notes.forEach((n) => allNotes.add(n))
     const queuePoints = queueScores.get(s.userId)?.points ?? 0
+    const compliancePoints = complianceAdjustments.get(s.userId)?.points ?? 0
+    const compliance = complianceAdjustments.get(s.userId)
     rawEntries.push({
       userId:       s.userId,
       sellerId:     s.id,
@@ -360,12 +366,19 @@ async function computeRankingUncached(opts: {
       unitId:       s.unitId,
       metrics,
       queuePoints,
+      compliancePoints,
       // O ranking soma TUDO que o colaborador faz: vendas/compras/serviços etc.
       // (pesos da regra) + a pontuação de qualidade da fila de atendimento.
-      totalPoints:  pointsFor(metrics, rule) + queuePoints,
+      totalPoints:  pointsFor(metrics, rule) + queuePoints + compliancePoints,
       qualityScore: qualityFor(metrics),
       rank:         0,
-      notes:        [],
+      notes:        compliance && (compliance.timeoutEvents > 0 || compliance.confirmedFrauds > 0 || compliance.pendingFrauds > 0)
+        ? [
+          compliance.timeoutEvents > 0 ? `${compliance.timeoutEvents} timeout(s) com impacto operacional.` : '',
+          compliance.confirmedFrauds > 0 ? `${compliance.confirmedFrauds} ocorrência(s) confirmada(s) de conformidade.` : '',
+          compliance.pendingFrauds > 0 ? `${compliance.pendingFrauds} ocorrência(s) em revisão gerencial.` : '',
+        ].filter(Boolean)
+        : [],
     })
   }
 

@@ -7,17 +7,57 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { BarChart3, RefreshCw, AlertTriangle, Filter, Download, Building2, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import AtendimentosPanel from '@/components/seller-queue/AtendimentosPanel'
 
-interface Seller { sellerId: string; sellerName: string; finished: number; timeouts: number; rejected: number; called: number; avgAcceptSeconds: number | null }
+interface Seller { sellerId: string; sellerName: string; finished: number; timeouts: number; rejected: number; called: number; avgAcceptSeconds: number | null; compliancePoints?: number; complianceTimeouts?: number; complianceConfirmedFrauds?: number; compliancePendingFrauds?: number }
 interface UnitRow { unitId: string; unitName: string; called: number; finished: number; timeouts: number }
 interface Flag { id: string; kind: string; severity: string; detail: string | null; createdAt: string }
-interface Data { days: number; tenantWide: boolean; byUnit: UnitRow[]; totals: { arrivals: number; recurring: number; attendances: number; finished: number; timeouts: number }; bySeller: Seller[]; fraudFlags: Flag[]; penalties: { id: string; sellerId: string; type: string }[] }
+interface ComplianceTrendPoint { label: string; cases: number; confirmed: number; dismissed: number }
+interface ComplianceTopSeller { sellerId: string; sellerName: string; cases: number; confirmed: number; highSeverity: number }
+interface ComplianceRiskSeller extends ComplianceTopSeller { compliancePoints: number; riskScore: number; primaryReason: string; recommendedAction: string }
+interface Data {
+  days: number
+  tenantWide: boolean
+  byUnit: UnitRow[]
+  totals: { arrivals: number; recurring: number; attendances: number; finished: number; timeouts: number }
+  bySeller: Seller[]
+  fraudFlags: Flag[]
+  penalties: { id: string; sellerId: string; type: string }[]
+  compliancePilot?: {
+    enabled: boolean
+    notifyManagers: boolean
+    autoCreateManagerPendency: boolean
+    requireConfirmedFraudForRanking: boolean
+  }
+  complianceSummary?: {
+    openFraudFlags: number
+    highSeverityFlags: number
+    mediumSeverityFlags: number
+    openCompliancePendencies: number
+    resolvedCompliancePendencies: number
+    latestPendencyAt: string | null
+    totalCases: number
+    reviewedCases: number
+    casesByStatus: { open: number; confirmed: number; dismissed: number }
+    casesBySeverity: { high: number; medium: number; low: number }
+    trend: ComplianceTrendPoint[]
+    topSellers: ComplianceTopSeller[]
+    riskBySeller: ComplianceRiskSeller[]
+  }
+}
 interface Opt { id: string; name: string }
 
 const PERIODS = [['7', '7 dias'], ['15', '15 dias'], ['30', '30 dias'], ['90', '90 dias'], ['custom', 'Personalizado']] as const
+
+function getRiskLevel(riskScore: number) {
+  if (riskScore >= 30) return { label: 'Crítico', tone: 'border-red-200 bg-red-100 text-red-800', cardTone: 'border-red-200 bg-red-50/70' }
+  if (riskScore >= 20) return { label: 'Alto', tone: 'border-orange-200 bg-orange-100 text-orange-800', cardTone: 'border-orange-200 bg-orange-50/70' }
+  if (riskScore >= 10) return { label: 'Moderado', tone: 'border-amber-200 bg-amber-100 text-amber-800', cardTone: 'border-amber-200 bg-amber-50/70' }
+  return { label: 'Baixo', tone: 'border-emerald-200 bg-emerald-100 text-emerald-800', cardTone: 'border-emerald-200 bg-emerald-50/70' }
+}
 
 function toCSV(d: Data): string {
   const rows = [['Vendedor', 'Chamados', 'Finalizados', 'Timeouts', 'Recusas', 'Tempo medio aceite (s)']]
@@ -78,6 +118,8 @@ export default function RelatoriosPage() {
 
   if (denied) return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{denied}</div>
   const t = data?.totals
+  const compliance = data?.complianceSummary
+  const maxTrendCases = Math.max(...(compliance?.trend.map((point) => point.cases) ?? [0]), 1)
 
   return (
     <div className="space-y-5">
@@ -126,14 +168,163 @@ export default function RelatoriosPage() {
             ))}
           </div>
 
+          {data?.compliancePilot?.enabled && compliance && (
+            <div className="rounded-xl border border-amber-200 bg-white shadow-card">
+              <div className="border-b border-amber-100 px-4 py-2.5">
+                <p className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <AlertTriangle size={15} className="text-amber-500" />
+                  Conformidade da fila
+                </p>
+              </div>
+              <div className="grid gap-3 p-4 md:grid-cols-3">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Casos no período</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{compliance.totalCases}</p>
+                  <p className="mt-1 text-sm text-gray-500">{compliance.reviewedCases} revisado(s) pela gestão</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href="/pendencias/central?originModule=SELLER_QUEUE_COMPLIANCE"
+                      className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Ver pendências do piloto
+                    </Link>
+                    <Link
+                      href="/pendencias/central?originModule=SELLER_QUEUE_COMPLIANCE&status=ABERTA"
+                      className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                    >
+                      Ir para abertas
+                    </Link>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Status dos casos</p>
+                  <div className="mt-2 space-y-1 text-sm text-gray-600">
+                    <p>Abertos: <span className="font-semibold text-amber-700">{compliance.casesByStatus.open}</span></p>
+                    <p>Confirmados: <span className="font-semibold text-red-700">{compliance.casesByStatus.confirmed}</span></p>
+                    <p>Descartados: <span className="font-semibold text-emerald-700">{compliance.casesByStatus.dismissed}</span></p>
+                  </div>
+                  <Link
+                    href="/pendencias/central?originModule=SELLER_QUEUE_COMPLIANCE&status=EM_ANDAMENTO"
+                    className="mt-3 inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                  >
+                    Pendências em andamento
+                  </Link>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Gravidade</p>
+                  <div className="mt-2 space-y-1 text-sm text-gray-600">
+                    <p>Alta: <span className="font-semibold text-red-700">{compliance.casesBySeverity.high}</span></p>
+                    <p>Média: <span className="font-semibold text-amber-700">{compliance.casesBySeverity.medium}</span></p>
+                    <p>Baixa: <span className="font-semibold text-gray-700">{compliance.casesBySeverity.low}</span></p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href="/pendencias/central?originModule=SELLER_QUEUE_COMPLIANCE&severity=HIGH"
+                      className="inline-flex items-center rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                    >
+                      Casos de alta gravidade
+                    </Link>
+                    <Link
+                      href="/pendencias/central?originModule=SELLER_QUEUE_COMPLIANCE&severity=MEDIUM"
+                      className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                    >
+                      Casos médios
+                    </Link>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t border-amber-100 px-4 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Tendência diária</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7 xl:grid-cols-10">
+                  {(compliance.trend ?? []).map((point) => (
+                    <div key={point.label} className="rounded-lg border border-gray-200 bg-gray-50 p-2">
+                      <div className="flex h-20 items-end">
+                        <div
+                          className="w-full rounded-md bg-amber-300"
+                          style={{ height: `${Math.max(10, Math.round((point.cases / maxTrendCases) * 100))}%` }}
+                          title={`${point.cases} caso(s) no dia`}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs font-semibold text-gray-700">{point.label}</p>
+                      <p className="text-xs text-gray-500">{point.cases} caso(s)</p>
+                      <p className="text-xs text-gray-500">{point.confirmed} conf. · {point.dismissed} desc.</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-amber-100 px-4 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Prioridade de atuação</p>
+                {(compliance.riskBySeller ?? []).length === 0 ? (
+                  <p className="mt-3 text-sm text-gray-500">Sem vendedores com risco relevante no período.</p>
+                ) : (
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {compliance.riskBySeller.map((seller) => {
+                      const level = getRiskLevel(seller.riskScore)
+                      return (
+                      <div key={seller.sellerId} className={cn('rounded-lg border p-3', level.cardTone)}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800">{seller.sellerName}</p>
+                            <p className="mt-1 text-xs text-gray-600">
+                              {seller.cases} caso(s) · {seller.confirmed} confirmado(s) · {seller.highSeverity} alta gravidade
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-red-700">
+                              risco {seller.riskScore}
+                            </span>
+                            <span className={cn('rounded-md border px-2 py-1 text-[11px] font-semibold', level.tone)}>
+                              {level.label}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-600">Impacto atual no ranking: {seller.compliancePoints} ponto(s).</p>
+                        <p className="mt-1 text-xs text-gray-600">Motivo principal: <span className="font-medium text-gray-800">{seller.primaryReason}</span></p>
+                        <p className="mt-1 text-xs text-gray-600">Ação sugerida: <span className="font-medium text-gray-800">{seller.recommendedAction}</span></p>
+                        <Link
+                          href={`/pendencias/central?originModule=SELLER_QUEUE_COMPLIANCE&sellerId=${seller.sellerId}`}
+                          className="mt-3 inline-flex items-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                        >
+                          Priorizar análise
+                        </Link>
+                      </div>
+                    )})}
+                  </div>
+                )}
+              </div>
+              <div className="border-t border-amber-100 px-4 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Maior recorrência por vendedor</p>
+                {(compliance.topSellers ?? []).length === 0 ? (
+                  <p className="mt-3 text-sm text-gray-500">Nenhum vendedor vinculado aos casos do período.</p>
+                ) : (
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {compliance.topSellers.map((seller) => (
+                      <div key={seller.sellerId} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <p className="text-sm font-semibold text-gray-800">{seller.sellerName}</p>
+                        <p className="mt-1 text-sm text-gray-600">{seller.cases} caso(s) no período</p>
+                        <p className="text-xs text-gray-500">{seller.confirmed} confirmado(s) · {seller.highSeverity} alta gravidade</p>
+                        <Link
+                          href={`/pendencias/central?originModule=SELLER_QUEUE_COMPLIANCE&sellerId=${seller.sellerId}`}
+                          className="mt-3 inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                        >
+                          Abrir casos desse vendedor
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Por vendedor */}
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
             <div className="border-b border-gray-100 px-4 py-2.5"><p className="flex items-center gap-2 text-sm font-semibold text-gray-700"><Users size={15} className="text-brand-600" />Por vendedor</p></div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50"><tr>{['Vendedor', 'Chamados', 'Finalizados', 'Timeouts', 'Recusas', 'Tempo médio aceite'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
+                <thead className="bg-gray-50"><tr>{['Vendedor', 'Chamados', 'Finalizados', 'Timeouts', 'Recusas', 'Tempo médio aceite', 'Conformidade'].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(data?.bySeller ?? []).length === 0 ? (<tr><td colSpan={6} className="py-10 text-center text-sm text-gray-400">Sem dados no período.</td></tr>)
+                  {(data?.bySeller ?? []).length === 0 ? (<tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">Sem dados no período.</td></tr>)
                   : data!.bySeller.map((s) => (
                     <tr key={s.sellerId} className="hover:bg-gray-50">
                       <td className="px-4 py-2.5 font-medium text-gray-900">{s.sellerName}</td>
@@ -142,6 +333,11 @@ export default function RelatoriosPage() {
                       <td className="px-4 py-2.5 tabular-nums text-red-600">{s.timeouts}</td>
                       <td className="px-4 py-2.5 tabular-nums text-gray-500">{s.rejected}</td>
                       <td className="px-4 py-2.5 tabular-nums text-gray-600">{s.avgAcceptSeconds != null ? `${s.avgAcceptSeconds}s` : '—'}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-600">
+                        {(s.compliancePoints ?? 0) === 0
+                          ? '—'
+                          : `${s.compliancePoints} pts · ${s.complianceTimeouts ?? 0} timeout(s) · ${s.complianceConfirmedFrauds ?? 0} confirmada(s)${(s.compliancePendingFrauds ?? 0) > 0 ? ` · ${s.compliancePendingFrauds} em revisão` : ''}`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

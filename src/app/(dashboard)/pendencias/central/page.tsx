@@ -8,6 +8,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import {
   RefreshCw, Search, Eye, Filter, AlertTriangle, Activity,
   BarChart2, UserCheck, Clock, Zap, PlayCircle, ArrowUpCircle, UserCog, ShieldAlert,
@@ -27,6 +29,7 @@ interface Filters {
   priority:     string
   severity:     string
   unitId:       string
+  sellerId:     string
   originModule: string
   assignedOnly: boolean
   slaVencida:   boolean
@@ -97,11 +100,12 @@ function ModuleBadge({ module }: { module?: string | null }) {
     STOCK:       'bg-cyan-100 text-cyan-700',
     WHATSAPP:    'bg-green-100 text-green-700',
     CRM:         'bg-pink-100 text-pink-700',
+    SELLER_QUEUE_COMPLIANCE: 'bg-amber-100 text-amber-800',
     MANUAL:      'bg-gray-100 text-gray-600',
   }
   const labels: Record<string, string> = {
     DEALS: 'Negoc.', COMMISSIONS: 'Comissão', STOCK: 'Estoque',
-    WHATSAPP: 'WhatsApp', CRM: 'CRM', MANUAL: 'Manual',
+    WHATSAPP: 'WhatsApp', CRM: 'CRM', SELLER_QUEUE_COMPLIANCE: 'Conformidade da fila', MANUAL: 'Manual',
   }
   return (
     <span className={cn('rounded px-1.5 py-0.5 text-xs font-medium', map[module] ?? map.MANUAL)}>
@@ -125,6 +129,7 @@ const STATUS_TABS = [
 
 export default function CentralAvisosPage() {
   const { data: session } = useSession()
+  const searchParams = useSearchParams()
   const role = (session?.user as { role?: string })?.role ?? ''
   const isManager= ['MASTER', 'ADM', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'].includes(role)
 
@@ -144,10 +149,17 @@ export default function CentralAvisosPage() {
   const [canToggleOpen, setCanToggleOpen] = useState(false)
   const [togglingOpen,  setTogglingOpen]  = useState(false)
 
-  const [filters, setFilters] = useState<Filters>({
-    search: '', status: '', priority: '', severity: '',
-    unitId: '', originModule: '', assignedOnly: false, slaVencida: false,
-  })
+  const [filters, setFilters] = useState<Filters>(() => ({
+    search: searchParams.get('search') ?? '',
+    status: searchParams.get('status') ?? '',
+    priority: searchParams.get('priority') ?? '',
+    severity: searchParams.get('severity') ?? '',
+    unitId: searchParams.get('unitId') ?? '',
+    sellerId: searchParams.get('sellerId') ?? '',
+    originModule: searchParams.get('originModule') ?? '',
+    assignedOnly: searchParams.get('assignedOnly') === 'true',
+    slaVencida: searchParams.get('slaVencida') === 'true',
+  }))
 
   const PER_PAGE = 50
 
@@ -161,6 +173,7 @@ export default function CentralAvisosPage() {
       if (filters.priority)     params.set('priority', filters.priority)
       if (filters.severity)     params.set('severity', filters.severity)
       if (filters.unitId)       params.set('unitId',   filters.unitId)
+      if (filters.sellerId)     params.set('sellerId', filters.sellerId)
       if (filters.originModule) params.set('originModule', filters.originModule)
       if (filters.search)       params.set('search',   filters.search)
       if (filters.assignedOnly) params.set('assignedOnly', 'true')
@@ -299,8 +312,10 @@ export default function CentralAvisosPage() {
     }
   }, [pendencies, total])
 
+  const complianceOnly = filters.originModule === 'SELLER_QUEUE_COMPLIANCE'
+  const sellerScoped = Boolean(filters.sellerId)
   const hasActiveFilters = filters.search || filters.priority || filters.severity
-    || filters.unitId || filters.originModule || filters.assignedOnly || filters.slaVencida
+    || filters.unitId || filters.sellerId || filters.originModule || filters.assignedOnly || filters.slaVencida
   const isArchiveView = filters.status === 'CANCELADA'
   const tableHeaders = isArchiveView
     ? ['Prioridade', 'Status', 'Cliente', 'Tipo / Módulo', 'Responsável', 'Unidade', 'Vencimento', 'Resolvida', 'Arquivada', 'Arquivou', 'Ações']
@@ -322,6 +337,18 @@ export default function CentralAvisosPage() {
           <p className="mt-0.5 text-sm text-gray-500">
             {loading ? 'Carregando...' : `${total} pendências${filters.status ? ` · filtro: ${filters.status}` : ''}`}
           </p>
+          {complianceOnly && (
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-amber-700">
+              <p>Mostrando somente ocorrências de conformidade da fila.</p>
+              {sellerScoped && <p>Filtro por vendedor ativo.</p>}
+              <Link
+                href="/vendedor-da-vez/relatorios"
+                className="font-medium text-brand-700 underline underline-offset-2"
+              >
+                Voltar ao resumo da fila
+              </Link>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isManager && (
@@ -433,6 +460,44 @@ export default function CentralAvisosPage() {
         })}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setFilters((prev) => ({ ...prev, originModule: complianceOnly ? '' : 'SELLER_QUEUE_COMPLIANCE' }))
+            setPage(1)
+          }}
+          className={cn(
+            'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+            complianceOnly ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
+          )}
+        >
+          Conformidade da fila
+        </button>
+        {complianceOnly && (
+          <button
+            type="button"
+            onClick={() => {
+              setFilters({
+                search: '',
+                status: '',
+                priority: '',
+                severity: '',
+                unitId: '',
+                sellerId: '',
+                originModule: '',
+                assignedOnly: false,
+                slaVencida: false,
+              })
+              setPage(1)
+            }}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            Ver tudo
+          </button>
+        )}
+      </div>
+
       {/* ── Filtros avançados ────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1">
@@ -477,6 +542,7 @@ export default function CentralAvisosPage() {
           <option value="STOCK">Estoque</option>
           <option value="WHATSAPP">WhatsApp</option>
           <option value="CRM">CRM</option>
+          <option value="SELLER_QUEUE_COMPLIANCE">Conformidade da fila</option>
           <option value="MANUAL">Manual</option>
         </select>
         <label className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-600">
@@ -492,7 +558,7 @@ export default function CentralAvisosPage() {
           <button
             onClick={() => {
               setFilters({ search: '', status: filters.status, priority: '', severity: '',
-                unitId: '', originModule: '', assignedOnly: false, slaVencida: false })
+                unitId: '', sellerId: '', originModule: '', assignedOnly: false, slaVencida: false })
               setPage(1)
             }}
             className="text-xs text-gray-500 underline hover:text-gray-700"
