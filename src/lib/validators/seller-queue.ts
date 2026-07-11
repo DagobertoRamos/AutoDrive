@@ -178,6 +178,22 @@ export const configSchema = z.object({
     confirmedFraudHighPoints: z.number().int('Os pontos de fraude alta devem ser um número inteiro.').min(limits.complianceFraudHighPoints.min, 'Os pontos de fraude alta não podem ser negativos.').max(limits.complianceFraudHighPoints.max, 'Os pontos de fraude alta devem ser no máximo 200.'),
     reviewWindowDays: z.number().int('A janela de revisão deve ser um número inteiro.').min(limits.complianceReviewWindowDays.min, 'A janela de revisão deve ser de no mínimo 1 dia.').max(limits.complianceReviewWindowDays.max, 'A janela de revisão deve ser de no máximo 30 dias.'),
   }).optional(),
+  // Score de Qualidade Global
+  quality: z.object({
+    enabled:          z.boolean(),
+    scorePeriodDays:  z.number().int().min(7).max(180),
+    autoSweepEnabled: z.boolean(),
+    thresholds: z.object({
+      popupAt:                 z.number().int().max(0),
+      warnAt:                  z.number().int().max(0),
+      blockPendencyCreateAt:   z.number().int().max(0),
+      blockLeadsAt:            z.number().int().max(0),
+      blockNewSalesAt:         z.number().int().max(0),
+      blockQueueAt:            z.number().int().max(0),
+      maxUnresolvedPendencies: z.number().int().min(1).max(100),
+    }),
+    pointCosts: z.record(z.string(), z.number().int().min(0).max(200)).optional(),
+  }).optional(),
   // Novas configurações para a Fila Automática / Modo Anti-Briga
   infoRapidaConsumesTurn:      z.enum(['NO', 'YES', 'TIME_LIMIT']).optional(),
   infoRapidaTimeLimitMinutes:  z.number().int().min(1).max(120).optional(),

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Settings, Save, MapPin, Bell, BellRing, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock, Palmtree, Zap, Trash2 } from 'lucide-react'
+import { Settings, Save, MapPin, Bell, BellRing, Volume2, ShieldAlert, Unlock, RefreshCw, X, Plus, ListChecks, Clock, Palmtree, Zap, Trash2, Star } from 'lucide-react'
 
 const DAYS: [string, string][] = [['MON', 'Seg'], ['TUE', 'Ter'], ['WED', 'Qua'], ['THU', 'Qui'], ['FRI', 'Sex'], ['SAT', 'Sáb'], ['SUN', 'Dom']]
 import { cn } from '@/lib/utils'
@@ -42,6 +42,21 @@ interface CompliancePilotConfig {
   enabled: boolean; notifyManagers: boolean; autoCreateManagerPendency: boolean; requireConfirmedFraudForRanking: boolean;
   timeoutPoints: number; confirmedFraudMediumPoints: number; confirmedFraudHighPoints: number; reviewWindowDays: number;
 }
+interface QualityThresholds {
+  popupAt: number; warnAt: number; blockPendencyCreateAt: number; blockLeadsAt: number;
+  blockNewSalesAt: number; blockQueueAt: number; maxUnresolvedPendencies: number;
+}
+interface QualityPointCosts {
+  pendency_sla_breach: number; pendency_overdue_daily: number;
+  lead_no_response_24h: number; lead_no_response_48h: number; lead_no_summary_48h: number;
+  attendance_not_finalized: number; attendance_no_registration: number;
+  admin_procedure_missed: number; manual_warning: number; manual_penalty: number;
+}
+interface QualityConfig {
+  enabled: boolean; scorePeriodDays: number; autoSweepEnabled: boolean;
+  thresholds: QualityThresholds;
+  pointCosts: Partial<QualityPointCosts>;
+}
 interface Cfg {
   active: boolean; presenceMethods: string[]; geofenceLat: number | null; geofenceLng: number | null; geofenceRadiusM: number;
   qrSecret: string | null; acceptTimeoutSeconds: number; requireRevalidationOnAccept: boolean;
@@ -60,12 +75,16 @@ interface Cfg {
   queuePush: QueuePushConfig
   panelSound: PanelSoundConfig
   compliancePilot: CompliancePilotConfig
+  quality: QualityConfig
 }
 const DEFAULT_AUTO_BLOCK: AutoBlock = { enabled: true, strikesForCooldown: 3, cooldownHours: 3, strikesForDailyBlock: 6 }
 const DEFAULT_ATTENDANCE_REMINDER: AttendanceReminderConfig = { enabled: true, firstAfterMinutes: 15, repeatIntervalSeconds: 300, maxReminders: 6, escalateAfter: 3, autoEscalate: true, requireFinishOnNo: true, allowSnooze: false, logEveryReminder: true }
 const DEFAULT_QUEUE_PUSH: QueuePushConfig = { enabled: true, intervalSeconds: 300, targetScope: 'CURRENT_SELLER', maxRetries: 6, resendUntil: 'ACKNOWLEDGED', antiSpamUserLimit: 8, antiSpamAttendanceLimit: 6, antiSpamQueueLimit: 60, antiSpamWindowMinutes: 10, allowedStartTime: null, allowedEndTime: null, allowOutsideHoursForAdmins: true, urgency: 'HIGH', sound: true }
 const DEFAULT_PANEL_SOUND: PanelSoundConfig = { enabled: true, repeatUntilAccepted: true, repeatSeconds: 3, refreshSeconds: 3, volume: 80, soundType: 'siren', playOnDashboard: false, onlyStorePanel: true, muteOutsideHours: false, requireManualActivation: true, wakeLock: true, showHiddenWarning: true }
 const DEFAULT_COMPLIANCE_PILOT: CompliancePilotConfig = { enabled: false, notifyManagers: true, autoCreateManagerPendency: true, requireConfirmedFraudForRanking: true, timeoutPoints: 2, confirmedFraudMediumPoints: 8, confirmedFraudHighPoints: 20, reviewWindowDays: 7 }
+const DEFAULT_QUALITY_THRESHOLDS: QualityThresholds = { popupAt: -5, warnAt: -10, blockPendencyCreateAt: -20, blockLeadsAt: -30, blockNewSalesAt: -35, blockQueueAt: -50, maxUnresolvedPendencies: 8 }
+const DEFAULT_QUALITY_POINT_COSTS: QualityPointCosts = { pendency_sla_breach: 5, pendency_overdue_daily: 2, lead_no_response_24h: 3, lead_no_response_48h: 5, lead_no_summary_48h: 2, attendance_not_finalized: 5, attendance_no_registration: 4, admin_procedure_missed: 6, manual_warning: 3, manual_penalty: 10 }
+const DEFAULT_QUALITY: QualityConfig = { enabled: false, scorePeriodDays: 30, autoSweepEnabled: true, thresholds: DEFAULT_QUALITY_THRESHOLDS, pointCosts: DEFAULT_QUALITY_POINT_COSTS }
 const limits = QUEUE_CONFIG_LIMITS
 
 // Editor de lista de motivos (chips). Usado para encerrar lead e negociação.
@@ -92,7 +111,7 @@ function ReasonsEditor({ title, hint, items, onChange }: { title: string; hint: 
     </div>
   )
 }
-const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', responsibleUserIds: [], autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH, panelSound: DEFAULT_PANEL_SOUND, compliancePilot: DEFAULT_COMPLIANCE_PILOT }
+const DEFAULTS: Cfg = { active: false, presenceMethods: ['GPS'], geofenceLat: null, geofenceLng: null, geofenceRadiusM: 150, qrSecret: '', acceptTimeoutSeconds: 60, requireRevalidationOnAccept: true, recurringCustomerRule: 'RESPONSIBLE', requestByNameRequiresApproval: true, alertSound: true, alertSoundType: 'siren', alertBrowserPush: true, alertWhatsapp: true, alertWhatsappManagers: true, alertRepeatSeconds: 10, allowChooseSeller: true, allowSellerFinish: true, leadCloseReasons: [], negotiationReasons: [], openTime: null, closeTime: null, allowedDays: [], maxPauseMinutes: 0, autoSchedule: false, infoRapidaConsumesTurn: 'NO', infoRapidaTimeLimitMinutes: 3, allowWaitWithOpenAttendance: 'NO', responsibleUserIds: [], autoBlock: DEFAULT_AUTO_BLOCK, attendanceReminder: DEFAULT_ATTENDANCE_REMINDER, queuePush: DEFAULT_QUEUE_PUSH, panelSound: DEFAULT_PANEL_SOUND, compliancePilot: DEFAULT_COMPLIANCE_PILOT, quality: DEFAULT_QUALITY }
 
 interface BlockedSeller { sellerId: string; name: string; type: 'COOLDOWN' | 'DAILY_BLOCK' | 'MANUAL'; endsAt: string | null; strikes: number }
 
@@ -159,7 +178,7 @@ export default function ConfiguracoesFilaPage() {
     try {
       const res = await fetch('/api/seller-queue/config', { credentials: 'include' })
       if (res.status === 403 || res.status === 400) { const j = await res.json().catch(() => ({})); setDenied(j?.error ?? 'Sem acesso.'); return }
-      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', responsibleUserIds: j.data.config?.responsibleUserIds ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) }, panelSound: { ...DEFAULT_PANEL_SOUND, ...(j.data.config?.panelSound ?? {}) }, compliancePilot: { ...DEFAULT_COMPLIANCE_PILOT, ...(j.data.config?.compliancePilot ?? {}) } })
+      setDenied(null); const j = await res.json(); if (j?.data) setCfg({ ...DEFAULTS, ...j.data, qrSecret: j.data.qrSecret ?? '', allowSellerFinish: j.data.config?.allowSellerFinish ?? true, leadCloseReasons: j.data.config?.leadCloseReasons ?? [], negotiationReasons: j.data.config?.negotiationReasons ?? [], openTime: j.data.openTime ?? null, closeTime: j.data.closeTime ?? null, allowedDays: j.data.allowedDays ?? [], maxPauseMinutes: j.data.config?.maxPauseMinutes ?? 0, autoSchedule: j.data.config?.autoSchedule ?? false, infoRapidaConsumesTurn: j.data.config?.infoRapidaConsumesTurn ?? 'NO', infoRapidaTimeLimitMinutes: j.data.config?.infoRapidaTimeLimitMinutes ?? 3, allowWaitWithOpenAttendance: j.data.config?.allowWaitWithOpenAttendance ?? 'NO', responsibleUserIds: j.data.config?.responsibleUserIds ?? [], autoBlock: { ...DEFAULT_AUTO_BLOCK, ...(j.data.config?.autoBlock ?? {}) }, attendanceReminder: { ...DEFAULT_ATTENDANCE_REMINDER, ...(j.data.config?.attendanceReminder ?? {}) }, queuePush: { ...DEFAULT_QUEUE_PUSH, ...(j.data.config?.queuePush ?? {}) }, panelSound: { ...DEFAULT_PANEL_SOUND, ...(j.data.config?.panelSound ?? {}) }, compliancePilot: { ...DEFAULT_COMPLIANCE_PILOT, ...(j.data.config?.compliancePilot ?? {}) }, quality: { ...DEFAULT_QUALITY, ...(j.data.config?.quality ?? {}), thresholds: { ...DEFAULT_QUALITY_THRESHOLDS, ...(j.data.config?.quality?.thresholds ?? {}) }, pointCosts: { ...DEFAULT_QUALITY_POINT_COSTS, ...(j.data.config?.quality?.pointCosts ?? {}) } } })
     } catch { /* noop */ } finally { setLoading(false) }
   }, [])
   const loadBlocks = useCallback(async () => {
@@ -452,6 +471,63 @@ export default function ConfiguracoesFilaPage() {
         </div>
 
         <p className="text-[11px] text-gray-400">Timeout conta como evento operacional confiável. Suspeitas médias e altas entram em revisão pela gestão e podem virar pendência auditável. O ranking só sente fraude confirmada, salvo se você desligar essa proteção.</p>
+      </div>
+
+      {/* ── Score de Qualidade Global ──────────────────────────────────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900"><Star size={16} className="text-brand-600" />Score de Qualidade</h2>
+            <p className="mt-0.5 text-xs text-gray-500">Sistema global de pontos: atendimento, leads, pendências e procedimentos. Quando ativado, monitora automaticamente e pode bloquear acesso a módulos se o score cair muito.</p>
+          </div>
+          <a href="/vendedor-da-vez/qualidade" target="_blank" rel="noopener" className="shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300">Ver painel →</a>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700 col-span-full"><input type="checkbox" checked={cfg.quality.enabled} onChange={(e) => set('quality', { ...cfg.quality, enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" /><span className="font-semibold">Ativar score de qualidade</span></label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={cfg.quality.autoSweepEnabled} onChange={(e) => set('quality', { ...cfg.quality, autoSweepEnabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Descontar automaticamente (SLA, leads)</label>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-700">Janela de análise (dias)</label>
+            <input type="number" min={7} max={180} className={cn(inputCls, 'max-w-[120px]')} value={cfg.quality.scorePeriodDays} onChange={(e) => set('quality', { ...cfg.quality, scorePeriodDays: Number(e.target.value) || 30 })} />
+            <p className="mt-0.5 text-[11px] text-gray-400">Eventos mais antigos que X dias não contam no score atual.</p>
+          </div>
+        </div>
+
+        <div className={cn('space-y-3', !cfg.quality.enabled && 'pointer-events-none opacity-50')}>
+          <p className="text-xs font-semibold text-gray-700 border-t border-gray-100 pt-3">Limiares de restrição (score abaixo de X aciona)</p>
+          <p className="text-[11px] text-gray-400">Valores negativos. Quanto mais negativo, mais grave. Ex.: warnAt = −10 → aviso quando score cair abaixo de −10.</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Pop-up de aviso</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.popupAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, popupAt: Number(e.target.value) || -5 } })} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Destaque vermelho</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.warnAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, warnAt: Number(e.target.value) || -10 } })} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear pendências</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockPendencyCreateAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockPendencyCreateAt: Number(e.target.value) || -20 } })} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear leads</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockLeadsAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockLeadsAt: Number(e.target.value) || -30 } })} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear negociações</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockNewSalesAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockNewSalesAt: Number(e.target.value) || -35 } })} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Retirar da fila</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockQueueAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockQueueAt: Number(e.target.value) || -50 } })} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Máx. pendências abertas</label><input type="number" min={1} max={50} className={inputCls} value={cfg.quality.thresholds.maxUnresolvedPendencies} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, maxUnresolvedPendencies: Number(e.target.value) || 8 } })} /></div>
+          </div>
+
+          <p className="text-xs font-semibold text-gray-700 border-t border-gray-100 pt-3">Custo de pontos por tipo de evento (valores absolutos — o sistema aplica o sinal −)</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {([
+              ['pendency_sla_breach',        'Pendência venc. SLA'],
+              ['pendency_overdue_daily',      'Pendência (+1 dia)'],
+              ['lead_no_response_24h',        'Lead sem resposta 24h'],
+              ['lead_no_response_48h',        'Lead sem resposta 48h'],
+              ['lead_no_summary_48h',         'Lead sem resumo 48h'],
+              ['attendance_not_finalized',    'Atend. não finalizado'],
+              ['attendance_no_registration',  'Cliente não cadastrado'],
+              ['admin_procedure_missed',      'Procedimento perdido'],
+              ['manual_warning',              'Aviso formal'],
+              ['manual_penalty',              'Penalidade manual'],
+            ] as [keyof QualityPointCosts, string][]).map(([key, label]) => (
+              <div key={key}>
+                <label className="mb-1 block text-[11px] font-medium text-gray-700">{label}</label>
+                <input type="number" min={0} max={100} className={inputCls} value={(cfg.quality.pointCosts as unknown as Record<string,number>)[key] ?? (DEFAULT_QUALITY_POINT_COSTS as unknown as Record<string,number>)[key] ?? 0} onChange={(e) => set('quality', { ...cfg.quality, pointCosts: { ...cfg.quality.pointCosts, [key]: Number(e.target.value) || 0 } })} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="text-[11px] text-gray-400">Pontos negativos = desconto. Positivos = estorno. O gestor pode aplicar eventos retroativos na aba "Aplicar" do painel de qualidade.</p>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card space-y-4">
