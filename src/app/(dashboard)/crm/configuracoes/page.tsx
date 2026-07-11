@@ -11,11 +11,12 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Settings, Save, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, GripVertical, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { CRM_REQUIRABLE_FIELDS } from '@/lib/crm/shared'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
-interface Stage { code: string; displayName: string; color: string; order: number; active: boolean; category: string }
+interface Stage { code: string; displayName: string; color: string; order: number; active: boolean; category: string; requiredFields: string[]; allowSkip: boolean; allowBack: boolean }
 interface Tag { id: string; name: string; color: string | null; description: string | null; active: boolean }
 
 type TabId = 'overview' | 'stages' | 'tags' | 'duplicates'
@@ -166,17 +167,36 @@ function StagesTab({ canManage }: { canManage: boolean }) {
       {loading ? <div className="space-y-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100" />)}</div> : (
         <ul className="space-y-2">
           {stages.map((s, i) => (
-            <li key={s.code} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
-              <div className="flex flex-col leading-none">
-                <button disabled={!canManage || i === 0} onClick={() => move(i, -1)} className="text-gray-400 hover:text-gray-700 disabled:opacity-30">▲</button>
-                <button disabled={!canManage || i === stages.length - 1} onClick={() => move(i, 1)} className="text-gray-400 hover:text-gray-700 disabled:opacity-30">▼</button>
+            <li key={s.code} className="rounded-lg border border-gray-100 bg-gray-50/60 p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-col leading-none">
+                  <button disabled={!canManage || i === 0} onClick={() => move(i, -1)} className="text-gray-400 hover:text-gray-700 disabled:opacity-30">▲</button>
+                  <button disabled={!canManage || i === stages.length - 1} onClick={() => move(i, 1)} className="text-gray-400 hover:text-gray-700 disabled:opacity-30">▼</button>
+                </div>
+                <GripVertical size={14} className="text-gray-300" />
+                <input type="color" disabled={!canManage} value={s.color} onChange={(e) => set(s.code, { color: e.target.value })} className="h-8 w-8 shrink-0 rounded border border-gray-200" />
+                <input disabled={!canManage} className={cn(inputCls, 'flex-1 min-w-[140px]')} value={s.displayName} onChange={(e) => set(s.code, { displayName: e.target.value })} />
+                <span className="rounded bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">{s.code}</span>
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{s.category}</span>
+                <label className="ml-auto flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" disabled={!canManage} checked={s.active} onChange={(e) => set(s.code, { active: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativa</label>
               </div>
-              <GripVertical size={14} className="text-gray-300" />
-              <input type="color" disabled={!canManage} value={s.color} onChange={(e) => set(s.code, { color: e.target.value })} className="h-8 w-8 shrink-0 rounded border border-gray-200" />
-              <input disabled={!canManage} className={cn(inputCls, 'flex-1 min-w-[140px]')} value={s.displayName} onChange={(e) => set(s.code, { displayName: e.target.value })} />
-              <span className="rounded bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">{s.code}</span>
-              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{s.category}</span>
-              <label className="ml-auto flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" disabled={!canManage} checked={s.active} onChange={(e) => set(s.code, { active: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativa</label>
+              {/* F3 — transições + campos obrigatórios da etapa */}
+              <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-2 pl-6 text-xs text-gray-600">
+                <label className="flex items-center gap-1"><input type="checkbox" disabled={!canManage} checked={s.allowSkip} onChange={(e) => set(s.code, { allowSkip: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Permite pular etapas</label>
+                <label className="flex items-center gap-1"><input type="checkbox" disabled={!canManage} checked={s.allowBack} onChange={(e) => set(s.code, { allowBack: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Permite retroceder</label>
+                <span className="text-gray-400">·</span>
+                <span className="text-gray-500">Exigir p/ entrar nesta etapa:</span>
+                {CRM_REQUIRABLE_FIELDS.map((f) => (
+                  <label key={f.key} className="flex items-center gap-1">
+                    <input
+                      type="checkbox" disabled={!canManage}
+                      checked={s.requiredFields.includes(f.key)}
+                      onChange={(e) => set(s.code, { requiredFields: e.target.checked ? [...s.requiredFields, f.key] : s.requiredFields.filter((x) => x !== f.key) })}
+                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />{f.label}
+                  </label>
+                ))}
+              </div>
             </li>
           ))}
         </ul>

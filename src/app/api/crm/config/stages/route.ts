@@ -11,11 +11,12 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/a
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
-import { loadStages, defaultStages } from '@/lib/crm/config'
+import { loadStages, defaultStages, CRM_REQUIRABLE_FIELDS } from '@/lib/crm/config'
 
 export const dynamic = 'force-dynamic'
 
 const VALID_CODES = new Set(defaultStages().map((s) => s.code))
+const VALID_FIELDS = new Set<string>(CRM_REQUIRABLE_FIELDS.map((f) => f.key))
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -43,10 +44,15 @@ export async function PUT(req: Request) {
       const color = typeof s?.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.color) ? s.color : null
       const order = Number.isFinite(Number(s?.order)) ? Math.max(0, Math.round(Number(s.order))) : 0
       const active = Boolean(s?.active ?? true)
+      const requiredFields = Array.isArray(s?.requiredFields)
+        ? s.requiredFields.filter((f: unknown): f is string => typeof f === 'string' && VALID_FIELDS.has(f))
+        : []
+      const allowSkip = Boolean(s?.allowSkip ?? true)
+      const allowBack = Boolean(s?.allowBack ?? true)
       await prisma.crmStage.upsert({
         where: { tenantId_code: { tenantId, code } },
-        create: { tenantId, code, displayName, color, order, active },
-        update: { displayName, color, order, active },
+        create: { tenantId, code, displayName, color, order, active, requiredFields, allowSkip, allowBack },
+        update: { displayName, color, order, active, requiredFields, allowSkip, allowBack },
       })
     }
     return NextResponse.json({ success: true, data: await loadStages(tenantId) })

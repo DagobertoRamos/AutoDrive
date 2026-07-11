@@ -5,7 +5,8 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
-import { readTemperature } from '@/lib/crm/config'
+import { readTemperature, loadStages } from '@/lib/crm/config'
+import { validateStageTransition } from '@/lib/crm/transitions'
 
 const UPDATABLE_STATUSES = new Set(['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED'])
 
@@ -330,6 +331,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (nextStatus === 'CONVERTED' && body.convertedDealId) {
       updateData.convertedDealId = String(body.convertedDealId)
       updateData.convertedAt = new Date()
+    }
+
+    // F3 — Kanban profissional: valida a TRANSIÇÃO de etapa (pular/retroceder +
+    // campos obrigatórios da etapa de destino) ANTES de gravar. Servidor é
+    // autoritativo — o Kanban não move o card visualmente se isto rejeitar.
+    if (nextStatus && nextStatus !== lead.status) {
+      const stages = await loadStages(tenantId)
+      const effectiveLead = {
+        name: (updateData.name as string | null | undefined) ?? lead.name,
+        phone: (updateData.phone as string | null | undefined) ?? lead.phone,
+        email: (updateData.email as string | null | undefined) ?? lead.email,
+        vehicleId: lead.vehicleId,
+        assignedToUserId: (updateData.assignedToUserId as string | null | undefined) ?? lead.assignedToUserId,
+      }
+      const transition = validateStageTransition({ fromCode: lead.status, toCode: nextStatus, stages, lead: effectiveLead })
+      if (!transition.ok) {
+        return NextResponse.json({ success: false, error: transition.reason, missingFields: transition.missingFields }, { status: 409 })
+      }
     }
 
     const updated = await prisma.marketingLead.update({ where: { id }, data: updateData })

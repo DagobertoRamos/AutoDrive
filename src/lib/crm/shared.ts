@@ -28,6 +28,16 @@ export function crmTemperature(value: string | null | undefined) {
   return CRM_TEMPERATURES.find((t) => t.value === value) ?? CRM_TEMPERATURES[3]
 }
 
+// Campos exigíveis por etapa (F3) — const PURA (client-safe).
+export const CRM_REQUIRABLE_FIELDS = [
+  { key: 'name', label: 'Nome' },
+  { key: 'phone', label: 'Telefone' },
+  { key: 'email', label: 'E-mail' },
+  { key: 'vehicleId', label: 'Veículo de interesse' },
+  { key: 'assignedToUserId', label: 'Responsável' },
+] as const
+export type CrmRequirableField = (typeof CRM_REQUIRABLE_FIELDS)[number]['key']
+
 export function crmStageLabel(value: string | null | undefined): string {
   return CRM_STAGE_OPTIONS.find((item) => item.value === value)?.label ?? (value || 'Sem etapa')
 }

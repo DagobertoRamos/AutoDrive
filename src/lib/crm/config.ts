@@ -5,9 +5,9 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { CRM_STAGE_OPTIONS, CRM_TEMPERATURES } from '@/lib/crm/shared'
+import { CRM_STAGE_OPTIONS, CRM_TEMPERATURES, CRM_REQUIRABLE_FIELDS, type CrmRequirableField } from '@/lib/crm/shared'
 
-export { CRM_TEMPERATURES }
+export { CRM_TEMPERATURES, CRM_REQUIRABLE_FIELDS }
 export type CrmTemperature = (typeof CRM_TEMPERATURES)[number]['value']
 
 const DEFAULT_STAGE_CATEGORY: Record<string, string> = {
@@ -21,13 +21,22 @@ const DEFAULT_STAGE_COLOR: Record<string, string> = {
 
 export interface CrmStageConfig {
   code: string; displayName: string; color: string; order: number; active: boolean; category: string
+  requiredFields: string[]; allowSkip: boolean; allowBack: boolean
 }
 
 export function defaultStages(): CrmStageConfig[] {
   return CRM_STAGE_OPTIONS.map((s, i) => ({
     code: s.value, displayName: s.label, color: DEFAULT_STAGE_COLOR[s.value] ?? '#6b7280',
     order: i, active: true, category: DEFAULT_STAGE_CATEGORY[s.value] ?? 'OPEN',
+    // Defaults IRRESTRITOS — preserva o comportamento atual até o admin configurar.
+    requiredFields: [], allowSkip: true, allowBack: true,
   }))
+}
+
+function parseRequiredFields(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  const valid = new Set(CRM_REQUIRABLE_FIELDS.map((f) => f.key))
+  return v.filter((x): x is string => typeof x === 'string' && valid.has(x as CrmRequirableField))
 }
 
 /** Etapas efetivas: defaults sobrescritos pelas linhas de CrmStage do tenant. */
@@ -41,7 +50,11 @@ export async function loadStages(tenantId: string): Promise<CrmStageConfig[]> {
       .map((d) => {
         const r = byCode.get(d.code)
         return r
-          ? { code: d.code, displayName: r.displayName || d.displayName, color: r.color || d.color, order: r.order, active: r.active, category: r.category || d.category }
+          ? {
+              code: d.code, displayName: r.displayName || d.displayName, color: r.color || d.color,
+              order: r.order, active: r.active, category: r.category || d.category,
+              requiredFields: parseRequiredFields(r.requiredFields), allowSkip: r.allowSkip, allowBack: r.allowBack,
+            }
           : d
       })
       .sort((a, b) => a.order - b.order)

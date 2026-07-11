@@ -3332,3 +3332,17 @@ Operações pontuais em prod (EasyCar), autorizadas pelo usuário via AskUserQue
 
 
 
+
+### LOG 0251 — 2026-07-10 — Claude (Opus 4.8) — CRM Reforma FASE 3: Kanban profissional (transições + campos obrigatórios)
+- **Escopo:** a F3 original ("Pipelines + Kanban pro") foi dividida — Pipelines (multi-funil) é mudança estrutural grande (FK em MarketingLead, rework de telas) e fica para uma sub-fase dedicada, evitando big-bang. Esta entrega é o **Kanban profissional**: transições válidas (pular/retroceder) + campos obrigatórios por etapa.
+- **Schema/migration `20260710000000_crm_f3_stage_transitions`:** `CrmStage` ganhou `requiredFields Json?` (campos exigidos p/ ENTRAR na etapa), `allowSkip Boolean @default(true)`, `allowBack Boolean @default(true)`. **Defaults preservam o comportamento atual (irrestrito)** até o admin configurar. Aplicar migration manual na Neon.
+- **`src/lib/crm/transitions.ts` (PURO, 12 testes):** `validateStageTransition({fromCode,toCode,stages,lead})` — bloqueia mover p/ etapa desativada; bloqueia pular etapas se `allowSkip=false` na origem; bloqueia retroceder se `allowBack=false`; exige os `requiredFields` da etapa de DESTINO (valor vazio/whitespace não conta); sem etapa de origem conhecida, só valida destino+campos (não aplica regra de ordem).
+- **`CRM_REQUIRABLE_FIELDS`** movido p/ `@/lib/crm/shared` (const pura, client-safe — como já foi feito com `CRM_TEMPERATURES`; `config.ts` reexporta).
+- **`PATCH /api/crm/leads/[id]`:** antes de gravar mudança de status, roda `validateStageTransition` com os dados EFETIVOS do lead (mescla o que já existe com o que vem no body) — servidor é autoritativo; rejeita com 409 + motivo + `missingFields` se inválido.
+- **`GET/PUT /api/crm/config/stages`:** aceita/salva `requiredFields`/`allowSkip`/`allowBack` por etapa.
+- **UI:**
+  - Config → aba Etapas: toggles "Permite pular etapas" / "Permite retroceder" + checkboxes de campos obrigatórios (Nome/Telefone/E-mail/Veículo/Responsável) por etapa.
+  - Kanban: "Avançar" agora trata a resposta do PATCH — se rejeitado, mostra o motivo num banner e o card **não se move** (o reload sempre reflete a verdade do servidor); botão fica "Movendo…" e desabilitado durante a chamada.
+- **Deploy seguro:** defaults irrestritos → nada quebra sem a migration nem sem configuração explícita do admin.
+- **Testes:** `npx prisma generate` OK; `npx tsc --noEmit` OK; `npm test` OK (465/465, +12); `npm run build` OK.
+- **Pendente:** Pipelines (multi-funil) como sub-fase dedicada; depois F4 (SLA/Follow-up+Distribuição+Timeline) e F5 (Automações+Motivos+Auditoria+Relatórios).

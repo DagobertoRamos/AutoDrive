@@ -24,6 +24,8 @@ export default function CrmKanbanPage() {
   const [rows, setRows] = useState<LeadRow[]>([])
   const [stages, setStages] = useState<StageCfg[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [movingId, setMovingId] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -43,11 +45,21 @@ export default function CrmKanbanPage() {
   useEffect(() => { void load() }, [])
 
   const moveLead = async (leadId: string, nextStatus: string) => {
-    await fetch(`/api/crm/leads/${leadId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ status: nextStatus, lostReason: nextStatus === 'LOST' ? 'Movido no Kanban' : undefined }),
-    })
-    await load()
+    setError(null)
+    setMovingId(leadId)
+    try {
+      const res = await fetch(`/api/crm/leads/${leadId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ status: nextStatus, lostReason: nextStatus === 'LOST' ? 'Movido no Kanban' : undefined }),
+      })
+      const json = await res.json().catch(() => null) as { error?: string } | null
+      // Transição rejeitada (etapa desativada, pular/retroceder bloqueado ou
+      // campo obrigatório faltando) — o card NÃO se move (reload traz a verdade).
+      if (!res.ok) { setError(json?.error ?? 'Não foi possível mover o card.'); return }
+      await load()
+    } finally {
+      setMovingId(null)
+    }
   }
 
   const codes = stages.map((s) => s.code)
@@ -64,6 +76,12 @@ export default function CrmKanbanPage() {
           Atualizar
         </button>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-4 2xl:grid-cols-8">
         {stages.map((stage, index) => {
@@ -103,9 +121,9 @@ export default function CrmKanbanPage() {
                           Ver detalhe
                         </Link>
                         {index < codes.length - 1 && (
-                          <button onClick={() => void moveLead(row.id, codes[index + 1])} className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white">
+                          <button onClick={() => void moveLead(row.id, codes[index + 1])} disabled={movingId === row.id} className="rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white disabled:opacity-50">
                             <ArrowRight size={12} className="mr-1 inline" />
-                            Avançar
+                            {movingId === row.id ? 'Movendo…' : 'Avançar'}
                           </button>
                         )}
                       </div>

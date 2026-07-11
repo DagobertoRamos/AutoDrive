@@ -4435,16 +4435,21 @@ model MarketingLead {
 // imutável usado por integrações); CrmStage só guarda nome exibido/cor/ordem/
 // ativo por tenant. Sem registro → usa os defaults (CRM_STAGE_OPTIONS).
 model CrmStage {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String // LeadStatus: NEW | ASSIGNED | WORKING | QUALIFIED | CONVERTED | LOST | DISCARDED | RECYCLED
-  displayName String
-  color       String? // hex (#RRGGBB)
-  order       Int      @default(0)
-  active      Boolean  @default(true)
-  category    String? // OPEN | CONVERTED | LOST | DISQUALIFIED | RECYCLED | ARCHIVED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  tenantId       String
+  code           String // LeadStatus: NEW | ASSIGNED | WORKING | QUALIFIED | CONVERTED | LOST | DISCARDED | RECYCLED
+  displayName    String
+  color          String? // hex (#RRGGBB)
+  order          Int      @default(0)
+  active         Boolean  @default(true)
+  category       String? // OPEN | CONVERTED | LOST | DISQUALIFIED | RECYCLED | ARCHIVED
+  // F3 — Kanban profissional (transições + campos obrigatórios). Defaults
+  // preservam o comportamento atual (irrestrito) até o admin configurar.
+  requiredFields Json? // ["name","phone","email"] — exigidos p/ ENTRAR nesta etapa
+  allowSkip      Boolean  @default(true) // permite pular etapas (avançar fora da ordem)
+  allowBack      Boolean  @default(true) // permite retroceder etapas
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([tenantId, code])
   @@index([tenantId])
