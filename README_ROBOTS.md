@@ -3610,3 +3610,43 @@ Abas: Visão Geral · Ocorrências · Penalidades · Restrições da Fila · Min
   - um veículo de interesse pode ser marcado como **principal**;
   - foi adicionada a ação **Iniciar avaliação**, abrindo a Avaliação 360 vinculada ao lead.
 - **Resultado funcional:** o lead agora aceita múltiplos veículos, distingue interesse x veículo do cliente, mantém um principal e consegue iniciar avaliação vinculada, sem colocar o veículo automaticamente no estoque.
+
+### LOG 0265 — 2026-07-11 10:00 — Codex (GPT-5) — Fila > Configurações: reorganização UX operacional desta frente
+- **Frente atual desta IA:** reorganização cirúrgica da página **`Fila > Configurações`**. Esta frente fica **reservada neste ciclo**; outras IAs devem respeitar este log antes de mexer em `src/app/(dashboard)/vendedor-da-vez/configuracoes/page.tsx` ou no encaixe embutido de alertas dessa tela.
+- **Objetivo:** profissionalizar a experiência sem criar sistema paralelo e sem alterar contratos de API, persistência, tenant, unidade, permissões, Android, FCM, PWA, Web Push, service worker, notificações internas, fila, escalonamento ou validação de presença.
+- **Diagnóstico encontrado:**
+  - a página estava presa em coluna estreita (`max-w-2xl`) e cresceu por acúmulo de fases;
+  - estados do aparelho, ações de teste e configurações permanentes apareciam misturados;
+  - latitude, longitude e raio ficavam expostos como campos “comuns”;
+  - faltavam visão geral operacional, navegação por seções e barra de alterações pendentes.
+- **Arquivos alterados nesta frente:**
+  - `src/app/(dashboard)/vendedor-da-vez/configuracoes/page.tsx`
+  - `src/components/seller-queue/AlertSetup.tsx`
+- **Componentes reutilizados:**
+  - `AlertSetup`
+  - `EscalationConfigCard`
+  - `AttendanceTypesConfigCard`
+  - `VacationManagerCard`
+  - `QueueParticipantsCard`
+  - `QueueDiagnosticsCard`
+- **Componentes criados:** nenhum arquivo novo compartilhado; a composição reutilizável foi mantida localmente na própria página (`OverviewCard`, `SettingsSection`, `SettingRow`, `SettingsSectionNav`, `UnsavedChangesBar`).
+- **APIs e fluxos preservados:**
+  - `/api/seller-queue/config`
+  - `/api/seller-queue/vacation`
+  - `/api/seller-queue/blocks`
+  - `/api/seller-queue/callable`
+  - `/api/seller-queue/admin-reset`
+  - `/api/mobile/push-test`
+- **Permissões verificadas:**
+  - `sellerQueue.settings` para configuração administrativa;
+  - autoatendimento do modo férias preservado para o usuário comum;
+  - separação visual explícita entre “Neste aparelho”, “Minha disponibilidade”, “Configuração da unidade” e “Somente administradores”.
+- **Testes executados:**
+  - `npx tsc --noEmit` OK
+  - `npm run build` OK
+  - `npx eslint src/app/(dashboard)/vendedor-da-vez/configuracoes/page.tsx src/components/seller-queue/AlertSetup.tsx` com warnings conhecidos do projeto sobre `react-hooks/set-state-in-effect` em efeitos de sincronização já existentes nesse padrão de tela/aparelho, sem erros bloqueantes
+- **Resultados dos testes:** a reorganização compilou, tipou e buildou com sucesso. O build local só precisou de rede liberada para baixar a fonte `Inter` do `next/font`, sem relação com a lógica da fila.
+- **Limitações reais / riscos atuais:**
+  - `AlertSetup` segue responsável pela lógica real de inscrição e teste; a mudança nesta frente atua apenas no peso visual do botão de teste quando embutido;
+  - a página de configurações depende do estado real do aparelho para refletir notificações, então parte do resumo só fecha 100% com teste visual no dispositivo.
+- **Observação obrigatória:** esta reorganização **não deve** alterar o comportamento de Android, FCM, PWA, Web Push, service worker, notificações internas, fila, escalonamento ou validação de presença; qualquer ajuste fora desse perímetro precisa de novo log próprio.
