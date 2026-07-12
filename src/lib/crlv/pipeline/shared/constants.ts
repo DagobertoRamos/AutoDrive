@@ -1,9 +1,0 @@
-export const MAX_FILE_SIZE = Number(process.env.DOC_EXTRACT_MAX_BYTES ?? 4000000); // 4 MB default
-export const MAX_TEXT_RESULT_PAGES = 50;
-export const MAX_POSITIONAL_TOKENS_PER_PAGE = 3000;
-export const MAX_POSITIONAL_TOKENS_TOTAL = 10000;
-export const MAX_TEXT_CHARS_PER_PAGE = 20000;
-export const MAX_TEXT_TOTAL_CHARS = 100000;
-export const MAX_TEXT_RESULT_BODY_BYTES = 5000000;
-export const PROCESSING_SESSION_TTL_MS = 1000 * 60 * 15; // 15 mins
-export const MAX_PROCESSING_ATTEMPTS = 3;

@@ -184,3 +184,6 @@ backups/
 Rascunhos/
 .claire/
 .claude/worktrees/
+
+# CRLV samples for local parser testing (contém dados pessoais)
+_samples_crlv/

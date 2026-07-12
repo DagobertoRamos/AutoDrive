@@ -502,16 +502,18 @@ function AvaliacaoForm() {
     return () => { alive = false }
   }, [tipoVeiculo])
 
-  // ── Auto-seleção de marca FIPE a partir do texto da API Placas ─────────────
+  // ── Auto-seleção de marca FIPE (a partir de lookup de placa OU do documento) ──
   // Quando o catálogo FIPE termina de carregar, tenta encontrar a marca cujo
   // nome normalizado (sem acento, sem pontuação, com aliases tipo VW→
-  // VOLKSWAGEN) bate com o que veio do lookup. Resolve o bug "marca ficou em
-  // 'Selecione' mesmo a API tendo retornado VOLKSWAGEN".
+  // VOLKSWAGEN) bate com o que veio do lookup OU do documento (extractedData).
+  // Resolve o bug "marca ficou em 'Selecione' mesmo o doc/API tendo retornado".
   useEffect(() => {
     if (brandCode) return                              // já selecionado manualmente (ou auto antes)
-    if (!lookupData?.brand) return                     // nada para casar
+    // Prioridade: lookup por placa → doc → texto manual (que veio do doc)
+    const brandSource = lookupData?.brand || extractedData?.brand || manualBrand
+    if (!brandSource) return                           // nada para casar
     if (!fipeBrands.length) return                     // catálogo ainda não chegou
-    const target = normalizeBrandName(lookupData.brand)
+    const target = normalizeBrandName(brandSource)
     if (!target) return
     // Estratégia em camadas: igualdade exata > prefixo > contém > tokens
     let hit = fipeBrands.find((b) => normalizeBrandName(b.name) === target)
@@ -521,23 +523,23 @@ function AvaliacaoForm() {
     })
     if (!hit) hit = fipeBrands.find((b) => normalizeBrandName(b.name).includes(target))
     // Token scoring como último recurso (cobre "VW - VOLKSWAGEN" vs "Volkswagen")
-    if (!hit) hit = bestFipeMatch(fipeBrands, lookupData.brand) as typeof fipeBrands[number] | undefined
+    if (!hit) hit = bestFipeMatch(fipeBrands, brandSource) as typeof fipeBrands[number] | undefined
     if (hit) {
       setBrandCode(hit.code)
       setBrandName(hit.name)
     }
-  }, [fipeBrands, lookupData?.brand, brandCode])
+  }, [fipeBrands, lookupData?.brand, extractedData?.brand, manualBrand, brandCode])
 
-  // Aplica tipo de veículo detectado pela API ao seletor (CARRO/MOTO/CAMINHAO).
-  // Sem isso o catálogo FIPE buscava sempre 'carros' e a marca real (ex: Honda
-  // moto) nunca aparecia na lista.
+  // Aplica tipo de veículo detectado pela API OU pelo documento ao seletor
+  // (CARRO/MOTO/CAMINHAO). Sem isso o catálogo FIPE buscava sempre 'carros' e
+  // a marca real (ex: Honda moto) nunca aparecia na lista.
   useEffect(() => {
-    const vt = lookupData?.vehicleType
+    const vt = lookupData?.vehicleType || extractedData?.vehicleGroup
     if (!vt) return
     if (vt === 'CAR'        && tipoVeiculo !== 'CARRO')    setTipoVeiculo('CARRO')
     if (vt === 'MOTORCYCLE' && tipoVeiculo !== 'MOTO')     setTipoVeiculo('MOTO')
     if (vt === 'TRUCK'      && tipoVeiculo !== 'CAMINHAO') setTipoVeiculo('CAMINHAO')
-  }, [lookupData?.vehicleType])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lookupData?.vehicleType, extractedData?.vehicleGroup])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Carrega modelos FIPE quando muda a marca ───────────────────────────────
   useEffect(() => {
@@ -557,20 +559,21 @@ function AvaliacaoForm() {
     return () => { alive = false }
   }, [brandCode, tipoVeiculo])
 
-  // ── Auto-seleção de modelo FIPE a partir do texto da API Placas ────────────
-  // Estratégia: token scoring via bestFipeMatch (lida com diferenças entre
-  // o que a API retorna — "FIT LX FLEX" — e o que a FIPE catalogou —
-  // "FIT LX 1.4 16V Flex Mec."). Usa modelYear como tiebreaker.
+  // ── Auto-seleção de modelo FIPE (a partir de lookup de placa OU do documento) ──
+  // Token scoring via bestFipeMatch lida com diferenças entre o que a fonte
+  // retorna ("MOBI LIKE") e o que a FIPE catalogou ("MOBI LIKE 1.0 Fire Flex 5p").
   useEffect(() => {
     if (modelCode) return
-    if (!lookupData?.model) return
+    const modelSource = lookupData?.model || extractedData?.model || manualModel
+    if (!modelSource) return
     if (!fipeModels.length) return
-    const hit = bestFipeMatch(fipeModels, lookupData.model, lookupData.modelYear ?? null)
+    const modelYearHint = lookupData?.modelYear ?? extractedData?.modelYear ?? null
+    const hit = bestFipeMatch(fipeModels, modelSource, modelYearHint)
     if (hit) {
       setModelCode(hit.code)
       setModelName(hit.name)
     }
-  }, [fipeModels, lookupData?.model, lookupData?.modelYear, modelCode])
+  }, [fipeModels, lookupData?.model, extractedData?.model, manualModel, lookupData?.modelYear, extractedData?.modelYear, modelCode])
 
   // ── Etapa 3 — FIPE / Preços ──────────────────────────────────────────────────
   const [fipeCode,       setFipeCode]       = useState('')
@@ -798,9 +801,17 @@ function AvaliacaoForm() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Recebe dados extraídos do CRLV e pré-preenche o formulário ────────────
-  // Estratégia: usa `??` defensivo para evitar sobrescrever valores não nulos
-  // já preenchidos pelo operador. Origem é marcada como "documento" para o P1
-  // de comparação com a API Placas.
+  // Estratégia:
+  //   1. Setters FUNCIONAIS (prev => prev || novo) para evitar stale closure.
+  //      Sem isso o `useCallback([])` congelava as leituras de state (`if !plate`)
+  //      no valor inicial vazio, mas o setter setava mesmo assim — funcionava
+  //      "por coincidência" e falhava quando o usuário digitava antes.
+  //   2. Aplica os MESMOS normalizadores de `handleLookupResult` para que os
+  //      valores casem com as options dos <select> (FLEX→Flex, SEDAN→Sedan,
+  //      999cc→1.0 litros, 74→"70 cv", etc.). Sem isso os selects ficavam
+  //      "Selecione" mesmo com o doc lido.
+  //   3. Aceita ambos os campos legado e canônicos (fuel/fuelType, power/powerCv,
+  //      color/predominantColor, displacement/displacementCc).
   const handleExtracted = useCallback((data: ExtractedVehicle, src: ExtractionSource, conf: ExtractionConfidence) => {
     setExtractedData(data)
     setExtractionSource(src)
@@ -809,48 +820,97 @@ function AvaliacaoForm() {
 
     const sourceMap: Record<string, 'documento' | 'api' | 'manual'> = {}
     const mark = (field: string) => { sourceMap[field] = 'documento' }
-
-    // Placa
-    if (data.plate && !plate) {
-      setPlateLookupPolicy('SUPPRESS')
-      setPlate(data.plate)
-      setPlateDisplay(data.plate)
-      mark('plate')
+    const setIfEmpty = <T,>(setter: (fn: (prev: T) => T) => void, value: T, field: string, transform?: (v: T) => T) => {
+      if (value == null || value === '' || (typeof value === 'number' && !Number.isFinite(value))) return
+      const v = transform ? transform(value) : value
+      if (v == null || v === '') return
+      setter((prev) => {
+        // Empty check funciona para string, number e null
+        const isEmpty = prev == null || prev === '' || (typeof prev === 'number' && !Number.isFinite(prev))
+        if (isEmpty) { mark(field); return v }
+        return prev
+      })
     }
-    if (data.renavam && !renavam) { setRenavam(data.renavam); mark('renavam') }
-    if (data.chassis && !chassi)  { setChassi(data.chassis);  mark('chassis') }
 
-    // Marca / modelo
-    if (data.brand) {
-      if (!manualBrand) setManualBrand(data.brand)
-      if (!brandName)   setBrandName(data.brand)
-      mark('brand')
+    // Placa — suprime a consulta paga quando extraída do doc
+    if (data.plate) {
+      setPlate((prev) => {
+        if (!prev) {
+          setPlateDisplay(data.plate!)
+          setPlateLookupPolicy('SUPPRESS')
+          mark('plate')
+          return data.plate!
+        }
+        return prev
+      })
     }
-    if (data.model) {
-      if (!manualModel) setManualModel(data.model)
-      if (!modelName)   setModelName(data.model)
-      mark('model')
+
+    // Identificação
+    setIfEmpty(setRenavam, data.renavam ?? '', 'renavam')
+    setIfEmpty(setChassi,  data.chassis ?? '', 'chassis')
+
+    // Marca / modelo — texto livre (a resolução FIPE roda em outro useEffect)
+    setIfEmpty(setManualBrand, data.brand   ?? '', 'brand')
+    setIfEmpty(setBrandName,   data.brand   ?? '', 'brand')
+    setIfEmpty(setManualModel, data.model   ?? '', 'model')
+    setIfEmpty(setModelName,   data.model   ?? '', 'model')
+    setIfEmpty(setVersion,     data.version ?? '', 'version')
+
+    // Anos (convertidos para string para casar com os <select>)
+    if (data.manufactureYear) setIfEmpty(setYear,      String(data.manufactureYear), 'manufactureYear')
+    if (data.modelYear)       setIfEmpty(setYearModel, String(data.modelYear),       'modelYear')
+
+    // Cor (aceita ambos os campos, normalizando para caixa Título como no lookup)
+    const colorRaw = (data.color || data.predominantColor || '').trim()
+    if (colorRaw) {
+      const normalized = colorRaw.charAt(0).toUpperCase() + colorRaw.slice(1).toLowerCase()
+      setIfEmpty(setColor, normalized, 'color')
     }
-    if (data.version && !version) { setVersion(data.version); mark('version') }
 
-    // Anos
-    if (data.manufactureYear && !year)      { setYear(String(data.manufactureYear));      mark('manufactureYear') }
-    if (data.modelYear       && !yearModel) { setYearModel(String(data.modelYear));       mark('modelYear') }
+    // Combustível — normaliza para casar com as opções do <select>
+    const fuelRaw = data.fuelType || data.fuel
+    if (fuelRaw) setIfEmpty(setFuel, normalizeFuel(fuelRaw), 'fuel')
 
-    // Outros campos
-    if (data.predominantColor && !color)       { setColor(data.predominantColor);  mark('color') }
-    if (data.fuel             && !fuel)        { setFuel(data.fuel);                mark('fuel') }
-    if (data.bodyType         && !bodyType)    { setBodyType(data.bodyType);        mark('bodyType') }
-    if (data.power            && !power)       { setPower(data.power);              mark('power') }
-    if (data.displacement     && !displacement){ setDisplacement(data.displacement);mark('displacement') }
+    // Carroceria — normaliza
+    if (data.bodyType) {
+      const bt = normalizeBodyType(data.bodyType)
+      if (bt) setIfEmpty(setBodyType, bt, 'bodyType')
+    }
+
+    // Potência — normaliza para "70 cv" / "80 cv" etc.
+    const powerRaw = data.powerCv != null ? String(data.powerCv) : data.power
+    if (powerRaw) {
+      const p = normalizePower(powerRaw)
+      if (p) setIfEmpty(setPower, p, 'power')
+    }
+
+    // Motorização — cilindrada em cc → "1.0"/"1.5" (CARRO) ou "999cc" (MOTO/CAMINHÃO)
+    const dispRaw = data.displacementCc != null ? String(data.displacementCc) : data.displacement
+    if (dispRaw) {
+      const tv: 'CARRO' | 'MOTO' | 'CAMINHAO' =
+        data.vehicleType ??
+        (data.vehicleGroup === 'MOTORCYCLE' ? 'MOTO' :
+         data.vehicleGroup === 'TRUCK' ? 'CAMINHAO' : 'CARRO')
+      const eng = ccToEngineOption(dispRaw, tv)
+      if (eng) setIfEmpty(setEngine, eng, 'displacement')
+      else setIfEmpty(setDisplacement, dispRaw, 'displacement')
+    }
+
+    // Tipo de veículo (CARRO/MOTO/CAMINHAO) — do doc
     if (data.vehicleType) {
       setTipoVeiculo(data.vehicleType)
       mark('vehicleType')
+    } else if (data.vehicleGroup) {
+      const map: Record<string, 'CARRO' | 'MOTO' | 'CAMINHAO'> = {
+        CAR: 'CARRO', MOTORCYCLE: 'MOTO', TRUCK: 'CAMINHAO',
+      }
+      const tv = map[data.vehicleGroup]
+      if (tv) { setTipoVeiculo(tv); mark('vehicleType') }
     }
 
-    // Proprietário (do CRLV) — preenche os dados do dono quando vazios.
-    if (data.ownerName && !ownerName) { setOwnerName(data.ownerName); mark('ownerName') }
-    if (data.ownerDocument && !ownerCpf) { setOwnerCpf(data.ownerDocument); mark('ownerCpf') }
+    // Proprietário (do CRLV) — preenche quando vazio
+    setIfEmpty(setOwnerName, data.ownerName ?? '', 'ownerName')
+    if (data.ownerDocument) setIfEmpty(setOwnerCpf, data.ownerDocument, 'ownerCpf')
 
     setFieldSource((prev) => ({ ...prev, ...sourceMap }))
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -101,9 +101,33 @@ export function reconstructVisualText(items: any[]): string {
 
 /**
  * Normaliza um token extraindo do texto bruto tudo que for alfanumérico.
+ * IMPORTANTE: remove `/` também para que rótulos como "MARCA / MODELO / VERSÃO"
+ * casem com âncoras compactas tipo "MARCAMODELOVERSAO".
  */
 function normalizeTokenText(text: string): string {
-  return text.trim().toUpperCase().replace(/[\s\-_.:,;]/g, '')
+  return text.trim().toUpperCase().replace(/[\s\-_.:,;\/]/g, '')
+}
+
+/**
+ * Detecta se um token é um RÓTULO (label) do CRLV — texto todo em UPPERCASE,
+ * sem dígitos, sem caracteres especiais além de barras/pontos/parênteses.
+ * Ex: "PLACA", "EXERCÍCIO", "COMBUSTÍVEL", "ANO MODELO", "CPF / CNPJ".
+ * Valores reais NÃO batem porque contêm dígitos (placa/renavam/anos), ou
+ * são muito longos (nomes), ou têm formato específico.
+ */
+function looksLikeLabel(text: string): boolean {
+  const t = text.trim()
+  if (!t) return true
+  // Se tem dígito, provavelmente é um valor (placa, renavam, ano, potência)
+  if (/\d/.test(t)) return false
+  // Se é muito longo, não é label
+  if (t.length > 40) return false
+  // Se tem caracteres típicos de valor (asterisco de campo mascarado)
+  if (/^\*+/.test(t)) return false
+  // Se é todo UPPERCASE (ou tem barras/pontos), é label
+  const alphaOnly = t.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, '')
+  if (!alphaOnly) return false
+  return alphaOnly === alphaOnly.toUpperCase()
 }
 
 /**
@@ -132,7 +156,8 @@ export function extractPositionedTokens(items: any[], page: number): PositionedT
 /**
  * Parser por Coordenadas (CRLV Digital).
  * Busca os valores associando rótulos (âncoras) com os textos geometricamente
- * abaixo ou à direita deles, respeitando o formato de duas colunas do documento.
+ * abaixo deles (layout do CRLV-e brasileiro: linha de rótulos, linha de valores).
+ * Fallback para same-line quando não houver valor abaixo.
  */
 export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any): ExtractedVehicle {
   const v: ExtractedVehicle = {}
@@ -154,58 +179,133 @@ export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any
   lines.sort((a, b) => b.y - a.y)
   lines.forEach((l) => l.tokens.sort((a, b) => a.x - b.x))
 
-  // Função auxiliar para procurar um valor próximo a uma âncora
-  const findValueNextToOrBelow = (anchorRegex: RegExp, ignoreRegex?: RegExp, maxDistX = 300, maxDistY = 30): string | null => {
+  /**
+   * Procura o valor associado a uma âncora (rótulo) no CRLV.
+   *
+   * ESTRATÉGIA (baseada no layout REAL do CRLV-e digital):
+   *   1. PRIMEIRO tenta a linha ABAIXO (mesma coluna X) — é onde o valor está
+   *      no CRLV-e (LABEL em cima, VALOR embaixo).
+   *   2. Fallback same-line ignorando tokens que também são labels (rótulos
+   *      vizinhos como "ANO FABRICAÇÃO ANO MODELO" na mesma linha).
+   *   3. Valida o valor com `accept(value)` se fornecido; se falhar, continua
+   *      procurando o próximo candidato.
+   *
+   * @param anchorRegex regex contra normalizedText (sem espaços, sem `/`)
+   * @param opts.ignoreRegex ignora tokens candidatos que casem essa regex
+   * @param opts.accept função de validação; retorna false para descartar candidato
+   * @param opts.maxDistX limite horizontal para same-line
+   * @param opts.maxDistY limite vertical para "abaixo"
+   * @param opts.colTolerance tolerância na coluna X para "abaixo"
+   * @param opts.multiToken se true, concatena todos os tokens da linha abaixo
+   *                        na mesma coluna X (útil pra MARCA/MODELO/VERSÃO)
+   */
+  const findValue = (
+    anchorRegex: RegExp,
+    opts: {
+      ignoreRegex?: RegExp
+      accept?: (value: string) => boolean
+      maxDistX?: number
+      maxDistY?: number
+      colTolerance?: { left: number; right: number }
+      multiToken?: boolean
+    } = {},
+  ): string | null => {
+    const {
+      ignoreRegex,
+      accept,
+      maxDistX = 300,
+      maxDistY = 40,
+      colTolerance = { left: 20, right: 100 },
+      multiToken = false,
+    } = opts
+
+    const candidates: { value: string; method: string }[] = []
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       for (let j = 0; j < line.tokens.length; j++) {
         const token = line.tokens[j]
-        if (anchorRegex.test(token.normalizedText)) {
-          
-          // Primeiro, tenta encontrar na mesma linha, à direita
-          for (let k = j + 1; k < line.tokens.length; k++) {
-            const nextToken = line.tokens[k]
-            if (nextToken.x - token.x > maxDistX) break // Muito longe à direita
-            if (ignoreRegex && ignoreRegex.test(nextToken.normalizedText)) continue
-            return nextToken.text
-          }
+        if (!anchorRegex.test(token.normalizedText)) continue
 
-          // Depois, procura nas linhas de baixo, mantendo X próximo (mesma coluna)
-          for (let k = i + 1; k < lines.length; k++) {
-            const nextLine = lines[k]
-            if (line.y - nextLine.y > maxDistY) break // Muito abaixo
-            
-            for (const belowToken of nextLine.tokens) {
-               // Verifica se está "abaixo" (na mesma coluna X +- margem)
-               if (belowToken.x >= token.x - 20 && belowToken.x <= token.x + 100) {
-                 if (ignoreRegex && ignoreRegex.test(belowToken.normalizedText)) continue
-                 return belowToken.text
-               }
+        // ── 1. LINHA(S) ABAIXO na mesma coluna X (prioritário no CRLV-e) ──
+        // Coleta candidatos de TODAS as linhas dentro do range Y; deixa o
+        // `accept` decidir qual é válido. Isso permite que uma linha extra de
+        // rótulos (ex: "PLACA / EXERCÍCIO") não bloqueie a busca do valor.
+        for (let k = i + 1; k < lines.length; k++) {
+          const nextLine = lines[k]
+          if (line.y - nextLine.y > maxDistY) break
+
+          const colTokens = nextLine.tokens.filter(
+            (t) => t.x >= token.x - colTolerance.left && t.x <= token.x + colTolerance.right,
+          )
+          if (colTokens.length === 0) continue
+
+          if (multiToken) {
+            const combined = colTokens.map((t) => t.text).join(' ')
+            candidates.push({ value: combined, method: 'below-multi' })
+          } else {
+            for (const belowToken of colTokens) {
+              if (ignoreRegex && ignoreRegex.test(belowToken.normalizedText)) continue
+              candidates.push({ value: belowToken.text, method: 'below' })
             }
           }
         }
+
+        // ── 2. Same-line fallback (ignora vizinhos que são labels) ──
+        if (candidates.length === 0) {
+          for (let k = j + 1; k < line.tokens.length; k++) {
+            const nextToken = line.tokens[k]
+            if (nextToken.x - token.x > maxDistX) break
+            if (ignoreRegex && ignoreRegex.test(nextToken.normalizedText)) continue
+            if (looksLikeLabel(nextToken.text)) continue
+            candidates.push({ value: nextToken.text, method: 'same-line' })
+            break
+          }
+        }
+
+        // ── 3. Aplica accept e retorna primeiro válido ──
+        for (const c of candidates) {
+          if (!accept || accept(c.value)) return c.value
+        }
+        // Se nenhum candidato passou no accept, tenta a próxima ocorrência da âncora
+        candidates.length = 0
       }
     }
     return null
   }
 
+  // Compatibilidade retroativa: wrapper com a assinatura antiga
+  const findValueNextToOrBelow = (anchorRegex: RegExp, ignoreRegex?: RegExp, maxDistX = 300, maxDistY = 30): string | null =>
+    findValue(anchorRegex, { ignoreRegex, maxDistX, maxDistY })
+
   // Busca de campos
+  // NOTA: normalizedText já vem sem espaços, sem `/`, sem `-`, sem `.`, sem `:`
+  // (ver normalizeTokenText). Todas as regex de âncora ignoram esses separadores.
 
-  // Placa Atual (Cuidado com PLACA ANTERIOR)
-  // A âncora "PLACA" pode conflitar com "PLACA ANTERIOR". Procuramos a exata.
-  const placaRaw = findValueNextToOrBelow(/^PLACA$/, /^ANTERIOR/)
-  if (placaRaw && validatePlate(placaRaw)) v.plate = placaRaw.replace(/[^A-Z0-9]/gi, '')
+  // PLACA — 3 letras + 4 alfanuméricos (antiga ou Mercosul)
+  const placaRaw = findValue(/^PLACA$/, {
+    ignoreRegex: /^EXERC|^ANTERIOR/,
+    accept: (val) => validatePlate(val),
+  })
+  if (placaRaw && validatePlate(placaRaw)) v.plate = placaRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase()
 
-  // RENAVAM
-  const renavamRaw = findValueNextToOrBelow(/RENAVAM/)
+  // RENAVAM — 9-11 dígitos com validador módulo 11
+  const renavamRaw = findValue(/RENAVAM/, {
+    accept: (val) => validateRenavam(val),
+  })
   if (renavamRaw && validateRenavam(renavamRaw)) v.renavam = renavamRaw.replace(/[^\d]/g, '')
 
-  // CHASSI
-  const chassiRaw = findValueNextToOrBelow(/CHASSI/)
-  if (chassiRaw && validateChassis(chassiRaw)) v.chassis = chassiRaw.replace(/[^A-Z0-9]/gi, '')
+  // CHASSI — 17 caracteres alfanuméricos (sem I, O, Q)
+  const chassiRaw = findValue(/CHASSI/, {
+    accept: (val) => validateChassis(val),
+  })
+  if (chassiRaw && validateChassis(chassiRaw)) v.chassis = chassiRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase()
 
-  // MARCA / MODELO / VERSÃO
-  const mmvRaw = findValueNextToOrBelow(/MARCAMODELO/)
+  // MARCA / MODELO / VERSÃO — multiToken porque valor tem espaços ("FIAT/MOBI LIKE")
+  const mmvRaw = findValue(/MARCAMODELOVERS/, {
+    multiToken: true,
+    accept: (val) => val.length >= 3 && !/^\*+/.test(val),
+  })
   if (mmvRaw) {
     v.brandModelVersionRaw = mmvRaw
     const slashIdx = mmvRaw.indexOf('/')
@@ -227,19 +327,31 @@ export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any
     }
   }
 
-  // ANO FABRICAÇÃO E ANO MODELO
-  const anoFabRaw = findValueNextToOrBelow(/ANOFABRICA[CÇ][AÃ]O/)
+  // ANO FABRICAÇÃO — 4 dígitos entre 1900 e ano atual + 1
+  const currentYear = new Date().getFullYear()
+  const acceptYear = (val: string): boolean => {
+    const n = parseInt(val.replace(/[^\d]/g, ''), 10)
+    return Number.isFinite(n) && n >= 1900 && n <= currentYear + 2
+  }
+  const anoFabRaw = findValue(/ANOFABRICA[CÇ][AÃ]O/, { accept: acceptYear })
   if (anoFabRaw) v.manufactureYear = parseInt(anoFabRaw.replace(/[^\d]/g, ''), 10)
 
-  const anoModRaw = findValueNextToOrBelow(/ANOMODELO/)
+  const anoModRaw = findValue(/ANOMODELO/, { accept: acceptYear })
   if (anoModRaw) v.modelYear = parseInt(anoModRaw.replace(/[^\d]/g, ''), 10)
 
-  // COR PREDOMINANTE
-  const corRaw = findValueNextToOrBelow(/CORPREDOMINANTE/)
-  if (corRaw) v.color = corRaw
+  // COR PREDOMINANTE — só letras (evita pegar "COMBUSTÍVEL" na linha ao lado)
+  const corRaw = findValue(/CORPREDOMINANTE/, {
+    accept: (val) => /^[A-Za-zÀ-ÖØ-öø-ÿ\s]{3,}$/.test(val.trim()),
+  })
+  if (corRaw) v.color = corRaw.trim().toUpperCase()
 
-  // COMBUSTÍVEL
-  const combRaw = findValueNextToOrBelow(/COMBUST[IÍ]VEL/)
+  // COMBUSTÍVEL — deve casar com valores conhecidos, não com rótulo vizinho
+  const combRaw = findValue(/COMBUST[IÍ]VEL/, {
+    accept: (val) => {
+      const u = val.toUpperCase()
+      return /ALCOOL|GASOLINA|DIESEL|FLEX|H[ÍI]BRID|EL[ÉE]TRIC|ETANOL|GNV/.test(u)
+    },
+  })
   if (combRaw) {
     const txt = combRaw.toUpperCase()
     if (/\bALCOOL[\s\/]+GASOLINA\b|\bFLEX\b|\bBI[\s\-]?COMBUST/i.test(txt)) v.fuelType = 'FLEX'
@@ -255,31 +367,42 @@ export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any
     }
   }
 
-  // ESPÉCIE / TIPO
-  const espRaw = findValueNextToOrBelow(/ESP[EÉ]CIETIPO/)
-  if (espRaw) v.officialSpeciesType = espRaw
+  // ESPÉCIE / TIPO — multiToken porque valor pode ser "PASSAGEIRO AUTOMOVEL"
+  const espRaw = findValue(/ESP[EÉ]CIETIPO/, {
+    multiToken: true,
+    accept: (val) => /^[A-Za-zÀ-ÖØ-öø-ÿ\s\/]{3,}$/.test(val.trim()),
+  })
+  if (espRaw) v.officialSpeciesType = espRaw.trim().toUpperCase()
 
   // CARROCERIA
-  const carrocRaw = findValueNextToOrBelow(/CARROCERIA/)
+  const carrocRaw = findValue(/CARROCERIA/, {
+    multiToken: true,
+    accept: (val) => val.trim().length >= 3,
+  })
   if (carrocRaw) {
-    if (/N[AÃ]OAPLIC[AÁ]VEL/i.test(carrocRaw.replace(/\s+/g, ''))) {
-       v.bodyType = 'NÃO APLICÁVEL'
+    const clean = carrocRaw.replace(/\s+/g, '').toUpperCase()
+    if (/N[AÃ]OAPLIC[AÁ]VEL/i.test(clean)) {
+      v.bodyType = 'NÃO APLICÁVEL'
     } else {
-       const KNOWN_BODY = ['SEDAN', 'HATCH', 'SUV', 'PICAPE', 'PICKUP', 'CAMINHONETE']
-       for (const body of KNOWN_BODY) {
-         if (new RegExp(`\\b${body}\\b`, 'i').test(carrocRaw)) {
-           v.bodyType = body
-           break
-         }
-       }
+      const KNOWN_BODY = ['SEDAN', 'HATCH', 'SUV', 'PICAPE', 'PICKUP', 'CAMINHONETE']
+      for (const body of KNOWN_BODY) {
+        if (new RegExp(`\\b${body}\\b`, 'i').test(carrocRaw)) {
+          v.bodyType = body
+          break
+        }
+      }
     }
   }
 
-  // POTÊNCIA E CILINDRADA
-  const potRaw = findValueNextToOrBelow(/POT[EÊ]NCIACILINDRADA/)
+  // POTÊNCIA / CILINDRADA — formato "74CV/999" ou "104CV/1598"
+  // A âncora normalizada vira "POTÊNCIACILINDRADA" (removeu `/`)
+  const potRaw = findValue(/POT[EÊ]NCIACILINDRADA/, {
+    accept: (val) => /\d{2,4}\s*CV\s*\/\s*\d{3,5}/i.test(val.replace(/\s+/g, '')),
+  })
   if (potRaw) {
-    const potCilRe = /(?<!\d)(\d{2,4})\s*CV\s*[\/]\s*(\d{3,5})(?!\d)/i
-    const pcMatch = potCilRe.exec(potRaw.toUpperCase())
+    // Aceita "74CV/999", "74 CV / 999", "74CV/999cm3", etc.
+    const clean = potRaw.replace(/\s+/g, '')
+    const pcMatch = /(\d{2,4})CV\/(\d{3,5})/i.exec(clean)
     if (pcMatch) {
       v.powerCv = Number(pcMatch[1])
       v.displacementCc = Number(pcMatch[2])

@@ -17,68 +17,13 @@
 //   6. React StrictMode não causa dupla execução (proteção via ref).
 // =============================================================================
 
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import {
   Upload, FileCheck, XCircle,
   Loader2, Eye, Trash2, RefreshCw, FileText,
   AlertTriangle, CheckCircle, Clock,
 } from 'lucide-react'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
-import type { ExtractResultField } from '@/lib/crlv/pipeline/shared/types'
-
-async function calculateFileSha256(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer()
-  const digest = await crypto.subtle.digest('SHA-256', buffer)
-
-  return Array.from(new Uint8Array(digest))
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-function getSafeFields(payload: unknown): Record<string, ExtractResultField> {
-  if (
-    !payload ||
-    typeof payload !== 'object' ||
-    !('fields' in payload) ||
-    !payload.fields ||
-    typeof payload.fields !== 'object' ||
-    Array.isArray(payload.fields)
-  ) {
-    return {}
-  }
-  return payload.fields as Record<string, ExtractResultField>
-}
-
-function mapToCanonical(fields: Record<string, ExtractResultField>): ExtractedVehicle {
-  const result: any = {}
-  
-  const mapField = (srcKey: string, destKey: string, type: 'string' | 'number' = 'string') => {
-    if (fields[srcKey]) {
-      const val = fields[srcKey].validatedValue ?? fields[srcKey].normalizedValue
-      if (val !== null && val !== undefined && val !== '') {
-        if (type === 'number') {
-          const num = Number(val)
-          if (!isNaN(num)) result[destKey] = num
-        } else {
-          result[destKey] = val
-        }
-      }
-    }
-  }
-
-  mapField('placa', 'plate')
-  mapField('renavam', 'renavam')
-  mapField('chassi', 'chassis')
-  mapField('anoFabricacao', 'manufactureYear', 'number')
-  mapField('anoModelo', 'modelYear', 'number')
-
-  return result as ExtractedVehicle
-}
-
-function mapExtractionSource(strategy: string): ExtractionSource {
-  if (strategy === 'CLIENT_OCR') return 'ocr'
-  return 'pdf-text'
-}
 
 // ── Tipos públicos ────────────────────────────────────────────────────────────
 
@@ -254,17 +199,9 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
 
   const [uiState, setUiState] = useState<UIState>({ machine: 'IDLE' })
   const [dragging, setDragging] = useState(false)
-  const [useV2, setUseV2] = useState(false)
   const inputRef       = useRef<HTMLInputElement | null>(null)
   const processingRef  = useRef(false) // protege contra dupla execução
   const abortRef       = useRef<AbortController | null>(null)
-
-  useEffect(() => {
-    fetch('/api/evaluations/vehicle-document/extract/feature-flag')
-      .then(r => r.json())
-      .then(d => setUseV2(d.enabled))
-      .catch(() => setUseV2(false))
-  }, [])
 
   // ⏹️ Cancelamento explícito ⏹️─────────────────────────────────────────────────
 
@@ -286,91 +223,6 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
-
-    // V2 Pipeline Branch
-    if (useV2) {
-      setUiState({ machine: 'UPLOADING', step: 'Iniciando Pipeline V2...' })
-      try {
-        const { DocumentExtractionController } = await import('@/lib/crlv/pipeline/client/DocumentExtractionController.client')
-        
-        // 1. Call Init
-        const initRes = await fetch('/api/evaluations/vehicle-document/extract/init', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileName: file.name,
-            mimeType: file.type,
-            size: file.size,
-            fileHash: await calculateFileSha256(file)
-          })
-        });
-        const initData = await initRes.json();
-        
-        if (!initRes.ok) throw new Error(initData.error || 'Failed to init V2 session');
-
-        setUiState({ machine: 'READING_NATIVE_PDF', step: 'Processando arquivo (V2)...' })
-        
-        if (file.size < 4000000 && file.type === 'application/pdf') {
-          // Server-Native for small PDFs
-          const fd = new FormData();
-          fd.append('processingId', initData.processingId);
-          fd.append('file', file);
-          const srvRes = await fetch('/api/evaluations/vehicle-document/extract/server-native', { method: 'POST', body: fd });
-          
-          if (!srvRes.ok) {
-            const errData = await srvRes.json().catch(() => ({}));
-            throw new Error(errData.error || 'Falha no processamento servidor');
-          }
-          
-          const srvData = await srvRes.json();
-          const safeFields = getSafeFields(srvData);
-          
-          if (srvData.status === 'COMPLETED' || Object.keys(safeFields).length > 0) {
-            onExtracted(mapToCanonical(safeFields), mapExtractionSource(srvData.strategyUsed), 'high');
-            setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(safeFields).length, message: 'Extração V2 concluída' });
-            return;
-          }
-        }
-        
-        // Client Flow
-        const clientRes = await DocumentExtractionController.processClientSide(file, initData);
-        setUiState({ machine: 'PARSING', step: 'Enviando resultado (V2)...' })
-        
-        const txtRes = await fetch('/api/evaluations/vehicle-document/extract/text-result', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            processingId: initData.processingId,
-            processingToken: initData.processingToken,
-            source: clientRes.source,
-            pages: clientRes.pages,
-            pdfjsVersion: 'V2',
-            durationMs: 100,
-            tesseractVersion: 'V2',
-            language: 'por'
-          })
-        });
-        if (!txtRes.ok) {
-          const errData = await txtRes.json().catch(() => ({}));
-          throw new Error(errData.error || 'Falha ao salvar resultado');
-        }
-        const txtData = await txtRes.json();
-        const safeTxtFields = getSafeFields(txtData);
-        
-        if (txtData.status === 'COMPLETED' || Object.keys(safeTxtFields).length > 0) {
-          onExtracted(mapToCanonical(safeTxtFields), mapExtractionSource(txtData.strategyUsed), 'high');
-          setUiState({ machine: 'SUCCESS', file, confidence: 'high', fieldsApplied: Object.keys(safeTxtFields).length, message: 'Extração V2 concluída' });
-        } else {
-          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'V2: ' + (txtData.message || 'Dados não encontrados') });
-        }
-
-      } catch (e: any) {
-        setUiState({ machine: 'FAILED', file, message: String(e) })
-      } finally {
-        processingRef.current = false
-      }
-      return;
-    }
 
     // Referências para cleanup garantido
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

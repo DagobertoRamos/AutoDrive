@@ -440,11 +440,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── 3. PDF — processamento exclusivamente no servidor ─────────────────────
-  // REGRA ARQUITETURAL: PDFs NUNCA disparam OCR no browser.
-  // Se a extração nativa falhar (pdfjs timeout/import), devolvemos os dados
-  // que conseguimos (mesmo que vazios) e o usuário preenche manualmente.
-  // Tesseract no browser é reservado apenas para imagens.
+  // ── 3. PDF — extração nativa no servidor + fallback OCR no cliente ────────
+  // Fluxo:
+  //   a. Tenta extrair texto nativo (PDF vetorial → CRLV-e digital).
+  //   b. Se saiu texto e o parser achou os campos críticos, devolve pronto.
+  //   c. Se o texto veio vazio (PDF escaneado / foto salva como PDF), retorna
+  //      `requiresOcr: true` para o cliente rasterizar as páginas e rodar OCR.
+  //      Antes essa branch caía direto em "preenchimento manual" — perdíamos
+  //      todo CRLV fotografado, que é o caso mais comum na loja.
   if (mimeType === 'application/pdf') {
     logExtraction('NATIVE_PDF_EXTRACTION_STARTED', {
       correlationId,
@@ -550,16 +553,21 @@ export async function POST(req: NextRequest) {
       extra: { missingCount: missing.length, confidence, nativeTextLength: nativeText.length },
     })
 
-    // PDFs nunca pedem OCR do browser — requiresOcr sempre false
+    // Se não veio texto nativo, tenta OCR no cliente (PDF escaneado / foto).
+    // Se veio texto mas o parser não achou os campos críticos, ainda vale a
+    // pena tentar OCR — pode ser um PDF com texto ruim (fontes embutidas
+    // parcialmente, texto como imagem em algumas páginas).
+    const shouldTryOcr = !nativeText || (missing.length >= 5 && !fields.plate?.normalizedValue && !fields.chassis?.normalizedValue)
+
     return NextResponse.json({
       extracted:   true,
-      requiresOcr: false,
+      requiresOcr: shouldTryOcr,
       confidence,
-      source:      nativeText ? 'pdf-text' : 'manual',
+      source:      nativeText ? 'pdf-text' : 'ocr',
       vehicle:     toVehicleObject(fields),
       missingFields: missing,
-      message: !nativeText
-        ? 'Não foi possível ler o texto deste PDF no servidor. Verifique se o arquivo não está protegido e preencha os dados manualmente.'
+      message: shouldTryOcr
+        ? 'PDF sem texto extraível — rodando OCR no navegador.'
         : status === 'SUCCESS'
           ? 'Documento em PDF lido com sucesso.'
           : `Documento lido parcialmente (${keys.length - missing.length} de ${keys.length} campos). Revise os itens destacados.`,
