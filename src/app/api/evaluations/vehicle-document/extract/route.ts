@@ -412,22 +412,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `MIME tipo não suportado: ${mimeType}` }, { status: 415 })
   }
 
+  // Versão do parser — bump sempre que a lógica de extração mudar, para
+  // invalidar entradas de cache produzidas por versões anteriores (senão
+  // documentos processados antes do fix continuam retornando o resultado
+  // ruim antigo do banco).
+  const PARSER_VERSION = 3
+
   // 1. Calcula hash SHA-256 do arquivo original recebido
   const documentHash = crypto.createHash('sha256').update(buffer).digest('hex')
   const extractionRunId = crypto.randomUUID()
   const documentId = crypto.randomUUID()
 
-  // 2. Consulta se este arquivo exato já foi processado com sucesso
+  // 2. Consulta se este arquivo exato já foi processado com sucesso NA VERSÃO ATUAL
   const existing = await prisma.vehicleDocumentExtraction.findUnique({
     where: { documentHash },
   })
 
   if (existing && existing.extractedData) {
     const data = existing.extractedData as any
-    if (data.status === 'SUCCESS' && data.fields) {
+    if (data.status === 'SUCCESS' && data.fields && data.parserVersion === PARSER_VERSION) {
       // Reutiliza o resultado de alta confiança diretamente
       return NextResponse.json({
         extracted: true,
+        requiresOcr: false,
         confidence: data.confidence ?? 'high',
         source: existing.nativeText ? 'pdf-text' : 'ocr',
         vehicle: toVehicleObject(data.fields),
@@ -529,11 +536,11 @@ export async function POST(req: NextRequest) {
         ? 'medium'
         : 'low'
 
-    // Persiste a extração
+    // Persiste a extração (com parserVersion para invalidar cache antigo)
     const record = await prisma.vehicleDocumentExtraction.upsert({
       where:  { documentHash },
-      create: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields } as any },
-      update: { nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields } as any },
+      create: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields, parserVersion: PARSER_VERSION } as any },
+      update: { nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields, parserVersion: PARSER_VERSION } as any },
     })
 
     await prisma.auditLog.create({
@@ -553,11 +560,16 @@ export async function POST(req: NextRequest) {
       extra: { missingCount: missing.length, confidence, nativeTextLength: nativeText.length },
     })
 
-    // Se não veio texto nativo, tenta OCR no cliente (PDF escaneado / foto).
-    // Se veio texto mas o parser não achou os campos críticos, ainda vale a
-    // pena tentar OCR — pode ser um PDF com texto ruim (fontes embutidas
-    // parcialmente, texto como imagem em algumas páginas).
-    const shouldTryOcr = !nativeText || (missing.length >= 5 && !fields.plate?.normalizedValue && !fields.chassis?.normalizedValue)
+    // Decisão de OCR conservadora: só pede OCR quando REALMENTE não temos
+    // nada útil (nem placa, nem chassi, nem renavam). Se o parser achou
+    // qualquer um desses 3, o CRLV é válido e não precisa OCR — evita cair
+    // no Tesseract (que pode falhar em navegadores antigos/sem WASM).
+    const gotAnyId = Boolean(
+      fields.plate?.normalizedValue ||
+      fields.chassis?.normalizedValue ||
+      fields.renavam?.normalizedValue
+    )
+    const shouldTryOcr = !nativeText || !gotAnyId
 
     return NextResponse.json({
       extracted:   true,
