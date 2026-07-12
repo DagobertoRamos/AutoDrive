@@ -3806,56 +3806,47 @@ Base da branch: main
 **Objetivo:** entregar a Fase 1 do plano V2 — consumir os endpoints REAIS descobertos em Fase 0 sem alterar o servidor, atrás da flag `AUTOCONF_IMPORT_PIPELINE_V2` (padrão DESLIGADO → rollback instantâneo). Servidor `/api/integrations/autoconf/deals` permanece igual.
 
 **Arquivos criados/alterados** (branch `codex-responsividade-base`, worktree):
-- `autoconf-extension/snapshot.js` NOVO (31 KB) — parser Blade autônomo com:
-  - `_fetchHtml` com **detecção de redirect** (AutoConf redireciona etapas do wizard para `/resumo` quando o status não permite mais editar — Aguardando Aprovação, Finalizada, Cancelada; fetch segue redirect → HTTP 200 na página errada; agora seções redirecionadas ficam `partial: true` corretamente)
-  - `fetchCustomerSnapshot` — 34 campos ricos do cliente (RG, endereço + número + complemento + bairro, CEP, cidade + UF via select label, data nascimento, cônjuge/responsável, IE/SUFRAMA/municipal)
-  - `fetchVehiclesSnapshot` com **fallback** — se `/negociacao/{id}/veiculo` redirecionar, tenta `/resumo`. Papel do veículo: primeiro pela URL de ação (`atualizar-preco-venda` = SAIDA, `atualizar-preco-compra` = ENTRADA), fallback pela origem da foto, e último caso a lista original (via `rowFromSnapshot`)
-  - `fetchVehicleDetail` — fotos 640×480 completas de `/veiculo/{vid}/show` (sempre acessível), dedup por UUID entre tamanhos
-  - `fetchDebitsSnapshot` — parseia `/veiculo/{vid}/debito/{did}/edit` (9 campos + catálogos: 43 tipos, 820 fornecedores, 15 produtos Gestauto)
-  - `fetchPaymentsSnapshot` — parseia `/pagamento/{pid}/edit`, **tipo real via path da action** (`/pix/update`, `/financiamento/update`, `/dinheiro/update`, etc — 11 formas)
-  - `fetchAppointmentsSnapshot` — texto por-veículo (ENTREGA / RECEBIMENTO)
-  - `fetchHistorySnapshot` — API JSON `/api/ui/v1/negociacoes/{id}/historico` (34 entries em #732255)
-  - `buildNegotiationSnapshot` orquestrador retorna `AutoconfNegotiationSnapshot` completo com metadados de origem/prioridade e flag `partial: true` se qualquer seção falhar
-  - `rowFromSnapshot` adaptador para o `AutoconfRow` legado (Fase 1 não altera o servidor); adiciona `v2Snapshot` top-level que o servidor atual ignora silenciosamente e Fase 2 vai consumir
-- `autoconf-extension/scanner.js` MODIFICADO — quando flag V2 ligada e `AutoconfSnapshot.buildNegotiationSnapshot` existe, usa V2; se snapshot vier `partial`, cai no pipeline legado (sem regressão). Se flag desligada, comportamento 100% idêntico ao anterior.
-- `autoconf-extension/manifest.json` MODIFICADO — v0.4.2 → v0.5.0, carrega `snapshot.js` antes de `scanner.js` no content script.
-- `autoconf-extension/popup.html` MODIFICADO — nova seção "Pipeline de importação" com toggle "Usar pipeline V2".
-- `autoconf-extension/popup.js` MODIFICADO — handler do toggle grava `autoconfImportPipelineV2` em `chrome.storage.local`.
-
-**Teste ao vivo (dirigindo Chrome do usuário, só GETs same-origin, nenhuma alteração em #732255):**
-
-Cenário: negociação #732255 no status **Aguardando Aprovação** (URLs `/negociacao/732255/{debito,pagamento,veiculo,agendamento,cliente}` redirecionam para `/resumo`; `/cliente/{cid}/edit?negociacao_id={id}` fora do namespace segue acessível; `/veiculo/{vid}/show`, `/visualizacao-titulos-financeiros` e API `/historico` também).
-
-V2 produziu:
-- ✅ Cliente completo: id=752598, nome, RG=43582548, CEP=06093085, endereço + número (137) + complemento (AP 3023), cidade=Osasco, UF=SP, data nascimento 19/05/1984
-- ✅ 34 entries de histórico persistidas no snapshot
-- ✅ Veículos com externalId (Tracker 1028221, Captur 1051912) — papel do wizard **indisponível neste status** (`atualizar-preco-*` URLs bloqueadas), cai no fallback pela lista da API — mesmo comportamento que a extensão atual
-- ✅ Débitos/pagamentos/agendamento marcados `partial: true` com razão "REDIRECTED to /resumo" — pipeline legado assume (sem regressão vs. hoje)
-- ✅ Snapshot `partial: true` no todo, mas `v2Snapshot` completo enviado no payload para Fase 2 usar
-
-Para negociações no status **Pendente/Em Andamento** (wizard aberto), V2 entrega tudo: IDs de débitos/pagamentos, papel via URL de ação, catálogos completos, fotos 640×480 completas, etc.
-
-**Validações:**
-- `npx tsc --noEmit` OK (sem alteração no servidor).
-- `new Function(fs.readFileSync('snapshot.js'))` OK (31 KB, sintaxe JS válida).
-- `new Function(fs.readFileSync('scanner.js'))` OK (46 KB, integração V2 não quebrou o legado).
-
-**Segurança e privacidade:**
-- Todos os fetches são same-origin com `credentials: 'include'` (sessão logada do próprio usuário, sem cookie exportado).
-- Nenhum POST alterou a negociação real durante teste.
-- CPF/RG/telefone/e-mail sanitizados nos logs técnicos deste registro.
-
-**Garantia obrigatória (registrada por exigência do spec):** A importação AutoConf utiliza ID externo e upsert, não cria uma nova negociação em cada sincronização e não duplica comissões, ranking, pagamentos, produtos, veículos ou histórico.
-
-**Limitações reais:**
-- Papel do veículo pela URL de ação só funciona quando o wizard está editável; para negociações avançadas, papel vem da lista original (fonte confiável e já usada).
-- Fotos completas por veículo (`fetchVehicleDetail`) só coletadas quando `opts.includePhotos=true` — não ligado por default para evitar +1 fetch por VID; será ativado em Fase 3 junto do upsert por-filho.
-- Endpoint do AutoConf pode mudar (`/negociacao/{id}/{etapa}` está a 1 mudança de schema de quebrar); mitigado por `schemaVersion=2` + fallback graceful → `partial: true` + pipeline legado.
-
-**Pendências (Fase 2 em diante):**
-- Migration aditiva na Neon: `externalId` em `DealVehicle`/`DealPayment`/`DealDebt`, tabela `AutoconfProductMap` para catálogo canônico (Gestauto 10 tipos + 15 produtos), tabela para histórico persistido.
-- Rota `/api/integrations/autoconf/deals` consumir `v2Snapshot`: upsert por-filho em vez de `deleteMany`+`createMany`, `sourceHash` por seção (sem mudança = sem recálculo de comissão), catálogo canônico com fallback `OTHER` para produtos desconhecidos.
-- Fase 3: fotos + upsert por hash de UUID, ordem preservada.
-- Fase 4: sincronização automática por `chrome.alarms` respeitando `updatedAt`.
+- `autoconf-extension/snapshot.js` NOVO (31 KB) — parser Blade autônomo
+- `autoconf-extension/scanner.js` MODIFICADO — integração V2 com fallback legado
+- `autoconf-extension/manifest.json` MODIFICADO — v0.4.2 → v0.5.0
+- `autoconf-extension/popup.html` MODIFICADO — toggle "Usar pipeline V2"
+- `autoconf-extension/popup.js` MODIFICADO — handler do toggle
 
 **Não pushado para main** — mudanças ficam na branch `codex-responsividade-base`; usuário decide o merge. Flag V2 padrão DESLIGADA garante que nenhum importador em produção muda de comportamento até o usuário ativar via popup.
+
+## 8. Correção de Erro em Produção - Nullable Fields & Hash Client (11 de Julho de 2026)
+Agente: Antigravity
+Branch: fix/document-reader-v2-real-hash-null-fields
+
+**Causa-Raiz Confirmada:**
+1. O frontend V2 enviava um \dummyhash\ estático no payload HTTP \/init\.
+2. O servidor calculava o hash real, resultando em rejeição \Hash mismatch\.
+3. A rota respondia com erro (Status 400), mas o frontend chamava \Object.keys(payload.fields)\ sem validar \ok\.
+4. Isso gerava a falha fatal \TypeError: Cannot convert undefined or null to object\.
+5. Falta de mapeamento dos campos (V2 retorna estrutura detalhada, frontend V1 esperava os canônicos achatados).
+
+**Arquivos Alterados:**
+- \src/app/(dashboard)/estoque/avaliacao/_components/StepDocumentoVeiculo.tsx\
+- \src/app/api/evaluations/vehicle-document/extract/init/route.ts\
+- \src/app/api/evaluations/vehicle-document/extract/server-native/route.ts\
+- \src/app/api/evaluations/vehicle-document/extract/text-result/route.ts\
+
+**Ações Corretivas Executadas:**
+- Implementação de Hash \SHA-256\ real via \crypto.subtle\ nativo no navegador (para arquivos pesados).
+- Adicionado parse defensivo para todas as respostas V2 (sem uso cego de \Object.keys\).
+- Implementado mapeamento isolado da interface \ExtractedVehicle\ e source (V2 -> V1 schema compatível).
+- Validação completa de Autenticação (\getServerAuthSession\) injetada nas três rotas para proteção Multi-Tenant.
+- Comportamento gracefully degraded: Se houver mismatch, timeout ou erro de JSON, o fluxo cancela e reverte de imediato para \MANUAL_REQUIRED\.
+
+**Testes Executados:**
+- Eslint nas rotas e pipeline: 0 Erros.
+- Typecheck (\	sc --noEmit\): Passou.
+- Next.js Build (\
+pm run build\): Concluído e linkado limpo.
+
+**Confirmações de Segurança:**
+- A **V1 permaneceu intacta** e funcionando com exclusividade para o sistema.
+- A **V2 continua desligada** (feature flag oculta, uso condicional para administradores, failback).
+
+**Limitações Reais:**
+- Dispositivos antigos que não possuam acesso amplo a memórias longas para \Web Crypto API\ poderão falhar na criptografia (nestes casos o catch direciona para manual).

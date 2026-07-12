@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FileValidationService } from '@/lib/crlv/pipeline/server/FileValidationService.server';
 import { ProcessingSessionService } from '@/lib/crlv/pipeline/server/ProcessingSessionService.server';
 import { DocumentExtractionOrchestrator } from '@/lib/crlv/pipeline/server/DocumentExtractionOrchestrator.server';
+import { getServerAuthSession } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -15,7 +16,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing processingId or file' }, { status: 400 });
     }
 
+    const authSession = await getServerAuthSession();
+    if (!authSession?.user?.tenantId) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
     const session = await ProcessingSessionService.getSession(processingId);
+    
+    if (session.tenantId !== authSession.user.tenantId && authSession.user.role !== 'MASTER') {
+      return NextResponse.json({ error: 'Acesso negado à sessão' }, { status: 403 });
+    }
     
     const buffer = Buffer.from(await file.arrayBuffer());
     if (!FileValidationService.compareHash(buffer, session.fileHash)) {
