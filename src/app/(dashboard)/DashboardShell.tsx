@@ -35,7 +35,7 @@ export default function DashboardShell({
 
   useEffect(() => {
     if (status === 'unauthenticated') {
-      router.replace('/login')
+      window.location.href = '/login'
       return
     }
     const user = session?.user as { mustChangePassword?: boolean } | undefined
@@ -44,7 +44,7 @@ export default function DashboardShell({
     }
   }, [status, session, router])
 
-  if (status === 'loading') {
+  if (status === 'loading' || status === 'unauthenticated' || !session) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -54,8 +54,6 @@ export default function DashboardShell({
       </div>
     )
   }
-
-  if (!session) return null
 
   return (
     <>

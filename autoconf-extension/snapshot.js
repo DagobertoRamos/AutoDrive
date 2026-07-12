@@ -15,6 +15,9 @@
 // com a sessão logada do próprio usuário.
 // =============================================================================
 
+;(function() {
+if (window.AutoconfSnapshot) return;
+
 const SNAPSHOT_SCHEMA_VERSION = 2
 
 // ── Helpers puros ────────────────────────────────────────────────────────────
@@ -673,3 +676,5 @@ window.AutoconfSnapshot = {
   setV2Flag: (enabled) => chrome.storage.local.set({ autoconfImportPipelineV2: !!enabled }),
   getV2Flag: () => new Promise((r) => chrome.storage.local.get('autoconfImportPipelineV2', (d) => r(!!d.autoconfImportPipelineV2))),
 }
+
+})();
