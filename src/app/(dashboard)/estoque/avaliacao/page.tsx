@@ -818,6 +818,27 @@ function AvaliacaoForm() {
     setExtractionConfidence(conf)
     setDocumentUploaded(true)
 
+    // DEFENSIVE: valida no cliente mesmo. Se o backend enviar lixo (parser
+    // regex ruim retornando placa "05P2024" ou chassi de 18 chars), NÃO
+    // aplicamos — é melhor deixar o campo vazio para o usuário digitar do
+    // que ver "05P2024" na placa. O parser server é a fonte primária, mas
+    // essa camada evita corromper a UI.
+    const isValidPlate = (p: unknown): p is string => {
+      if (typeof p !== 'string') return false
+      const c = p.trim().toUpperCase().replace(/[\s\-]/g, '')
+      return /^[A-Z]{3}[0-9]{4}$/.test(c) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(c)
+    }
+    const isValidChassis = (c: unknown): c is string => {
+      if (typeof c !== 'string') return false
+      const cl = c.trim().toUpperCase().replace(/[\s\-]/g, '')
+      return /^[A-HJ-NPR-Z0-9]{17}$/.test(cl)
+    }
+    const isValidRenavam = (r: unknown): r is string => {
+      if (typeof r !== 'string') return false
+      const c = r.trim().replace(/[^\d]/g, '')
+      return c.length === 9 || c.length === 11
+    }
+
     const sourceMap: Record<string, 'documento' | 'api' | 'manual'> = {}
     const mark = (field: string) => { sourceMap[field] = 'documento' }
     const setIfEmpty = <T,>(setter: (fn: (prev: T) => T) => void, value: T, field: string, transform?: (v: T) => T) => {
@@ -832,8 +853,8 @@ function AvaliacaoForm() {
       })
     }
 
-    // Placa — suprime a consulta paga quando extraída do doc
-    if (data.plate) {
+    // Placa — só aplica se PASSAR o validador (defende de OCR ruim)
+    if (data.plate && isValidPlate(data.plate)) {
       setPlate((prev) => {
         if (!prev) {
           setPlateDisplay(data.plate!)
@@ -845,16 +866,43 @@ function AvaliacaoForm() {
       })
     }
 
-    // Identificação
-    setIfEmpty(setRenavam, data.renavam ?? '', 'renavam')
-    setIfEmpty(setChassi,  data.chassis ?? '', 'chassis')
+    // Identificação — cada um passa pelo validador antes de aplicar
+    if (data.renavam && isValidRenavam(data.renavam)) setIfEmpty(setRenavam, data.renavam, 'renavam')
+    if (data.chassis && isValidChassis(data.chassis)) setIfEmpty(setChassi,  data.chassis, 'chassis')
 
-    // Marca / modelo — texto livre (a resolução FIPE roda em outro useEffect)
-    setIfEmpty(setManualBrand, data.brand   ?? '', 'brand')
-    setIfEmpty(setBrandName,   data.brand   ?? '', 'brand')
-    setIfEmpty(setManualModel, data.model   ?? '', 'model')
-    setIfEmpty(setModelName,   data.model   ?? '', 'model')
-    setIfEmpty(setVersion,     data.version ?? '', 'version')
+    // Marca / modelo — texto livre (a resolução FIPE roda em outro useEffect).
+    // Descarta valores obviamente ruins: rótulos do CRLV ("MARCA", "MODELO"),
+    // fragmentos comuns de OCR ruim ("D.O.", "DADOS D.O.", "SENATRAN"), etc.
+    const isValidLabel = (s: string | null | undefined): s is string => {
+      if (!s || typeof s !== 'string') return false
+      const t = s.trim().toUpperCase()
+      if (t.length < 2) return false
+      // Rejeita textos que parecem RÓTULOS do CRLV, não valores
+      const junkTerms = ['MARCA', 'MODELO', 'VERSÃO', 'VERSAO', 'SENATRAN', 'DETRAN']
+      if (junkTerms.some(term => t === term)) return false
+      return true
+    }
+    // Version: descarta se tiver "DADOS D.O.", "D.O." solto, etc — sinais de OCR ruim
+    const sanitizeVersion = (v: string | null | undefined): string | null => {
+      if (!v || typeof v !== 'string') return null
+      let clean = v.trim()
+      // Remove sufixos comuns de OCR sujando o valor
+      clean = clean.replace(/\s*DADOS\s*D\.?O\.?\s*$/i, '').trim()
+      clean = clean.replace(/\s*D\.?O\.?\s*$/i, '').trim()
+      clean = clean.replace(/\s*SENATRAN.*$/i, '').trim()
+      return clean.length >= 2 ? clean : null
+    }
+
+    if (isValidLabel(data.brand)) {
+      setIfEmpty(setManualBrand, data.brand, 'brand')
+      setIfEmpty(setBrandName,   data.brand, 'brand')
+    }
+    if (isValidLabel(data.model)) {
+      setIfEmpty(setManualModel, data.model, 'model')
+      setIfEmpty(setModelName,   data.model, 'model')
+    }
+    const cleanVersion = sanitizeVersion(data.version)
+    if (cleanVersion) setIfEmpty(setVersion, cleanVersion, 'version')
 
     // Anos (convertidos para string para casar com os <select>)
     if (data.manufactureYear) setIfEmpty(setYear,      String(data.manufactureYear), 'manufactureYear')

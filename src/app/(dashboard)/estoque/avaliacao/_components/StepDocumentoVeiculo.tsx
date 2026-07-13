@@ -340,6 +340,25 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         onExtracted(backendVehicle, src, conf)
       }
 
+      // CURTO-CIRCUITO: se a 1ª passada já trouxe pelo menos um identificador
+      // válido (placa, chassi ou renavam), o CRLV foi lido com sucesso pelo
+      // parser de coordenadas. Rodar OCR aqui só polui a resposta com valores
+      // ruins do regex antigo (2ª passada) — pulamos direto para SUCCESS.
+      const hasValidId = Boolean(
+        backendVehicle.plate || backendVehicle.chassis || backendVehicle.renavam
+      )
+      if (hasValidId) {
+        await tryAttachCrlv(props.evaluationId, file, ac.signal)
+        const missing = d.missingFields ?? []
+        const conf: ExtractionConfidence = d.confidence ?? 'medium'
+        if (missing.length > 0) {
+          setUiState({ machine: 'PARTIAL_SUCCESS', file, confidence: conf, missing, fieldsApplied: backendFieldsApplied, message: `${backendFieldsApplied} campos preenchidos do PDF. Revise os campos vazios.` })
+        } else {
+          setUiState({ machine: 'SUCCESS', file, confidence: conf, fieldsApplied: backendFieldsApplied, message: `Documento lido. ${backendFieldsApplied} campos preenchidos.` })
+        }
+        return
+      }
+
       let ocrText  = ''
       let qrContent = ''
 

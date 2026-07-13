@@ -226,13 +226,35 @@ export async function POST(req: NextRequest) {
 
       // 2. Executa o parser sobre o texto OCR recebido
       const ocrVehicle = ocrText ? parseCrlvText(ocrText, settings.mappings) : {}
-      
-      // 3. Executa o parser sobre o texto PDF nativo que guardamos
-      const pdfVehicle = extraction.nativeText ? parseCrlvText(extraction.nativeText, settings.mappings) : {}
+
+      // 3. Recupera o resultado da 1ª passada (parseCrlvByCoordinates).
+      // ANTES aqui rodávamos `parseCrlvText(nativeText)` de novo — mas isso
+      // JOGAVA FORA todo o trabalho do parser por coordenadas (que acha os
+      // valores certos no CRLV-e digital). O regex antigo lê o texto linear
+      // e casa qualquer coisa que pareça padrão, retornando lixo como
+      // placa="05P2024" (junta LOTAÇÃO com ANO). Agora usamos os fields já
+      // cacheados no banco pela 1ª passada e só deixamos o OCR COMPLEMENTAR
+      // campos que a 1ª passada não achou.
+      const cachedData = (extraction.extractedData as any) ?? null
+      const cachedFields: Record<string, VehicleExtractedField<any>> | null =
+        cachedData?.fields && typeof cachedData.fields === 'object' ? cachedData.fields : null
+
+      // Reconstrói pdfVehicle a partir dos fields cacheados (fonte confiável).
+      // Se não houver cache (extração inicial não persistiu), cai no regex.
+      const pdfVehicle: Record<string, any> = {}
+      if (cachedFields) {
+        for (const [k, f] of Object.entries(cachedFields)) {
+          if (f && f.normalizedValue != null && f.validationStatus === 'VALID') {
+            pdfVehicle[k] = f.normalizedValue
+          }
+        }
+      } else if (extraction.nativeText) {
+        Object.assign(pdfVehicle, parseCrlvText(extraction.nativeText, settings.mappings))
+      }
 
       // 4. Executa o consenso campo a campo
       const fields: Record<string, VehicleExtractedField<any>> = {}
-      
+
       // Mapeamento padrão dos campos estruturados
       const standardKeys = [
         'plate', 'chassis', 'renavam', 'manufactureYear', 'modelYear',
@@ -241,10 +263,15 @@ export async function POST(req: NextRequest) {
       ]
 
       for (const k of standardKeys) {
+        // Regra: PDF (parseCrlvByCoordinates) É AUTORIDADE. OCR só entra
+        // quando o PDF NÃO trouxe o campo. Isso evita que OCR ruim polua
+        // valores já certos da 1ª passada.
+        const pdfVal = pdfVehicle[k]
+        const ocrVal = pdfVal != null ? undefined : (ocrVehicle as any)[k]
         fields[k] = buildExtractedField(
           k,
-          (pdfVehicle as any)[k],
-          (ocrVehicle as any)[k],
+          pdfVal,
+          ocrVal,
           extraction.nativeText ? 'NATIVE_PDF_TEXT' : 'LOCAL_OCR',
           settings.fieldRules
         )
