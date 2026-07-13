@@ -71,6 +71,11 @@ export default async function middleware(req: NextRequest) {
 // "cadastro" excluía `/cadastros/*` da autenticação (furo de segurança).
 export const config = {
   matcher: [
-    '/((?!login|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|privacidade|excluir-conta|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // IMPORTANTE: assets estáticos NÃO passam pelo proxy.
+    // `tesseract/`, `tessdata/`, `pdfjs/`, `pdf.worker.min.mjs`, `icons/`
+    // são carregados por Web Workers (Tesseract, pdfjs) que NÃO enviam cookie
+    // de sessão. Se passarem pelo proxy, viram redirect 307 para /login e o
+    // Worker falha silenciosamente ("Failed to execute 'importScripts'").
+    '/((?!login|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|privacidade|excluir-conta|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|tesseract/|tessdata/|pdfjs/|pdf.worker.min.mjs|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm|traineddata|gz)$).*)',
   ],
 }

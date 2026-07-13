@@ -327,6 +327,19 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       }
 
       // ── CAMINHO B: OCR local necessário ───────────────────────────────────
+      // SAFETY NET: o backend pode ter conseguido extrair ALGUNS campos mesmo
+      // pedindo OCR (ex: parser achou renavam mas não achou placa/chassi/anos).
+      // Aplicamos esses campos AGORA — assim, mesmo que o Tesseract falhe ao
+      // carregar (WASM não disponível, timeout, etc), o usuário não perde o
+      // que já foi extraído. Se o OCR rodar depois, ele COMPLEMENTA.
+      const backendVehicle: ExtractedVehicle = d.vehicle ?? {}
+      const backendFieldsApplied = countFilledFields(backendVehicle)
+      if (backendFieldsApplied > 0) {
+        const conf: ExtractionConfidence = d.confidence ?? 'low'
+        const src: ExtractionSource     = d.source ?? 'pdf-text'
+        onExtracted(backendVehicle, src, conf)
+      }
+
       let ocrText  = ''
       let qrContent = ''
 
@@ -381,7 +394,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
           tesseractWorker = await withTimeout(
             createWorker('por', 1, {
               workerPath: '/tesseract/worker.min.js',
-              corePath: '/tesseract',
+              corePath: '/tesseract/core',
               langPath: '/tessdata/v1',
               gzip: true,
               logger: (m: any) => {
@@ -399,8 +412,20 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
             stepTimeout('LOADING_OCR')
             return
           }
-          // Worker não carregou — fallback para manual
-          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'Não foi possível carregar o engine de OCR neste navegador. Preencha os dados manualmente.' })
+          // Worker não carregou — se o backend já preencheu algo, encerra em
+          // SUCCESS parcial. Senão, fallback para preenchimento manual.
+          if (backendFieldsApplied > 0) {
+            setUiState({
+              machine: 'PARTIAL_SUCCESS',
+              file,
+              confidence: d.confidence ?? 'low',
+              missing: d.missingFields ?? [],
+              fieldsApplied: backendFieldsApplied,
+              message: `${backendFieldsApplied} campos preenchidos do PDF. OCR não disponível — revise os campos vazios.`,
+            })
+          } else {
+            setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'Não foi possível carregar o engine de OCR neste navegador. Preencha os dados manualmente.' })
+          }
           return
         }
 
@@ -507,7 +532,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
           tesseractWorker = await withTimeout(
             createWorker('por', 1, {
               workerPath: '/tesseract/worker.min.js',
-              corePath: '/tesseract',
+              corePath: '/tesseract/core',
               langPath: '/tessdata/v1',
               gzip: true,
             }),
