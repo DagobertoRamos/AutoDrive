@@ -458,6 +458,22 @@ function AvaliacaoForm() {
 
   // Documentos do veículo (uploads pendentes — gravados após criar avaliação)
   const [pendingDocs, setPendingDocs] = useState<File[]>([])
+  // CRLV lido no Step 1 antes do rascunho existir — anexado assim que o
+  // evaluationId nasce (useEffect abaixo), independente de qual caminho criou
+  // o rascunho (Próxima etapa → ensureDraft, Enviar para aprovação, ?id=).
+  const [pendingCrlvFile, setPendingCrlvFile] = useState<File | null>(null)
+
+  useEffect(() => {
+    if (!evaluationId || !pendingCrlvFile) return
+    const file = pendingCrlvFile
+    setPendingCrlvFile(null) // limpa antes do POST — evita dupla anexação em re-render
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('kind', 'CRLV')
+    fd.append('category', 'CRLV')
+    fetch(`/api/evaluations/${evaluationId}/attachments`, { method: 'POST', body: fd })
+      .catch(() => { /* silent — dados já extraídos; usuário pode reenviar o doc */ })
+  }, [evaluationId, pendingCrlvFile])
 
   // ── Document-first flow (CRLV) ─────────────────────────────────────────────
   // O passo 1 só libera o restante do formulário depois que o operador subiu o
@@ -564,7 +580,11 @@ function AvaliacaoForm() {
   // retorna ("MOBI LIKE") e o que a FIPE catalogou ("MOBI LIKE 1.0 Fire Flex 5p").
   useEffect(() => {
     if (modelCode) return
-    const modelSource = lookupData?.model || extractedData?.model || manualModel
+    // Para o doc, casa com modelo+versão juntos — o CRLV separa "NOVO" /
+    // "GOL 1.6 POWER" arbitrariamente e o token scoring precisa de todos os
+    // tokens ("NOVO GOL 1.6 POWER") para achar o modelo FIPE certo.
+    const docModelText = [extractedData?.model, extractedData?.version].filter(Boolean).join(' ')
+    const modelSource = lookupData?.model || docModelText || manualModel
     if (!modelSource) return
     if (!fipeModels.length) return
     const modelYearHint = lookupData?.modelYear ?? extractedData?.modelYear ?? null
@@ -573,7 +593,7 @@ function AvaliacaoForm() {
       setModelCode(hit.code)
       setModelName(hit.name)
     }
-  }, [fipeModels, lookupData?.model, extractedData?.model, manualModel, lookupData?.modelYear, extractedData?.modelYear, modelCode])
+  }, [fipeModels, lookupData?.model, extractedData?.model, extractedData?.version, manualModel, lookupData?.modelYear, extractedData?.modelYear, modelCode])
 
   // ── Etapa 3 — FIPE / Preços ──────────────────────────────────────────────────
   const [fipeCode,       setFipeCode]       = useState('')
@@ -973,7 +993,7 @@ function AvaliacaoForm() {
     if (!fieldMeta) return null
 
     // Recupera valor extraído para comparação
-    let extractedVal = (extractedData as any)[fieldName]
+    const extractedVal = (extractedData as any)[fieldName]
     
     // Normaliza comparação para evitar falsos negativos por espaço ou case
     const curNorm = (currentValue ?? '').trim().toLowerCase()
@@ -1123,6 +1143,8 @@ function AvaliacaoForm() {
       }
 
       // Upload dos documentos pendentes (Step 1) — mesmo comportamento anterior.
+      // (O CRLV pendente é anexado pelo useEffect de [evaluationId], que cobre
+      // todos os caminhos de criação do rascunho — este handler inclusive.)
       if (pendingDocs.length > 0) {
         await Promise.all(
           pendingDocs.map(async (file) => {
@@ -1317,6 +1339,7 @@ function AvaliacaoForm() {
             evaluationId={evaluationId}
             onExtracted={handleExtracted}
             onSkip={handleSkipDocument}
+            onPendingFile={setPendingCrlvFile}
             hasUploaded={documentUploaded}
             hasSkipped={documentSkipped}
           />

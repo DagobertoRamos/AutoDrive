@@ -44,6 +44,12 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
+// Versão do parser — bump sempre que a lógica de extração mudar, para
+// invalidar entradas de cache produzidas por versões anteriores. Usada
+// TANTO na 1ª passada (cache-hit) QUANTO na 2ª passada (fields cacheados
+// como autoridade sobre o OCR) — cache de versão antiga é descartado.
+const PARSER_VERSION = 4
+
 // ── Instrumentação de logs estruturados por etapa (sem dados sensíveis) ───────
 
 type LogStep =
@@ -216,13 +222,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Parâmetros obrigatórios ausentes.' }, { status: 400 })
       }
 
-      // 1. Busca a transação iniciada
-      const extraction = await prisma.vehicleDocumentExtraction.findUnique({
-        where: { documentHash },
+      // 1. Busca a transação iniciada — ESCOPADA POR TENANT. O hash é único
+      // global no schema; sem o filtro de tenant, um tenant leria/atualizaria
+      // a extração persistida por outro (quebra de isolamento multi-tenant).
+      // Se o arquivo foi processado primeiro por OUTRO tenant, seguimos em
+      // modo STATELESS: processamos só o OCR recebido e não tocamos no banco.
+      const extraction = await prisma.vehicleDocumentExtraction.findFirst({
+        where: { documentHash, tenantId: session.user.tenantId },
       })
-      if (!extraction) {
-        return NextResponse.json({ error: 'Transação de extração não localizada.' }, { status: 404 })
-      }
 
       // 2. Executa o parser sobre o texto OCR recebido
       const ocrVehicle = ocrText ? parseCrlvText(ocrText, settings.mappings) : {}
@@ -235,9 +242,15 @@ export async function POST(req: NextRequest) {
       // placa="05P2024" (junta LOTAÇÃO com ANO). Agora usamos os fields já
       // cacheados no banco pela 1ª passada e só deixamos o OCR COMPLEMENTAR
       // campos que a 1ª passada não achou.
-      const cachedData = (extraction.extractedData as any) ?? null
+      // GATE DE VERSÃO: fields cacheados por parser antigo são LIXO conhecido
+      // (regex frouxo produzia placa "05P2024", chassi de 18 chars). Só
+      // aceitamos cache produzido pela versão atual.
+      const nativeText = extraction?.nativeText ?? null
+      const cachedData = (extraction?.extractedData as any) ?? null
       const cachedFields: Record<string, VehicleExtractedField<any>> | null =
-        cachedData?.fields && typeof cachedData.fields === 'object' ? cachedData.fields : null
+        cachedData?.fields && typeof cachedData.fields === 'object' && cachedData.parserVersion === PARSER_VERSION
+          ? cachedData.fields
+          : null
 
       // Reconstrói pdfVehicle a partir dos fields cacheados (fonte confiável).
       // Se não houver cache (extração inicial não persistiu), cai no regex.
@@ -248,8 +261,8 @@ export async function POST(req: NextRequest) {
             pdfVehicle[k] = f.normalizedValue
           }
         }
-      } else if (extraction.nativeText) {
-        Object.assign(pdfVehicle, parseCrlvText(extraction.nativeText, settings.mappings))
+      } else if (nativeText) {
+        Object.assign(pdfVehicle, parseCrlvText(nativeText, settings.mappings))
       }
 
       // 4. Executa o consenso campo a campo
@@ -272,7 +285,7 @@ export async function POST(req: NextRequest) {
           k,
           pdfVal,
           ocrVal,
-          extraction.nativeText ? 'NATIVE_PDF_TEXT' : 'LOCAL_OCR',
+          nativeText ? 'NATIVE_PDF_TEXT' : 'LOCAL_OCR',
           settings.fieldRules
         )
       }
@@ -345,15 +358,19 @@ export async function POST(req: NextRequest) {
         fields,
         qrCode: qrData,
         ocrLength: ocrText?.length ?? 0,
+        parserVersion: PARSER_VERSION,
       }
 
-      // 8. Atualiza a transação de extração no DB
-      await prisma.vehicleDocumentExtraction.update({
-        where: { id: extraction.id },
-        data: {
-          extractedData: finalExtractedData as any,
-        },
-      })
+      // 8. Atualiza a transação de extração no DB — só quando a linha pertence
+      // a ESTE tenant (modo stateless não escreve nada).
+      if (extraction) {
+        await prisma.vehicleDocumentExtraction.update({
+          where: { id: extraction.id },
+          data: {
+            extractedData: finalExtractedData as any,
+          },
+        })
+      }
 
       // 9. Registra log de auditoria
       await prisma.auditLog.create({
@@ -364,7 +381,7 @@ export async function POST(req: NextRequest) {
           userRole: session.user.role,
           action: 'UPDATE',
           entity: 'VehicleDocumentExtraction',
-          entityId: extraction.id,
+          entityId: extraction?.id ?? extractionRunId,
           status: 'SUCCESS',
           afterData: {
             documentHash,
@@ -380,7 +397,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         extracted: true,
         confidence,
-        source: extraction.nativeText ? 'pdf-text' : 'ocr',
+        source: nativeText ? 'pdf-text' : 'ocr',
         vehicle: toVehicleObject(fields),
         missingFields: missing,
         message: status === 'SUCCESS' ? 'Documento lido e cruzado com sucesso!' : 'Documento lido parcialmente — revise os campos sob pendência.',
@@ -439,20 +456,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `MIME tipo não suportado: ${mimeType}` }, { status: 415 })
   }
 
-  // Versão do parser — bump sempre que a lógica de extração mudar, para
-  // invalidar entradas de cache produzidas por versões anteriores (senão
-  // documentos processados antes do fix continuam retornando o resultado
-  // ruim antigo do banco).
-  const PARSER_VERSION = 3
-
   // 1. Calcula hash SHA-256 do arquivo original recebido
   const documentHash = crypto.createHash('sha256').update(buffer).digest('hex')
   const extractionRunId = crypto.randomUUID()
   const documentId = crypto.randomUUID()
 
-  // 2. Consulta se este arquivo exato já foi processado com sucesso NA VERSÃO ATUAL
-  const existing = await prisma.vehicleDocumentExtraction.findUnique({
-    where: { documentHash },
+  // 2. Consulta se este arquivo exato já foi processado com sucesso NA VERSÃO
+  // ATUAL — escopado por tenant (o hash é único global; cache de outro tenant
+  // é ignorado e o processamento roda em modo stateless, sem tocar na linha
+  // do outro tenant).
+  const existing = await prisma.vehicleDocumentExtraction.findFirst({
+    where: { documentHash, tenantId: session.user.tenantId },
   })
 
   if (existing && existing.extractedData) {
@@ -563,18 +577,35 @@ export async function POST(req: NextRequest) {
         ? 'medium'
         : 'low'
 
-    // Persiste a extração (com parserVersion para invalidar cache antigo)
-    const record = await prisma.vehicleDocumentExtraction.upsert({
-      where:  { documentHash },
-      create: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields, parserVersion: PARSER_VERSION } as any },
-      update: { nativeText: nativeText || null, extractedData: { status, confidence, missingFields: missing, fields, parserVersion: PARSER_VERSION } as any },
-    })
+    // Persiste a extração (com parserVersion para invalidar cache antigo).
+    // Tenant-safe: atualiza a linha do PRÓPRIO tenant quando existe; senão
+    // tenta criar. Se o hash já pertence a outro tenant (unique global),
+    // segue sem persistir (stateless) — nunca escreve na linha alheia.
+    const extractedPayload = { status, confidence, missingFields: missing, fields, parserVersion: PARSER_VERSION } as any
+    let recordId: string = extractionRunId
+    try {
+      if (existing) {
+        await prisma.vehicleDocumentExtraction.update({
+          where: { id: existing.id },
+          data: { nativeText: nativeText || null, extractedData: extractedPayload },
+        })
+        recordId = existing.id
+      } else {
+        const created = await prisma.vehicleDocumentExtraction.create({
+          data: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: nativeText || null, extractedData: extractedPayload },
+        })
+        recordId = created.id
+      }
+    } catch {
+      // Hash pertencente a outro tenant (violação de unique) — modo stateless
+      logExtraction('RESPONSE_STARTED', { correlationId, status: 'stateless-cross-tenant-hash' })
+    }
 
     await prisma.auditLog.create({
       data: {
         tenantId: session.user.tenantId, userId: session.user.id,
         userName: session.user.name, userRole: session.user.role,
-        action: 'CREATE', entity: 'VehicleDocumentExtraction', entityId: record.id,
+        action: 'CREATE', entity: 'VehicleDocumentExtraction', entityId: recordId,
         status: 'SUCCESS',
         afterData: { documentHash, mimeType, status, confidence, nativeTextLength: nativeText.length } as any,
       },
@@ -610,24 +641,34 @@ export async function POST(req: NextRequest) {
         : status === 'SUCCESS'
           ? 'Documento em PDF lido com sucesso.'
           : `Documento lido parcialmente (${keys.length - missing.length} de ${keys.length} campos). Revise os itens destacados.`,
-      extractionRunId: record.id,
+      extractionRunId: recordId,
       documentId,
       documentHash,
     })
   }
 
   // ── 4. Imagem — OCR no browser (Tesseract) ──────────────────────────────────
-  const record = await prisma.vehicleDocumentExtraction.upsert({
-    where:  { documentHash },
-    create: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: null, extractedData: null as any },
-    update: {},
-  })
+  // Tenant-safe: cria/mantém a linha do próprio tenant; hash de outro tenant
+  // → segue stateless (a 2ª passada também opera sem a linha).
+  let imageRecordId: string = extractionRunId
+  try {
+    if (existing) {
+      imageRecordId = existing.id
+    } else {
+      const created = await prisma.vehicleDocumentExtraction.create({
+        data: { id: extractionRunId, tenantId: session.user.tenantId, documentHash, nativeText: null, extractedData: null as any },
+      })
+      imageRecordId = created.id
+    }
+  } catch {
+    logExtraction('RESPONSE_STARTED', { correlationId, status: 'stateless-cross-tenant-hash' })
+  }
 
   await prisma.auditLog.create({
     data: {
       tenantId: session.user.tenantId, userId: session.user.id,
       userName: session.user.name, userRole: session.user.role,
-      action: 'CREATE', entity: 'VehicleDocumentExtraction', entityId: record.id,
+      action: 'CREATE', entity: 'VehicleDocumentExtraction', entityId: imageRecordId,
       status: 'SUCCESS',
       afterData: { documentHash, mimeType, requiresOcr: true } as any,
     },
@@ -641,7 +682,7 @@ export async function POST(req: NextRequest) {
     vehicle:     {},
     missingFields: ['plate', 'chassis', 'renavam', 'model', 'manufactureYear', 'modelYear'],
     message:     'Processando imagem via OCR e QR Code local.',
-    extractionRunId: record.id,
+    extractionRunId: imageRecordId,
     documentId,
     documentHash,
   })

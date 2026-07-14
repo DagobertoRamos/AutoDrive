@@ -162,21 +162,24 @@ export function extractPositionedTokens(items: any[], page: number): PositionedT
 export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any): ExtractedVehicle {
   const v: ExtractedVehicle = {}
 
-  // 1. Agrupar em linhas (tolerância Y de 5pt)
+  // 1. Agrupar em linhas (tolerância Y de 5pt) — POR PÁGINA. O Y reinicia a
+  // cada página do PDF; sem a chave de página, tokens da página 2 se
+  // intercalam nas linhas da página 1 e viram "valores" de rótulos errados.
   const toleranceY = 5
-  const lines: { y: number; tokens: PositionedToken[] }[] = []
+  const lines: { page: number; y: number; tokens: PositionedToken[] }[] = []
 
   for (const token of tokens) {
-    let line = lines.find((l) => Math.abs(l.y - token.y) <= toleranceY)
+    const page = token.page ?? 1
+    let line = lines.find((l) => l.page === page && Math.abs(l.y - token.y) <= toleranceY)
     if (!line) {
-      line = { y: token.y, tokens: [] }
+      line = { page, y: token.y, tokens: [] }
       lines.push(line)
     }
     line.tokens.push(token)
   }
 
-  // Ordena linhas de cima para baixo
-  lines.sort((a, b) => b.y - a.y)
+  // Ordena por página e, dentro dela, de cima para baixo
+  lines.sort((a, b) => a.page - b.page || b.y - a.y)
   lines.forEach((l) => l.tokens.sort((a, b) => a.x - b.x))
 
   /**
@@ -233,6 +236,7 @@ export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any
         // rótulos (ex: "PLACA / EXERCÍCIO") não bloqueie a busca do valor.
         for (let k = i + 1; k < lines.length; k++) {
           const nextLine = lines[k]
+          if (nextLine.page !== line.page) break // nunca cruza para outra página
           if (line.y - nextLine.y > maxDistY) break
 
           const colTokens = nextLine.tokens.filter(
@@ -273,10 +277,6 @@ export function parseCrlvByCoordinates(tokens: PositionedToken[], mappings?: any
     }
     return null
   }
-
-  // Compatibilidade retroativa: wrapper com a assinatura antiga
-  const findValueNextToOrBelow = (anchorRegex: RegExp, ignoreRegex?: RegExp, maxDistX = 300, maxDistY = 30): string | null =>
-    findValue(anchorRegex, { ignoreRegex, maxDistX, maxDistY })
 
   // Busca de campos
   // NOTA: normalizedText já vem sem espaços, sem `/`, sem `-`, sem `.`, sem `:`
@@ -423,74 +423,202 @@ function match(text: string, re: RegExp, group = 1): string | undefined {
 
 export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle {
   const v: ExtractedVehicle = {}
+
+  // Linhas preservadas — o OCR (Tesseract) e o texto linearizado do PDF mantêm
+  // a ordem visual do documento: linha de RÓTULO seguida da linha de VALOR.
+  // A estratégia primária é âncora→valor (mesma lógica que consertou o parser
+  // de coordenadas); os regex globais antigos ficam como fallback, mas agora
+  // todos os candidatos passam pelos validadores antes de serem aceitos.
+  const lines = rawText.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean)
+
   const text = rawText
     .replace(/([A-Z])(\d)/g, '$1 $2')
     .replace(/(\d)([A-Z])/g, '$1 $2')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
 
-  // 1. Placa
-  const plateRe = /(?<![A-Z0-9])([A-Z]{3})[\s\-]?([0-9])([A-Z0-9])([0-9]{2})(?![A-Z0-9])/gi
-  for (const m of rawText.matchAll(plateRe)) {
-    const candidate = `${m[1]}${m[2]}${m[3]}${m[4]}`.toUpperCase()
-    if (candidate.length === 7) { v.plate = candidate; break }
+  // Lixo da coluna direita / rodapé que vaza para o valor quando o OCR junta
+  // colunas ("FIAT/MOBI LIKE DADOS DO SEGURO DPVAT" → corta em DADOS).
+  // NOTA: não cortamos em "gap de colunas" (\s{3,}) — o texto linearizado do
+  // PDF junta colunas legítimas na mesma linha ("2024   2025 CARROCERIA") e o
+  // corte amputaria o segundo valor. Os extratores por campo é que decidem o
+  // que aproveitar da linha.
+  const JUNK_CUT_RE = /\b(DADOS\b|SEGUROS?\b|DPVAT\b|ASSINADO\b|SENATRAN\b|MENSAGENS\b|OBSERVA[ÇC]|INFORMA[ÇC]|VALIDE\b|QRCODE\b|CAT\.?\s*TARIF)\S*.*$/i
+  const stripJunk = (s: string): string =>
+    s.replace(JUNK_CUT_RE, '').trim()
+
+  /**
+   * Âncora→valor sobre linhas: encontra a linha do rótulo e tenta extrair o
+   * valor do restante da mesma linha, senão das próximas `lookAhead` linhas.
+   * `extract` valida/normaliza o candidato — retornar null descarta e a busca
+   * continua (próximo candidato ou próxima ocorrência da âncora).
+   */
+  const findByAnchor = <T>(labelRe: RegExp, extract: (candidate: string) => T | null, lookAhead = 2): T | null => {
+    for (let i = 0; i < lines.length; i++) {
+      const m = labelRe.exec(lines[i])
+      if (!m) continue
+      const candidates: string[] = []
+      const sameLine = lines[i].slice(m.index + m[0].length).trim()
+      if (sameLine) candidates.push(sameLine)
+      for (let k = 1; k <= lookAhead && i + k < lines.length; k++) candidates.push(lines[i + k])
+      for (const raw of candidates) {
+        const cleaned = stripJunk(raw)
+        if (!cleaned) continue
+        const got = extract(cleaned)
+        if (got != null) return got
+      }
+    }
+    return null
   }
 
-  // 2. RENAVAM
-  v.renavam = match(rawText, /RENAVAM[\s:.\-]*(\d{9,11})/i)
-  if (!v.renavam) {
-    const renRe = /(?<!\d)(\d{11})(?!\d)/g
-    for (const m of rawText.matchAll(renRe)) {
-      if (validateRenavam(m[1])) {
-        v.renavam = m[1]
-        break
-      }
+  // ── 1. Placa — âncora "PLACA" (ignora PLACA ANTERIOR); fallback varredura
+  // Guardas de fronteira (?<![A-Z0-9])/(?![A-Z0-9]) impedem extrair uma
+  // "placa" de dentro de um chassi ("JTEKZN1850C004251" NÃO vira "KZN1850").
+  const extractPlate = (s: string): string | null => {
+    const m = /(?<![A-Z0-9])([A-Z]{3})[\s\-]?([0-9])([A-Z0-9])([0-9]{2})(?![A-Z0-9])/i.exec(s)
+    if (!m) return null
+    const candidate = `${m[1]}${m[2]}${m[3]}${m[4]}`.toUpperCase()
+    return validatePlate(candidate) ? candidate : null
+  }
+  v.plate = findByAnchor(/\bPLACA\b(?!\s*ANTERIOR)/i, extractPlate) ?? undefined
+  if (!v.plate) {
+    const plateRe = /(?<![A-Z0-9])([A-Z]{3})[\s\-]?([0-9])([A-Z0-9])([0-9]{2})(?![A-Z0-9])/gi
+    for (const m of rawText.matchAll(plateRe)) {
+      const candidate = `${m[1]}${m[2]}${m[3]}${m[4]}`.toUpperCase()
+      if (validatePlate(candidate)) { v.plate = candidate; break }
     }
   }
 
-  // 3. Chassi
-  v.chassis = match(rawText, /CHASSI[\s:.\-]*([A-HJ-NPR-Z0-9]{17})/i)?.toUpperCase()
+  // ── 2. RENAVAM — âncora + validador módulo 11; fallback varredura validada
+  // Runs de dígitos (não junta números através de separadores — evita colar
+  // o renavam com valores vizinhos da linha)
+  const extractRenavam = (s: string): string | null => {
+    for (const run of s.split(/\D+/).filter(Boolean)) {
+      if (run.length >= 9 && run.length <= 11 && validateRenavam(run)) return run
+    }
+    return null
+  }
+  v.renavam = findByAnchor(/RENAVAM/i, extractRenavam) ?? undefined
+  if (!v.renavam) {
+    const renRe = /(?<!\d)(\d{11})(?!\d)/g
+    for (const m of rawText.matchAll(renRe)) {
+      if (validateRenavam(m[1])) { v.renavam = m[1]; break }
+    }
+  }
+
+  // ── 3. Chassi — âncora + validador 17 chars; fallback varredura validada
+  // Janelas DELIMITADAS na linha original primeiro (evita colar tokens
+  // vizinhos: "ABC1234/SP 9BWAB45U..." não pode virar "SP9BWAB45U...").
+  // Só depois tenta a variante sem espaços (OCR pode partir o chassi ao meio),
+  // ainda exigindo fronteira não-alfanumérica.
+  // Chassi real sempre carrega série numérica — exigir dígitos impede que 17
+  // letras de texto comum ("FUNDONACIONAL...") passem no charset do validador.
+  const chassisHasDigits = (c: string): boolean => (c.match(/\d/g) ?? []).length >= 4
+  const extractChassis = (s: string): string | null => {
+    const upper = s.toUpperCase()
+    for (const m of upper.matchAll(/(?<![A-Z0-9])([A-HJ-NPR-Z0-9]{17})(?![A-Z0-9])/g)) {
+      if (validateChassis(m[1]) && chassisHasDigits(m[1])) return m[1]
+    }
+    // OCR pode partir o chassi ao meio ("9BWAB45U 0PT004251") — junta até 3
+    // tokens ADJACENTES cuja soma dê exatamente 17. Não desloca janela sobre
+    // texto vizinho: só concatenações exatas, com dígitos, de poucos pedaços.
+    const runs = upper.split(/[^A-HJ-NPR-Z0-9]+/).filter(Boolean)
+    for (let i = 0; i < runs.length; i++) {
+      if (runs[i].length === 17) continue // já testado no passo delimitado
+      let acc = ''
+      for (let j = i; j < runs.length && j <= i + 2 && acc.length < 17; j++) {
+        acc += runs[j]
+        if (acc.length === 17 && j > i && validateChassis(acc) && chassisHasDigits(acc)) return acc
+      }
+    }
+    return null
+  }
+  v.chassis = findByAnchor(/CHASSI/i, extractChassis) ?? undefined
   if (!v.chassis) {
     const chassiRe = /(?<![A-Z0-9])([A-HJ-NPR-Z0-9]{17})(?![A-Z0-9])/gi
     for (const m of rawText.matchAll(chassiRe)) {
       const c = m[1].toUpperCase()
-      if (validateChassis(c)) {
-        v.chassis = c
+      if (validateChassis(c)) { v.chassis = c; break }
+    }
+  }
+
+  // ── 4. Anos — o CRLV imprime "ANO FABRICAÇÃO | ANO MODELO" e os valores na
+  //    linha (ou linhas) seguinte(s). Coletamos um POOL de anos das próximas
+  //    linhas em ordem de leitura: rótulo duplo → 1º ano = fabricação, 2º =
+  //    modelo (mesmo quando o OCR quebrou "2012" e "2013" em linhas
+  //    separadas — NÃO herdamos fabricação como modelo quando só achamos um).
+  const currentYear = new Date().getFullYear()
+  const isPlausibleYear = (n: number) => n >= 1950 && n <= currentYear + 2
+  const yearsIn = (s: string): number[] =>
+    [...s.matchAll(/(?<!\d)(19[5-9]\d|20[0-4]\d)(?!\d)/g)].map((m) => Number(m[1])).filter(isPlausibleYear)
+
+  for (let i = 0; i < lines.length && (v.manufactureYear == null || v.modelYear == null); i++) {
+    const hasFab = /ANO\s*FABRICA[ÇC][ÃA]O|ANO\s*FABR/i.test(lines[i])
+    const hasMod = /ANO\s*MODELO/i.test(lines[i])
+    if (!hasFab && !hasMod) continue
+    const pool: number[] = []
+    // Mesma linha (após remover os rótulos) e até 2 linhas abaixo
+    pool.push(...yearsIn(lines[i].replace(/ANO\s*FABRICA[ÇC][ÃA]O|ANO\s*FABR\w*|ANO\s*MODELO/gi, '')))
+    for (let k = 1; k <= 2 && i + k < lines.length; k++) {
+      pool.push(...yearsIn(lines[i + k]))
+      if (pool.length >= (hasFab && hasMod ? 2 : 1)) break
+    }
+    if (hasFab && hasMod) {
+      if (pool.length >= 1 && v.manufactureYear == null) v.manufactureYear = pool[0]
+      if (pool.length >= 2 && v.modelYear == null) v.modelYear = pool[1]
+    } else if (hasFab) {
+      if (pool.length >= 1 && v.manufactureYear == null) v.manufactureYear = pool[0]
+    } else if (pool.length >= 1 && v.modelYear == null) {
+      v.modelYear = pool[0]
+    }
+  }
+  // Sanidade: modelo nunca vem antes da fabricação no CRLV; se o OCR inverteu
+  // as colunas (diferença pequena), corrige por troca.
+  if (v.manufactureYear && v.modelYear && v.modelYear < v.manufactureYear && v.manufactureYear - v.modelYear <= 2) {
+    const tmp = v.manufactureYear
+    v.manufactureYear = v.modelYear
+    v.modelYear = tmp
+  }
+  // Fallbacks globais (formato "2022/2023" em linha corrida)
+  if (!v.manufactureYear || !v.modelYear) {
+    const yearPairRe = /(?<!\d)(19[89]\d|20[0-3]\d)\s*[\/\-]\s*(19[89]\d|20[0-3]\d)(?!\d)/g
+    for (const m of text.matchAll(yearPairRe)) {
+      const f = Number(m[1])
+      const yy = Number(m[2])
+      if (Math.abs(yy - f) <= 2) {
+        if (!v.manufactureYear) v.manufactureYear = f
+        if (!v.modelYear) v.modelYear = yy
         break
       }
     }
   }
 
-  // 4. Anos
-  const yearPairRe = /(?<!\d)(19[89]\d|20[0-3]\d)\s*[\/\-]\s*(19[89]\d|20[0-3]\d)(?!\d)/g
-  for (const m of text.matchAll(yearPairRe)) {
-    const f = Number(m[1])
-    const yy = Number(m[2])
-    if (Math.abs(yy - f) <= 2) {
-      v.manufactureYear = f
-      v.modelYear = yy
-      break
-    }
+  // ── 5. Marca / Modelo / Versão — âncora → linha de valor; junk removido
+  const extractMmv = (s: string): string | null => {
+    if (/^[*\s.]+$/.test(s)) return null           // campo mascarado "***"
+    if (s.length < 3) return null
+    if (!/[A-Z]/i.test(s)) return null
+    return s
   }
-  if (!v.modelYear) {
-    const ym = match(text, /ANO\s*MODELO[\s:.\-]*(\d{4})/i)
-    if (ym) v.modelYear = Number(ym)
-  }
-  if (!v.manufactureYear) {
-    const yf = match(text, /ANO\s*FABR[A-Z]*[\s:.\-]*(\d{4})/i)
-    if (yf) v.manufactureYear = Number(yf)
-  }
-
-  // 5. Marca / Modelo / Versão
-  let mmv = match(rawText, /MARCA[\s\/]?MODELO[\s\/]?VERS[ÃA]O[\s:.\-]*([^\n\r]+)/i)
+  let mmv = findByAnchor(/MARCA\s*\/?\s*MODELO(?:\s*\/?\s*VERS[ÃA]O)?/i, extractMmv)
   if (!mmv) {
-    const brandSlashRe = /(?<![A-Z0-9])([A-Z]{2,12})\s*\/\s*([A-Z][A-Z0-9\s\-\.]{2,80}?)(?=\s{2,}|\n|\r|$|[a-z])/g
-    for (const m of text.matchAll(brandSlashRe)) {
+    // Rótulos do CRLV que contêm "/" e enganariam o fallback X/Y
+    // (CPF/CNPJ, PLACA ANTERIOR/UF, ESPÉCIE/TIPO, ALCOOL/GASOLINA...)
+    const LABEL_WORDS = new Set([
+      'ANO', 'PESO', 'PBT', 'CMT', 'POT', 'POTENCIA', 'POTÊNCIA', 'CILINDRADA', 'CV',
+      'CPF', 'CNPJ', 'PLACA', 'ANTERIOR', 'UF', 'ESPECIE', 'ESPÉCIE', 'TIPO',
+      'MARCA', 'MODELO', 'VERSAO', 'VERSÃO', 'NOME', 'LOCAL', 'DATA', 'CAT',
+      'ALCOOL', 'ÁLCOOL', 'GASOLINA', 'DIESEL', 'ETANOL', 'GNV', 'COR', 'CHASSI',
+      'RENAVAM', 'EXERCICIO', 'EXERCÍCIO', 'CATEGORIA', 'CAPACIDADE', 'MOTOR',
+      'CARROCERIA', 'EIXOS', 'LOTACAO', 'LOTAÇÃO', 'COMBUSTIVEL', 'COMBUSTÍVEL',
+    ])
+    const brandSlashRe = /(?<![A-Z0-9])([A-Z]{1,12})\s*\/\s*([A-Z][A-Z0-9\s\-\.]{2,80}?)(?=\s{2,}|\n|\r|$|[a-z])/g
+    for (const m of rawText.matchAll(brandSlashRe)) {
       const brandRaw = m[1].trim()
-      const rest = m[2].trim()
-      const ignore = ['ANO', 'PESO', 'PBT', 'CMT', 'POT', 'POTENCIA', 'POTÊNCIA', 'CILINDRADA']
-      if (ignore.includes(brandRaw)) continue
-      mmv = `${brandRaw}/${rest}`
+      const restFirst = (m[2].trim().split(/\s+/)[0] ?? '').toUpperCase()
+      if (LABEL_WORDS.has(brandRaw.toUpperCase()) || LABEL_WORDS.has(restFirst)) continue
+      mmv = stripJunk(`${brandRaw}/${m[2].trim()}`)
+      if (mmv.length < 4) { mmv = null; continue }
       break
     }
   }
@@ -499,9 +627,15 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
     v.brandModelVersionRaw = mmv.trim()
     const slashIdx = mmv.indexOf('/')
     if (slashIdx > 0) {
-      const brandRaw = mmv.slice(0, slashIdx).trim()
-      const rest = mmv.slice(slashIdx + 1).trim()
-      // Normalização de marcas via mapeamentos
+      let brandRaw = mmv.slice(0, slashIdx).trim()
+      let rest = mmv.slice(slashIdx + 1).trim()
+      // "I/NISSAN TIIDA 18SL FLEX": o prefixo I = importado, a marca real é o
+      // primeiro token após a barra.
+      if (/^(I|IMP|IMPORTADO)$/i.test(brandRaw)) {
+        const parts = rest.split(/\s+/).filter(Boolean)
+        brandRaw = parts[0] ?? brandRaw
+        rest = parts.slice(1).join(' ')
+      }
       const normBrand = mappings?.brands?.[brandRaw.toUpperCase()] ?? brandRaw
       v.brand = normalizeText(normBrand)
 
@@ -517,16 +651,23 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
     }
   }
 
-  // 6. Cor
-  const KNOWN_COLORS = ['PRATA', 'BRANCA', 'BRANCO', 'PRETA', 'PRETO', 'CINZA', 'VERMELHA', 'VERMELHO', 'AZUL', 'VERDE', 'AMARELA', 'AMARELO', 'MARROM', 'BEGE']
-  for (const cor of KNOWN_COLORS) {
-    if (new RegExp(`\\b${cor}\\b`, 'i').test(text)) {
-      v.color = cor
-      break
+  // ── 6. Cor — âncora COR PREDOMINANTE → valor; fallback varredura global
+  const KNOWN_COLORS = ['PRATA', 'BRANCA', 'BRANCO', 'PRETA', 'PRETO', 'CINZA', 'VERMELHA', 'VERMELHO', 'AZUL', 'VERDE', 'AMARELA', 'AMARELO', 'MARROM', 'BEGE', 'DOURADA', 'DOURADO', 'LARANJA', 'ROSA', 'ROXA', 'ROXO', 'VINHO', 'FANTASIA', 'GRENA']
+  const extractColor = (s: string): string | null => {
+    const u = s.toUpperCase()
+    for (const cor of KNOWN_COLORS) {
+      if (new RegExp(`\\b${cor}\\b`).test(u)) return cor
+    }
+    return null
+  }
+  v.color = findByAnchor(/COR\s*PREDOMINANTE/i, extractColor) ?? undefined
+  if (!v.color) {
+    for (const cor of KNOWN_COLORS) {
+      if (new RegExp(`\\b${cor}\\b`, 'i').test(text)) { v.color = cor; break }
     }
   }
 
-  // 7. Combustível
+  // ── 7. Combustível (varredura global — valores são inconfundíveis)
   if (/\bALCOOL[\s\/]+GASOLINA\b|\bFLEX\b|\bBI[\s\-]?COMBUST/i.test(text)) v.fuelType = 'FLEX'
   else if (/\bGASOLINA\b/i.test(text)) v.fuelType = 'GASOLINA'
   else if (/\bDIESEL\b/i.test(text)) v.fuelType = 'DIESEL'
@@ -535,12 +676,11 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
   else if (/\bETANOL\b|\bALCOOL\b/i.test(text)) v.fuelType = 'ETANOL'
   else if (/\bGNV\b/i.test(text)) v.fuelType = 'GNV'
 
-  // Normalização de combustíveis via mapeamentos
   if (v.fuelType && mappings?.fuels?.[v.fuelType]) {
     v.fuelType = mappings.fuels[v.fuelType]
   }
 
-  // 8. Potência & Cilindrada
+  // ── 8. Potência & Cilindrada ("74CV/999", "104CV/1598")
   const potCilRe = /(?<!\d)(\d{2,4})\s*CV\s*[\/]\s*(\d{3,5})(?!\d)/i
   const pcMatch = potCilRe.exec(text)
   if (pcMatch) {
@@ -548,28 +688,59 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
     v.displacementCc = Number(pcMatch[2])
   }
 
-  // 9. Espécie / Tipo oficial
-  const speciesMatch = match(text, /(?:^|\s)(?:ESPECIE|ESP[ÉE]CIE|TIPO|ESPECIE\/TIPO|ESP[ÉE]CIE\/TIPO)[\s:.\/\\-]*([A-ZÇÃÁÉÍÓÚÂÊÔ\s]{3,40}?)(?=\s{2,}|\n|\r|$)/i, 1)
-  if (speciesMatch) {
-    v.officialSpeciesType = speciesMatch.trim()
+  // ── 9. Espécie / Tipo — âncora → valor gateado por vocabulário oficial do
+  //    CRLV (evita capturar texto da coluna direita como "COTA ÚNICA")
+  const SPECIES_WORDS = /PASSAGEIRO|CARGA|MISTO|TRA[ÇC][ÃA]O|ESPECIAL|COLE[ÇC][ÃA]O|AUTOM[ÓO]VEL|AUTOMOVEL|MOTOCICLETA|MOTONETA|CAMINHONETE|CAMIONETA|CAMINH[ÃA]O|[ÔO]NIBUS|REBOQUE|SEMI[\s\-]?REBOQUE|CICLOMOTOR|TRICICLO|QUADRICICLO|UTILIT[ÁA]RIO/i
+  const extractSpecies = (s: string): string | null => {
+    if (!SPECIES_WORDS.test(s)) return null
+    const cleaned = s.replace(/[^A-ZÇÃÁÉÍÓÚÂÊÔ\s\/]/gi, '').replace(/\s+/g, ' ').trim()
+    if (cleaned.length < 3 || cleaned.length > 40) return null
+    return cleaned.toUpperCase()
+  }
+  v.officialSpeciesType = findByAnchor(/ESP[ÉE]CIE\s*\/?\s*TIPO/i, extractSpecies, 4) ?? undefined
+  if (!v.officialSpeciesType) {
+    const speciesMatch = match(text, /(?:^|\s)(?:ESPECIE|ESP[ÉE]CIE|TIPO)[\s:.\/\\-]*([A-ZÇÃÁÉÍÓÚÂÊÔ\s]{3,40}?)(?=\s{2,}|\n|\r|$)/i, 1)
+    if (speciesMatch && SPECIES_WORDS.test(speciesMatch)) v.officialSpeciesType = speciesMatch.trim()
   }
 
-  // 10. Carroceria
+  // ── 10. Carroceria
   const KNOWN_BODY = ['SEDAN', 'HATCH', 'SUV', 'PICAPE', 'PICKUP', 'CAMINHONETE']
-  for (const body of KNOWN_BODY) {
-    if (new RegExp(`\\b${body}\\b`, 'i').test(text)) {
-      v.bodyType = body
-      break
+  const extractBody = (s: string): string | null => {
+    const clean = s.replace(/\s+/g, '').toUpperCase()
+    if (/N[AÃ]OAPLIC[AÁ]VEL/.test(clean)) return 'NÃO APLICÁVEL'
+    for (const body of KNOWN_BODY) {
+      if (new RegExp(`\\b${body}\\b`, 'i').test(s)) return body
+    }
+    return null
+  }
+  v.bodyType = findByAnchor(/CARROCERIA/i, extractBody) ?? undefined
+  if (!v.bodyType) {
+    for (const body of KNOWN_BODY) {
+      if (new RegExp(`\\b${body}\\b`, 'i').test(text)) { v.bodyType = body; break }
     }
   }
 
-  // 11. Dados do Proprietário
-  const ownerName = match(text, /(?:^|\s)(?:NOME|PROPRIET[ÁA]RIO)[\s:.\/\\-]*([A-ZÇÃÁÉÍÓÚÂÊÔ][A-ZÇÃÁÉÍÓÚÂÊÔ\s]{3,80}?)(?=\s{2,}|\n|\r|CPF|CNPJ|$)/i, 1)
-  if (ownerName && !ownerName.includes('SENATRAN')) {
-    v.ownerName = ownerName.trim()
+  // ── 11. Dados do Proprietário — âncora NOME → valor sem dígitos
+  const extractOwner = (s: string): string | null => {
+    if (/\d/.test(s)) return null
+    // \b em cada termo: rejeita o RÓTULO "LOCAL"/"DATA", não nomes legítimos
+    // que contêm a substring ("LOCALIZA RENT A CAR", "PRODATA LTDA").
+    if (/\b(SENATRAN|DETRAN|SEGURO|DPVAT|ASSINADO|CPF|CNPJ|LOCAL|DATA)\b/i.test(s)) return null
+    const cleaned = s.replace(/[^A-ZÇÃÁÉÍÓÚÂÊÔÜ\s\.\-&]/gi, '').replace(/\s+/g, ' ').trim()
+    if (cleaned.length < 4 || cleaned.length > 80) return null
+    return cleaned.toUpperCase()
   }
-  const doc = /(?:CPF|CNPJ)[\s:.\-]*([\d.\-\/]+)/i.exec(text)
-  if (doc) v.ownerDocument = doc[1].replace(/[^\d]/g, '')
+  v.ownerName = findByAnchor(/\bNOME\b/i, extractOwner) ?? undefined
+  if (!v.ownerName) {
+    const ownerName = match(text, /(?:^|\s)(?:NOME|PROPRIET[ÁA]RIO)[\s:.\/\\-]*([A-ZÇÃÁÉÍÓÚÂÊÔ][A-ZÇÃÁÉÍÓÚÂÊÔ\s]{3,80}?)(?=\s{2,}|\n|\r|CPF|CNPJ|$)/i, 1)
+    // Mesmo gate do extractOwner: o fallback também não pode aceitar rótulos
+    if (ownerName && extractOwner(ownerName) != null) v.ownerName = ownerName.trim()
+  }
+  const doc = /(?:CPF|CNPJ)[\s:.\-\/]*([\d][\d.\-\/\s]{9,20})/i.exec(rawText)
+  if (doc) {
+    const digits = doc[1].replace(/[^\d]/g, '')
+    if (digits.length === 11 || digits.length === 14) v.ownerDocument = digits
+  }
 
   return v
 }

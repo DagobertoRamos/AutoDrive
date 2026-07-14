@@ -3850,3 +3850,56 @@ pm run build\): Concluído e linkado limpo.
 
 **Limitações Reais:**
 - Dispositivos antigos que não possuam acesso amplo a memórias longas para \Web Crypto API\ poderão falhar na criptografia (nestes casos o catch direciona para manual).
+
+---
+
+## 2026-07-13 — Claude (Fable 5) — Leitor de CRLV: correção definitiva ponta a ponta (parser, OCR, preenchimento, anexo)
+
+**Tarefa:** corrigir de uma vez por todas a leitura de documentos (CRLV/CRLV-e/ATPV-e em PDF ou foto) e o preenchimento automático do formulário de avaliação, dispensando a consulta paga por placa quando o documento traz os dados.
+
+**Causa-raiz (em camadas, descobertas em sequência):**
+1. `parseCrlvByCoordinates` associava rótulos a valores na MESMA linha — mas o CRLV-e tem layout rótulo-em-cima/valor-embaixo. Extraía 1/11 campos. (corrigido em commit dea5e07)
+2. `handleExtracted` jogava valores crus nos `<select>` (FLEX≠Flex) e tinha stale closure. (dea5e07)
+3. Proxy bloqueava `/tesseract/**`, `/tessdata/**`, `/pdf.worker.min.mjs` — Web Workers não enviam cookie → redirect 307 → `importScripts` falhava. `corePath` errado. (a3c52e3)
+4. 2ª passada (pós-OCR) re-parseava o texto com o regex frouxo antigo, jogando fora os fields corretos da 1ª passada → placa "05P2024", chassi 18 chars. (d8f3df6)
+5. **Esta sessão:** `PARSER_VERSION` declarado após o branch da 2ª passada (inacessível — cache antigo envenenado passava sem gate de versão); `parseCrlvText` (única fonte para FOTOS) ainda era o regex frouxo; CRLV lido no Step 1 nunca era anexado (evaluationId ainda não existia).
+
+**Alterações (arquivos):**
+- `src/lib/crlv/parser.ts` — `parseCrlvText` reescrito line-aware: âncora→valor (mesma linha, depois até 2-4 linhas abaixo), extratores por campo com validadores (placa regex+validatePlate, renavam runs de dígitos+módulo 11, chassi 17 chars, anos com par "2012 2013" de colunas adjacentes + swap de sanidade, espécie gateada por vocabulário oficial, cortes de junk DADOS/SEGURO/DPVAT/ASSINADO), tratamento de "I/NISSAN..." (prefixo importado).
+- `src/app/api/evaluations/vehicle-document/extract/route.ts` — `PARSER_VERSION=4` em escopo de módulo; gate de versão na leitura do cache da 2ª passada; `parserVersion` persistido também na atualização da 2ª passada.
+- `src/app/(dashboard)/estoque/avaliacao/_components/StepDocumentoVeiculo.tsx` — `attachOrDefer`: anexa CRLV quando a avaliação existe, senão entrega o File ao pai via `onPendingFile`.
+- `src/app/(dashboard)/estoque/avaliacao/page.tsx` — `pendingCrlvFile` anexado no `handleSave` (kind/category CRLV); match FIPE de modelo usa modelo+versão concatenados ("NOVO GOL 1.6 POWER").
+
+**Regra de prioridade implementada (já vigente + reforçada):**
+```
+Documento com placa/chassi/renavam válidos → preenche formulário, plateLookupPolicy=SUPPRESS (não consulta placa), curto-circuito (nem roda OCR se 1ª passada já trouxe identificador)
+Documento parcial → aplica o que achou ANTES do OCR (safety net), OCR complementa apenas campos vazios (PDF é autoridade)
+Documento ilegível/ausente → usuário digita placa → consulta automática normal (fallback)
+Usuário digita a placa manualmente → política volta a AUTOMATIC
+```
+
+**Testes (40/40):** mobi-doc.pdf real (CRLV-e FIAT MOBI, texto nativo, pelos DOIS parsers) + OCR simulado com layout real das 3 fotos enviadas pelo usuário (Nissan Tiida FAZ6J51 c/ prefixo I/, VW Gol FHF2J54 c/ colunas fundidas+proprietário+CPF, Hyundai HB20 RVZ3E59) — 8/8 campos críticos em todos; extras corretos (potência/cilindrada, espécie, proprietário, carroceria).
+
+**Validações:** `tsc --noEmit` limpo (exceto 2 erros PRÉ-EXISTENTES em autoconf-v2.ts, que dependem de migration pendente na Neon); `eslint` 0 erros nos arquivos alterados; `next build` executado; revisão adversarial multi-agente (4 lentes × verificação cética) sobre o diff.
+
+**Limitações reais:**
+- OCR de foto depende da qualidade do Tesseract (foto muito torta/escura pode falhar validação → campos ficam vazios para preenchimento manual — NUNCA inventa dado).
+- Chassi não tem dígito verificador oficial — validação é charset+tamanho; OCR pode errar caractere visualmente ambíguo (0/O) e passar. Usuário deve conferir.
+- Renavam corrompido pelo OCR é REJEITADO pelo módulo 11 (fica vazio, não errado).
+- Cache por SHA-256 é global (não por tenant) — mesmo arquivo = mesmos dados; sem vazamento prático (precisa ter o arquivo para ter o hash).
+
+**Validação em produção:** subir CRLV-e digital (deve preencher tudo sem OCR e sem consulta de placa), subir foto de CRLV (roda OCR local, preenche o que validar), conferir aba Documentação do veículo após salvar (CRLV anexado), digitar placa manualmente sem doc (consulta automática deve continuar funcionando).
+
+**Adendo — revisão adversarial multi-agente (mesma sessão):** 4 lentes (corretude, casos-limite, segurança/tenant, integração de fluxo) × verificação cética por achado; 11 achados CONFIRMADOS executando o código real, todos corrigidos:
+1. `extractChassis` deslocava janela de 17 chars sobre texto vizinho (colunas fundidas → "SP9BWAB45U...") → janelas delimitadas + junção de ≤3 tokens exatos + exigência de ≥4 dígitos.
+2. `extractPlate` (âncora) fabricava placa de dentro do chassi → guardas de fronteira (?<![A-Z0-9])/(?![A-Z0-9]).
+3. `parseCrlvByCoordinates` misturava páginas (Y reinicia por página) → agrupamento por (página, Y) + corte de página no scan "abaixo".
+4. Fallback `brandSlashRe` transformava rótulos com barra (CPF/CNPJ, PLACA ANTERIOR/UF, ALCOOL/GASOLINA) em marca/modelo → lista LABEL_WORDS em ambos os lados da barra.
+5. `extractOwner` rejeitava "LOCALIZA RENT A CAR" por substring LOCAL → \b por termo (rótulo LOCAL/DATA continua rejeitado, inclusive no fallback).
+6. Anos em linhas separadas: ANO MODELO herdava fabricação → pool de anos em ordem de leitura; um ano só ⇒ modelo fica vazio (não inventa).
+7. Cache por documentHash sem escopo de tenant (leitura E escrita cross-tenant) → findFirst{hash,tenantId} nas duas passadas; hash de outro tenant ⇒ modo stateless (processa sem tocar na linha alheia). Sem migration (restrição de deploy).
+8. **CRÍTICO:** flush do pendingCrlvFile estava em handleSave, que é código morto (wizard real usa ensureDraft + handler do Step 6) → useEffect em [evaluationId] anexa assim que o rascunho nasce, cobrindo todos os caminhos.
+9. countFilledFields contava vehicleGroup/transmissionType='UNKNOWN' como preenchidos (MANUAL_REQUIRED inalcançável; foto de papel qualquer = "2 campos") → ignorados derivados + valor 'UNKNOWN'.
+10. Branch de falha do worker OCR (PDF) aplicava dados mas não anexava o CRLV → attachOrDefer adicionado.
+11. "Ler novamente"/re-upload duplicava o anexo a cada clique → dedupe por assinatura (evaluationId+nome+tamanho+mtime).
+Testes: 40/40 documentos reais + 12/12 regressões novas. Nota: a lente "correctness" caiu por limite de sessão do provedor; cobertura pelas 3 demais.

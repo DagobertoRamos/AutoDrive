@@ -33,6 +33,10 @@ export interface StepDocumentoVeiculoProps {
   evaluationId?: string | null
   onExtracted:   (data: ExtractedVehicle, source: ExtractionSource, confidence: ExtractionConfidence) => void
   onSkip:        (reason: string) => void
+  /** Chamado quando a extração concluiu mas ainda NÃO existe avaliação para
+   *  anexar o arquivo — o pai guarda o File e anexa ao salvar. Sem isso o
+   *  CRLV lido no Step 1 (antes do rascunho existir) era perdido. */
+  onPendingFile?: (file: File) => void
   hasUploaded:   boolean
   hasSkipped:    boolean
 }
@@ -203,6 +207,24 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
   const processingRef  = useRef(false) // protege contra dupla execução
   const abortRef       = useRef<AbortController | null>(null)
 
+  // Assinatura do último anexo feito — evita que "Ler novamente" (ou reenviar
+  // o mesmo arquivo) crie anexos duplicados na avaliação a cada clique.
+  const attachedSigRef = useRef<string | null>(null)
+
+  // Anexa o CRLV à avaliação quando ela já existe; senão entrega o File ao
+  // pai para anexar no salvamento (o Step 1 roda antes do rascunho existir,
+  // então `tryAttachCrlv` com evaluationId null descartava o arquivo).
+  const attachOrDefer = async (file: File, signal: AbortSignal): Promise<void> => {
+    if (props.evaluationId) {
+      const sig = `${props.evaluationId}:${file.name}:${file.size}:${file.lastModified}`
+      if (attachedSigRef.current === sig) return
+      await tryAttachCrlv(props.evaluationId, file, signal)
+      attachedSigRef.current = sig
+    } else {
+      props.onPendingFile?.(file)
+    }
+  }
+
   // ⏹️ Cancelamento explícito ⏹️─────────────────────────────────────────────────
 
   const cancelCurrent = useCallback(() => {
@@ -316,7 +338,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         }
 
         onExtracted(vehicle, src, conf)
-        await tryAttachCrlv(props.evaluationId, file, ac.signal)
+        await attachOrDefer(file, ac.signal)
 
         if (missing.length > 0) {
           setUiState({ machine: 'PARTIAL_SUCCESS', file, confidence: conf, missing, fieldsApplied, message: `Parte dos dados foi encontrada (${fieldsApplied} campos). Revise os campos destacados.` })
@@ -348,7 +370,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         backendVehicle.plate || backendVehicle.chassis || backendVehicle.renavam
       )
       if (hasValidId) {
-        await tryAttachCrlv(props.evaluationId, file, ac.signal)
+        await attachOrDefer(file, ac.signal)
         const missing = d.missingFields ?? []
         const conf: ExtractionConfidence = d.confidence ?? 'medium'
         if (missing.length > 0) {
@@ -432,8 +454,10 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
             return
           }
           // Worker não carregou — se o backend já preencheu algo, encerra em
-          // SUCCESS parcial. Senão, fallback para preenchimento manual.
+          // SUCCESS parcial (e ANEXA o documento — dados aplicados sem anexo
+          // perderia o CRLV silenciosamente). Senão, preenchimento manual.
           if (backendFieldsApplied > 0) {
+            await attachOrDefer(file, ac.signal)
             setUiState({
               machine: 'PARTIAL_SUCCESS',
               file,
@@ -652,7 +676,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       }
 
       onExtracted(ocrVehicle, ocrSrc, ocrConf)
-      await tryAttachCrlv(props.evaluationId, file, ac.signal)
+      await attachOrDefer(file, ac.signal)
 
       logStep('FIELD_MAPPING_COMPLETED', { fieldsApplied, missing: ocrMissing.length })
 
@@ -939,8 +963,15 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
 
 /** Conta campos não-nulos do ExtractedVehicle (exceto campos de metadados) */
 function countFilledFields(v: ExtractedVehicle): number {
-  const IGNORED = new Set(['_fields', 'ownerName', 'ownerDocument', 'predominantColor', 'fuel', 'power', 'displacement', 'vehicleType'])
-  return Object.entries(v).filter(([k, val]) => !IGNORED.has(k) && val != null && val !== '').length
+  // Ignora: metadados, aliases legados E campos derivados que o backend SEMPRE
+  // emite (vehicleGroup/transmissionType retornam 'UNKNOWN' mesmo sem nada
+  // extraído — contá-los inflava a contagem e tornava MANUAL_REQUIRED
+  // inalcançável: foto de papel qualquer virava "2 campos preenchidos").
+  const IGNORED = new Set([
+    '_fields', 'ownerName', 'ownerDocument', 'predominantColor', 'fuel', 'power', 'displacement', 'vehicleType',
+    'vehicleGroup', 'engineCommercialLabel', 'transmissionType', 'officialSpeciesType', 'brandModelVersionRaw',
+  ])
+  return Object.entries(v).filter(([k, val]) => !IGNORED.has(k) && val != null && val !== '' && val !== 'UNKNOWN').length
 }
 
 /** Tenta anexar o arquivo CRLV à avaliação (best-effort, não bloqueia) */
