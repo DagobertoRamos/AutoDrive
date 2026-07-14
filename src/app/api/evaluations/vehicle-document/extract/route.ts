@@ -32,6 +32,7 @@ import {
   parseCrlvByCoordinates,
   buildExtractedField,
   extractNativePdfData,
+  __lastExtractionErrors,
 } from '@/lib/crlv/parser'
 import {
   classifyVehicleCategory,
@@ -644,6 +645,7 @@ export async function POST(req: NextRequest) {
       extractionRunId: recordId,
       documentId,
       documentHash,
+      __debug: { pdfParseNode: __lastExtractionErrors.pdfParseNode, pdfParseRoot: __lastExtractionErrors.pdfParseRoot, pdfjs: __lastExtractionErrors.pdfjs, nativeTextLength: nativeText.length, tokensLength: tokens.length },
     })
   }
 

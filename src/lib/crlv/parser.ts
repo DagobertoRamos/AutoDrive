@@ -831,7 +831,16 @@ export function buildExtractedField<T>(
 
 // ── Reconstrução e Leitura de PDF no Servidor ───────────────────────────────
 
+// Erros capturados durante a última extração — expostos pelo route.ts em
+// dev/diagnóstico para ver o que quebra no serverless.
+export const __lastExtractionErrors: { pdfParseNode?: string; pdfParseRoot?: string; pdfjs?: string } = {}
+
 export async function extractNativePdfData(buffer: Buffer): Promise<{ text: string, tokens: PositionedToken[] }> {
+  // reset
+  __lastExtractionErrors.pdfParseNode = undefined
+  __lastExtractionErrors.pdfParseRoot = undefined
+  __lastExtractionErrors.pdfjs = undefined
+
   // Estratégia dupla:
   // 1) `pdf-parse` (CommonJS, leve, ~sempre funciona no runtime Node do Vercel
   //    Serverless) → extrai TEXTO linear. Sem posicionais, mas o
@@ -865,7 +874,9 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
       }
     }
   } catch (e) {
-    console.warn('[CRLV parser] pdf-parse/node falhou, tentando pdf-parse root:', (e as Error)?.message)
+    const msg = (e as Error)?.message ?? String(e)
+    __lastExtractionErrors.pdfParseNode = msg
+    console.warn('[CRLV parser] pdf-parse/node falhou, tentando pdf-parse root:', msg)
     // Fallback para a resolução default caso o subpath quebre
     try {
       const mod: any = await import('pdf-parse')
@@ -883,7 +894,9 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
         text = String(result?.text ?? '').trim()
       }
     } catch (e2) {
-      console.warn('[CRLV parser] pdf-parse (root) também falhou:', (e2 as Error)?.message)
+      const msg2 = (e2 as Error)?.message ?? String(e2)
+      __lastExtractionErrors.pdfParseRoot = msg2
+      console.warn('[CRLV parser] pdf-parse (root) também falhou:', msg2)
     }
   }
 
@@ -914,8 +927,10 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
     // sem quebras de linha úteis).
     if (pdfjsText.length > 0) text = pdfjsText
   } catch (e) {
+    const msg = (e as Error)?.message ?? String(e)
+    __lastExtractionErrors.pdfjs = msg
     // pdf-parse já pode ter fornecido texto; log e segue.
-    console.warn('[CRLV parser] pdfjs-dist falhou (usando texto do pdf-parse):', (e as Error)?.message)
+    console.warn('[CRLV parser] pdfjs-dist falhou (usando texto do pdf-parse):', msg)
   }
 
   return { text, tokens: allTokens }
