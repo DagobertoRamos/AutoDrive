@@ -832,6 +832,44 @@ export function buildExtractedField<T>(
 // ── Reconstrução e Leitura de PDF no Servidor ───────────────────────────────
 
 export async function extractNativePdfData(buffer: Buffer): Promise<{ text: string, tokens: PositionedToken[] }> {
+  // Estratégia dupla:
+  // 1) `pdf-parse` (CommonJS, leve, ~sempre funciona no runtime Node do Vercel
+  //    Serverless) → extrai TEXTO linear. Sem posicionais, mas o
+  //    `parseCrlvText` line-aware (Fase 4) já casa 8/8 campos críticos com
+  //    layout de linhas do CRLV-e. Este é o caminho normal em produção.
+  // 2) `pdfjs-dist` (mjs) → extrai texto + tokens posicionais para o parser
+  //    por coordenadas. Costuma FALHAR em serverless AWS Lambda por causa do
+  //    import mjs no runtime — mas tentamos e usamos se der certo (build
+  //    local Node ≥18 funciona). Se pdf-parse já achou texto e pdfjs-dist
+  //    falhar, seguimos com o texto do pdf-parse (não é regressão).
+  let text = ''
+  let allTokens: PositionedToken[] = []
+
+  // Passada 1: pdf-parse
+  try {
+    // NOTA: `pdf-parse` v2+ exporta `PDFParse` como classe nomeada (não
+    // função default como no v1). Usamos a API estável com fallback.
+    const mod: any = await import('pdf-parse')
+    const PDFParse = mod?.PDFParse ?? mod?.default ?? mod
+    if (typeof PDFParse === 'function') {
+      // v2 API: instância com getText()
+      const parser = new PDFParse({ data: new Uint8Array(buffer) })
+      try {
+        const result = await parser.getText()
+        text = String(result?.text ?? '').trim()
+      } finally {
+        try { await parser.destroy?.() } catch { /* silent */ }
+      }
+    } else if (mod?.default && typeof mod.default === 'function') {
+      // v1 API: função direta
+      const result = await mod.default(buffer)
+      text = String(result?.text ?? '').trim()
+    }
+  } catch (e) {
+    console.warn('[CRLV parser] pdf-parse falhou:', (e as Error)?.message)
+  }
+
+  // Passada 2: pdfjs-dist para tokens posicionais (best-effort)
   try {
     const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
     const loadingTask = pdfjs.getDocument({
@@ -843,22 +881,26 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
     })
     const doc = await loadingTask.promise
     const pieces: string[] = []
-    let allTokens: PositionedToken[] = []
-    
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i)
       const content = await page.getTextContent()
-      const text = reconstructVisualText(content.items)
+      const linear = reconstructVisualText(content.items)
       const tokens = extractPositionedTokens(content.items, i)
-      pieces.push(text)
+      pieces.push(linear)
       allTokens = allTokens.concat(tokens)
     }
     try { await doc.destroy?.() } catch { /* silent */ }
-    return { text: pieces.join('\n').trim(), tokens: allTokens }
+    const pdfjsText = pieces.join('\n').trim()
+    // pdfjs preserva melhor a estrutura visual (linhas com Y agrupado); se
+    // ele conseguiu texto, prefere sobre o do pdf-parse (que às vezes vem
+    // sem quebras de linha úteis).
+    if (pdfjsText.length > 0) text = pdfjsText
   } catch (e) {
-    console.warn('[CRLV parser] pdfjs-dist falhou na extração nativa:', e)
-    return { text: '', tokens: [] }
+    // pdf-parse já pode ter fornecido texto; log e segue.
+    console.warn('[CRLV parser] pdfjs-dist falhou (usando texto do pdf-parse):', (e as Error)?.message)
   }
+
+  return { text, tokens: allTokens }
 }
 
 /** 
