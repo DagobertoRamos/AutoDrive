@@ -846,13 +846,16 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
   let allTokens: PositionedToken[] = []
 
   // Passada 1: pdf-parse
+  // NOTA: `pdf-parse` v2+ tem exports condicionais (browser/esm/cjs/node) e
+  // no Vercel serverless os bundlers às vezes escolhem a variante errada.
+  // Forçamos o sub-path `pdf-parse/node` que é EXPLICITAMENTE a build de
+  // Node.js — sem ambiguidade.
   try {
-    // NOTA: `pdf-parse` v2+ exporta `PDFParse` como classe nomeada (não
-    // função default como no v1). Usamos a API estável com fallback.
-    const mod: any = await import('pdf-parse')
-    const PDFParse = mod?.PDFParse ?? mod?.default ?? mod
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore - subpath exports não estão no @types/pdf-parse
+    const mod: any = await import('pdf-parse/node')
+    const PDFParse = mod?.PDFParse ?? mod?.default?.PDFParse ?? mod?.default ?? mod
     if (typeof PDFParse === 'function') {
-      // v2 API: instância com getText()
       const parser = new PDFParse({ data: new Uint8Array(buffer) })
       try {
         const result = await parser.getText()
@@ -860,13 +863,28 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
       } finally {
         try { await parser.destroy?.() } catch { /* silent */ }
       }
-    } else if (mod?.default && typeof mod.default === 'function') {
-      // v1 API: função direta
-      const result = await mod.default(buffer)
-      text = String(result?.text ?? '').trim()
     }
   } catch (e) {
-    console.warn('[CRLV parser] pdf-parse falhou:', (e as Error)?.message)
+    console.warn('[CRLV parser] pdf-parse/node falhou, tentando pdf-parse root:', (e as Error)?.message)
+    // Fallback para a resolução default caso o subpath quebre
+    try {
+      const mod: any = await import('pdf-parse')
+      const PDFParse = mod?.PDFParse ?? mod?.default?.PDFParse ?? mod?.default ?? mod
+      if (typeof PDFParse === 'function') {
+        const parser = new PDFParse({ data: new Uint8Array(buffer) })
+        try {
+          const result = await parser.getText()
+          text = String(result?.text ?? '').trim()
+        } finally {
+          try { await parser.destroy?.() } catch { /* silent */ }
+        }
+      } else if (mod?.default && typeof mod.default === 'function') {
+        const result = await mod.default(buffer)
+        text = String(result?.text ?? '').trim()
+      }
+    } catch (e2) {
+      console.warn('[CRLV parser] pdf-parse (root) também falhou:', (e2 as Error)?.message)
+    }
   }
 
   // Passada 2: pdfjs-dist para tokens posicionais (best-effort)
