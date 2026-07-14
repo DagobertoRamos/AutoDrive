@@ -594,10 +594,25 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
   }
 
   // ── 5. Marca / Modelo / Versão — âncora → linha de valor; junk removido
+  // Rejeita LINHAS que são rótulos do CRLV (colunas fundidas pelo pdf-parse
+  // podem juntar "PLACA ANTERIOR / UF \tCHASSI" na linha seguinte à âncora
+  // MMV — sem esse filtro, o parser aceitaria e produziria brand="PLACA
+  // ANTERIOR", model="UF"). Testa CADA token entre barras contra a lista
+  // de rótulos conhecidos: se algum for rótulo, descarta a linha inteira.
+  const MMV_LABEL_TOKENS = new Set([
+    'MARCA', 'MODELO', 'VERSAO', 'VERSÃO', 'PLACA', 'ANTERIOR', 'UF',
+    'CHASSI', 'RENAVAM', 'COR', 'PREDOMINANTE', 'COMBUSTIVEL', 'COMBUSTÍVEL',
+    'ESPECIE', 'ESPÉCIE', 'TIPO', 'CARROCERIA', 'CATEGORIA', 'CAPACIDADE',
+    'MOTOR', 'CMT', 'PBT', 'EIXOS', 'LOTACAO', 'LOTAÇÃO', 'CPF', 'CNPJ',
+    'NOME', 'LOCAL', 'DATA', 'POTENCIA', 'POTÊNCIA', 'CILINDRADA', 'CAT',
+  ])
   const extractMmv = (s: string): string | null => {
     if (/^[*\s.]+$/.test(s)) return null           // campo mascarado "***"
     if (s.length < 3) return null
     if (!/[A-Z]/i.test(s)) return null
+    // Se QUALQUER token separado por "/" ou espaços for rótulo, rejeita
+    const tokens = s.split(/[\s\/]+/).filter(Boolean).map(t => t.toUpperCase())
+    if (tokens.some(t => MMV_LABEL_TOKENS.has(t))) return null
     return s
   }
   let mmv = findByAnchor(/MARCA\s*\/?\s*MODELO(?:\s*\/?\s*VERS[ÃA]O)?/i, extractMmv)
@@ -841,29 +856,31 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
   __lastExtractionErrors.pdfParseRoot = undefined
   __lastExtractionErrors.pdfjs = undefined
 
-  // Estratégia dupla:
-  // 1) `pdf-parse` (CommonJS, leve, ~sempre funciona no runtime Node do Vercel
-  //    Serverless) → extrai TEXTO linear. Sem posicionais, mas o
-  //    `parseCrlvText` line-aware (Fase 4) já casa 8/8 campos críticos com
-  //    layout de linhas do CRLV-e. Este é o caminho normal em produção.
-  // 2) `pdfjs-dist` (mjs) → extrai texto + tokens posicionais para o parser
-  //    por coordenadas. Costuma FALHAR em serverless AWS Lambda por causa do
-  //    import mjs no runtime — mas tentamos e usamos se der certo (build
-  //    local Node ≥18 funciona). Se pdf-parse já achou texto e pdfjs-dist
-  //    falhar, seguimos com o texto do pdf-parse (não é regressão).
+  // Runtime AWS Lambda do Vercel:
+  //   • pdfjs-dist@5 quebra em "ReferenceError: DOMMatrix is not defined"
+  //     (o legacy/pdf.mjs usa APIs do DOM). Confirmado em produção.
+  //   • pdf-parse via `await import()` foi silenciosamente OTIMIZADO fora
+  //     pelo bundler nem chegava a ser chamado — trocamos por `createRequire`
+  //     que resolve o pacote em RUNTIME sem passar pelo bundler.
+  // Como pdfjs é impraticável no server (sem canvas/DOM polyfill), o texto
+  // sai APENAS do pdf-parse. O parser `parseCrlvText` line-aware (Fase 4)
+  // extrai 8/8 campos críticos do layout de linhas do CRLV-e, então perder
+  // os tokens posicionais aqui não é regressão.
   let text = ''
-  let allTokens: PositionedToken[] = []
+  const allTokens: PositionedToken[] = []
 
-  // Passada 1: pdf-parse
-  // NOTA: `pdf-parse` v2+ tem exports condicionais (browser/esm/cjs/node) e
-  // no Vercel serverless os bundlers às vezes escolhem a variante errada.
-  // Forçamos o sub-path `pdf-parse/node` que é EXPLICITAMENTE a build de
-  // Node.js — sem ambiguidade.
   try {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore - subpath exports não estão no @types/pdf-parse
-    const mod: any = await import('pdf-parse/node')
-    const PDFParse = mod?.PDFParse ?? mod?.default?.PDFParse ?? mod?.default ?? mod
+    // createRequire baseado em process.cwd() — resolve pacotes do
+    // node_modules do projeto em runtime, sem passar pelo bundler do Next
+    // (que otimizava o `import()` dinâmico fora e nunca chamava o módulo).
+    // NÃO usar import.meta.url do parser: como o Next empacota o arquivo,
+    // o URL resultante fica fora da árvore de node_modules e o require falha.
+    const { createRequire } = await import('node:module')
+    const require = createRequire(`${process.cwd()}/package.json`)
+    // ROOT package expõe a classe PDFParse. O subpath /node é APENAS helpers
+    // internos (getHeader etc), não a API principal.
+    const mod: any = require('pdf-parse')
+    const PDFParse = mod?.PDFParse ?? mod?.default?.PDFParse ?? mod?.default
     if (typeof PDFParse === 'function') {
       const parser = new PDFParse({ data: new Uint8Array(buffer) })
       try {
@@ -872,65 +889,17 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
       } finally {
         try { await parser.destroy?.() } catch { /* silent */ }
       }
+    } else if (typeof mod === 'function') {
+      // pdf-parse v1: função direta (fallback improvável, mas mantido)
+      const result = await mod(buffer)
+      text = String(result?.text ?? '').trim()
+    } else {
+      __lastExtractionErrors.pdfParseNode = `PDFParse não é função (typeof=${typeof PDFParse}); modKeys=${Object.keys(mod || {}).slice(0, 10).join(',')}`
     }
   } catch (e) {
     const msg = (e as Error)?.message ?? String(e)
     __lastExtractionErrors.pdfParseNode = msg
-    console.warn('[CRLV parser] pdf-parse/node falhou, tentando pdf-parse root:', msg)
-    // Fallback para a resolução default caso o subpath quebre
-    try {
-      const mod: any = await import('pdf-parse')
-      const PDFParse = mod?.PDFParse ?? mod?.default?.PDFParse ?? mod?.default ?? mod
-      if (typeof PDFParse === 'function') {
-        const parser = new PDFParse({ data: new Uint8Array(buffer) })
-        try {
-          const result = await parser.getText()
-          text = String(result?.text ?? '').trim()
-        } finally {
-          try { await parser.destroy?.() } catch { /* silent */ }
-        }
-      } else if (mod?.default && typeof mod.default === 'function') {
-        const result = await mod.default(buffer)
-        text = String(result?.text ?? '').trim()
-      }
-    } catch (e2) {
-      const msg2 = (e2 as Error)?.message ?? String(e2)
-      __lastExtractionErrors.pdfParseRoot = msg2
-      console.warn('[CRLV parser] pdf-parse (root) também falhou:', msg2)
-    }
-  }
-
-  // Passada 2: pdfjs-dist para tokens posicionais (best-effort)
-  try {
-    const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const loadingTask = pdfjs.getDocument({
-      data: new Uint8Array(buffer),
-      useSystemFonts: true,
-      disableFontFace: true,
-      verbosity: 0,
-      isEvalSupported: false,
-    })
-    const doc = await loadingTask.promise
-    const pieces: string[] = []
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i)
-      const content = await page.getTextContent()
-      const linear = reconstructVisualText(content.items)
-      const tokens = extractPositionedTokens(content.items, i)
-      pieces.push(linear)
-      allTokens = allTokens.concat(tokens)
-    }
-    try { await doc.destroy?.() } catch { /* silent */ }
-    const pdfjsText = pieces.join('\n').trim()
-    // pdfjs preserva melhor a estrutura visual (linhas com Y agrupado); se
-    // ele conseguiu texto, prefere sobre o do pdf-parse (que às vezes vem
-    // sem quebras de linha úteis).
-    if (pdfjsText.length > 0) text = pdfjsText
-  } catch (e) {
-    const msg = (e as Error)?.message ?? String(e)
-    __lastExtractionErrors.pdfjs = msg
-    // pdf-parse já pode ter fornecido texto; log e segue.
-    console.warn('[CRLV parser] pdfjs-dist falhou (usando texto do pdf-parse):', msg)
+    console.warn('[CRLV parser] pdf-parse (createRequire cwd) falhou:', msg)
   }
 
   return { text, tokens: allTokens }
