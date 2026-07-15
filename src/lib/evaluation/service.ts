@@ -12,6 +12,11 @@ export interface LoadedEvaluation {
   unitId:       string | null
   status:       string
   evaluatorId:  string | null
+  /** Identificadores do veículo — usados para validar troca de CRLV. */
+  plate:        string | null
+  chassi:       string | null
+  renavam:      string | null
+  vehicleId:    string | null
 }
 
 /**
@@ -25,6 +30,7 @@ export async function loadEvaluationContext(id: string): Promise<LoadedEvaluatio
     select: {
       id: true, tenantId: true, unitId: true,
       status: true, evaluatedById: true,
+      plate: true, chassi: true, renavam: true, vehicleId: true,
     },
   })
   if (!e) return null
@@ -34,6 +40,10 @@ export async function loadEvaluationContext(id: string): Promise<LoadedEvaluatio
     unitId:      e.unitId      ?? null,
     status:      e.status      ?? 'DRAFT',
     evaluatorId: e.evaluatedById ?? null,
+    plate:       e.plate       ?? null,
+    chassi:      e.chassi      ?? null,
+    renavam:     e.renavam     ?? null,
+    vehicleId:   e.vehicleId   ?? null,
   }
 }
 

@@ -18,6 +18,7 @@ import { loadEvaluationContext } from '@/lib/evaluation/service'
 import { canUploadAttachment }  from '@/lib/evaluation/permissions'
 import { recordHistory }        from '@/lib/evaluation/history'
 import { saveAttachment, validateUpload } from '@/lib/evaluation/storage'
+import { extractNativePdfData, parseCrlvText, validatePlate, validateChassis, validateRenavam } from '@/lib/crlv/parser'
 
 // Next.js: rotas com upload devem usar runtime Node (necessário p/ fs)
 export const runtime = 'nodejs'
@@ -60,12 +61,56 @@ export async function POST(
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
 
     const bytes = Buffer.from(await file.arrayBuffer())
-    const saved = await saveAttachment(evaluationId, file.name, mime, bytes)
 
-    const section   = String(formData.get('section')   ?? '').trim() || null
-    const category  = String(formData.get('category')  ?? '').trim() || (saved.fileType === 'pdf' ? 'OUTRO' : 'FOTO')
-    const itemId    = String(formData.get('itemId')    ?? '').trim() || null
-    const serviceId = String(formData.get('serviceId') ?? '').trim() || null
+    const section    = String(formData.get('section')   ?? '').trim() || null
+    const rawCategory = String(formData.get('category')  ?? '').trim()
+    // A category final é decidida abaixo (precisa da extensão do arquivo salvo).
+    const itemId     = String(formData.get('itemId')    ?? '').trim() || null
+    const serviceId  = String(formData.get('serviceId') ?? '').trim() || null
+
+    // Se for CRLV E a avaliação já tem placa/chassi/renavam preenchidos:
+    // extrai os identificadores do PDF novo e exige que pelo menos UM bata
+    // com o veículo cadastrado. Impede que o usuário troque o CRLV de uma
+    // avaliação por um documento de OUTRO veículo (por engano ou proposital).
+    // Se a avaliação está "em branco" (nenhum identificador), aceita — é o
+    // primeiro CRLV e ele vai popular os campos.
+    const hasVehicleId = Boolean(ctx.plate || ctx.chassi || ctx.renavam)
+    if (rawCategory === 'CRLV' && hasVehicleId && mime === 'application/pdf') {
+      try {
+        const { text } = await extractNativePdfData(bytes)
+        const parsed = text ? parseCrlvText(text) : {}
+        const docPlate   = parsed.plate   ? String(parsed.plate).toUpperCase().replace(/[^A-Z0-9]/g, '') : null
+        const docChassi  = parsed.chassis ? String(parsed.chassis).toUpperCase().replace(/[^A-Z0-9]/g, '') : null
+        const docRenavam = parsed.renavam ? String(parsed.renavam).replace(/[^\d]/g, '') : null
+        const evalPlate   = ctx.plate   ? ctx.plate.toUpperCase().replace(/[^A-Z0-9]/g, '') : null
+        const evalChassi  = ctx.chassi  ? ctx.chassi.toUpperCase().replace(/[^A-Z0-9]/g, '') : null
+        const evalRenavam = ctx.renavam ? ctx.renavam.replace(/[^\d]/g, '') : null
+
+        const plateOk   = Boolean(docPlate && evalPlate && validatePlate(docPlate) && docPlate === evalPlate)
+        const chassiOk  = Boolean(docChassi && evalChassi && validateChassis(docChassi) && docChassi === evalChassi)
+        const renavamOk = Boolean(docRenavam && evalRenavam && validateRenavam(docRenavam) && docRenavam === evalRenavam)
+
+        // Rejeita apenas quando o CRLV trouxe ALGUM identificador válido E
+        // NENHUM bateu com os da avaliação. Se o PDF veio ilegível (sem
+        // identificadores), não bloqueia — o operador continua responsável
+        // por conferir; o alerta seria falso-positivo constante.
+        const docHasAnyId = Boolean(docPlate || docChassi || docRenavam)
+        if (docHasAnyId && !plateOk && !chassiOk && !renavamOk) {
+          return NextResponse.json({
+            error: 'Este CRLV é de um veículo diferente. Placa/chassi/renavam do documento não batem com os dados da avaliação.',
+            code: 'CRLV_VEHICLE_MISMATCH',
+            evaluation: { plate: ctx.plate, chassi: ctx.chassi, renavam: ctx.renavam },
+            document:   { plate: docPlate, chassi: docChassi, renavam: docRenavam },
+          }, { status: 422 })
+        }
+      } catch {
+        // Se a extração falhar (PDF corrompido, timeout), permite o upload —
+        // o operador confere manualmente. Não bloquear por falha de infra.
+      }
+    }
+
+    const saved    = await saveAttachment(evaluationId, file.name, mime, bytes)
+    const category = rawCategory || (saved.fileType === 'pdf' ? 'OUTRO' : 'FOTO')
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const att = await (prisma as any).evaluationAttachment.create({

@@ -214,6 +214,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
   // Anexa o CRLV à avaliação quando ela já existe; senão entrega o File ao
   // pai para anexar no salvamento (o Step 1 roda antes do rascunho existir,
   // então `tryAttachCrlv` com evaluationId null descartava o arquivo).
+  // Propaga CrlvVehicleMismatchError — o caller decide como mostrar.
   const attachOrDefer = async (file: File, signal: AbortSignal): Promise<void> => {
     if (props.evaluationId) {
       const sig = `${props.evaluationId}:${file.name}:${file.size}:${file.lastModified}`
@@ -222,6 +223,34 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       attachedSigRef.current = sig
     } else {
       props.onPendingFile?.(file)
+    }
+  }
+
+  // Formata mensagem amigável quando o backend rejeita CRLV de outro veículo.
+  const formatMismatchMessage = (err: CrlvVehicleMismatchError): string => {
+    const parts: string[] = []
+    const e = err.evaluation
+    const d = err.document
+    if (e.plate && d.plate && e.plate !== d.plate)     parts.push(`Placa: ${d.plate} (documento) ≠ ${e.plate} (cadastro)`)
+    if (e.chassi && d.chassi && e.chassi !== d.chassi) parts.push(`Chassi diferente`)
+    if (e.renavam && d.renavam && e.renavam !== d.renavam) parts.push(`Renavam diferente`)
+    const detail = parts.length ? ` (${parts.join(', ')})` : ''
+    return `Este CRLV é de um veículo diferente do cadastrado nesta avaliação${detail}. Se quer substituir o veículo, cancele esta avaliação e crie uma nova.`
+  }
+
+  // Wrapper que aplica FAILED terminal em caso de mismatch, senão silencioso.
+  // Retorna true quando o attach foi rejeitado por mismatch — o chamador
+  // deve interromper o fluxo (não seguir para SUCCESS/PARTIAL_SUCCESS).
+  const safeAttach = async (file: File, signal: AbortSignal): Promise<boolean> => {
+    try {
+      await attachOrDefer(file, signal)
+      return false
+    } catch (e) {
+      if (e instanceof CrlvVehicleMismatchError) {
+        setUiState({ machine: 'FAILED', file, message: formatMismatchMessage(e), step: 'CRLV_MISMATCH' })
+        return true
+      }
+      return false
     }
   }
 
@@ -338,7 +367,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         }
 
         onExtracted(vehicle, src, conf)
-        await attachOrDefer(file, ac.signal)
+        if (await safeAttach(file, ac.signal)) return
 
         if (missing.length > 0) {
           setUiState({ machine: 'PARTIAL_SUCCESS', file, confidence: conf, missing, fieldsApplied, message: `Parte dos dados foi encontrada (${fieldsApplied} campos). Revise os campos destacados.` })
@@ -370,7 +399,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         backendVehicle.plate || backendVehicle.chassis || backendVehicle.renavam
       )
       if (hasValidId) {
-        await attachOrDefer(file, ac.signal)
+        if (await safeAttach(file, ac.signal)) return
         const missing = d.missingFields ?? []
         const conf: ExtractionConfidence = d.confidence ?? 'medium'
         if (missing.length > 0) {
@@ -457,7 +486,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
           // SUCCESS parcial (e ANEXA o documento — dados aplicados sem anexo
           // perderia o CRLV silenciosamente). Senão, preenchimento manual.
           if (backendFieldsApplied > 0) {
-            await attachOrDefer(file, ac.signal)
+            if (await safeAttach(file, ac.signal)) return
             setUiState({
               machine: 'PARTIAL_SUCCESS',
               file,
@@ -676,7 +705,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
       }
 
       onExtracted(ocrVehicle, ocrSrc, ocrConf)
-      await attachOrDefer(file, ac.signal)
+      if (await safeAttach(file, ac.signal)) return
 
       logStep('FIELD_MAPPING_COMPLETED', { fieldsApplied, missing: ocrMissing.length })
 
@@ -974,7 +1003,21 @@ function countFilledFields(v: ExtractedVehicle): number {
   return Object.entries(v).filter(([k, val]) => !IGNORED.has(k) && val != null && val !== '' && val !== 'UNKNOWN').length
 }
 
-/** Tenta anexar o arquivo CRLV à avaliação (best-effort, não bloqueia) */
+/** Erro tipado para o caller diferenciar mismatch de veículo (422). */
+export class CrlvVehicleMismatchError extends Error {
+  evaluation: { plate: string | null; chassi: string | null; renavam: string | null }
+  document:   { plate: string | null; chassi: string | null; renavam: string | null }
+  constructor(payload: any) {
+    super(payload?.error ?? 'CRLV é de outro veículo')
+    this.name = 'CrlvVehicleMismatchError'
+    this.evaluation = payload?.evaluation ?? { plate: null, chassi: null, renavam: null }
+    this.document   = payload?.document   ?? { plate: null, chassi: null, renavam: null }
+  }
+}
+
+/** Tenta anexar o arquivo CRLV à avaliação. Propaga apenas o mismatch (422)
+ *  como CrlvVehicleMismatchError; outros erros são silenciados (o extract já
+ *  capturou os dados, o anexo é bônus). */
 async function tryAttachCrlv(evaluationId: string | null | undefined, file: File, signal: AbortSignal): Promise<void> {
   if (!evaluationId) return
   try {
@@ -982,8 +1025,15 @@ async function tryAttachCrlv(evaluationId: string | null | undefined, file: File
     att.append('file', file)
     att.append('kind', 'CRLV')
     att.append('category', 'CRLV')
-    await fetch(`/api/evaluations/${evaluationId}/attachments`, { method: 'POST', body: att, signal })
-  } catch { /* silent — o extract já capturou os dados, anexo é bônus */ }
+    const res = await fetch(`/api/evaluations/${evaluationId}/attachments`, { method: 'POST', body: att, signal })
+    if (res.status === 422) {
+      const payload = await res.json().catch(() => ({}))
+      if (payload?.code === 'CRLV_VEHICLE_MISMATCH') throw new CrlvVehicleMismatchError(payload)
+    }
+  } catch (e) {
+    if (e instanceof CrlvVehicleMismatchError) throw e
+    /* silent — o extract já capturou os dados, anexo é bônus */
+  }
 }
 
 // ── Sub-componente: chip do arquivo com ações ─────────────────────────────────
