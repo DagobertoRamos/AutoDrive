@@ -488,6 +488,16 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
       if (validatePlate(candidate)) { v.plate = candidate; break }
     }
   }
+  // Fallback do fallback: pdf-parse v1 fusiona placa+exercício ("TCP6A692026"),
+  // e o lookahead (?![A-Z0-9]) rejeita porque "2" segue. Aceita PLACA + 4
+  // dígitos de ano de exercício adjacentes — o ano é sempre entre 2000 e ano+2.
+  if (!v.plate) {
+    const plateYearRe = /(?<![A-Z0-9])([A-Z]{3})([0-9])([A-Z0-9])([0-9]{2})((?:19|20)\d{2})(?![0-9])/gi
+    for (const m of rawText.matchAll(plateYearRe)) {
+      const candidate = `${m[1]}${m[2]}${m[3]}${m[4]}`.toUpperCase()
+      if (validatePlate(candidate)) { v.plate = candidate; break }
+    }
+  }
 
   // ── 2. RENAVAM — âncora + validador módulo 11; fallback varredura validada
   // Runs de dígitos (não junta números através de separadores — evita colar
@@ -592,6 +602,19 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
       }
     }
   }
+  // Fallback do fallback: pdf-parse v1 pode fusionar os anos ("20242025")
+  // como 8 dígitos consecutivos. Aceita 2 anos válidos e adjacentes.
+  if (!v.manufactureYear || !v.modelYear) {
+    const yearGlueRe = /(?<!\d)((?:19|20)\d{2})((?:19|20)\d{2})(?!\d)/g
+    for (const m of rawText.matchAll(yearGlueRe)) {
+      const f = Number(m[1]); const yy = Number(m[2])
+      if (isPlausibleYear(f) && isPlausibleYear(yy) && Math.abs(yy - f) <= 3) {
+        if (!v.manufactureYear) v.manufactureYear = f
+        if (!v.modelYear) v.modelYear = yy
+        break
+      }
+    }
+  }
 
   // ── 5. Marca / Modelo / Versão — âncora → linha de valor; junk removido
   // Rejeita LINHAS que são rótulos do CRLV (colunas fundidas pelo pdf-parse
@@ -677,13 +700,17 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
   }
   v.color = findByAnchor(/COR\s*PREDOMINANTE/i, extractColor) ?? undefined
   if (!v.color) {
+    // Sem \b à direita — pdf-parse v1 pode fundir "BRANCAALCOOL/GASOLINA".
+    // Fronteira à esquerda evita casar "ROSA" dentro de outra palavra.
     for (const cor of KNOWN_COLORS) {
-      if (new RegExp(`\\b${cor}\\b`, 'i').test(text)) { v.color = cor; break }
+      if (new RegExp(`(?:^|[^A-Za-zÀ-ÖØ-öø-ÿ])${cor}(?=[^A-Za-zÀ-ÖØ-öø-ÿ]|ALCOOL|GASOLINA|DIESEL|FLEX|ETANOL|GNV|$)`, 'i').test(text)) { v.color = cor; break }
     }
   }
 
   // ── 7. Combustível (varredura global — valores são inconfundíveis)
-  if (/\bALCOOL[\s\/]+GASOLINA\b|\bFLEX\b|\bBI[\s\-]?COMBUST/i.test(text)) v.fuelType = 'FLEX'
+  // NOTA: pdf-parse v1 pode fundir cor+combustível ("BRANCAALCOOL/GASOLINA").
+  // ALCOOL/GASOLINA (flex) vem antes na cadeia if/else pra ganhar prioridade.
+  if (/ALCOOL[\s\/]*GASOLINA|\bFLEX\b|\bBI[\s\-]?COMBUST/i.test(text)) v.fuelType = 'FLEX'
   else if (/\bGASOLINA\b/i.test(text)) v.fuelType = 'GASOLINA'
   else if (/\bDIESEL\b/i.test(text)) v.fuelType = 'DIESEL'
   else if (/\bH[ÍI]BRID/i.test(text)) v.fuelType = 'HÍBRIDO'
@@ -696,11 +723,16 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
   }
 
   // ── 8. Potência & Cilindrada ("74CV/999", "104CV/1598")
-  const potCilRe = /(?<!\d)(\d{2,4})\s*CV\s*[\/]\s*(\d{3,5})(?!\d)/i
+  // pdf-parse v1 funde valores em produção: "74CV/9991.36" (cilindrada 999 +
+  // PBT 1.36 colados). Cilindrada real de motor: 500-8000cc. Acima disso é
+  // lixo colado — reduz para os 3 primeiros dígitos.
+  const potCilRe = /(?<!\d)(\d{2,4})\s*CV\s*\/\s*(\d{3,5})/i
   const pcMatch = potCilRe.exec(text)
   if (pcMatch) {
     v.powerCv = Number(pcMatch[1])
-    v.displacementCc = Number(pcMatch[2])
+    let disp = Number(pcMatch[2])
+    if (disp > 8000) disp = Number(pcMatch[2].slice(0, 3))
+    v.displacementCc = disp
   }
 
   // ── 9. Espécie / Tipo — âncora → valor gateado por vocabulário oficial do
@@ -912,36 +944,29 @@ export async function extractNativePdfData(buffer: Buffer): Promise<{ text: stri
   const allTokens: PositionedToken[] = []
 
   try {
-    // createRequire baseado em process.cwd() — resolve pacotes do
-    // node_modules do projeto em runtime, sem passar pelo bundler do Next
-    // (que otimizava o `import()` dinâmico fora e nunca chamava o módulo).
-    // NÃO usar import.meta.url do parser: como o Next empacota o arquivo,
-    // o URL resultante fica fora da árvore de node_modules e o require falha.
+    // pdf-parse v1.1.1: função default direta que aceita Buffer e retorna
+    // { text, numpages, ... } — 100% síncrona in-process, sem worker (v2+
+    // usa pdf.worker.mjs que não empacota no serverless da Vercel).
+    // createRequire baseado em process.cwd() — resolve pacotes em runtime
+    // bypassando o bundler do Next (que otimizava o import() dinâmico fora).
     const { createRequire } = await import('node:module')
     const require = createRequire(`${process.cwd()}/package.json`)
-    // ROOT package expõe a classe PDFParse. O subpath /node é APENAS helpers
-    // internos (getHeader etc), não a API principal.
-    const mod: any = require('pdf-parse')
-    const PDFParse = mod?.PDFParse ?? mod?.default?.PDFParse ?? mod?.default
-    if (typeof PDFParse === 'function') {
-      const parser = new PDFParse({ data: new Uint8Array(buffer) })
-      try {
-        const result = await parser.getText()
-        text = String(result?.text ?? '').trim()
-      } finally {
-        try { await parser.destroy?.() } catch { /* silent */ }
-      }
-    } else if (typeof mod === 'function') {
-      // pdf-parse v1: função direta (fallback improvável, mas mantido)
-      const result = await mod(buffer)
+    // BUG CONHECIDO do pdf-parse v1: `require('pdf-parse')` executa código de
+    // debug no index.js que tenta ler `test/data/05-versions-space.pdf` e
+    // falha com ENOENT. Solução canônica: importar direto o módulo interno
+    // `lib/pdf-parse.js` que é a função real sem esse debug.
+    const mod: any = require('pdf-parse/lib/pdf-parse.js')
+    const pdfParse = typeof mod === 'function' ? mod : (mod?.default ?? mod)
+    if (typeof pdfParse === 'function') {
+      const result = await pdfParse(Buffer.from(buffer))
       text = String(result?.text ?? '').trim()
     } else {
-      __lastExtractionErrors.pdfParseNode = `PDFParse não é função (typeof=${typeof PDFParse}); modKeys=${Object.keys(mod || {}).slice(0, 10).join(',')}`
+      __lastExtractionErrors.pdfParseNode = `pdf-parse não é função (typeof=${typeof pdfParse}); modKeys=${Object.keys(mod || {}).slice(0, 10).join(',')}`
     }
   } catch (e) {
     const msg = (e as Error)?.message ?? String(e)
     __lastExtractionErrors.pdfParseNode = msg
-    console.warn('[CRLV parser] pdf-parse (createRequire cwd) falhou:', msg)
+    console.warn('[CRLV parser] pdf-parse falhou:', msg)
   }
 
   return { text, tokens: allTokens }
