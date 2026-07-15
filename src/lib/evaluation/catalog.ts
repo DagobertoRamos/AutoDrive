@@ -47,6 +47,20 @@ export interface CatalogItem {
   key:   string   // chave canônica única (ex: 'interior.banco_motorista')
   name:  string   // label exibido
   hint?: string   // dica curta opcional
+  /**
+   * Se true, exige pelo menos uma foto anexada ao item para concluir a
+   * seção. Se 'IF_EQUIPPED', exige apenas quando o equipamento correspondente
+   * estiver marcado (ex: teto_solar só é obrigatório se o opcional "Teto
+   * Solar" estiver marcado). A verificação corre no botão "Concluir seção"
+   * e no wizard "Concluir avaliação".
+   */
+  requiredPhoto?: true | 'IF_EQUIPPED'
+  /**
+   * Chave do opcional que dispara a exigência quando requiredPhoto='IF_EQUIPPED'.
+   * Deve ser um valor exato do array de opcionais do formulário do veículo
+   * (ex: 'Teto Solar').
+   */
+  requiredPhotoIfOptional?: string
 }
 
 export const ITEMS: Record<SectionKey, CatalogItem[]> = {
@@ -65,13 +79,12 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
     { key: 'interior.volante',                  name: 'Volante' },
     { key: 'interior.manopla_cambio',           name: 'Manopla do câmbio' },
     { key: 'interior.console',                  name: 'Console' },
-    { key: 'interior.motor_ruidos',             name: 'Motor interno / ruídos observados' },
     { key: 'interior.ar_condicionado',          name: 'Ar condicionado' },
     { key: 'interior.marcadores_painel',        name: 'Marcadores do painel' },
+    { key: 'interior.painel_km',                name: 'Painel / hodômetro (foto obrigatória com KM)', hint: 'Foto do painel exibindo a quilometragem', requiredPhoto: true },
     { key: 'interior.chave',                    name: 'Chave principal' },
     { key: 'interior.chave_reserva',            name: 'Chave reserva' },
     { key: 'interior.recuperacao_interior',     name: 'Recuperação geral interior' },
-    { key: 'interior.bateria',                  name: 'Bateria' },
   ],
 
   FRENTE: [
@@ -82,9 +95,12 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
     { key: 'frente.capo',                   name: 'Capô do motor' },
     { key: 'frente.mini_frente',            name: 'Mini frente' },
     { key: 'frente.teto',                   name: 'Teto' },
+    { key: 'frente.teto_solar',             name: 'Teto solar (foto obrigatória se equipamento marcado)', hint: 'Se o veículo tem teto solar, anexe foto do teto solar', requiredPhoto: 'IF_EQUIPPED', requiredPhotoIfOptional: 'Teto Solar' },
     { key: 'frente.longarina_esquerda',     name: 'Longarina esquerda' },
     { key: 'frente.longarina_direita',      name: 'Longarina direita' },
-    { key: 'frente.bateria',                name: 'Bateria (vista frontal)' },
+    { key: 'frente.motor',                  name: 'Motor e vão do motor' },
+    { key: 'frente.motor_ruidos',           name: 'Ruídos do motor (observação auditiva)' },
+    { key: 'frente.bateria',                name: 'Bateria' },
     { key: 'frente.recuperacao_frente',     name: 'Recuperação geral frente' },
   ],
 
@@ -112,6 +128,9 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
     { key: 'traseira.terceira_luz',         name: 'Terceira luz de freio' },
     { key: 'traseira.vidro_vigia',          name: 'Vidro traseiro / vigia' },
     { key: 'traseira.estepe',               name: 'Estepe' },
+    { key: 'traseira.macaco',               name: 'Macaco' },
+    { key: 'traseira.triangulo',            name: 'Triângulo' },
+    { key: 'traseira.chave_roda',           name: 'Chave de roda' },
     { key: 'traseira.tampao_porta_malas',   name: 'Tampão porta-malas' },
     { key: 'traseira.tampa_traseira',       name: 'Tampa traseira' },
     { key: 'traseira.chapa_final',          name: 'Chapa final traseira' },

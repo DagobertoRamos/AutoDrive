@@ -1868,6 +1868,7 @@ function AvaliacaoForm() {
                 evaluationId={evaluationId}
                 evaluationStatus={evalStatus}
                 reopenCount={evalReopenCount}
+                opcionais={opcionais}
                 onBack={() => setStep(1)}
                 onComplete={() => setStep(4)}
               />

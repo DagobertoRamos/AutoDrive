@@ -41,6 +41,9 @@ interface EvaluationSectionsProps {
   /** reopenCount > 0 → label do botão muda para "Reavaliar". */
   reopenCount?:       number
   readOnly?:          boolean
+  /** Opcionais marcados no Step Veículo — usados para exigir foto de itens
+   *  com `requiredPhoto: 'IF_EQUIPPED'` (ex: teto solar). */
+  opcionais?:         string[]
   /** Callback opcional ao clicar "Anterior seção" estando na 1ª aba — leva ao step anterior do wizard. */
   onBack?:            () => void
   /** Callback opcional ao clicar "Concluir avaliação" estando na última aba — avança o wizard. */
@@ -212,7 +215,7 @@ function SectionPhotoWidget({
 }
 
 export function EvaluationSections({
-  evaluationId, evaluationStatus, reopenCount = 0, readOnly, onBack, onComplete,
+  evaluationId, evaluationStatus, reopenCount = 0, readOnly, opcionais = [], onBack, onComplete,
 }: EvaluationSectionsProps) {
   const [tab,         setTab]         = useState<SectionKey>('INTERIOR')
   const [items,       setItems]       = useState<EvalItem[]>([])
@@ -288,6 +291,40 @@ export function EvaluationSections({
     if (reopenCount > 0) return 'Reavaliar'
     if (!status || status === 'PENDING' || status === 'NAO_AVALIADO') return 'Avaliar item'
     return 'Editar item'
+  }
+
+  /**
+   * Retorna itens da seção com foto obrigatória PENDENTE. Considera:
+   *   • requiredPhoto === true            → sempre exige foto
+   *   • requiredPhoto === 'IF_EQUIPPED'   → só exige se o opcional
+   *                                          `requiredPhotoIfOptional`
+   *                                          estiver marcado no formulário
+   * Uma foto conta quando existe EvaluationAttachment com itemId igual ao
+   * do EvaluationItem correspondente e fileType='image'.
+   */
+  function missingRequiredPhotos(section: SectionKey): Array<{ key: string; name: string }> {
+    const catalogForSection = ITEMS[section] ?? []
+    const missing: Array<{ key: string; name: string }> = []
+    for (const catItem of catalogForSection) {
+      if (!catItem.requiredPhoto) continue
+      // Condicional: só exige quando o opcional correspondente está marcado
+      if (catItem.requiredPhoto === 'IF_EQUIPPED') {
+        const target = (catItem.requiredPhotoIfOptional ?? '').trim().toLowerCase()
+        if (!target) continue
+        const isEquipped = opcionais.some((o) => (o ?? '').trim().toLowerCase() === target)
+        if (!isEquipped) continue
+      }
+      // Encontra o EvaluationItem correspondente (seed cria com catalogKey)
+      const item = items.find((it) => it.catalogKey === catItem.key && it.section === section)
+      if (!item) {
+        // Item ainda não seedado — considera pendente (usuário precisa recarregar)
+        missing.push({ key: catItem.key, name: catItem.name })
+        continue
+      }
+      const hasPhoto = attachments.some((a) => a.itemId === item.id && a.fileType === 'image')
+      if (!hasPhoto) missing.push({ key: catItem.key, name: catItem.name })
+    }
+    return missing
   }
 
   return (
@@ -383,6 +420,18 @@ export function EvaluationSections({
             })}
           </ul>
 
+          {/* ── Validação de fotos obrigatórias na seção atual ────────────── */}
+          {(() => {
+            const missing = missingRequiredPhotos(tab)
+            if (missing.length === 0) return null
+            return (
+              <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                <strong>Foto obrigatória pendente:</strong>{' '}
+                {missing.map((m) => m.name).join(', ')}. Clique no item para anexar antes de avançar.
+              </div>
+            )
+          })()}
+
           {/* ── Navegação entre seções ───────────────────────────────────── */}
           {(onBack || onComplete) && (
             <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-3">
@@ -402,8 +451,9 @@ export function EvaluationSections({
               {TABS.indexOf(tab) < TABS.length - 1 ? (
                 <button
                   type="button"
+                  disabled={missingRequiredPhotos(tab).length > 0}
                   onClick={() => setTab(TABS[TABS.indexOf(tab) + 1])}
-                  className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                  className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Próxima seção ({SECTIONS.find((s) => s.key === TABS[TABS.indexOf(tab) + 1])?.label})
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -411,8 +461,9 @@ export function EvaluationSections({
               ) : (
                 <button
                   type="button"
+                  disabled={missingRequiredPhotos(tab).length > 0}
                   onClick={() => onComplete?.()}
-                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Concluir avaliação — ir para Cautelar
