@@ -850,7 +850,49 @@ export function buildExtractedField<T>(
 // dev/diagnóstico para ver o que quebra no serverless.
 export const __lastExtractionErrors: { pdfParseNode?: string; pdfParseRoot?: string; pdfjs?: string } = {}
 
+// Polyfill mínimo de DOMMatrix e ImageData para o runtime Node do Vercel
+// serverless. `pdf-parse` v2 e `pdfjs-dist` v5 usam essas APIs de DOM que
+// não existem no Node — sem o polyfill, o import lança "ReferenceError:
+// DOMMatrix is not defined" antes mesmo de tentar processar o PDF.
+// Basta que existam como classes (mesmo vazias) para a inicialização passar.
+function installDomPolyfills(): void {
+  const g = globalThis as any
+  if (typeof g.DOMMatrix === 'undefined') {
+    g.DOMMatrix = class DOMMatrix {
+      a = 1; b = 0; c = 0; d = 1; e = 0; f = 0
+      m11 = 1; m12 = 0; m13 = 0; m14 = 0
+      m21 = 0; m22 = 1; m23 = 0; m24 = 0
+      m31 = 0; m32 = 0; m33 = 1; m34 = 0
+      m41 = 0; m42 = 0; m43 = 0; m44 = 1
+      constructor(init?: any) {
+        if (Array.isArray(init) && init.length >= 6) {
+          this.a = this.m11 = init[0]; this.b = this.m12 = init[1]
+          this.c = this.m21 = init[2]; this.d = this.m22 = init[3]
+          this.e = this.m41 = init[4]; this.f = this.m42 = init[5]
+        }
+      }
+      translate() { return new g.DOMMatrix() }
+      scale() { return new g.DOMMatrix() }
+      multiply() { return new g.DOMMatrix() }
+      inverse() { return new g.DOMMatrix() }
+    }
+  }
+  if (typeof g.ImageData === 'undefined') {
+    g.ImageData = class ImageData {
+      data: Uint8ClampedArray; width: number; height: number
+      constructor(w: number, h: number) {
+        this.width = w; this.height = h
+        this.data = new Uint8ClampedArray(w * h * 4)
+      }
+    }
+  }
+  if (typeof g.Path2D === 'undefined') {
+    g.Path2D = class Path2D {}
+  }
+}
+
 export async function extractNativePdfData(buffer: Buffer): Promise<{ text: string, tokens: PositionedToken[] }> {
+  installDomPolyfills()
   // reset
   __lastExtractionErrors.pdfParseNode = undefined
   __lastExtractionErrors.pdfParseRoot = undefined
