@@ -61,6 +61,59 @@ export interface CatalogItem {
    * (ex: 'Teto Solar').
    */
   requiredPhotoIfOptional?: string
+  /**
+   * Grupo de posição para itens que existem em várias posições no veículo.
+   * Quando definido, a UI do ItemDrawer mostra checkboxes de posições
+   * ("Aplica-se também a") para o operador marcar se a mesma avaliação
+   * vale para outras posições (ex: pneu dianteiro direito também no
+   * dianteiro esquerdo).
+   */
+  positionGroup?: PositionGroup
+}
+
+/** Grupos de posições cadastrados. Cada grupo define quais posições
+ *  aparecem como opções no ItemDrawer. */
+export type PositionGroup = 'WHEELS' | 'MIRRORS' | 'HEADLIGHTS' | 'TAILLIGHTS'
+                          | 'FENDERS_FRONT' | 'DOORS' | 'HANDLES' | 'LATERAL_LAMPS'
+
+/** Etiquetas das posições por grupo. A KEY é o valor persistido em notes;
+ *  o LABEL é o exibido na UI. */
+export const POSITION_LABELS: Record<PositionGroup, Array<{ key: string; label: string }>> = {
+  WHEELS:        [{ key: 'DE', label: 'Dianteiro esquerdo' }, { key: 'DD', label: 'Dianteiro direito' }, { key: 'TE', label: 'Traseiro esquerdo' }, { key: 'TD', label: 'Traseiro direito' }],
+  MIRRORS:       [{ key: 'E',  label: 'Esquerdo' }, { key: 'D',  label: 'Direito' }],
+  HEADLIGHTS:    [{ key: 'E',  label: 'Esquerdo' }, { key: 'D',  label: 'Direito' }],
+  TAILLIGHTS:    [{ key: 'E',  label: 'Esquerdo' }, { key: 'D',  label: 'Direito' }],
+  FENDERS_FRONT: [{ key: 'E',  label: 'Esquerdo' }, { key: 'D',  label: 'Direito' }],
+  DOORS:         [{ key: 'DE', label: 'Dianteira esquerda' }, { key: 'DD', label: 'Dianteira direita' }, { key: 'TE', label: 'Traseira esquerda' }, { key: 'TD', label: 'Traseira direita' }],
+  HANDLES:       [{ key: 'DE', label: 'Dianteira esquerda' }, { key: 'DD', label: 'Dianteira direita' }, { key: 'TE', label: 'Traseira esquerda' }, { key: 'TD', label: 'Traseira direita' }],
+  LATERAL_LAMPS: [{ key: 'E',  label: 'Esquerdo' }, { key: 'D',  label: 'Direito' }],
+}
+
+// ── Helpers "aplica-se também a" — persistidos no campo notes ────────────────
+// Padrão do prefixo (compatível com o já usado em `[Ano Modelo]`, `[Opcionais]`):
+//   notes = "[APPLIES_TO] DE,DD\nRest of user notes..."
+// Vantagem: sem migration. Desvantagem: string parsing.
+
+const APPLIES_TO_PREFIX = '[APPLIES_TO]'
+const APPLIES_TO_LINE_RE = /^\s*\[APPLIES_TO\]\s*([A-Z,]+)\s*\r?\n?/m
+
+export function parseAppliesTo(notes: string | null | undefined): string[] {
+  if (!notes) return []
+  const m = APPLIES_TO_LINE_RE.exec(notes)
+  if (!m) return []
+  return m[1].split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)
+}
+
+export function stripAppliesTo(notes: string | null | undefined): string {
+  if (!notes) return ''
+  return notes.replace(APPLIES_TO_LINE_RE, '').trim()
+}
+
+export function serializeNotesWithAppliesTo(notes: string, appliesTo: string[]): string {
+  const clean = stripAppliesTo(notes)
+  if (!appliesTo.length) return clean
+  const line = `${APPLIES_TO_PREFIX} ${appliesTo.join(',')}`
+  return clean ? `${line}\n${clean}` : line
 }
 
 export const ITEMS: Record<SectionKey, CatalogItem[]> = {
@@ -88,8 +141,8 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
   ],
 
   FRENTE: [
-    { key: 'frente.farol_direito',          name: 'Farol direito' },
-    { key: 'frente.farol_esquerdo',         name: 'Farol esquerdo' },
+    { key: 'frente.farol_direito',          name: 'Farol direito', positionGroup: 'HEADLIGHTS' },
+    { key: 'frente.farol_esquerdo',         name: 'Farol esquerdo', positionGroup: 'HEADLIGHTS' },
     { key: 'frente.parabrisa',              name: 'Para-brisa' },
     { key: 'frente.parachoque_dianteiro',   name: 'Parachoque dianteiro' },
     { key: 'frente.capo',                   name: 'Capô do motor' },
@@ -106,25 +159,25 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
 
   DIREITA: [
     { key: 'direita.caixa_ar',              name: 'Caixa de ar direita' },
-    { key: 'direita.paralama_dianteiro',    name: 'Paralama dianteiro direito' },
-    { key: 'direita.lanterna_lateral',      name: 'Lanterna lateral direita' },
-    { key: 'direita.pneu_dianteiro',        name: 'Pneu dianteiro direito' },
-    { key: 'direita.roda_dianteira',        name: 'Roda dianteira direita' },
-    { key: 'direita.retrovisor',            name: 'Retrovisor direito' },
-    { key: 'direita.porta_dianteira',       name: 'Porta dianteira direita' },
-    { key: 'direita.macaneta_dianteira',    name: 'Maçaneta dianteira direita' },
-    { key: 'direita.porta_traseira',        name: 'Porta traseira direita' },
-    { key: 'direita.macaneta_traseira',     name: 'Maçaneta traseira direita' },
-    { key: 'direita.pneu_traseiro',         name: 'Pneu traseiro direito' },
-    { key: 'direita.roda_traseira',         name: 'Roda traseira direita' },
+    { key: 'direita.paralama_dianteiro',    name: 'Paralama dianteiro direito', positionGroup: 'FENDERS_FRONT' },
+    { key: 'direita.lanterna_lateral',      name: 'Lanterna lateral direita', positionGroup: 'LATERAL_LAMPS' },
+    { key: 'direita.pneu_dianteiro',        name: 'Pneu dianteiro direito', positionGroup: 'WHEELS' },
+    { key: 'direita.roda_dianteira',        name: 'Roda dianteira direita', positionGroup: 'WHEELS' },
+    { key: 'direita.retrovisor',            name: 'Retrovisor direito', positionGroup: 'MIRRORS' },
+    { key: 'direita.porta_dianteira',       name: 'Porta dianteira direita', positionGroup: 'DOORS' },
+    { key: 'direita.macaneta_dianteira',    name: 'Maçaneta dianteira direita', positionGroup: 'HANDLES' },
+    { key: 'direita.porta_traseira',        name: 'Porta traseira direita', positionGroup: 'DOORS' },
+    { key: 'direita.macaneta_traseira',     name: 'Maçaneta traseira direita', positionGroup: 'HANDLES' },
+    { key: 'direita.pneu_traseiro',         name: 'Pneu traseiro direito', positionGroup: 'WHEELS' },
+    { key: 'direita.roda_traseira',         name: 'Roda traseira direita', positionGroup: 'WHEELS' },
     { key: 'direita.lateral_traseira',      name: 'Lateral traseira direita' },
     { key: 'direita.tampa_combustivel',     name: 'Tampa do combustível direita' },
     { key: 'direita.recuperacao_direita',   name: 'Recuperação geral direita' },
   ],
 
   TRASEIRA: [
-    { key: 'traseira.lanterna_direita',     name: 'Lanterna traseira direita' },
-    { key: 'traseira.lanterna_esquerda',    name: 'Lanterna traseira esquerda' },
+    { key: 'traseira.lanterna_direita',     name: 'Lanterna traseira direita', positionGroup: 'TAILLIGHTS' },
+    { key: 'traseira.lanterna_esquerda',    name: 'Lanterna traseira esquerda', positionGroup: 'TAILLIGHTS' },
     { key: 'traseira.terceira_luz',         name: 'Terceira luz de freio' },
     { key: 'traseira.vidro_vigia',          name: 'Vidro traseiro / vigia' },
     { key: 'traseira.estepe',               name: 'Estepe' },
@@ -141,18 +194,18 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
   ],
 
   ESQUERDA: [
-    { key: 'esquerda.paralama_dianteiro',   name: 'Paralama dianteiro esquerdo' },
+    { key: 'esquerda.paralama_dianteiro',   name: 'Paralama dianteiro esquerdo', positionGroup: 'FENDERS_FRONT' },
     { key: 'esquerda.caixa_ar',             name: 'Caixa de ar esquerda' },
-    { key: 'esquerda.lanterna_lateral',     name: 'Lanterna lateral esquerda' },
-    { key: 'esquerda.pneu_dianteiro',       name: 'Pneu dianteiro esquerdo' },
-    { key: 'esquerda.roda_dianteira',       name: 'Roda dianteira esquerda' },
-    { key: 'esquerda.retrovisor',           name: 'Retrovisor esquerdo' },
-    { key: 'esquerda.porta_dianteira',      name: 'Porta dianteira esquerda' },
-    { key: 'esquerda.macaneta_dianteira',   name: 'Maçaneta dianteira esquerda' },
-    { key: 'esquerda.porta_traseira',       name: 'Porta traseira esquerda' },
-    { key: 'esquerda.macaneta_traseira',    name: 'Maçaneta traseira esquerda' },
-    { key: 'esquerda.pneu_traseiro',        name: 'Pneu traseiro esquerdo' },
-    { key: 'esquerda.roda_traseira',        name: 'Roda traseira esquerda' },
+    { key: 'esquerda.lanterna_lateral',     name: 'Lanterna lateral esquerda', positionGroup: 'LATERAL_LAMPS' },
+    { key: 'esquerda.pneu_dianteiro',       name: 'Pneu dianteiro esquerdo', positionGroup: 'WHEELS' },
+    { key: 'esquerda.roda_dianteira',       name: 'Roda dianteira esquerda', positionGroup: 'WHEELS' },
+    { key: 'esquerda.retrovisor',           name: 'Retrovisor esquerdo', positionGroup: 'MIRRORS' },
+    { key: 'esquerda.porta_dianteira',      name: 'Porta dianteira esquerda', positionGroup: 'DOORS' },
+    { key: 'esquerda.macaneta_dianteira',   name: 'Maçaneta dianteira esquerda', positionGroup: 'HANDLES' },
+    { key: 'esquerda.porta_traseira',       name: 'Porta traseira esquerda', positionGroup: 'DOORS' },
+    { key: 'esquerda.macaneta_traseira',    name: 'Maçaneta traseira esquerda', positionGroup: 'HANDLES' },
+    { key: 'esquerda.pneu_traseiro',        name: 'Pneu traseiro esquerdo', positionGroup: 'WHEELS' },
+    { key: 'esquerda.roda_traseira',        name: 'Roda traseira esquerda', positionGroup: 'WHEELS' },
     { key: 'esquerda.lateral_traseira',     name: 'Lateral traseira esquerda' },
     { key: 'esquerda.tampa_combustivel',    name: 'Tampa do combustível esquerda' },
     { key: 'esquerda.recuperacao_esquerda', name: 'Recuperação geral esquerda' },

@@ -12,7 +12,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Save, Loader2, Camera, Upload, Trash2 } from 'lucide-react'
 import { maskBRL, parseBRL, numberToBRLMask } from '@/lib/masks'
-import { ITEM_STATUS, SERVICE_TYPES, SERVICE_TYPE_LABELS, PRIORITIES } from '@/lib/evaluation/catalog'
+import {
+  ITEM_STATUS, SERVICE_TYPES, SERVICE_TYPE_LABELS, PRIORITIES,
+  ITEMS, POSITION_LABELS, parseAppliesTo, stripAppliesTo, serializeNotesWithAppliesTo,
+  type SectionKey, type PositionGroup,
+} from '@/lib/evaluation/catalog'
 
 export interface DrawerItem {
   id:           string
@@ -21,6 +25,7 @@ export interface DrawerItem {
   status:       string
   priority:     string | null
   notes:        string | null
+  catalogKey:   string | null
 }
 
 export interface DrawerPhoto {
@@ -44,13 +49,35 @@ const inputCls = 'rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-
 export function ItemDrawer({
   item, isReopen, readOnly, existingPhotos = [], onSave, onClose,
 }: ItemDrawerProps) {
+  // Descobre o positionGroup do item a partir do catalogKey — se o item foi
+  // criado com base no catálogo, exibe checkboxes de posições ("aplica-se
+  // também a"). Se não achar (item avulso sem catalogKey ou catálogo antigo),
+  // nada aparece — não quebra nada.
+  const positionGroup: PositionGroup | null = (() => {
+    if (!item.catalogKey) return null
+    // Extrai a section do catalogKey (formato "section.item")
+    const [sectionKey] = item.catalogKey.split('.')
+    if (!sectionKey) return null
+    const upperSection = sectionKey.toUpperCase() as SectionKey
+    const catalog = ITEMS[upperSection] ?? []
+    const catItem = catalog.find((c) => c.key === item.catalogKey)
+    return catItem?.positionGroup ?? null
+  })()
+  const positions = positionGroup ? POSITION_LABELS[positionGroup] : []
+
+  const togglePosition = (key: string) => {
+    setAppliesTo((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key])
+  }
+
   const firstTime = !item.status || item.status === 'PENDING' || item.status === 'NAO_AVALIADO'
   const headerChip = isReopen ? 'Reavaliar' : (firstTime ? 'Avaliar item' : 'Editar item')
   const buttonLabel = firstTime && !isReopen ? 'Salvar avaliação' : 'Salvar alterações'
 
   const [status,      setStatus]      = useState(item.status || 'PENDING')
   const [priority,    setPriority]    = useState(item.priority ?? '')
-  const [notes,       setNotes]       = useState(item.notes ?? '')
+  // Notes visíveis (sem o marker [APPLIES_TO]) — o marker é reagregado no save
+  const [notes,       setNotes]       = useState(stripAppliesTo(item.notes))
+  const [appliesTo,   setAppliesTo]   = useState<string[]>(parseAppliesTo(item.notes))
   const [serviceType, setServiceType] = useState<string>('OUTRO')
   const [costMask,    setCostMask]    = useState<string>('')
   const [description, setDescription] = useState<string>('')
@@ -65,7 +92,8 @@ export function ItemDrawer({
   useEffect(() => {
     setStatus(item.status || 'PENDING')
     setPriority(item.priority ?? '')
-    setNotes(item.notes ?? '')
+    setNotes(stripAppliesTo(item.notes))
+    setAppliesTo(parseAppliesTo(item.notes))
     setCostMask('')
     setDescription('')
     setPhotos(existingPhotos)
@@ -119,13 +147,18 @@ export function ItemDrawer({
     setSaving(true)
     setErr('')
     try {
+      // Recombina o marker [APPLIES_TO] com as notes visíveis — persistido no
+      // mesmo campo `notes` (evita migration Prisma).
+      const finalNotes = positionGroup
+        ? (serializeNotesWithAppliesTo(notes, appliesTo) || null)
+        : (notes || null)
       const r1 = await fetch(`/api/evaluations/${item.evaluationId}/items/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status,
           priority: priority || null,
-          notes:    notes    || null,
+          notes:    finalNotes,
         }),
       })
       if (!r1.ok) {
@@ -239,6 +272,40 @@ export function ItemDrawer({
               ))}
             </select>
           </label>
+
+          {/* ── Aplica-se também a: posições adicionais (pneu/retrovisor/…) ── */}
+          {positionGroup && positions.length > 0 && (
+            <div className="flex flex-col gap-1.5 rounded-lg border border-brand-200 bg-brand-50/50 px-3 py-2">
+              <span className="text-xs font-medium text-brand-800">
+                Aplica-se também a
+                <span className="text-[10px] text-brand-600 font-normal ml-1">
+                  (a mesma avaliação vale para as posições marcadas abaixo)
+                </span>
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {positions.map((p) => {
+                  const checked = appliesTo.includes(p.key)
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => togglePosition(p.key)}
+                      disabled={readOnly}
+                      className={[
+                        'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                        checked
+                          ? 'border-brand-500 bg-brand-600 text-white'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-brand-400',
+                        readOnly ? 'opacity-50 cursor-not-allowed' : '',
+                      ].join(' ')}
+                    >
+                      {checked ? '✓ ' : ''}{p.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-600">Observações</span>

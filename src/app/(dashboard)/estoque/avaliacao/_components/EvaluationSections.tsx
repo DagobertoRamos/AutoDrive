@@ -407,7 +407,7 @@ export function EvaluationSections({
                     disabled={isPlaceholder || readOnly}
                     onClick={() => setDrawer({
                       id: it.id, evaluationId, name: it.name, status: it.status,
-                      priority: it.priority, notes: it.notes,
+                      priority: it.priority, notes: it.notes, catalogKey: it.catalogKey,
                     })}
                     className="inline-flex items-center gap-1 rounded-lg border border-brand-300 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={isPlaceholder ? 'Itens ainda não inicializados. Salve a avaliação antes.' : ''}
