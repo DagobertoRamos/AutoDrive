@@ -15,16 +15,35 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { loadEvaluationContext } from '@/lib/evaluation/service'
 import { canSubmitForApproval }  from '@/lib/evaluation/permissions'
 import { recordHistory }        from '@/lib/evaluation/history'
-import { notifyByRole }         from '@/services/notification.service'
+import { notifyByRole, notify } from '@/services/notification.service'
+
+// Marker persistido em evaluationNotes para guardar o vendedor atribuído sem
+// migration de schema. Mesmo padrão do [Ano Modelo], [Opcionais], [APPLIES_TO].
+const ASSIGNED_SELLER_RE = /^\s*\[ASSIGNED_SELLER\]\s*(\S+)\s*\r?\n?/m
+function stripAssignedSeller(notes: string | null | undefined): string {
+  return (notes ?? '').replace(ASSIGNED_SELLER_RE, '').trim()
+}
+function withAssignedSeller(sellerUserId: string, extra: string): string {
+  const clean = stripAssignedSeller(extra)
+  const line = `[ASSIGNED_SELLER] ${sellerUserId}`
+  return clean ? `${line}\n${clean}` : line
+}
 
 const REQUIRED_SECTIONS = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE'] as const
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+
+  // Body opcional: { assignedSellerId? } — quando presente, persistimos o
+  // userId do vendedor no evaluationNotes com marker e disparamos notificação
+  // adicional para ele.
+  const body = await req.json().catch(() => null) as { assignedSellerId?: string } | null
+  const assignedSellerId = body?.assignedSellerId && typeof body.assignedSellerId === 'string' ? body.assignedSellerId.trim() : null
+
   try {
     const ctx = await loadEvaluationContext(params.id)
     if (!ctx) return NextResponse.json({ error: 'Avaliação não encontrada' }, { status: 404 })
@@ -55,8 +74,28 @@ export async function POST(
 
     const ev = await prisma.vehicleEvaluation.findUnique({
       where: { id: params.id },
-      select: { plate: true, brand: true, model: true, tenantId: true },
+      select: { plate: true, brand: true, model: true, tenantId: true, evaluationNotes: true },
     })
+
+    // Se veio vendedor no body, valida que o userId corresponde a um Seller
+    // ativo da unidade da avaliação (defesa em profundidade — o dropdown
+    // do frontend já filtra, mas API não pode confiar no cliente).
+    if (assignedSellerId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const seller = await (prisma as any).seller.findFirst({
+        where: {
+          userId: assignedSellerId,
+          active: true,
+          ...(ctx.unitId ? { unitId: ctx.unitId } : {}),
+        },
+        select: { id: true, fullName: true, userId: true },
+      })
+      if (!seller) {
+        return NextResponse.json({
+          error: 'Vendedor selecionado não pertence à unidade da avaliação ou está inativo.',
+        }, { status: 400 })
+      }
+    }
 
     const updated = await prisma.vehicleEvaluation.update({
       where: { id: params.id },
@@ -65,6 +104,8 @@ export async function POST(
         status: 'AGUARDANDO_APROVACAO' as any,
         approvalRequestedAt:   new Date(),
         approvalRequestedById: session.user.id,
+        // Persiste o vendedor atribuído no notes (sem migration)
+        ...(assignedSellerId ? { evaluationNotes: withAssignedSeller(assignedSellerId, ev?.evaluationNotes ?? '') } : {}),
       },
     })
 
@@ -95,6 +136,21 @@ export async function POST(
         metadata:  { evaluationId: params.id },
         channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH', 'EMAIL', 'WHATSAPP'],
       }).catch((e) => { console.error('[submit-for-approval] notify failed', e) })
+
+      // Notifica também o vendedor atribuído (se houver) — para ele acompanhar
+      // a negociação assim que o gerente precificar/liberar.
+      if (assignedSellerId) {
+        await notify({
+          tenantId: ctx.tenantId,
+          userId:   assignedSellerId,
+          type:     'SISTEMA',
+          title:    'Avaliação atribuída a você',
+          message:  `Você é o vendedor responsável pela avaliação: ${desc}. Assim que o gerente liberar, você poderá dar sequência.`,
+          actionUrl: `/estoque/avaliacao/${params.id}/inspecao`,
+          metadata:  { evaluationId: params.id, role: 'ASSIGNED_SELLER' },
+          channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH'],
+        }).catch((e) => { console.error('[submit-for-approval] notify seller failed', e) })
+      }
     }
 
     return NextResponse.json({ data: updated })

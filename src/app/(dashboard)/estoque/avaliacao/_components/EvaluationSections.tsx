@@ -15,6 +15,7 @@ import { Loader2, ChevronRight, ChevronLeft, Camera, Upload, Trash2, ImageIcon, 
 import { ITEMS, SECTIONS, ITEM_STATUS, type SectionKey } from '@/lib/evaluation/catalog'
 import { ItemDrawer, type DrawerItem } from './ItemDrawer'
 import { ServicesSection } from './ServicesSection'
+import { SummarySection } from './SummarySection'
 
 interface EvalItem {
   id:         string
@@ -51,7 +52,7 @@ interface EvaluationSectionsProps {
   onComplete?:        () => void
 }
 
-const TABS: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE', 'SERVICOS']
+const TABS: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE', 'SERVICOS', 'RESUMO']
 
 /**
  * Remove itens duplicados da lista. Critério:
@@ -379,7 +380,14 @@ export function EvaluationSections({
           evaluationId={evaluationId}
           readOnly={readOnly}
           onBack={() => setTab(TABS[TABS.indexOf('SERVICOS') - 1])}
-          onComplete={() => onComplete?.()}
+          onComplete={() => setTab('RESUMO')}
+        />
+      ) : tab === 'RESUMO' ? (
+        // Aba RESUMO: consolida tudo + botão Finalizar (submit-for-approval)
+        <SummarySection
+          evaluationId={evaluationId}
+          onBack={() => setTab('SERVICOS')}
+          onFinalized={() => onComplete?.()}
         />
       ) : (
         <>
