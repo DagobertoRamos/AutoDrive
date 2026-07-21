@@ -451,6 +451,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Identidade',        href: '/master/identity',           module: 'master' },
       { label: 'Segurança',         href: '/master/security',           module: 'master' },
       { label: 'Documentos',        href: '/master/documentos',         module: 'master' },
+      { label: 'Serviços da avaliação', href: '/master/evaluation-services', module: 'master' },
       { label: 'Auditoria',         href: '/master/audit',              module: 'master.audit' },
     ],
   },

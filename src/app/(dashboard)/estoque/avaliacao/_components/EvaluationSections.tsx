@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, ChevronRight, ChevronLeft, Camera, Upload, Trash2, ImageIcon, CheckCircle2 } from 'lucide-react'
 import { ITEMS, SECTIONS, ITEM_STATUS, type SectionKey } from '@/lib/evaluation/catalog'
 import { ItemDrawer, type DrawerItem } from './ItemDrawer'
+import { ServicesSection } from './ServicesSection'
 
 interface EvalItem {
   id:         string
@@ -50,7 +51,7 @@ interface EvaluationSectionsProps {
   onComplete?:        () => void
 }
 
-const TABS: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE']
+const TABS: SectionKey[] = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE', 'SERVICOS']
 
 /**
  * Remove itens duplicados da lista. Critério:
@@ -372,6 +373,14 @@ export function EvaluationSections({
         <div className="flex items-center justify-center py-10 text-gray-400">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
+      ) : tab === 'SERVICOS' ? (
+        // Aba SERVIÇOS tem UI própria (catálogo configurável + custos)
+        <ServicesSection
+          evaluationId={evaluationId}
+          readOnly={readOnly}
+          onBack={() => setTab(TABS[TABS.indexOf('SERVICOS') - 1])}
+          onComplete={() => onComplete?.()}
+        />
       ) : (
         <>
           {/* Foto geral da seção (obrigatória) */}
