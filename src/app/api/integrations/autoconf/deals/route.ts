@@ -550,8 +550,7 @@ export async function POST(req: Request) {
         // Comissão: quando V2 aplicou e afirmou que nada relevante mudou, PULA o
         // recálculo (economia + estabilidade do ranking). Caso contrário (V2 não
         // aplicou / mudou algo relevante), recalcula como sempre.
-        const shouldRecalcCommission = isCommissionEligibleStatus(status) && (!v2Result || v2Result.commissionShouldRecalculate)
-        if (shouldRecalcCommission) {
+        if (isCommissionEligibleStatus(status)) {
           try {
             const commission = await recalculateNegotiationCommissions({
               dealId: savedDealId,
@@ -566,6 +565,17 @@ export async function POST(req: Request) {
               message: err instanceof Error ? err.message : 'Erro desconhecido',
             })
           }
+        } else {
+          // Se o status não for elegível para comissão, deleta/estorna as comissões PREVISTO
+          try {
+            await prisma.commissionCalculation.deleteMany({
+              where: {
+                tenantId,
+                status: 'PREVISTO',
+                ruleDetails: { path: ['dealId'], equals: savedDealId } as never,
+              },
+            }).catch(() => {})
+          } catch (err) {}
         }
         updated++
         results.push({ externalId: ext, action: 'updated', unit: unitName.get(unitId), seller: row.vendedor ?? null, dealNumber })
@@ -636,6 +646,16 @@ export async function POST(req: Request) {
               message: err instanceof Error ? err.message : 'Erro desconhecido',
             })
           }
+        } else {
+          try {
+            await prisma.commissionCalculation.deleteMany({
+              where: {
+                tenantId,
+                status: 'PREVISTO',
+                ruleDetails: { path: ['dealId'], equals: savedDealId } as never,
+              },
+            }).catch(() => {})
+          } catch (err) {}
         }
         created++
         results.push({ externalId: ext, action: 'created', unit: unitName.get(unitId), seller: row.vendedor ?? null, dealNumber })

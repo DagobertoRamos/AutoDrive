@@ -36,14 +36,10 @@ const config = [
         'warn',
         { vars: 'all', varsIgnorePattern: '^_', args: 'after-used', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
-      // Padrão fetch-on-mount (useEffect → load → setState) é usado em todo o
-      // app; regra advisory mantida como aviso, não erro.
-      'react-hooks/set-state-in-effect': 'warn',
       // Dívida de estilo pervasiva no código legado (nunca foi lintado).
       // Mantida VISÍVEL como aviso; código novo deve evitar. Limpeza do legado
       // pode ser feita em um passe dedicado (ratchet para 'error' depois).
       '@typescript-eslint/no-explicit-any': 'warn',
-      'react/no-unescaped-entities': 'warn',
     },
   },
 ]

@@ -11,15 +11,11 @@ import {
   ExtractedVehicle,
   ExtractionSource,
   ValidationStatus,
-  VehicleCategory,
   VehicleExtractedField,
   PositionedToken,
 } from './types'
 import {
   normalizeText,
-  classifyVehicleCategory,
-  getEngineCommercialLabel,
-  resolveTransmissionType,
 } from './deterministic'
 
 // ── Helpers de Validação ─────────────────────────────────────────────────────
@@ -445,7 +441,7 @@ export function parseCrlvText(rawText: string, mappings?: any): ExtractedVehicle
   // que aproveitar da linha.
   const JUNK_CUT_RE = /\b(DADOS\b|SEGUROS?\b|DPVAT\b|ASSINADO\b|SENATRAN\b|MENSAGENS\b|OBSERVA[ÇC]|INFORMA[ÇC]|VALIDE\b|QRCODE\b|CAT\.?\s*TARIF)\S*.*$/i
   const stripJunk = (s: string): string =>
-    s.replace(JUNK_CUT_RE, '').trim()
+    s.replace(JUNK_CUT_RE, '').replace(/^[\s:]+/, '').trim()
 
   /**
    * Âncora→valor sobre linhas: encontra a linha do rótulo e tenta extrair o
