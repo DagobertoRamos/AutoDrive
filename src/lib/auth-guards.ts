@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { type UserRole } from '@/types'
+import { SESSION_ERROR_CODE } from '@/lib/auth-session'
 
 // ── Conjuntos de roles ────────────────────────────────────────────────────────
 
@@ -99,10 +100,23 @@ export function tenantWhere(
 
 // ── Respostas padronizadas de erro de autenticação ────────────────────────────
 
+/**
+ * 401 — sessão ausente/expirada/inválida.
+ * O `code` permite ao interceptor global do client distinguir perda de sessão de
+ * um 403 de PERMISSÃO (que não pode deslogar ninguém).
+ */
 export function unauthorizedResponse() {
   return NextResponse.json(
-    { success: false, error: 'Não autenticado.' },
+    { success: false, code: SESSION_ERROR_CODE, error: 'Não autenticado.' },
     { status: 401 },
+  )
+}
+
+/** 403 causado por sessão inválida (não por falta de permissão). */
+export function sessionExpiredResponse(message = 'Sessão expirada. Faça login novamente.') {
+  return NextResponse.json(
+    { success: false, code: SESSION_ERROR_CODE, error: message },
+    { status: 403 },
   )
 }
 

@@ -13,11 +13,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/store/sidebarStore'
 import { canAccessModule } from '@/lib/permissions'
 import { clearSidebarMenuState, isSidebarMenuKeyOpen, nextSidebarMenuPath } from '@/lib/sidebar-menu-state'
+import { forceClientLogout } from '@/lib/auth-client'
 import {
   ChevronDown,
   ChevronRight,
@@ -344,12 +345,12 @@ export function Sidebar() {
     [userRole, socials, disabledModules, openModules],
   )
 
+  // Mesmo caminho único de saída usado pela Topbar.
   const handleSignOut = () => {
     if (typeof window !== 'undefined' && !window.confirm('Deseja realmente sair do sistema?')) return
-    clearSidebarMenuState()
     setOpenPath([])
     closeMobile()
-    signOut({ callbackUrl: '/login' })
+    void forceClientLogout({ reason: 'manual' })
   }
 
   // Antes da hidratação, força expanded (estado inicial do store) para evitar

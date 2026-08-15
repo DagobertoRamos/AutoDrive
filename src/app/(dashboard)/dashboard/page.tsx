@@ -6,6 +6,7 @@ import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DashboardRouter } from '@/components/dashboard/DashboardRouter'
 import type { DashboardSummary } from '@/lib/dashboard/types'
+import { isSessionAuthFailure } from '@/lib/auth-session'
 
 function greetingFromHour(hour: number): string {
   if (hour >= 6 && hour < 12) return 'Bom dia'
@@ -47,6 +48,13 @@ export default function DashboardPage() {
         credentials: 'include',
       })
       const json = await res.json().catch(() => null)
+      // Falta de autenticação NÃO é erro de dashboard: o interceptor global já
+      // está encerrando a sessão e levando para /login. Mantemos o skeleton em vez
+      // de mostrar "Não foi possível carregar" com botão de tentar de novo.
+      if (isSessionAuthFailure(res.status, json)) {
+        setState('loading')
+        return
+      }
       if (!res.ok || !json?.success) throw new Error(json?.error ?? 'Erro ao carregar dashboard')
       setSummary(json.data)
       setState('ready')

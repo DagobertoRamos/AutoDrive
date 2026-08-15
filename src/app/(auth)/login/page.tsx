@@ -68,6 +68,11 @@ export default function LoginPage() {
         AUTH_ERROR_MESSAGES[errorParam] ??
           'Credenciais inválidas. Verifique e tente novamente.',
       )
+      return
+    }
+    // Chegou aqui porque a sessão expirou/foi encerrada (middleware ou guard).
+    if (searchParams.get('expired')) {
+      setAuthError('Sua sessão expirou. Entre novamente para continuar.')
     }
   }, [searchParams])
 

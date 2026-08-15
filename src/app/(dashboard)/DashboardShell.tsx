@@ -23,6 +23,7 @@ import PendencyAckWatcher from '@/components/pendencies/PendencyAckWatcher'
 import PendencySlaWatcher from '@/components/pendencies/PendencySlaWatcher'
 import PendencyCriticalBanner from '@/components/pendencies/PendencyCriticalBanner'
 import QualityScoreWatcher from '@/components/quality/QualityScoreWatcher'
+import { resolveSessionStatus } from '@/lib/auth-session'
 
 export default function DashboardShell({
   children,
@@ -33,18 +34,20 @@ export default function DashboardShell({
   const router = useRouter()
   useNotifications()
 
+  // A sessão inválida é tratada em um lugar só: AuthSessionWatcher (montado nos
+  // Providers) limpa o estado e manda para /login. Aqui apenas NÃO renderizamos a
+  // área logada enquanto não houver sessão válida — sem redirect duplicado.
+  const sessionState = resolveSessionStatus(status, session)
+
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      window.location.href = '/login'
-      return
-    }
+    if (sessionState !== 'authenticated') return
     const user = session?.user as { mustChangePassword?: boolean } | undefined
-    if (status === 'authenticated' && user?.mustChangePassword) {
+    if (user?.mustChangePassword) {
       router.replace('/auth/change-password')
     }
-  }, [status, session, router])
+  }, [sessionState, session, router])
 
-  if (status === 'loading' || status === 'unauthenticated' || !session) {
+  if (sessionState !== 'authenticated') {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">

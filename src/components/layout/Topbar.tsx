@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { Bell, BellRing, ChevronDown, Menu, Settings, User, LogOut } from 'lucide-react'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
 import { useNotificationStore } from '@/store/notification.store'
@@ -14,7 +14,7 @@ import { useSidebarStore } from '@/store/sidebarStore'
 import { useIdentityStore } from '@/store/identityStore'
 import { NotificationCenter } from '@/components/notifications/NotificationCenter'
 import { ROLE_LABELS } from '@/lib/permissions'
-import { clearSidebarMenuState } from '@/lib/sidebar-menu-state'
+import { forceClientLogout } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/lib/permissions'
 
@@ -39,11 +39,11 @@ export function Topbar() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // Saída manual: um único caminho (limpa storage/cookies, invalida a sessão no
+  // servidor, avisa as outras abas e faz replace para /login — sem F5 manual).
   const handleSignOut = async () => {
-    clearSidebarMenuState()
     closeMobile()
-    await signOut({ redirect: false })
-    router.replace('/login')
+    await forceClientLogout({ reason: 'manual' })
   }
 
   const name     = session?.user?.name ?? ''

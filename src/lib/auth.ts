@@ -8,6 +8,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { type UserRole, type UserStatus } from '@/types'
+import { expiredSessionPayload } from '@/lib/auth-session'
 
 // ---------------------------------------------------------------------------
 // Helper: register audit log entry
@@ -285,10 +286,13 @@ export const authOptions: NextAuthOptions = {
     // Session callback — expõe dados para o cliente e para rotas API
     // ------------------------------------------------------------------
     async session({ session, token }) {
-      // Sessão expirada por inatividade (política de segurança): devolve sem
-      // usuário para os guards tratarem como não-autenticado e mandarem re-login.
+      // Sessão expirada por inatividade (política de segurança): devolve um objeto
+      // VAZIO. O client do NextAuth usa `Object.keys(data).length > 0 ? data : null` —
+      // devolver { expires } mantinha o app "authenticated" com user indefinido: o
+      // dashboard renderizava, a API respondia 401 e a tela morria em
+      // "Não foi possível carregar o dashboard". Vazio = unauthenticated no client.
       if (token.expired) {
-        return { ...session, user: undefined as unknown as typeof session.user, expires: new Date(0).toISOString() }
+        return expiredSessionPayload() as unknown as typeof session
       }
       if (!session.user) {
         return session

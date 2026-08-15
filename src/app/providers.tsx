@@ -7,6 +7,7 @@
 import { SessionProvider } from 'next-auth/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
+import { AuthSessionWatcher } from '@/components/auth/AuthSessionWatcher'
 
 interface ProvidersProps {
   children: React.ReactNode
@@ -33,6 +34,7 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
+        <AuthSessionWatcher />
         {children}
       </QueryClientProvider>
     </SessionProvider>

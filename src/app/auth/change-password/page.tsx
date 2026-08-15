@@ -13,8 +13,8 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react'
-import { useSession, signOut } from 'next-auth/react'
-import { clearSidebarMenuState } from '@/lib/sidebar-menu-state'
+import { useSession } from 'next-auth/react'
+import { forceClientLogout } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import {
   Lock, CheckCircle2, XCircle, Eye, EyeOff,
@@ -304,8 +304,7 @@ export default function ChangePasswordPage() {
               <button
                 type="button"
                 onClick={() => {
-                  clearSidebarMenuState()
-                  signOut({ callbackUrl: '/login' })
+                  void forceClientLogout({ reason: 'manual' })
                 }}
                 className="text-xs text-gray-400 hover:text-gray-600 text-center"
               >
