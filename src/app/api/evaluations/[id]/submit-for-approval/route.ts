@@ -16,6 +16,7 @@ import { loadEvaluationContext } from '@/lib/evaluation/service'
 import { canSubmitForApproval }  from '@/lib/evaluation/permissions'
 import { recordHistory }        from '@/lib/evaluation/history'
 import { notifyByRole, notify } from '@/services/notification.service'
+import { getEvaluationPending, parseOpcionais } from '@/lib/evaluation/rules'
 
 // Marker persistido em evaluationNotes para guardar o vendedor atribuído sem
 // migration de schema. Mesmo padrão do [Ano Modelo], [Opcionais], [APPLIES_TO].
@@ -29,7 +30,6 @@ function withAssignedSeller(sellerUserId: string, extra: string): string {
   return clean ? `${line}\n${clean}` : line
 }
 
-const REQUIRED_SECTIONS = ['INTERIOR', 'FRENTE', 'DIREITA', 'TRASEIRA', 'ESQUERDA', 'TEST_DRIVE'] as const
 
 export async function POST(
   req: NextRequest,
@@ -53,23 +53,49 @@ export async function POST(
       return NextResponse.json({ error: 'Sem permissão para enviar para aprovação.' }, { status: 403 })
     }
 
-    // Valida que cada seção obrigatória tenha ao menos 1 foto.
-     
-    const atts: Array<{ section: string | null; category: string | null; fileType: string }> =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (prisma as any).evaluationAttachment.findMany({
-        where: { evaluationId: params.id, fileType: 'image' },
-        select: { section: true, category: true, fileType: true },
-      })
+    // ── Validação OBRIGATÓRIA no servidor ────────────────────────────────
+    // Mesma regra do frontend (src/lib/evaluation/rules.ts): foto geral por
+    // seção + itens/fotos declarados como obrigatórios no catálogo. O cliente
+    // NUNCA decide sozinho que a avaliação está pronta.
+    const evForRules = await prisma.vehicleEvaluation.findUnique({
+      where:  { id: params.id },
+      select: { evaluationNotes: true },
+    })
 
-    const present = new Set<string>()
-    for (const a of atts) if (a.section) present.add(a.section)
-    const missing = REQUIRED_SECTIONS.filter((s) => !present.has(s))
-    if (missing.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [dbItems, dbAttachments]: [any[], any[]] = await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (prisma as any).evaluationItem.findMany({
+        where:  { evaluationId: params.id },
+        select: { id: true, section: true, catalogKey: true, name: true, status: true },
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (prisma as any).evaluationAttachment.findMany({
+        where:  { evaluationId: params.id },
+        select: { id: true, section: true, itemId: true, fileType: true, category: true },
+      }),
+    ])
+
+    const pending = getEvaluationPending({
+      items:       dbItems,
+      attachments: dbAttachments,
+      opcionais:   parseOpcionais(evForRules?.evaluationNotes ?? null),
+    })
+
+    if (pending.length > 0) {
       return NextResponse.json({
-        error: `Foto obrigatória ausente nas seções: ${missing.join(', ')}. Envie ao menos 1 foto em cada seção antes de enviar para aprovação.`,
-        missingSections: missing,
-      }, { status: 400 })
+        code:    'REQUIRED_ITEMS_PENDING',
+        message: 'Existem requisitos obrigatórios pendentes.',
+        error:   `Existem ${pending.length} requisito(s) obrigatório(s) pendente(s). Volte às seções indicadas antes de enviar para aprovação.`,
+        pending: pending.map((p) => ({
+          sectionId:    p.sectionId,
+          sectionLabel: p.sectionLabel,
+          itemId:       p.itemId,
+          catalogKey:   p.catalogKey,
+          type:         p.type === 'SECTION_PHOTO' || p.type === 'ITEM_PHOTO' ? 'photo' : 'item',
+          label:        p.label,
+        })),
+      }, { status: 422 })
     }
 
     const ev = await prisma.vehicleEvaluation.findUnique({

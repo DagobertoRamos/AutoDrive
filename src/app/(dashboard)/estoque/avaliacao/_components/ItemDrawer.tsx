@@ -2,11 +2,19 @@
 
 // =============================================================================
 // ItemDrawer — Drawer lateral para Avaliar / Editar / Reavaliar um item.
+//
 // Persiste via PATCH /api/evaluations/[id]/items/[itemId] (status, priority,
-// notes) e, se houver custo/tipo de serviço, cria/atualiza um EvaluationService
-// vinculado (POST /api/evaluations/[id]/services).
+// notes) e, se houver custo/tipo de serviço, cria/ATUALIZA (não duplica) um
+// EvaluationService vinculado via POST /api/evaluations/[id]/services.
 // Fotos do item: upload real via POST /api/evaluations/[id]/attachments com
 // itemId+category=FOTO. Aceita câmera (capture=environment) ou arquivo.
+//
+// Regras de obrigatoriedade (declaradas no catálogo, aplicadas por
+// @/lib/evaluation/rules):
+//   • Status é OBRIGATÓRIO — enquanto o item ficar "Pendente" ele não conta
+//     como avaliado em lugar nenhum (era a causa de "respondi e continua
+//     pendente": dava para salvar mantendo Pendente).
+//   • Item com `requiredPhoto` exige ao menos 1 foto PERSISTIDA para salvar.
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'react'
@@ -17,6 +25,8 @@ import {
   ITEMS, POSITION_LABELS, parseAppliesTo, stripAppliesTo, serializeNotesWithAppliesTo,
   type SectionKey, type PositionGroup,
 } from '@/lib/evaluation/catalog'
+import { isItemAnswered } from '@/lib/evaluation/rules'
+import { FieldLabel, FieldError, RequiredTag, FIELD_ERROR_CLASS } from '@/components/ui/field'
 
 export interface DrawerItem {
   id:           string
@@ -39,23 +49,27 @@ interface ItemDrawerProps {
   evaluationStatus: string
   isReopen:         boolean
   readOnly?:        boolean
+  /** Item exige foto (vem do catálogo, via rules.isPhotoRequiredFor). */
+  photoRequired?:   boolean
   existingPhotos?:  DrawerPhoto[]
   onSave:           () => void
-  onClose:          () => void
+  /** `dirty` = houve upload/remoção de foto — o pai precisa recarregar. */
+  onClose:          (dirty: boolean) => void
 }
 
 const inputCls = 'rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full'
 
+/** Opções de status oferecidas ao avaliador — "Pendente" não é resposta. */
+const SELECTABLE_STATUS = ITEM_STATUS.filter((s) => s.value !== 'PENDING')
+
 export function ItemDrawer({
-  item, isReopen, readOnly, existingPhotos = [], onSave, onClose,
+  item, isReopen, readOnly, photoRequired = false, existingPhotos = [], onSave, onClose,
 }: ItemDrawerProps) {
   // Descobre o positionGroup do item a partir do catalogKey — se o item foi
   // criado com base no catálogo, exibe checkboxes de posições ("aplica-se
-  // também a"). Se não achar (item avulso sem catalogKey ou catálogo antigo),
-  // nada aparece — não quebra nada.
+  // também a"). Se não achar, nada aparece — não quebra nada.
   const positionGroup: PositionGroup | null = (() => {
     if (!item.catalogKey) return null
-    // Extrai a section do catalogKey (formato "section.item")
     const [sectionKey] = item.catalogKey.split('.')
     if (!sectionKey) return null
     const upperSection = sectionKey.toUpperCase() as SectionKey
@@ -69,11 +83,13 @@ export function ItemDrawer({
     setAppliesTo((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key])
   }
 
-  const firstTime = !item.status || item.status === 'PENDING' || item.status === 'NAO_AVALIADO'
+  const firstTime = !isItemAnswered(item.status)
   const headerChip = isReopen ? 'Reavaliar' : (firstTime ? 'Avaliar item' : 'Editar item')
   const buttonLabel = firstTime && !isReopen ? 'Salvar avaliação' : 'Salvar alterações'
 
-  const [status,      setStatus]      = useState(item.status || 'PENDING')
+  // Status começa VAZIO quando o item nunca foi avaliado: o avaliador precisa
+  // escolher conscientemente (inclusive "Não se aplica", que é resposta válida).
+  const [status,      setStatus]      = useState(isItemAnswered(item.status) ? item.status : '')
   const [priority,    setPriority]    = useState(item.priority ?? '')
   // Notes visíveis (sem o marker [APPLIES_TO]) — o marker é reagregado no save
   const [notes,       setNotes]       = useState(stripAppliesTo(item.notes))
@@ -85,25 +101,30 @@ export function ItemDrawer({
   const [photoBusy,   setPhotoBusy]   = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState('')
+  const [statusError, setStatusError] = useState('')
+  const [photoError,  setPhotoError]  = useState('')
+  /** Houve upload/remoção de foto? O pai precisa recarregar mesmo se fechar. */
+  const [dirty,       setDirty]       = useState(false)
 
   const fileRef   = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setStatus(item.status || 'PENDING')
+    setStatus(isItemAnswered(item.status) ? item.status : '')
     setPriority(item.priority ?? '')
     setNotes(stripAppliesTo(item.notes))
     setAppliesTo(parseAppliesTo(item.notes))
     setCostMask('')
     setDescription('')
     setPhotos(existingPhotos)
-    setErr('')
+    setErr(''); setStatusError(''); setPhotoError('')
+    setDirty(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, item.status, item.priority, item.notes])
 
   async function uploadPhotos(files: FileList | null) {
     if (!files || files.length === 0 || readOnly) return
-    setPhotoBusy(true); setErr('')
+    setPhotoBusy(true); setErr(''); setPhotoError('')
     try {
       const added: DrawerPhoto[] = []
       for (let i = 0; i < files.length; i++) {
@@ -115,17 +136,22 @@ export function ItemDrawer({
         const r = await fetch(`/api/evaluations/${item.evaluationId}/attachments`, { method: 'POST', body: fd })
         const d = await r.json().catch(() => ({}))
         if (!r.ok) {
-          setErr(d?.error ?? 'Falha ao enviar foto.')
+          // Falhou = NÃO conta como foto enviada (a obrigatoriedade continua).
+          setErr(d?.error ?? 'Falha ao enviar a foto. Tente novamente.')
           break
         }
+        // Só entra na lista o registro PERSISTIDO devolvido pela API.
         const att = d?.data
         if (att?.id) {
           added.push({ id: att.id, fileName: att.fileName, publicUrl: att.publicUrl })
         }
       }
-      if (added.length > 0) setPhotos((p) => [...p, ...added])
+      if (added.length > 0) {
+        setPhotos((p) => [...p, ...added])
+        setDirty(true)
+      }
     } catch {
-      setErr('Erro de conexão ao enviar foto.')
+      setErr('Erro de conexão ao enviar a foto. Tente novamente.')
     } finally {
       setPhotoBusy(false)
       if (fileRef.current)   fileRef.current.value   = ''
@@ -138,12 +164,38 @@ export function ItemDrawer({
     if (!confirm('Remover esta foto?')) return
     try {
       const r = await fetch(`/api/evaluations/${item.evaluationId}/attachments/${id}`, { method: 'DELETE' })
-      if (r.ok) setPhotos((p) => p.filter((x) => x.id !== id))
-    } catch { /* silent */ }
+      if (r.ok) {
+        setPhotos((p) => p.filter((x) => x.id !== id))
+        setDirty(true)
+      } else {
+        setErr('Não foi possível remover a foto.')
+      }
+    } catch {
+      setErr('Erro de conexão ao remover a foto.')
+    }
   }
 
   async function handleSave() {
-    if (readOnly) { onClose(); return }
+    if (readOnly) { onClose(dirty); return }
+    if (saving) return              // trava duplo clique
+
+    // ── Validação dos obrigatórios (mesma regra do resto do módulo) ────────
+    let invalid = false
+    if (!isItemAnswered(status)) {
+      setStatusError('Este campo é obrigatório.')
+      invalid = true
+    } else setStatusError('')
+
+    if (photoRequired && photos.length === 0) {
+      setPhotoError('Este item exige pelo menos 1 foto.')
+      invalid = true
+    } else setPhotoError('')
+
+    if (invalid) {
+      setErr('Preencha os campos obrigatórios destacados.')
+      return
+    }
+
     setSaving(true)
     setErr('')
     try {
@@ -163,14 +215,16 @@ export function ItemDrawer({
       })
       if (!r1.ok) {
         const d = await r1.json().catch(() => ({}))
-        setErr(d?.error ?? 'Falha ao salvar item.')
+        setErr(d?.error ?? 'Falha ao salvar o item.')
         setSaving(false)
         return
       }
 
       const cost = parseBRL(costMask)
       if ((cost != null && cost > 0) || description.trim()) {
-        await fetch(`/api/evaluations/${item.evaluationId}/services`, {
+        // A rota faz upsert por (evaluationId, itemId, serviceType) — editar o
+        // item duas vezes NÃO cria dois serviços nem infla o total de gastos.
+        const r2 = await fetch(`/api/evaluations/${item.evaluationId}/services`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -181,12 +235,15 @@ export function ItemDrawer({
             priority:      priority || null,
             notes:         null,
           }),
-        }).catch(() => { /* não bloqueia o save do item */ })
+        }).catch(() => null)
+        if (r2 && !r2.ok) {
+          setErr('Item salvo, mas o serviço não pôde ser registrado. Revise na aba Serviços.')
+        }
       }
 
       onSave()
     } catch {
-      setErr('Erro de conexão.')
+      setErr('Erro de conexão ao salvar.')
     } finally {
       setSaving(false)
     }
@@ -194,7 +251,7 @@ export function ItemDrawer({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={() => onClose(dirty)} />
       <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-[480px] bg-white shadow-2xl flex flex-col">
         <header className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4">
           <div className="flex-1 min-w-0">
@@ -205,7 +262,7 @@ export function ItemDrawer({
             </span>
             <h3 className="mt-1 text-base font-semibold text-gray-900 truncate">{item.name}</h3>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+          <button type="button" onClick={() => onClose(dirty)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
             <X className="h-4 w-4" />
           </button>
         </header>
@@ -216,14 +273,24 @@ export function ItemDrawer({
             <input className={inputCls + ' bg-gray-50'} value={item.name} readOnly />
           </label>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Status</span>
-            <select className={inputCls} value={status} onChange={(e) => setStatus(e.target.value)} disabled={readOnly}>
-              {ITEM_STATUS.map((s) => (
+          <div className="flex flex-col gap-1">
+            <FieldLabel required htmlFor="item-status">Status da avaliação</FieldLabel>
+            <select
+              id="item-status"
+              className={`${inputCls} ${statusError ? FIELD_ERROR_CLASS : ''}`}
+              value={status}
+              onChange={(e) => { setStatus(e.target.value); if (e.target.value) setStatusError('') }}
+              disabled={readOnly}
+              aria-invalid={statusError ? true : undefined}
+              aria-describedby={statusError ? 'item-status-error' : undefined}
+            >
+              <option value="">Selecione o status…</option>
+              {SELECTABLE_STATUS.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
-          </label>
+            <FieldError id="item-status-error">{statusError}</FieldError>
+          </div>
 
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-600">Descrição / serviço (opcional)</span>
@@ -319,9 +386,18 @@ export function ItemDrawer({
           </label>
 
           {/* ── Fotos do item (câmera ou arquivo) ─────────────────────────── */}
-          <div className="flex flex-col gap-2 border-t border-gray-100 pt-3">
+          <div
+            className={[
+              'flex flex-col gap-2 border-t pt-3',
+              photoError ? 'border-error' : 'border-gray-100',
+            ].join(' ')}
+          >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-gray-600">Fotos do item</span>
+              {photoRequired ? (
+                <FieldLabel required hint="Mínimo de 1 foto.">Fotos do item</FieldLabel>
+              ) : (
+                <span className="text-xs font-medium text-gray-600">Fotos do item</span>
+              )}
               {!readOnly && (
                 <div className="flex items-center gap-1.5">
                   <input
@@ -346,7 +422,8 @@ export function ItemDrawer({
                     disabled={photoBusy}
                     className="flex items-center gap-1 rounded-lg border border-brand-400 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-60"
                   >
-                    {photoBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />} Câmera
+                    {photoBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+                    {photoBusy ? 'Enviando...' : 'Câmera'}
                   </button>
                   <button
                     type="button"
@@ -360,7 +437,10 @@ export function ItemDrawer({
               )}
             </div>
             {photos.length === 0 ? (
-              <p className="text-[11px] text-gray-400 italic">Nenhuma foto. Use câmera ou arquivo.</p>
+              <p className="text-[11px] text-gray-400 italic">
+                Nenhuma foto. Use câmera ou arquivo.
+                {photoRequired && <> Este item <RequiredTag className="align-middle" /> tem foto.</>}
+              </p>
             ) : (
               <ul className="grid grid-cols-3 gap-2">
                 {photos.map((p) => (
@@ -375,7 +455,7 @@ export function ItemDrawer({
                       <button
                         type="button"
                         onClick={() => removePhoto(p.id)}
-                        className="absolute top-1 right-1 rounded-full bg-white/90 p-1 text-red-600 opacity-0 group-hover:opacity-100"
+                        className="absolute top-1 right-1 rounded-full bg-white/90 p-1 text-error opacity-0 group-hover:opacity-100"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -384,24 +464,25 @@ export function ItemDrawer({
                 ))}
               </ul>
             )}
+            <FieldError id="item-photo-error">{photoError}</FieldError>
           </div>
 
-          {err && <p className="text-xs text-red-600">{err}</p>}
+          {err && <p role="alert" className="text-xs font-medium text-error">{err}</p>}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
-          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+          <button type="button" onClick={() => onClose(dirty)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
             Fechar
           </button>
           {!readOnly && (
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || photoBusy}
               className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {buttonLabel}
+              {saving ? 'Salvando...' : buttonLabel}
             </button>
           )}
         </footer>

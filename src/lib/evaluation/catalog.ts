@@ -48,6 +48,12 @@ export interface CatalogItem {
   name:  string   // label exibido
   hint?: string   // dica curta opcional
   /**
+   * Resposta (status) OBRIGATÓRIA para concluir a seção.
+   * Fonte única da verdade da obrigatoriedade do item — nunca inferir pelo
+   * nome/label. Ausente ou false = item opcional (não bloqueia o avanço).
+   */
+  required?: boolean
+  /**
    * Se true, exige pelo menos uma foto anexada ao item para concluir a
    * seção. Se 'IF_EQUIPPED', exige apenas quando o equipamento correspondente
    * estiver marcado (ex: teto_solar só é obrigatório se o opcional "Teto
@@ -134,7 +140,7 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
     { key: 'interior.console',                  name: 'Console' },
     { key: 'interior.ar_condicionado',          name: 'Ar condicionado' },
     { key: 'interior.marcadores_painel',        name: 'Marcadores do painel' },
-    { key: 'interior.painel_km',                name: 'Painel / hodômetro (foto obrigatória com KM)', hint: 'Foto do painel exibindo a quilometragem', requiredPhoto: true },
+    { key: 'interior.painel_km',                name: 'Painel / hodômetro', hint: 'Foto do painel exibindo a quilometragem', required: true, requiredPhoto: true },
     { key: 'interior.chave',                    name: 'Chave principal' },
     { key: 'interior.chave_reserva',            name: 'Chave reserva' },
     { key: 'interior.recuperacao_interior',     name: 'Recuperação geral interior' },
@@ -148,7 +154,7 @@ export const ITEMS: Record<SectionKey, CatalogItem[]> = {
     { key: 'frente.capo',                   name: 'Capô do motor' },
     { key: 'frente.mini_frente',            name: 'Mini frente' },
     { key: 'frente.teto',                   name: 'Teto' },
-    { key: 'frente.teto_solar',             name: 'Teto solar (foto obrigatória se equipamento marcado)', hint: 'Se o veículo tem teto solar, anexe foto do teto solar', requiredPhoto: 'IF_EQUIPPED', requiredPhotoIfOptional: 'Teto Solar' },
+    { key: 'frente.teto_solar',             name: 'Teto solar', hint: 'Se o veículo tem teto solar, anexe foto do teto solar', requiredPhoto: 'IF_EQUIPPED', requiredPhotoIfOptional: 'Teto Solar' },
     { key: 'frente.longarina_esquerda',     name: 'Longarina esquerda' },
     { key: 'frente.longarina_direita',      name: 'Longarina direita' },
     { key: 'frente.motor',                  name: 'Motor e vão do motor' },

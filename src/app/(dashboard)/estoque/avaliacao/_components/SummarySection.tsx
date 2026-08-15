@@ -14,6 +14,11 @@ import { useEffect, useState } from 'react'
 import { Loader2, CheckCircle2, ChevronLeft, User, Wrench, Camera, FileCheck2, AlertCircle } from 'lucide-react'
 import { SECTIONS, ITEM_STATUS, type SectionKey } from '@/lib/evaluation/catalog'
 import { numberToBRLMask } from '@/lib/masks'
+import {
+  getSectionProgress, CHECKLIST_SECTIONS,
+  type EvaluationRuleContext, type PendingRequirement,
+} from '@/lib/evaluation/rules'
+import { FieldLabel, FieldError } from '@/components/ui/field'
 
 interface Seller {
   id:       string
@@ -68,12 +73,16 @@ interface EvalData {
 }
 
 interface SummarySectionProps {
+  /** Opcionais marcados no veículo — habilitam exigências IF_EQUIPPED. */
+  opcionais?:    string[]
+  /** Leva o usuário de volta à seção com pendência. */
+  onGoToSection?: (section: (typeof CHECKLIST_SECTIONS)[number]) => void
   evaluationId: string
   onBack?:      () => void
   onFinalized?: () => void
 }
 
-export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySectionProps) {
+export function SummarySection({ evaluationId, opcionais = [], onBack, onFinalized, onGoToSection }: SummarySectionProps) {
   const [eval_,    setEval]     = useState<EvalData | null>(null)
   const [items,    setItems]    = useState<EvalItem[]>([])
   const [services, setServices] = useState<EvalService[]>([])
@@ -84,6 +93,8 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
   const [submitting, setSubmitting] = useState(false)
   const [error,    setError]    = useState('')
   const [ok,       setOk]       = useState('')
+  // Pendências devolvidas pelo backend (422 REQUIRED_ITEMS_PENDING).
+  const [serverPending, setServerPending] = useState<PendingRequirement[]>([])
 
   useEffect(() => {
     let alive = true
@@ -114,12 +125,26 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
     return () => { alive = false }
   }, [evaluationId])
 
+  // Resumo SEMPRE recalculado a partir do que está persistido, com as mesmas
+  // regras usadas nas seções e no backend.
+  const ruleCtx: EvaluationRuleContext = { items, attachments: attachs, opcionais }
+  const sectionProgress = CHECKLIST_SECTIONS.map((s) => getSectionProgress(s, ruleCtx))
+  const localPending = sectionProgress.flatMap((p) => p.pending)
+  const pendingToShow = serverPending.length > 0 ? serverPending : localPending
+
   async function finalize() {
-    setError(''); setOk('')
+    setError(''); setOk(''); setServerPending([])
+    // Bloqueio local (mesma regra do backend) — mensagem específica.
+    if (localPending.length > 0) {
+      setError(`Existem ${localPending.length} requisito(s) obrigatório(s) pendente(s). Resolva antes de enviar.`)
+      setServerPending(localPending)
+      return
+    }
     if (!sellerId) {
       setError('Selecione o vendedor responsável antes de finalizar.')
       return
     }
+    if (submitting) return                 // trava duplo clique
     setSubmitting(true)
     try {
       const r = await fetch(`/api/evaluations/${evaluationId}/submit-for-approval`, {
@@ -127,8 +152,14 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignedSellerId: sellerId }),
       })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d?.error ?? 'Falha ao finalizar')
+      const d = await r.json().catch(() => null)
+      if (!r.ok) {
+        // 422 REQUIRED_ITEMS_PENDING → lista exata do que falta.
+        if (d?.code === 'REQUIRED_ITEMS_PENDING' && Array.isArray(d?.pending)) {
+          setServerPending(d.pending as PendingRequirement[])
+        }
+        throw new Error(d?.error ?? d?.message ?? 'Falha ao finalizar')
+      }
       setOk('Avaliação enviada para aprovação. Gerente e vendedor foram notificados.')
       setTimeout(() => onFinalized?.(), 1500)
     } catch (e) {
@@ -137,6 +168,7 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
       setSubmitting(false)
     }
   }
+
 
   const generalServices = services.filter((s) => s.itemId == null)
   const totalServicesCost = generalServices.reduce((sum, s) => sum + (Number(s.estimatedCost) || 0), 0)
@@ -176,6 +208,53 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
           <Fact label="Chassi"    value={eval_?.chassi ?? '—'} mono />
           <Fact label="Renavam"   value={eval_?.renavam ?? '—'} mono />
         </div>
+      </div>
+
+      {/* ── Conferência final: o que falta (mesma regra do backend) ────────── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <h4 className="text-sm font-semibold text-gray-800 mb-3">Conferência das seções</h4>
+        <ul className="space-y-1.5">
+          {sectionProgress.map((p) => (
+            <li key={p.section} className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => onGoToSection?.(p.section)}
+                className="flex items-center gap-2 text-xs text-gray-800 hover:underline"
+              >
+                {p.pending.length === 0
+                  ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  : <AlertCircle className="h-3.5 w-3.5 text-error" />}
+                {p.label}
+              </button>
+              <span className={`text-[11px] font-medium ${p.pending.length === 0 ? 'text-emerald-700' : 'text-error'}`}>
+                {p.pending.length === 0
+                  ? 'Concluída'
+                  : `${p.pending.length} obrigatório(s) pendente(s)`}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {pendingToShow.length > 0 && (
+          <div className="mt-3 rounded-lg border border-error bg-error-light/60 px-3 py-2.5">
+            <p className="text-xs font-semibold text-error">
+              {`Existem ${pendingToShow.length} requisito(s) obrigatório(s) pendente(s):`}
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {pendingToShow.map((p, idx) => (
+                <li key={`${p.sectionId}:${p.type}:${p.catalogKey ?? idx}`}>
+                  <button
+                    type="button"
+                    onClick={() => onGoToSection?.(p.sectionId)}
+                    className="text-left text-xs text-error hover:underline"
+                  >
+                    • {p.sectionLabel}: {p.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* ── Itens por seção agrupados por status ────────────────────────────── */}
@@ -244,9 +323,12 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
         <div className="flex items-center gap-2 mb-3">
           <User className="h-4 w-4 text-brand-600" />
           <h4 className="text-sm font-semibold text-gray-800">Atribuir ao vendedor</h4>
-          <span className="text-red-500 text-xs">*obrigatório</span>
         </div>
+        <FieldLabel required htmlFor="assigned-seller">Vendedor responsável</FieldLabel>
         <select
+          id="assigned-seller"
+          aria-invalid={!sellerId && !!error ? true : undefined}
+          aria-describedby={!sellerId && !!error ? 'assigned-seller-error' : undefined}
           value={sellerId}
           onChange={(e) => setSellerId(e.target.value)}
           disabled={isFinalized || submitting}
@@ -262,6 +344,11 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
         {sellers.length === 0 && (
           <p className="mt-2 text-xs text-amber-700">Nenhum vendedor cadastrado nesta unidade. Cadastre em <em>Cadastros → Vendedores</em> antes de finalizar.</p>
         )}
+        {!sellerId && !!error && (
+          <div className="mt-1">
+            <FieldError id="assigned-seller-error">Este campo é obrigatório.</FieldError>
+          </div>
+        )}
         <p className="mt-2 text-[11px] text-gray-500">O vendedor selecionado receberá notificação para acompanhar a negociação. Gerentes da unidade também são notificados.</p>
       </div>
 
@@ -272,7 +359,8 @@ export function SummarySection({ evaluationId, onBack, onFinalized }: SummarySec
         <button
           type="button"
           onClick={finalize}
-          disabled={isFinalized || submitting || !sellerId || sellers.length === 0}
+          title={localPending.length > 0 ? `Faltam ${localPending.length} requisito(s) obrigatório(s).` : undefined}
+          disabled={isFinalized || submitting || !sellerId || sellers.length === 0 || localPending.length > 0}
           className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}

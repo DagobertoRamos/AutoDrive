@@ -17,6 +17,7 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { AwaitingReleaseBanner } from '../../_components/AwaitingReleaseBanner'
 import { EvaluationSections } from '../../_components/EvaluationSections'
+import { parseOpcionais } from '@/lib/evaluation/rules'
 import { CautelarUploader, type AttachmentLite } from '../../_components/CautelarUploader'
 import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
@@ -81,6 +82,7 @@ interface Evaluation {
   estimatedDays?: number | null
   releasedAt?:   string | null
   reopenCount?:  number | null
+  evaluationNotes?: string | null
   _pricingHidden?: boolean | null
   items?:       EvalItem[]
   services?:    EvalService[]
@@ -434,6 +436,7 @@ export default function InspecaoPage() {
             evaluationId={evalId}
             evaluationStatus={status}
             reopenCount={data.reopenCount ?? 0}
+            opcionais={parseOpcionais(data.evaluationNotes ?? null)}
             readOnly={isLocked}
           />
         )}

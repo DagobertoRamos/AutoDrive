@@ -23,6 +23,8 @@ import { parseBRL, maskKM, parseKM, numberToBRLMask } from '@/lib/masks'
 import { StepCliente, type CustomerLite } from './_components/StepCliente'
 import { EvaluationSections } from './_components/EvaluationSections'
 import { CautelarUploader, type AttachmentLite } from './_components/CautelarUploader'
+import { FieldLabel, FieldError } from '@/components/ui/field'
+import { isEmptyValue } from '@/lib/evaluation/rules'
 import { StepDocumentoVeiculo, type ExtractionSource } from './_components/StepDocumentoVeiculo'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
 
@@ -282,18 +284,23 @@ function getEngineOptions(tipo: 'CARRO' | 'MOTO' | 'CAMINHAO'): string[] {
 const inputCls = 'rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full'
 const selectCls = inputCls
 
-function Field({ label, required, hint, badge, children }: {
-  label: string; required?: boolean; hint?: string; badge?: React.ReactNode; children: React.ReactNode
+/**
+ * Campo do formulário. `required` é a ÚNICA forma de marcar obrigatoriedade —
+ * renderiza "Nome *" + etiqueta "Obrigatório" no token semântico de erro,
+ * conforme o padrão único definido em @/components/ui/field.
+ */
+function Field({ label, required, hint, badge, error, htmlFor, children }: {
+  label: string; required?: boolean; hint?: string; badge?: React.ReactNode
+  error?: string; htmlFor?: string; children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-medium text-gray-600">
-          {label}{required && <span className="ml-0.5 text-red-500">*</span>}
-        </label>
+      <div className="flex items-start justify-between gap-2">
+        <FieldLabel required={required} htmlFor={htmlFor}>{label}</FieldLabel>
         {badge}
       </div>
       {children}
+      {error ? <FieldError>{error}</FieldError> : null}
       {hint && <p className="text-xs text-gray-400">{hint}</p>}
     </div>
   )
@@ -490,6 +497,25 @@ function AvaliacaoForm() {
   // Opcionais do veículo (chips multi-select). Persistidos em evaluationNotes
   // prefixados com [Opcionais] enquanto não há coluna dedicada no schema.
   const [opcionais, setOpcionais] = useState<string[]>([])
+
+  /**
+   * FONTE ÚNICA dos obrigatórios da etapa Veículo. O mesmo array alimenta o
+   * aviso, o `disabled` do botão e o tooltip — antes, "Quilometragem" e "Tipo
+   * de carroceria" exibiam "*" mas NÃO entravam na checagem: o asterisco
+   * mentia e o avanço acontecia sem eles.
+   * KM usa isEmptyValue(..., "number") porque 0 km É um valor válido.
+   */
+  function missingVehicleFields(): string[] {
+    return [
+      !plate && 'Placa',
+      !(brandName || manualBrand || lookupData?.brand) && 'Marca',
+      !(modelName || manualModel || lookupData?.model) && 'Modelo',
+      !bodyType && 'Tipo de carroceria',
+      isEmptyValue(km, 'number') && 'Quilometragem',
+      !conditionType && 'Condição',
+      !unitId && 'Unidade',
+    ].filter(Boolean) as string[]
+  }
 
   // Pré-preenche unidade com a unidade do usuário logado (default operacional).
   // Sem isso, o vendedor precisava escolher manualmente mesmo quando só pertence
@@ -1687,13 +1713,7 @@ function AvaliacaoForm() {
               Resumo de campos obrigatórios (estilo "sistema grande")
           ────────────────────────────────────────────────────────────────── */}
           {(() => {
-            const missing = [
-              !plate && 'Placa',
-              !(brandName || manualBrand || lookupData?.brand) && 'Marca',
-              !(modelName || manualModel || lookupData?.model) && 'Modelo',
-              !unitId && 'Unidade',
-              !conditionType && 'Condição',
-            ].filter(Boolean) as string[]
+            const missing = missingVehicleFields()
             return missing.length ? (
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1721,24 +1741,10 @@ function AvaliacaoForm() {
             </Link>
             <button
               type="button"
-              disabled={!plate || !(brandName || manualBrand || lookupData?.brand) || !(modelName || manualModel || lookupData?.model) || !unitId || !conditionType || autoSavingDraft}
-              title={
-                [
-                  !plate && 'placa',
-                  !(brandName || manualBrand || lookupData?.brand) && 'marca',
-                  !(modelName || manualModel || lookupData?.model) && 'modelo',
-                  !unitId && 'unidade',
-                  !conditionType && 'condição',
-                ].filter(Boolean).length
-                  ? `Preencha os campos obrigatórios: ${[
-                      !plate && 'placa',
-                      !(brandName || manualBrand || lookupData?.brand) && 'marca',
-                      !(modelName || manualModel || lookupData?.model) && 'modelo',
-                      !unitId && 'unidade',
-                      !conditionType && 'condição',
-                    ].filter(Boolean).join(', ')}. (O documento/CRLV é opcional — a IA o preenche automaticamente quando enviado.)`
-                  : ''
-              }
+              disabled={missingVehicleFields().length > 0 || autoSavingDraft}
+              title={missingVehicleFields().length
+                ? `Preencha os campos obrigatórios: ${missingVehicleFields().join(', ')}. (O documento/CRLV é opcional — a IA o preenche automaticamente quando enviado.)`
+                : ''}
               onClick={async () => {
                 // Persiste manualBrand/manualModel a partir das combos FIPE
                 // selecionadas. Quando o catálogo FIPE não casou (brandName

@@ -109,7 +109,24 @@ export async function POST(
       }
     }
 
-    const saved    = await saveAttachment(evaluationId, file.name, mime, bytes)
+    // O upload precisa ser CONFIRMADO pelo storage antes de virar registro no
+    // banco. Se a escrita falhar (ex.: filesystem somente-leitura em ambiente
+    // serverless), devolvemos erro explícito — nada é persistido e a foto
+    // continua pendente no checklist, em vez de "sumir" silenciosamente.
+    let saved: Awaited<ReturnType<typeof saveAttachment>>
+    try {
+      saved = await saveAttachment(evaluationId, file.name, mime, bytes)
+    } catch (storageErr) {
+      const msg = storageErr instanceof Error ? storageErr.message : String(storageErr)
+      console.error('[attachments POST] falha de storage:', msg)
+      const readOnlyFs = /EROFS|EACCES|EPERM|read-only/i.test(msg)
+      return NextResponse.json({
+        code:  'STORAGE_UNAVAILABLE',
+        error: readOnlyFs
+          ? 'O servidor não conseguiu gravar o arquivo (armazenamento somente leitura). A foto NÃO foi salva — avise o suporte técnico.'
+          : 'Falha ao gravar o arquivo no servidor. A foto NÃO foi salva. Tente novamente.',
+      }, { status: 503 })
+    }
     const category = rawCategory || (saved.fileType === 'pdf' ? 'OUTRO' : 'FOTO')
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
