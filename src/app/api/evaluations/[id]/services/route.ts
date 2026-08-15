@@ -74,7 +74,6 @@ export async function POST(
 
     // Serviço de item: 1 registro por (item, tipo de serviço) — reeditar
     // atualiza; não duplica.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const existing = itemId
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? await (prisma as any).evaluationService.findFirst({
@@ -88,13 +87,14 @@ export async function POST(
         })
       : null
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const saved = existing
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? await (prisma as any).evaluationService.update({
           where: { id: existing.id },
           data,
         })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       : await (prisma as any).evaluationService.create({
           data: { ...data, status: 'PREDICTED', createdById: session.user.id },

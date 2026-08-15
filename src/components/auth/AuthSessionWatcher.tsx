@@ -35,7 +35,10 @@ export function AuthSessionWatcher() {
   const { data: session, status } = useSession()
   const pathname = usePathname()
   const pathRef = useRef(pathname)
-  pathRef.current = pathname
+
+  // Mantém o caminho atual acessível dentro do interceptor (efeito com deps [])
+  // sem escrever no ref durante o render.
+  useEffect(() => { pathRef.current = pathname }, [pathname])
 
   // ── Interceptor global de 401/403-de-sessão ───────────────────────────────
   useEffect(() => {
