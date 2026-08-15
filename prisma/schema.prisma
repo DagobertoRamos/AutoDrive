@@ -3249,6 +3249,25 @@ model EvaluationAttachment {
   @@map("evaluation_attachments")
 }
 
+/// Conteúdo binário de anexos quando o storage é o próprio banco.
+/// Necessário em hospedagem serverless (Vercel), onde o filesystem é somente
+/// leitura e a gravação em public/uploads falha — a foto era perdida.
+/// Fica em tabela SEPARADA de propósito: as consultas de anexo (findMany sem
+/// select) NÃO podem carregar os bytes.
+model EvaluationFile {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  evaluationId String
+  fileName     String
+  mimeType     String
+  fileSize     Int
+  data         Bytes
+  createdAt    DateTime @default(now())
+
+  @@index([evaluationId])
+  @@map("evaluation_files")
+}
+
 /// Histórico de reavaliações de itens / mudanças sensíveis.
 model EvaluationHistory {
   id           String   @id @default(cuid())
