@@ -95,12 +95,14 @@ function sectionStatusBadge(progress: SectionProgress) {
 // ── Widget de foto geral da seção (obrigatório) ──────────────────────────────
 
 function SectionPhotoWidget({
-  evaluationId, section, photos, readOnly, onChanged,
+  evaluationId, section, photos, readOnly, invalid, onChanged,
 }: {
   evaluationId: string
   section:      SectionKey
   photos:       EvalAttachment[]
   readOnly?:    boolean
+  /** Marca o card como erro — só depois que o usuário tenta avançar. */
+  invalid?:     boolean
   onChanged:    () => void | Promise<void>
 }) {
   const fileRef   = useRef<HTMLInputElement>(null)
@@ -159,7 +161,9 @@ function SectionPhotoWidget({
       id={`section-photo-${section}`}
       className={[
         'rounded-xl border p-3 sm:p-4 scroll-mt-24',
-        hasPhotos ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-300 bg-amber-50',
+        hasPhotos  ? 'border-emerald-200 bg-emerald-50/40'
+        : invalid ? 'border-error bg-error-light/50'
+        : 'border-amber-300 bg-amber-50',
       ].join(' ')}
     >
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -212,6 +216,11 @@ function SectionPhotoWidget({
         )}
       </div>
 
+      {invalid && !err && (
+        <p role="alert" className="text-xs font-medium text-error mb-2">
+          Envie ao menos 1 foto desta seção para avançar.
+        </p>
+      )}
       {err && <p role="alert" className="text-xs font-medium text-error mb-2">{err}</p>}
 
       {hasPhotos && (
@@ -251,7 +260,7 @@ function PendingPanel({
 }) {
   if (pending.length === 0) return null
   return (
-    <div className="rounded-lg border border-error bg-error-light/60 px-3 py-2.5">
+    <div id="section-pending-panel" className="rounded-lg border border-error bg-error-light/60 px-3 py-2.5 scroll-mt-24">
       <p className="flex items-center gap-1.5 text-xs font-semibold text-error">
         <AlertTriangle className="h-3.5 w-3.5" />
         {pending.length === 1
@@ -284,6 +293,10 @@ export function EvaluationSections({
   const [loading,     setLoading]     = useState(true)
   const [drawer,      setDrawer]      = useState<DrawerItem | null>(null)
   const [err,         setErr]         = useState('')
+  // O painel de pendências só aparece DEPOIS que o usuário tenta avançar.
+  // Antes, ao entrar em qualquer seção o aviso vermelho já surgia (toda seção
+  // começa devendo a foto geral) e parecia erro sem o usuário ter feito nada.
+  const [attempted,   setAttempted]  = useState<Record<string, boolean>>({})
   // Lock client-side: evita 2x POST /seed disparado pelo React Strict Mode
   const seedInFlight = useRef(false)
   const seedDone     = useRef<string | null>(null)
@@ -359,6 +372,17 @@ export function EvaluationSections({
     [tab, ruleCtx],
   )
   const pending = progress?.pending ?? []
+  const triedToAdvance = Boolean(attempted[tab])
+  const showPending    = triedToAdvance && pending.length > 0
+
+  /** Avançar/concluir: se falta obrigatório, não sai — revela o que falta. */
+  function tryLeaveSection(next: () => void) {
+    if (pending.length === 0) { next(); return }
+    setAttempted((prev) => ({ ...prev, [tab]: true }))
+    setTimeout(() => {
+      document.getElementById('section-pending-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 50)
+  }
 
   function buttonLabel(status: string): string {
     if (reopenCount > 0) return 'Reavaliar'
@@ -483,6 +507,8 @@ export function EvaluationSections({
 
           {/* Foto geral da seção (obrigatória) */}
           <SectionPhotoWidget
+            key={tab}
+            invalid={triedToAdvance && sectionPhotos.length === 0}
             evaluationId={evaluationId}
             section={tab}
             photos={sectionPhotos}
@@ -505,7 +531,7 @@ export function EvaluationSections({
                   key={it.catalogKey ?? it.id}
                   className={[
                     'flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2.5',
-                    photoMissing || (answerRequired && it.status === 'PENDING')
+                    triedToAdvance && (photoMissing || (answerRequired && it.status === 'PENDING'))
                       ? 'border-error/40'
                       : 'border-gray-200',
                   ].join(' ')}
@@ -552,7 +578,7 @@ export function EvaluationSections({
           </ul>
 
           {/* ── Pendências obrigatórias da seção ───────────────────────────── */}
-          <PendingPanel pending={pending} onGoTo={goToPending} />
+          {showPending && <PendingPanel pending={pending} onGoTo={goToPending} />}
 
           {/* ── Navegação entre seções ───────────────────────────────────── */}
           {(onBack || onComplete) && (
@@ -573,12 +599,11 @@ export function EvaluationSections({
               {TABS.indexOf(tab) < TABS.length - 1 ? (
                 <button
                   type="button"
-                  disabled={pending.length > 0}
                   title={pending.length > 0
                     ? `Faltam: ${pending.map((p) => p.label).join(' • ')}`
                     : undefined}
-                  onClick={() => setTab(TABS[TABS.indexOf(tab) + 1])}
-                  className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => tryLeaveSection(() => setTab(TABS[TABS.indexOf(tab) + 1]))}
+                  className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
                 >
                   Próxima seção ({SECTIONS.find((s) => s.key === TABS[TABS.indexOf(tab) + 1])?.label})
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -586,9 +611,8 @@ export function EvaluationSections({
               ) : (
                 <button
                   type="button"
-                  disabled={pending.length > 0}
-                  onClick={() => onComplete?.()}
-                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => tryLeaveSection(() => onComplete?.())}
+                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Concluir avaliação — ir para Cautelar
