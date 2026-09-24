@@ -3,7 +3,7 @@
 // o navegador interprete o arquivo como outra coisa que não imagem.
 // ?format=jpg entrega JPEG (o catálogo da Meta não aceita WebP).
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { readSiteAsset } from '@/lib/site/assets'
 
 export const runtime = 'nodejs'
 
@@ -19,7 +19,7 @@ async function toJpeg(input: Uint8Array): Promise<Uint8Array<ArrayBuffer> | null
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   if (!/^[a-z0-9]{10,40}$/i.test(id)) return new NextResponse('Não encontrado', { status: 404 })
-  const asset = await prisma.siteAsset.findUnique({ where: { id }, select: { data: true, mimeType: true, sha256: true, kind: true } }).catch(() => null)
+  const asset = await readSiteAsset(id).catch((e) => { console.error('[site/assets] falha ao ler', id, e); return null })
   // Fotos enviadas por clientes (podem mostrar placa/dados) não são públicas.
   if (!asset || asset.kind === 'LEAD_PHOTO') return new NextResponse('Não encontrado', { status: 404 })
   let body = new Uint8Array(asset.data)

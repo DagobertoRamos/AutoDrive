@@ -41,3 +41,13 @@
   .autodrive-site textarea { font-size: 16px; }
   .autodrive-site .site-footer .footer-grid a { display: flex; align-items: center; min-height: 40px; }
 }
+
+/* Topo: botão "Mais" com os serviços que não couberam no menu. */
+.autodrive-site .nav-more { position: relative; }
+.autodrive-site .nav-more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: .92rem; }
+.autodrive-site .nav-more > summary::-webkit-details-marker { display: none; }
+.autodrive-site .nav-more > summary:hover { color: var(--blue); }
+.autodrive-site .nav-more[open] > summary svg { transform: rotate(180deg); }
+.autodrive-site .nav-more-list { position: absolute; right: 0; top: calc(100% + 10px); z-index: 60; display: grid; min-width: 200px; padding: 8px; border-radius: 14px; background: #fff; border: 1px solid rgba(15, 23, 42, .08); box-shadow: 0 18px 40px rgba(15, 23, 42, .14); }
+.autodrive-site .nav-more-list a { padding: 9px 12px; border-radius: 10px; }
+.autodrive-site .nav-more-list a:hover { background: rgba(15, 23, 42, .05); }

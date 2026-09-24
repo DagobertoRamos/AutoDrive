@@ -2,6 +2,7 @@
 // quem enxerga o lead no CRM (mesma loja e mesmo escopo). Cache privado.
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { readSiteAsset } from '@/lib/site/assets'
 import { getSessionUser } from '@/lib/auth-guards'
 import { resolveActingTenant } from '@/lib/acting-tenant'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
@@ -18,7 +19,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const tenantId = await resolveActingTenant(user, req)
   const scope = await resolveCrmScope(user)
   if (!tenantId || !scope) return notFound()
-  const asset = await prisma.siteAsset.findFirst({ where: { id, tenantId, kind: 'LEAD_PHOTO' }, select: { data: true, mimeType: true } }).catch(() => null)
+  const stored = await readSiteAsset(id).catch(() => null)
+  const asset = stored && stored.tenantId === tenantId && stored.kind === 'LEAD_PHOTO' ? stored : null
   if (!asset) return notFound()
   const lead = await prisma.marketingLead.findFirst({
     where: { tenantId, metadata: { path: ['sitePhotos'], array_contains: [id] } },

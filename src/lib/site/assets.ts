@@ -31,3 +31,18 @@ export function assetIdFromUrl(url: string): string | null {
   const m = /^\/api\/site\/assets\/([a-z0-9]{10,40})$/i.exec(url)
   return m ? m[1] : null
 }
+
+export interface StoredAsset { tenantId: string; kind: string; mimeType: string; sha256: string; data: Uint8Array }
+
+/**
+ * Lê o arquivo de um asset. Via SQL com base64 porque o adapter Neon (usado em
+ * produção) não consegue devolver colunas bytea pelo Prisma ("JS functions
+ * cannot be represented as a serde_json::Value").
+ */
+export async function readSiteAsset(id: string): Promise<StoredAsset | null> {
+  const rows = await prisma.$queryRaw<{ tenantId: string; kind: string; mimeType: string; sha256: string; b64: string }[]>`
+    SELECT "tenantId", kind, "mimeType", sha256, encode(data, 'base64') AS b64 FROM site_assets WHERE id = ${id} LIMIT 1`
+  const r = rows[0]
+  if (!r) return null
+  return { tenantId: r.tenantId, kind: r.kind, mimeType: r.mimeType, sha256: r.sha256, data: new Uint8Array(Buffer.from(r.b64, 'base64')) }
+}

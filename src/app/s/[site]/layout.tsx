@@ -66,7 +66,7 @@ export default async function SiteLayout({ children, params }: { children: React
     <div className="autodrive-site" style={vars}>
       {/* Marca a página como site público: o vigia de sessão do painel não age aqui. */}
       <script dangerouslySetInnerHTML={{ __html: 'window.__AUTODRIVE_PUBLIC_SITE__=true' }} />
-      <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} desktopNav={ctx.headerNav} whatsappHref={wa} phone={contact.phone} />
+      <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} desktopNav={ctx.headerNav} moreNav={ctx.headerMore} whatsappHref={wa} phone={contact.phone} />
       <main>{children}</main>
       <SiteFooter config={ctx.config} nav={ctx.nav} whatsappHref={wa} seoLinks={seoLinks} />
       {/* useSearchParams exige Suspense */}

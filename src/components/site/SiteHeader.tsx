@@ -5,18 +5,19 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef } from 'react'
-import { Menu, MessageCircle, Phone } from 'lucide-react'
+import { ChevronDown, Menu, MessageCircle, Phone } from 'lucide-react'
 
 export interface SiteNavItem { label: string; href: string }
 
-export function SiteHeader({ homeHref, name, logoUrl, nav, desktopNav, whatsappHref, phone }: {
-  homeHref: string; name: string; logoUrl: string; nav: SiteNavItem[]; desktopNav?: SiteNavItem[]; whatsappHref: string; phone: string
+export function SiteHeader({ homeHref, name, logoUrl, nav, desktopNav, moreNav = [], whatsappHref, phone }: {
+  homeHref: string; name: string; logoUrl: string; nav: SiteNavItem[]; desktopNav?: SiteNavItem[]; moreNav?: SiteNavItem[]; whatsappHref: string; phone: string
 }) {
   const pathname = usePathname()
   const mobileMenu = useRef<HTMLDetailsElement>(null)
-  useEffect(() => { if (mobileMenu.current) mobileMenu.current.open = false }, [pathname])
+  const moreMenu = useRef<HTMLDetailsElement>(null)
+  useEffect(() => { for (const m of [mobileMenu.current, moreMenu.current]) if (m) m.open = false }, [pathname])
 
-  const close = () => { if (mobileMenu.current) mobileMenu.current.open = false }
+  const close = () => { for (const m of [mobileMenu.current, moreMenu.current]) if (m) m.open = false }
   const toLinks = (items: SiteNavItem[]) => items.map(({ label, href }) => (
     <Link key={href} href={href} onClick={close}
       aria-current={pathname === href || (href !== homeHref && pathname.startsWith(`${href}/`)) ? 'page' : undefined}>
@@ -33,7 +34,15 @@ export function SiteHeader({ homeHref, name, logoUrl, nav, desktopNav, whatsappH
             ? <img src={logoUrl} alt={name} width={202} height={32} />
             : <strong className="brand-text">{name}</strong>}
         </Link>
-        <nav className="desktop-nav" aria-label="Navegação principal">{toLinks(desktopNav ?? nav)}</nav>
+        <nav className="desktop-nav" aria-label="Navegação principal">
+          {toLinks(desktopNav ?? nav)}
+          {desktopNav && moreNav.length > 0 && (
+            <details className="nav-more" ref={moreMenu}>
+              <summary>Mais <ChevronDown size={14} aria-hidden="true" /></summary>
+              <div className="nav-more-list">{toLinks(moreNav)}</div>
+            </details>
+          )}
+        </nav>
         {whatsappHref && (
           <div className="header-actions">
             <a className="button header-whatsapp" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>

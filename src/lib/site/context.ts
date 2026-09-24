@@ -17,6 +17,8 @@ export interface SiteContext {
   nav: { label: string; href: string }[]
   /** Links do topo no desktop (no máximo 6, para caber). */
   headerNav: { label: string; href: string }[]
+  /** O que não coube no topo (vai no botão "Mais"). */
+  headerMore: { label: string; href: string }[]
   whatsapp: (text?: string) => string
   on: (s: SiteServiceKey) => boolean
 }
@@ -56,6 +58,7 @@ export const getSiteContext = cache(async (key: string): Promise<SiteContext> =>
     apiUrl: `/api/site/${encodeURIComponent(key)}/leads`,
     nav: NAV.filter((n) => !n.service || on(n.service)).map((n) => ({ label: n.label, href: siteHref(base, n.path) })),
     headerNav: headerLinks(NAV.filter((n) => !n.service || on(n.service))).map((n) => ({ label: n.label, href: siteHref(base, n.path) })),
+    headerMore: (() => { const vis = NAV.filter((n) => !n.service || on(n.service)); const top = new Set(headerLinks(vis).map((n) => n.path)); return vis.filter((n) => !top.has(n.path)).map((n) => ({ label: n.label, href: siteHref(base, n.path) })) })(),
     whatsapp: (text?: string) => whatsappLink(config, text ?? `Olá! Vim pelo site da ${config.identity.name} e gostaria de atendimento.`),
     on,
   }
