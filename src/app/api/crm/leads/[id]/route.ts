@@ -7,6 +7,7 @@ import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-module
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 import { readTemperature } from '@/lib/crm/config'
 import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
+import { fireAutomations } from '@/lib/crm/automations'
 import { validateStageTransition } from '@/lib/crm/transitions'
 import { isMaterialized, loadPipelines, loadPlacement, planLeadMove, resolveLeadPipeline, resolveLeadStage, savePlacement, type MovePlan } from '@/lib/crm/pipelines'
 
@@ -441,6 +442,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (move?.changesStage && pipelinesMaterialized) {
       await savePlacement({ tenantId, leadId: id, pipelineId: move.toPipeline.id, stageId: move.toStage.id, stageChanged: true })
     }
+    if (move?.changesStage || statusChanges) await fireAutomations(tenantId, 'STAGE_ENTERED', id)
     if (body.assignedToUserId !== undefined || statusChanges) {
       await prisma.marketingLeadAssignment.create({
         data: {

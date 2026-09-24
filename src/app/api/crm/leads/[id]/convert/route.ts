@@ -12,6 +12,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
+import { fireAutomations } from '@/lib/crm/automations'
 import { syncDealVehiclesToLead } from '@/lib/crm/vehicle-sync'
 
 export const dynamic = 'force-dynamic'
@@ -49,6 +50,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       await syncDealVehiclesToLead(dealId, id, tenantId)
     }
     await prisma.crmLeadInteraction.create({ data: { tenantId, leadId: id, type: 'NOTE', result: 'CONVERTED', summary: note ?? `Lead convertido${dealId ? ` — negociação ${dealId.slice(-8)}` : ''}.`, authorId: user.id, authorName: user.name, occurredAt: now }}).catch(() => {})
+    await fireAutomations(tenantId, 'STAGE_ENTERED', id, { settings })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CONVERT', entity: 'MarketingLead', entityId: id, userName: user.name, userRole: user.role, afterData: { dealId, note } })
     return NextResponse.json({ success: true })
   } catch (err) { return handlePrismaError(err) }

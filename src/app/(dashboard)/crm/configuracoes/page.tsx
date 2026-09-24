@@ -9,18 +9,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { Settings, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, Copy, Thermometer, Shapes, Radio, XCircle, ListChecks, Timer, Shuffle } from 'lucide-react'
+import { Settings, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, Copy, Thermometer, Shapes, Radio, XCircle, ListChecks, Timer, Shuffle, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PipelinesTab from './PipelinesTab'
 import { CloseReasonsTab, LeadTypesTab, SourcesTab, TemperaturesTab } from './ListsTabs'
 import { DistributionTab, RequiredFieldsTab, SlaTab } from './RulesTabs'
+import AutomationsTab from './AutomationsTab'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
 interface Tag { id: string; name: string; color: string | null; description: string | null; active: boolean }
 
-type TabId = 'overview' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'duplicates'
+type TabId = 'overview' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'automations' | 'duplicates'
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: 'overview', label: 'Visão geral', icon: Settings },
   { id: 'pipelines', label: 'Funis e etapas', icon: Columns3 },
@@ -32,9 +33,10 @@ const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: 'requiredFields', label: 'Campos obrigatórios', icon: ListChecks },
   { id: 'sla', label: 'SLA e follow-up', icon: Timer },
   { id: 'distribution', label: 'Distribuição', icon: Shuffle },
+  { id: 'automations', label: 'Automações', icon: Zap },
   { id: 'duplicates', label: 'Duplicidades', icon: Copy },
 ]
-const SOON = ['Automações', 'Permissões', 'Auditoria']
+const SOON = ['Permissões', 'Auditoria']
 
 export default function CrmConfiguracoesPage() {
   const { data: session } = useSession()
@@ -66,6 +68,7 @@ export default function CrmConfiguracoesPage() {
       {tab === 'requiredFields' && <RequiredFieldsTab canManage={canManage} />}
       {tab === 'sla' && <SlaTab canManage={canManage} />}
       {tab === 'distribution' && <DistributionTab canManage={canManage} />}
+      {tab === 'automations' && <AutomationsTab canManage={canManage} />}
       {tab === 'duplicates' && <DuplicatesTab />}
     </div>
   )
@@ -137,6 +140,7 @@ function Overview() {
           <li><b>Campos obrigatórios</b> — o que é exigido ao cadastrar e ao converter um lead.</li>
           <li><b>SLA e follow-up</b> — prazo do 1º contato, alerta de lead parado, tarefa automática e aviso aos gestores.</li>
           <li><b>Distribuição</b> — leads novos do CRM entram no motor da Mesa SDR (roleta, carga, desempenho).</li>
+          <li><b>Automações</b> — quando o lead é criado, entra numa etapa ou fica parado: criar tarefa, avisar, etiquetar, mudar temperatura, atribuir.</li>
         </ul>
       </div>
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">

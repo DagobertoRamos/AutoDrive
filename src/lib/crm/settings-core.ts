@@ -8,6 +8,8 @@
 //   • Motivos de encerramento: por desfecho (perdido/desqualificado/reciclado).
 // =============================================================================
 
+import { sanitizeAutomations, type AutomationRule } from './automations-core'
+
 export const TEMPERATURE_CODES = ['BOILING', 'HOT', 'WARM', 'COLD'] as const
 export type TemperatureCode = (typeof TEMPERATURE_CODES)[number]
 export const CLOSE_OUTCOMES = ['LOST', 'DISCARDED', 'RECYCLED'] as const
@@ -41,6 +43,7 @@ export interface CrmSettings {
   requiredFields: RequiredFieldsCfg
   sla: SlaCfg
   distribution: DistributionCfg
+  automations: AutomationRule[]
 }
 
 /** Campos do lead que a loja pode exigir no cadastro / na conversão. */
@@ -100,6 +103,7 @@ export function defaultCrmSettings(): CrmSettings {
     requiredFields: { onCreate: [], onConvert: [] },
     sla: { enabled: false, firstContactMinutes: 30, noContactHours: 48, createFollowUpTask: true, escalateToManagers: true },
     distribution: { autoAssignNew: false, runSdrInTick: false },
+    automations: [],
   }
 }
 
@@ -182,7 +186,7 @@ export function sanitizeCrmSettings(input: unknown): CrmSettings {
   const di = (b.distribution && typeof b.distribution === 'object' ? b.distribution : {}) as Record<string, unknown>
   const distribution = { autoAssignNew: bool(di.autoAssignNew, false), runSdrInTick: bool(di.runSdrInTick, false) }
 
-  return { temperatures, leadTypes, sources, closeReasons, requiredFields, sla, distribution }
+  return { temperatures, leadTypes, sources, closeReasons, requiredFields, sla, distribution, automations: sanitizeAutomations(b.automations) }
 }
 
 // ── Fase B: avaliadores puros ────────────────────────────────────────────────

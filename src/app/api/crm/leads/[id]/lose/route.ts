@@ -10,6 +10,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
+import { fireAutomations } from '@/lib/crm/automations'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +45,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     if (recycleAt) {
       await prisma.marketingLeadTask.create({ data: { tenantId, leadId: id, type: 'FOLLOW_UP', title: 'Retorno — cliente potencial para ciclo futuro', status: 'PENDING', dueAt: recycleAt, assignedToUserId: lead.assignedToUserId ?? undefined, createdById: user.id } }).catch(() => {})
     }
+    if (lead.status !== outcome) await fireAutomations(tenantId, 'STAGE_ENTERED', id)
     await createSafeAuditLog({ userId: user.id, tenantId, action: outcome, entity: 'MarketingLead', entityId: id, userName: user.name, userRole: user.role, afterData: { reason, competitor, recycleAt } })
     return NextResponse.json({ success: true })
   } catch (err) { return handlePrismaError(err) }

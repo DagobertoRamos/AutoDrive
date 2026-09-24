@@ -8,6 +8,7 @@ import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared
 import { readTemperature } from '@/lib/crm/config'
 import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
 import { distributeLeadById } from '@/lib/marketing/distribution'
+import { fireAutomations } from '@/lib/crm/automations'
 import { resolveIdentity, type DedupMatch } from '@/lib/crm/dedup'
 import { assignLeadNumber } from '@/lib/crm/lead-number'
 import { isMaterialized, landingStage, loadPipelines, loadPlacements, pipelineLeadWhere, resolveLeadPipeline, resolveLeadStage, savePlacement } from '@/lib/crm/pipelines'
@@ -344,6 +345,7 @@ export async function POST(req: Request) {
       const distributed = await distributeLeadById(tenantId, lead.id).catch(() => false)
       if (!distributed) await prisma.marketingLead.update({ where: { id: lead.id }, data: { assignedToUserId: user.id } }).catch(() => {})
     }
+    await fireAutomations(tenantId, 'LEAD_CREATED', lead.id, { settings })
     // CRM Pipelines — funil escolhido na criação (sem funil = padrão).
     if (body.pipelineId) {
       const pipelines = await loadPipelines(tenantId)

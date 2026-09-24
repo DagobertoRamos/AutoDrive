@@ -5,7 +5,7 @@
 //   • Pendências: lembretes vencidos
 //   • Pendências: auto-arquivar resolvidas
 //   • Comunicação: avisos agendados (dispara os que chegaram na hora)
-//   • CRM: SLA/follow-up e distribuição (só lojas que ligaram nas configurações)
+//   • CRM: SLA/follow-up, distribuição e automações (só lojas que configuraram)
 // Cada job é isolado (um erro não derruba os outros). Protegido por
 // QUEUE_JOB_SECRET ou CRON_SECRET (header x-cron-secret / Bearer). GET+POST.
 // Aponte UM cron (cron-job.org) a cada 1 min para este endpoint.
@@ -22,6 +22,7 @@ import { archiveResolvedPendenciesJob } from '@/lib/pendencies/auto-archive'
 import { dispatchScheduledAvisos } from '@/lib/comunicacao/scheduled-avisos'
 import { runQualityAutoSweep } from '@/lib/quality/auto-sweep'
 import { runCrmSlaSweep } from '@/lib/crm/sla-sweep'
+import { runCrmAutomationSweep } from '@/lib/crm/automations'
 
 function authorized(req: Request): boolean {
   const header = req.headers.get('x-cron-secret') ?? ''
@@ -50,6 +51,7 @@ async function tick() {
     await safe('scheduledAvisos', () => dispatchScheduledAvisos()),
     await safe('qualityAutoSweep', () => runQualityAutoSweep()),
     await safe('crmSla', () => runCrmSlaSweep()),
+    await safe('crmAutomations', () => runCrmAutomationSweep()),
   ]
   return { success: true, durationMs: Date.now() - startedAt, jobs }
 }
