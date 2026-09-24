@@ -6,7 +6,8 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared'
 import { readTemperature } from '@/lib/crm/config'
-import { loadCrmSettings, readLeadType } from '@/lib/crm/settings'
+import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
+import { distributeLeadById } from '@/lib/marketing/distribution'
 import { resolveIdentity, type DedupMatch } from '@/lib/crm/dedup'
 import { assignLeadNumber } from '@/lib/crm/lead-number'
 import { isMaterialized, landingStage, loadPipelines, loadPlacements, pipelineLeadWhere, resolveLeadPipeline, resolveLeadStage, savePlacement } from '@/lib/crm/pipelines'
@@ -250,10 +251,17 @@ export async function POST(req: Request) {
     const cpf = body.cpf ? String(body.cpf) : null
     const externalLeadId = body.externalLeadId ? String(body.externalLeadId) : null
     const explicitAssigned = body.assignedToUserId ? String(body.assignedToUserId) : null
+    const settings = await loadCrmSettings(tenantId)
     let leadType: string | null = body.leadType ? String(body.leadType) : null
-    if (leadType) {
-      const settings = await loadCrmSettings(tenantId)
-      if (!settings.leadTypes.some((t) => t.id === leadType && t.active)) leadType = null
+    if (leadType && !settings.leadTypes.some((t) => t.id === leadType && t.active)) leadType = null
+    const vehicleId = body.vehicleId ? String(body.vehicleId) : null
+    // Campos obrigatórios da loja (Fase B) — só no cadastro manual; integrações
+    // (que mandam externalLeadId) não podem ser barradas por regra de tela.
+    if (!externalLeadId) {
+      const missing = missingLeadFields(settings.requiredFields.onCreate, { name, phone, email, leadType, vehicleId, assignedToUserId: explicitAssigned ?? user.id })
+      if (missing.length) {
+        return NextResponse.json({ success: false, error: `Preencha: ${fieldLabels(missing)}.`, missingFields: missing }, { status: 400 })
+      }
     }
     if (!name && !phone && !email) {
       return NextResponse.json({ success: false, error: 'Informe nome, telefone ou e-mail.' }, { status: 400 })
@@ -268,9 +276,13 @@ export async function POST(req: Request) {
 
     const canEditUnit = await canAccessModuleForUser(user, 'crm.lead.edit.unit')
     const canTransfer = await canAccessModuleForUser(user, 'crm.lead.transfer')
+    // Distribuição automática (Fase B): sem responsável explícito, o lead nasce
+    // sem dono e vai para o motor da Mesa SDR; se ninguém puder receber, fica
+    // com quem cadastrou (nunca órfão).
+    const autoDistribute = settings.distribution.autoAssignNew && !explicitAssigned
     const assignedToUserId = explicitAssigned && (canEditUnit || canTransfer || explicitAssigned === user.id)
       ? explicitAssigned
-      : user.id
+      : autoDistribute ? null : user.id
     const unitId = body.unitId && canEditUnit ? String(body.unitId) : (user.unitId ?? null)
 
     const phoneDigits = normalizePhone(phone)
@@ -317,6 +329,7 @@ export async function POST(req: Request) {
         notes,
         status: 'NEW',
         assignedToUserId,
+        ...(vehicleId ? { vehicleId } : {}),
         createdById: user.id,
         // Reusa contato existente (identidade) se houver — não cria pessoa duplicada.
         ...(identity.customerId ? { customerId: identity.customerId } : {}),
@@ -327,6 +340,10 @@ export async function POST(req: Request) {
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE', entity: 'MarketingLead', entityId: lead.id, userName: user.name, userRole: user.role })
     // Atribui número público ao lead (tolerante — não bloqueia a criação).
     void assignLeadNumber(lead.id, tenantId)
+    if (autoDistribute) {
+      const distributed = await distributeLeadById(tenantId, lead.id).catch(() => false)
+      if (!distributed) await prisma.marketingLead.update({ where: { id: lead.id }, data: { assignedToUserId: user.id } }).catch(() => {})
+    }
     // CRM Pipelines — funil escolhido na criação (sem funil = padrão).
     if (body.pipelineId) {
       const pipelines = await loadPipelines(tenantId)

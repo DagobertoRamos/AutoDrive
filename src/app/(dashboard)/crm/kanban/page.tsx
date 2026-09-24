@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowRightLeft, Calendar, Car, ChevronLeft, ChevronRight, Loader2, MoreVertical, RefreshCw, Search, Trash2, User, X } from 'lucide-react'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
-import { sourceLabelOf, temperatureOf, type CloseOutcome, type CrmSettings } from '@/lib/crm/settings-core'
+import { evaluateLeadSla, sourceLabelOf, temperatureOf, type CloseOutcome, type CrmSettings } from '@/lib/crm/settings-core'
 import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import { cn } from '@/lib/utils'
 import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
@@ -20,7 +20,7 @@ interface LeadRow {
   status: string; assignedToUserName: string | null; unitName: string | null
   temperature: string | null; tags: LeadTag[]; vehicle: LeadVehicle | null; vehicleLabel: string | null
   deal: LeadDeal | null; nextTask: LeadNextTask | null; createdAt: string
-  pipelineId: string | null; stageId: string | null
+  pipelineId: string | null; stageId: string | null; lastContactAt: string | null
 }
 interface CrmCtx {
   scope: string; sellers: { id: string; name: string | null }[]; units: { id: string; name: string }[]
@@ -221,6 +221,11 @@ function LeadCard({ row, settings, canDelete, onRefresh, moving, moveTargets, on
     ? [row.vehicle.brand, row.vehicle.model, row.vehicle.version].filter(Boolean).join(' ') || null
     : null
   const plate = plateDisplay(row.vehicle?.plate)
+  // SLA do CRM (Configurações → SLA e follow-up): selo no card fora do prazo.
+  const sla = settings.sla.enabled
+    ? evaluateLeadSla({ status: row.status, createdAt: new Date(row.createdAt), lastContactAt: row.lastContactAt ? new Date(row.lastContactAt) : null, marks: {} }, settings.sla, new Date())
+    : null
+  const slaLabel = sla?.firstContactLate ? '1º contato atrasado' : sla?.noContactLate ? `Parado há +${settings.sla.noContactHours}h` : null
   const hasTask = !!row.nextTask
 
   return (
@@ -242,6 +247,10 @@ function LeadCard({ row, settings, canDelete, onRefresh, moving, moveTargets, on
           <CardMenu lead={row} canDelete={canDelete} onDelete={() => setDeleting(true)} moveTargets={moveTargets} onMove={onMove} />
         </div>
       </div>
+
+      {slaLabel && (
+        <span className="mt-1.5 inline-flex items-center rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400">{slaLabel}</span>
+      )}
 
       {/* Nome do cliente */}
       <p className="mt-1.5 line-clamp-2 font-semibold leading-snug text-gray-900 dark:text-white" style={{ fontSize: '13px' }} title={row.name ?? undefined}>

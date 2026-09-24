@@ -18,12 +18,41 @@ export interface LeadTypeCfg { id: string; label: string; color: string; active:
 export interface SourceCfg { code: string; label: string; active: boolean; system: boolean }
 export interface CloseReasonCfg { id: string; label: string; outcome: CloseOutcome; active: boolean }
 
+// Fase B — regras de atendimento.
+export interface RequiredFieldsCfg { onCreate: string[]; onConvert: string[] }
+export interface SlaCfg {
+  enabled: boolean
+  firstContactMinutes: number   // prazo p/ o 1º contato após a criação
+  noContactHours: number        // alerta quando o lead fica esse tempo sem contato
+  createFollowUpTask: boolean   // cria tarefa de follow-up no alerta de "sem contato"
+  escalateToManagers: boolean   // avisa gestores (resumo) quando houver estouro
+  enabledAt?: string            // ISO de quando foi ligado: só alerta estouros a partir daí
+}
+export interface DistributionCfg {
+  autoAssignNew: boolean        // lead criado no CRM sem responsável → motor de distribuição
+  runSdrInTick: boolean         // roda SLA+distribuição da Mesa SDR no job periódico
+}
+
 export interface CrmSettings {
   temperatures: TemperatureCfg[]
   leadTypes: LeadTypeCfg[]
   sources: SourceCfg[]
   closeReasons: CloseReasonCfg[]
+  requiredFields: RequiredFieldsCfg
+  sla: SlaCfg
+  distribution: DistributionCfg
 }
+
+/** Campos do lead que a loja pode exigir no cadastro / na conversão. */
+export const LEAD_FIELDS = [
+  { key: 'name', label: 'Nome' },
+  { key: 'phone', label: 'Telefone' },
+  { key: 'email', label: 'E-mail' },
+  { key: 'leadType', label: 'Tipo de lead' },
+  { key: 'vehicleId', label: 'Veículo de interesse' },
+  { key: 'assignedToUserId', label: 'Responsável' },
+] as const
+const LEAD_FIELD_KEYS = new Set<string>(LEAD_FIELDS.map((f) => f.key))
 
 /** Códigos de origem gravados pelas integrações/fluxos do sistema. */
 export const SYSTEM_SOURCES: { code: string; label: string }[] = [
@@ -67,6 +96,10 @@ export function defaultCrmSettings(): CrmSettings {
       ...DISCARDED_REASONS.map((label) => ({ id: `discarded-${slug(label)}`, label, outcome: 'DISCARDED' as const, active: true })),
       ...RECYCLED_REASONS.map((label) => ({ id: `recycled-${slug(label)}`, label, outcome: 'RECYCLED' as const, active: true })),
     ],
+    // Defaults = comportamento atual (nada exigido, SLA e distribuição desligados).
+    requiredFields: { onCreate: [], onConvert: [] },
+    sla: { enabled: false, firstContactMinutes: 30, noContactHours: 48, createFollowUpTask: true, escalateToManagers: true },
+    distribution: { autoAssignNew: false, runSdrInTick: false },
   }
 }
 
@@ -129,7 +162,85 @@ export function sanitizeCrmSettings(input: unknown): CrmSettings {
       })
     : d.closeReasons
 
-  return { temperatures, leadTypes, sources, closeReasons }
+  const rf = (b.requiredFields && typeof b.requiredFields === 'object' ? b.requiredFields : {}) as Record<string, unknown>
+  const fields = (v: unknown) => Array.isArray(v) ? [...new Set(v.filter((f): f is string => typeof f === 'string' && LEAD_FIELD_KEYS.has(f)))] : []
+  const requiredFields = { onCreate: fields(rf.onCreate), onConvert: fields(rf.onConvert) }
+
+  const sl = (b.sla && typeof b.sla === 'object' ? b.sla : {}) as Record<string, unknown>
+  const int = (v: unknown, def: number, min: number, max: number) => {
+    const n = Math.round(Number(v)); return Number.isFinite(n) && v !== null && v !== '' ? Math.min(max, Math.max(min, n)) : def
+  }
+  const sla = {
+    enabled: bool(sl.enabled, d.sla.enabled),
+    firstContactMinutes: int(sl.firstContactMinutes, d.sla.firstContactMinutes, 5, 7 * 24 * 60),
+    noContactHours: int(sl.noContactHours, d.sla.noContactHours, 1, 60 * 24),
+    createFollowUpTask: bool(sl.createFollowUpTask, d.sla.createFollowUpTask),
+    escalateToManagers: bool(sl.escalateToManagers, d.sla.escalateToManagers),
+    ...(typeof sl.enabledAt === 'string' && !Number.isNaN(Date.parse(sl.enabledAt)) ? { enabledAt: sl.enabledAt } : {}),
+  }
+
+  const di = (b.distribution && typeof b.distribution === 'object' ? b.distribution : {}) as Record<string, unknown>
+  const distribution = { autoAssignNew: bool(di.autoAssignNew, false), runSdrInTick: bool(di.runSdrInTick, false) }
+
+  return { temperatures, leadTypes, sources, closeReasons, requiredFields, sla, distribution }
+}
+
+// ── Fase B: avaliadores puros ────────────────────────────────────────────────
+
+export interface LeadFieldValues { name?: string | null; phone?: string | null; email?: string | null; leadType?: string | null; vehicleId?: string | null; assignedToUserId?: string | null }
+
+/** Campos exigidos que estão vazios (na ordem de LEAD_FIELDS). */
+export function missingLeadFields(required: string[], lead: LeadFieldValues): string[] {
+  return LEAD_FIELDS.filter((f) => required.includes(f.key)).filter((f) => {
+    const v = (lead as Record<string, unknown>)[f.key]
+    return typeof v === 'string' ? !v.trim() : v == null
+  }).map((f) => f.key)
+}
+
+export function fieldLabels(keys: string[]): string {
+  return keys.map((k) => LEAD_FIELDS.find((f) => f.key === k)?.label ?? k).join(', ')
+}
+
+export const OPEN_LEAD_STATUSES = ['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'RECYCLED'] as const
+
+export interface SlaMarks { firstContactAlertedAt?: string; noContactAlertedFor?: string }
+export interface SlaLead { status: string; createdAt: Date; lastContactAt: Date | null; marks: SlaMarks }
+export interface SlaVerdict {
+  firstContactLate: boolean      // passou do prazo do 1º contato
+  noContactLate: boolean         // passou do limite sem contato
+  noContactRef: string           // referência (ISO) do período sem contato
+  alertFirstContact: boolean     // deve alertar agora (ainda não alertado)
+  alertNoContact: boolean
+}
+
+/**
+ * Situação de SLA de um lead. Alertas disparam uma vez por período e só para
+ * estouros que aconteceram depois de o SLA ser ligado (sem avalanche do
+ * histórico); os indicadores "Late" valem sempre (selo no Kanban).
+ */
+export function evaluateLeadSla(lead: SlaLead, cfg: SlaCfg, now: Date): SlaVerdict {
+  const open = (OPEN_LEAD_STATUSES as readonly string[]).includes(lead.status)
+  const ref = lead.lastContactAt ?? lead.createdAt
+  const noContactRef = ref.toISOString()
+  const firstDue = lead.createdAt.getTime() + cfg.firstContactMinutes * 60_000
+  const noContactDue = ref.getTime() + cfg.noContactHours * 3_600_000
+  const firstContactLate = open && !lead.lastContactAt && now.getTime() > firstDue
+  const noContactLate = open && now.getTime() > noContactDue
+  const since = cfg.enabledAt ? Date.parse(cfg.enabledAt) : -Infinity
+  return {
+    firstContactLate, noContactLate, noContactRef,
+    alertFirstContact: cfg.enabled && firstContactLate && firstDue >= since && !lead.marks.firstContactAlertedAt,
+    alertNoContact: cfg.enabled && noContactLate && noContactDue >= since && lead.marks.noContactAlertedFor !== noContactRef,
+  }
+}
+
+export function readSlaMarks(metadata: unknown): SlaMarks {
+  const m = metadata && typeof metadata === 'object' ? (metadata as Record<string, unknown>) : {}
+  const s = m.sla && typeof m.sla === 'object' ? (m.sla as Record<string, unknown>) : {}
+  return {
+    ...(typeof s.firstContactAlertedAt === 'string' ? { firstContactAlertedAt: s.firstContactAlertedAt } : {}),
+    ...(typeof s.noContactAlertedFor === 'string' ? { noContactAlertedFor: s.noContactAlertedFor } : {}),
+  }
 }
 
 // ── Leitura (usada nas telas) ────────────────────────────────────────────────

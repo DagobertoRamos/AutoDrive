@@ -34,7 +34,12 @@ export async function PUT(req: Request) {
     // Salvar uma aba não pode apagar as outras: mescla com o que já existe.
     const current = await loadCrmSettings(tenantId)
     const before = { ...current }
-    const merged = { ...current, ...Object.fromEntries(Object.entries(body).filter(([k]) => k in current)) }
+    const merged: Record<string, unknown> = { ...current, ...Object.fromEntries(Object.entries(body).filter(([k]) => k in current)) }
+    // SLA: carimba quando foi ligado (a varredura ignora estouros anteriores).
+    const nextSla = merged.sla as Record<string, unknown> | undefined
+    if (nextSla?.enabled) {
+      merged.sla = { ...nextSla, enabledAt: current.sla.enabled && current.sla.enabledAt ? current.sla.enabledAt : new Date().toISOString() }
+    }
     const saved = await saveCrmSettings(tenantId, merged, user.id)
     await createSafeAuditLog({
       userId: user.id, tenantId, action: 'UPDATE', entity: 'CrmSettings', entityId: tenantId,

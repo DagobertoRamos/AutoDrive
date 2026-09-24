@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { defaultCrmSettings, sanitizeCrmSettings, sourceLabelOf, temperatureOf, reasonsFor, readLeadType, leadTypeOf } from './settings-core'
+import { defaultCrmSettings, sanitizeCrmSettings, sourceLabelOf, temperatureOf, reasonsFor, readLeadType, leadTypeOf, missingLeadFields, fieldLabels, evaluateLeadSla } from './settings-core'
 
 describe('sanitizeCrmSettings', () => {
   it('vazio → defaults', () => {
@@ -49,5 +49,59 @@ describe('leitura', () => {
     expect(readLeadType({ leadType: 'troca' })).toBe('troca')
     expect(readLeadType(null)).toBeNull()
     expect(leadTypeOf(s, 'troca')?.label).toBe('Troca')
+  })
+})
+
+describe('Fase B — regras', () => {
+  it('sanitiza sla/distribuição/campos com limites e defaults', () => {
+    const s = sanitizeCrmSettings({ sla: { enabled: true, firstContactMinutes: 1, noContactHours: 'x' }, requiredFields: { onCreate: ['phone', 'hack', 'phone'] }, distribution: { autoAssignNew: 1 } })
+    expect(s.sla).toMatchObject({ enabled: true, firstContactMinutes: 5, noContactHours: 48 })
+    expect(s.requiredFields).toEqual({ onCreate: ['phone'], onConvert: [] })
+    expect(s.distribution).toEqual({ autoAssignNew: true, runSdrInTick: false })
+    expect(sanitizeCrmSettings({}).sla.enabled).toBe(false)
+  })
+
+  it('missingLeadFields respeita a ordem e considera vazio/espaços', () => {
+    expect(missingLeadFields(['email', 'name', 'leadType'], { name: '  ', email: 'a@b.c' })).toEqual(['name', 'leadType'])
+    expect(fieldLabels(['name', 'vehicleId'])).toBe('Nome, Veículo de interesse')
+  })
+
+  const cfg = { enabled: true, firstContactMinutes: 30, noContactHours: 48, createFollowUpTask: true, escalateToManagers: true }
+  const now = new Date('2026-09-23T12:00:00Z')
+  const ago = (ms: number) => new Date(now.getTime() - ms)
+
+  it('1º contato: alerta uma vez após o prazo', () => {
+    const lead = { status: 'NEW', createdAt: ago(31 * 60_000), lastContactAt: null, marks: {} }
+    expect(evaluateLeadSla(lead, cfg, now)).toMatchObject({ firstContactLate: true, alertFirstContact: true })
+    expect(evaluateLeadSla({ ...lead, marks: { firstContactAlertedAt: 'x' } }, cfg, now).alertFirstContact).toBe(false)
+    expect(evaluateLeadSla({ ...lead, createdAt: ago(10 * 60_000) }, cfg, now).firstContactLate).toBe(false)
+  })
+
+  it('sem contato: alerta por período (novo contato reabre o ciclo)', () => {
+    const last = ago(49 * 3_600_000)
+    const lead = { status: 'WORKING', createdAt: ago(100 * 3_600_000), lastContactAt: last, marks: {} }
+    const v = evaluateLeadSla(lead, cfg, now)
+    expect(v).toMatchObject({ noContactLate: true, alertNoContact: true, firstContactLate: false })
+    expect(evaluateLeadSla({ ...lead, marks: { noContactAlertedFor: last.toISOString() } }, cfg, now).alertNoContact).toBe(false)
+    expect(evaluateLeadSla({ ...lead, marks: { noContactAlertedFor: ago(200 * 3_600_000).toISOString() } }, cfg, now).alertNoContact).toBe(true)
+  })
+
+  it('lead fechado ou SLA desligado não alerta', () => {
+    const lead = { status: 'CONVERTED', createdAt: ago(100 * 3_600_000), lastContactAt: null, marks: {} }
+    expect(evaluateLeadSla(lead, cfg, now)).toMatchObject({ firstContactLate: false, noContactLate: false })
+    expect(evaluateLeadSla({ ...lead, status: 'NEW' }, { ...cfg, enabled: false }, now)).toMatchObject({ firstContactLate: true, alertFirstContact: false })
+  })
+})
+
+describe('SLA — ligar não dispara o histórico', () => {
+  const now = new Date('2026-09-23T12:00:00Z')
+  const cfg = { enabled: true, firstContactMinutes: 30, noContactHours: 48, createFollowUpTask: true, escalateToManagers: true, enabledAt: '2026-09-23T11:00:00Z' }
+  it('estouro anterior ao enabledAt: selo sim, alerta não', () => {
+    const lead = { status: 'WORKING', createdAt: new Date('2026-09-01T00:00:00Z'), lastContactAt: new Date('2026-09-10T00:00:00Z'), marks: {} }
+    expect(evaluateLeadSla(lead, cfg, now)).toMatchObject({ noContactLate: true, alertNoContact: false })
+  })
+  it('estouro depois do enabledAt alerta', () => {
+    const lead = { status: 'WORKING', createdAt: new Date('2026-09-01T00:00:00Z'), lastContactAt: new Date('2026-09-21T11:30:00Z'), marks: {} }
+    expect(evaluateLeadSla(lead, cfg, now).alertNoContact).toBe(true)
   })
 })

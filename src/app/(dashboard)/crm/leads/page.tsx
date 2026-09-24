@@ -89,6 +89,7 @@ export default function CrmLeadsPage() {
   const [newPhone, setNewPhone] = useState('')
   const [newSource, setNewSource] = useState('MANUAL')
   const [newType, setNewType] = useState('')
+  const [newErr, setNewErr] = useState<string | null>(null)
   const [saving, setSaving]   = useState(false)
 
   const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -141,12 +142,17 @@ export default function CrmLeadsPage() {
 
   const createLead = async () => {
     if (!newName && !newPhone) return
-    setSaving(true)
+    setSaving(true); setNewErr(null)
     try {
-      await fetch('/api/crm/leads', {
+      const res = await fetch('/api/crm/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ name: newName || null, phone: newPhone || null, source: newSource || 'MANUAL', leadType: newType || undefined }),
       })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null) as { error?: string } | null
+        setNewErr(j?.error ?? 'Não foi possível criar o lead.')
+        return
+      }
       setNewName(''); setNewPhone(''); setNewType(''); setShowNew(false); setPage(1); void load(1)
     } finally { setSaving(false) }
   }
@@ -219,6 +225,7 @@ export default function CrmLeadsPage() {
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}Criar
           </button>
           <button onClick={() => setShowNew(false)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"><X size={15} /></button>
+          {newErr && <p className="basis-full text-xs text-red-600 dark:text-red-400">{newErr}</p>}
         </div>
       )}
 

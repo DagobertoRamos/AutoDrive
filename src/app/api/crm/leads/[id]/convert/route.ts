@@ -11,6 +11,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
+import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
 import { syncDealVehiclesToLead } from '@/lib/crm/vehicle-sync'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +24,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
   const tenantId = await resolveActingTenant(user, req)
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   try {
-    const lead = await prisma.marketingLead.findFirst({ where: { id, tenantId }, select: { id: true, assignedToUserId: true, unitId: true, status: true } })
+    const lead = await prisma.marketingLead.findFirst({ where: { id, tenantId }, select: { id: true, assignedToUserId: true, unitId: true, status: true, name: true, phone: true, email: true, vehicleId: true, metadata: true } })
     if (!lead) return NextResponse.json({ success: false, error: 'Lead não encontrado.' }, { status: 404 })
     const scope = await resolveCrmScope(user)
     if (!scope || !canAccessLeadByScope(scope, user, lead)) return forbiddenResponse('Sem acesso a este lead.')
@@ -32,6 +33,13 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     const b = await req.json().catch(() => ({}))
     const dealId = b?.dealId ? String(b.dealId) : null
     const note   = b?.note   ? String(b.note).trim()   : null
+
+    // Campos obrigatórios para converter (Configurações do CRM → Campos obrigatórios).
+    const settings = await loadCrmSettings(tenantId)
+    const missing = missingLeadFields(settings.requiredFields.onConvert, { ...lead, leadType: readLeadType(lead.metadata) })
+    if (missing.length) {
+      return NextResponse.json({ success: false, error: `Para converter, preencha: ${fieldLabels(missing)}.`, missingFields: missing }, { status: 409 })
+    }
 
     const now = new Date()
     await prisma.marketingLead.update({ where: { id }, data: { status: 'CONVERTED' as never, convertedDealId: dealId ?? undefined, convertedAt: now, lastContactAt: now } })

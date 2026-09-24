@@ -12,11 +12,11 @@ import { cn } from '@/lib/utils'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import type { CloseOutcome, CloseReasonCfg, CrmSettings, LeadTypeCfg, SourceCfg, TemperatureCfg } from '@/lib/crm/settings-core'
 
-const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
-const checkCls = 'rounded border-gray-300 text-brand-600 focus:ring-brand-500'
+export const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
+export const checkCls = 'rounded border-gray-300 text-brand-600 focus:ring-brand-500'
 
 /** Estado de edição de uma seção + salvar. */
-function useSection<K extends keyof CrmSettings>(section: K) {
+export function useSection<K extends keyof CrmSettings>(section: K) {
   const { settings, reload } = useCrmSettings()
   const [items, setItems] = useState<CrmSettings[K]>(settings[section])
   const [dirty, setDirty] = useState(false)
@@ -41,7 +41,7 @@ function useSection<K extends keyof CrmSettings>(section: K) {
   return { items, update, save, saving, dirty, msg }
 }
 
-function Card({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+export function Card({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="mb-3"><h2 className="text-sm font-semibold text-gray-900">{title}</h2><p className="text-xs text-gray-500">{hint}</p></div>
@@ -50,7 +50,7 @@ function Card({ title, hint, children }: { title: string; hint: string; children
   )
 }
 
-function SaveBar({ canManage, save, saving, dirty, msg }: { canManage: boolean; save: () => void; saving: boolean; dirty: boolean; msg: { ok: boolean; text: string } | null }) {
+export function SaveBar({ canManage, save, saving, dirty, msg }: { canManage: boolean; save: () => void; saving: boolean; dirty: boolean; msg: { ok: boolean; text: string } | null }) {
   if (!canManage) return null
   return (
     <div className="mt-4 flex items-center justify-end gap-3">

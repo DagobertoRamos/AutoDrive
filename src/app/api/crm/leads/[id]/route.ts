@@ -6,7 +6,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 import { readTemperature } from '@/lib/crm/config'
-import { loadCrmSettings, readLeadType } from '@/lib/crm/settings'
+import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
 import { validateStageTransition } from '@/lib/crm/transitions'
 import { isMaterialized, loadPipelines, loadPlacement, planLeadMove, resolveLeadPipeline, resolveLeadStage, savePlacement, type MovePlan } from '@/lib/crm/pipelines'
 
@@ -417,6 +417,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const transition = validateStageTransition({ fromCode, toCode: move.toStage.id, stages, lead: effectiveLead })
       if (!transition.ok) {
         return NextResponse.json({ success: false, error: transition.reason, missingFields: transition.missingFields }, { status: 409 })
+      }
+    }
+
+    // Campos obrigatórios para CONVERTER (Fase B).
+    if (statusChanges && nextStatus === 'CONVERTED') {
+      const settings = await loadCrmSettings(tenantId)
+      const meta = (updateData.metadata ?? lead.metadata) as unknown
+      const missing = missingLeadFields(settings.requiredFields.onConvert, {
+        name: (updateData.name as string | null | undefined) ?? lead.name,
+        phone: (updateData.phone as string | null | undefined) ?? lead.phone,
+        email: (updateData.email as string | null | undefined) ?? lead.email,
+        leadType: readLeadType(meta),
+        vehicleId: lead.vehicleId,
+        assignedToUserId: (updateData.assignedToUserId as string | null | undefined) ?? lead.assignedToUserId,
+      })
+      if (missing.length) {
+        return NextResponse.json({ success: false, error: `Para converter, preencha: ${fieldLabels(missing)}.`, missingFields: missing }, { status: 409 })
       }
     }
 
