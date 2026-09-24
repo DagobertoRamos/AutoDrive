@@ -4492,6 +4492,9 @@ model MarketingLead {
   tasks            MarketingLeadTask[]
   slas             MarketingLeadSla[]
   calls            TelephonyCall[]
+  // CRM Pipelines — funil/etapa do lead vivem em tabela própria (sem coluna nova
+  // em marketing_leads). Sem registro = funil padrão, etapa derivada do status.
+  placement        CrmLeadPlacement?
 
   @@unique([tenantId, leadNumber])
   @@index([tenantId])
@@ -4526,6 +4529,67 @@ model CrmStage {
   @@unique([tenantId, code])
   @@index([tenantId])
   @@map("crm_stages")
+}
+
+// ── CRM Pipelines (multi-funil com etapas livres) ────────────────────────────
+// Cada funil tem etapas próprias; cada etapa aponta para um código do LeadStatus
+// (statusCode), que continua sendo a verdade p/ integrações/relatórios. Enquanto
+// o tenant não salvar nenhum funil, o sistema usa um funil padrão VIRTUAL montado
+// a partir de crm_stages (config F1/F3) — nada muda para quem não configurar.
+model CrmPipeline {
+  id          String             @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  color       String?
+  order       Int                @default(0)
+  active      Boolean            @default(true)
+  isDefault   Boolean            @default(false) // leads sem placement caem aqui
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  stages      CrmPipelineStage[]
+  placements  CrmLeadPlacement[]
+
+  @@index([tenantId])
+  @@map("crm_pipelines")
+}
+
+model CrmPipelineStage {
+  id             String             @id @default(cuid())
+  tenantId       String
+  pipelineId     String
+  pipeline       CrmPipeline        @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name           String
+  color          String?
+  order          Int                @default(0)
+  active         Boolean            @default(true)
+  statusCode     String // LeadStatus que o lead assume ao entrar na etapa
+  requiredFields Json? // ["name","phone",...] exigidos p/ ENTRAR na etapa
+  allowSkip      Boolean            @default(true)
+  allowBack      Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  placements     CrmLeadPlacement[]
+
+  @@index([tenantId])
+  @@index([pipelineId])
+  @@map("crm_pipeline_stages")
+}
+
+model CrmLeadPlacement {
+  id             String            @id @default(cuid())
+  tenantId       String
+  leadId         String            @unique
+  lead           MarketingLead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  pipelineId     String
+  pipeline       CrmPipeline       @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stageId        String?
+  stage          CrmPipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  enteredStageAt DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([tenantId, pipelineId])
+  @@map("crm_lead_placements")
 }
 
 model CrmTag {

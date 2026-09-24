@@ -26,6 +26,8 @@ function makeClient(): PrismaClient {
   // adapter etc.) caem pro driver nativo.
   try {
     if (!url) throw new Error('DATABASE_URL ausente')
+    // Postgres local de desenvolvimento não fala o protocolo WebSocket da Neon.
+    if (/@(localhost|127\.0\.0\.1)[:/]/.test(url)) throw new Error('banco local')
     neonConfig.webSocketConstructor = ws
 
     // @prisma/adapter-neon 7.x: PrismaNeon recebe PoolConfig direto e

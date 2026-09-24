@@ -1,7 +1,7 @@
 'use client'
 
 // =============================================================================
-// Central de Configurações do CRM (Reforma F1). Abas: Visão geral, Etapas,
+// Central de Configurações do CRM (Reforma F1). Abas: Visão geral, Funis e etapas,
 // Etiquetas (funcionais). Demais áreas aparecem como "em breve" (roadmap das
 // próximas fases). Reaproveita MarketingLead + LeadStatus; nada paralelo.
 // =============================================================================
@@ -9,20 +9,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { Settings, Save, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, GripVertical, Copy } from 'lucide-react'
+import { Settings, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CRM_REQUIRABLE_FIELDS } from '@/lib/crm/shared'
+import PipelinesTab from './PipelinesTab'
 
 const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
-interface Stage { code: string; displayName: string; color: string; order: number; active: boolean; category: string; requiredFields: string[]; allowSkip: boolean; allowBack: boolean }
 interface Tag { id: string; name: string; color: string | null; description: string | null; active: boolean }
 
-type TabId = 'overview' | 'stages' | 'tags' | 'duplicates'
+type TabId = 'overview' | 'pipelines' | 'tags' | 'duplicates'
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: 'overview', label: 'Visão geral', icon: Settings },
-  { id: 'stages', label: 'Etapas', icon: Columns3 },
+  { id: 'pipelines', label: 'Funis e etapas', icon: Columns3 },
   { id: 'tags', label: 'Etiquetas', icon: TagIcon },
   { id: 'duplicates', label: 'Duplicidades', icon: Copy },
 ]
@@ -49,7 +48,7 @@ export default function CrmConfiguracoesPage() {
       </div>
 
       {tab === 'overview' && <Overview />}
-      {tab === 'stages' && <StagesTab canManage={canManage} />}
+      {tab === 'pipelines' && <PipelinesTab canManage={canManage} />}
       {tab === 'tags' && <TagsTab canManage={canManage} />}
       {tab === 'duplicates' && <DuplicatesTab />}
     </div>
@@ -113,7 +112,7 @@ function Overview() {
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
         <h2 className="text-sm font-semibold text-gray-900">O que já dá para configurar</h2>
         <ul className="mt-2 list-disc pl-5 text-sm text-gray-600 space-y-1">
-          <li><b>Etapas</b> — nome exibido, cor, ordem e ativação de cada coluna do Kanban (os códigos internos são preservados para integrações).</li>
+          <li><b>Funis e etapas</b> — vários funis (ex.: Vendas, Repasse, Consórcio), cada um com etapas livres, cor, ordem, regras de avanço e campos obrigatórios. Cada etapa define o status do lead, que integrações e relatórios continuam usando.</li>
           <li><b>Etiquetas</b> — cadastro de múltiplas etiquetas por lead (cliente com troca, financiamento, PCD, sem retorno, etc.).</li>
           <li><b>Temperatura</b> — Quente/Morno/Frio no lead (separada das etiquetas), aplicada no card e no detalhe do lead.</li>
         </ul>
@@ -124,89 +123,6 @@ function Overview() {
           {SOON.map((s) => <span key={s} className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-500">{s} <span className="text-gray-400">· em breve</span></span>)}
         </div>
       </div>
-    </div>
-  )
-}
-
-function StagesTab({ canManage }: { canManage: boolean }) {
-  const [stages, setStages] = useState<Stage[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try { const r = await fetch('/api/crm/config/stages', { credentials: 'include' }).then((x) => x.json()); setStages((r?.data ?? []).slice().sort((a: Stage, b: Stage) => a.order - b.order)) }
-    catch { /* noop */ } finally { setLoading(false) }
-  }, [])
-  useEffect(() => { load() }, [load])
-
-  const set = (code: string, patch: Partial<Stage>) => setStages((prev) => prev.map((s) => s.code === code ? { ...s, ...patch } : s))
-  const move = (i: number, dir: -1 | 1) => setStages((prev) => {
-    const next = [...prev]; const j = i + dir; if (j < 0 || j >= next.length) return prev
-    ;[next[i], next[j]] = [next[j], next[i]]
-    return next.map((s, idx) => ({ ...s, order: idx }))
-  })
-
-  const save = async () => {
-    setSaving(true); setMsg(null)
-    try {
-      const r = await fetch('/api/crm/config/stages', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ stages: stages.map((s, i) => ({ ...s, order: i })) }) })
-      const j = await r.json().catch(() => ({}))
-      if (!r.ok) { setMsg({ ok: false, text: j?.error ?? 'Falha ao salvar.' }); return }
-      setStages((j?.data ?? stages).slice().sort((a: Stage, b: Stage) => a.order - b.order)); setMsg({ ok: true, text: 'Etapas salvas.' })
-    } catch { setMsg({ ok: false, text: 'Erro de rede.' }) } finally { setSaving(false) }
-  }
-
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-      <div className="mb-3 flex items-center justify-between">
-        <div><h2 className="text-sm font-semibold text-gray-900">Etapas do Kanban</h2><p className="text-xs text-gray-500">O código interno é preservado; você ajusta nome, cor, ordem e ativação.</p></div>
-        <button onClick={load} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
-      </div>
-      {loading ? <div className="space-y-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100" />)}</div> : (
-        <ul className="space-y-2">
-          {stages.map((s, i) => (
-            <li key={s.code} className="rounded-lg border border-gray-100 bg-gray-50/60 p-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex flex-col leading-none">
-                  <button disabled={!canManage || i === 0} onClick={() => move(i, -1)} className="text-gray-400 hover:text-gray-700 disabled:opacity-30">▲</button>
-                  <button disabled={!canManage || i === stages.length - 1} onClick={() => move(i, 1)} className="text-gray-400 hover:text-gray-700 disabled:opacity-30">▼</button>
-                </div>
-                <GripVertical size={14} className="text-gray-300" />
-                <input type="color" disabled={!canManage} value={s.color} onChange={(e) => set(s.code, { color: e.target.value })} className="h-8 w-8 shrink-0 rounded border border-gray-200" />
-                <input disabled={!canManage} className={cn(inputCls, 'flex-1 min-w-[140px]')} value={s.displayName} onChange={(e) => set(s.code, { displayName: e.target.value })} />
-                <span className="rounded bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">{s.code}</span>
-                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{s.category}</span>
-                <label className="ml-auto flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" disabled={!canManage} checked={s.active} onChange={(e) => set(s.code, { active: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativa</label>
-              </div>
-              {/* F3 — transições + campos obrigatórios da etapa */}
-              <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-2 pl-6 text-xs text-gray-600">
-                <label className="flex items-center gap-1"><input type="checkbox" disabled={!canManage} checked={s.allowSkip} onChange={(e) => set(s.code, { allowSkip: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Permite pular etapas</label>
-                <label className="flex items-center gap-1"><input type="checkbox" disabled={!canManage} checked={s.allowBack} onChange={(e) => set(s.code, { allowBack: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Permite retroceder</label>
-                <span className="text-gray-400">·</span>
-                <span className="text-gray-500">Exigir p/ entrar nesta etapa:</span>
-                {CRM_REQUIRABLE_FIELDS.map((f) => (
-                  <label key={f.key} className="flex items-center gap-1">
-                    <input
-                      type="checkbox" disabled={!canManage}
-                      checked={s.requiredFields.includes(f.key)}
-                      onChange={(e) => set(s.code, { requiredFields: e.target.checked ? [...s.requiredFields, f.key] : s.requiredFields.filter((x) => x !== f.key) })}
-                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                    />{f.label}
-                  </label>
-                ))}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {canManage && (
-        <div className="mt-4 flex items-center justify-end gap-3">
-          {msg && <span className={cn('text-sm', msg.ok ? 'text-green-600' : 'text-red-600')}>{msg.text}</span>}
-          <button onClick={save} disabled={saving} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando…' : 'Salvar etapas'}</button>
-        </div>
-      )}
     </div>
   )
 }

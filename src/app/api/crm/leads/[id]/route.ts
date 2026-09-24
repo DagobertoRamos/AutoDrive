@@ -5,8 +5,9 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
-import { readTemperature, loadStages } from '@/lib/crm/config'
+import { readTemperature } from '@/lib/crm/config'
 import { validateStageTransition } from '@/lib/crm/transitions'
+import { isMaterialized, loadPipelines, loadPlacement, planLeadMove, resolveLeadPipeline, resolveLeadStage, savePlacement, type MovePlan } from '@/lib/crm/pipelines'
 
 const UPDATABLE_STATUSES = new Set(['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED'])
 
@@ -231,6 +232,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       prisma.crmLeadDeal.findMany({ where: { tenantId, leadId: lead.id }, orderBy: [{ isPrimary: 'desc' }, { linkedAt: 'desc' }] }).catch(() => []),
     ])
     const tags = appliedTags.filter((t) => t.tag).map((t) => ({ id: t.tag!.id, name: t.tag!.name, color: t.tag!.color }))
+    // CRM Pipelines — funil/etapa efetivos do lead.
+    const pipelines = await loadPipelines(tenantId)
+    const placement = isMaterialized(pipelines) ? await loadPlacement(lead.id) : null
+    const leadPipeline = resolveLeadPipeline(pipelines, placement?.pipelineId)
+    const leadStage = leadPipeline ? resolveLeadStage(leadPipeline, lead.status, placement?.stageId) : null
     const nextVisit = nextVisitArr[0] ?? null
 
     return NextResponse.json({
@@ -257,6 +263,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           updatedAt: lead.updatedAt,
           temperature: readTemperature(lead.metadata),
           leadNumber: (lead as { leadNumber?: number | null }).leadNumber ?? null,
+          pipelineId: leadPipeline?.id ?? null,
+          pipelineName: leadPipeline?.name ?? null,
+          stageId: leadStage?.id ?? null,
+          stageName: leadStage?.name ?? null,
         },
         tags,
         availableTags,
@@ -312,14 +322,39 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const canTransfer = await canAccessModuleForUser(user, 'crm.lead.transfer')
     const canMarkLost = await canAccessModuleForUser(user, 'crm.lead.mark_lost')
     const canConvert = await canAccessModuleForUser(user, 'crm.lead.convert')
-    const nextStatus = body.status ? String(body.status) : null
+    let nextStatus = body.status ? String(body.status) : null
 
-    if (nextStatus === 'LOST' && !canMarkLost) return forbiddenResponse('Sem permissão para marcar lead como perdido.')
-    if (nextStatus === 'CONVERTED' && !canConvert) return forbiddenResponse('Sem permissão para converter lead.')
+    // CRM Pipelines — o destino pode vir como (pipelineId, stageId) ou só como
+    // status (fluxos legados: lista de leads etc.). Status-only vira a etapa do
+    // funil atual que mapeia aquele status, quando existir.
+    const targetPipelineId = body.pipelineId ? String(body.pipelineId) : null
+    const targetStageId = body.stageId ? String(body.stageId) : null
+    let move: Extract<MovePlan, { ok: true }> | null = null
+    let pipelinesMaterialized = false
+    if (targetPipelineId || targetStageId || (nextStatus && nextStatus !== lead.status)) {
+      const pipelines = await loadPipelines(tenantId)
+      pipelinesMaterialized = isMaterialized(pipelines)
+      const placement = pipelinesMaterialized ? await loadPlacement(lead.id) : null
+      let stageForStatus: string | null = null
+      if (!targetPipelineId && !targetStageId && nextStatus) {
+        const current = resolveLeadPipeline(pipelines, placement?.pipelineId)
+        stageForStatus = current ? resolveLeadStage(current, nextStatus, null)?.id ?? null : null
+      }
+      if (targetPipelineId || targetStageId || stageForStatus) {
+        const plan = planLeadMove({ pipelines, leadStatus: lead.status, placement, targetPipelineId, targetStageId: targetStageId ?? stageForStatus })
+        if (!plan.ok) return NextResponse.json({ success: false, error: plan.error }, { status: plan.status })
+        move = plan
+        nextStatus = plan.toStage.statusCode
+      }
+    }
+
+    const statusChanges = !!nextStatus && nextStatus !== lead.status
+    if (statusChanges && nextStatus === 'LOST' && !canMarkLost) return forbiddenResponse('Sem permissão para marcar lead como perdido.')
+    if (statusChanges && nextStatus === 'CONVERTED' && !canConvert) return forbiddenResponse('Sem permissão para converter lead.')
     if (nextStatus && !UPDATABLE_STATUSES.has(nextStatus)) {
       return NextResponse.json({ success: false, error: 'Status de lead inválido.' }, { status: 400 })
     }
-    if (nextStatus === 'LOST' && !String(body.lostReason ?? '').trim()) {
+    if (statusChanges && nextStatus === 'LOST' && !String(body.lostReason ?? '').trim()) {
       return NextResponse.json({ success: false, error: 'Informe o motivo da perda.' }, { status: 400 })
     }
 
@@ -350,8 +385,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // F3 — Kanban profissional: valida a TRANSIÇÃO de etapa (pular/retroceder +
     // campos obrigatórios da etapa de destino) ANTES de gravar. Servidor é
     // autoritativo — o Kanban não move o card visualmente se isto rejeitar.
-    if (nextStatus && nextStatus !== lead.status) {
-      const stages = await loadStages(tenantId)
+    // Dentro do mesmo funil valem as regras de ordem; ao trocar de funil, só os
+    // campos obrigatórios da etapa de chegada. Status sem etapa mapeada no funil
+    // (ex.: "Perdido" num funil sem essa coluna) passa sem regra de etapa.
+    if (move?.changesStage) {
+      const stages = move.toPipeline.stages.map((s) => ({ ...s, code: s.id, displayName: s.name }))
       const effectiveLead = {
         name: (updateData.name as string | null | undefined) ?? lead.name,
         phone: (updateData.phone as string | null | undefined) ?? lead.phone,
@@ -359,14 +397,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         vehicleId: lead.vehicleId,
         assignedToUserId: (updateData.assignedToUserId as string | null | undefined) ?? lead.assignedToUserId,
       }
-      const transition = validateStageTransition({ fromCode: lead.status, toCode: nextStatus, stages, lead: effectiveLead })
+      const fromCode = !move.changesPipeline && move.fromStage ? move.fromStage.id : '__outside__'
+      const transition = validateStageTransition({ fromCode, toCode: move.toStage.id, stages, lead: effectiveLead })
       if (!transition.ok) {
         return NextResponse.json({ success: false, error: transition.reason, missingFields: transition.missingFields }, { status: 409 })
       }
     }
 
     const updated = await prisma.marketingLead.update({ where: { id }, data: updateData })
-    if (body.assignedToUserId !== undefined || nextStatus) {
+    if (move?.changesStage && pipelinesMaterialized) {
+      await savePlacement({ tenantId, leadId: id, pipelineId: move.toPipeline.id, stageId: move.toStage.id, stageChanged: true })
+    }
+    if (body.assignedToUserId !== undefined || statusChanges) {
       await prisma.marketingLeadAssignment.create({
         data: {
           tenantId,

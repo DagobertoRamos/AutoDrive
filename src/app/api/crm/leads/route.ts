@@ -8,6 +8,7 @@ import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared
 import { readTemperature } from '@/lib/crm/config'
 import { resolveIdentity, type DedupMatch } from '@/lib/crm/dedup'
 import { assignLeadNumber } from '@/lib/crm/lead-number'
+import { isMaterialized, landingStage, loadPipelines, loadPlacements, pipelineLeadWhere, resolveLeadPipeline, resolveLeadStage, savePlacement } from '@/lib/crm/pipelines'
 
 // F2 alerta: registra candidatos à mesclagem p/ OUTROS leads (não bloqueia).
 async function flagMergeCandidates(tenantId: string, leadId: string, matches: DedupMatch[]): Promise<void> {
@@ -52,7 +53,8 @@ export async function GET(req: Request) {
     if (!scope) return forbiddenResponse('Sem acesso aos leads do CRM.')
     const sp = new URL(req.url).searchParams
     const page = Math.max(1, Number(sp.get('page') ?? 1))
-    const perPage = Math.min(100, Math.max(1, Number(sp.get('perPage') ?? 25)))
+    // Kanban pede o quadro inteiro (até o take de 300 abaixo).
+    const perPage = Math.min(300, Math.max(1, Number(sp.get('perPage') ?? 25)))
     const search = sp.get('search')?.trim()
     const status = sp.get('status')?.trim() || undefined
     const onlyDelayed = sp.get('delayed') === 'true'
@@ -91,6 +93,16 @@ export async function GET(req: Request) {
         { source: { contains: search, mode: 'insensitive' } },
       ]
     }
+    // CRM Pipelines — filtro por funil (leads sem placement pertencem ao padrão).
+    const pipelines = await loadPipelines(tenantId)
+    const materialized = isMaterialized(pipelines)
+    const pipelineFilter = sp.get('pipelineId')?.trim()
+    if (pipelineFilter) {
+      const p = pipelines.find((x) => x.id === pipelineFilter)
+      if (!p) return NextResponse.json({ success: false, error: 'Funil não encontrado.' }, { status: 404 })
+      const pw = pipelineLeadWhere(p)
+      if (Object.keys(pw).length) where.AND = [pw]
+    }
     if (onlyDelayed) {
       where.lastContactAt = { lt: new Date(Date.now() - 48 * 60 * 60 * 1000) }
       where.status = { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] }
@@ -126,6 +138,7 @@ export async function GET(req: Request) {
       prisma.marketingLeadTask.findMany({ where: { leadId: { in: leadIds }, status: 'PENDING', dueAt: { not: null } }, select: { leadId: true, id: true, type: true, dueAt: true }, orderBy: { dueAt: 'asc' } }).catch(() => [] as { leadId: string | null; id: string; type: string; dueAt: Date | null }[]),
       prisma.crmLeadTag.findMany({ where: { leadId: { in: leadIds } }, select: { leadId: true, tag: { select: { id: true, name: true, color: true, active: true } } } }).catch(() => []),
     ])
+    const placements = materialized ? await loadPlacements(leadIds) : new Map()
     const vehicleMap = new Map(vehicles.map(v => [v.id, v]))
     const dealMap    = new Map(deals.map(d => [d.id, d]))
     // Primeira tarefa pendente por lead.
@@ -146,8 +159,13 @@ export async function GET(req: Request) {
       const priorityLevel = leadPriorityOf(row)
       const veh = row.vehicleId ? vehicleMap.get(row.vehicleId) : null
       const vehicleLabel = veh ? [veh.brand, veh.model, veh.plate].filter(Boolean).join(' ').trim() : null
+      const placement = placements.get(row.id)
+      const leadPipeline = resolveLeadPipeline(pipelines, placement?.pipelineId)
+      const leadStage = leadPipeline ? resolveLeadStage(leadPipeline, row.status, placement?.stageId) : null
       return {
         ...row,
+        pipelineId: leadPipeline?.id ?? null,
+        stageId: leadStage?.id ?? null,
         vehicleLabel,
         vehicle: veh ? { brand: veh.brand, model: veh.model, version: veh.version, plate: veh.plate, year: veh.modelYear ?? veh.year } : null,
         priority: priorityLevel,
@@ -298,6 +316,16 @@ export async function POST(req: Request) {
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE', entity: 'MarketingLead', entityId: lead.id, userName: user.name, userRole: user.role })
     // Atribui número público ao lead (tolerante — não bloqueia a criação).
     void assignLeadNumber(lead.id, tenantId)
+    // CRM Pipelines — funil escolhido na criação (sem funil = padrão).
+    if (body.pipelineId) {
+      const pipelines = await loadPipelines(tenantId)
+      const target = pipelines.find((p) => p.id === String(body.pipelineId) && p.active && !p.virtual && !p.isDefault)
+      const stage = target ? landingStage(target, 'NEW') : null
+      if (target && stage) {
+        await savePlacement({ tenantId, leadId: lead.id, pipelineId: target.id, stageId: stage.id, stageChanged: true }).catch(() => {})
+        if (stage.statusCode !== 'NEW') await prisma.marketingLead.update({ where: { id: lead.id }, data: { status: stage.statusCode as never } }).catch(() => {})
+      }
+    }
     // Alerta de duplicidade (não bloqueia): registra candidatos p/ revisão.
     const alertMatches = [...identity.softMatches, ...(identity.hardMatch?.leadId ? [identity.hardMatch] : [])]
     await flagMergeCandidates(tenantId, lead.id, alertMatches)

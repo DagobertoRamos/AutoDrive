@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CRM_TEMPERATURES, crmSourceLabel, crmTemperature } from '@/lib/crm/shared'
-import type { CrmStageConfig } from '@/lib/crm/config'
+import type { Pipeline } from '@/lib/crm/pipelines-core'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag    { id: string; name: string; color: string | null }
@@ -36,6 +36,7 @@ interface LeadDetail {
   assignedToUserId: string | null; assignedToUserName: string | null; unitId: string | null; unitName: string | null
   customerId: string | null; vehicleId: string | null; convertedDealId: string | null
   lastContactAt: string | null; createdAt: string; updatedAt: string; temperature: string | null
+  pipelineId: string | null; stageId: string | null
 }
 
 interface Workspace {
@@ -1058,7 +1059,8 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
 
   const [payload, setPayload] = useState<Payload | null>(null)
   const [interactions, setInteractions] = useState<Interaction[]>([])
-  const [stages, setStages] = useState<CrmStageConfig[]>([])
+  const [pipelines, setPipelines] = useState<Pipeline[]>([])
+  const [stageError, setStageError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('summary')
   const [showTransfer, setShowTransfer] = useState(false)
@@ -1067,10 +1069,10 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Carrega etapas configuradas (mesmas do Kanban).
+  // Funis e etapas configurados (mesmos do Kanban).
   useEffect(() => {
-    fetch('/api/crm/config/stages', { credentials: 'include' }).then(r => r.json())
-      .then(j => { if (j?.data) setStages((j.data as CrmStageConfig[]).filter(s => s.active).sort((a,b) => a.order - b.order)) })
+    fetch('/api/crm/pipelines', { credentials: 'include' }).then(r => r.json())
+      .then(j => { if (j?.data) setPipelines(j.data as Pipeline[]) })
       .catch(() => {})
   }, [])
 
@@ -1097,8 +1099,25 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
   }, [])
 
   const patchLead = async (body: Record<string, unknown>) => {
-    await fetch(`/api/crm/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+    setStageError(null)
+    const res = await fetch(`/api/crm/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
+    if (!res.ok) {
+      const j = await res.json().catch(() => null) as { error?: string } | null
+      setStageError(j?.error ?? 'Não foi possível alterar a etapa.')
+    }
     void load()
+  }
+
+  // Move de etapa/funil; etapa de "Perdido" pede o motivo.
+  const moveTo = (target: { stageId?: string; pipelineId?: string }) => {
+    const destPipeline = pipelines.find(p => p.id === (target.pipelineId ?? payload?.lead.pipelineId))
+    const destStage = target.stageId ? destPipeline?.stages.find(s => s.id === target.stageId) : null
+    let lostReason: string | undefined
+    if (destStage?.statusCode === 'LOST' && payload?.lead.status !== 'LOST') {
+      lostReason = window.prompt('Motivo da perda:')?.trim()
+      if (!lostReason) return
+    }
+    void patchLead({ ...target, lostReason })
   }
 
   if (loading) return (
@@ -1178,34 +1197,42 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {/* Barra de status + etapa */}
+        {/* Barra de funil + etapa */}
         <div className="flex flex-wrap items-center gap-4 px-5 py-2.5">
-          <div className="flex items-center gap-2">
-            {/* Ponto colorido da etapa atual */}
-            {(() => {
-              const cur = stages.find(s => s.code === lead.status)
-              return cur ? <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cur.color }} title={cur.displayName} /> : null
-            })()}
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Etapa</span>
-            {/* Somente gerente+/SDR podem mudar; vendedor vê badge somente-leitura */}
-            {canChangeStage ? (
-              <select
-                value={lead.status}
-                onChange={e => void patchLead({ status: e.target.value })}
-                className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-700 dark:text-gray-200"
-              >
-                {stages.length > 0
-                  ? stages.map(s => <option key={s.code} value={s.code}>{s.displayName}</option>)
-                  : /* fallback enquanto carrega */
-                    [['NEW','Novo'],['ASSIGNED','Tentando contato'],['WORKING','Contatado'],['QUALIFIED','Qualificado'],['CONVERTED','Convertido'],['LOST','Perdido'],['DISCARDED','Desqualificado'],['RECYCLED','Reaberto']].map(([v,l]) => <option key={v} value={v}>{l}</option>)
-                }
-              </select>
-            ) : (
-              <span className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 dark:border-white/10 dark:bg-slate-700 dark:text-gray-200">
-                {stages.find(s => s.code === lead.status)?.displayName ?? lead.status}
-              </span>
-            )}
-          </div>
+          {(() => {
+            const curPipeline = pipelines.find(p => p.id === lead.pipelineId) ?? null
+            const pipelineStages = (curPipeline?.stages ?? []).filter(s => s.active).sort((a, b) => a.order - b.order)
+            const curStage = curPipeline?.stages.find(s => s.id === lead.stageId) ?? null
+            const selectCls = 'rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-700 dark:text-gray-200'
+            return (
+              <div className="flex flex-wrap items-center gap-2">
+                {curStage && <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: curStage.color }} title={curStage.name} />}
+                {pipelines.length > 1 && (
+                  <>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Funil</span>
+                    {canChangeStage ? (
+                      <select value={lead.pipelineId ?? ''} onChange={e => moveTo({ pipelineId: e.target.value })} className={selectCls} aria-label="Funil">
+                        {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    ) : (
+                      <span className={selectCls}>{curPipeline?.name ?? '—'}</span>
+                    )}
+                  </>
+                )}
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Etapa</span>
+                {/* Somente gerente+/SDR podem mudar; vendedor vê badge somente-leitura */}
+                {canChangeStage && pipelineStages.length > 0 ? (
+                  <select value={lead.stageId ?? ''} onChange={e => moveTo({ stageId: e.target.value })} className={selectCls} aria-label="Etapa">
+                    {!lead.stageId && <option value="" disabled>Sem etapa neste funil</option>}
+                    {pipelineStages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                ) : (
+                  <span className={selectCls}>{curStage?.name ?? 'Sem etapa'}</span>
+                )}
+                {stageError && <span className="rounded-md bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-900/30 dark:text-red-300">{stageError}</span>}
+              </div>
+            )
+          })()}
 
           {/* Temperatura */}
           <div className="flex items-center gap-1.5">

@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Calendar, Car, ChevronLeft, ChevronRight, Loader2, MoreVertical, RefreshCw, Search, Trash2, User, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ArrowRightLeft, Calendar, Car, ChevronLeft, ChevronRight, Loader2, MoreVertical, RefreshCw, Search, Trash2, User, X } from 'lucide-react'
 import { crmSourceLabel, crmTemperature, CRM_TEMPERATURES } from '@/lib/crm/shared'
 import { cn } from '@/lib/utils'
+import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeadTag { id: string; name: string; color: string | null }
@@ -16,12 +18,18 @@ interface LeadRow {
   status: string; assignedToUserName: string | null; unitName: string | null
   temperature: string | null; tags: LeadTag[]; vehicle: LeadVehicle | null; vehicleLabel: string | null
   deal: LeadDeal | null; nextTask: LeadNextTask | null; createdAt: string
+  pipelineId: string | null; stageId: string | null
 }
-interface StageCfg { code: string; displayName: string; color: string; order: number; active: boolean }
 interface CrmCtx {
   scope: string; sellers: { id: string; name: string | null }[]; units: { id: string; name: string }[]
   canDelete?: boolean
 }
+/** Coluna do quadro: uma etapa do funil ou a coluna "Sem etapa". */
+interface Column { id: string | null; name: string; color: string }
+interface MoveTarget { label: string; stageId?: string; pipelineId?: string }
+
+const PIPELINE_KEY = 'crm.kanban.pipeline'
+const UNMAPPED_COLOR = '#9ca3af'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtDate(iso: string) {
@@ -58,30 +66,56 @@ function TempBadge({ value }: { value: string | null }) {
 }
 
 // ── Context menu (3 dots) ─────────────────────────────────────────────────────
-function CardMenu({ lead, canDelete, onDelete }: { lead: LeadRow; canDelete: boolean; onDelete: () => void }) {
-  const [open, setOpen] = useState(false)
+function CardMenu({ lead, canDelete, onDelete, moveTargets, onMove }: {
+  lead: LeadRow; canDelete: boolean; onDelete: () => void
+  moveTargets: MoveTarget[]; onMove: (t: MoveTarget) => void
+}) {
+  // Menu em portal + position:fixed — a coluna rola (overflow) e o card tem
+  // transform no hover; ambos cortariam/deslocariam um menu dentro do card.
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const open = pos !== null
+  const setOpen = (v: boolean) => { if (!v) setPos(null) }
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    const escape  = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (!ref.current?.contains(t) && !menuRef.current?.contains(t)) setPos(null)
+    }
+    const escape  = (e: KeyboardEvent) => { if (e.key === 'Escape') setPos(null) }
+    const close   = () => setPos(null)
     document.addEventListener('mousedown', handler)
     document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', escape) }
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', escape)
+      window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close)
+    }
   }, [])
+  const toggle = () => {
+    if (open) { setPos(null); return }
+    const r = btnRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: Math.min(r.bottom + 4, window.innerHeight - 280), right: window.innerWidth - r.right })
+  }
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(v => !v) }}
+        ref={btnRef}
+        onClick={(e) => { e.stopPropagation(); toggle() }}
         aria-label={`Mais ações do lead${lead.leadNumber ? ` #${lead.leadNumber}` : ''}`}
         aria-haspopup="menu" aria-expanded={open}
         className="flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-slate-600 dark:hover:text-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       >
         <MoreVertical size={14} />
       </button>
-      {open && (
+      {pos && createPortal(
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute right-0 top-7 z-30 min-w-[140px] rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-800"
+          style={{ top: pos.top, right: pos.right }}
+          className="fixed z-50 min-w-[180px] rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-slate-800"
         >
           <Link
             href={`/crm/leads/${lead.id}`}
@@ -91,6 +125,24 @@ function CardMenu({ lead, canDelete, onDelete }: { lead: LeadRow; canDelete: boo
           >
             Ver lead
           </Link>
+          {moveTargets.length > 0 && (
+            <>
+              <p className="mt-1 border-t border-gray-100 px-3 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:border-white/10">Mover para</p>
+              <div className="max-h-56 overflow-y-auto">
+                {moveTargets.map((t) => (
+                  <button
+                    key={`${t.pipelineId ?? ''}:${t.stageId ?? ''}`}
+                    role="menuitem"
+                    onClick={(e) => { e.stopPropagation(); setOpen(false); onMove(t) }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-700"
+                  >
+                    {t.pipelineId && <ArrowRightLeft size={11} className="shrink-0 text-gray-400" />}
+                    <span className="truncate">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {canDelete && (
             <button
               role="menuitem"
@@ -100,7 +152,8 @@ function CardMenu({ lead, canDelete, onDelete }: { lead: LeadRow; canDelete: boo
               <Trash2 size={12} />Excluir lead
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
@@ -157,7 +210,10 @@ function DeleteModal({ lead, onClose, onDeleted }: { lead: LeadRow; onClose: () 
 }
 
 // ── Lead Card ─────────────────────────────────────────────────────────────────
-function LeadCard({ row, canDelete, onRefresh }: { row: LeadRow; canDelete: boolean; onRefresh: () => void }) {
+function LeadCard({ row, canDelete, onRefresh, moving, moveTargets, onMove }: {
+  row: LeadRow; canDelete: boolean; onRefresh: () => void
+  moving: boolean; moveTargets: MoveTarget[]; onMove: (t: MoveTarget) => void
+}) {
   const [deleting, setDeleting] = useState(false)
   const vehicleLine = row.vehicle
     ? [row.vehicle.brand, row.vehicle.model, row.vehicle.version].filter(Boolean).join(' ') || null
@@ -166,7 +222,11 @@ function LeadCard({ row, canDelete, onRefresh }: { row: LeadRow; canDelete: bool
   const hasTask = !!row.nextTask
 
   return (
-    <div className="lead-card group relative rounded-xl border border-gray-100 bg-white p-3 dark:border-white/8 dark:bg-slate-800">
+    <div
+      draggable={!moving}
+      onDragStart={(e) => { e.dataTransfer.setData('text/lead-id', row.id); e.dataTransfer.effectAllowed = 'move' }}
+      className={cn('lead-card group relative cursor-grab rounded-xl border border-gray-100 bg-white p-3 active:cursor-grabbing dark:border-white/8 dark:bg-slate-800', moving && 'pointer-events-none opacity-50')}
+    >
       {deleting && <DeleteModal lead={row} onClose={() => setDeleting(false)} onDeleted={() => { setDeleting(false); onRefresh() }} />}
 
       {/* Cabeçalho: número + temperatura + menu */}
@@ -176,7 +236,8 @@ function LeadCard({ row, canDelete, onRefresh }: { row: LeadRow; canDelete: bool
         </span>
         <div className="flex items-center gap-1">
           <TempBadge value={row.temperature} />
-          <CardMenu lead={row} canDelete={canDelete} onDelete={() => setDeleting(true)} />
+          {moving && <Loader2 size={12} className="animate-spin text-gray-400" />}
+          <CardMenu lead={row} canDelete={canDelete} onDelete={() => setDeleting(true)} moveTargets={moveTargets} onMove={onMove} />
         </div>
       </div>
 
@@ -263,7 +324,9 @@ function LeadCard({ row, canDelete, onRefresh }: { row: LeadRow; canDelete: bool
 export default function CrmKanbanPage() {
   const [ctx, setCtx]           = useState<CrmCtx | null>(null)
   const [rows, setRows]         = useState<LeadRow[]>([])
-  const [stages, setStages]     = useState<StageCfg[]>([])
+  const [pipelines, setPipelines] = useState<Pipeline[]>([])
+  const [pipelineId, setPipelineId] = useState<string>('')
+  const [dropCol, setDropCol]   = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
@@ -290,32 +353,71 @@ export default function CrmKanbanPage() {
       }).catch(() => {})
   }, [])
 
+  // Funis ativos; o escolhido fica lembrado por navegador.
+  const loadPipelines = useCallback(async () => {
+    const j = await fetch('/api/crm/pipelines', { credentials: 'include' }).then(r => r.json()).catch(() => null)
+    const list: Pipeline[] = j?.data ?? []
+    setPipelines(list)
+    setPipelineId(prev => {
+      let saved = ''
+      try { saved = localStorage.getItem(PIPELINE_KEY) ?? '' } catch { /* storage indisponível */ }
+      const want = prev || saved
+      return list.some(p => p.id === want) ? want : (list[0]?.id ?? '')
+    })
+    if (!list.length) setLoading(false)
+  }, [])
+  useEffect(() => { void loadPipelines() }, [loadPipelines])
+
   const load = useCallback(async () => {
+    if (!pipelineId) return
     setLoading(true)
     try {
-      const params = new URLSearchParams({ perPage: '200' })
+      const params = new URLSearchParams({ perPage: '300', pipelineId })
       if (debSearch) params.set('search', debSearch)
       if (fSeller)   params.set('assignedToUserId', fSeller)
       if (fUnit)     params.set('unitId', fUnit)
-      const [leadsRes, stagesRes] = await Promise.all([
-        fetch(`/api/crm/leads?${params}`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
-        fetch('/api/crm/config/stages', { credentials: 'include' }).then(r => r.json()).catch(() => null),
-      ])
+      const leadsRes = await fetch(`/api/crm/leads?${params}`, { credentials: 'include' }).then(r => r.json()).catch(() => null)
       setRows(leadsRes?.data ?? [])
-      const st: StageCfg[] = (stagesRes?.data ?? []).filter((s: StageCfg) => s.active).sort((a: StageCfg, b: StageCfg) => a.order - b.order)
-      setStages(st)
     } finally { setLoading(false) }
-  }, [debSearch, fSeller, fUnit])
+  }, [pipelineId, debSearch, fSeller, fUnit])
 
   useEffect(() => { void load() }, [load])
+
+  const choosePipeline = (id: string) => {
+    setPipelineId(id)
+    try { localStorage.setItem(PIPELINE_KEY, id) } catch { /* storage indisponível */ }
+  }
   useEffect(() => () => { if (debTimer.current) clearTimeout(debTimer.current) }, [])
 
-  const moveLead = async (leadId: string, nextStatus: string) => {
-    setError(null); setMovingId(leadId)
+  const pipeline = pipelines.find(p => p.id === pipelineId) ?? null
+  const stages: PipelineStage[] = (pipeline?.stages ?? []).filter(s => s.active).sort((a, b) => a.order - b.order)
+  // Status cujas etapas o admin DESATIVOU (ex.: convertidos/descartados) somem
+  // do quadro, como antes. "Sem etapa" é só p/ status que o funil nem prevê.
+  const hiddenStatuses = new Set(
+    (pipeline?.stages ?? []).filter(s => !s.active && !stages.some(a => a.statusCode === s.statusCode)).map(s => s.statusCode),
+  )
+  const boardRows = rows.filter(r => r.stageId || !hiddenStatuses.has(r.status))
+  const hasUnmapped = boardRows.some(r => !r.stageId)
+  const columns: Column[] = [
+    ...stages.map(s => ({ id: s.id, name: s.name, color: s.color })),
+    ...(hasUnmapped ? [{ id: null, name: 'Sem etapa neste funil', color: UNMAPPED_COLOR }] : []),
+  ]
+
+  const moveLead = async (row: LeadRow, target: MoveTarget) => {
+    if (target.stageId && target.stageId === row.stageId && !target.pipelineId) return
+    const destPipeline = target.pipelineId ? pipelines.find(p => p.id === target.pipelineId) : pipeline
+    const destStage = target.stageId ? destPipeline?.stages.find(s => s.id === target.stageId) : null
+    let lostReason: string | undefined
+    if (destStage?.statusCode === 'LOST' && row.status !== 'LOST') {
+      const reason = window.prompt(`Motivo da perda de ${row.name ?? 'este lead'}:`)?.trim()
+      if (!reason) return
+      lostReason = reason
+    }
+    setError(null); setMovingId(row.id)
     try {
-      const res = await fetch(`/api/crm/leads/${leadId}`, {
+      const res = await fetch(`/api/crm/leads/${row.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ status: nextStatus, lostReason: nextStatus === 'LOST' ? 'Movido no Kanban' : undefined }),
+        body: JSON.stringify({ stageId: target.stageId, pipelineId: target.pipelineId, lostReason }),
       })
       const json = await res.json().catch(() => null) as { error?: string } | null
       if (!res.ok) { setError(json?.error ?? 'Não foi possível mover o card.'); return }
@@ -323,8 +425,20 @@ export default function CrmKanbanPage() {
     } finally { setMovingId(null) }
   }
 
+  const moveTargetsFor = (row: LeadRow): MoveTarget[] => [
+    ...stages.filter(s => s.id !== row.stageId).map(s => ({ label: s.name, stageId: s.id })),
+    ...pipelines.filter(p => p.id !== pipelineId).map(p => ({ label: `Funil: ${p.name}`, pipelineId: p.id })),
+  ]
+
+  const onDrop = (e: React.DragEvent, col: Column) => {
+    e.preventDefault(); setDropCol(null)
+    const leadId = e.dataTransfer.getData('text/lead-id')
+    const row = rows.find(r => r.id === leadId)
+    if (!row || !col.id || row.stageId === col.id) return
+    void moveLead(row, { label: col.name, stageId: col.id })
+  }
+
   const scrollBoard = (dir: -1 | 1) => boardRef.current?.scrollBy({ left: dir * 320, behavior: 'smooth' })
-  const codes = stages.map(s => s.code)
   const canDelete = !!ctx?.canDelete
 
   return (
@@ -347,9 +461,16 @@ export default function CrmKanbanPage() {
       <div className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-gray-200/70 bg-white/80 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/80">
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <h1 className="text-[15px] font-semibold text-gray-900 dark:text-white">Pipeline CRM</h1>
+            {pipelines.length > 1 ? (
+              <select value={pipelineId} onChange={e => choosePipeline(e.target.value)} aria-label="Funil"
+                className="-ml-1 rounded-md border-0 bg-transparent py-0 pl-1 pr-6 text-[15px] font-semibold text-gray-900 focus:ring-2 focus:ring-brand-400 dark:bg-slate-900 dark:text-white">
+                {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            ) : (
+              <h1 className="text-[15px] font-semibold text-gray-900 dark:text-white">{pipeline?.name ?? 'Pipeline CRM'}</h1>
+            )}
             <p className="text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
-              {loading ? 'Carregando…' : `${rows.length} leads · ${stages.length} etapas`}
+              {loading ? 'Carregando…' : `${boardRows.length} leads · ${stages.length} etapas · arraste os cards para mover`}
             </p>
           </div>
 
@@ -387,7 +508,7 @@ export default function CrmKanbanPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {error && <span className="max-w-[300px] truncate rounded-md bg-red-50 px-3 py-1 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</span>}
+          {error && <span title={error} className="max-w-[300px] truncate rounded-md bg-red-50 px-3 py-1 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</span>}
           <button onClick={() => scrollBoard(-1)} className="hidden sm:flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-white/10 dark:bg-slate-800 dark:text-gray-400">
             <ChevronLeft size={15} />
           </button>
@@ -427,10 +548,15 @@ export default function CrmKanbanPage() {
             </div>
           ))
         ) : (
-          stages.map((stage) => {
-            const stageRows = rows.filter(r => r.status === stage.code)
+          columns.map((stage) => {
+            const stageRows = boardRows.filter(r => r.stageId === stage.id)
+            const colKey = stage.id ?? '__unmapped__'
             return (
-              <div key={stage.code} className="flex flex-none flex-col rounded-xl shadow-sm"
+              <div key={colKey}
+                onDragOver={stage.id ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropCol !== colKey) setDropCol(colKey) } : undefined}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropCol(null) }}
+                onDrop={(e) => onDrop(e, stage)}
+                className={cn('flex flex-none flex-col rounded-xl shadow-sm transition-shadow', dropCol === colKey && 'ring-2 ring-brand-400')}
                 style={{ flex: '1 1 0', minWidth: 240, maxWidth: 320, background: 'white' }}>
                 {/* Cabeçalho */}
                 <div className="kanban-col-header flex-none rounded-t-xl border-t-[3px] bg-white/95 px-3 pt-3 pb-2 dark:bg-slate-800/95"
@@ -440,8 +566,8 @@ export default function CrmKanbanPage() {
                       <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums text-white" style={{ background: stage.color }}>
                         {stageRows.length}
                       </span>
-                      <h2 className="truncate text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-700 dark:text-gray-300" title={stage.displayName}>
-                        {stage.displayName}
+                      <h2 className="truncate text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-700 dark:text-gray-300" title={stage.name}>
+                        {stage.name}
                       </h2>
                     </div>
                   </div>
@@ -454,7 +580,8 @@ export default function CrmKanbanPage() {
                       <p className="text-[11px] text-gray-400 dark:text-gray-500">Sem leads</p>
                     </div>
                   ) : stageRows.map(row => (
-                    <LeadCard key={row.id} row={row} canDelete={canDelete} onRefresh={load} />
+                    <LeadCard key={row.id} row={row} canDelete={canDelete} onRefresh={load}
+                      moving={movingId === row.id} moveTargets={moveTargetsFor(row)} onMove={(t) => void moveLead(row, t)} />
                   ))}
                 </div>
               </div>
