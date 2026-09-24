@@ -8,6 +8,7 @@
 import { prisma } from '@/lib/prisma'
 import { forbiddenResponse, type SessionUser } from '@/lib/auth-guards'
 import { canAccessModule, type Module } from '@/lib/permissions'
+import { effectiveRolePermission, isCrmPermission, sanitizeRolePermissions, type RolePermissionOverrides } from '@/lib/crm/permissions-core'
 
 /** Lista as chaves desabilitadas (active=false) do tenant. */
 export async function getDisabledModules(tenantId: string): Promise<string[]> {
@@ -66,8 +67,48 @@ export async function getUserAllowedModules(userId: string): Promise<string[]> {
 }
 
 /** Permissão final do colaborador: cargo + extra individual - bloqueio individual. */
-export async function canAccessModuleForUser(user: { id?: string; role?: string | null }, module: Module | string): Promise<boolean> {
-  const base = canAccessModule(user.role ?? undefined, module as Module)
+// Regras de permissão do CRM por LOJA (Configurações do CRM → Permissões).
+// Cache curto por processo: cada request checa várias permissões.
+const CRM_ROLE_TTL_MS = 30_000
+const crmRoleCache = new Map<string, { at: number; value: RolePermissionOverrides }>()
+
+async function crmRoleOverrides(tenantId: string): Promise<RolePermissionOverrides> {
+  const hit = crmRoleCache.get(tenantId)
+  if (hit && Date.now() - hit.at < CRM_ROLE_TTL_MS) return hit.value
+  let value: RolePermissionOverrides = {}
+  try {
+    const row = await prisma.systemSetting.findFirst({ where: { key: `t:${tenantId}:crm_settings:v1` }, select: { value: true } })
+    if (row) value = sanitizeRolePermissions((JSON.parse(row.value) as { rolePermissions?: unknown }).rolePermissions)
+  } catch (err) {
+    console.error('[tenant-modules] regras de permissão do CRM falharam:', err)
+  }
+  crmRoleCache.set(tenantId, { at: Date.now(), value })
+  return value
+}
+
+/** Permissões do CRM que a loja mudou para um perfil (p/ o menu). */
+export async function getCrmRoleDiff(tenantId: string, role: string): Promise<{ allow: string[]; deny: string[] }> {
+  const overrides = await crmRoleOverrides(tenantId)
+  const allow: string[] = [], deny: string[] = []
+  for (const [key, roles] of Object.entries(overrides)) {
+    const v = roles[role]
+    if (v === true) allow.push(key)
+    else if (v === false) deny.push(key)
+  }
+  return { allow, deny }
+}
+
+/** Chamar após salvar as permissões do CRM (vale no processo atual; outros em até 30s). */
+export function invalidateCrmRoleCache(tenantId: string): void {
+  crmRoleCache.delete(tenantId)
+}
+
+export async function canAccessModuleForUser(user: { id?: string; role?: string | null; tenantId?: string | null }, module: Module | string): Promise<boolean> {
+  let base = canAccessModule(user.role ?? undefined, module as Module)
+  // Camada da loja (só CRM; MASTER nunca é afetado).
+  if (user.tenantId && user.role && user.role !== 'MASTER' && isCrmPermission(module)) {
+    base = effectiveRolePermission(user.role, module, await crmRoleOverrides(user.tenantId))
+  }
   if (!user.id) return base
   try {
     const row = await prisma.userModule.findUnique({ where: { userId_moduleKey: { userId: user.id, moduleKey: module } }, select: { allowed: true } })

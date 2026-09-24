@@ -7,21 +7,20 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { Settings, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, Copy, Thermometer, Shapes, Radio, XCircle, ListChecks, Timer, Shuffle, Zap } from 'lucide-react'
+import { Settings, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, Copy, Thermometer, Shapes, Radio, XCircle, ListChecks, Timer, Shuffle, Zap, ShieldCheck, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PipelinesTab from './PipelinesTab'
 import { CloseReasonsTab, LeadTypesTab, SourcesTab, TemperaturesTab } from './ListsTabs'
 import { DistributionTab, RequiredFieldsTab, SlaTab } from './RulesTabs'
 import AutomationsTab from './AutomationsTab'
+import { AuditTab, PermissionsTab } from './GovernanceTabs'
 
-const MANAGE_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
 interface Tag { id: string; name: string; color: string | null; description: string | null; active: boolean }
 
-type TabId = 'overview' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'automations' | 'duplicates'
+type TabId = 'overview' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'automations' | 'permissions' | 'audit' | 'duplicates'
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: 'overview', label: 'Visão geral', icon: Settings },
   { id: 'pipelines', label: 'Funis e etapas', icon: Columns3 },
@@ -34,13 +33,17 @@ const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: 'sla', label: 'SLA e follow-up', icon: Timer },
   { id: 'distribution', label: 'Distribuição', icon: Shuffle },
   { id: 'automations', label: 'Automações', icon: Zap },
+  { id: 'permissions', label: 'Permissões', icon: ShieldCheck },
+  { id: 'audit', label: 'Auditoria', icon: History },
   { id: 'duplicates', label: 'Duplicidades', icon: Copy },
 ]
-const SOON = ['Permissões', 'Auditoria']
 
 export default function CrmConfiguracoesPage() {
-  const { data: session } = useSession()
-  const canManage = MANAGE_ROLES.includes((session?.user as { role?: string })?.role ?? '')
+  // Permissão efetiva (padrão do perfil + regra da loja + exceção individual).
+  const [canManage, setCanManage] = useState(false)
+  useEffect(() => {
+    fetch('/api/crm/permissions', { credentials: 'include' }).then((r) => r.json()).then((j) => setCanManage(!!j?.data?.canManage)).catch(() => {})
+  }, [])
   const [tab, setTab] = useState<TabId>('overview')
 
   return (
@@ -69,6 +72,8 @@ export default function CrmConfiguracoesPage() {
       {tab === 'sla' && <SlaTab canManage={canManage} />}
       {tab === 'distribution' && <DistributionTab canManage={canManage} />}
       {tab === 'automations' && <AutomationsTab canManage={canManage} />}
+      {tab === 'permissions' && <PermissionsTab />}
+      {tab === 'audit' && <AuditTab />}
       {tab === 'duplicates' && <DuplicatesTab />}
     </div>
   )
@@ -141,13 +146,9 @@ function Overview() {
           <li><b>SLA e follow-up</b> — prazo do 1º contato, alerta de lead parado, tarefa automática e aviso aos gestores.</li>
           <li><b>Distribuição</b> — leads novos do CRM entram no motor da Mesa SDR (roleta, carga, desempenho).</li>
           <li><b>Automações</b> — quando o lead é criado, entra numa etapa ou fica parado: criar tarefa, avisar, etiquetar, mudar temperatura, atribuir.</li>
+          <li><b>Permissões</b> — o que cada perfil pode fazer no CRM desta loja.</li>
+          <li><b>Auditoria</b> — quem fez o quê no CRM, inclusive as automações.</li>
         </ul>
-      </div>
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-        <h2 className="text-sm font-semibold text-gray-900">Próximas fases (roadmap)</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {SOON.map((s) => <span key={s} className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-500">{s} <span className="text-gray-400">· em breve</span></span>)}
-        </div>
       </div>
     </div>
   )

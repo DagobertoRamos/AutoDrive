@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
-import { getDisabledModules, getUserDeniedModules, getOpenModules, getUserAllowedModules } from '@/lib/tenant-modules'
+import { getCrmRoleDiff, getDisabledModules, getUserDeniedModules, getOpenModules, getUserAllowedModules } from '@/lib/tenant-modules'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
 export async function GET() {
@@ -16,13 +16,17 @@ export async function GET() {
   try {
     // Esconde do menu: módulos desligados p/ a loja UNIÃO removidos do colaborador.
     // `open` = módulos LIBERADOS p/ todos (chavinha), mesmo sem o papel.
-    const [tenantDisabled, userDenied, open, userAllowed] = await Promise.all([
+    const [tenantDisabled, userDenied, open, userAllowed, crmRole] = await Promise.all([
       getDisabledModules(user.tenantId),
       getUserDeniedModules(user.id),
       getOpenModules(user.tenantId),
       getUserAllowedModules(user.id),
+      getCrmRoleDiff(user.tenantId, user.role),
     ])
-    return NextResponse.json({ success: true, disabled: [...new Set([...tenantDisabled, ...userDenied])], open: [...new Set([...open, ...userAllowed])] })
+    // Regras de permissão do CRM da loja por perfil; a exceção do colaborador vence.
+    const crmDeny = crmRole.deny.filter((m) => !userAllowed.includes(m))
+    const crmAllow = crmRole.allow.filter((m) => !userDenied.includes(m))
+    return NextResponse.json({ success: true, disabled: [...new Set([...tenantDisabled, ...userDenied, ...crmDeny])], open: [...new Set([...open, ...userAllowed, ...crmAllow])] })
   } catch (err) {
     return handlePrismaError(err)
   }

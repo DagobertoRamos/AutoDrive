@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { sanitizeAutomations, type AutomationRule } from './automations-core'
+import { sanitizeRolePermissions, type RolePermissionOverrides } from './permissions-core'
 
 export const TEMPERATURE_CODES = ['BOILING', 'HOT', 'WARM', 'COLD'] as const
 export type TemperatureCode = (typeof TEMPERATURE_CODES)[number]
@@ -44,6 +45,7 @@ export interface CrmSettings {
   sla: SlaCfg
   distribution: DistributionCfg
   automations: AutomationRule[]
+  rolePermissions: RolePermissionOverrides
 }
 
 /** Campos do lead que a loja pode exigir no cadastro / na conversão. */
@@ -104,6 +106,7 @@ export function defaultCrmSettings(): CrmSettings {
     sla: { enabled: false, firstContactMinutes: 30, noContactHours: 48, createFollowUpTask: true, escalateToManagers: true },
     distribution: { autoAssignNew: false, runSdrInTick: false },
     automations: [],
+    rolePermissions: {},
   }
 }
 
@@ -186,7 +189,7 @@ export function sanitizeCrmSettings(input: unknown): CrmSettings {
   const di = (b.distribution && typeof b.distribution === 'object' ? b.distribution : {}) as Record<string, unknown>
   const distribution = { autoAssignNew: bool(di.autoAssignNew, false), runSdrInTick: bool(di.runSdrInTick, false) }
 
-  return { temperatures, leadTypes, sources, closeReasons, requiredFields, sla, distribution, automations: sanitizeAutomations(b.automations) }
+  return { temperatures, leadTypes, sources, closeReasons, requiredFields, sla, distribution, automations: sanitizeAutomations(b.automations), rolePermissions: sanitizeRolePermissions(b.rolePermissions) }
 }
 
 // ── Fase B: avaliadores puros ────────────────────────────────────────────────

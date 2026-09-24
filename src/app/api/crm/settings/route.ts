@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server'
 import { createSafeAuditLog, forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { canAccessModuleForUser } from '@/lib/tenant-modules'
+import { canAccessModuleForUser, invalidateCrmRoleCache } from '@/lib/tenant-modules'
 import { loadCrmSettings, saveCrmSettings } from '@/lib/crm/settings'
 
 export const dynamic = 'force-dynamic'
@@ -41,6 +41,7 @@ export async function PUT(req: Request) {
       merged.sla = { ...nextSla, enabledAt: current.sla.enabled && current.sla.enabledAt ? current.sla.enabledAt : new Date().toISOString() }
     }
     const saved = await saveCrmSettings(tenantId, merged, user.id)
+    if ('rolePermissions' in body) invalidateCrmRoleCache(tenantId)
     await createSafeAuditLog({
       userId: user.id, tenantId, action: 'UPDATE', entity: 'CrmSettings', entityId: tenantId,
       userName: user.name, userRole: user.role, beforeData: before, afterData: saved,
