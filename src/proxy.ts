@@ -27,7 +27,7 @@
 
 import { getToken } from 'next-auth/jwt'
 import { NextResponse, type NextRequest } from 'next/server'
-import { decideRouteAccess, LOGIN_ROUTE, SESSION_ERROR_CODE } from '@/lib/auth-session'
+import { decideRouteAccess, isPublicPath, LOGIN_ROUTE, SESSION_ERROR_CODE } from '@/lib/auth-session'
 import { resolveSiteHost, SITE_HOST_HEADER, SITE_PATH_HEADER } from '@/lib/site/host'
 
 /** Cookies de sessão do NextAuth (com e sem prefixo seguro, incluindo chunks). */
@@ -92,6 +92,11 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.rewrite(url, { request: { headers } })
   }
 
+  // Páginas públicas do painel (login, cadastro, privacidade...). Ficam aqui, e
+  // não no matcher, para que no domínio de uma loja esses caminhos caiam no site
+  // DELA (ex.: loja.com.br/privacidade = política da loja, não a do SaaS).
+  if (!isApiRoute && isPublicPath(pathname)) return NextResponse.next()
+
   let token: Awaited<ReturnType<typeof getToken>> = null
   try {
     token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -150,11 +155,10 @@ export default async function middleware(req: NextRequest) {
 }
 
 // ── Matcher ───────────────────────────────────────────────────────────────────
-// Protege todas as rotas EXCETO páginas públicas de auth e arquivos estáticos.
-// IMPORTANTE: `cadastro(?=/|$)` casa SOMENTE a página pública `/cadastro`
-// (e `/cadastro/...`), NÃO `/cadastros/*` (plural, protegido — clientes,
-// vendedores, gerentes, veículos, garantias...). Sem o lookahead, o prefixo
-// "cadastro" excluía `/cadastros/*` da autenticação (furo de segurança).
+// Passa por tudo, exceto arquivos estáticos e APIs com autenticação própria.
+// As páginas públicas do painel (login, cadastro, privacidade...) são liberadas
+// no código via isPublicPath — que casa `/cadastro` mas NÃO `/cadastros/*`
+// (plural, protegido: clientes, vendedores, veículos...).
 export const config = {
   matcher: [
     // IMPORTANTE: assets estáticos NÃO passam pelo proxy.
@@ -162,6 +166,6 @@ export const config = {
     // são carregados por Web Workers (Tesseract, pdfjs) que NÃO enviam cookie
     // de sessão. Se passarem pelo proxy, viram redirect 307 para /login e o
     // Worker falha silenciosamente ("Failed to execute 'importScripts'").
-    '/((?!login|s/|api/site/|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|privacidade|excluir-conta|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|tesseract/|tessdata/|pdfjs/|pdf.worker.min.mjs|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm|traineddata|gz)$).*)',
+    '/((?!s/|api/site/|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|tesseract/|tessdata/|pdfjs/|pdf.worker.min.mjs|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm|traineddata|gz)$).*)',
   ],
 }
