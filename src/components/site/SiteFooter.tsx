@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { SiteConfig } from '@/lib/site/config-core'
 import type { SiteNavItem } from './SiteHeader'
 
-export function SiteFooter({ config, nav, whatsappHref }: { config: SiteConfig; nav: SiteNavItem[]; whatsappHref: string }) {
+export function SiteFooter({ config, nav, whatsappHref, seoLinks = [] }: { config: SiteConfig; nav: SiteNavItem[]; whatsappHref: string; seoLinks?: SiteNavItem[] }) {
   const { identity, contact } = config
   const address = [contact.addressLine1, contact.addressLine2].filter(Boolean)
   return (
@@ -20,6 +20,12 @@ export function SiteFooter({ config, nav, whatsappHref }: { config: SiteConfig; 
           <strong>Navegação</strong>
           {nav.map((n) => <Link key={n.href} href={n.href}>{n.label}</Link>)}
         </div>
+        {seoLinks.length > 0 && (
+          <div>
+            <strong>Procure por</strong>
+            {seoLinks.map((n) => <Link key={n.href} href={n.href}>{n.label}</Link>)}
+          </div>
+        )}
         <div>
           <strong>Atendimento</strong>
           {whatsappHref && <a href={whatsappHref} target="_blank" rel="noreferrer" className="footer-phone">WhatsApp {contact.phone}</a>}

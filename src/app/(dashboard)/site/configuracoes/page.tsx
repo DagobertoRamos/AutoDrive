@@ -208,6 +208,16 @@ export default function SiteConfigPage() {
         </div>
       </Section>
 
+      <Section title="Páginas por marca e cidade (Google)" hint="Com o serviço “Páginas por marca e cidade” ligado, o site cria sozinho uma página para cada marca com carro no estoque e uma para cada cidade abaixo, além do sitemap para o Google.">
+        <Field l={`Cidades que a loja atende (uma por linha; opcional: “Cidade | texto da página”) — até 12`}>
+          <textarea disabled={dis} rows={4} className={input}
+            value={cfg.seoCities.map((c) => (c.text ? `${c.name} | ${c.text}` : c.name)).join('\n')}
+            placeholder={'Osasco | A poucos minutos da loja, com visita combinada pelo WhatsApp.\nBarueri\nCarapicuíba'}
+            onChange={(e) => set({ seoCities: e.target.value.split('\n').map((l) => { const [name, ...t] = l.split('|'); return { name: name.trimStart(), slug: '', text: t.join('|').trim() } }).slice(0, 13) })} />
+        </Field>
+        {!cfg.services.seoLandings && <p className="mt-1 text-[11px] text-amber-700">Ligue o serviço “Páginas por marca e cidade” em Serviços do site para publicar as páginas.</p>}
+      </Section>
+
       <Section title="Medição de anúncios (Pixel da Meta e Google)" hint="Com os IDs preenchidos, o site mostra o aviso de cookies e, com o aceite do visitante, mede visitas, carros vistos, contatos pelo WhatsApp e formulários enviados (Lead). Nenhum dado pessoal do cliente é enviado.">
         <div className="grid gap-3 md:grid-cols-2">
           {([

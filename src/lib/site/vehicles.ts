@@ -6,6 +6,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { brandLandings, type BrandLanding } from './seo-core'
 import { effectivePrice, siteVehicleState, SITE_VISIBLE_STOCK, vehicleIdFromSlug, vehicleSlug, vehicleTitle, type SiteVehicleState } from './listing-core'
 
 export const SITE_PAGE_SIZE = 24
@@ -105,6 +106,16 @@ export async function listSiteVehicles(tenantId: string, f: SiteFilters = {}): P
   const all = sortRows(rows.map(toSiteVehicle).filter((v) => v.state !== 'HIDDEN'), f.sort, created)
   const page = Math.max(1, f.page ?? 1)
   return { items: all.slice((page - 1) * SITE_PAGE_SIZE, page * SITE_PAGE_SIZE), total: all.length }
+}
+
+/** Marcas com carro visível no site (páginas por marca, rodapé). Consulta leve. */
+export async function siteBrandLandings(tenantId: string): Promise<BrandLanding[]> {
+  const rows = await prisma.vehicle.findMany({
+    where: baseWhere(tenantId),
+    select: { brand: true, salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true },
+    take: 2000,
+  })
+  return brandLandings(rows.map((r) => ({ brand: r.brand ?? '', price: effectivePrice({ salePrice: num(r.salePrice), promoPrice: num(r.promoPrice), isPromo: r.isPromo, promoStartsAt: r.promoStartsAt, promoEndsAt: r.promoEndsAt }).price })))
 }
 
 /** Todos os carros visíveis no site (feed do catálogo, sitemap). */

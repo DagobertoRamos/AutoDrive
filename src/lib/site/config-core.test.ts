@@ -15,7 +15,7 @@ describe('config do site', () => {
       slug: 'Minha Loja!', domains: ['WWW.Loja.com.br', 'invalido', 'www.loja.com.br'],
       identity: { primaryColor: 'red', logoUrl: 'javascript:alert(1)' },
       contact: { whatsapp: '(11) 93471-8276', mapsEmbedUrl: 'https://evil.com/x' },
-      services: { estoque: false, sobre: false, atacado: true, seoLandings: true },
+      services: { estoque: false, sobre: false, atacado: true, seoLandings: true, bogus: true },
     }, 'Loja')
     expect(c.slug).toBe('minha-loja')
     expect(c.domains.map((d) => d.host)).toEqual(['www.loja.com.br'])
@@ -27,7 +27,8 @@ describe('config do site', () => {
     expect(c.services.sobre).toBe(false)
     expect(c.services.atacado).toBe(true)
     expect(serviceOn(c, 'atacado')).toBe(true)
-    expect(serviceOn(c, 'seoLandings')).toBe(false) // ainda não disponível no produto
+    expect(serviceOn(c, 'seoLandings')).toBe(true)
+    expect((c.services as Record<string, boolean>).bogus).toBeUndefined()
     expect(serviceOn(c, 'estoque')).toBe(true)
   })
 
