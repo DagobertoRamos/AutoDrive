@@ -11,7 +11,7 @@ import { forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/a
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
-import { SITE_ASSET_KINDS, SITE_ASSET_MAX_BYTES, type SiteAssetKind } from '@/lib/site/assets-core'
+import { SITE_ASSET_KINDS, SITE_ASSET_MAX_BYTES, SITE_ASSET_MULTI_KINDS, type SiteAssetKind } from '@/lib/site/assets-core'
 import { ImageRejected, storeTenantImage } from '@/lib/site/assets'
 
 export const runtime = 'nodejs'
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
   try {
     const saved = await storeTenantImage(tenantId, kind, new Uint8Array(await file.arrayBuffer()))
-    const old = await prisma.siteAsset.findMany({ where: { tenantId, kind }, orderBy: { createdAt: 'desc' }, skip: 3, select: { id: true } })
+    const old = SITE_ASSET_MULTI_KINDS.includes(kind) ? [] : await prisma.siteAsset.findMany({ where: { tenantId, kind }, orderBy: { createdAt: 'desc' }, skip: 3, select: { id: true } })
     if (old.length) await prisma.siteAsset.deleteMany({ where: { id: { in: old.map((o) => o.id) } } })
     return NextResponse.json({ success: true, data: saved }, { status: 201 })
   } catch (err) {

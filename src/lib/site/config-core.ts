@@ -18,11 +18,16 @@ export const SITE_SERVICES = [
   { key: 'encontreSeuCarro', label: 'Encontre seu carro', path: '/encontre-seu-carro', default: false, locked: false, available: false, hint: 'O cliente pede um modelo que não está no estoque.' },
   { key: 'financiaFacil', label: 'Financia Fácil', path: '/financia-facil', default: false, locked: false, available: false, hint: 'Financiamento de carro comprado de particular.' },
   { key: 'atacado', label: 'Atacado / lojistas', path: '/atacado', default: false, locked: false, available: false, hint: 'Página para lojistas comprarem no atacado.' },
-  { key: 'depoimentos', label: 'Depoimentos', path: '', default: false, locked: false, available: false, hint: 'Avaliações de clientes na página inicial.' },
-  { key: 'banners', label: 'Banners na home', path: '', default: false, locked: false, available: false, hint: 'Carrossel de banners no topo da página inicial.' },
+  { key: 'depoimentos', label: 'Depoimentos', path: '', default: false, locked: false, available: true, hint: 'Avaliações de clientes na página inicial.' },
+  { key: 'banners', label: 'Banners na home', path: '', default: false, locked: false, available: true, hint: 'Carrossel de banners no topo da página inicial.' },
   { key: 'seoLandings', label: 'Páginas por marca e cidade', path: '', default: false, locked: false, available: false, hint: 'Páginas "carros Fiat", "carros em Osasco" para o Google.' },
 ] as const
 export type SiteServiceKey = (typeof SITE_SERVICES)[number]['key']
+
+export interface SiteBanner { id: string; title: string; imageUrl: string; linkUrl: string; newTab: boolean; active: boolean }
+export interface SiteTestimonial { name: string; text: string; vehicle: string }
+export const SITE_MAX_BANNERS = 10
+export const SITE_MAX_TESTIMONIALS = 6
 
 export interface SiteConfig {
   enabled: boolean
@@ -40,6 +45,8 @@ export interface SiteConfig {
     faq: { q: string; a: string }[]
   }
   about: { eyebrow: string; title: string; intro: string; sections: { title: string; text: string }[] }
+  banners: { intervalSeconds: number; items: SiteBanner[] }
+  testimonials: SiteTestimonial[]
   legalNote: string
   seo: { title: string; description: string }
   services: Record<SiteServiceKey, boolean>
@@ -92,6 +99,8 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
         { title: 'Nosso compromisso', text: 'Transparência nas informações dos veículos, clareza nas condições e respeito ao cliente.' },
       ],
     },
+    banners: { intervalSeconds: 6, items: [] },
+    testimonials: [],
     legalNote: 'Crédito sujeito à análise e aprovação das instituições financeiras. Imagens meramente ilustrativas.',
     seo: { title: `${name} — Seminovos`, description: `Estoque de seminovos da ${name}. Financiamento, troca e atendimento pelo WhatsApp.` },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.default])) as Record<SiteServiceKey, boolean>,
@@ -107,7 +116,7 @@ const strList = (v: unknown, n: number, max = 120, fallback: string[] = []) =>
 export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfig {
   const d = defaultSiteConfig(storeName)
   const b = obj(input)
-  const id = obj(b.identity), ct = obj(b.contact), hm = obj(b.home), ab = obj(b.about), seo = obj(b.seo), sv = obj(b.services)
+  const id = obj(b.identity), ct = obj(b.contact), hm = obj(b.home), ab = obj(b.about), seo = obj(b.seo), sv = obj(b.services), bn = obj(b.banners)
   const slug = slugify(str(b.slug, 40))
   const pairs = <T>(v: unknown, n: number, map: (o: Record<string, unknown>) => T | null, fallback: T[]): T[] =>
     Array.isArray(v) ? v.map((x) => map(obj(x))).filter((x): x is T => !!x).slice(0, n) : fallback
@@ -146,6 +155,15 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
       intro: str(ab.intro, 500) || d.about.intro,
       sections: pairs(ab.sections, 8, (o) => str(o.title, 100) ? { title: str(o.title, 100), text: str(o.text, 1500) } : null, d.about.sections),
     },
+    banners: {
+      intervalSeconds: Math.min(30, Math.max(2, Math.round(Number(bn.intervalSeconds) || d.banners.intervalSeconds))),
+      items: pairs(bn.items, SITE_MAX_BANNERS, (o) => {
+        const imageUrl = url(o.imageUrl)
+        if (!imageUrl) return null
+        return { id: str(o.id, 40).replace(/[^\w-]/g, '') || imageUrl.slice(-24), title: str(o.title, 120), imageUrl, linkUrl: url(o.linkUrl), newTab: Boolean(o.newTab), active: o.active !== false }
+      }, []),
+    },
+    testimonials: pairs(b.testimonials, SITE_MAX_TESTIMONIALS, (o) => str(o.name, 80) && str(o.text, 360) ? { name: str(o.name, 80), text: str(o.text, 360), vehicle: str(o.vehicle, 100) } : null, []),
     legalNote: str(b.legalNote, 400),
     seo: { title: str(seo.title, 80) || d.seo.title, description: str(seo.description, 200) || d.seo.description },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.locked ? true : (typeof sv[s.key] === 'boolean' ? sv[s.key] as boolean : s.default)])) as Record<SiteServiceKey, boolean>,
@@ -162,4 +180,9 @@ export function whatsappLink(cfg: SiteConfig, text?: string): string {
   if (!cfg.contact.whatsapp) return ''
   const n = cfg.contact.whatsapp.length <= 11 ? `55${cfg.contact.whatsapp}` : cfg.contact.whatsapp
   return `https://wa.me/${n}${text ? `?text=${encodeURIComponent(text)}` : ''}`
+}
+
+/** Banners que aparecem na home (serviço ligado e banner ativo). */
+export function activeBanners(cfg: SiteConfig): SiteBanner[] {
+  return serviceOn(cfg, 'banners') ? cfg.banners.items.filter((b) => b.active) : []
 }

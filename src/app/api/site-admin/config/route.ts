@@ -2,6 +2,7 @@
 // Painel do Site — configuração do site da loja.
 //   GET : config efetiva + resumo da vitrine. Gate: site.
 //   PUT : grava (slug/domínios únicos entre lojas). Gate: site.manage.
+//   PATCH: grava só as partes enviadas (banners, depoimentos, serviços). Gate: site.manage.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -12,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { loadSiteConfig, saveSiteConfig, SiteConfigError, SITE_SERVICES } from '@/lib/site/config'
 import { SITE_VISIBLE_STOCK } from '@/lib/site/listing-core'
+import { pruneUnusedBanners } from '@/lib/site/assets'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,8 +54,34 @@ export async function PUT(req: Request) {
     const before = await loadSiteConfig(tenantId)
     // Domínios têm rotas próprias (status verificado): o salvar geral não os sobrescreve.
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
-    const saved = await saveSiteConfig(tenantId, { ...body, domains: before.domains }, user.id)
+    // Banners e depoimentos têm tela própria (PATCH): se não vierem, ficam como estão.
+    const saved = await saveSiteConfig(tenantId, { banners: before.banners, testimonials: before.testimonials, ...body, domains: before.domains }, user.id)
+    await pruneUnusedBanners(tenantId, saved.banners.items.map((b) => b.imageUrl))
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'SiteConfig', entityId: tenantId, userName: user.name, userRole: user.role, beforeData: before, afterData: saved })
+    return NextResponse.json({ success: true, data: saved })
+  } catch (err) {
+    if (err instanceof SiteConfigError) return NextResponse.json({ success: false, error: err.message }, { status: 409 })
+    return handlePrismaError(err)
+  }
+}
+
+const PATCHABLE = ['banners', 'testimonials'] as const
+
+export async function PATCH(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return unauthorizedResponse()
+  if (!await canAccessModuleForUser(user, 'site.manage')) return forbiddenResponse('Sem permissão para configurar o site.')
+  const tenantId = await resolveActingTenant(user, req)
+  if (!tenantId) return forbiddenResponse(actingTenantError(user))
+  try {
+    const before = await loadSiteConfig(tenantId)
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>
+    const patch: Record<string, unknown> = {}
+    for (const k of PATCHABLE) if (k in body) patch[k] = body[k]
+    if (body.services && typeof body.services === 'object') patch.services = { ...before.services, ...body.services as object }
+    const saved = await saveSiteConfig(tenantId, { ...before, ...patch }, user.id)
+    await pruneUnusedBanners(tenantId, saved.banners.items.map((b) => b.imageUrl))
+    await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'SiteConfig', entityId: tenantId, userName: user.name, userRole: user.role, beforeData: Object.fromEntries(Object.keys(patch).map((k) => [k, before[k as keyof typeof before]])), afterData: patch })
     return NextResponse.json({ success: true, data: saved })
   } catch (err) {
     if (err instanceof SiteConfigError) return NextResponse.json({ success: false, error: err.message }, { status: 409 })

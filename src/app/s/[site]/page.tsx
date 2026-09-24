@@ -1,10 +1,12 @@
 // Página inicial do site da loja (porta da home do dagobertoeasycar, com textos
 // da loja e só os serviços ligados).
 import Link from 'next/link'
-import { ArrowRight, BadgeCheck, CarFront, CheckCircle2, CircleDollarSign, HelpCircle, MapPin, MessageCircle, ShieldCheck } from 'lucide-react'
+import { ArrowRight, BadgeCheck, CarFront, CheckCircle2, CircleDollarSign, HelpCircle, MapPin, MessageCircle, ShieldCheck, Star } from 'lucide-react'
 import { getSiteContext } from '@/lib/site/context'
 import { listSiteVehicles } from '@/lib/site/vehicles'
 import { SiteVehicleCard } from '@/components/site/SiteVehicleCard'
+import { SiteBannerCarousel } from '@/components/site/SiteBannerCarousel'
+import { activeBanners } from '@/lib/site/config-core'
 
 const BENEFIT_ICONS = [ShieldCheck, CircleDollarSign, CarFront, BadgeCheck]
 
@@ -15,11 +17,13 @@ export default async function SiteHome({ params }: { params: Promise<{ site: str
   const { items } = await listSiteVehicles(ctx.tenantId, { page: 1 }).catch(() => ({ items: [] }))
   const wa = ctx.whatsapp()
   const address = [contact.addressLine1, contact.addressLine2].filter(Boolean)
+  const banners = activeBanners(ctx.config)
+  const testimonials = ctx.on('depoimentos') ? ctx.config.testimonials : []
 
   return (
     <>
       <section className="hero home-hero">
-        <div className="shell hero-grid hero-grid-single">
+        <div className={`shell hero-grid${banners.length ? '' : ' hero-grid-single'}`}>
           <div className="hero-content">
             <p className="eyebrow">{home.heroEyebrow}</p>
             <h1>{home.heroTitle}</h1>
@@ -32,6 +36,7 @@ export default async function SiteHome({ params }: { params: Promise<{ site: str
               <div className="hero-trust">{home.trust.map((t) => <span key={t}><CheckCircle2 size={16} aria-hidden="true" />{t}</span>)}</div>
             )}
           </div>
+          {banners.length > 0 && <div className="hero-banner-frame"><SiteBannerCarousel banners={banners} intervalSeconds={ctx.config.banners.intervalSeconds} /></div>}
         </div>
       </section>
 
@@ -59,6 +64,13 @@ export default async function SiteHome({ params }: { params: Promise<{ site: str
             <article className="service-panel service-panel-accent"><p className="eyebrow dark">Para quem vai comprar</p><h3>Financiamento</h3><p>Escolha um veículo do nosso estoque e faça sua simulação com acompanhamento da equipe.</p><Link className="button" href={ctx.href('/financiamento')}>Simular financiamento<ArrowRight size={17} aria-hidden="true" /></Link></article>
             {ctx.on('sobre') && <article className="service-panel"><p className="eyebrow dark">Conheça a loja</p><h3>{ctx.config.about.title}</h3><p>{ctx.config.about.intro}</p><Link className="button button-dark" href={ctx.href('/sobre')}>Quem somos<ArrowRight size={17} aria-hidden="true" /></Link></article>}
           </div>
+        </div></section>
+      )}
+
+      {testimonials.length > 0 && (
+        <section className="section section-soft"><div className="shell">
+          <div className="section-heading"><div><p className="eyebrow dark">Experiências reais</p><h2>Quem negocia com a {identity.name} recomenda.</h2></div></div>
+          <div className="testimonial-grid">{testimonials.map((t) => <article className="testimonial-card" key={`${t.name}-${t.text}`}><Star size={20} aria-hidden="true" /><p>“{t.text}”</p><strong>{t.name}</strong>{t.vehicle && <span>{t.vehicle}</span>}</article>)}</div>
         </div></section>
       )}
 

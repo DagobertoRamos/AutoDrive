@@ -15,13 +15,13 @@ function load(file: File): Promise<HTMLImageElement> {
   })
 }
 
-export async function compressPhoto(file: File): Promise<Blob> {
+export async function compressPhoto(file: File, maxSide = PHOTO_MAX_SIDE): Promise<Blob> {
   if (/heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name)) {
     throw new Error('Foto HEIC do iPhone: exporte como JPG (ou ajuste a câmera para “Mais compatível”).')
   }
   if (!file.type.startsWith('image/')) throw new Error('não é uma imagem')
   const img = await load(file)
-  const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
   const c = document.createElement('canvas')
   c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale)
   const ctx = c.getContext('2d')

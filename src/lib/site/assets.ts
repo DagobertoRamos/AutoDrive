@@ -17,6 +17,15 @@ export async function storeTenantImage(tenantId: string, kind: string, bytes: Ui
   return { id: asset.id, url: siteAssetUrl(asset.id), width: info.width, height: info.height }
 }
 
+/** Apaga banners enviados que não estão mais na config (com folga de 1h para
+ *  quem enviou e ainda não salvou). */
+export async function pruneUnusedBanners(tenantId: string, inUse: string[]): Promise<void> {
+  const keep = inUse.map(assetIdFromUrl).filter((x): x is string => !!x)
+  await prisma.siteAsset.deleteMany({
+    where: { tenantId, kind: 'BANNER', id: { notIn: keep }, createdAt: { lt: new Date(Date.now() - 3600_000) } },
+  }).catch(() => undefined)
+}
+
 /** Id do asset a partir da URL pública (/api/site/assets/<id>), ou null se for URL externa. */
 export function assetIdFromUrl(url: string): string | null {
   const m = /^\/api\/site\/assets\/([a-z0-9]{10,40})$/i.exec(url)

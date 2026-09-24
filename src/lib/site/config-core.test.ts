@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { defaultSiteConfig, sanitizeSiteConfig, isValidSiteSlug, serviceOn, whatsappLink, slugify } from './config-core'
+import { activeBanners, defaultSiteConfig, sanitizeSiteConfig, isValidSiteSlug, serviceOn, whatsappLink, slugify } from './config-core'
 
 describe('config do site', () => {
   it('padrão: zerado com o nome da loja e os 4 serviços padrão ligados', () => {
@@ -42,5 +42,28 @@ describe('config do site', () => {
     expect(whatsappLink(c, 'Olá')).toBe('https://wa.me/5511934718276?text=Ol%C3%A1')
     expect(whatsappLink(sanitizeSiteConfig({}, 'X'))).toBe('')
     expect(slugify('Açaí & Cia')).toBe('acai-cia')
+  })
+
+  it('banners: só com imagem, link seguro, tempo limitado; home mostra os ativos com o serviço ligado', () => {
+    const c = sanitizeSiteConfig({
+      services: { banners: true },
+      banners: { intervalSeconds: 999, items: [
+        { id: 'a', title: 'Feirão', imageUrl: '/api/site/assets/abc1234567', linkUrl: 'javascript:alert(1)' },
+        { id: 'b', imageUrl: 'data:image/png;base64,xx' },
+        { id: 'c', imageUrl: 'https://cdn.x.com/b.jpg', linkUrl: 'https://wa.me/5511', active: false, newTab: 1 },
+      ] },
+    }, 'X')
+    expect(c.banners.intervalSeconds).toBe(30)
+    expect(c.banners.items.map((b) => b.id)).toEqual(['a', 'c'])
+    expect(c.banners.items[0].linkUrl).toBe('')
+    expect(c.banners.items[1]).toMatchObject({ newTab: true, active: false })
+    expect(activeBanners(c).map((b) => b.id)).toEqual(['a'])
+    expect(activeBanners(sanitizeSiteConfig({ ...c, services: { banners: false } }, 'X'))).toEqual([])
+  })
+
+  it('depoimentos exigem nome e texto', () => {
+    const c = sanitizeSiteConfig({ testimonials: [{ name: 'Ana', text: 'Ótimo atendimento' }, { name: 'Sem texto' }] }, 'X')
+    expect(c.testimonials).toEqual([{ name: 'Ana', text: 'Ótimo atendimento', vehicle: '' }])
+    expect(defaultSiteConfig('X').testimonials).toEqual([])
   })
 })

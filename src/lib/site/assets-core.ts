@@ -1,7 +1,9 @@
 // Site da loja — validação de arquivos enviados. PURO (testado).
 // Confere o CONTEÚDO (assinatura), não a extensão: só PNG, JPEG e WebP.
 
-export const SITE_ASSET_KINDS = ['LOGO', 'LOGO_LIGHT', 'FAVICON', 'IMAGE'] as const
+export const SITE_ASSET_KINDS = ['LOGO', 'LOGO_LIGHT', 'FAVICON', 'IMAGE', 'BANNER'] as const
+/** Tipos com vários arquivos em uso ao mesmo tempo: não entram no "guarda só os 3 últimos"; a limpeza é por referência na config. */
+export const SITE_ASSET_MULTI_KINDS: readonly SiteAssetKind[] = ['BANNER']
 export type SiteAssetKind = (typeof SITE_ASSET_KINDS)[number]
 export const SITE_ASSET_MAX_BYTES = 2 * 1024 * 1024
 

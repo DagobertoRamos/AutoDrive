@@ -18,6 +18,8 @@ interface Payload { config: SiteConfig; services: ServiceDef[]; stats: { total: 
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50'
 const label = 'mb-1 block text-xs font-medium text-gray-600'
 
+const fetchConfig = () => fetch('/api/site-admin/config', { credentials: 'include' }).then((r) => r.json()).catch(() => null)
+
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
@@ -39,11 +41,15 @@ export default function SiteConfigPage() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
-  const load = useCallback(async () => {
-    const j = await fetch('/api/site-admin/config', { credentials: 'include' }).then((r) => r.json()).catch(() => null)
+  const apply = useCallback((j: { data?: Payload } | null) => {
     if (j?.data) { setData(j.data); setCfg(j.data.config); setDirty(false) }
   }, [])
-  useEffect(() => { void load() }, [load])
+  const load = useCallback(async () => apply(await fetchConfig()), [apply])
+  useEffect(() => {
+    let alive = true
+    void fetchConfig().then((j) => { if (alive) apply(j) })
+    return () => { alive = false }
+  }, [apply])
 
   if (!data || !cfg) return <div className="h-64 animate-pulse rounded-xl bg-gray-100" />
   const dis = !data.canManage
@@ -53,7 +59,7 @@ export default function SiteConfigPage() {
   const save = async () => {
     setSaving(true); setMsg(null)
     try {
-      const r = await fetch('/api/site-admin/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(cfg) })
+      const r = await fetch('/api/site-admin/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...cfg, banners: undefined, testimonials: undefined }) })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg({ ok: false, text: j?.error ?? 'Falha ao salvar.' }); return }
       await load(); setMsg({ ok: true, text: 'Site salvo.' })
@@ -202,7 +208,7 @@ export default function SiteConfigPage() {
       </Section>
 
       {data.canManage && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:left-64">
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:left-64 pr-24">
           <div className="mx-auto flex max-w-5xl items-center justify-end gap-3">
             {msg && <span className={cn('text-sm', msg.ok ? 'text-green-600' : 'text-red-600')}>{msg.text}</span>}
             <button onClick={save} disabled={saving || !dirty} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando…' : 'Salvar site'}</button>
