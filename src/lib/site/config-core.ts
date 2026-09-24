@@ -5,7 +5,7 @@
 // demais serviços são opcionais e ativados no painel do Site.
 // =============================================================================
 
-import { sanitizeDomains, type SiteDomain } from './domains-core'
+import { primaryDomain, sanitizeDomains, type SiteDomain } from './domains-core'
 import { sanitizeTracking, type SiteTracking } from './tracking-core'
 
 export type { SiteDomain }
@@ -49,6 +49,7 @@ export interface SiteConfig {
   banners: { intervalSeconds: number; items: SiteBanner[] }
   testimonials: SiteTestimonial[]
   tracking: SiteTracking
+  catalog: { enabled: boolean; city: string; state: string }
   legalNote: string
   seo: { title: string; description: string }
   services: Record<SiteServiceKey, boolean>
@@ -104,6 +105,7 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
     banners: { intervalSeconds: 6, items: [] },
     testimonials: [],
     tracking: { metaPixelId: '', googleTagId: '' },
+    catalog: { enabled: false, city: '', state: '' },
     legalNote: 'Crédito sujeito à análise e aprovação das instituições financeiras. Imagens meramente ilustrativas.',
     seo: { title: `${name} — Seminovos`, description: `Estoque de seminovos da ${name}. Financiamento, troca e atendimento pelo WhatsApp.` },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.default])) as Record<SiteServiceKey, boolean>,
@@ -168,6 +170,7 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
     },
     testimonials: pairs(b.testimonials, SITE_MAX_TESTIMONIALS, (o) => str(o.name, 80) && str(o.text, 360) ? { name: str(o.name, 80), text: str(o.text, 360), vehicle: str(o.vehicle, 100) } : null, []),
     tracking: sanitizeTracking(b.tracking),
+    catalog: { enabled: Boolean(obj(b.catalog).enabled), city: str(obj(b.catalog).city, 80), state: str(obj(b.catalog).state, 2).toUpperCase().replace(/[^A-Z]/g, '') },
     legalNote: str(b.legalNote, 400),
     seo: { title: str(seo.title, 80) || d.seo.title, description: str(seo.description, 200) || d.seo.description },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.locked ? true : (typeof sv[s.key] === 'boolean' ? sv[s.key] as boolean : s.default)])) as Record<SiteServiceKey, boolean>,
@@ -189,4 +192,16 @@ export function whatsappLink(cfg: SiteConfig, text?: string): string {
 /** Banners que aparecem na home (serviço ligado e banner ativo). */
 export function activeBanners(cfg: SiteConfig): SiteBanner[] {
   return serviceOn(cfg, 'banners') ? cfg.banners.items.filter((b) => b.active) : []
+}
+
+/**
+ * Endereço público do site (sem barra no fim), para links absolutos (feed,
+ * compartilhamento): domínio próprio conectado → subdomínio da plataforma →
+ * rota de teste /s/<slug> no endereço atual.
+ */
+export function publicSiteRoot(cfg: SiteConfig, baseDomain: string | null | undefined, fallbackOrigin: string): string {
+  const p = primaryDomain(cfg.domains)
+  if (p && (p.status === 'CONNECTED' || p.status === 'DNS_OK')) return `https://${p.host}`
+  if (baseDomain) return `https://${cfg.slug}.${baseDomain}`
+  return `${fallbackOrigin.replace(/\/+$/, '')}/s/${cfg.slug}`
 }

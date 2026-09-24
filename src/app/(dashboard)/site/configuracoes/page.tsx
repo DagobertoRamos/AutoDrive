@@ -60,7 +60,7 @@ export default function SiteConfigPage() {
   const save = async () => {
     setSaving(true); setMsg(null)
     try {
-      const r = await fetch('/api/site-admin/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...cfg, banners: undefined, testimonials: undefined }) })
+      const r = await fetch('/api/site-admin/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...cfg, banners: undefined, testimonials: undefined, catalog: undefined }) })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg({ ok: false, text: j?.error ?? 'Falha ao salvar.' }); return }
       await load(); setMsg({ ok: true, text: 'Site salvo.' })

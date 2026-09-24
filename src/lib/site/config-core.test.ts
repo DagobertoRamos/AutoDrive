@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeBanners, defaultSiteConfig, sanitizeSiteConfig, isValidSiteSlug, serviceOn, whatsappLink, slugify } from './config-core'
+import { publicSiteRoot, activeBanners, defaultSiteConfig, sanitizeSiteConfig, isValidSiteSlug, serviceOn, whatsappLink, slugify } from './config-core'
 
 describe('config do site', () => {
   it('padrão: zerado com o nome da loja e os 4 serviços padrão ligados', () => {
@@ -65,5 +65,13 @@ describe('config do site', () => {
     const c = sanitizeSiteConfig({ testimonials: [{ name: 'Ana', text: 'Ótimo atendimento' }, { name: 'Sem texto' }] }, 'X')
     expect(c.testimonials).toEqual([{ name: 'Ana', text: 'Ótimo atendimento', vehicle: '' }])
     expect(defaultSiteConfig('X').testimonials).toEqual([])
+  })
+
+  it('endereço público: domínio conectado > subdomínio > rota de teste', () => {
+    const c = sanitizeSiteConfig({ slug: 'minha-loja' }, 'X')
+    expect(publicSiteRoot(c, null, 'http://localhost:3000/')).toBe('http://localhost:3000/s/minha-loja')
+    expect(publicSiteRoot(c, 'autodrive.site', 'x')).toBe('https://minha-loja.autodrive.site')
+    const d = sanitizeSiteConfig({ slug: 'minha-loja', domains: [{ host: 'www.loja.com.br', primary: true, status: 'CONNECTED' }] }, 'X')
+    expect(publicSiteRoot(d, 'autodrive.site', 'x')).toBe('https://www.loja.com.br')
   })
 })

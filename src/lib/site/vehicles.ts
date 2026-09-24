@@ -107,6 +107,12 @@ export async function listSiteVehicles(tenantId: string, f: SiteFilters = {}): P
   return { items: all.slice((page - 1) * SITE_PAGE_SIZE, page * SITE_PAGE_SIZE), total: all.length }
 }
 
+/** Todos os carros visíveis no site (feed do catálogo, sitemap). */
+export async function listAllSiteVehicles(tenantId: string, max = 2000): Promise<SiteVehicle[]> {
+  const rows = await prisma.vehicle.findMany({ where: baseWhere(tenantId), select: SELECT, orderBy: { createdAt: 'desc' }, take: max })
+  return rows.map(toSiteVehicle)
+}
+
 export async function findSiteVehicle(tenantId: string, slug: string): Promise<SiteVehicle | null> {
   const id = vehicleIdFromSlug(slug)
   if (!id) return null

@@ -49,6 +49,7 @@ import {
   Megaphone,
   Images,
   BadgePercent,
+  ShoppingBag,
   ScrollText,
   // Documentos
   FileSignature,
@@ -253,6 +254,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Anúncios',              href: '/site/anuncios',      icon: Megaphone, module: 'site' },
       { label: 'Promoções',             href: '/site/promocoes',     icon: BadgePercent, module: 'site' },
       { label: 'Banners e depoimentos', href: '/site/banners',       icon: Images, module: 'site' },
+      { label: 'Catálogo Meta',         href: '/site/catalogo-meta', icon: ShoppingBag, module: 'site' },
       { label: 'Configurações do site', href: '/site/configuracoes', icon: Settings, module: 'site' },
     ],
   },
