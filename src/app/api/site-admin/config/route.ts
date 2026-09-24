@@ -2,7 +2,7 @@
 // Painel do Site — configuração do site da loja.
 //   GET : config efetiva + resumo da vitrine. Gate: site.
 //   PUT : grava (slug/domínios únicos entre lojas). Gate: site.manage.
-//   PATCH: grava só as partes enviadas (banners, depoimentos, catálogo, serviços). Gate: site.manage.
+//   PATCH: grava só as partes enviadas (banners, depoimentos, catálogo, e-mails, serviços). Gate: site.manage.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -55,7 +55,7 @@ export async function PUT(req: Request) {
     // Domínios têm rotas próprias (status verificado): o salvar geral não os sobrescreve.
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
     // Banners, depoimentos e catálogo têm tela própria (PATCH): se não vierem, ficam como estão.
-    const saved = await saveSiteConfig(tenantId, { banners: before.banners, testimonials: before.testimonials, catalog: before.catalog, ...body, domains: before.domains }, user.id)
+    const saved = await saveSiteConfig(tenantId, { banners: before.banners, testimonials: before.testimonials, catalog: before.catalog, emails: before.emails, ...body, domains: before.domains }, user.id)
     await pruneUnusedBanners(tenantId, saved.banners.items.map((b) => b.imageUrl))
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'SiteConfig', entityId: tenantId, userName: user.name, userRole: user.role, beforeData: before, afterData: saved })
     return NextResponse.json({ success: true, data: saved })
@@ -65,7 +65,7 @@ export async function PUT(req: Request) {
   }
 }
 
-const PATCHABLE = ['banners', 'testimonials', 'catalog'] as const
+const PATCHABLE = ['banners', 'testimonials', 'catalog', 'emails'] as const
 
 export async function PATCH(req: Request) {
   const user = await getSessionUser()

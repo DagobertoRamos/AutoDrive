@@ -7,6 +7,7 @@
 
 import { primaryDomain, sanitizeDomains, type SiteDomain } from './domains-core'
 import { sanitizeTracking, type SiteTracking } from './tracking-core'
+import { sanitizeEmailSettings, type SiteEmailSettings } from './lead-email-core'
 
 export type { SiteDomain }
 
@@ -50,6 +51,7 @@ export interface SiteConfig {
   testimonials: SiteTestimonial[]
   tracking: SiteTracking
   catalog: { enabled: boolean; city: string; state: string }
+  emails: SiteEmailSettings
   legalNote: string
   seo: { title: string; description: string }
   services: Record<SiteServiceKey, boolean>
@@ -106,6 +108,7 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
     testimonials: [],
     tracking: { metaPixelId: '', googleTagId: '' },
     catalog: { enabled: false, city: '', state: '' },
+    emails: { enabled: false, recipients: [], notifyCustomer: false },
     legalNote: 'Crédito sujeito à análise e aprovação das instituições financeiras. Imagens meramente ilustrativas.',
     seo: { title: `${name} — Seminovos`, description: `Estoque de seminovos da ${name}. Financiamento, troca e atendimento pelo WhatsApp.` },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.default])) as Record<SiteServiceKey, boolean>,
@@ -170,6 +173,7 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
     },
     testimonials: pairs(b.testimonials, SITE_MAX_TESTIMONIALS, (o) => str(o.name, 80) && str(o.text, 360) ? { name: str(o.name, 80), text: str(o.text, 360), vehicle: str(o.vehicle, 100) } : null, []),
     tracking: sanitizeTracking(b.tracking),
+    emails: sanitizeEmailSettings(b.emails),
     catalog: { enabled: Boolean(obj(b.catalog).enabled), city: str(obj(b.catalog).city, 80), state: str(obj(b.catalog).state, 2).toUpperCase().replace(/[^A-Z]/g, '') },
     legalNote: str(b.legalNote, 400),
     seo: { title: str(seo.title, 80) || d.seo.title, description: str(seo.description, 200) || d.seo.description },
