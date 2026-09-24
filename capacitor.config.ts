@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'AutoDrive',
   webDir: 'public',
   server: {
-    url: 'https://auto-drive-mocha.vercel.app',
+    url: 'https://www.appautodrive.online',
     cleartext: false,
   },
   android: {

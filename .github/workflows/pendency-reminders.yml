@@ -32,7 +32,7 @@ jobs:
             exit 1
           fi
           code=$(curl -sS -o /tmp/out.json -w "%{http_code}" -X POST \
-            "https://auto-drive-mocha.vercel.app/api/internal/pendencies/reminders/run" \
+            "https://www.appautodrive.online/api/internal/pendencies/reminders/run" \
             -H "x-cron-secret: $CRON_SECRET")
           echo "HTTP $code"
           cat /tmp/out.json || true
@@ -40,7 +40,7 @@ jobs:
             echo ""
             echo ">> Diagnóstico (não revela o segredo, só tamanhos):"
             curl -sS -X POST \
-              "https://auto-drive-mocha.vercel.app/api/internal/pendencies/reminders/run?diag=1" \
+              "https://www.appautodrive.online/api/internal/pendencies/reminders/run?diag=1" \
               -H "x-cron-secret: $CRON_SECRET" | tr ',' '\n'
             echo ""
             echo ">> Leitura: envSet=false → CRON_SECRET NÃO está em Production na Vercel (ou faltou redeploy)."
