@@ -122,6 +122,9 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max)
 const obj = (v: unknown) => (v && typeof v === 'object' ? v as Record<string, unknown> : {})
 const url = (v: unknown) => { const s = str(v, 500); return /^(https?:\/\/|\/)/i.test(s) ? s : '' }
+/** Mapa incorporável do Google: "Incorporar mapa" (/maps/embed?pb=...) ou /maps?q=...&output=embed. */
+export const isMapsEmbed = (s: string) =>
+  /^https:\/\/(www\.|maps\.)?google\.[a-z.]+\/maps\/embed/i.test(s) || (/^https:\/\/(www\.|maps\.)?google\.[a-z.]+\/maps\?/i.test(s) && /[?&]output=embed(&|$)/i.test(s))
 const strList = (v: unknown, n: number, max = 120, fallback: string[] = []) =>
   Array.isArray(v) ? v.map((x) => str(x, max)).filter(Boolean).slice(0, n) : fallback
 
@@ -148,7 +151,7 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
       whatsapp: str(ct.whatsapp, 20).replace(/\D/g, ''),
       phone: str(ct.phone, 30), email: str(ct.email, 160),
       addressLine1: str(ct.addressLine1, 160), addressLine2: str(ct.addressLine2, 160),
-      mapsUrl: url(ct.mapsUrl), wazeUrl: url(ct.wazeUrl), mapsEmbedUrl: /^https:\/\/(www\.)?google\.[a-z.]+\/maps\/embed/i.test(str(ct.mapsEmbedUrl, 1000)) ? str(ct.mapsEmbedUrl, 1000) : '',
+      mapsUrl: url(ct.mapsUrl), wazeUrl: url(ct.wazeUrl), mapsEmbedUrl: isMapsEmbed(str(ct.mapsEmbedUrl, 1000)) ? str(ct.mapsEmbedUrl, 1000) : '',
       hours: str(ct.hours, 160),
     },
     home: {

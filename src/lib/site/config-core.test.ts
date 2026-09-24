@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { publicSiteRoot, activeBanners, defaultSiteConfig, sanitizeSiteConfig, isValidSiteSlug, serviceOn, whatsappLink, slugify } from './config-core'
+import { publicSiteRoot, activeBanners, defaultSiteConfig, sanitizeSiteConfig, isValidSiteSlug, serviceOn, whatsappLink, slugify, isMapsEmbed } from './config-core'
 
 describe('config do site', () => {
   it('padrão: zerado com o nome da loja e os 4 serviços padrão ligados', () => {
@@ -23,6 +23,10 @@ describe('config do site', () => {
     expect(c.identity.logoUrl).toBe('')
     expect(c.contact.whatsapp).toBe('11934718276')
     expect(c.contact.mapsEmbedUrl).toBe('')
+    expect(isMapsEmbed('https://www.google.com/maps/embed?pb=!1m18')).toBe(true)
+    expect(isMapsEmbed('https://www.google.com/maps?q=Av.%20X%2C%202245&output=embed')).toBe(true)
+    expect(isMapsEmbed('https://www.google.com/maps?q=Av.%20X')).toBe(false)
+    expect(isMapsEmbed('https://evil.com/maps?output=embed')).toBe(false)
     expect(c.services.estoque).toBe(true) // travado
     expect(c.services.sobre).toBe(false)
     expect(c.services.atacado).toBe(true)
