@@ -8,7 +8,7 @@ import { EM_BREVE_IMG } from './SiteVehicleImage'
 type Media = { type: 'image' | 'video'; url: string }
 
 function youtubeId(url: string): string | null {
-  return url.match(/youtu\.be\/([^?&]+)/)?.[1] ?? url.match(/[?&]v=([^?&]+)/)?.[1] ?? null
+  return url.match(/youtu\.be\/([^?&]+)/)?.[1] ?? url.match(/\/shorts\/([^?&/]+)/)?.[1] ?? url.match(/[?&]v=([^?&]+)/)?.[1] ?? null
 }
 
 function VideoPlayer({ url, autoplay = false }: { url: string; autoplay?: boolean }) {

@@ -248,6 +248,7 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  Globe,
     module: 'site',
     children: [
+      { label: 'Anúncios',              href: '/site/anuncios',      icon: Megaphone, module: 'site' },
       { label: 'Configurações do site', href: '/site/configuracoes', icon: Settings, module: 'site' },
     ],
   },
