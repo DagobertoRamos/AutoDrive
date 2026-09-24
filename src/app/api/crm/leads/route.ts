@@ -6,6 +6,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared'
 import { readTemperature } from '@/lib/crm/config'
+import { loadCrmSettings, readLeadType } from '@/lib/crm/settings'
 import { resolveIdentity, type DedupMatch } from '@/lib/crm/dedup'
 import { assignLeadNumber } from '@/lib/crm/lead-number'
 import { isMaterialized, landingStage, loadPipelines, loadPlacements, pipelineLeadWhere, resolveLeadPipeline, resolveLeadStage, savePlacement } from '@/lib/crm/pipelines'
@@ -61,6 +62,7 @@ export async function GET(req: Request) {
     const sourceFilter = sp.get('source')?.trim() || ''
     const priority = sp.get('priority')?.trim() || ''
     const temperature = sp.get('temperature')?.trim() || ''
+    const leadTypeFilter = sp.get('leadType')?.trim() || ''
     // NOTA: deletedAt ausente da query intencionalmente até a migration
     // crm_card_lead_number_softdelete ser aplicada na Neon. Após aplicar, voltar:
     //   applyCrmScope({ tenantId, deletedAt: null }, scope, user)
@@ -201,6 +203,9 @@ export async function GET(req: Request) {
     if (temperature) {
       filtered = filtered.filter((row) => readTemperature(row.metadata) === temperature)
     }
+    if (leadTypeFilter) {
+      filtered = filtered.filter((row) => readLeadType(row.metadata) === leadTypeFilter)
+    }
     const sorted = filtered.sort((a, b) => {
       const order = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 }
       const byPriority = order[a.priority as keyof typeof order] - order[b.priority as keyof typeof order]
@@ -214,6 +219,7 @@ export async function GET(req: Request) {
     const data = paged.map(({ metadata, ...rest }) => ({
       ...rest,
       temperature: readTemperature(metadata),
+      leadType: readLeadType(metadata),
     }))
 
     return NextResponse.json({
@@ -244,6 +250,11 @@ export async function POST(req: Request) {
     const cpf = body.cpf ? String(body.cpf) : null
     const externalLeadId = body.externalLeadId ? String(body.externalLeadId) : null
     const explicitAssigned = body.assignedToUserId ? String(body.assignedToUserId) : null
+    let leadType: string | null = body.leadType ? String(body.leadType) : null
+    if (leadType) {
+      const settings = await loadCrmSettings(tenantId)
+      if (!settings.leadTypes.some((t) => t.id === leadType && t.active)) leadType = null
+    }
     if (!name && !phone && !email) {
       return NextResponse.json({ success: false, error: 'Informe nome, telefone ou e-mail.' }, { status: 400 })
     }
@@ -309,7 +320,7 @@ export async function POST(req: Request) {
         createdById: user.id,
         // Reusa contato existente (identidade) se houver — não cria pessoa duplicada.
         ...(identity.customerId ? { customerId: identity.customerId } : {}),
-        metadata: { origin: 'CRM_MANUAL', ...(externalLeadId ? { externalLeadId } : {}), ...(cpf ? { cpf } : {}) },
+        metadata: { origin: 'CRM_MANUAL', ...(externalLeadId ? { externalLeadId } : {}), ...(cpf ? { cpf } : {}), ...(leadType ? { leadType } : {}) },
       },
     })
 

@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowRightLeft, Calendar, Car, ChevronLeft, ChevronRight, Loader2, MoreVertical, RefreshCw, Search, Trash2, User, X } from 'lucide-react'
-import { crmSourceLabel, crmTemperature, CRM_TEMPERATURES } from '@/lib/crm/shared'
+import { useCrmSettings } from '@/hooks/useCrmSettings'
+import { sourceLabelOf, temperatureOf, type CloseOutcome, type CrmSettings } from '@/lib/crm/settings-core'
+import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import { cn } from '@/lib/utils'
 import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
 
@@ -51,14 +53,14 @@ function plateDisplay(plate: string | null | undefined) {
 }
 
 // ── Temperature badge ─────────────────────────────────────────────────────────
-function TempBadge({ value }: { value: string | null }) {
+function TempBadge({ value, settings }: { value: string | null; settings: CrmSettings }) {
   if (!value || value === 'UNCLASSIFIED') return null
-  const t = CRM_TEMPERATURES.find(x => x.value === value)
-  if (!t) return null
+  const t = temperatureOf(settings, value)
+  if (t.value === 'UNCLASSIFIED') return null
   return (
     <span
-      className={cn('rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider', t.badge)}
-      style={{ fontSize: '9px' }}
+      className="rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white"
+      style={{ fontSize: '9px', background: t.color }}
     >
       {t.label}
     </span>
@@ -210,8 +212,8 @@ function DeleteModal({ lead, onClose, onDeleted }: { lead: LeadRow; onClose: () 
 }
 
 // ── Lead Card ─────────────────────────────────────────────────────────────────
-function LeadCard({ row, canDelete, onRefresh, moving, moveTargets, onMove }: {
-  row: LeadRow; canDelete: boolean; onRefresh: () => void
+function LeadCard({ row, settings, canDelete, onRefresh, moving, moveTargets, onMove }: {
+  row: LeadRow; settings: CrmSettings; canDelete: boolean; onRefresh: () => void
   moving: boolean; moveTargets: MoveTarget[]; onMove: (t: MoveTarget) => void
 }) {
   const [deleting, setDeleting] = useState(false)
@@ -235,7 +237,7 @@ function LeadCard({ row, canDelete, onRefresh, moving, moveTargets, onMove }: {
           {row.leadNumber ? `#${row.leadNumber}` : `…${row.id.slice(-6)}`}
         </span>
         <div className="flex items-center gap-1">
-          <TempBadge value={row.temperature} />
+          <TempBadge value={row.temperature} settings={settings} />
           {moving && <Loader2 size={12} className="animate-spin text-gray-400" />}
           <CardMenu lead={row} canDelete={canDelete} onDelete={() => setDeleting(true)} moveTargets={moveTargets} onMove={onMove} />
         </div>
@@ -295,10 +297,10 @@ function LeadCard({ row, canDelete, onRefresh, moving, moveTargets, onMove }: {
       )}
 
       {/* Responsável e origem */}
-      <p className="mt-2 truncate text-[10px] text-gray-500 dark:text-gray-400" title={[row.assignedToUserName, crmSourceLabel(row.source)].filter(Boolean).join(' · ')}>
+      <p className="mt-2 truncate text-[10px] text-gray-500 dark:text-gray-400" title={[row.assignedToUserName, sourceLabelOf(settings, row.source)].filter(Boolean).join(' · ')}>
         {row.assignedToUserName && <><User size={9} className="inline mr-0.5" />{row.assignedToUserName}</>}
         {row.assignedToUserName && row.source && ' · '}
-        {crmSourceLabel(row.source)}
+        {sourceLabelOf(settings, row.source)}
       </p>
 
       {/* Ações */}
@@ -329,6 +331,8 @@ export default function CrmKanbanPage() {
   const [dropCol, setDropCol]   = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
+  const { settings } = useCrmSettings()
+  const [closing, setClosing]   = useState<{ row: LeadRow; target: MoveTarget; outcome: CloseOutcome } | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
   const [search, setSearch]     = useState('')
   const [debSearch, setDebSearch] = useState('')
@@ -403,15 +407,15 @@ export default function CrmKanbanPage() {
     ...(hasUnmapped ? [{ id: null, name: 'Sem etapa neste funil', color: UNMAPPED_COLOR }] : []),
   ]
 
-  const moveLead = async (row: LeadRow, target: MoveTarget) => {
+  const moveLead = async (row: LeadRow, target: MoveTarget, lostReason?: string) => {
     if (target.stageId && target.stageId === row.stageId && !target.pipelineId) return
     const destPipeline = target.pipelineId ? pipelines.find(p => p.id === target.pipelineId) : pipeline
     const destStage = target.stageId ? destPipeline?.stages.find(s => s.id === target.stageId) : null
-    let lostReason: string | undefined
-    if (destStage?.statusCode === 'LOST' && row.status !== 'LOST') {
-      const reason = window.prompt(`Motivo da perda de ${row.name ?? 'este lead'}:`)?.trim()
-      if (!reason) return
-      lostReason = reason
+    // Encerrar (perdido/desqualificado/reciclado) pede o motivo configurado.
+    const outcome = destStage?.statusCode as CloseOutcome | undefined
+    if (!lostReason && outcome && ['LOST', 'DISCARDED', 'RECYCLED'].includes(outcome) && row.status !== outcome) {
+      setClosing({ row, target, outcome })
+      return
     }
     setError(null); setMovingId(row.id)
     try {
@@ -443,6 +447,13 @@ export default function CrmKanbanPage() {
 
   return (
     <div className="kanban-root flex flex-col" style={{ margin: '-0.75rem', height: 'calc(100dvh - 56px)' }}>
+      {closing && (
+        <CloseReasonModal
+          outcome={closing.outcome} leadName={closing.row.name}
+          onClose={() => setClosing(null)}
+          onConfirm={(reason) => { const c = closing; setClosing(null); void moveLead(c.row, c.target, reason) }}
+        />
+      )}
       <style>{`
         @media (min-width: 640px) { .kanban-root { margin: -1rem; } }
         @media (min-width: 1024px) { .kanban-root { margin: -1.5rem; height: calc(100dvh - 64px); } }
@@ -580,7 +591,7 @@ export default function CrmKanbanPage() {
                       <p className="text-[11px] text-gray-400 dark:text-gray-500">Sem leads</p>
                     </div>
                   ) : stageRows.map(row => (
-                    <LeadCard key={row.id} row={row} canDelete={canDelete} onRefresh={load}
+                    <LeadCard key={row.id} row={row} settings={settings} canDelete={canDelete} onRefresh={load}
                       moving={movingId === row.id} moveTargets={moveTargetsFor(row)} onMove={(t) => void moveLead(row, t)} />
                   ))}
                 </div>

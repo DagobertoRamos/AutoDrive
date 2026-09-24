@@ -16,7 +16,9 @@ import {
   Plus, RefreshCw, Trash2, User, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CRM_TEMPERATURES, crmSourceLabel, crmTemperature } from '@/lib/crm/shared'
+import { useCrmSettings } from '@/hooks/useCrmSettings'
+import { reasonsFor, sourceLabelOf, temperatureOf, type CloseOutcome } from '@/lib/crm/settings-core'
+import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import type { Pipeline } from '@/lib/crm/pipelines-core'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -36,7 +38,7 @@ interface LeadDetail {
   assignedToUserId: string | null; assignedToUserName: string | null; unitId: string | null; unitName: string | null
   customerId: string | null; vehicleId: string | null; convertedDealId: string | null
   lastContactAt: string | null; createdAt: string; updatedAt: string; temperature: string | null
-  pipelineId: string | null; stageId: string | null
+  pipelineId: string | null; stageId: string | null; leadType: string | null
 }
 
 interface Workspace {
@@ -202,6 +204,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
   relations: { customer: { name: string | null } | null; deal: { dealNumber: string | null } | null }
   onRefresh: () => void
 }) {
+  const { settings } = useCrmSettings()
   // Resumo comercial
   const [narrative, setNarrative] = useState('')
   const [savingNarr, setSavingNarr] = useState(false)
@@ -288,7 +291,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
           <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">Dados do lead</h3>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-            {[['Cliente', lead.name],['Telefone', lead.phone],['E-mail', lead.email],['Origem', crmSourceLabel(lead.source)],['Criado em', fmtDT(lead.createdAt)],['Responsável', lead.assignedToUserName],['Unidade', lead.unitName],['Cliente vinculado', relations.customer?.name]].map(([k, v]) => (
+            {[['Cliente', lead.name],['Telefone', lead.phone],['E-mail', lead.email],['Origem', sourceLabelOf(settings, lead.source)],['Criado em', fmtDT(lead.createdAt)],['Responsável', lead.assignedToUserName],['Unidade', lead.unitName],['Cliente vinculado', relations.customer?.name]].map(([k, v]) => (
               <div key={String(k)}><dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{k}</dt><dd className="text-gray-700 dark:text-gray-300 truncate">{v ?? '—'}</dd></div>
             ))}
           </dl>
@@ -718,9 +721,10 @@ function DealsTab({ leadId, workspace, lead, onRefresh }: { leadId: string; work
 }
 
 // ── ActionModal (Fase D/E — conversão, insucesso, reciclar, arquivar, unificar) ─
-const LOSS_REASONS = ['Sem resposta','Número inválido','Sem interesse','Preço','Avaliação da troca','Financiamento não aprovado','Entrada insuficiente','Veículo vendido','Veículo indisponível','Comprou no concorrente','Desistiu','Documentação','Prazo','Localização','Atendimento','Outro']
 
 function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: LeadDetail; onClose: () => void; onDone: () => void }) {
+  const { settings } = useCrmSettings()
+  const reasonOptions = reasonsFor(settings, action === 'recycle' ? 'RECYCLED' : 'LOST').map(r => r.label)
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
   const [competitor, setCompetitor] = useState('')
@@ -773,7 +777,7 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
                 <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo *</label>
                 <select value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
                   <option value="">— Selecione —</option>
-                  {LOSS_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                  {reasonOptions.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
               {action === 'lose' && (
@@ -1060,6 +1064,8 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
   const [payload, setPayload] = useState<Payload | null>(null)
   const [interactions, setInteractions] = useState<Interaction[]>([])
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
+  const { settings } = useCrmSettings()
+  const [closing, setClosing] = useState<{ target: { stageId?: string; pipelineId?: string }; outcome: CloseOutcome } | null>(null)
   const [stageError, setStageError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('summary')
@@ -1112,12 +1118,12 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
   const moveTo = (target: { stageId?: string; pipelineId?: string }) => {
     const destPipeline = pipelines.find(p => p.id === (target.pipelineId ?? payload?.lead.pipelineId))
     const destStage = target.stageId ? destPipeline?.stages.find(s => s.id === target.stageId) : null
-    let lostReason: string | undefined
-    if (destStage?.statusCode === 'LOST' && payload?.lead.status !== 'LOST') {
-      lostReason = window.prompt('Motivo da perda:')?.trim()
-      if (!lostReason) return
+    const outcome = destStage?.statusCode as CloseOutcome | undefined
+    if (outcome && ['LOST', 'DISCARDED', 'RECYCLED'].includes(outcome) && payload?.lead.status !== outcome) {
+      setClosing({ target, outcome })
+      return
     }
-    void patchLead({ ...target, lostReason })
+    void patchLead(target)
   }
 
   if (loading) return (
@@ -1128,12 +1134,19 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
   )
 
   const { lead, tags, availableTags, workspace, tasks, timeline, relations } = payload
-  const temp = crmTemperature(lead.temperature)
+  const temp = temperatureOf(settings, lead.temperature)
   const pendingTasks = tasks?.filter(t => t.status === 'PENDING') ?? []
   const hasTemp = lead.temperature && lead.temperature !== 'UNCLASSIFIED'
 
   return (
     <div className="space-y-4">
+      {closing && (
+        <CloseReasonModal
+          outcome={closing.outcome} leadName={lead.name}
+          onClose={() => setClosing(null)}
+          onConfirm={(reason) => { const c = closing; setClosing(null); void patchLead({ ...c.target, lostReason: reason }) }}
+        />
+      )}
       {showTransfer && <TransferModal leadId={leadId} currentName={lead.assignedToUserName} onClose={() => setShowTransfer(false)} onDone={() => { setShowTransfer(false); void load() }} />}
 
       {/* ── Cabeçalho ── */}
@@ -1147,13 +1160,13 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
                 {lead.leadNumber && <span className="font-mono text-xs text-gray-400 dark:text-gray-500">#{lead.leadNumber}</span>}
                 <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate">{lead.name ?? lead.phone ?? 'Lead sem identificação'}</h1>
                 {hasTemp && (
-                  <span className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-bold', temp.badge)}>{temp.label}</span>
+                  <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white" style={{ background: temp.color }}>{temp.label}</span>
                 )}
               </div>
               <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                 <span className="flex items-center gap-1"><User size={10} />{lead.assignedToUserName ?? 'Sem responsável'}</span>
                 {lead.unitName && <span>· {lead.unitName}</span>}
-                <span>· {crmSourceLabel(lead.source)}</span>
+                <span>· {sourceLabelOf(settings, lead.source)}</span>
               </p>
             </div>
           </div>
@@ -1238,13 +1251,25 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Temp.</span>
             <div className="flex gap-1">
-              {CRM_TEMPERATURES.filter(t => t.value !== 'UNCLASSIFIED').map(t => (
+              {settings.temperatures.filter(t => t.active).map(t => (
                 <button key={t.value} onClick={() => void fetch(`/api/crm/leads/${leadId}/temperature`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({temperature:t.value})}).then(()=>load())} title={t.label}
                   className={cn('h-5 w-5 rounded-full border-2 transition', lead.temperature === t.value ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent hover:scale-105')}
                   style={{ background: t.color }} />
               ))}
             </div>
           </div>
+
+          {/* Tipo de lead */}
+          {(settings.leadTypes.some(t => t.active) || lead.leadType) && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tipo</span>
+              <select value={lead.leadType ?? ''} onChange={e => void patchLead({ leadType: e.target.value })} aria-label="Tipo de lead"
+                className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-700 dark:text-gray-200">
+                <option value="">Sem tipo</option>
+                {settings.leadTypes.filter(t => t.active || t.id === lead.leadType).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* Tags */}
           <div className="flex flex-wrap items-center gap-1">

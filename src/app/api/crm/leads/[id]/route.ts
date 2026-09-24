@@ -6,6 +6,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 import { readTemperature } from '@/lib/crm/config'
+import { loadCrmSettings, readLeadType } from '@/lib/crm/settings'
 import { validateStageTransition } from '@/lib/crm/transitions'
 import { isMaterialized, loadPipelines, loadPlacement, planLeadMove, resolveLeadPipeline, resolveLeadStage, savePlacement, type MovePlan } from '@/lib/crm/pipelines'
 
@@ -262,6 +263,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           createdAt: lead.createdAt,
           updatedAt: lead.updatedAt,
           temperature: readTemperature(lead.metadata),
+          leadType: readLeadType(lead.metadata),
           leadNumber: (lead as { leadNumber?: number | null }).leadNumber ?? null,
           pipelineId: leadPipeline?.id ?? null,
           pipelineName: leadPipeline?.name ?? null,
@@ -373,6 +375,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const assignedToUserId = String(body.assignedToUserId || '').trim() || null
       if (!canTransfer && assignedToUserId !== user.id) return forbiddenResponse('Sem permissão para transferir lead.')
       updateData.assignedToUserId = assignedToUserId
+    }
+    // Tipo de lead (Fase A) — vive em metadata.leadType; '' limpa.
+    if (body.leadType !== undefined) {
+      const leadType = String(body.leadType || '').trim()
+      if (leadType) {
+        const settings = await loadCrmSettings(tenantId)
+        if (!settings.leadTypes.some((t) => t.id === leadType && t.active)) {
+          return NextResponse.json({ success: false, error: 'Tipo de lead inválido.' }, { status: 400 })
+        }
+      }
+      const meta = lead.metadata && typeof lead.metadata === 'object' ? { ...(lead.metadata as Record<string, unknown>) } : {}
+      if (leadType) meta.leadType = leadType
+      else delete meta.leadType
+      updateData.metadata = meta
     }
     if (body.unitId !== undefined && canEditUnit) {
       updateData.unitId = String(body.unitId || '').trim() || null

@@ -14,7 +14,9 @@ import {
   CheckCircle2, ChevronLeft, ChevronRight, Clock, Filter, Loader2,
   Phone, Plus, RefreshCw, Search, Sliders, X, XCircle,
 } from 'lucide-react'
-import { CRM_TEMPERATURES, CRM_STAGE_OPTIONS, crmPriorityLabel, crmPriorityTone, crmSourceLabel, crmTemperature } from '@/lib/crm/shared'
+import { CRM_STAGE_OPTIONS, crmPriorityLabel, crmPriorityTone } from '@/lib/crm/shared'
+import { useCrmSettings } from '@/hooks/useCrmSettings'
+import { leadTypeOf, sourceLabelOf, temperatureOf } from '@/lib/crm/settings-core'
 import { cn } from '@/lib/utils'
 
 interface LeadTag { id: string; name: string; color: string | null }
@@ -23,7 +25,7 @@ interface LeadRow {
   source: string | null; status: string; unitName: string | null
   assignedToUserName: string | null; convertedDealId: string | null
   lastContactAt: string | null; priority: 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW'
-  temperature: string | null; tags: LeadTag[]; vehicleLabel: string | null
+  temperature: string | null; leadType: string | null; tags: LeadTag[]; vehicleLabel: string | null
   createdAt: string
 }
 interface Meta { total: number; page: number; perPage: number; totalPages: number; scope: string }
@@ -34,25 +36,12 @@ interface CrmCtx {
   units: { id: string; name: string }[]
 }
 
-const SOURCE_OPTIONS = [
-  { value: 'MANUAL',           label: 'Manual' },
-  { value: 'FILA_ATENDIMENTO', label: 'Fila de atendimento' },
-  { value: 'SDR',              label: 'SDR' },
-  { value: 'WHATSAPP',         label: 'WhatsApp' },
-  { value: 'WEBSITE',          label: 'Website' },
-  { value: 'WEBMOTORS',        label: 'Webmotors' },
-  { value: 'AUTOCONF',         label: 'AutoConf' },
-  { value: 'EMAIL',            label: 'E-mail' },
-]
-
 const PRIORITY_OPTIONS = [
   { value: 'URGENT', label: 'Urgente', tone: 'bg-red-50 text-red-700 border-red-200' },
   { value: 'HIGH',   label: 'Alta',    tone: 'bg-amber-50 text-amber-700 border-amber-200' },
   { value: 'NORMAL', label: 'Normal',  tone: 'bg-sky-50 text-sky-700 border-sky-200' },
   { value: 'LOW',    label: 'Baixa',   tone: 'bg-gray-50 text-gray-600 border-gray-200' },
 ]
-
-const TEMP_OPTIONS = CRM_TEMPERATURES.filter(t => t.value !== 'UNCLASSIFIED')
 
 // ─ Chip de filtro rápido ─────────────────────────────────────────────────────
 function Chip({ label, active, color, onClick }: { label: string; active: boolean; color?: string; onClick: () => void }) {
@@ -88,6 +77,8 @@ export default function CrmLeadsPage() {
   const [fSource, setFSource]     = useState('')
   const [fPriority, setFPriority] = useState('')
   const [fTemp, setFTemp]         = useState('')
+  const [fType, setFType]         = useState('')
+  const { settings } = useCrmSettings()
   const [fSeller, setFSeller]     = useState('')
   const [fUnit, setFUnit]         = useState('')
   const [panelOpen, setPanelOpen] = useState(false)
@@ -96,6 +87,8 @@ export default function CrmLeadsPage() {
   const [showNew, setShowNew] = useState(false)
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
+  const [newSource, setNewSource] = useState('MANUAL')
+  const [newType, setNewType] = useState('')
   const [saving, setSaving]   = useState(false)
 
   const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -121,6 +114,7 @@ export default function CrmLeadsPage() {
       if (fSource)    params.set('source', fSource)
       if (fPriority)  params.set('priority', fPriority)
       if (fTemp)      params.set('temperature', fTemp)
+      if (fType)      params.set('leadType', fType)
       if (fSeller)    params.set('assignedToUserId', fSeller)
       if (fUnit)      params.set('unitId', fUnit)
       const res  = await fetch(`/api/crm/leads?${params}`, { credentials: 'include' })
@@ -128,13 +122,13 @@ export default function CrmLeadsPage() {
       setRows(json?.data ?? [])
       setMeta(json?.meta ?? null)
     } finally { setLoading(false) }
-  }, [debSearch, fStatus, fSource, fPriority, fTemp, fSeller, fUnit])
+  }, [debSearch, fStatus, fSource, fPriority, fTemp, fType, fSeller, fUnit])
 
   useEffect(() => { setPage(1); void load(1) }, [load])
 
   const goPage = (p: number) => { setPage(p); void load(p) }
 
-  const activeCount = [fStatus, fSource, fPriority, fTemp, fSeller, fUnit].filter(Boolean).length
+  const activeCount = [fStatus, fSource, fPriority, fTemp, fType, fSeller, fUnit].filter(Boolean).length
   const clearAll = () => { setFStatus(''); setFSource(''); setFPriority(''); setFTemp(''); setFSeller(''); setFUnit('') }
 
   const patchLead = async (id: string, body: Record<string, unknown>) => {
@@ -151,9 +145,9 @@ export default function CrmLeadsPage() {
     try {
       await fetch('/api/crm/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ name: newName || null, phone: newPhone || null, source: 'MANUAL' }),
+        body: JSON.stringify({ name: newName || null, phone: newPhone || null, source: newSource || 'MANUAL', leadType: newType || undefined }),
       })
-      setNewName(''); setNewPhone(''); setShowNew(false); setPage(1); void load(1)
+      setNewName(''); setNewPhone(''); setNewType(''); setShowNew(false); setPage(1); void load(1)
     } finally { setSaving(false) }
   }
 
@@ -204,6 +198,23 @@ export default function CrmLeadsPage() {
               placeholder="(11) 9.9999-9999"
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white" />
           </div>
+          <div className="min-w-[140px]">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Origem</label>
+            <select value={newSource} onChange={e => setNewSource(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white">
+              {settings.sources.filter(o => o.active || o.code === 'MANUAL').map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+            </select>
+          </div>
+          {settings.leadTypes.some(t => t.active) && (
+            <div className="min-w-[140px]">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tipo</label>
+              <select value={newType} onChange={e => setNewType(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white">
+                <option value="">Sem tipo</option>
+                {settings.leadTypes.filter(t => t.active).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </div>
+          )}
           <button onClick={() => void createLead()} disabled={saving || (!newName && !newPhone)} className="btn-primary text-sm">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}Criar
           </button>
@@ -277,10 +288,10 @@ export default function CrmLeadsPage() {
                   <Filter size={10} />Origem
                 </p>
                 <div className="flex flex-wrap gap-1">
-                  {SOURCE_OPTIONS.map(o => (
-                    <button key={o.value} onClick={() => setFSource(v => v === o.value ? '' : o.value)}
+                  {settings.sources.filter(o => o.active).map(o => (
+                    <button key={o.code} onClick={() => setFSource(v => v === o.code ? '' : o.code)}
                       className={cn('rounded-md border px-2 py-1 text-[11px] font-medium transition',
-                        fSource === o.value
+                        fSource === o.code
                           ? 'border-indigo-400 bg-indigo-600 text-white'
                           : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-white/10 dark:bg-slate-700 dark:text-gray-300'
                       )}>
@@ -309,18 +320,37 @@ export default function CrmLeadsPage() {
               <div>
                 <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">Temperatura</p>
                 <div className="flex flex-wrap gap-1">
-                  {TEMP_OPTIONS.map(t => (
+                  {settings.temperatures.filter(t => t.active).map(t => (
                     <button key={t.value} onClick={() => setFTemp(v => v === t.value ? '' : t.value)}
                       className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition',
                         fTemp === t.value ? 'text-white border-transparent' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-white/10 dark:bg-slate-700 dark:text-gray-300'
                       )}
                       style={fTemp === t.value ? { background: t.color, borderColor: t.color } : {}}
                     >
-                      {t.emoji} {t.label}
+                      {t.label}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* Tipo de lead */}
+              {settings.leadTypes.some(t => t.active) && (
+                <div>
+                  <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">Tipo de lead</p>
+                  <div className="flex flex-wrap gap-1">
+                    {settings.leadTypes.filter(t => t.active).map(t => (
+                      <button key={t.id} onClick={() => setFType(v => v === t.id ? '' : t.id)}
+                        className={cn('rounded-md border px-2 py-1 text-[11px] font-medium transition',
+                          fType === t.id ? 'text-white border-transparent' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-white/10 dark:bg-slate-700 dark:text-gray-300'
+                        )}
+                        style={fType === t.id ? { background: t.color, borderColor: t.color } : {}}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Responsável — só para quem vê mais de um vendedor */}
               {canFilterSeller && ctx && ctx.sellers.length > 0 && (
@@ -402,7 +432,8 @@ export default function CrmLeadsPage() {
                 </tr>
               ) : (
                 rows.map(row => {
-                  const temp = crmTemperature(row.temperature)
+                  const temp = temperatureOf(settings, row.temperature)
+                  const leadType = leadTypeOf(settings, row.leadType)
                   const hasTemp = row.temperature && row.temperature !== 'UNCLASSIFIED'
                   const contactLine = [row.phone, row.email].filter(Boolean).join(' · ')
 
@@ -443,7 +474,8 @@ export default function CrmLeadsPage() {
 
                       {/* Origem */}
                       <td className="px-4 py-3 text-[11px] text-gray-500 dark:text-gray-400">
-                        {crmSourceLabel(row.source)}
+                        {sourceLabelOf(settings, row.source)}
+                        {leadType && <span className="mt-0.5 block text-[10px] font-medium" style={{ color: leadType.color }}>{leadType.label}</span>}
                       </td>
 
                       {/* Etapa */}

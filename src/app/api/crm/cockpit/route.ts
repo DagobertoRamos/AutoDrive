@@ -4,7 +4,8 @@ import { forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/a
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
-import { applyCrmAttendanceScope, applyCrmScope, crmSourceLabel, crmStageLabel, resolveCrmAttendanceScope, resolveCrmScope } from '@/lib/crm/shared'
+import { applyCrmAttendanceScope, applyCrmScope, crmStageLabel, resolveCrmAttendanceScope, resolveCrmScope } from '@/lib/crm/shared'
+import { loadCrmSettings, sourceLabelOf } from '@/lib/crm/settings'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -17,6 +18,7 @@ export async function GET(req: Request) {
   try {
     const [leadScope, attendanceScope] = await Promise.all([resolveCrmScope(user), resolveCrmAttendanceScope(user)])
     if (!leadScope || !attendanceScope) return forbiddenResponse('Sem acesso ao CRM.')
+    const crmSettings = await loadCrmSettings(tenantId)
     const leadWhere = applyCrmScope({ tenantId }, leadScope, user)
     const attendanceWhere = applyCrmAttendanceScope({ tenantId }, attendanceScope, user)
     const startToday = new Date()
@@ -56,7 +58,7 @@ export async function GET(req: Request) {
           openAttendances,
           todayAttendances,
         },
-        bySource: bySource.map((item) => ({ source: crmSourceLabel(item.source), total: item._count._all })),
+        bySource: bySource.map((item) => ({ source: sourceLabelOf(crmSettings, item.source), total: item._count._all })),
         byStage: byStage.map((item) => ({ stage: item.status, label: crmStageLabel(item.status), total: item._count._all })),
         bySeller: bySeller.map((item) => ({ sellerId: item.assignedToUserId, sellerName: item.assignedToUserId ? sellerNames.get(item.assignedToUserId) ?? 'Responsável' : 'Sem responsável', total: item._count._all })),
       },
