@@ -47,7 +47,7 @@ export async function startPosVenda(opts: { tenantId: string; unitId: string; se
     prisma.sellerQueuePosVenda.create({ data: { tenantId, unitId, queueId: qid, sellerId, startedById, status: 'ACTIVE' } }),
   ])
   await logQueueEvent({ tenantId, unitId, queueId: qid, type: 'PAUSE', sellerId, actorId: startedById, reason: 'pós-vendas' })
-  await notify({ userId: sellerId, tenantId, type: 'WARNING', title: 'Pós-vendas 🛠️', message: 'Você entrou em pós-vendas e está pausado na fila. Ao terminar, peça para voltar à fila.', actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'] }).catch(() => {})
+  await notify({ userId: sellerId, tenantId, type: 'INFO', title: 'Pós-vendas 🛠️', message: 'Você entrou em pós-vendas e está pausado na fila. Ao terminar, peça para voltar à fila.', actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'] }).catch(() => {})
   return { ok: true }
 }
 
@@ -58,7 +58,7 @@ export async function requestReturn(tenantId: string, unitId: string, sellerId: 
   if (rec.status === 'RETURN_REQUESTED') return { ok: true }
   await prisma.sellerQueuePosVenda.update({ where: { id: rec.id }, data: { status: 'RETURN_REQUESTED', returnRequestedAt: new Date() } })
   const seller = await prisma.user.findUnique({ where: { id: sellerId }, select: { name: true } }).catch(() => null)
-  await notifyByRole({ tenantId, unitId, roles: MANAGER_ROLES, type: 'WARNING', title: 'Retorno de pós-vendas', message: `${seller?.name ?? 'Um colaborador'} terminou o pós-vendas e pede para voltar à fila. Autorize no Painel.`, actionUrl: '/vendedor-da-vez/painel', metadata: { kind: 'pos_venda_return', sellerId }, channels: ['APP_WEB'] }).catch(() => {})
+  await notifyByRole({ tenantId, unitId, roles: MANAGER_ROLES, type: 'SISTEMA', title: 'Retorno de pós-vendas', message: `${seller?.name ?? 'Um colaborador'} terminou o pós-vendas e pede para voltar à fila. Autorize no Painel.`, actionUrl: '/vendedor-da-vez/painel', metadata: { kind: 'pos_venda_return', sellerId }, channels: ['APP_WEB'] }).catch(() => {})
   return { ok: true }
 }
 
@@ -75,7 +75,7 @@ export async function authorizeReturn(tenantId: string, unitId: string, sellerId
     ...(entry && entry.status === 'PAUSED' ? [prisma.sellerQueueEntry.update({ where: { id: entry.id }, data: { status: 'WAITING', pausedAt: null } })] : []),
   ])
   await logQueueEvent({ tenantId, unitId, queueId: qid, type: 'RESUME', sellerId, actorId: authorizedById, reason: 'retorno de pós-vendas autorizado' })
-  await notify({ userId: sellerId, tenantId, type: 'WARNING', title: 'De volta à fila ✅', message: 'Seu retorno do pós-vendas foi autorizado — você voltou à sua posição.', actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'] }).catch(() => {})
+  await notify({ userId: sellerId, tenantId, type: 'INFO', title: 'De volta à fila ✅', message: 'Seu retorno do pós-vendas foi autorizado — você voltou à sua posição.', actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'] }).catch(() => {})
   return { ok: true }
 }
 

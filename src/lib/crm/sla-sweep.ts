@@ -58,7 +58,7 @@ async function sweepTenant(tenantId: string, settings: CrmSettings, now: Date, o
       nextMarks.firstContactAlertedAt = now.toISOString()
       if (lead.assignedToUserId) {
         await notify({
-          userId: lead.assignedToUserId, tenantId, type: 'ESCALONAMENTO', actionUrl,
+          userId: lead.assignedToUserId, tenantId, type: 'SISTEMA', actionUrl,
           title: 'Lead aguardando o 1º contato',
           message: `${who} está sem contato há mais de ${cfg.firstContactMinutes} min.`,
           metadata: { kind: 'crm_sla_first_contact', leadId: lead.id }, channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
@@ -71,7 +71,7 @@ async function sweepTenant(tenantId: string, settings: CrmSettings, now: Date, o
       nextMarks.noContactAlertedFor = v.noContactRef
       if (lead.assignedToUserId) {
         await notify({
-          userId: lead.assignedToUserId, tenantId, type: 'ESCALONAMENTO', actionUrl,
+          userId: lead.assignedToUserId, tenantId, type: 'SISTEMA', actionUrl,
           title: 'Lead parado sem contato',
           message: `${who} está sem contato há mais de ${cfg.noContactHours} h.`,
           metadata: { kind: 'crm_sla_no_contact', leadId: lead.id }, channels: ['APP_WEB', 'APP_MOBILE'],
@@ -101,7 +101,7 @@ async function sweepTenant(tenantId: string, settings: CrmSettings, now: Date, o
       lateNoContact ? `${lateNoContact} parado(s) há mais de ${cfg.noContactHours} h` : '',
     ].filter(Boolean)
     await notifyByRole({
-      tenantId, roles: MANAGER_ROLES, type: 'ESCALONAMENTO', actionUrl: '/crm/leads?delayed=true',
+      tenantId, roles: MANAGER_ROLES, type: 'SISTEMA', actionUrl: '/crm/leads?delayed=true',
       title: 'SLA do CRM estourado',
       message: `Leads fora do SLA: ${parts.join(' e ')}.`,
       metadata: { kind: 'crm_sla_summary', lateFirst, lateNoContact }, channels: ['APP_WEB', 'APP_MOBILE'],

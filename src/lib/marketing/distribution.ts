@@ -192,7 +192,7 @@ export async function processSlaBreaches(tenantId: string, limit = 100): Promise
     await notifyByRole({
       tenantId,
       roles: MANAGER_ROLES,
-      type: 'ESCALONAMENTO',
+      type: 'SISTEMA',
       title: 'SLA de atendimento estourado',
       message: `${breaches.length} lead(s) sem atendimento dentro do SLA${recycled > 0 ? ` — ${recycled} devolvido(s) à fila para redistribuição` : ''}.`,
       actionUrl: '/marketing/sdr/inbox',

@@ -30,7 +30,7 @@ export async function notifySellerCalled(p: {
   // Push nativo (FCM) — alerta no celular mesmo em 2º plano / tela bloqueada.
   void pushQueueCall({ sellerId: p.sellerId, attendanceId: p.attendanceId, customerName: p.customerName ?? null, timeoutSeconds: p.timeoutSeconds })
   await notify({
-    userId: p.sellerId, tenantId: p.tenantId, type: 'WARNING',
+    userId: p.sellerId, tenantId: p.tenantId, type: 'SISTEMA',
     title: 'Você é o vendedor da vez 🔔',
     message: `Atenção: cliente presencial aguardando${who}${rec}. Você tem ${p.timeoutSeconds} segundos para aceitar.`,
     actionUrl: '/vendedor-da-vez/minha-fila',
@@ -42,7 +42,7 @@ export async function notifySellerCalled(p: {
 /** Avisa a gestão (líder/gerente) que um aceite estourou o prazo. */
 export async function notifyTimeoutManagers(p: { tenantId: string; unitId: string; attendanceId: string; whatsapp?: boolean }): Promise<void> {
   await notifyByRole({
-    tenantId: p.tenantId, unitId: p.unitId, roles: MANAGER_ROLES, type: 'WARNING',
+    tenantId: p.tenantId, unitId: p.unitId, roles: MANAGER_ROLES, type: 'SISTEMA',
     title: 'Vendedor não aceitou no prazo',
     message: 'Um cliente presencial não foi aceito a tempo — o próximo vendedor foi chamado.',
     actionUrl: '/vendedor-da-vez/painel',
@@ -54,7 +54,7 @@ export async function notifyTimeoutManagers(p: { tenantId: string; unitId: strin
 /** Avisa a gestão que há cliente aguardando e ninguém disponível na fila. */
 export async function notifyNoSellerAvailable(p: { tenantId: string; unitId: string; arrivalId: string; whatsapp?: boolean }): Promise<void> {
   await notifyByRole({
-    tenantId: p.tenantId, unitId: p.unitId, roles: MANAGER_ROLES, type: 'WARNING',
+    tenantId: p.tenantId, unitId: p.unitId, roles: MANAGER_ROLES, type: 'SISTEMA',
     title: 'Cliente aguardando sem vendedor disponível',
     message: 'Há um cliente presencial aguardando e nenhum vendedor disponível na fila.',
     actionUrl: '/vendedor-da-vez/painel',
@@ -73,7 +73,7 @@ export async function notifySellerStrikeWarning(p: {
     ? `mais ${p.remaining} e você fica bloqueado até o fim do dia`
     : `mais ${p.remaining} e você fica ${p.cooldownHours}h fora da fila`
   await notify({
-    userId: p.sellerId, tenantId: p.tenantId, type: 'WARNING',
+    userId: p.sellerId, tenantId: p.tenantId, type: 'SISTEMA',
     title: '⚠️ Você perdeu a vez',
     message: `Você não aceitou no prazo (${p.strikes} perda(s) hoje). Atenção: ${consequencia}.`,
     actionUrl: '/vendedor-da-vez/minha-fila',
@@ -87,7 +87,7 @@ export async function notifySellerBlocked(p: {
 }): Promise<void> {
   const isDaily = p.type === 'DAILY_BLOCK'
   await notify({
-    userId: p.sellerId, tenantId: p.tenantId, type: 'WARNING',
+    userId: p.sellerId, tenantId: p.tenantId, type: 'SISTEMA',
     title: isDaily ? '🚫 Bloqueado na fila (reincidência)' : '🚫 Bloqueado temporariamente na fila',
     message: isDaily
       ? `Você perdeu a vez ${p.strikes}x hoje e está bloqueado até o fim do dia. Procure a gerência.`
@@ -105,7 +105,7 @@ export async function notifyBlockManagers(p: {
   const nome = seller?.name ?? 'Um vendedor'
   const tipo = p.type === 'DAILY_BLOCK' ? 'até o fim do dia' : 'temporariamente'
   await notifyByRole({
-    tenantId: p.tenantId, unitId: p.unitId, roles: MANAGER_ROLES, type: 'WARNING',
+    tenantId: p.tenantId, unitId: p.unitId, roles: MANAGER_ROLES, type: 'SISTEMA',
     title: 'Vendedor bloqueado na fila',
     message: `${nome} foi bloqueado ${tipo} por perder a vez ${p.strikes}x hoje. Você pode liberar no Painel.`,
     actionUrl: '/vendedor-da-vez/painel',

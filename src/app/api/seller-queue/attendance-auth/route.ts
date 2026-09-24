@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     await Promise.all(approvers.map((a) => notify({
       userId: a.id,
       tenantId,
-      type: 'WARNING',
+      type: 'SISTEMA',
       title: '🔐 Autorização de atendimento',
       message: `${user.name} pediu para atender ${label}: ${customerName}. Aprove ou recuse.`,
       actionUrl: '/vendedor-da-vez?authRequest=' + auth.id,

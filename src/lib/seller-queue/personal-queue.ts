@@ -256,7 +256,7 @@ export async function transferPersonalItem(opts: {
     data: { agentUserId: opts.toUserId, transferredToUserId: opts.toUserId, status: 'AGUARDANDO', notes: item.notes },
   })
   await notify({
-    userId: opts.toUserId, tenantId: opts.tenantId, type: 'WARNING',
+    userId: opts.toUserId, tenantId: opts.tenantId, type: 'SISTEMA',
     title: 'Atendimento transferido para você',
     message: `A gestão transferiu um ${PERSONAL_TYPE_LABEL[item.itemType as PersonalItemType]}${item.customerName ? `: ${item.customerName}` : ''} para a sua fila.`,
     actionUrl: '/vendedor-da-vez/minha-fila', channels: ['APP_WEB'],
@@ -355,7 +355,7 @@ export async function callNextPersonalItem(opts: {
 /** Avisa a gestão quando um item cai numa fila individual de quem está fora/pausado. */
 export async function notifyManagersPersonalUnavailable(opts: { tenantId: string; unitId: string; agentName: string; itemType: PersonalItemType }): Promise<void> {
   await notifyByRole({
-    tenantId: opts.tenantId, unitId: opts.unitId, roles: MANAGER_ROLES, type: 'WARNING',
+    tenantId: opts.tenantId, unitId: opts.unitId, roles: MANAGER_ROLES, type: 'SISTEMA',
     title: 'Cliente aguardando responsável indisponível',
     message: `${PERSONAL_TYPE_LABEL[opts.itemType]} entrou na fila de ${opts.agentName}, que está fora/pausado. Verifique no Painel.`,
     actionUrl: '/vendedor-da-vez/painel', channels: ['APP_WEB'],

@@ -24,6 +24,7 @@ import { getTenantWhatsappConfig } from '@/lib/whatsapp/credentials'
 import { getWhatsappAdapter } from '@/lib/whatsapp/registry'
 import { sendGenericPush, type GenericPushChannel } from '@/lib/push/notification-push'
 import type { NotificationPreference } from '@prisma/client'
+import { resolveNotificationType } from '@/lib/notifications/notification-type'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -148,7 +149,7 @@ async function createWebNotification(payload: NotifyPayload): Promise<string | n
       data: {
         userId:    payload.userId,
         tenantId:  payload.tenantId,
-        type:      payload.type as never,
+        type:      resolveNotificationType(payload.type),
         title:     payload.title,
         message:   payload.message,
         actionUrl: payload.actionUrl,

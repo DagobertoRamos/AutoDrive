@@ -97,7 +97,7 @@ export async function POST(req: Request) {
     await notify({
       userId: sellerId,
       tenantId,
-      type: 'WARNING',
+      type: 'SISTEMA',
       title: 'Teste de atenção! ⚠️',
       message: `Enviado por ${user.name}. Responda agora mesmo para testar notificações, vibração e som.`,
       actionUrl: '/vendedor-da-vez/testes',

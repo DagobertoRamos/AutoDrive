@@ -42,7 +42,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       if (reason.length < 3) return NextResponse.json({ success: false, error: 'Informe o motivo da recusa.' }, { status: 400 })
       await prisma.sellerAttendanceAuthorization.update({ where: { id }, data: { status: 'REJECTED', decidedByUserId: user.id, decidedAt: new Date(), decisionReason: reason } })
       await createSafeAuditLog({ userId: user.id, tenantId, action: 'REJECT', entity: 'SellerAttendanceAuthorization', entityId: id, userName: user.name, userRole: user.role })
-      await notify({ userId: auth.requesterUserId, tenantId, type: 'WARNING', title: '❌ Atendimento não autorizado', message: `Seu pedido de ${label} (${auth.customerName ?? 'cliente'}) foi recusado. Motivo: ${reason}`, actionUrl: '/vendedor-da-vez', metadata: { kind: 'attendance_auth_result', priority: 'high' }, channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'] }).catch(() => {})
+      await notify({ userId: auth.requesterUserId, tenantId, type: 'SISTEMA', title: '❌ Atendimento não autorizado', message: `Seu pedido de ${label} (${auth.customerName ?? 'cliente'}) foi recusado. Motivo: ${reason}`, actionUrl: '/vendedor-da-vez', metadata: { kind: 'attendance_auth_result', priority: 'high' }, channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'] }).catch(() => {})
       return NextResponse.json({ success: true, data: { status: 'REJECTED' } })
     }
 
