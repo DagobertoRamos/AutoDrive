@@ -67,7 +67,7 @@ function Modal({ intent, vehicle, apiUrl, storeName, whatsappHref, privacyHref, 
             </div>
           </div>
         ) : (
-          <form className="vlead-form" onSubmit={submit}>
+          <form className="vlead-form" method="post" onSubmit={submit}>
             <h2 id="vlead-title">{copy.title}</h2>
             <p className="vlead-lead">{copy.lead}</p>
             <fieldset>

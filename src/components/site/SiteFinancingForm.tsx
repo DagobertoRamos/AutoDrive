@@ -23,7 +23,7 @@ export function SiteFinancingForm({ apiUrl, vehicles, preselected, privacyHref }
   }
 
   return (
-    <form className="lead-form" onSubmit={submit}>
+    <form className="lead-form" method="post" onSubmit={submit}>
       <h2>Simular financiamento</h2>
       <label>Veículo
         <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>

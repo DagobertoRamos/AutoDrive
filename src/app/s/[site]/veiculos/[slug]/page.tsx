@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSiteContext } from '@/lib/site/context'
 import { findSiteVehicle, listSiteVehicles } from '@/lib/site/vehicles'
+import { SiteTrackView } from '@/components/site/SiteTracking'
 import { fuelLabel, money, transmissionLabel } from '@/lib/site/listing-core'
 import { SiteVehicleGallery } from '@/components/site/SiteVehicleGallery'
 import { SiteVehicleCard } from '@/components/site/SiteVehicleCard'
@@ -40,6 +41,7 @@ export default async function SiteVehiclePage({ params }: Props) {
   return (
     <>
       <section className="shell section">
+        <SiteTrackView id={v.id} name={v.title} value={v.price} />
         <SiteVehicleGallery photos={v.photos} title={v.title} videoUrl={v.videoUrl} />
         <div className="detail-badges">
           {v.state === 'EM_BREVE' && <div className="detail-badge"><span className="detail-badge-icon">⏳</span><span>Fotos em breve</span></div>}

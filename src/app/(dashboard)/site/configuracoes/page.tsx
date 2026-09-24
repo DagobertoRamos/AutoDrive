@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ExternalLink, Globe, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SiteConfig } from '@/lib/site/config-core'
+import { cleanGoogleTagId, cleanMetaPixelId } from '@/lib/site/tracking-core'
 import { BrandingSection } from './BrandingSection'
 import { DomainsSection } from './DomainsSection'
 
@@ -54,7 +55,7 @@ export default function SiteConfigPage() {
   if (!data || !cfg) return <div className="h-64 animate-pulse rounded-xl bg-gray-100" />
   const dis = !data.canManage
   const set = (patch: Partial<SiteConfig>) => { setCfg({ ...cfg, ...patch }); setDirty(true); setMsg(null) }
-  const setIn = <K extends 'identity' | 'contact' | 'home' | 'about' | 'seo'>(k: K, patch: Partial<SiteConfig[K]>) => set({ [k]: { ...cfg[k], ...patch } } as Partial<SiteConfig>)
+  const setIn = <K extends 'identity' | 'contact' | 'home' | 'about' | 'seo' | 'tracking'>(k: K, patch: Partial<SiteConfig[K]>) => set({ [k]: { ...cfg[k], ...patch } } as Partial<SiteConfig>)
 
   const save = async () => {
     setSaving(true); setMsg(null)
@@ -204,6 +205,24 @@ export default function SiteConfigPage() {
           <Field l="Título no Google"><input disabled={dis} className={input} value={cfg.seo.title} onChange={(e) => setIn('seo', { title: e.target.value })} /></Field>
           <Field l="Descrição no Google"><input disabled={dis} className={input} value={cfg.seo.description} onChange={(e) => setIn('seo', { description: e.target.value })} /></Field>
           <Field l="Aviso legal (rodapé)" className="md:col-span-2"><textarea disabled={dis} rows={2} className={input} value={cfg.legalNote} onChange={(e) => set({ legalNote: e.target.value })} /></Field>
+        </div>
+      </Section>
+
+      <Section title="Medição de anúncios (Pixel da Meta e Google)" hint="Com os IDs preenchidos, o site mostra o aviso de cookies e, com o aceite do visitante, mede visitas, carros vistos, contatos pelo WhatsApp e formulários enviados (Lead). Nenhum dado pessoal do cliente é enviado.">
+        <div className="grid gap-3 md:grid-cols-2">
+          {([
+            ['metaPixelId', 'ID do Pixel da Meta', '1234567890123456', 'Gerenciador de Eventos da Meta → Fontes de dados → seu Pixel (só números).', cleanMetaPixelId],
+            ['googleTagId', 'ID da tag do Google', 'G-XXXXXXXXXX ou AW-XXXXXXXXX', 'Google Analytics (G-…) ou Google Ads (AW-…). Use uma tag por site.', cleanGoogleTagId],
+          ] as const).map(([k, l, ph, help, clean]) => {
+            const v = cfg.tracking[k]
+            const bad = v.trim() !== '' && !clean(v)
+            return (
+              <Field key={k} l={l}>
+                <input disabled={dis} className={cn(input, bad && 'border-red-300')} value={v} placeholder={ph} onChange={(e) => setIn('tracking', { [k]: e.target.value.trim() })} />
+                <span className={cn('mt-1 block text-[11px]', bad ? 'text-red-600' : v ? 'text-green-700' : 'text-gray-400')}>{bad ? 'Formato inválido: não será salvo.' : v ? 'Ativo no site.' : help}</span>
+              </Field>
+            )
+          })}
         </div>
       </Section>
 

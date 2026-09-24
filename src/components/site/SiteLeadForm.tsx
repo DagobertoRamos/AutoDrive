@@ -19,7 +19,7 @@ export function SiteLeadForm({ apiUrl, title, privacyHref }: { apiUrl: string; t
   }
 
   return (
-    <form className="lead-form" onSubmit={submit}>
+    <form className="lead-form" method="post" onSubmit={submit}>
       <h2>{title}</h2>
       <label>Nome<input name="name" required maxLength={120} autoComplete="name" /></label>
       <div className="form-row">

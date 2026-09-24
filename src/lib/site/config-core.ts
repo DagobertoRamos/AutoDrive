@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { sanitizeDomains, type SiteDomain } from './domains-core'
+import { sanitizeTracking, type SiteTracking } from './tracking-core'
 
 export type { SiteDomain }
 
@@ -47,6 +48,7 @@ export interface SiteConfig {
   about: { eyebrow: string; title: string; intro: string; sections: { title: string; text: string }[] }
   banners: { intervalSeconds: number; items: SiteBanner[] }
   testimonials: SiteTestimonial[]
+  tracking: SiteTracking
   legalNote: string
   seo: { title: string; description: string }
   services: Record<SiteServiceKey, boolean>
@@ -101,6 +103,7 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
     },
     banners: { intervalSeconds: 6, items: [] },
     testimonials: [],
+    tracking: { metaPixelId: '', googleTagId: '' },
     legalNote: 'Crédito sujeito à análise e aprovação das instituições financeiras. Imagens meramente ilustrativas.',
     seo: { title: `${name} — Seminovos`, description: `Estoque de seminovos da ${name}. Financiamento, troca e atendimento pelo WhatsApp.` },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.default])) as Record<SiteServiceKey, boolean>,
@@ -164,6 +167,7 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
       }, []),
     },
     testimonials: pairs(b.testimonials, SITE_MAX_TESTIMONIALS, (o) => str(o.name, 80) && str(o.text, 360) ? { name: str(o.name, 80), text: str(o.text, 360), vehicle: str(o.vehicle, 100) } : null, []),
+    tracking: sanitizeTracking(b.tracking),
     legalNote: str(b.legalNote, 400),
     seo: { title: str(seo.title, 80) || d.seo.title, description: str(seo.description, 200) || d.seo.description },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.locked ? true : (typeof sv[s.key] === 'boolean' ? sv[s.key] as boolean : s.default)])) as Record<SiteServiceKey, boolean>,

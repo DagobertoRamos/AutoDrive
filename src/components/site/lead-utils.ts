@@ -1,4 +1,5 @@
 // Utilitários dos formulários do site (máscaras, rastreio de campanha, envio).
+import { siteTrack } from '@/lib/site/tracking-client'
 
 export function phoneMask(value: string) {
   const d = value.replace(/\D/g, '').slice(0, 11)
@@ -35,7 +36,10 @@ export async function submitSiteLead(apiUrl: string, payload: Record<string, unk
   try {
     const res = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, ...tracking() }) })
     const j = await res.json().catch(() => ({})) as { error?: string; protocol?: string | null }
-    return res.ok ? { ok: true, protocol: j.protocol ?? null } : { ok: false, error: j.error ?? 'Não foi possível enviar agora.' }
+    if (!res.ok) return { ok: false, error: j.error ?? 'Não foi possível enviar agora.' }
+    // Conversão para Meta/Google (só com consentimento; sem dados do cliente).
+    siteTrack('Lead', { lead_type: String(payload.kind ?? ''), content_ids: payload.vehicleId ? [String(payload.vehicleId)] : undefined, content_type: payload.vehicleId ? 'vehicle' : undefined })
+    return { ok: true, protocol: j.protocol ?? null }
   } catch {
     return { ok: false, error: 'Sem conexão. Tente novamente ou fale pelo WhatsApp.' }
   }
