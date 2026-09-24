@@ -31,6 +31,11 @@ import {
 
 const PATCH_FLAG = '__autodriveAuthFetchPatched'
 
+/** Site público da loja (marcado no layout do site): não há sessão a vigiar. */
+function isPublicSite(): boolean {
+  return typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).__AUTODRIVE_PUBLIC_SITE__ === true
+}
+
 export function AuthSessionWatcher() {
   const { data: session, status } = useSession()
   const pathname = usePathname()
@@ -60,6 +65,7 @@ export function AuthSessionWatcher() {
           : input instanceof URL ? input.toString()
           : (input as Request).url
 
+        if (isPublicSite()) return response
         if (!shouldInspectRequest(url, window.location.origin)) return response
         // Em rota pública (ex.: /login) um 401 é resposta esperada, não perda de sessão.
         if (!isProtectedPath(pathRef.current ?? '/')) return response
@@ -87,6 +93,7 @@ export function AuthSessionWatcher() {
 
   // ── Sessão inválida em rota protegida → sai da área logada ────────────────
   useEffect(() => {
+    if (isPublicSite()) return
     const decision = decideClientAccess(status, session, pathRef.current ?? '/')
     if (decision !== 'logout') return
     void forceClientLogout({ reason: 'invalid-session' })

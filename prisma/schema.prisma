@@ -827,6 +827,7 @@ model Vehicle {
   evaluations     VehicleEvaluation[]
   stockPendencies VehicleStockPendency[] // pendências de estoque configuráveis
   pricingHistory  VehiclePricingHistory[]
+  siteListing     SiteListing? // anúncio no site da loja (tabela própria)
 
   @@index([tenantId])
   @@index([unitId])
@@ -835,6 +836,36 @@ model Vehicle {
   @@index([stockLocation])
   @@index([brand, model])
   @@map("vehicles")
+}
+
+// ── Site da loja: anúncio do veículo ──────────────────────────────────────────
+// Tabela própria (não altera `vehicles`). Regra de publicação: carro ativo e
+// DISPONÍVEL no estoque aparece no site como "Em breve"; quando as fotos
+// tratadas chegam (photosStatus = TRATADA), o anúncio é publicado com fotos.
+// Sem linha aqui = "Em breve" com os dados do estoque.
+model SiteListing {
+  id             String    @id @default(cuid())
+  tenantId       String
+  vehicleId      String    @unique
+  vehicle        Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  photosStatus   String    @default("ORIGEM") // ORIGEM | EM_TRATAMENTO | TRATADA
+  photosLocked   Boolean   @default(false)
+  photosLockedAt DateTime?
+  originalPhotos Json? // fotos antes do tratamento (p/ reverter)
+  featured       Boolean   @default(false)
+  hidden         Boolean   @default(false) // tirado do site manualmente
+  title          String?
+  description    String?
+  options        Json? // ["Ar-condicionado", ...]
+  videoUrl       String?
+  seoTitle       String?
+  seoDescription String?
+  publishedAt    DateTime? // 1ª vez que foi ao ar com fotos
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, photosStatus])
+  @@map("site_listings")
 }
 
 // ── Histórico de precificação de venda ────────────────────────────────────────

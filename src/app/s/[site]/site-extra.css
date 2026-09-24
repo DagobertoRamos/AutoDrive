@@ -1,0 +1,14 @@
+/* Ajustes do site multi-loja sobre o tema portado (site.css). */
+.autodrive-site .brand-text { font-size: 1.15rem; font-weight: 800; color: var(--blue-dark); white-space: nowrap; }
+.autodrive-site .footer-brand-text { display: block; margin-bottom: 8px; font-size: 1.2rem; color: #fff; }
+.autodrive-site .hero-grid-single { grid-template-columns: 1fr; }
+.autodrive-site .hero-grid-single .hero-content h1 { max-width: 760px; }
+.autodrive-site .footer-powered { opacity: .7; font-size: .8rem; }
+.autodrive-site .site-footer .footer-grid a { display: block; }
+.autodrive-site .vcard-image img { width: 100%; height: 100%; object-fit: cover; }
+/* O tema original deixava o texto branco no hover do botão contornado (fundo claro). */
+.autodrive-site .button-outline:hover { color: var(--ink); }
+.autodrive-site .hero-outline:hover { color: #fff; }
+/* Consentimento: checkbox à esquerda, texto corrido ao lado. */
+.autodrive-site .consent { display: flex !important; align-items: flex-start; gap: 8px; font-weight: 400; }
+.autodrive-site .consent input[type=checkbox] { width: auto; flex: 0 0 auto; margin-top: 3px; }

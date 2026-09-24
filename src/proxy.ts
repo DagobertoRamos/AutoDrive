@@ -9,6 +9,8 @@
 //      (exceto na própria página de troca)
 //   4. Impedir acesso à /auth/change-password para quem NÃO precisa trocar senha
 //   5. RBAC de defesa em profundidade para /master/*
+//   6. Site público das lojas: subdomínio (<slug>.SITE_BASE_DOMAIN) ou domínio
+//      próprio é reescrito para /s/<key> ANTES de qualquer regra de sessão.
 //
 // POR QUE (2) IMPORTA: o matcher abaixo cobre /api/*. Antes, uma chamada de API
 // sem sessão recebia 307 para /login; o fetch seguia o redirect e recebia o HTML
@@ -26,6 +28,7 @@
 import { getToken } from 'next-auth/jwt'
 import { NextResponse, type NextRequest } from 'next/server'
 import { decideRouteAccess, LOGIN_ROUTE, SESSION_ERROR_CODE } from '@/lib/auth-session'
+import { resolveSiteHost, SITE_HOST_HEADER } from '@/lib/site/host'
 
 /** Cookies de sessão do NextAuth (com e sem prefixo seguro, incluindo chunks). */
 const SESSION_COOKIE_NAMES = [
@@ -69,6 +72,24 @@ function redirectToLogin(req: NextRequest, expired: boolean): NextResponse {
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   const isApiRoute = pathname.startsWith('/api')
+
+  // ── Site público de loja (host ≠ painel) ───────────────────────────────────
+  const siteMatch = resolveSiteHost(req.headers.get('host'), {
+    appHosts: process.env.APP_HOSTS,
+    siteBaseDomain: process.env.SITE_BASE_DOMAIN,
+    appUrl: process.env.NEXTAUTH_URL,
+  })
+  if (siteMatch.kind === 'site') {
+    // No domínio da loja só existem o site e a API pública dele.
+    if (isApiRoute) {
+      return pathname.startsWith('/api/site/') ? NextResponse.next() : NextResponse.json({ error: 'Não encontrado.' }, { status: 404 })
+    }
+    const url = req.nextUrl.clone()
+    url.pathname = `/s/${encodeURIComponent(siteMatch.key)}${pathname === '/' ? '' : pathname}`
+    const headers = new Headers(req.headers)
+    headers.set(SITE_HOST_HEADER, '1')
+    return NextResponse.rewrite(url, { request: { headers } })
+  }
 
   let token: Awaited<ReturnType<typeof getToken>> = null
   try {
@@ -140,6 +161,6 @@ export const config = {
     // são carregados por Web Workers (Tesseract, pdfjs) que NÃO enviam cookie
     // de sessão. Se passarem pelo proxy, viram redirect 307 para /login e o
     // Worker falha silenciosamente ("Failed to execute 'importScripts'").
-    '/((?!login|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|privacidade|excluir-conta|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|tesseract/|tessdata/|pdfjs/|pdf.worker.min.mjs|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm|traineddata|gz)$).*)',
+    '/((?!login|s/|api/site/|cadastro(?=/|$)|ativar-cadastro|recuperar-senha|privacidade|excluir-conta|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|tesseract/|tessdata/|pdfjs/|pdf.worker.min.mjs|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm|traineddata|gz)$).*)',
   ],
 }

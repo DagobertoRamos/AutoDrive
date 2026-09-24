@@ -242,6 +242,16 @@ export const NAV_GROUPS: NavItem[] = [
   // Mesa SDR e Telefonia operacionais (UI Fase 5). Distribuição automática
   // (roleta/tanque/peso/regras) e integração real de telefonia (adapters reais
   // Asterisk/3CX/Twilio) seguem em evolução — sem chamada externa sem doc oficial.
+  // ── SITE DA LOJA ──────────────────────────────────────────────────────────
+  {
+    label: 'Site',
+    icon:  Globe,
+    module: 'site',
+    children: [
+      { label: 'Configurações do site', href: '/site/configuracoes', icon: Settings, module: 'site' },
+    ],
+  },
+
   {
     label: 'Marketing',
     icon:  Megaphone,

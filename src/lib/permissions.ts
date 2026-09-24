@@ -82,6 +82,8 @@ export type Module =
   | 'financing.config'            // configurar F&I da loja (bancos, credenciais, prioridades, retornos) — ADM/gestão/financeiro
   | 'ai'                          // usar a IA controlada (chat de ajuda, ler/resumir documentos) — loja
   | 'marketing'                             // módulo Marketing (Mesa SDR/pré-vendas + telefonia) — base
+  | 'site'                                  // ver o painel do site da loja
+  | 'site.manage'                           // configurar o site, anúncios e publicação
   | 'marketing.sdr'                         // operar a Mesa SDR (inbox de leads, qualificar)
   | 'marketing.sdr.manage'                  // gerenciar a mesa: times, membros, políticas
   | 'marketing.leads.distribute'            // distribuir/atribuir leads (políticas/manual)
@@ -414,6 +416,15 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   marketing: {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'USUARIO_LIDER', 'USUARIO'],
     actions: ['read'],
+  },
+  // Site da loja (vitrine pública do estoque + leads no CRM).
+  'site': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read'],
+  },
+  'site.manage': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
+    actions: ['read', 'create', 'update', 'delete'],
   },
   'marketing.sdr': {
     // Operar a mesa: ver inbox, qualificar, trabalhar leads atribuídos.

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Em breve">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1e2a33"/><stop offset="1" stop-color="#0c141a"/></linearGradient></defs>
+  <rect width="800" height="600" fill="url(#g)"/>
+  <ellipse cx="400" cy="455" rx="300" ry="34" fill="#000" opacity=".35"/>
+  <path d="M155 420c6-38 26-62 60-78l70-30c30-44 70-66 126-66h40c52 0 92 20 124 58l66 18c38 10 58 40 60 82l2 16H153z" fill="#2d3b45"/>
+  <path d="M300 312c28-36 62-52 108-52h34c40 0 72 16 98 48z" fill="#3e505c"/>
+  <circle cx="270" cy="428" r="42" fill="#11191f" stroke="#4b5d69" stroke-width="10"/>
+  <circle cx="540" cy="428" r="42" fill="#11191f" stroke="#4b5d69" stroke-width="10"/>
+  <text x="400" y="170" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="700" fill="#ffffff" letter-spacing="4">EM BREVE</text>
+  <text x="400" y="215" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#9fb2bd">Fotos sendo preparadas</text>
+</svg>

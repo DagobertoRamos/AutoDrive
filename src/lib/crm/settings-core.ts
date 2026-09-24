@@ -66,6 +66,7 @@ export const SYSTEM_SOURCES: { code: string; label: string }[] = [
   { code: 'AUTOCONF', label: 'AutoConf' },
   { code: 'FILA_ATENDIMENTO', label: 'Fila de atendimento' },
   { code: 'CLIENTE_NA_LOJA', label: 'Cliente na loja' },
+  { code: 'SITE', label: 'Site da loja' },
 ]
 
 const LOST_REASONS = ['Sem resposta', 'Sem interesse', 'Preço', 'Avaliação da troca', 'Financiamento não aprovado', 'Entrada insuficiente', 'Veículo vendido', 'Veículo indisponível', 'Comprou no concorrente', 'Desistiu', 'Documentação', 'Prazo', 'Localização', 'Atendimento', 'Outro']

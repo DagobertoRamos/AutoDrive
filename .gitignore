@@ -187,3 +187,6 @@ Rascunhos/
 
 # CRLV samples for local parser testing (contém dados pessoais)
 _samples_crlv/
+
+# fotos de teste local do site da loja
+public/site-test/

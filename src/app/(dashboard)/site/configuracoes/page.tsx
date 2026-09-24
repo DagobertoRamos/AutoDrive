@@ -1,0 +1,223 @@
+'use client'
+
+// =============================================================================
+// Painel do Site — Configurações do site da loja (S1): publicação e endereço,
+// identidade, contato, textos da página inicial e de "Quem somos", serviços.
+// =============================================================================
+
+import { useCallback, useEffect, useState } from 'react'
+import { ExternalLink, Globe, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import type { SiteConfig } from '@/lib/site/config-core'
+
+interface ServiceDef { key: string; label: string; locked: boolean; available: boolean; hint: string }
+interface Payload { config: SiteConfig; services: ServiceDef[]; stats: { total: number; published: number; comingSoon: number }; canManage: boolean; siteBaseDomain: string | null }
+
+const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50'
+const label = 'mb-1 block text-xs font-medium text-gray-600'
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
+      <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+      {hint && <p className="mb-3 text-xs text-gray-500">{hint}</p>}
+      <div className={cn(!hint && 'mt-3')}>{children}</div>
+    </section>
+  )
+}
+
+function Field({ l, children, className }: { l: string; children: React.ReactNode; className?: string }) {
+  return <label className={cn('block', className)}><span className={label}>{l}</span>{children}</label>
+}
+
+export default function SiteConfigPage() {
+  const [data, setData] = useState<Payload | null>(null)
+  const [cfg, setCfg] = useState<SiteConfig | null>(null)
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const load = useCallback(async () => {
+    const j = await fetch('/api/site-admin/config', { credentials: 'include' }).then((r) => r.json()).catch(() => null)
+    if (j?.data) { setData(j.data); setCfg(j.data.config); setDirty(false) }
+  }, [])
+  useEffect(() => { void load() }, [load])
+
+  if (!data || !cfg) return <div className="h-64 animate-pulse rounded-xl bg-gray-100" />
+  const dis = !data.canManage
+  const set = (patch: Partial<SiteConfig>) => { setCfg({ ...cfg, ...patch }); setDirty(true); setMsg(null) }
+  const setIn = <K extends 'identity' | 'contact' | 'home' | 'about' | 'seo'>(k: K, patch: Partial<SiteConfig[K]>) => set({ [k]: { ...cfg[k], ...patch } } as Partial<SiteConfig>)
+
+  const save = async () => {
+    setSaving(true); setMsg(null)
+    try {
+      const r = await fetch('/api/site-admin/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(cfg) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg({ ok: false, text: j?.error ?? 'Falha ao salvar.' }); return }
+      await load(); setMsg({ ok: true, text: 'Site salvo.' })
+    } catch { setMsg({ ok: false, text: 'Erro de rede.' }) } finally { setSaving(false) }
+  }
+
+  const previewUrl = `/s/${cfg.slug}`
+  const publicUrl = data.siteBaseDomain ? `https://${cfg.slug}.${data.siteBaseDomain}` : null
+
+  return (
+    <div className="space-y-4 pb-24">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Globe size={20} className="text-brand-600" />Site da loja</h1>
+          <p className="text-sm text-gray-500">Vitrine pública do seu estoque. Os contatos feitos no site chegam no CRM.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => void load()} className="btn-secondary text-xs"><RefreshCw size={13} />Atualizar</button>
+          {cfg.enabled && <a href={previewUrl} target="_blank" rel="noreferrer" className="btn-secondary text-xs"><ExternalLink size={13} />Ver site</a>}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[['Carros no site', data.stats.total], ['Publicados (fotos tratadas)', data.stats.published], ['Em breve (aguardando fotos)', data.stats.comingSoon]].map(([l, v]) => (
+          <div key={l as string} className="rounded-xl border border-gray-200 bg-white p-4 shadow-card"><p className="text-xs text-gray-500">{l}</p><p className="text-2xl font-bold tabular-nums text-gray-900">{v}</p></div>
+        ))}
+      </div>
+
+      <Section title="Publicação e endereço" hint="Todo carro Disponível no estoque aparece no site como “Em breve”; quando as fotos tratadas chegam, ele é publicado com fotos.">
+        <label className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-800">
+          <input type="checkbox" disabled={dis} checked={cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+          Site no ar
+        </label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field l="Endereço (subdomínio)">
+            <div className="flex items-center gap-1">
+              <input disabled={dis} className={input} value={cfg.slug} onChange={(e) => set({ slug: e.target.value.toLowerCase() })} />
+              {data.siteBaseDomain && <span className="whitespace-nowrap text-xs text-gray-500">.{data.siteBaseDomain}</span>}
+            </div>
+            <span className="mt-1 block text-[11px] text-gray-400">{publicUrl ? `Endereço público: ${publicUrl}` : `Teste agora em ${previewUrl} (o subdomínio público é ativado na publicação).`}</span>
+          </Field>
+          <Field l="Domínios próprios (opcional)">
+            <div className="space-y-1.5">
+              {cfg.domains.map((d, i) => (
+                <div key={i} className="flex gap-1">
+                  <input disabled={dis} className={input} value={d} onChange={(e) => set({ domains: cfg.domains.map((x, j) => j === i ? e.target.value : x) })} />
+                  {!dis && <button onClick={() => set({ domains: cfg.domains.filter((_, j) => j !== i) })} className="px-1 text-gray-400 hover:text-red-600" aria-label="Remover domínio"><Trash2 size={14} /></button>}
+                </div>
+              ))}
+              {!dis && cfg.domains.length < 5 && <button onClick={() => set({ domains: [...cfg.domains, ''] })} className="flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"><Plus size={12} />Adicionar domínio (ex.: www.sualoja.com.br)</button>}
+              <span className="block text-[11px] text-gray-400">Depois de salvar, aponte o DNS do domínio para a AutoDrive (o suporte orienta).</span>
+            </div>
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="Serviços do site" hint="Os padrões já vêm ligados. Os demais você ativa quando quiser.">
+        <div className="grid gap-2 md:grid-cols-2">
+          {data.services.map((s) => (
+            <label key={s.key} className={cn('flex items-start gap-2 rounded-lg border border-gray-100 p-2.5 text-sm', !s.available && 'opacity-60')}>
+              <input type="checkbox" disabled={dis || s.locked || !s.available} checked={cfg.services[s.key as keyof SiteConfig['services']]}
+                onChange={(e) => set({ services: { ...cfg.services, [s.key]: e.target.checked } })} className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+              <span><span className="font-medium text-gray-800">{s.label}</span>{s.locked && <span className="ml-1 text-[10px] text-gray-400">sempre ligado</span>}{!s.available && <span className="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-500">em breve</span>}<span className="block text-xs text-gray-500">{s.hint}</span></span>
+            </label>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Identidade">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field l="Nome da loja no site"><input disabled={dis} className={input} value={cfg.identity.name} onChange={(e) => setIn('identity', { name: e.target.value })} /></Field>
+          <Field l="Frase curta (rodapé)"><input disabled={dis} className={input} value={cfg.identity.tagline} onChange={(e) => setIn('identity', { tagline: e.target.value })} /></Field>
+          <Field l="Logo (URL da imagem)"><input disabled={dis} className={input} placeholder="https://..." value={cfg.identity.logoUrl} onChange={(e) => setIn('identity', { logoUrl: e.target.value })} /></Field>
+          <Field l="Logo do rodapé (URL, opcional — fundo escuro)"><input disabled={dis} className={input} placeholder="https://..." value={cfg.identity.footerLogoUrl} onChange={(e) => setIn('identity', { footerLogoUrl: e.target.value })} /></Field>
+          <Field l="Cor principal"><input type="color" disabled={dis} className="h-10 w-20 rounded border border-gray-200" value={cfg.identity.primaryColor} onChange={(e) => setIn('identity', { primaryColor: e.target.value })} /></Field>
+          <Field l="Cor escura (rodapé, faixas)"><input type="color" disabled={dis} className="h-10 w-20 rounded border border-gray-200" value={cfg.identity.darkColor} onChange={(e) => setIn('identity', { darkColor: e.target.value })} /></Field>
+        </div>
+      </Section>
+
+      <Section title="Contato">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field l="WhatsApp (com DDD)"><input disabled={dis} className={input} placeholder="11999999999" value={cfg.contact.whatsapp} onChange={(e) => setIn('contact', { whatsapp: e.target.value })} /></Field>
+          <Field l="Telefone exibido"><input disabled={dis} className={input} placeholder="(11) 99999-9999" value={cfg.contact.phone} onChange={(e) => setIn('contact', { phone: e.target.value })} /></Field>
+          <Field l="E-mail"><input disabled={dis} className={input} value={cfg.contact.email} onChange={(e) => setIn('contact', { email: e.target.value })} /></Field>
+          <Field l="Horário de atendimento"><input disabled={dis} className={input} placeholder="Seg a sex 9h–18h, sáb 9h–13h" value={cfg.contact.hours} onChange={(e) => setIn('contact', { hours: e.target.value })} /></Field>
+          <Field l="Endereço (linha 1)"><input disabled={dis} className={input} value={cfg.contact.addressLine1} onChange={(e) => setIn('contact', { addressLine1: e.target.value })} /></Field>
+          <Field l="Endereço (linha 2)"><input disabled={dis} className={input} value={cfg.contact.addressLine2} onChange={(e) => setIn('contact', { addressLine2: e.target.value })} /></Field>
+          <Field l="Link do Google Maps"><input disabled={dis} className={input} value={cfg.contact.mapsUrl} onChange={(e) => setIn('contact', { mapsUrl: e.target.value })} /></Field>
+          <Field l="Link do Waze"><input disabled={dis} className={input} value={cfg.contact.wazeUrl} onChange={(e) => setIn('contact', { wazeUrl: e.target.value })} /></Field>
+          <Field l="Mapa incorporado (URL de “Incorporar mapa” do Google)" className="md:col-span-2"><input disabled={dis} className={input} placeholder="https://www.google.com/maps/embed?..." value={cfg.contact.mapsEmbedUrl} onChange={(e) => setIn('contact', { mapsEmbedUrl: e.target.value })} /></Field>
+        </div>
+      </Section>
+
+      <Section title="Página inicial">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field l="Chamada pequena"><input disabled={dis} className={input} value={cfg.home.heroEyebrow} onChange={(e) => setIn('home', { heroEyebrow: e.target.value })} /></Field>
+          <Field l="Título principal"><input disabled={dis} className={input} value={cfg.home.heroTitle} onChange={(e) => setIn('home', { heroTitle: e.target.value })} /></Field>
+          <Field l="Texto principal" className="md:col-span-2"><textarea disabled={dis} rows={2} className={input} value={cfg.home.heroText} onChange={(e) => setIn('home', { heroText: e.target.value })} /></Field>
+          <Field l="Selos de confiança (um por linha, até 4)" className="md:col-span-2"><textarea disabled={dis} rows={3} className={input} value={cfg.home.trust.join('\n')} onChange={(e) => setIn('home', { trust: e.target.value.split('\n') })} /></Field>
+          <Field l="Título da vitrine"><input disabled={dis} className={input} value={cfg.home.showcaseTitle} onChange={(e) => setIn('home', { showcaseTitle: e.target.value })} /></Field>
+          <Field l="Texto da vitrine"><input disabled={dis} className={input} value={cfg.home.showcaseText} onChange={(e) => setIn('home', { showcaseText: e.target.value })} /></Field>
+        </div>
+        <h3 className="mt-4 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">Diferenciais (até 4)</h3>
+        <div className="grid gap-2 md:grid-cols-2">
+          {cfg.home.benefits.map((b, i) => (
+            <div key={i} className="flex gap-1 rounded-lg border border-gray-100 p-2">
+              <div className="flex-1 space-y-1">
+                <input disabled={dis} className={input} placeholder="Título" value={b.title} onChange={(e) => setIn('home', { benefits: cfg.home.benefits.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
+                <input disabled={dis} className={input} placeholder="Texto" value={b.text} onChange={(e) => setIn('home', { benefits: cfg.home.benefits.map((x, j) => j === i ? { ...x, text: e.target.value } : x) })} />
+              </div>
+              {!dis && <button onClick={() => setIn('home', { benefits: cfg.home.benefits.filter((_, j) => j !== i) })} className="px-1 text-gray-400 hover:text-red-600" aria-label="Remover diferencial"><Trash2 size={14} /></button>}
+            </div>
+          ))}
+        </div>
+        {!dis && cfg.home.benefits.length < 4 && <button onClick={() => setIn('home', { benefits: [...cfg.home.benefits, { title: '', text: '' }] })} className="mt-2 flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"><Plus size={12} />Adicionar diferencial</button>}
+        <h3 className="mt-4 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">Perguntas frequentes</h3>
+        <div className="space-y-2">
+          {cfg.home.faq.map((f, i) => (
+            <div key={i} className="flex gap-1 rounded-lg border border-gray-100 p-2">
+              <div className="flex-1 space-y-1">
+                <input disabled={dis} className={input} placeholder="Pergunta" value={f.q} onChange={(e) => setIn('home', { faq: cfg.home.faq.map((x, j) => j === i ? { ...x, q: e.target.value } : x) })} />
+                <textarea disabled={dis} rows={2} className={input} placeholder="Resposta" value={f.a} onChange={(e) => setIn('home', { faq: cfg.home.faq.map((x, j) => j === i ? { ...x, a: e.target.value } : x) })} />
+              </div>
+              {!dis && <button onClick={() => setIn('home', { faq: cfg.home.faq.filter((_, j) => j !== i) })} className="px-1 text-gray-400 hover:text-red-600" aria-label="Remover pergunta"><Trash2 size={14} /></button>}
+            </div>
+          ))}
+        </div>
+        {!dis && cfg.home.faq.length < 8 && <button onClick={() => setIn('home', { faq: [...cfg.home.faq, { q: '', a: '' }] })} className="mt-2 flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"><Plus size={12} />Adicionar pergunta</button>}
+      </Section>
+
+      <Section title="Quem somos">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field l="Chamada pequena"><input disabled={dis} className={input} value={cfg.about.eyebrow} onChange={(e) => setIn('about', { eyebrow: e.target.value })} /></Field>
+          <Field l="Título"><input disabled={dis} className={input} value={cfg.about.title} onChange={(e) => setIn('about', { title: e.target.value })} /></Field>
+          <Field l="Introdução" className="md:col-span-2"><textarea disabled={dis} rows={2} className={input} value={cfg.about.intro} onChange={(e) => setIn('about', { intro: e.target.value })} /></Field>
+        </div>
+        <div className="mt-3 space-y-2">
+          {cfg.about.sections.map((s, i) => (
+            <div key={i} className="flex gap-1 rounded-lg border border-gray-100 p-2">
+              <div className="flex-1 space-y-1">
+                <input disabled={dis} className={input} placeholder="Título do bloco" value={s.title} onChange={(e) => setIn('about', { sections: cfg.about.sections.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
+                <textarea disabled={dis} rows={3} className={input} placeholder="Texto" value={s.text} onChange={(e) => setIn('about', { sections: cfg.about.sections.map((x, j) => j === i ? { ...x, text: e.target.value } : x) })} />
+              </div>
+              {!dis && <button onClick={() => setIn('about', { sections: cfg.about.sections.filter((_, j) => j !== i) })} className="px-1 text-gray-400 hover:text-red-600" aria-label="Remover bloco"><Trash2 size={14} /></button>}
+            </div>
+          ))}
+        </div>
+        {!dis && cfg.about.sections.length < 8 && <button onClick={() => setIn('about', { sections: [...cfg.about.sections, { title: '', text: '' }] })} className="mt-2 flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"><Plus size={12} />Adicionar bloco</button>}
+      </Section>
+
+      <Section title="Google e aviso legal">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field l="Título no Google"><input disabled={dis} className={input} value={cfg.seo.title} onChange={(e) => setIn('seo', { title: e.target.value })} /></Field>
+          <Field l="Descrição no Google"><input disabled={dis} className={input} value={cfg.seo.description} onChange={(e) => setIn('seo', { description: e.target.value })} /></Field>
+          <Field l="Aviso legal (rodapé)" className="md:col-span-2"><textarea disabled={dis} rows={2} className={input} value={cfg.legalNote} onChange={(e) => set({ legalNote: e.target.value })} /></Field>
+        </div>
+      </Section>
+
+      {data.canManage && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:left-64">
+          <div className="mx-auto flex max-w-5xl items-center justify-end gap-3">
+            {msg && <span className={cn('text-sm', msg.ok ? 'text-green-600' : 'text-red-600')}>{msg.text}</span>}
+            <button onClick={save} disabled={saving || !dirty} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando…' : 'Salvar site'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
