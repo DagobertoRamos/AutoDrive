@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     const rows = await prisma.marketingLead.findMany({
       where: {
         tenantId, source: 'SITE', deletedAt: null, createdAt: { gte: since },
-        OR: [{ metadata: { path: ['siteKind'], equals: 'financing' } }, { metadata: { path: ['intent'], equals: 'simulacao' } }],
+        OR: [{ metadata: { path: ['siteKind'], equals: 'financing' } }, { metadata: { path: ['siteKind'], equals: 'private_financing' } }, { metadata: { path: ['intent'], equals: 'simulacao' } }],
       },
       select: { id: true, leadNumber: true, name: true, phone: true, email: true, status: true, createdAt: true, vehicleId: true, assignedToUserId: true, metadata: true },
       orderBy: { createdAt: 'desc' },
@@ -45,12 +45,14 @@ export async function GET(req: Request) {
     const car = new Map(cars.map((c) => [c.id, { title: vehicleTitle(c), price: c.salePrice == null ? null : Number(c.salePrice) }]))
     const who = new Map(users.map((u) => [u.id, u.name]))
     const data = rows.map((r) => {
-      const m = (r.metadata && typeof r.metadata === 'object' ? r.metadata : {}) as { details?: Record<string, string>; tracking?: Record<string, string> }
+      const m = (r.metadata && typeof r.metadata === 'object' ? r.metadata : {}) as { siteKind?: string; details?: Record<string, string>; tracking?: Record<string, string> }
       const d = m.details ?? {}
       return {
         id: r.id, protocol: r.leadNumber ? `#${r.leadNumber}` : null, name: r.name, phone: r.phone, email: r.email,
         status: r.status, createdAt: r.createdAt, owner: r.assignedToUserId ? who.get(r.assignedToUserId) ?? null : null,
         vehicle: r.vehicleId ? car.get(r.vehicleId) ?? null : null,
+        private: (m as { siteKind?: string }).siteKind === 'private_financing',
+        privateVehicle: [d.brand, d.model, d.year].filter(Boolean).join(' ') + (d.vehicleValue ? ` · ${d.vehicleValue}` : ''),
         details: { paymentMethod: d.paymentMethod ?? '', downPayment: d.downPayment ?? '', installments: d.installments ?? '', installmentGoal: d.installmentGoal ?? '', hasTrade: d.hasTrade ?? '', tradeVehicle: d.tradeVehicle ?? '', desiredVehicle: d.desiredVehicle ?? '' },
         campaign: [m.tracking?.utmSource, m.tracking?.utmCampaign].filter(Boolean).join(' / '),
       }

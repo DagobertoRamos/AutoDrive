@@ -13,7 +13,10 @@ export interface SiteContext {
   base: string
   href: (path: string) => string
   apiUrl: string
+  /** Todos os links (menu do celular e rodapé). */
   nav: { label: string; href: string }[]
+  /** Links do topo no desktop (no máximo 6, para caber). */
+  headerNav: { label: string; href: string }[]
   whatsapp: (text?: string) => string
   on: (s: SiteServiceKey) => boolean
 }
@@ -25,8 +28,21 @@ const NAV: { service: SiteServiceKey | null; label: string; path: string }[] = [
   { service: 'financiamento', label: 'Financiamento', path: '/financiamento' },
   { service: 'vendaSeuCarro', label: 'Venda seu carro', path: '/venda-seu-carro' },
   { service: 'encontreSeuCarro', label: 'Encontre seu carro', path: '/encontre-seu-carro' },
+  { service: 'financiaFacil', label: 'Financia Fácil', path: '/financia-facil' },
+  { service: 'atacado', label: 'Atacado', path: '/atacado' },
   { service: 'contato', label: 'Contato', path: '/contato' },
 ]
+
+const OPTIONAL: SiteServiceKey[] = ['vendaSeuCarro', 'financiaFacil', 'encontreSeuCarro']
+
+/** Topo do desktop: fixos + até 2 serviços opcionais; Atacado (para lojistas) e,
+ *  se faltar espaço, Quem somos ficam no rodapé e no menu do celular. */
+function headerLinks(items: typeof NAV): typeof NAV {
+  const optional = OPTIONAL.filter((k) => items.some((i) => i.service === k)).slice(0, 2)
+  let out = items.filter((i) => i.service !== 'atacado' && (!i.service || !OPTIONAL.includes(i.service) || optional.includes(i.service)))
+  if (out.length > 6) out = out.filter((i) => i.service !== 'sobre')
+  return out
+}
 
 export const getSiteContext = cache(async (key: string): Promise<SiteContext> => {
   const site = await resolveSite(key)
@@ -39,6 +55,7 @@ export const getSiteContext = cache(async (key: string): Promise<SiteContext> =>
     href: (p: string) => siteHref(base, p),
     apiUrl: `/api/site/${encodeURIComponent(key)}/leads`,
     nav: NAV.filter((n) => !n.service || on(n.service)).map((n) => ({ label: n.label, href: siteHref(base, n.path) })),
+    headerNav: headerLinks(NAV.filter((n) => !n.service || on(n.service))).map((n) => ({ label: n.label, href: siteHref(base, n.path) })),
     whatsapp: (text?: string) => whatsappLink(config, text ?? `Olá! Vim pelo site da ${config.identity.name} e gostaria de atendimento.`),
     on,
   }

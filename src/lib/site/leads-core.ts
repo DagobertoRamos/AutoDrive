@@ -6,7 +6,7 @@
 // venda seu carro (pré-avaliação) e encontre seu carro (busca).
 // =============================================================================
 
-export const SITE_LEAD_KINDS = ['contact', 'financing', 'vehicle_interest', 'sell_car', 'find_car'] as const
+export const SITE_LEAD_KINDS = ['contact', 'financing', 'vehicle_interest', 'sell_car', 'find_car', 'private_financing', 'wholesale'] as const
 export type SiteLeadKind = (typeof SITE_LEAD_KINDS)[number]
 export const VEHICLE_INTENTS = { simulacao: 'Simulação de financiamento', interesse: 'Interesse no veículo', visita: 'Agendamento de visita' } as const
 export type VehicleIntent = keyof typeof VEHICLE_INTENTS
@@ -14,6 +14,7 @@ export type VehicleIntent = keyof typeof VEHICLE_INTENTS
 export const KIND_LABEL: Record<SiteLeadKind, string> = {
   contact: 'Contato pelo site', financing: 'Financiamento pelo site', vehicle_interest: 'Interesse em veículo pelo site',
   sell_car: 'Venda seu carro (pré-avaliação)', find_car: 'Encontre seu carro (busca)',
+  private_financing: 'Financia Fácil (carro de particular)', wholesale: 'Atacado (lojista)',
 }
 
 export interface SiteLeadInput {
@@ -30,12 +31,34 @@ const DETAIL_KEYS = [
   'paymentMethod', 'downPayment', 'installments', 'installmentGoal', 'hasTrade', 'tradeVehicle', 'tradeYear', 'tradeMileage', 'visitDate', 'visitPeriod', 'desiredVehicle',
   // venda seu carro / encontre seu carro
   'city', 'brand', 'model', 'version', 'year', 'mileage', 'transmission', 'fuel', 'plate', 'color', 'targetPrice', 'vehicleStatus', 'yearMin', 'budget', 'wantsFinancing',
+  // financia fácil / atacado
+  'vehicleValue', 'companyName', 'cnpj', 'interest',
 ] as const
 
 /** Campos obrigatórios por serviço (além de nome, telefone e consentimento). */
 const REQUIRED: Partial<Record<SiteLeadKind, [string, string][]>> = {
   sell_car: [['city', 'a cidade'], ['brand', 'a marca'], ['model', 'o modelo'], ['year', 'o ano'], ['mileage', 'a quilometragem'], ['targetPrice', 'o valor pretendido']],
   find_car: [['brand', 'a marca'], ['model', 'o modelo'], ['budget', 'o orçamento']],
+  private_financing: [['brand', 'a marca do carro'], ['model', 'o modelo do carro'], ['year', 'o ano do carro'], ['vehicleValue', 'o valor combinado']],
+  wholesale: [['companyName', 'a razão social'], ['cnpj', 'o CNPJ']],
+}
+
+/** CNPJ com dígitos verificadores válidos. */
+export function isValidCnpj(v: string): boolean {
+  const d = v.replace(/\D/g, '')
+  if (d.length !== 14 || /^(\d)+$/.test(d)) return false
+  const calc = (len: number) => {
+    const w = len === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    const sum = w.reduce((acc, wi, i) => acc + wi * Number(d[i]), 0)
+    const r = sum % 11
+    return r < 2 ? 0 : 11 - r
+  }
+  return calc(12) === Number(d[12]) && calc(13) === Number(d[13])
+}
+
+export function formatCnpj(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 14)
+  return d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2')
 }
 const TRACK_KEYS = ['pageUrl', 'utmSource', 'utmMedium', 'utmCampaign'] as const
 const str = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max)
@@ -69,6 +92,10 @@ export function parseSiteLead(body: unknown): ParseResult {
   }
   for (const [k, label] of REQUIRED[kind] ?? []) if (!details[k]) return { ok: false, status: 400, error: `Informe ${label}.` }
   if (details.plate) details.plate = details.plate.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)
+  if (kind === 'wholesale') {
+    if (!isValidCnpj(details.cnpj)) return { ok: false, status: 400, error: 'CNPJ inválido.' }
+    details.cnpj = formatCnpj(details.cnpj)
+  }
   const tracking: Record<string, string> = {}
   for (const k of TRACK_KEYS) { const v = str(b[k], 500); if (v) tracking[k] = v }
   return { ok: true, value: { kind, intent, name, phone, email, message, vehicleId, details, tracking } }
@@ -90,6 +117,10 @@ export function buildLeadMessage(input: SiteLeadInput, vehicleTitle: string | nu
     line('Carro na troca', d.hasTrade),
     d.hasTrade === 'Sim' ? line('Veículo da troca', [d.tradeVehicle, d.tradeYear, d.tradeMileage && `${d.tradeMileage} km`].filter(Boolean).join(' · ')) : '',
     line('Visita', [d.visitDate, d.visitPeriod].filter(Boolean).join(' · ')),
+    input.kind === 'private_financing' ? line('Carro negociado (particular)', [d.brand, d.model, d.version, d.year, d.mileage && `${d.mileage} km`].filter(Boolean).join(' · ')) : '',
+    line('Valor combinado', d.vehicleValue),
+    input.kind === 'wholesale' ? line('Empresa', [d.companyName, d.cnpj].filter(Boolean).join(' · ')) : '',
+    line('Interesse', d.interest),
     input.kind === 'sell_car' ? line('Veículo do cliente', [d.brand, d.model, d.version, d.year, d.mileage && `${d.mileage} km`, d.transmission, d.fuel, d.color].filter(Boolean).join(' · ')) : '',
     input.kind === 'sell_car' ? line('Placa', d.plate) : '',
     input.kind === 'sell_car' ? line('Situação', d.vehicleStatus) : '',

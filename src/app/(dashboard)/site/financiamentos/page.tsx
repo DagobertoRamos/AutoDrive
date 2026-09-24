@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 interface Item {
   id: string; protocol: string | null; name: string; phone: string | null; email: string | null; status: string; createdAt: string; owner: string | null
   vehicle: { title: string; price: number | null } | null
+  private: boolean; privateVehicle: string
   details: { paymentMethod: string; downPayment: string; installments: string; installmentGoal: string; hasTrade: string; tradeVehicle: string; desiredVehicle: string }
   campaign: string
 }
@@ -93,7 +94,7 @@ export default function SiteFinancingPage() {
                         <Link href={`/crm/leads/${i.id}`} className="btn-secondary px-2 py-1.5 text-xs">Abrir no CRM<ArrowRight size={13} /></Link>
                       </div>
                     </div>
-                    <p className="mt-1.5 text-sm text-gray-800">{i.vehicle ? <>{i.vehicle.title} <span className="text-gray-500">{brl(i.vehicle.price)}</span></> : i.details.desiredVehicle ? `Quer: ${i.details.desiredVehicle}` : 'Sem veículo escolhido'}</p>
+                    <p className="mt-1.5 text-sm text-gray-800">{i.private ? <><span className="mr-1.5 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Financia Fácil</span>Carro de particular: {i.privateVehicle || '—'}</> : i.vehicle ? <>{i.vehicle.title} <span className="text-gray-500">{brl(i.vehicle.price)}</span></> : i.details.desiredVehicle ? `Quer: ${i.details.desiredVehicle}` : 'Sem veículo escolhido'}</p>
                     {facts.length > 0 && <p className="mt-1 flex flex-wrap gap-1.5">{facts.map((f) => <span key={f} className="rounded-md bg-gray-50 px-2 py-0.5 text-[11px] text-gray-600">{f}</span>)}</p>}
                     {i.campaign && <p className="mt-1 text-[11px] text-gray-400">Campanha: {i.campaign}</p>}
                   </li>

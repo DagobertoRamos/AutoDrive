@@ -1,15 +1,17 @@
 'use client'
 
 // Formulários dos serviços opcionais do site (porta dos SellCarLeadForm e
-// FindCarLeadForm do dagobertoeasycar): pré-avaliação do carro do cliente e
-// busca de um carro que não está no estoque. Viram lead no CRM da loja.
+// FindCarLeadForm do dagobertoeasycar): pré-avaliação do carro do cliente,
+// busca de um carro que não está no estoque, Financia Fácil (carro de
+// particular) e atacado (lojistas). Viram lead no CRM da loja.
 import { useState, type FormEvent } from 'react'
 import { MessageCircle } from 'lucide-react'
+import { formatCnpj } from '@/lib/site/leads-core'
 import { HONEYPOT_STYLE, moneyMask, phoneMask, submitSiteLead } from './lead-utils'
 
 type State = 'idle' | 'sending' | 'done' | 'error'
 
-function useSubmit(apiUrl: string, kind: 'sell_car' | 'find_car') {
+function useSubmit(apiUrl: string, kind: 'sell_car' | 'find_car' | 'private_financing' | 'wholesale') {
   const [state, setState] = useState<State>('idle')
   const [msg, setMsg] = useState('')
   const [protocol, setProtocol] = useState<string | null>(null)
@@ -122,6 +124,60 @@ export function SiteFindCarForm({ apiUrl, privacyHref }: { apiUrl: string; priva
       <button className="button" disabled={state === 'sending'}>{state === 'sending' ? 'Enviando...' : 'Enviar busca'}</button>
       <p className={`form-status ${state}`} aria-live="polite">
         {state === 'done' ? `Recebemos sua busca${protocol ? ` (protocolo ${protocol})` : ''}. Vamos procurar e chamar você pelo WhatsApp com as opções.` : state === 'error' ? msg : ''}
+      </p>
+    </form>
+  )
+}
+
+export function SitePrivateFinancingForm({ apiUrl, privacyHref }: { apiUrl: string; privacyHref: string }) {
+  const { state, msg, protocol, submit } = useSubmit(apiUrl, 'private_financing')
+  return (
+    <form className="lead-form structured-form" method="post" onSubmit={submit}>
+      <h2>Simular Financia Fácil</h2>
+      <p className="form-help">Campos com * são obrigatórios. Não pedimos CPF nesta etapa.</p>
+      <h3>Seus dados</h3>
+      <Contact />
+      <label>Cidade<input name="city" maxLength={100} autoComplete="address-level2" /></label>
+      <h3>Carro que você está negociando</h3>
+      <div className="form-row">
+        <label>Marca *<input name="brand" required maxLength={80} /></label>
+        <label>Modelo *<input name="model" required maxLength={100} /></label>
+      </div>
+      <div className="form-row">
+        <label>Ano *<input name="year" required inputMode="numeric" maxLength={9} placeholder="Ex.: 2020/2021" /></label>
+        <label>Quilometragem<input name="mileage" inputMode="numeric" maxLength={20} /></label>
+      </div>
+      <label>Valor combinado com o vendedor *<input name="vehicleValue" required inputMode="numeric" placeholder="R$ 0,00" onInput={money} /></label>
+      <div className="form-row">
+        <label>Entrada<input name="downPayment" inputMode="numeric" placeholder="R$ 0,00" onInput={money} /></label>
+        <label>Prazo desejado<select name="installments" defaultValue=""><option value="">Selecione</option>{['24x', '36x', '48x', '60x'].map((p) => <option key={p}>{p}</option>)}</select></label>
+      </div>
+      <label>Observações<textarea name="message" rows={3} maxLength={1500} placeholder="Ex.: o carro é de um amigo e está quitado" /></label>
+      <Common privacyHref={privacyHref} />
+      <button className="button" disabled={state === 'sending'}>{state === 'sending' ? 'Enviando...' : 'Enviar simulação'}</button>
+      <p className={`form-status ${state}`} aria-live="polite">
+        {state === 'done' ? `Recebemos sua simulação${protocol ? ` (protocolo ${protocol})` : ''}. Um consultor vai falar com você.` : state === 'error' ? msg : ''}
+      </p>
+    </form>
+  )
+}
+
+export function SiteWholesaleForm({ apiUrl, privacyHref }: { apiUrl: string; privacyHref: string }) {
+  const { state, msg, protocol, submit } = useSubmit(apiUrl, 'wholesale')
+  return (
+    <form className="lead-form structured-form" method="post" onSubmit={submit}>
+      <h2>Cadastro de lojista</h2>
+      <p className="form-help">Campos com * são obrigatórios.</p>
+      <label>Razão social *<input name="companyName" required maxLength={160} autoComplete="organization" /></label>
+      <label>CNPJ *<input name="cnpj" required inputMode="numeric" maxLength={18} placeholder="00.000.000/0000-00" onInput={(e) => { e.currentTarget.value = formatCnpj(e.currentTarget.value) }} /></label>
+      <Contact />
+      <label>Cidade<input name="city" maxLength={100} /></label>
+      <label>Que carros interessam?<input name="interest" maxLength={200} placeholder="Ex.: populares até 2018, SUVs, carros para repasse" /></label>
+      <label>Observações<textarea name="message" rows={3} maxLength={1500} /></label>
+      <Common privacyHref={privacyHref} />
+      <button className="button" disabled={state === 'sending'}>{state === 'sending' ? 'Enviando...' : 'Enviar cadastro'}</button>
+      <p className={`form-status ${state}`} aria-live="polite">
+        {state === 'done' ? `Recebemos seu cadastro${protocol ? ` (protocolo ${protocol})` : ''}. A equipe de atacado vai falar com você.` : state === 'error' ? msg : ''}
       </p>
     </form>
   )

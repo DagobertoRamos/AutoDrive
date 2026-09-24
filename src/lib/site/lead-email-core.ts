@@ -24,6 +24,7 @@ const DETAIL_LABELS: Record<string, string> = {
   visitDate: 'Data preferida', visitPeriod: 'Período', desiredVehicle: 'Veículo desejado',
   city: 'Cidade', brand: 'Marca', model: 'Modelo', version: 'Versão', year: 'Ano', mileage: 'Km', transmission: 'Câmbio', fuel: 'Combustível',
   plate: 'Placa', color: 'Cor', targetPrice: 'Valor pretendido', vehicleStatus: 'Situação', yearMin: 'Ano mínimo', budget: 'Orçamento', wantsFinancing: 'Pretende financiar',
+  vehicleValue: 'Valor combinado', companyName: 'Empresa', cnpj: 'CNPJ', interest: 'Interesse',
 }
 
 export function esc(s: string): string {

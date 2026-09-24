@@ -9,20 +9,21 @@ import { Menu, MessageCircle, Phone } from 'lucide-react'
 
 export interface SiteNavItem { label: string; href: string }
 
-export function SiteHeader({ homeHref, name, logoUrl, nav, whatsappHref, phone }: {
-  homeHref: string; name: string; logoUrl: string; nav: SiteNavItem[]; whatsappHref: string; phone: string
+export function SiteHeader({ homeHref, name, logoUrl, nav, desktopNav, whatsappHref, phone }: {
+  homeHref: string; name: string; logoUrl: string; nav: SiteNavItem[]; desktopNav?: SiteNavItem[]; whatsappHref: string; phone: string
 }) {
   const pathname = usePathname()
   const mobileMenu = useRef<HTMLDetailsElement>(null)
   useEffect(() => { if (mobileMenu.current) mobileMenu.current.open = false }, [pathname])
 
   const close = () => { if (mobileMenu.current) mobileMenu.current.open = false }
-  const links = nav.map(({ label, href }) => (
+  const toLinks = (items: SiteNavItem[]) => items.map(({ label, href }) => (
     <Link key={href} href={href} onClick={close}
       aria-current={pathname === href || (href !== homeHref && pathname.startsWith(`${href}/`)) ? 'page' : undefined}>
       {label}
     </Link>
   ))
+  const links = toLinks(nav)
 
   return (
     <header className="site-header">
@@ -32,7 +33,7 @@ export function SiteHeader({ homeHref, name, logoUrl, nav, whatsappHref, phone }
             ? <img src={logoUrl} alt={name} width={202} height={32} />
             : <strong className="brand-text">{name}</strong>}
         </Link>
-        <nav className="desktop-nav" aria-label="Navegação principal">{links}</nav>
+        <nav className="desktop-nav" aria-label="Navegação principal">{toLinks(desktopNav ?? nav)}</nav>
         {whatsappHref && (
           <div className="header-actions">
             <a className="button header-whatsapp" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>
