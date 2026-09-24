@@ -23,6 +23,7 @@ import {
   ConditionBadge,
 } from '@/components/estoque/VehicleStatusBadge'
 import { VehicleSalePricingPanel } from '@/components/estoque/VehicleSalePricingPanel'
+import { VehiclePhotosManager } from '@/components/estoque/VehiclePhotosManager'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -499,7 +500,14 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
         )}
 
         {/* ── Fotos ── */}
-        {activeTab === 'fotos' && (
+        {activeTab === 'fotos' && canManage && (
+          <VehiclePhotosManager
+            vehicleId={vehicle.id}
+            photos={vehicle.photos}
+            onChange={(photos, mainPhotoUrl) => setVehicle((v) => v && { ...v, photos: photos.map((p) => ({ ...p, caption: p.caption ?? null })), mainPhotoUrl, _count: { ...v._count, photos: photos.length } })}
+          />
+        )}
+        {activeTab === 'fotos' && !canManage && (
           <div>
             {allPhotos.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
