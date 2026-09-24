@@ -49,6 +49,10 @@ describe('parseFeed', () => {
     expect(a).toMatchObject({ extId: 'EC-1', photos: [], vehicleType: 'CAR', modelYear: 2001, km: 0, price: 14900, fuel: 'GASOLINA', transmission: 'MANUAL' })
     expect(b).toMatchObject({ extId: 'EC-2', vehicleType: 'MOTORCYCLE', photos: ['https://cdn/a.jpg', 'https://cdn/b.jpg'] })
   })
+  it('guarda o link antigo do anúncio', () => {
+    expect(parseFeed([HEAD, row({ link: 'https://www.appautodrive.com.br/veiculos/Fiat-Palio-2001-815886' })].join('\n'))[0].legacySlug).toBe('fiat-palio-2001-815886')
+    expect(parseFeed([HEAD, row({ link: 'nada' })].join('\n'))[0].legacySlug).toBeNull()
+  })
   it('fora de estoque não entra', () => {
     expect(parseFeed([HEAD, row({ availability: 'out of stock' })].join('\n'))).toEqual([])
   })

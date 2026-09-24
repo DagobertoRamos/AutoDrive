@@ -1,7 +1,8 @@
 // Anúncio do veículo (porta de /veiculos/[slug] do dagobertoeasycar).
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
+import { legacyVehicleId } from '@/lib/site/feed-import'
 import { getSiteContext } from '@/lib/site/context'
 import { findSiteVehicle, listSiteVehicles } from '@/lib/site/vehicles'
 import { SiteTrackView } from '@/components/site/SiteTracking'
@@ -28,7 +29,15 @@ export default async function SiteVehiclePage({ params }: Props) {
   const { site, slug } = await params
   const ctx = await getSiteContext(site)
   const v = await findSiteVehicle(ctx.tenantId, slug).catch(() => null)
-  if (!v) notFound()
+  if (!v) {
+    // Link do site antigo (importado por feed): leva ao anúncio novo; vendido → estoque.
+    const legacyId = slug.includes('--') ? null : await legacyVehicleId(ctx.tenantId, slug)
+    if (legacyId) {
+      const moved = await findSiteVehicle(ctx.tenantId, `v--${legacyId}`).catch(() => null)
+      permanentRedirect(ctx.href(moved ? `/veiculos/${moved.slug}` : '/veiculos'))
+    }
+    notFound()
+  }
   const suggestions = (await listSiteVehicles(ctx.tenantId, { brand: v.brand }).catch(() => ({ items: [] }))).items.filter((x) => x.id !== v.id).slice(0, 3)
   const specs = [
     ['⚙️', transmissionLabel(v.transmission) || 'Consulte'],

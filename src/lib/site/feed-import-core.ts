@@ -25,11 +25,12 @@ export interface FeedVehicle {
   title: string
   description: string
   photos: string[]
+  legacySlug: string | null // último trecho do link no site antigo (/veiculos/<slug>)
 }
 
 /** CSV RFC 4180 (aspas, aspas duplas escapadas e quebras de linha dentro do campo). */
 export function parseCsv(text: string): string[][] {
-  const s = text.replace(/^﻿/, '')
+  const s = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text // tira o BOM
   const rows: string[][] = []
   let row: string[] = []
   let field = ''
@@ -60,7 +61,7 @@ const TRANSMISSION: Record<string, string> = {
 }
 const MOTO_BODIES = new Set(['custom', 'street', 'scooter', 'trail', 'naked', 'esportiva', 'motoneta', 'big trail', 'touring'])
 
-const fold = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+const fold = (v: string) => v.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase()
 
 export function normalizeFuel(v: string): string | null {
   const k = fold(v)
@@ -92,6 +93,14 @@ export function feedTitle(brand: string, model: string, version: string): string
   if (v && brand.trim() && fold(v).startsWith(fold(brand))) return v
   const rest = v && fold(v).startsWith(fold(model)) ? v : [model, v].filter(Boolean).join(' ')
   return [brand.trim(), rest.trim()].filter(Boolean).join(' ')
+}
+
+/** `https://site/veiculos/fiat-palio-2001-815886` → `fiat-palio-2001-815886`. */
+export function legacySlugFromLink(link: string): string | null {
+  try {
+    const m = new URL(link).pathname.match(/\/veiculos\/([^/]+)\/?$/)
+    return m ? decodeURIComponent(m[1]).toLowerCase() : null
+  } catch { return null }
 }
 
 export function parseFeed(text: string): FeedVehicle[] {
@@ -126,6 +135,7 @@ export function parseFeed(text: string): FeedVehicle[] {
       title: feedTitle(brand, model, version) || col(r, 'title'),
       description: col(r, 'description'),
       photos: [...new Set(photos)],
+      legacySlug: legacySlugFromLink(col(r, 'link')),
     })
   }
   return out

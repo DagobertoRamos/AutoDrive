@@ -24,7 +24,8 @@ export interface FeedImportResult {
   at: string
 }
 
-interface ImportState { map: Record<string, string>; last?: FeedImportResult }
+// slugs: link antigo (/veiculos/<slug> do site de origem) → vehicleId, p/ redirecionar.
+interface ImportState { map: Record<string, string>; slugs: Record<string, string>; last?: FeedImportResult }
 
 export function feedImportSources(env = process.env.SITE_FEED_IMPORT): FeedImportSource[] {
   return String(env ?? '').split(';').map((s) => s.trim()).filter(Boolean).flatMap((s) => {
@@ -37,7 +38,7 @@ const stateKey = (tenantId: string) => `t:${tenantId}:site:feedimport:v1`
 
 async function loadState(tenantId: string): Promise<ImportState> {
   const row = await prisma.systemSetting.findFirst({ where: { key: stateKey(tenantId) }, select: { value: true } })
-  try { const s = JSON.parse(row?.value ?? '{}'); return { map: s.map ?? {}, last: s.last } } catch { return { map: {} } }
+  try { const s = JSON.parse(row?.value ?? '{}'); return { map: s.map ?? {}, slugs: s.slugs ?? {}, last: s.last } } catch { return { map: {}, slugs: {} } }
 }
 
 async function saveState(tenantId: string, state: ImportState) {
@@ -118,6 +119,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
           select: { id: true },
         })
         state.map[item.extId] = v.id
+        if (item.legacySlug) state.slugs[item.legacySlug] = v.id
         if (item.photos.length) await writePhotos(v.id, item.photos)
         await upsertListing(src.tenantId, v.id, item)
         created++
@@ -131,6 +133,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         })
         if (!samePhotos(cur?.photos.map((p) => p.url) ?? [], item.photos)) await writePhotos(vehicleId, item.photos)
         await upsertListing(src.tenantId, vehicleId, item)
+        if (item.legacySlug) state.slugs[item.legacySlug] = vehicleId
         updated++
       }
       if (plan.remove.length) {
@@ -144,4 +147,11 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
   state.last = result
   await saveState(src.tenantId, state)
   return result
+}
+
+/** Link antigo do site de origem → id do veículo no SaaS (null se não houver importação/vínculo). */
+export async function legacyVehicleId(tenantId: string, slug: string): Promise<string | null> {
+  const row = await prisma.systemSetting.findFirst({ where: { key: stateKey(tenantId) }, select: { value: true } }).catch(() => null)
+  if (!row) return null
+  try { return (JSON.parse(row.value).slugs ?? {})[decodeURIComponent(slug).toLowerCase()] ?? null } catch { return null }
 }
