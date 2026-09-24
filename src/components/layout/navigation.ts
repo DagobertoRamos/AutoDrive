@@ -255,6 +255,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Promoções',             href: '/site/promocoes',     icon: BadgePercent, module: 'site' },
       { label: 'Banners e depoimentos', href: '/site/banners',       icon: Images, module: 'site' },
       { label: 'Catálogo Meta',         href: '/site/catalogo-meta', icon: ShoppingBag, module: 'site' },
+      { label: 'Visitas',               href: '/site/visitas',       icon: BarChart3, module: 'site' },
       { label: 'Configurações do site', href: '/site/configuracoes', icon: Settings, module: 'site' },
     ],
   },

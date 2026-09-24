@@ -888,6 +888,34 @@ model SiteAsset {
   @@map("site_assets")
 }
 
+// Contador de visitas do site da loja: eventos anônimos (sem IP, sem dado
+// pessoal). visitorId/sessionId são ids aleatórios gerados no navegador.
+model SiteEvent {
+  id           BigInt   @id @default(autoincrement())
+  tenantId     String
+  createdAt    DateTime @default(now())
+  event        String // PAGEVIEW | WHATSAPP_CLICK
+  visitorId    String
+  sessionId    String
+  isNewVisitor Boolean  @default(false)
+  path         String
+  section      String
+  vehicleId    String?
+  searchQuery  String?
+  referrerHost String?
+  source       String
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  city         String?
+  region       String?
+  device       String
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, vehicleId, createdAt])
+  @@map("site_events")
+}
+
 // ── Histórico de precificação de venda ────────────────────────────────────────
 
 model VehiclePricingHistory {

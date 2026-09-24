@@ -12,6 +12,8 @@ import { MessageCircle } from 'lucide-react'
 import { SiteHeader } from '@/components/site/SiteHeader'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteTracking } from '@/components/site/SiteTracking'
+import { SiteAnalytics } from '@/components/site/SiteAnalytics'
+import { Suspense } from 'react'
 import { darken, getSiteContext } from '@/lib/site/context'
 import { primaryDomain } from '@/lib/site/domains-core'
 import { normalizeHost, SITE_HOST_HEADER, SITE_PATH_HEADER } from '@/lib/site/host'
@@ -59,6 +61,8 @@ export default async function SiteLayout({ children, params }: { children: React
       <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
       <main>{children}</main>
       <SiteFooter config={ctx.config} nav={ctx.nav} whatsappHref={wa} />
+      {/* useSearchParams exige Suspense */}
+      <Suspense fallback={null}><SiteAnalytics trackUrl={`/api/site/${encodeURIComponent(ctx.key)}/track`} /></Suspense>
       <SiteTracking pixelId={ctx.config.tracking.metaPixelId} googleTagId={ctx.config.tracking.googleTagId} privacyHref={ctx.href('/privacidade')} />
       {wa && <a className="whatsapp-float" href={wa} target="_blank" rel="noreferrer" aria-label="Falar pelo WhatsApp" title="Falar pelo WhatsApp"><MessageCircle size={24} aria-hidden="true" /></a>}
     </div>
