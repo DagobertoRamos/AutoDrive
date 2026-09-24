@@ -21,12 +21,64 @@ const STATUS: Record<DomainStatus, { label: string; cls: string }> = {
 }
 
 const PROVIDERS: { name: string; steps: string }[] = [
-  { name: 'Registro.br', steps: 'Acesse registro.br → Painel → selecione o domínio → “Editar zona” (use os servidores DNS do Registro.br) → “Nova entrada” para cada registro abaixo → Salvar.' },
-  { name: 'GoDaddy', steps: 'Meus produtos → domínio → “DNS” → “Adicionar novo registro”. No registro A do raiz, edite o existente (Nome “@”) em vez de criar outro.' },
-  { name: 'Hostinger', steps: 'hPanel → Domínios → Gerenciar → “DNS / Nameservers” → apague o registro A/CNAME antigo com o mesmo nome e adicione os registros abaixo.' },
-  { name: 'Cloudflare', steps: 'DNS → Records → Add record. Deixe a nuvem CINZA (“DNS only”) — com o proxy laranja o certificado de segurança não é emitido.' },
-  { name: 'HostGator / UOL / Locaweb', steps: 'No painel do provedor, procure “Zona DNS” ou “Gerenciar DNS”, remova registros A/CNAME antigos com o mesmo nome e cadastre os registros abaixo.' },
+  { name: 'Registro.br', steps: 'Entre em registro.br → clique no domínio → “DNS” → “Editar zona” (se aparecer “Configurar endereçamento”, escolha usar os servidores DNS do Registro.br) → “Nova entrada” → preencha Tipo, Nome e Valor → “Salvar alterações”.' },
+  { name: 'GoDaddy', steps: '“Meus produtos” → ao lado do domínio, “DNS” → “Adicionar novo registro”. Para o registro A com Nome “@”, já existe um: clique no lápis e troque o valor em vez de criar outro.' },
+  { name: 'Hostinger', steps: 'hPanel → “Domínios” → “Gerenciar” → “DNS / Nameservers”. Apague o registro A ou CNAME que já tenha o mesmo nome e crie o novo.' },
+  { name: 'Cloudflare', steps: '“DNS” → “Records” → “Add record”. Deixe a nuvem CINZA (“DNS only”). Com a nuvem laranja, o cadeado (HTTPS) não é emitido.' },
+  { name: 'HostGator / UOL / Locaweb', steps: 'No painel, procure “Zona DNS” ou “Gerenciar DNS”. Apague o A ou CNAME antigo que tenha o mesmo nome e crie o novo.' },
 ]
+
+/** Em que passo o domínio está: 1 = apontar DNS, 2 = ativar na hospedagem, 3 = pronto. */
+function stepOf(s: DomainStatus): 1 | 2 | 3 {
+  if (s === 'CONNECTED') return 3
+  if (s === 'DNS_OK') return 2
+  return 1
+}
+
+function Steps({ status }: { status: DomainStatus }) {
+  const cur = stepOf(status)
+  const items = ['Apontar o DNS no provedor', 'Ativar na hospedagem', 'Site no ar com cadeado']
+  return (
+    <ol className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+      {items.map((label, i) => {
+        const n = i + 1
+        const done = n < cur || cur === 3
+        return (
+          <li key={label} className={cn('inline-flex items-center gap-1', done ? 'text-green-700' : n === cur ? 'font-semibold text-gray-900' : 'text-gray-400')}>
+            <span className={cn('inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold', done ? 'bg-green-100' : n === cur ? 'bg-brand-100 text-brand-700' : 'bg-gray-100')}>
+              {done ? <Check size={10} /> : n}
+            </span>
+            {label}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+function recordPurpose(r: { type: string; name: string; host: string }): string {
+  if (r.type === 'TXT') return `prova que o ${r.host} é seu`
+  return `faz o ${r.host} abrir o site`
+}
+
+function nameHint(name: string): string {
+  if (name === '@') return 'Digite só o símbolo @ (arroba). Se não aceitar, deixe em branco.'
+  if (name.includes('.')) return `Digite exatamente: ${name}`
+  return `Digite só “${name}”, sem o resto do domínio e sem ponto.`
+}
+
+function FakeField({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className="w-12 shrink-0 text-[11px] font-semibold text-gray-600">{label}</span>
+        <span className="min-w-0 flex-1 break-all rounded border border-gray-300 bg-white px-2 py-1 font-mono text-[12px] font-semibold text-gray-900">{value}</span>
+        <CopyValue value={value} />
+      </div>
+      <p className="ml-14 mt-0.5 text-[10px] text-gray-500">{hint}</p>
+    </div>
+  )
+}
 
 function CopyValue({ value }: { value: string }) {
   const [ok, setOk] = useState(false)
@@ -63,6 +115,9 @@ export function DomainsSection({ domains, slug, siteBaseDomain, hostingIntegrati
 
   const freeUrl = siteBaseDomain ? `${slug}.${siteBaseDomain}` : null
   const primary = domains.find((d) => d.primary)
+  const allRecords = domains.flatMap((d) => d.records.map((r) => ({ ...r, host: d.host })))
+  const allDnsDone = domains.length > 0 && domains.every((d) => stepOf(d.status) >= 2)
+  const exampleApex = domains.find((d) => !d.host.startsWith('www.'))?.host ?? domains[0]?.host.replace(/^www\./, '') ?? 'sualoja.com.br'
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
@@ -114,10 +169,19 @@ export function DomainsSection({ domains, slug, siteBaseDomain, hostingIntegrati
                   {canManage && <button onClick={() => remove(d.host)} disabled={!!busy} className="text-gray-400 hover:text-red-600" aria-label={`Remover ${d.host}`}><Trash2 size={14} /></button>}
                 </div>
               </div>
-              {d.message && <p className={cn('mt-2 text-xs', d.status === 'CONNECTED' || d.status === 'DNS_OK' ? 'text-green-700' : d.status === 'ERROR' ? 'text-red-700' : 'text-gray-600')}>{d.message}</p>}
+              <Steps status={d.status} />
+              {d.status === 'DNS_OK' ? (
+                <p className="mt-2 rounded-md bg-green-50 px-2.5 py-1.5 text-xs text-green-800">
+                  <b>Sua parte está feita.</b> O DNS está certo e não precisa mexer mais no provedor.{' '}
+                  {hostingIntegration
+                    ? 'Estamos ativando o domínio na hospedagem. Clique em “Verificar agora” daqui a alguns minutos.'
+                    : 'Falta o domínio ser ativado na hospedagem, que é feito pelo administrador do sistema (veja o aviso no fim desta seção).'}
+                </p>
+              ) : d.message && <p className={cn('mt-2 text-xs', d.status === 'CONNECTED' ? 'text-green-700' : d.status === 'ERROR' ? 'text-red-700' : 'text-gray-600')}>{d.message}</p>}
 
               {d.status !== 'CONNECTED' && d.status !== 'DNS_OK' && (
                 <div className="mt-2 overflow-x-auto">
+                  <p className="mb-1 text-[11px] text-gray-600">No site onde você comprou o domínio, crie <b>{d.records.length === 1 ? 'este registro' : 'estes registros'}</b> (copie cada campo exatamente como está):</p>
                   <table className="w-full min-w-[460px] text-xs">
                     <thead><tr className="text-left text-[10px] uppercase tracking-wider text-gray-400"><th className="py-1 pr-3">Tipo</th><th className="py-1 pr-3">Nome / Host</th><th className="py-1 pr-3">Valor / Aponta para</th><th /></tr></thead>
                     <tbody>
@@ -145,19 +209,74 @@ export function DomainsSection({ domains, slug, siteBaseDomain, hostingIntegrati
       {domains.length > 0 && (
         <div className="mt-3 rounded-lg border border-gray-100">
           <button type="button" onClick={() => setHelp((v) => !v)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold text-gray-700">
-            Como cadastrar os registros no seu provedor <ChevronDown size={14} className={cn('transition', help && 'rotate-180')} />
+            Não sei configurar o DNS: me explica passo a passo <ChevronDown size={14} className={cn('transition', help && 'rotate-180')} />
           </button>
           {help && (
-            <div className="space-y-2 border-t border-gray-100 px-3 py-2 text-xs text-gray-600">
-              {PROVIDERS.map((p) => <p key={p.name}><b>{p.name}:</b> {p.steps}</p>)}
-              <p className="text-gray-500">A propagação costuma levar de minutos a 2 horas (em casos raros, até 48 h). O certificado de segurança (cadeado/HTTPS) é emitido automaticamente depois que o DNS aponta corretamente. Se o domínio tinha site/e-mail em outro lugar, só troque os registros listados acima — registros de e-mail (MX) continuam como estão.</p>
+            <div className="space-y-4 border-t border-gray-100 px-3 py-3 text-xs text-gray-700">
+              {allDnsDone && (
+                <p className="rounded-md bg-green-50 px-2.5 py-2 text-green-800"><b>Você já fez esta parte.</b> Todos os domínios estão com o passo 1 verde. O que está aqui embaixo é só para consulta ou para um domínio novo.</p>
+              )}
+
+              <div>
+                <p className="mb-1 text-sm font-semibold text-gray-900">Para que serve isso?</p>
+                <p>O DNS é como uma agenda de contatos da internet. Quando alguém digita o nome do seu site, a internet olha nessa agenda para saber para onde ir. Você só vai escrever na agenda: “meu site está no AutoDrive”.</p>
+              </div>
+
+              <div>
+                <p className="mb-1 text-sm font-semibold text-gray-900">Passo 1: entre no site onde você comprou o domínio</p>
+                <p>Exemplo: se você comprou o <span className="font-mono">{exampleApex}</span> no Registro.br, entre em <b>registro.br</b> com o seu login. Depois clique no domínio e procure o botão <b>DNS</b> (pode se chamar “Editar zona”, “Zona DNS” ou “Gerenciar DNS”).</p>
+              </div>
+
+              <div>
+                <p className="mb-1 text-sm font-semibold text-gray-900">Passo 2: crie {allRecords.length === 1 ? 'este registro' : `estes ${allRecords.length} registros`}</p>
+                <p className="mb-2">Lá vai ter um botão como <b>“Nova entrada”</b> ou <b>“Adicionar registro”</b>. Clique nele e vai aparecer um formulário com 3 campos: <b>Tipo</b>, <b>Nome</b> e <b>Valor</b>. Preencha igual aos cartões abaixo, um cartão de cada vez:</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {allRecords.map((r, i) => (
+                    <div key={`${r.host}-${r.type}-${r.name}`} className="rounded-lg border border-brand-200 bg-brand-50/40 p-2.5">
+                      <p className="mb-1.5 font-semibold text-gray-900">Registro {i + 1}: {recordPurpose(r)}</p>
+                      <div className="space-y-1.5">
+                        <FakeField label="Tipo" value={r.type} hint={r.type === 'A' ? 'Escolha “A” na lista.' : `Escolha “${r.type}” na lista.`} />
+                        <FakeField label="Nome" value={r.name} hint={nameHint(r.name)} />
+                        <FakeField label="Valor" value={r.value} hint="Clique em Copiar e cole no campo (pode se chamar “Dados”, “Aponta para” ou “Destino”)." />
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-gray-500">Se aparecer um campo <b>TTL</b>, deixe como está. Depois clique em <b>Salvar</b>.</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-amber-50 px-2.5 py-2 text-amber-900">
+                <p className="mb-0.5 font-semibold">E o tal do “@”?</p>
+                <p>O <b>@</b> (arroba, a mesma do e-mail) quer dizer <b>“o próprio domínio, sem nada na frente”</b>. No campo <b>Nome</b>, digite só o símbolo <span className="font-mono font-bold">@</span> (no teclado: Shift + 2). Não escreva mais nada junto.</p>
+                <p className="mt-1">Se o site não aceitar o @, <b>deixe o campo Nome em branco</b>, que dá no mesmo. No Registro.br, por exemplo, o campo já mostra “.{exampleApex}” do lado. Para o @, deixe vazio. Para o www, escreva só <span className="font-mono">www</span>.</p>
+              </div>
+
+              <div>
+                <p className="mb-1 text-sm font-semibold text-gray-900">Passo 3: já tinha um registro igual?</p>
+                <p>Se já existir na lista um registro com o <b>mesmo Tipo e o mesmo Nome</b> (por exemplo, um “A” com Nome “@” apontando para outro número), <b>apague o antigo</b> ou clique no lápis e troque o Valor. Não podem ficar dois iguais. Não mexa nos registros do tipo <b>MX</b>: eles são do seu e-mail.</p>
+              </div>
+
+              <div>
+                <p className="mb-1 text-sm font-semibold text-gray-900">Passo 4: volte aqui e confira</p>
+                <p>Clique em <b>Verificar agora</b> no domínio. Quando aparecer o ✓ verde em “Apontar o DNS no provedor”, deu certo. Se não aparecer, espere uns 30 minutos e tente de novo: a internet pode demorar até 2 horas para perceber a mudança.</p>
+              </div>
+
+              <details className="rounded-lg border border-gray-100 px-2.5 py-1.5">
+                <summary className="cursor-pointer font-semibold text-gray-800">Onde fica o DNS em cada provedor</summary>
+                <div className="mt-1.5 space-y-1">
+                  {PROVIDERS.map((p) => <p key={p.name}><b>{p.name}:</b> {p.steps}</p>)}
+                </div>
+              </details>
             </div>
           )}
         </div>
       )}
 
       {!hostingIntegration && domains.length > 0 && (
-        <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-[11px] text-gray-500">Neste ambiente a ativação automática na hospedagem está desligada: verificamos o DNS, e o domínio passa a responder com SSL quando a integração com a hospedagem estiver configurada na publicação.</p>
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          <p><b>Passo 2 (ativar na hospedagem) ainda não está ligado.</b> Isso não depende da loja nem do provedor do domínio.</p>
+          <p className="mt-0.5">O administrador do sistema precisa configurar as variáveis <span className="font-mono">VERCEL_API_TOKEN</span> e <span className="font-mono">VERCEL_PROJECT_ID</span> na publicação. Depois disso, clique em “Verificar todos”: os domínios com DNS certo são ativados e ganham o cadeado (HTTPS) sozinhos.</p>
+        </div>
       )}
     </section>
   )
