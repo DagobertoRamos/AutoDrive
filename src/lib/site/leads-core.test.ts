@@ -32,3 +32,25 @@ describe('parseSiteLead', () => {
     )
   })
 })
+
+describe('serviços opcionais', () => {
+  const base = { name: 'Ana Souza', phone: '(11) 99999-1234', consent: 'yes' }
+  it('venda seu carro exige os dados do veículo e monta o texto', () => {
+    expect(parseSiteLead({ ...base, kind: 'sell_car', brand: 'VW', model: 'Gol' })).toMatchObject({ ok: false, error: 'Informe a cidade.' })
+    const r = parseSiteLead({ ...base, kind: 'sell_car', city: 'Osasco', brand: 'VW', model: 'Gol', year: '2015/2016', mileage: '98000', targetPrice: 'R$ 38.000', plate: 'abc-1d23', vehicleStatus: ['Quitado', 'Possui débitos'] })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.details).toMatchObject({ plate: 'ABC1D23', vehicleStatus: 'Quitado, Possui débitos' })
+    const msg = buildLeadMessage(r.value, null)
+    expect(msg).toContain('Venda seu carro (pré-avaliação).')
+    expect(msg).toContain('Veículo do cliente: VW · Gol · 2015/2016 · 98000 km')
+    expect(msg).toContain('Situação: Quitado, Possui débitos')
+    expect(msg).toContain('Valor pretendido: R$ 38.000')
+  })
+  it('encontre seu carro exige marca, modelo e orçamento', () => {
+    expect(parseSiteLead({ ...base, kind: 'find_car', brand: 'Jeep', model: 'Compass' })).toMatchObject({ ok: false, error: 'Informe o orçamento.' })
+    const r = parseSiteLead({ ...base, kind: 'find_car', brand: 'Jeep', model: 'Compass', yearMin: '2020', budget: 'até R$ 120 mil', wantsFinancing: 'Sim' })
+    expect(r.ok && buildLeadMessage(r.value, null)).toContain('Procura: Jeep · Compass · a partir de 2020')
+  })
+})
+

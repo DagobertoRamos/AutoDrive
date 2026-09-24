@@ -58,11 +58,13 @@ export default async function SiteHome({ params }: { params: Promise<{ site: str
         </div></section>
       )}
 
-      {ctx.on('financiamento') && (
+      {(ctx.on('financiamento') || ctx.on('vendaSeuCarro') || ctx.on('encontreSeuCarro')) && (
         <section className="section home-services"><div className="shell">
           <div className="service-panels">
-            <article className="service-panel service-panel-accent"><p className="eyebrow dark">Para quem vai comprar</p><h3>Financiamento</h3><p>Escolha um veículo do nosso estoque e faça sua simulação com acompanhamento da equipe.</p><Link className="button" href={ctx.href('/financiamento')}>Simular financiamento<ArrowRight size={17} aria-hidden="true" /></Link></article>
-            {ctx.on('sobre') && <article className="service-panel"><p className="eyebrow dark">Conheça a loja</p><h3>{ctx.config.about.title}</h3><p>{ctx.config.about.intro}</p><Link className="button button-dark" href={ctx.href('/sobre')}>Quem somos<ArrowRight size={17} aria-hidden="true" /></Link></article>}
+            {ctx.on('financiamento') && <article className="service-panel service-panel-accent"><p className="eyebrow dark">Para quem vai comprar</p><h3>Financiamento</h3><p>Escolha um veículo do nosso estoque e faça sua simulação com acompanhamento da equipe.</p><Link className="button" href={ctx.href('/financiamento')}>Simular financiamento<ArrowRight size={17} aria-hidden="true" /></Link></article>}
+            {ctx.on('vendaSeuCarro') && <article className="service-panel"><p className="eyebrow dark">Para quem vai vender ou trocar</p><h3>Venda seu carro</h3><p>Envie os dados do seu carro para uma pré-avaliação. Ele pode virar dinheiro ou entrada no próximo.</p><Link className="button button-dark" href={ctx.href('/venda-seu-carro')}>Fazer pré-avaliação<ArrowRight size={17} aria-hidden="true" /></Link></article>}
+            {ctx.on('encontreSeuCarro') && <article className="service-panel"><p className="eyebrow dark">Não achou no estoque?</p><h3>Encontre seu carro</h3><p>Conte qual carro você procura, com orçamento e preferências. A equipe busca e avisa você.</p><Link className="button button-dark" href={ctx.href('/encontre-seu-carro')}>Pedir uma busca<ArrowRight size={17} aria-hidden="true" /></Link></article>}
+            {ctx.on('sobre') && !(ctx.on('vendaSeuCarro') && ctx.on('encontreSeuCarro')) && <article className="service-panel"><p className="eyebrow dark">Conheça a loja</p><h3>{ctx.config.about.title}</h3><p>{ctx.config.about.intro}</p><Link className="button button-dark" href={ctx.href('/sobre')}>Quem somos<ArrowRight size={17} aria-hidden="true" /></Link></article>}
           </div>
         </div></section>
       )}

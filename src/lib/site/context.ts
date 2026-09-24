@@ -23,6 +23,8 @@ const NAV: { service: SiteServiceKey | null; label: string; path: string }[] = [
   { service: 'estoque', label: 'Estoque', path: '/veiculos' },
   { service: 'sobre', label: 'Quem somos', path: '/sobre' },
   { service: 'financiamento', label: 'Financiamento', path: '/financiamento' },
+  { service: 'vendaSeuCarro', label: 'Venda seu carro', path: '/venda-seu-carro' },
+  { service: 'encontreSeuCarro', label: 'Encontre seu carro', path: '/encontre-seu-carro' },
   { service: 'contato', label: 'Contato', path: '/contato' },
 ]
 

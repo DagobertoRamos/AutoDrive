@@ -7,7 +7,8 @@ import { vehicleIdFromSlug } from './listing-core'
 
 export const SECTION_LABELS: Record<string, string> = {
   home: 'Página inicial', estoque: 'Estoque (lista)', veiculo: 'Anúncio de veículo', financiamento: 'Financiamento',
-  contato: 'Contato', sobre: 'Quem somos', privacidade: 'Privacidade', outros: 'Outras páginas',
+  contato: 'Contato', sobre: 'Quem somos', privacidade: 'Privacidade', 'venda-seu-carro': 'Venda seu carro', 'encontre-seu-carro': 'Encontre seu carro',
+  'financia-facil': 'Financia Fácil', atacado: 'Atacado', marca: 'Páginas por marca', cidade: 'Páginas por cidade', outros: 'Outras páginas',
 }
 
 export const SOURCE_LABELS: Record<string, string> = {

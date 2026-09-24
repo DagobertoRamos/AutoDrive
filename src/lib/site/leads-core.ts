@@ -2,16 +2,18 @@
 // Site da loja — lead recebido pelos formulários do site. PURO (testado).
 // Valida, descarta spam (campo-isca) e monta o texto que vai para o CRM.
 // Tipos (porta do site dagobertoeasycar): contato, financiamento e interesse
-// no veículo (intenções: simulação, interesse, visita).
+// no veículo (intenções: simulação, interesse, visita); serviços opcionais:
+// venda seu carro (pré-avaliação) e encontre seu carro (busca).
 // =============================================================================
 
-export const SITE_LEAD_KINDS = ['contact', 'financing', 'vehicle_interest'] as const
+export const SITE_LEAD_KINDS = ['contact', 'financing', 'vehicle_interest', 'sell_car', 'find_car'] as const
 export type SiteLeadKind = (typeof SITE_LEAD_KINDS)[number]
 export const VEHICLE_INTENTS = { simulacao: 'Simulação de financiamento', interesse: 'Interesse no veículo', visita: 'Agendamento de visita' } as const
 export type VehicleIntent = keyof typeof VEHICLE_INTENTS
 
 export const KIND_LABEL: Record<SiteLeadKind, string> = {
   contact: 'Contato pelo site', financing: 'Financiamento pelo site', vehicle_interest: 'Interesse em veículo pelo site',
+  sell_car: 'Venda seu carro (pré-avaliação)', find_car: 'Encontre seu carro (busca)',
 }
 
 export interface SiteLeadInput {
@@ -24,7 +26,17 @@ export interface SiteLeadInput {
   tracking: Record<string, string>  // utm, página
 }
 
-const DETAIL_KEYS = ['paymentMethod', 'downPayment', 'installments', 'installmentGoal', 'hasTrade', 'tradeVehicle', 'tradeYear', 'tradeMileage', 'visitDate', 'visitPeriod', 'desiredVehicle'] as const
+const DETAIL_KEYS = [
+  'paymentMethod', 'downPayment', 'installments', 'installmentGoal', 'hasTrade', 'tradeVehicle', 'tradeYear', 'tradeMileage', 'visitDate', 'visitPeriod', 'desiredVehicle',
+  // venda seu carro / encontre seu carro
+  'city', 'brand', 'model', 'version', 'year', 'mileage', 'transmission', 'fuel', 'plate', 'color', 'targetPrice', 'vehicleStatus', 'yearMin', 'budget', 'wantsFinancing',
+] as const
+
+/** Campos obrigatórios por serviço (além de nome, telefone e consentimento). */
+const REQUIRED: Partial<Record<SiteLeadKind, [string, string][]>> = {
+  sell_car: [['city', 'a cidade'], ['brand', 'a marca'], ['model', 'o modelo'], ['year', 'o ano'], ['mileage', 'a quilometragem'], ['targetPrice', 'o valor pretendido']],
+  find_car: [['brand', 'a marca'], ['model', 'o modelo'], ['budget', 'o orçamento']],
+}
 const TRACK_KEYS = ['pageUrl', 'utmSource', 'utmMedium', 'utmCampaign'] as const
 const str = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max)
 
@@ -50,7 +62,13 @@ export function parseSiteLead(body: unknown): ParseResult {
   if (kind === 'contact' && !message) return { ok: false, status: 400, error: 'Escreva sua mensagem.' }
 
   const details: Record<string, string> = {}
-  for (const k of DETAIL_KEYS) { const v = str(b[k], 200); if (v) details[k] = v }
+  for (const k of DETAIL_KEYS) {
+    // Checkboxes múltiplos (situação do veículo) chegam como lista.
+    const v = Array.isArray(b[k]) ? (b[k] as unknown[]).map((x) => str(x, 60)).filter(Boolean).join(', ').slice(0, 200) : str(b[k], 200)
+    if (v) details[k] = v
+  }
+  for (const [k, label] of REQUIRED[kind] ?? []) if (!details[k]) return { ok: false, status: 400, error: `Informe ${label}.` }
+  if (details.plate) details.plate = details.plate.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)
   const tracking: Record<string, string> = {}
   for (const k of TRACK_KEYS) { const v = str(b[k], 500); if (v) tracking[k] = v }
   return { ok: true, value: { kind, intent, name, phone, email, message, vehicleId, details, tracking } }
@@ -72,6 +90,14 @@ export function buildLeadMessage(input: SiteLeadInput, vehicleTitle: string | nu
     line('Carro na troca', d.hasTrade),
     d.hasTrade === 'Sim' ? line('Veículo da troca', [d.tradeVehicle, d.tradeYear, d.tradeMileage && `${d.tradeMileage} km`].filter(Boolean).join(' · ')) : '',
     line('Visita', [d.visitDate, d.visitPeriod].filter(Boolean).join(' · ')),
+    input.kind === 'sell_car' ? line('Veículo do cliente', [d.brand, d.model, d.version, d.year, d.mileage && `${d.mileage} km`, d.transmission, d.fuel, d.color].filter(Boolean).join(' · ')) : '',
+    input.kind === 'sell_car' ? line('Placa', d.plate) : '',
+    input.kind === 'sell_car' ? line('Situação', d.vehicleStatus) : '',
+    input.kind === 'sell_car' ? line('Valor pretendido', d.targetPrice) : '',
+    input.kind === 'find_car' ? line('Procura', [d.brand, d.model, d.yearMin && `a partir de ${d.yearMin}`].filter(Boolean).join(' · ')) : '',
+    line('Orçamento', d.budget),
+    line('Pretende financiar', d.wantsFinancing),
+    line('Cidade', d.city),
     line('Mensagem', input.message),
   ].filter(Boolean).join('\n')
 }

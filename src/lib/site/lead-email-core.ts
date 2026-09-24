@@ -22,6 +22,8 @@ const DETAIL_LABELS: Record<string, string> = {
   paymentMethod: 'Forma de pagamento', downPayment: 'Entrada', installments: 'Prazo desejado', installmentGoal: 'Parcela desejada',
   hasTrade: 'Carro na troca', tradeVehicle: 'Veículo da troca', tradeYear: 'Ano da troca', tradeMileage: 'Km da troca',
   visitDate: 'Data preferida', visitPeriod: 'Período', desiredVehicle: 'Veículo desejado',
+  city: 'Cidade', brand: 'Marca', model: 'Modelo', version: 'Versão', year: 'Ano', mileage: 'Km', transmission: 'Câmbio', fuel: 'Combustível',
+  plate: 'Placa', color: 'Cor', targetPrice: 'Valor pretendido', vehicleStatus: 'Situação', yearMin: 'Ano mínimo', budget: 'Orçamento', wantsFinancing: 'Pretende financiar',
 }
 
 export function esc(s: string): string {
