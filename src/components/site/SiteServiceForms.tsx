@@ -7,11 +7,14 @@
 import { useState, type FormEvent } from 'react'
 import { MessageCircle } from 'lucide-react'
 import { formatCnpj } from '@/lib/site/leads-core'
+import { compressPhoto } from '@/lib/stock/photo-compress'
 import { HONEYPOT_STYLE, moneyMask, phoneMask, submitSiteLead } from './lead-utils'
 
-type State = 'idle' | 'sending' | 'done' | 'error'
+const SELL_PHOTOS_MAX = 10
 
-function useSubmit(apiUrl: string, kind: 'sell_car' | 'find_car' | 'private_financing' | 'wholesale') {
+type State = 'idle' | 'sending' | 'uploading' | 'done' | 'error'
+
+function useSubmit(apiUrl: string, kind: 'sell_car' | 'find_car' | 'private_financing' | 'wholesale', afterOk?: (uploadToken: string | undefined) => Promise<void>) {
   const [state, setState] = useState<State>('idle')
   const [msg, setMsg] = useState('')
   const [protocol, setProtocol] = useState<string | null>(null)
@@ -20,11 +23,14 @@ function useSubmit(apiUrl: string, kind: 'sell_car' | 'find_car' | 'private_fina
     setState('sending')
     const form = e.currentTarget
     const fd = new FormData(form)
+    fd.delete('photos')
     const data: Record<string, unknown> = Object.fromEntries(fd.entries())
     data.vehicleStatus = fd.getAll('vehicleStatus')
     const r = await submitSiteLead(apiUrl, { ...data, kind })
-    if (r.ok) { setState('done'); setProtocol(r.protocol); setMsg(''); form.reset() }
-    else { setState('error'); setMsg(r.error) }
+    if (!r.ok) { setState('error'); setMsg(r.error); return }
+    setProtocol(r.protocol); setMsg('')
+    if (afterOk) { setState('uploading'); await afterOk(r.uploadToken) }
+    setState('done'); form.reset()
   }
   return { state, msg, protocol, submit }
 }
@@ -49,15 +55,48 @@ const Contact = () => (
 const money = (e: FormEvent<HTMLInputElement>) => { e.currentTarget.value = moneyMask(e.currentTarget.value) }
 
 export function SiteSellCarForm({ apiUrl, privacyHref, whatsappHref }: { apiUrl: string; privacyHref: string; whatsappHref: string }) {
-  const { state, msg, protocol, submit } = useSubmit(apiUrl, 'sell_car')
+  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([])
+  const [upload, setUpload] = useState({ sent: 0, failed: 0, current: 0, error: '' })
+
+  async function uploadPhotos(token: string | undefined) {
+    if (!photos.length || !token) return
+    const photoUrl = apiUrl.replace(/\/leads$/, '/leads/photos')
+    let sent = 0, failed = 0, error = ''
+    for (let i = 0; i < photos.length; i++) {
+      setUpload({ sent, failed, current: i + 1, error })
+      try {
+        const blob = await compressPhoto(photos[i].file)
+        const fd = new FormData(); fd.append('token', token); fd.append('file', blob, 'foto.webp')
+        const r = await fetch(photoUrl, { method: 'POST', body: fd })
+        if (r.ok) sent++
+        else { failed++; error = ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Falha no envio.' }
+        if (r.status === 403 || r.status === 409 || r.status === 429) break
+      } catch (e) { failed++; error = e instanceof Error ? e.message : 'Falha no envio.' }
+    }
+    setUpload({ sent, failed, current: 0, error })
+    photos.forEach((p) => URL.revokeObjectURL(p.url))
+  }
+
+  const { state, msg, protocol, submit } = useSubmit(apiUrl, 'sell_car', uploadPhotos)
+  const pick = (files: FileList | null) => {
+    const room = SELL_PHOTOS_MAX - photos.length
+    const added = Array.from(files ?? []).filter((f) => f.type.startsWith('image/')).slice(0, room).map((file) => ({ file, url: URL.createObjectURL(file) }))
+    setPhotos((p) => [...p, ...added])
+  }
+  const remove = (i: number) => setPhotos((p) => { URL.revokeObjectURL(p[i].url); return p.filter((_, j) => j !== i) })
+
+  if (state === 'uploading') {
+    return <div className="lead-form"><h2>Enviando fotos…</h2><p>Foto {upload.current} de {photos.length}. Não feche esta página.</p></div>
+  }
   if (state === 'done') {
-    const text = `Olá! Enviei pelo site a pré-avaliação do meu carro${protocol ? ` (protocolo ${protocol})` : ''}. Seguem as fotos:`
+    const text = `Olá! Enviei pelo site a pré-avaliação do meu carro${protocol ? ` (protocolo ${protocol})` : ''}.${upload.sent ? '' : ' Seguem as fotos:'}`
     const wa = whatsappHref ? `${whatsappHref.split('?')[0]}?text=${encodeURIComponent(text)}` : ''
     return (
       <div className="lead-form">
         <h2>Recebemos sua pré-avaliação{protocol ? ` ${protocol}` : ''}</h2>
         <p>Nossa equipe vai analisar os dados e chamar você pelo WhatsApp.</p>
-        {wa && <><p><strong>Adiante a avaliação:</strong> mande fotos reais do carro (frente, traseira, laterais, painel ligado, interior, motor, pneus e qualquer avaria).</p><a className="button" href={wa} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" />Enviar fotos pelo WhatsApp</a></>}
+        {upload.sent > 0 && <p><strong>{upload.sent} foto(s) enviada(s).</strong>{upload.failed ? ` ${upload.failed} não foram (${upload.error}).` : ''}</p>}
+        {wa && (upload.sent === 0 || upload.failed > 0) && <><p><strong>Adiante a avaliação:</strong> mande fotos reais do carro (frente, traseira, laterais, painel ligado, interior, motor, pneus e qualquer avaria).</p><a className="button" href={wa} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" />Enviar fotos pelo WhatsApp</a></>}
       </div>
     )
   }
@@ -91,6 +130,22 @@ export function SiteSellCarForm({ apiUrl, privacyHref, whatsappHref }: { apiUrl:
       <div className="checkbox-grid">
         {['Quitado', 'Financiado', 'Possui débitos', 'Possui sinistro', 'Possui leilão'].map((s) => <label key={s}><input type="checkbox" name="vehicleStatus" value={s} />{s}</label>)}
       </div>
+      <h3>Fotos (opcional)</h3>
+      <p className="form-help">Até {SELL_PHOTOS_MAX} fotos reais: frente, traseira, laterais, painel ligado, interior, motor, pneus e avarias. Elas são reduzidas antes do envio.</p>
+      {photos.length > 0 && (
+        <div className="sell-photo-grid">
+          {photos.map((p, i) => (
+            <div key={p.url} className="sell-photo">
+              {/* eslint-disable-next-line @next/next/no-img-element -- prévia local (blob:) */}
+              <img src={p.url} alt={`Foto ${i + 1}`} />
+              <button type="button" onClick={() => remove(i)} aria-label={`Remover foto ${i + 1}`}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {photos.length < SELL_PHOTOS_MAX && (
+        <label className="photo-upload-card"><span>{photos.length ? 'Adicionar mais fotos' : 'Escolher fotos'}</span><input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(e) => { pick(e.target.files); e.currentTarget.value = '' }} /></label>
+      )}
       <label>Observações<textarea name="message" rows={4} maxLength={2000} placeholder="Revisões, avarias, opcionais..." /></label>
       <Common privacyHref={privacyHref} />
       <button className="button" disabled={state === 'sending'}>{state === 'sending' ? 'Enviando...' : 'Enviar pré-avaliação'}</button>

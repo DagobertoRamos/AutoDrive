@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma'
 import { resolveSite } from '@/lib/site/config'
 import { siteVehicleRef } from '@/lib/site/vehicles'
 import { sendSiteLeadEmails } from '@/lib/site/lead-email'
+import { createLeadPhotoToken } from '@/lib/site/lead-photo-token'
 import { buildLeadMessage, KIND_LABEL, parseSiteLead } from '@/lib/site/leads-core'
 import { resolveIdentity } from '@/lib/crm/dedup'
 import { assignLeadNumber } from '@/lib/crm/lead-number'
@@ -88,7 +89,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ site: s
       const protocol = existing.leadNumber ? `#${existing.leadNumber}` : null
       // E-mails depois da resposta: o visitante não espera o SMTP.
       after(() => sendSiteLeadEmails({ tenantId, config: resolved.config, input, vehicle, protocol, leadId: existing.id, repeat: true, origin }))
-      return NextResponse.json({ success: true, protocol })
+      return NextResponse.json({ success: true, protocol, ...(input.kind === 'sell_car' ? { uploadToken: createLeadPhotoToken(existing.id, tenantId) } : {}) })
     }
 
     const identity = await resolveIdentity(tenantId, { phone: input.phone, email: input.email || null, name: input.name, source: 'SITE', cpf: null, externalLeadId: null }).catch(() => null)
@@ -118,7 +119,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ site: s
 
     const protocol = leadNumber ? `#${leadNumber}` : null
     after(() => sendSiteLeadEmails({ tenantId, config: resolved.config, input, vehicle, protocol, leadId: lead.id, repeat: false, origin }))
-    return NextResponse.json({ success: true, protocol }, { status: 201 })
+    return NextResponse.json({ success: true, protocol, ...(input.kind === 'sell_car' ? { uploadToken: createLeadPhotoToken(lead.id, tenantId) } : {}) }, { status: 201 })
   } catch (err) {
     console.error('[site/leads] falhou:', err)
     return NextResponse.json({ success: false, error: 'Não foi possível enviar agora. Tente novamente ou fale pelo WhatsApp.' }, { status: 500 })

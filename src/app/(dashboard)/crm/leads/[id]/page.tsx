@@ -7,6 +7,7 @@
 // Veículos de interesse · Negociações vinculadas · Temperatura · Etiquetas
 // =============================================================================
 
+import { SiteLeadPhotos } from '@/components/crm/SiteLeadPhotos'
 import Link from 'next/link'
 import { use, useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
@@ -1323,6 +1324,7 @@ export default function LeadWorkspacePage({ params }: { params: Promise<{ id: st
 
         <div className="mt-4">
           {/* ── Tab: Resumo ── */}
+          {tab === 'summary' && <SiteLeadPhotos leadId={leadId} />}
           {tab === 'summary' && (
             <SummaryTab leadId={leadId} lead={lead} workspace={workspace} tasks={pendingTasks} interactions={interactions} timeline={timeline ?? []} relations={relations} onRefresh={load} />
           )}
