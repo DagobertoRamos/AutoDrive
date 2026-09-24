@@ -10,6 +10,7 @@
 
 import { sanitizeAutomations, type AutomationRule } from './automations-core'
 import { sanitizeRolePermissions, type RolePermissionOverrides } from './permissions-core'
+import { CHANNEL_SOURCES } from './channels-core'
 
 export const TEMPERATURE_CODES = ['BOILING', 'HOT', 'WARM', 'COLD'] as const
 export type TemperatureCode = (typeof TEMPERATURE_CODES)[number]
@@ -67,6 +68,8 @@ export const SYSTEM_SOURCES: { code: string; label: string }[] = [
   { code: 'FILA_ATENDIMENTO', label: 'Fila de atendimento' },
   { code: 'CLIENTE_NA_LOJA', label: 'Cliente na loja' },
   { code: 'SITE', label: 'Site da loja' },
+  // Canais de captação (redes, anúncios, portais) — ver channels-core.
+  ...CHANNEL_SOURCES,
 ]
 
 const LOST_REASONS = ['Sem resposta', 'Sem interesse', 'Preço', 'Avaliação da troca', 'Financiamento não aprovado', 'Entrada insuficiente', 'Veículo vendido', 'Veículo indisponível', 'Comprou no concorrente', 'Desistiu', 'Documentação', 'Prazo', 'Localização', 'Atendimento', 'Outro']
@@ -94,7 +97,8 @@ export function defaultCrmSettings(): CrmSettings {
     sources: [
       ...SYSTEM_SOURCES.map((s) => ({ ...s, active: true, system: true })),
       // Origens que já existiam no filtro da lista de leads — removíveis.
-      ...[['SDR', 'SDR'], ['WHATSAPP', 'WhatsApp'], ['WEBSITE', 'Website'], ['WEBMOTORS', 'Webmotors'], ['EMAIL', 'E-mail']]
+      // (WhatsApp e Webmotors viraram origens do sistema com os canais de captação.)
+      ...[['SDR', 'SDR'], ['WEBSITE', 'Website'], ['EMAIL', 'E-mail']]
         .map(([code, label]) => ({ code, label, active: true, system: false })),
     ],
     closeReasons: [

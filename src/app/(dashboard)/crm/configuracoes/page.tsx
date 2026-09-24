@@ -8,21 +8,23 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Settings, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, Copy, Thermometer, Shapes, Radio, XCircle, ListChecks, Timer, Shuffle, Zap, ShieldCheck, History } from 'lucide-react'
+import { Settings, Plus, Trash2, Tag as TagIcon, Columns3, RefreshCw, Copy, Thermometer, Shapes, Radio, XCircle, ListChecks, Timer, Shuffle, Zap, ShieldCheck, History, Megaphone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import PipelinesTab from './PipelinesTab'
 import { CloseReasonsTab, LeadTypesTab, SourcesTab, TemperaturesTab } from './ListsTabs'
 import { DistributionTab, RequiredFieldsTab, SlaTab } from './RulesTabs'
 import AutomationsTab from './AutomationsTab'
+import ChannelsTab from './ChannelsTab'
 import { AuditTab, PermissionsTab } from './GovernanceTabs'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
 interface Tag { id: string; name: string; color: string | null; description: string | null; active: boolean }
 
-type TabId = 'overview' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'automations' | 'permissions' | 'audit' | 'duplicates'
+type TabId = 'overview' | 'channels' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'automations' | 'permissions' | 'audit' | 'duplicates'
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
   { id: 'overview', label: 'Visão geral', icon: Settings },
+  { id: 'channels', label: 'Canais de captação', icon: Megaphone },
   { id: 'pipelines', label: 'Funis e etapas', icon: Columns3 },
   { id: 'tags', label: 'Etiquetas', icon: TagIcon },
   { id: 'temperatures', label: 'Temperaturas', icon: Thermometer },
@@ -62,6 +64,7 @@ export default function CrmConfiguracoesPage() {
       </div>
 
       {tab === 'overview' && <Overview />}
+      {tab === 'channels' && <ChannelsTab canManage={canManage} />}
       {tab === 'pipelines' && <PipelinesTab canManage={canManage} />}
       {tab === 'tags' && <TagsTab canManage={canManage} />}
       {tab === 'temperatures' && <TemperaturesTab canManage={canManage} />}
