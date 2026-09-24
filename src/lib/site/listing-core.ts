@@ -55,6 +55,22 @@ export function effectivePrice(v: PriceLike, now = new Date()): { price: number 
   return { price: v.salePrice != null && v.salePrice > 0 ? v.salePrice : null, oldPrice: null }
 }
 
+export type PromoState = 'ATIVA' | 'AGENDADA' | 'ENCERRADA' | 'NENHUMA'
+
+/** Situação da promoção do carro (para o painel de Promoções). */
+export function promoState(v: PriceLike, now = new Date()): PromoState {
+  if (!v.isPromo || v.promoPrice == null || v.promoPrice <= 0) return 'NENHUMA'
+  if (v.promoEndsAt && v.promoEndsAt < now) return 'ENCERRADA'
+  if (v.promoStartsAt && v.promoStartsAt > now) return 'AGENDADA'
+  return 'ATIVA'
+}
+
+/** Desconto em % (inteiro) de "de" para "por"; null se não houver desconto. */
+export function discountPct(from: number | null, to: number | null): number | null {
+  if (from == null || to == null || from <= 0 || to >= from) return null
+  return Math.round(((from - to) / from) * 100)
+}
+
 export function money(value: number | null): string {
   if (value == null) return 'Consulte'
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value)

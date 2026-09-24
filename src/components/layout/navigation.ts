@@ -48,6 +48,7 @@ import {
   LayoutTemplate,
   Megaphone,
   Images,
+  BadgePercent,
   ScrollText,
   // Documentos
   FileSignature,
@@ -250,6 +251,7 @@ export const NAV_GROUPS: NavItem[] = [
     module: 'site',
     children: [
       { label: 'Anúncios',              href: '/site/anuncios',      icon: Megaphone, module: 'site' },
+      { label: 'Promoções',             href: '/site/promocoes',     icon: BadgePercent, module: 'site' },
       { label: 'Banners e depoimentos', href: '/site/banners',       icon: Images, module: 'site' },
       { label: 'Configurações do site', href: '/site/configuracoes', icon: Settings, module: 'site' },
     ],

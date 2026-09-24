@@ -10,7 +10,7 @@ import { forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/a
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
-import { effectivePrice, siteVehicleState, SITE_VISIBLE_STOCK, vehicleSlug, vehicleTitle } from '@/lib/site/listing-core'
+import { effectivePrice, promoState, siteVehicleState, SITE_VISIBLE_STOCK, vehicleSlug, vehicleTitle } from '@/lib/site/listing-core'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,10 +52,12 @@ export async function GET(req: Request) {
         : !r.active ? 'veículo inativo'
         : !r.stockStatus || !(SITE_VISIBLE_STOCK as readonly string[]).includes(r.stockStatus) ? `estoque: ${STOCK_LABEL[r.stockStatus ?? ''] ?? 'sem status'}` : null
       const t = { id: r.id, brand: r.brand, model: r.model, version: r.version, modelYear: r.modelYear, year: r.year }
-      const price = effectivePrice({ salePrice: r.salePrice == null ? null : Number(r.salePrice), promoPrice: r.promoPrice == null ? null : Number(r.promoPrice), isPromo: r.isPromo, promoStartsAt: r.promoStartsAt, promoEndsAt: r.promoEndsAt })
+      const pl = { salePrice: r.salePrice == null ? null : Number(r.salePrice), promoPrice: r.promoPrice == null ? null : Number(r.promoPrice), isPromo: r.isPromo, promoStartsAt: r.promoStartsAt, promoEndsAt: r.promoEndsAt }
+      const price = effectivePrice(pl)
       return {
         id: r.id, title: vehicleTitle(t), slug: vehicleSlug(t), plate: r.plate, year: r.year, modelYear: r.modelYear, km: r.km,
         cover: r.mainPhotoUrl || r.photos[0]?.url || null, photos: r._count.photos, state, why, ...price,
+        promo: { state: promoState(pl), salePrice: pl.salePrice, promoPrice: pl.promoPrice, startsAt: r.promoStartsAt, endsAt: r.promoEndsAt },
         listing: {
           featured: r.siteListing?.featured ?? false, hidden: r.siteListing?.hidden ?? false,
           title: r.siteListing?.title ?? '', description: r.siteListing?.description ?? '',

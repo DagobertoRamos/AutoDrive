@@ -163,6 +163,19 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Para ativar promoção, informe um preço promocional.' }, { status: 400 })
     }
 
+    // Promoção coerente: menor que o preço de venda e com fim depois do início.
+    const finalSale  = salePrice  !== undefined ? salePrice  : decToNum(ex.salePrice)
+    const finalPromo = promoPrice !== undefined ? promoPrice : decToNum(ex.promoPrice)
+    const finalIsPromo = isPromo !== undefined ? isPromo : !!ex.isPromo
+    if (finalIsPromo && finalPromo != null && finalSale != null && finalPromo >= finalSale) {
+      return NextResponse.json({ success: false, error: 'O preço promocional precisa ser menor que o preço de venda.' }, { status: 400 })
+    }
+    const finalStart = promoStartsAt !== undefined ? promoStartsAt : ex.promoStartsAt as Date | null
+    const finalEnd   = promoEndsAt   !== undefined ? promoEndsAt   : ex.promoEndsAt as Date | null
+    if (finalIsPromo && finalStart && finalEnd && finalEnd <= finalStart) {
+      return NextResponse.json({ success: false, error: 'O fim da promoção precisa ser depois do início.' }, { status: 400 })
+    }
+
     // ── Monta diff de campos alterados ──────────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: any = {

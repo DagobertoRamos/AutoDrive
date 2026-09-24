@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { siteVehicleState, vehicleSlug, vehicleIdFromSlug, effectivePrice, money, vehicleTitle } from './listing-core'
+import { siteVehicleState, vehicleSlug, vehicleIdFromSlug, effectivePrice, money, vehicleTitle, promoState, discountPct } from './listing-core'
 
 describe('regra de publicação', () => {
   const on = { active: true, stockStatus: 'DISPONIVEL' }
@@ -51,5 +51,18 @@ describe('preço', () => {
   it('formatação', () => {
     expect(money(null)).toBe('Consulte')
     expect(money(89900).replace(/\s/g, ' ')).toBe('R$ 89.900')
+  })
+
+  it('situação da promoção e desconto', () => {
+    const now = new Date('2026-09-24T12:00:00Z')
+    const p = { salePrice: 100000, promoPrice: 90000, isPromo: true, promoStartsAt: null, promoEndsAt: null }
+    expect(promoState(p, now)).toBe('ATIVA')
+    expect(promoState({ ...p, promoStartsAt: new Date('2026-10-01') }, now)).toBe('AGENDADA')
+    expect(promoState({ ...p, promoEndsAt: new Date('2026-09-01') }, now)).toBe('ENCERRADA')
+    expect(promoState({ ...p, isPromo: false }, now)).toBe('NENHUMA')
+    expect(promoState({ ...p, promoPrice: null }, now)).toBe('NENHUMA')
+    expect(discountPct(100000, 90000)).toBe(10)
+    expect(discountPct(100000, 100000)).toBeNull()
+    expect(discountPct(null, 90000)).toBeNull()
   })
 })
