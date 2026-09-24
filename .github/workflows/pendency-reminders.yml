@@ -11,7 +11,7 @@
 #   na Vercel (Settings → Environment Variables → CRON_SECRET).
 # =============================================================================
 
-name: Pendências: lembretes e arquivo automático
+name: "Pendências: lembretes e arquivo automático"
 
 on:
   schedule:
