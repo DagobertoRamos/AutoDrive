@@ -6,10 +6,14 @@
 // =============================================================================
 
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
+import { permanentRedirect } from 'next/navigation'
 import { MessageCircle } from 'lucide-react'
 import { SiteHeader } from '@/components/site/SiteHeader'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { darken, getSiteContext } from '@/lib/site/context'
+import { primaryDomain } from '@/lib/site/domains-core'
+import { normalizeHost, SITE_HOST_HEADER, SITE_PATH_HEADER } from '@/lib/site/host'
 import './site.css'
 import './site-extra.css'
 
@@ -24,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ site: str
     title: { absolute: seo.title, template: `%s | ${identity.name}` },
     description: seo.description,
     robots: { index: true, follow: true },
-    icons: identity.logoUrl ? { icon: identity.logoUrl } : undefined,
+    icons: identity.faviconUrl || identity.logoUrl ? { icon: identity.faviconUrl || identity.logoUrl } : undefined,
     openGraph: { title: seo.title, description: seo.description, siteName: identity.name, type: 'website' },
   }
 }
@@ -33,6 +37,14 @@ export default async function SiteLayout({ children, params }: { children: React
   const { site } = await params
   const ctx = await getSiteContext(site)
   const { identity, contact } = ctx.config
+  // Domínio próprio que não é o principal (ex.: sem www) → redireciona 308.
+  const h = await headers()
+  const primary = primaryDomain(ctx.config.domains)
+  const host = normalizeHost(h.get('host'))
+  if (h.get(SITE_HOST_HEADER) === '1' && (primary?.status === 'CONNECTED' || primary?.status === 'DNS_OK') && host !== primary.host && ctx.config.domains.some((d) => d.host === host)) {
+    const path = h.get(SITE_PATH_HEADER) ?? '/'
+    permanentRedirect(`https://${primary.host}${path.startsWith('/') ? path : '/'}`)
+  }
   const wa = ctx.whatsapp()
   const vars = {
     '--brand': identity.primaryColor, '--brand-hover': darken(identity.primaryColor), '--brand-bright': identity.primaryColor,

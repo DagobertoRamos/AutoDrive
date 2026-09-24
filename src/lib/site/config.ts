@@ -41,7 +41,7 @@ export async function saveSiteConfig(tenantId: string, input: unknown, userId: s
   const cfg = sanitizeSiteConfig(input, t?.nomeFantasia || t?.name || '')
   if (!cfg.slug) throw new SiteConfigError('Escolha um endereço (subdomínio) válido: letras, números e hífen.')
 
-  const wanted = [slugKey(cfg.slug), ...cfg.domains.map((d) => hostKey(d))]
+  const wanted = [slugKey(cfg.slug), ...cfg.domains.map((d) => hostKey(d.host))]
   const taken = await prisma.systemSetting.findMany({ where: { key: { in: wanted } }, select: { key: true, value: true } })
   const conflict = taken.find((r) => r.value !== tenantId)
   if (conflict) {

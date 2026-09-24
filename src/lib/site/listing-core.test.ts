@@ -3,20 +3,19 @@ import { siteVehicleState, vehicleSlug, vehicleIdFromSlug, effectivePrice, money
 
 describe('regra de publicação', () => {
   const on = { active: true, stockStatus: 'DISPONIVEL' }
-  it('disponível sem fotos tratadas → Em breve', () => {
-    expect(siteVehicleState(on, null)).toBe('EM_BREVE')
-    expect(siteVehicleState(on, { photosStatus: 'ORIGEM', hidden: false })).toBe('EM_BREVE')
-    expect(siteVehicleState(on, { photosStatus: 'EM_TRATAMENTO', hidden: false })).toBe('EM_BREVE')
+  it('disponível sem fotos → Em breve', () => {
+    expect(siteVehicleState(on, null, 0)).toBe('EM_BREVE')
+    expect(siteVehicleState(on, { photosStatus: 'TRATADA', hidden: false }, 0)).toBe('EM_BREVE')
   })
-  it('fotos tratadas → Publicado', () => {
-    expect(siteVehicleState(on, { photosStatus: 'TRATADA', hidden: false })).toBe('PUBLICADO')
-    expect(siteVehicleState({ active: true, stockStatus: 'EM_PROMOCAO' }, { photosStatus: 'TRATADA', hidden: false })).toBe('PUBLICADO')
+  it('com fotos → Publicado', () => {
+    expect(siteVehicleState(on, null, 3)).toBe('PUBLICADO')
+    expect(siteVehicleState({ active: true, stockStatus: 'EM_PROMOCAO' }, { photosStatus: 'ORIGEM', hidden: false }, 1)).toBe('PUBLICADO')
   })
   it('fora do site: vendido, reservado, inativo, sem status ou escondido', () => {
-    for (const s of ['VENDIDO', 'RESERVADO', 'BLOQUEADO', 'EM_NEGOCIACAO']) expect(siteVehicleState({ active: true, stockStatus: s }, null)).toBe('HIDDEN')
-    expect(siteVehicleState({ active: false, stockStatus: 'DISPONIVEL' }, null)).toBe('HIDDEN')
-    expect(siteVehicleState({ active: true, stockStatus: null }, null)).toBe('HIDDEN')
-    expect(siteVehicleState(on, { photosStatus: 'TRATADA', hidden: true })).toBe('HIDDEN')
+    for (const s of ['VENDIDO', 'RESERVADO', 'BLOQUEADO', 'EM_NEGOCIACAO']) expect(siteVehicleState({ active: true, stockStatus: s }, null, 5)).toBe('HIDDEN')
+    expect(siteVehicleState({ active: false, stockStatus: 'DISPONIVEL' }, null, 5)).toBe('HIDDEN')
+    expect(siteVehicleState({ active: true, stockStatus: null }, null, 5)).toBe('HIDDEN')
+    expect(siteVehicleState(on, { photosStatus: 'ORIGEM', hidden: true }, 5)).toBe('HIDDEN')
   })
 })
 

@@ -11,6 +11,8 @@
 
 /** Header que o proxy põe na requisição reescrita (links do site sem /s/<key>). */
 export const SITE_HOST_HEADER = 'x-autodrive-site-host'
+/** Caminho original (com query) da requisição reescrita — p/ redirecionar ao domínio principal. */
+export const SITE_PATH_HEADER = 'x-autodrive-site-path'
 
 export type SiteHostMatch =
   | { kind: 'app' }

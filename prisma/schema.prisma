@@ -868,6 +868,26 @@ model SiteListing {
   @@map("site_listings")
 }
 
+// ── Site da loja: arquivos (logo, favicon, imagens) ───────────────────────────
+// Guardados no banco (funciona em serverless e no desenvolvimento local, sem
+// storage externo). Só PNG/JPEG/WebP (SVG é convertido para PNG no navegador:
+// servir SVG do nosso domínio permitiria script). Imutável: trocar = novo id.
+model SiteAsset {
+  id        String   @id @default(cuid())
+  tenantId  String
+  kind      String // LOGO | LOGO_LIGHT | FAVICON | IMAGE
+  mimeType  String
+  fileSize  Int
+  width     Int?
+  height    Int?
+  sha256    String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, kind])
+  @@map("site_assets")
+}
+
 // ── Histórico de precificação de venda ────────────────────────────────────────
 
 model VehiclePricingHistory {

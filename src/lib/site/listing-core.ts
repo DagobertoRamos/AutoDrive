@@ -2,8 +2,9 @@
 // Site da loja — regra de publicação do estoque. PURO (testado).
 //   • Carro ATIVO e com status de estoque visível (Disponível / Em promoção)
 //     entra no site automaticamente como "Em breve" (sem fotos).
-//   • Quando as fotos tratadas chegam (photosStatus = TRATADA), vira
-//     "Publicado", com as fotos.
+//   • Quando o carro ganha fotos (painel de fotos do estoque), vira
+//     "Publicado". O fluxo de fotos TRATADAS (estúdio) é opcional, por loja,
+//     e ainda não está ligado.
 //   • Vendido, reservado, bloqueado etc. ou tirado manualmente (hidden) → fora.
 // =============================================================================
 
@@ -17,10 +18,10 @@ export type PhotoStatus = (typeof PHOTO_STATUSES)[number]
 export interface ListingLike { photosStatus: string; hidden: boolean }
 export interface StockLike { active: boolean; stockStatus: string | null }
 
-export function siteVehicleState(v: StockLike, listing: ListingLike | null | undefined): SiteVehicleState {
+export function siteVehicleState(v: StockLike, listing: ListingLike | null | undefined, photoCount: number): SiteVehicleState {
   if (!v.active || !v.stockStatus || !(SITE_VISIBLE_STOCK as readonly string[]).includes(v.stockStatus)) return 'HIDDEN'
   if (listing?.hidden) return 'HIDDEN'
-  return listing?.photosStatus === 'TRATADA' ? 'PUBLICADO' : 'EM_BREVE'
+  return photoCount > 0 ? 'PUBLICADO' : 'EM_BREVE'
 }
 
 export interface TitleLike { id: string; brand: string | null; model: string | null; version: string | null; modelYear: number | null; year: number | null }

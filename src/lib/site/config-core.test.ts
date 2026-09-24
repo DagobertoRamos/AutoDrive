@@ -18,7 +18,7 @@ describe('config do site', () => {
       services: { estoque: false, sobre: false, atacado: true },
     }, 'Loja')
     expect(c.slug).toBe('minha-loja')
-    expect(c.domains).toEqual(['www.loja.com.br'])
+    expect(c.domains.map((d) => d.host)).toEqual(['www.loja.com.br'])
     expect(c.identity.primaryColor).toBe('#079ca6')
     expect(c.identity.logoUrl).toBe('')
     expect(c.contact.whatsapp).toBe('11934718276')

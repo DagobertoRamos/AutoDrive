@@ -9,9 +9,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { ExternalLink, Globe, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SiteConfig } from '@/lib/site/config-core'
+import { BrandingSection } from './BrandingSection'
+import { DomainsSection } from './DomainsSection'
 
 interface ServiceDef { key: string; label: string; locked: boolean; available: boolean; hint: string }
-interface Payload { config: SiteConfig; services: ServiceDef[]; stats: { total: number; published: number; comingSoon: number }; canManage: boolean; siteBaseDomain: string | null }
+interface Payload { config: SiteConfig; services: ServiceDef[]; stats: { total: number; published: number; comingSoon: number }; canManage: boolean; siteBaseDomain: string | null; hostingIntegration: boolean }
 
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50'
 const label = 'mb-1 block text-xs font-medium text-gray-600'
@@ -75,38 +77,31 @@ export default function SiteConfigPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        {[['Carros no site', data.stats.total], ['Publicados (fotos tratadas)', data.stats.published], ['Em breve (aguardando fotos)', data.stats.comingSoon]].map(([l, v]) => (
+        {[['Carros no site', data.stats.total], ['Publicados (com fotos)', data.stats.published], ['Em breve (aguardando fotos)', data.stats.comingSoon]].map(([l, v]) => (
           <div key={l as string} className="rounded-xl border border-gray-200 bg-white p-4 shadow-card"><p className="text-xs text-gray-500">{l}</p><p className="text-2xl font-bold tabular-nums text-gray-900">{v}</p></div>
         ))}
       </div>
 
-      <Section title="Publicação e endereço" hint="Todo carro Disponível no estoque aparece no site como “Em breve”; quando as fotos tratadas chegam, ele é publicado com fotos.">
+      <Section title="Publicação e endereço" hint="Todo carro Disponível no estoque aparece no site como “Em breve”; quando ganha fotos no estoque, é publicado automaticamente.">
         <label className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-800">
           <input type="checkbox" disabled={dis} checked={cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
           Site no ar
         </label>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field l="Endereço (subdomínio)">
+          <Field l="Endereço grátis da loja (subdomínio)">
             <div className="flex items-center gap-1">
               <input disabled={dis} className={input} value={cfg.slug} onChange={(e) => set({ slug: e.target.value.toLowerCase() })} />
               {data.siteBaseDomain && <span className="whitespace-nowrap text-xs text-gray-500">.{data.siteBaseDomain}</span>}
             </div>
             <span className="mt-1 block text-[11px] text-gray-400">{publicUrl ? `Endereço público: ${publicUrl}` : `Teste agora em ${previewUrl} (o subdomínio público é ativado na publicação).`}</span>
           </Field>
-          <Field l="Domínios próprios (opcional)">
-            <div className="space-y-1.5">
-              {cfg.domains.map((d, i) => (
-                <div key={i} className="flex gap-1">
-                  <input disabled={dis} className={input} value={d} onChange={(e) => set({ domains: cfg.domains.map((x, j) => j === i ? e.target.value : x) })} />
-                  {!dis && <button onClick={() => set({ domains: cfg.domains.filter((_, j) => j !== i) })} className="px-1 text-gray-400 hover:text-red-600" aria-label="Remover domínio"><Trash2 size={14} /></button>}
-                </div>
-              ))}
-              {!dis && cfg.domains.length < 5 && <button onClick={() => set({ domains: [...cfg.domains, ''] })} className="flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"><Plus size={12} />Adicionar domínio (ex.: www.sualoja.com.br)</button>}
-              <span className="block text-[11px] text-gray-400">Depois de salvar, aponte o DNS do domínio para a AutoDrive (o suporte orienta).</span>
-            </div>
-          </Field>
         </div>
       </Section>
+
+      <DomainsSection domains={cfg.domains} slug={cfg.slug} siteBaseDomain={data.siteBaseDomain} hostingIntegration={data.hostingIntegration} canManage={data.canManage}
+        onChange={(domains) => setCfg({ ...cfg, domains })} />
+
+      <BrandingSection identity={cfg.identity} canManage={data.canManage} onApply={(patch) => setIn('identity', patch)} />
 
       <Section title="Serviços do site" hint="Os padrões já vêm ligados. Os demais você ativa quando quiser.">
         <div className="grid gap-2 md:grid-cols-2">
@@ -120,14 +115,10 @@ export default function SiteConfigPage() {
         </div>
       </Section>
 
-      <Section title="Identidade">
+      <Section title="Nome e frase">
         <div className="grid gap-3 md:grid-cols-2">
           <Field l="Nome da loja no site"><input disabled={dis} className={input} value={cfg.identity.name} onChange={(e) => setIn('identity', { name: e.target.value })} /></Field>
           <Field l="Frase curta (rodapé)"><input disabled={dis} className={input} value={cfg.identity.tagline} onChange={(e) => setIn('identity', { tagline: e.target.value })} /></Field>
-          <Field l="Logo (URL da imagem)"><input disabled={dis} className={input} placeholder="https://..." value={cfg.identity.logoUrl} onChange={(e) => setIn('identity', { logoUrl: e.target.value })} /></Field>
-          <Field l="Logo do rodapé (URL, opcional — fundo escuro)"><input disabled={dis} className={input} placeholder="https://..." value={cfg.identity.footerLogoUrl} onChange={(e) => setIn('identity', { footerLogoUrl: e.target.value })} /></Field>
-          <Field l="Cor principal"><input type="color" disabled={dis} className="h-10 w-20 rounded border border-gray-200" value={cfg.identity.primaryColor} onChange={(e) => setIn('identity', { primaryColor: e.target.value })} /></Field>
-          <Field l="Cor escura (rodapé, faixas)"><input type="color" disabled={dis} className="h-10 w-20 rounded border border-gray-200" value={cfg.identity.darkColor} onChange={(e) => setIn('identity', { darkColor: e.target.value })} /></Field>
         </div>
       </Section>
 

@@ -19,7 +19,7 @@ async function vitrine(tenantId: string) {
   const where = { tenantId, active: true, stockStatus: { in: [...SITE_VISIBLE_STOCK] } }
   const [total, published] = await Promise.all([
     prisma.vehicle.count({ where: { ...where, OR: [{ siteListing: { is: null } }, { siteListing: { is: { hidden: false } } }] } }),
-    prisma.vehicle.count({ where: { ...where, siteListing: { is: { hidden: false, photosStatus: 'TRATADA' } } } }),
+    prisma.vehicle.count({ where: { ...where, photos: { some: {} }, OR: [{ siteListing: { is: null } }, { siteListing: { is: { hidden: false } } }] } }),
   ]).catch(() => [0, 0])
   return { total, published, comingSoon: total - published }
 }
@@ -37,6 +37,7 @@ export async function GET(req: Request) {
       config, services: SITE_SERVICES, stats,
       canManage: await canAccessModuleForUser(user, 'site.manage'),
       siteBaseDomain: process.env.SITE_BASE_DOMAIN || null,
+      hostingIntegration: Boolean(process.env.VERCEL_API_TOKEN && process.env.VERCEL_PROJECT_ID),
     },
   })
 }
@@ -49,7 +50,9 @@ export async function PUT(req: Request) {
   if (!tenantId) return forbiddenResponse(actingTenantError(user))
   try {
     const before = await loadSiteConfig(tenantId)
-    const saved = await saveSiteConfig(tenantId, await req.json().catch(() => ({})), user.id)
+    // Domínios têm rotas próprias (status verificado): o salvar geral não os sobrescreve.
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>
+    const saved = await saveSiteConfig(tenantId, { ...body, domains: before.domains }, user.id)
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'UPDATE', entity: 'SiteConfig', entityId: tenantId, userName: user.name, userRole: user.role, beforeData: before, afterData: saved })
     return NextResponse.json({ success: true, data: saved })
   } catch (err) {

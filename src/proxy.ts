@@ -28,7 +28,7 @@
 import { getToken } from 'next-auth/jwt'
 import { NextResponse, type NextRequest } from 'next/server'
 import { decideRouteAccess, LOGIN_ROUTE, SESSION_ERROR_CODE } from '@/lib/auth-session'
-import { resolveSiteHost, SITE_HOST_HEADER } from '@/lib/site/host'
+import { resolveSiteHost, SITE_HOST_HEADER, SITE_PATH_HEADER } from '@/lib/site/host'
 
 /** Cookies de sessão do NextAuth (com e sem prefixo seguro, incluindo chunks). */
 const SESSION_COOKIE_NAMES = [
@@ -88,6 +88,7 @@ export default async function middleware(req: NextRequest) {
     url.pathname = `/s/${encodeURIComponent(siteMatch.key)}${pathname === '/' ? '' : pathname}`
     const headers = new Headers(req.headers)
     headers.set(SITE_HOST_HEADER, '1')
+    headers.set(SITE_PATH_HEADER, `${pathname}${req.nextUrl.search}`)
     return NextResponse.rewrite(url, { request: { headers } })
   }
 

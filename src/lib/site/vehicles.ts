@@ -1,7 +1,7 @@
 // =============================================================================
 // Site da loja — vitrine (consultas). Só veículos visíveis pela regra de
 // publicação (listing-core): ativos + Disponível/Em promoção + não escondidos.
-// Publicados (fotos tratadas) primeiro, destaques na frente; "Em breve" no fim.
+// Publicados (com fotos) primeiro, destaques na frente; "Em breve" no fim.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client'
@@ -43,10 +43,9 @@ const num = (d: Prisma.Decimal | null) => (d == null ? null : Number(d))
 
 function toSiteVehicle(r: Row): SiteVehicle {
   const l = r.siteListing
-  const state = siteVehicleState({ active: r.active, stockStatus: r.stockStatus }, l)
+  const state = siteVehicleState({ active: r.active, stockStatus: r.stockStatus }, l, r.photos.length)
   const { price, oldPrice } = effectivePrice({ salePrice: num(r.salePrice), promoPrice: num(r.promoPrice), isPromo: r.isPromo, promoStartsAt: r.promoStartsAt, promoEndsAt: r.promoEndsAt })
-  // Fotos só aparecem depois de tratadas (regra do "Em breve").
-  const photos = state === 'PUBLICADO' ? r.photos.map((p) => p.url) : []
+  const photos = r.photos.map((p) => p.url)
   const options = Array.isArray(l?.options) ? (l!.options as unknown[]).filter((x): x is string => typeof x === 'string') : []
   const t = { id: r.id, brand: r.brand, model: r.model, version: r.version, modelYear: r.modelYear, year: r.year }
   return {

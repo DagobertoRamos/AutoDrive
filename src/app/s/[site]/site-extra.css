@@ -12,3 +12,17 @@
 /* Consentimento: checkbox à esquerda, texto corrido ao lado. */
 .autodrive-site .consent { display: flex !important; align-items: flex-start; gap: 8px; font-weight: 400; }
 .autodrive-site .consent input[type=checkbox] { width: auto; flex: 0 0 auto; margin-top: 3px; }
+/* Tons escuros fixos do tema original → cor escura da loja (Marca → Cor escura). */
+.autodrive-site .home-hero,
+.autodrive-site .home-partner-band,
+.autodrive-site .contact-band,
+.autodrive-site .notice,
+.autodrive-site .detail-notice,
+.autodrive-site .site-footer { background: var(--blue-dark); }
+.autodrive-site .button-dark,
+.autodrive-site .vcard-more,
+.autodrive-site .vcard-badge.dark,
+.autodrive-site .journey-icon,
+.autodrive-site .vlead-vehicle { background: var(--blue-dark); }
+.autodrive-site .button-dark:hover { background: var(--brand-hover); }
+.autodrive-site .vcard-price strong { box-shadow: none; }

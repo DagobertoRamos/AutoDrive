@@ -5,7 +5,9 @@
 // demais serviços são opcionais e ativados no painel do Site.
 // =============================================================================
 
-import { normalizeHost } from './host'
+import { sanitizeDomains, type SiteDomain } from './domains-core'
+
+export type { SiteDomain }
 
 export const SITE_SERVICES = [
   { key: 'estoque', label: 'Estoque', path: '/veiculos', default: true, locked: true, available: true, hint: 'Vitrine com todos os carros disponíveis do estoque.' },
@@ -25,8 +27,8 @@ export type SiteServiceKey = (typeof SITE_SERVICES)[number]['key']
 export interface SiteConfig {
   enabled: boolean
   slug: string
-  domains: string[]
-  identity: { name: string; tagline: string; logoUrl: string; footerLogoUrl: string; primaryColor: string; darkColor: string }
+  domains: SiteDomain[]
+  identity: { name: string; tagline: string; logoUrl: string; footerLogoUrl: string; faviconUrl: string; primaryColor: string; darkColor: string }
   contact: {
     whatsapp: string; phone: string; email: string
     addressLine1: string; addressLine2: string; mapsUrl: string; wazeUrl: string; mapsEmbedUrl: string; hours: string
@@ -61,7 +63,7 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
     enabled: false,
     slug: slugify(name),
     domains: [],
-    identity: { name, tagline: 'Seminovos com procedência e atendimento de verdade.', logoUrl: '', footerLogoUrl: '', primaryColor: '#079ca6', darkColor: '#061b29' },
+    identity: { name, tagline: 'Seminovos com procedência e atendimento de verdade.', logoUrl: '', footerLogoUrl: '', faviconUrl: '', primaryColor: '#079ca6', darkColor: '#061b29' },
     contact: { whatsapp: '', phone: '', email: '', addressLine1: '', addressLine2: '', mapsUrl: '', wazeUrl: '', mapsEmbedUrl: '', hours: '' },
     home: {
       heroEyebrow: 'Seu próximo carro está aqui',
@@ -113,11 +115,11 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
   return {
     enabled: Boolean(b.enabled ?? d.enabled),
     slug: isValidSiteSlug(slug) ? slug : (isValidSiteSlug(d.slug) ? d.slug : ''),
-    domains: [...new Set(strList(b.domains, 5, 120).map(normalizeHost).filter((h) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h)))],
+    domains: sanitizeDomains(b.domains),
     identity: {
       name: str(id.name, 80) || d.identity.name,
       tagline: str(id.tagline, 160),
-      logoUrl: url(id.logoUrl), footerLogoUrl: url(id.footerLogoUrl),
+      logoUrl: url(id.logoUrl), footerLogoUrl: url(id.footerLogoUrl), faviconUrl: url(id.faviconUrl),
       primaryColor: HEX.test(str(id.primaryColor)) ? str(id.primaryColor) : d.identity.primaryColor,
       darkColor: HEX.test(str(id.darkColor)) ? str(id.darkColor) : d.identity.darkColor,
     },
