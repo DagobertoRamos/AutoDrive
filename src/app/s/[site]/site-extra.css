@@ -42,20 +42,32 @@
   .autodrive-site .site-footer .footer-grid a { display: flex; align-items: center; min-height: 40px; }
 }
 
-/* Topo: todos os itens do menu do lojista visíveis. Muitos itens → letra e
-   espaçamento menores; se ainda não couber, o menu do celular entra antes. */
+/* Topo: todos os itens do menu do lojista visíveis no computador e no tablet.
+   Muitos itens → letra e espaçamento menores; se ainda não couber numa linha,
+   o menu desce para uma segunda linha inteira (logo + WhatsApp em cima). O menu
+   do celular (☰) só entra no celular. */
 .autodrive-site .nav-dense .desktop-nav { gap: 12px; }
 .autodrive-site .nav-dense .desktop-nav a { font-size: .86rem; }
 .autodrive-site .nav-dense .brand img { width: 150px; }
 .autodrive-site .nav-xdense .desktop-nav { gap: 10px; }
 .autodrive-site .nav-xdense .desktop-nav a { font-size: .8rem; }
-@media (max-width: 1360px) {
-  .autodrive-site .nav-dense .desktop-nav, .autodrive-site .nav-dense .header-cta { display: none; }
-  .autodrive-site .nav-dense .mobile-menu { display: block; }
+@media (min-width: 761px) {
+  .autodrive-site .site-header .desktop-nav { display: flex; }
+  .autodrive-site .site-header .header-actions { display: flex; margin-left: auto; }
+  .autodrive-site .site-header .mobile-menu { display: none; }
 }
-@media (max-width: 1500px) {
-  .autodrive-site .nav-xdense .desktop-nav, .autodrive-site .nav-xdense .header-cta { display: none; }
-  .autodrive-site .nav-xdense .mobile-menu { display: block; }
+@media (min-width: 761px) and (max-width: 1360px) {
+  .autodrive-site .nav-dense .header-inner { flex-wrap: wrap; row-gap: 8px; }
+  .autodrive-site .nav-dense .desktop-nav { order: 3; flex: 1 0 100%; flex-wrap: wrap; justify-content: center; margin-left: 0; gap: 2px; }
+}
+@media (min-width: 761px) and (max-width: 1500px) {
+  .autodrive-site .nav-xdense .header-inner { flex-wrap: wrap; row-gap: 8px; }
+  .autodrive-site .nav-xdense .desktop-nav { order: 3; flex: 1 0 100%; flex-wrap: wrap; justify-content: center; margin-left: 0; gap: 2px; }
+}
+/* Tela média sem muitos itens: menu fica na linha do logo e só desce se não couber. */
+@media (min-width: 761px) and (max-width: 1279px) {
+  .autodrive-site .site-header:not(.nav-dense) .header-inner { flex-wrap: wrap; row-gap: 8px; }
+  .autodrive-site .site-header:not(.nav-dense) .desktop-nav { order: 3; flex: 1 0 100%; flex-wrap: wrap; justify-content: center; margin-left: 0; }
 }
 /* Faixa de pré-visualização (rascunho aberto pelo painel). */
 .autodrive-site .preview-bar { position: sticky; top: 0; z-index: 80; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 8px 16px; background: #f59e0b; color: #1f1300; font-size: .88rem; font-weight: 700; }
