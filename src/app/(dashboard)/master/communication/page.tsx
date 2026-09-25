@@ -415,7 +415,12 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
           </div>
           <div>
             <label className={labelCls}>Porta</label>
-            <input type="number" className={inputCls} value={form.smtpPort ?? 587} onChange={e => up('smtpPort', Number(e.target.value))} />
+            <input type="number" className={inputCls} value={form.smtpPort ?? 587} onChange={e => {
+              const port = Number(e.target.value)
+              up('smtpPort', port)
+              if (port === 465) up('smtpSecure', true)
+              else if (port === 587 || port === 25) up('smtpSecure', false)
+            }} />
           </div>
           <div className="col-span-2">
             <label className={labelCls}>Usuário SMTP *</label>
@@ -423,7 +428,12 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
           </div>
           <div>
             <label className={labelCls}>TLS/SSL</label>
-            <select className={inputCls} value={form.smtpSecure ? 'true' : 'false'} onChange={e => up('smtpSecure', e.target.value === 'true')}>
+            <select className={inputCls} value={form.smtpSecure ? 'true' : 'false'} onChange={e => {
+              const secure = e.target.value === 'true'
+              up('smtpSecure', secure)
+              if (secure && form.smtpPort === 587) up('smtpPort', 465)
+              else if (!secure && form.smtpPort === 465) up('smtpPort', 587)
+            }}>
               <option value="false">STARTTLS</option>
               <option value="true">SSL/TLS</option>
             </select>

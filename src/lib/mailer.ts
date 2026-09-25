@@ -185,10 +185,14 @@ function buildTransporter(cfg: ResolvedConfig): Transporter {
       })
 
     default: // smtp
+      // A porta manda no modo: 465 é SSL/TLS implícito; 587/25 usam STARTTLS.
+      // Com a combinação errada o servidor nunca responde ("Greeting never received").
       return nodemailer.createTransport({
-        host:   cfg.smtpHost,
+        host:   cfg.smtpHost?.trim(),
         port:   cfg.smtpPort,
-        secure: cfg.smtpSecure,
+        secure: cfg.smtpPort === 465 ? true : cfg.smtpPort === 587 || cfg.smtpPort === 25 ? false : cfg.smtpSecure,
+        connectionTimeout: 15_000,
+        greetingTimeout:   15_000,
         auth:   cfg.smtpUser ? { user: cfg.smtpUser, pass: cfg.smtpPass } : undefined,
         tls:    { rejectUnauthorized: false },
       })
