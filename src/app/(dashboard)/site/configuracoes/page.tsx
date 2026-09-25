@@ -6,12 +6,13 @@
 // =============================================================================
 
 import { useCallback, useEffect, useState } from 'react'
-import { ExternalLink, Globe, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { Eye, ExternalLink, Globe, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SiteConfig } from '@/lib/site/config-core'
 import { cleanGoogleTagId, cleanMetaPixelId } from '@/lib/site/tracking-core'
 import { BrandingSection } from './BrandingSection'
 import { DomainsSection } from './DomainsSection'
+import { LayoutSection } from './LayoutSection'
 
 interface ServiceDef { key: string; label: string; locked: boolean; available: boolean; hint: string }
 interface Payload { config: SiteConfig; services: ServiceDef[]; stats: { total: number; published: number; comingSoon: number }; canManage: boolean; siteBaseDomain: string | null; hostingIntegration: boolean }
@@ -41,6 +42,7 @@ export default function SiteConfigPage() {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [previewing, setPreviewing] = useState(false)
 
   const apply = useCallback((j: { data?: Payload } | null) => {
     if (j?.data) { setData(j.data); setCfg(j.data.config); setDirty(false) }
@@ -65,6 +67,20 @@ export default function SiteConfigPage() {
       if (!r.ok) { setMsg({ ok: false, text: j?.error ?? 'Falha ao salvar.' }); return }
       await load(); setMsg({ ok: true, text: 'Site salvo.' })
     } catch { setMsg({ ok: false, text: 'Erro de rede.' }) } finally { setSaving(false) }
+  }
+
+  // Pré-visualizar: manda o rascunho e abre o site com ele (sem salvar). A janela
+  // abre antes do fetch para o navegador não bloquear como pop-up.
+  const preview = async () => {
+    const w = window.open('about:blank', 'site-preview')
+    setPreviewing(true); setMsg(null)
+    try {
+      const r = await fetch('/api/site-admin/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...cfg, banners: undefined, testimonials: undefined, catalog: undefined, emails: undefined }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { w?.close(); setMsg({ ok: false, text: j?.error ?? 'Não foi possível pré-visualizar.' }); return }
+      if (w) w.location.href = j.url; else window.open(j.url, 'site-preview')
+      setMsg({ ok: true, text: 'Pré-visualização aberta em outra aba. Nada foi salvo ainda.' })
+    } catch { w?.close(); setMsg({ ok: false, text: 'Erro de rede.' }) } finally { setPreviewing(false) }
   }
 
   const previewUrl = `/s/${cfg.slug}`
@@ -121,6 +137,8 @@ export default function SiteConfigPage() {
           ))}
         </div>
       </Section>
+
+      <LayoutSection cfg={cfg} dis={dis} onChange={set} />
 
       <Section title="Nome e frase">
         <div className="grid gap-3 md:grid-cols-2">
@@ -240,6 +258,7 @@ export default function SiteConfigPage() {
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur lg:left-64 pr-24">
           <div className="mx-auto flex max-w-5xl items-center justify-end gap-3">
             {msg && <span className={cn('text-sm', msg.ok ? 'text-green-600' : 'text-red-600')}>{msg.text}</span>}
+            <button onClick={() => void preview()} disabled={previewing} className="btn-secondary text-sm" title="Ver o site com as alterações, sem salvar"><Eye size={15} />{previewing ? 'Abrindo…' : 'Pré-visualizar'}</button>
             <button onClick={save} disabled={saving || !dirty} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando…' : 'Salvar site'}</button>
           </div>
         </div>

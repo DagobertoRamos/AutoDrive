@@ -42,12 +42,59 @@
   .autodrive-site .site-footer .footer-grid a { display: flex; align-items: center; min-height: 40px; }
 }
 
-/* Topo: botão "Mais" com os serviços que não couberam no menu. */
-.autodrive-site .nav-more { position: relative; }
-.autodrive-site .nav-more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: .92rem; }
-.autodrive-site .nav-more > summary::-webkit-details-marker { display: none; }
-.autodrive-site .nav-more > summary:hover { color: var(--blue); }
-.autodrive-site .nav-more[open] > summary svg { transform: rotate(180deg); }
-.autodrive-site .nav-more-list { position: absolute; right: 0; top: calc(100% + 10px); z-index: 60; display: grid; min-width: 200px; padding: 8px; border-radius: 14px; background: #fff; border: 1px solid rgba(15, 23, 42, .08); box-shadow: 0 18px 40px rgba(15, 23, 42, .14); }
-.autodrive-site .nav-more-list a { padding: 9px 12px; border-radius: 10px; }
-.autodrive-site .nav-more-list a:hover { background: rgba(15, 23, 42, .05); }
+/* Topo: todos os itens do menu do lojista visíveis. Muitos itens → letra e
+   espaçamento menores; se ainda não couber, o menu do celular entra antes. */
+.autodrive-site .nav-dense .desktop-nav { gap: 12px; }
+.autodrive-site .nav-dense .desktop-nav a { font-size: .86rem; }
+.autodrive-site .nav-dense .brand img { width: 150px; }
+.autodrive-site .nav-xdense .desktop-nav { gap: 10px; }
+.autodrive-site .nav-xdense .desktop-nav a { font-size: .8rem; }
+@media (max-width: 1360px) {
+  .autodrive-site .nav-dense .desktop-nav, .autodrive-site .nav-dense .header-cta { display: none; }
+  .autodrive-site .nav-dense .mobile-menu { display: block; }
+}
+@media (max-width: 1500px) {
+  .autodrive-site .nav-xdense .desktop-nav, .autodrive-site .nav-xdense .header-cta { display: none; }
+  .autodrive-site .nav-xdense .mobile-menu { display: block; }
+}
+/* Faixa de pré-visualização (rascunho aberto pelo painel). */
+.autodrive-site .preview-bar { position: sticky; top: 0; z-index: 80; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 8px 16px; background: #f59e0b; color: #1f1300; font-size: .88rem; font-weight: 700; }
+.autodrive-site .preview-bar button { border: 1px solid rgba(0,0,0,.25); background: rgba(255,255,255,.6); border-radius: 8px; padding: 3px 10px; font-weight: 700; cursor: pointer; }
+
+/* Blocos do modelo (faixa de contato em cartões, avisos do financiamento). Gerado do CSS do site modelo, com as cores da loja. */
+.autodrive-site .quick-row { align-items:center;display:flex }
+.autodrive-site .panel, .autodrive-site .cband { border:1px solid var(--line);border-radius:var(--radius);background:#fffffff5;box-shadow:0 12px 35px #1111110f }
+.autodrive-site .contact-card { background:#fffffff5;border:1px solid #07526021;border-radius:18px;align-items:center;gap:14px;min-width:0;min-height:108px;padding:18px;transition:transform .18s,border-color .18s,box-shadow .18s;display:flex;box-shadow:0 10px 24px #03243012 }
+.autodrive-site .contact-card:hover { border-color:var(--brand);transform:translateY(-3px);box-shadow:0 16px 34px #0324301f }
+.autodrive-site .contact-card-primary { background:linear-gradient(145deg,#ecfbfb,#fff) }
+.autodrive-site .contact-icon { color:#fff;background:linear-gradient(135deg,var(--brand),var(--blue));border-radius:14px;flex:0 0 46px;place-items:center;width:46px;height:46px;display:grid }
+.autodrive-site .contact-card span { min-width:0;color:var(--muted);font-size:.8rem;font-weight:800;display:grid }
+.autodrive-site .contact-card strong { overflow-wrap:anywhere;color:var(--ink);margin-top:3px;font-size:.93rem;line-height:1.3 }
+.autodrive-site .contact-card small { color:var(--muted);margin-top:5px;font-size:.74rem;font-weight:600;line-height:1.35 }
+.autodrive-site .cband { background:radial-gradient(circle at 6% 5%,#1dc1c826,#0000 36%),linear-gradient(135deg,#f7fbfc,#edf5f6);border:1px solid #0752601f;border-radius:24px;grid-template-columns:1.05fr repeat(3,1fr);gap:14px;padding:22px;display:grid;box-shadow:0 18px 44px #03243017 }
+.autodrive-site .cband h2 { margin:8px 0 6px;font-size:1.7rem;line-height:1.08 }
+.autodrive-site .contact-band-intro { align-self:center;padding:8px 10px 8px 4px }
+.autodrive-site .contact-band-intro p { color:var(--muted);margin:0;font-size:.92rem }
+.autodrive-site .contact-kicker { color:var(--blue);letter-spacing:.08em;text-transform:uppercase;font-size:.76rem;font-weight:900 }
+.autodrive-site .notice-box { border-radius:var(--radius);background:var(--soft);border:1px solid var(--line);gap:12px;padding:14px 16px;display:flex }
+.autodrive-site .notice-box p { color:var(--muted);margin:0 }
+@media (width<=920px) { .autodrive-site .partner-panel, .autodrive-site .split-grid, .autodrive-site .cband { grid-template-columns:1fr } }
+@media (width<=640px) { .autodrive-site .cband { padding:16px } }
+@media (width<=640px) { .autodrive-site .contact-card { min-height:96px } }
+
+/* Blocos da home: colunas conforme a quantidade de itens (só em tela larga). */
+@media (min-width: 1181px) {
+  .autodrive-site .home-journeys.jcols-1 { grid-template-columns: minmax(0, 420px); }
+  .autodrive-site .home-journeys.jcols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .autodrive-site .home-journeys.jcols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .autodrive-site .home-journeys.jcols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 921px) {
+  .autodrive-site .cband.ccols-1 { grid-template-columns: 1.05fr 1fr; }
+  .autodrive-site .cband.ccols-2 { grid-template-columns: 1.05fr repeat(2, 1fr); }
+  .autodrive-site .cband.ccols-3 { grid-template-columns: 1.05fr repeat(3, 1fr); }
+}
+.autodrive-site .cband { display: grid; gap: 14px; padding: 22px; }
+.autodrive-site .service-panels-single { grid-template-columns: 1fr; }
+.autodrive-site .service-panel .notice-box { margin-top: 12px; }
+.autodrive-site .service-panel .hero-actions { margin-top: 14px; flex-wrap: wrap; gap: 10px; }

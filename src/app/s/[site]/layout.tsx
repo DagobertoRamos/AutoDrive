@@ -10,6 +10,7 @@ import { headers } from 'next/headers'
 import { permanentRedirect } from 'next/navigation'
 import { MessageCircle } from 'lucide-react'
 import { SiteHeader } from '@/components/site/SiteHeader'
+import { SitePreviewBar } from '@/components/site/SitePreviewBar'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteTracking } from '@/components/site/SiteTracking'
 import { SiteAnalytics } from '@/components/site/SiteAnalytics'
@@ -66,7 +67,8 @@ export default async function SiteLayout({ children, params }: { children: React
     <div className="autodrive-site" style={vars}>
       {/* Marca a página como site público: o vigia de sessão do painel não age aqui. */}
       <script dangerouslySetInnerHTML={{ __html: 'window.__AUTODRIVE_PUBLIC_SITE__=true' }} />
-      <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} desktopNav={ctx.headerNav} moreNav={ctx.headerMore} whatsappHref={wa} phone={contact.phone} />
+      {ctx.preview && <SitePreviewBar />}
+      <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
       <main>{children}</main>
       <SiteFooter config={ctx.config} nav={ctx.nav} whatsappHref={wa} seoLinks={seoLinks} />
       {/* useSearchParams exige Suspense */}

@@ -72,7 +72,7 @@ export interface ResolvedSite { tenantId: string; config: SiteConfig }
  * Loja de um endereço: `key` é o slug (subdomínio / rota de teste /s/<slug>) ou
  * o host do domínio próprio. Só devolve sites LIGADOS.
  */
-export async function resolveSite(key: string): Promise<ResolvedSite | null> {
+export async function resolveSite(key: string, opts: { includeDisabled?: boolean } = {}): Promise<ResolvedSite | null> {
   const k = decodeURIComponent(key).toLowerCase()
   let tenantId: string | null = null
   if (k.includes('.')) {
@@ -86,5 +86,5 @@ export async function resolveSite(key: string): Promise<ResolvedSite | null> {
   }
   if (!tenantId) return null
   const config = await loadSiteConfig(tenantId)
-  return config.enabled ? { tenantId, config } : null
+  return config.enabled || opts.includeDisabled ? { tenantId, config } : null
 }

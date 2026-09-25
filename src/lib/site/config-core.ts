@@ -5,6 +5,7 @@
 // demais serviços são opcionais e ativados no painel do Site.
 // =============================================================================
 
+import { defaultHomeBlocks, defaultMenu, sanitizeHomeBlocks, sanitizeMenu, type HomeBlock, type SiteMenuItem } from './layout-core'
 import { primaryDomain, sanitizeDomains, type SiteDomain } from './domains-core'
 import { sanitizeTracking, type SiteTracking } from './tracking-core'
 import { sanitizeEmailSettings, type SiteEmailSettings } from './lead-email-core'
@@ -58,6 +59,10 @@ export interface SiteConfig {
   legalNote: string
   seo: { title: string; description: string }
   services: Record<SiteServiceKey, boolean>
+  /** Menu do topo organizado pelo lojista (ordem, nomes, links próprios). */
+  menu: SiteMenuItem[]
+  /** Blocos da página inicial (ordem, liga/desliga, textos). */
+  homeBlocks: HomeBlock[]
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
@@ -116,6 +121,8 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
     legalNote: 'Crédito sujeito à análise e aprovação das instituições financeiras. Imagens meramente ilustrativas.',
     seo: { title: `${name} — Seminovos`, description: `Estoque de seminovos da ${name}. Financiamento, troca e atendimento pelo WhatsApp.` },
     services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.default])) as Record<SiteServiceKey, boolean>,
+    menu: defaultMenu(),
+    homeBlocks: defaultHomeBlocks(name, (k) => !!SITE_SERVICES.find((s) => s.key === k)?.default),
   }
 }
 
@@ -133,6 +140,8 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
   const b = obj(input)
   const id = obj(b.identity), ct = obj(b.contact), hm = obj(b.home), ab = obj(b.about), seo = obj(b.seo), sv = obj(b.services), bn = obj(b.banners)
   const slug = slugify(str(b.slug, 40))
+  const services = Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.locked ? true : (typeof sv[s.key] === 'boolean' ? sv[s.key] as boolean : s.default)])) as Record<SiteServiceKey, boolean>
+  const svcOn = (k: SiteServiceKey) => { const s = SITE_SERVICES.find((x) => x.key === k); return !!s && s.available && services[k] }
   const pairs = <T>(v: unknown, n: number, map: (o: Record<string, unknown>) => T | null, fallback: T[]): T[] =>
     Array.isArray(v) ? v.map((x) => map(obj(x))).filter((x): x is T => !!x).slice(0, n) : fallback
 
@@ -185,7 +194,9 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
     catalog: { enabled: Boolean(obj(b.catalog).enabled), city: str(obj(b.catalog).city, 80), state: str(obj(b.catalog).state, 2).toUpperCase().replace(/[^A-Z]/g, '') },
     legalNote: str(b.legalNote, 400),
     seo: { title: str(seo.title, 80) || d.seo.title, description: str(seo.description, 200) || d.seo.description },
-    services: Object.fromEntries(SITE_SERVICES.map((s) => [s.key, s.locked ? true : (typeof sv[s.key] === 'boolean' ? sv[s.key] as boolean : s.default)])) as Record<SiteServiceKey, boolean>,
+    services,
+    menu: sanitizeMenu(b.menu),
+    homeBlocks: sanitizeHomeBlocks(b.homeBlocks, str(id.name, 80) || d.identity.name, svcOn),
   }
 }
 
