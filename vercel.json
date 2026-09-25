@@ -11,6 +11,10 @@
     {
       "path": "/api/internal/site/feed-import/run",
       "schedule": "20 * * * *"
+    },
+    {
+      "path": "/api/internal/master/tenant-retention/run",
+      "schedule": "0 12 * * *"
     }
   ]
 }

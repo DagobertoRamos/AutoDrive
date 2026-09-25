@@ -6,6 +6,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { requireMaster, logMasterAction } from '@/lib/master-guards'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
+import { countsRetention, effectivePurgeAt } from '@/lib/tenant-lifecycle/core'
+import { ensureRetention } from '@/lib/tenant-lifecycle/retention'
 
 // ── GET ──────────────────────────────────────────────────────────────────────
 
@@ -40,7 +42,14 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant não encontrado.' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, data: tenant })
+    // Loja desativada: prazo de guarda de 5 anos até a exclusão automática.
+    let retention = null
+    if (countsRetention(tenant.status)) {
+      const rec = await ensureRetention(tenant)
+      retention = { ...rec, effectivePurgeAt: effectivePurgeAt(rec).toISOString() }
+    }
+
+    return NextResponse.json({ success: true, data: { ...tenant, retention } })
   } catch (err) {
     console.error('[GET /api/master/tenants/:id]', err)
     return handlePrismaError(err)

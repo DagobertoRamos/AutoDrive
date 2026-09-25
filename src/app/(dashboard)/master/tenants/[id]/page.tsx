@@ -4,7 +4,8 @@
 // /master/tenants/[id] — Detalhes, edição e gestão de um tenant
 //
 // Seções:
-//   • Header com badge de status e ações rápidas de status (SUSPENDER/BANIR/etc.)
+//   • Header com badge de status e ações rápidas de status (SUSPENDER/DESATIVAR/etc.)
+//   • Loja desativada: prazo de guarda de 5 anos até a exclusão automática
 //   • Stats rápidos (usuários, unidades, negociações)
 //   • Formulário: dados da empresa, endereço, plano, limites, identidade visual
 //   • Sócios: lista paginada com edição/remoção inline
@@ -73,6 +74,13 @@ interface TenantDetail {
   notes:                   string | null
   createdAt:               string
   partners:                Partner[]
+  retention: {
+    deactivatedAt:    string
+    purgeAt:          string
+    effectivePurgeAt: string
+    warned:           number[]
+    lastError?:       string | null
+  } | null
   _count: {
     users:   number
     units:   number
@@ -92,7 +100,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   ATIVO:     { label: 'Ativo',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   SUSPENSO:  { label: 'Suspenso',  cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
   BLOQUEADO: { label: 'Bloqueado', cls: 'bg-orange-100 text-orange-700 border-orange-200' },
-  BANIDO:    { label: 'Banido',    cls: 'bg-red-100 text-red-700 border-red-200' },
+  BANIDO:    { label: 'Desativado', cls: 'bg-red-100 text-red-700 border-red-200' },
   CANCELADO: { label: 'Cancelado', cls: 'bg-gray-100 text-gray-500 border-gray-200' },
   TESTE:     { label: 'Teste',     cls: 'bg-blue-100 text-blue-700 border-blue-200' },
 }
@@ -109,6 +117,37 @@ function formatCPF(cpf: string) {
   return d.length === 11
     ? `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`
     : cpf
+}
+
+// ── Prazo de guarda da loja desativada ────────────────────────────────────────
+
+function RetentionCard({ tenantId, retention }: { tenantId: string; retention: NonNullable<TenantDetail['retention']> }) {
+  const fmt = (iso: string) => new Date(iso).toLocaleDateString('pt-BR')
+  const daysLeft = Math.ceil((new Date(retention.effectivePurgeAt).getTime() - Date.now()) / 86_400_000)
+  const urgent = daysLeft <= 180
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${urgent ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'}`}>
+      <div className="flex items-start gap-3">
+        <Trash2 className={`h-4 w-4 shrink-0 mt-0.5 ${urgent ? 'text-red-600' : 'text-gray-500'}`} />
+        <div className="min-w-0 text-xs">
+          <p className={`font-semibold ${urgent ? 'text-red-800' : 'text-gray-800'}`}>
+            Loja desativada — dados guardados até {fmt(retention.effectivePurgeAt)} ({daysLeft > 0 ? `${daysLeft} dias` : 'vencido'})
+          </p>
+          <p className="mt-1 text-gray-600">
+            Desativada em {fmt(retention.deactivatedAt)}. Até a data acima os dados e documentos ficam intactos e a loja pode
+            ser reativada. Depois, o sistema apaga tudo automaticamente. O Master recebe avisos (notificação e e-mail)
+            a 180, 90, 60, 30, 15, 7, 3 e 1 dia(s) da exclusão.
+          </p>
+          <p className="mt-1 text-gray-600">
+            Backup completo (dados + arquivos): <code className="rounded bg-gray-100 px-1 py-0.5 break-all">npx tsx scripts/tenant-backup.ts {tenantId}</code>
+          </p>
+          {retention.lastError && (
+            <p className="mt-1 font-semibold text-red-700">Última tentativa de exclusão falhou: {retention.lastError}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Modal simples de confirmação com motivo ───────────────────────────────────
@@ -313,19 +352,14 @@ export default function TenantDetailPage() {
         required:    true,
       },
       REATIVAR: {
-        title:       'Reativar tenant',
-        description: 'O tenant voltará ao status ATIVO.',
+        title:       'Reativar loja',
+        description: 'A loja volta ao status ATIVO e os usuários voltam a entrar. Se estava desativada, o prazo de exclusão é cancelado e todos os dados continuam lá.',
         required:    false,
       },
-      BANIR: {
-        title:       'Banir tenant',
-        description: '⚠️ Ação severa: o tenant será banido da plataforma. Informe o motivo detalhado.',
+      DESATIVAR: {
+        title:       'Desativar loja',
+        description: '⚠️ Todos os usuários da loja perdem o acesso na hora (inclusive quem já estava logado). Os dados e documentos ficam guardados por 5 anos; nesse prazo a loja pode ser reativada. Vencidos os 5 anos, o sistema APAGA TUDO automaticamente — o Master será avisado antes para fazer o backup. Informe o motivo.',
         required:    true,
-      },
-      DESBANIR: {
-        title:       'Desbanir tenant',
-        description: 'O tenant retornará ao status ATIVO.',
-        required:    false,
       },
       CANCELAR: {
         title:       'Cancelar tenant',
@@ -598,20 +632,12 @@ export default function TenantDetailPage() {
               <RefreshCw size={13} /> Período de teste
             </button>
           )}
-          {currentStatus !== 'BANIDO' && currentStatus !== 'CANCELADO' && (
+          {currentStatus !== 'BANIDO' && (
             <button
-              onClick={() => openStatusModal('BANIR')}
+              onClick={() => openStatusModal('DESATIVAR')}
               className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
             >
-              <ShieldBan size={13} /> Banir
-            </button>
-          )}
-          {currentStatus === 'BANIDO' && (
-            <button
-              onClick={() => openStatusModal('DESBANIR')}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-            >
-              <ShieldCheck size={13} /> Desbanir
+              <ShieldBan size={13} /> Desativar
             </button>
           )}
           {currentStatus !== 'CANCELADO' && (
@@ -624,6 +650,9 @@ export default function TenantDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── Prazo de guarda (loja desativada) ─────────────────────────────── */}
+      {tenant?.retention && <RetentionCard tenantId={tenant.id} retention={tenant.retention} />}
 
       {/* ── Stats ────────────────────────────────────────────────────────── */}
       {tenant && (
@@ -902,7 +931,7 @@ export default function TenantDetailPage() {
         <h3 className="text-sm font-bold text-red-700 mb-1">Zona de Perigo</h3>
         <p className="text-xs text-red-600 mb-3">
           A exclusão é permanente e remove todos os dados do tenant (usuários, unidades, negociações).
-          Use as ações de status acima para suspender ou banir sem perder dados.
+          Use as ações de status acima para suspender ou desativar sem perder dados.
         </p>
         <button
           onClick={handleDelete}

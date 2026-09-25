@@ -9,6 +9,8 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { type UserRole, type UserStatus } from '@/types'
 import { expiredSessionPayload } from '@/lib/auth-session'
+import { isTenantAccessBlocked, invalidateTenantStatus, getTenantStatus } from '@/lib/tenant-lifecycle/access'
+import { blockedTenantMessage } from '@/lib/tenant-lifecycle/core'
 
 // ---------------------------------------------------------------------------
 // Helper: register audit log entry
@@ -194,6 +196,15 @@ export const authOptions: NextAuthOptions = {
           )
         }
 
+        // 4b. Loja desativada/suspensa/cancelada: ninguém dela entra (o MASTER
+        // continua entrando e pode impersonar). Leitura sem cache no login.
+        if (String(user.role) !== 'MASTER' && user.tenantId) {
+          invalidateTenantStatus(user.tenantId)
+          if (await isTenantAccessBlocked(user.tenantId)) {
+            throw new Error(blockedTenantMessage(await getTenantStatus(user.tenantId)))
+          }
+        }
+
         // 5. Atualiza lastLoginAt de forma assíncrona
         const headers = req?.headers as
           | Record<string, string | string[] | undefined>
@@ -278,6 +289,12 @@ export const authOptions: NextAuthOptions = {
         }
       } else {
         token.lastSeen = nowSecs
+      }
+
+      // Loja desativada/suspensa/cancelada: derruba também as sessões que já
+      // estavam abertas (antes só o login era barrado — nem isso, na verdade).
+      if (!token.expired && token.role !== 'MASTER' && typeof token.tenantId === 'string') {
+        if (await isTenantAccessBlocked(token.tenantId)) token.expired = true
       }
       return token
     },

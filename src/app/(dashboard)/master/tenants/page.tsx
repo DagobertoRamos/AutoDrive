@@ -81,7 +81,7 @@ const STATUS_COLOR: Record<string, string> = {
 }
 const STATUS_LABEL: Record<string, string> = {
   ATIVO: 'Ativo', SUSPENSO: 'Suspenso', BLOQUEADO: 'Bloqueado',
-  BANIDO: 'Banido', CANCELADO: 'Cancelado', TESTE: 'Teste',
+  BANIDO: 'Desativado', CANCELADO: 'Cancelado', TESTE: 'Teste',
 }
 
 // ── Página ────────────────────────────────────────────────────────────────────
