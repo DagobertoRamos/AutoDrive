@@ -15,6 +15,14 @@
     {
       "path": "/api/internal/master/tenant-retention/run",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/internal/publications/run",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/publications/run?reconcile=1",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

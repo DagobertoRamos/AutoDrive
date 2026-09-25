@@ -12,6 +12,7 @@ import { notifyDealApproved }   from '@/services/notification.service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { notifyStockChanged } from '@/lib/publications/service'
 
 export async function POST(
   req: NextRequest,
@@ -109,6 +110,9 @@ export async function POST(
 
       return d
     })
+
+    // Central de Publicações: venda aprovada → pausa os anúncios do veículo.
+    notifyStockChanged(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' || dv.role === 'CONSIGNADO' ? dv.vehicleId : null)), { id: session.user.id, name: session.user.name ?? null })
 
     // ── Notificação sistêmica (broadcast tenant) — best-effort, não bloqueia ──
     try {

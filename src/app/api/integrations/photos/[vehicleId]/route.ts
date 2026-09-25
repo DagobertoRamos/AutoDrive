@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import { studioFinish, studioRestore, studioStart } from '@/lib/integrations/photo-studio'
 import { studioErrorResponse, tenantFromToken } from '@/lib/integrations/photo-studio-http'
+import { proposeMedia } from '@/lib/publications/service'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,12 @@ export async function PUT(req: Request, ctx: Ctx) {
   const { vehicleId } = await ctx.params
   const body = (await req.json().catch(() => ({}))) as { fotos?: unknown }
   try {
-    return NextResponse.json({ success: true, ...(await studioFinish(tenant, vehicleId, body.fotos)) })
+    const done = await studioFinish(tenant, vehicleId, body.fotos)
+    // Central de Publicações: fotos tratadas chegam como revisão PENDENTE de
+    // aprovação (quem aprova é a loja; publicação automática só se ligada).
+    const urls = Array.isArray(body.fotos) ? body.fotos.filter((u): u is string => typeof u === 'string') : []
+    if (urls.length) await proposeMedia(tenant, vehicleId, urls, 'ESTUDIO', { id: null, name: 'Estúdio de fotos' }).catch((e) => console.error('[photos] proposeMedia', e))
+    return NextResponse.json({ success: true, ...done })
   } catch (err) {
     return studioErrorResponse(err)
   }

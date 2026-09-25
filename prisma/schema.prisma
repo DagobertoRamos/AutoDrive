@@ -828,6 +828,7 @@ model Vehicle {
   stockPendencies VehicleStockPendency[] // pendências de estoque configuráveis
   pricingHistory  VehiclePricingHistory[]
   siteListing     SiteListing? // anúncio no site da loja (tabela própria)
+  publications    Publication[] // Central de Publicações (Marketing)
 
   @@index([tenantId])
   @@index([unitId])
@@ -914,6 +915,239 @@ model SiteEvent {
   @@index([tenantId, createdAt])
   @@index([tenantId, vehicleId, createdAt])
   @@map("site_events")
+}
+
+// =============================================================================
+// Central de Publicações (Marketing) — publicação e sincronização do estoque
+// nos canais (site próprio, portais, redes sociais). Ver docs/publicacoes/.
+//   • Conexão = conta da LOJA num canal (BYOC: credenciais da loja, cifradas).
+//   • Publicação = um veículo num destino (canal + conta + campanha).
+//   • Tarefa = operação na fila (publicar, atualizar, pausar, retirar,
+//     verificar), com tentativas, trava e chave de idempotência.
+// "Publicado" só com confirmação do canal (consulta ou webhook).
+// =============================================================================
+
+model PublicationConnection {
+  id                String    @id @default(cuid())
+  tenantId          String
+  channel           String // SITE | WEBMOTORS | OLX | MERCADO_LIVRE | CHAVES_NA_MAO | META_PAGE | INSTAGRAM ...
+  label             String // nome exibido (página, conta, loja no portal)
+  externalAccountId String    @default("default") // id da conta/página no canal
+  status            String    @default("NAO_CONECTADO") // NAO_CONECTADO | CONECTADO | RECONECTAR | PENDENCIA
+  environment       String    @default("PRODUCAO") // PRODUCAO | HOMOLOGACAO
+  secretsEncrypted  String? // JSON cifrado (AES-256-GCM, crypto.ts) — nunca sai do servidor
+  maskedHints       Json? // dicas mascaradas p/ a tela (ex.: "e-mail ••••@loja.com")
+  config            Json? // opções não secretas (modalidade, tipo de anúncio, cidade…)
+  tokenExpiresAt    DateTime?
+  throttledUntil    DateTime? // 429/cota: não enviar antes disso
+  quota             Json? // último retrato de cota do portal
+  lastCheckedAt     DateTime?
+  lastError         String?
+  connectedById     String?
+  connectedAt       DateTime?
+  disconnectedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  publications Publication[]
+
+  @@unique([tenantId, channel, externalAccountId])
+  @@index([tenantId, channel])
+  @@map("publication_connections")
+}
+
+// Conteúdo-base do veículo para os canais (título, descrição, condições,
+// fotos em ordem — a 1ª é a capa). Versões aprovadas ficam em revisões.
+model PublicationDraft {
+  id              String    @id @default(cuid())
+  tenantId        String
+  vehicleId       String    @unique
+  title           String?
+  description     String?
+  conditions      String? // condições comerciais informadas pela loja
+  price           Decimal?  @db.Decimal(12, 2) // vazio = preço do estoque
+  photos          Json? // [{ url, source }] na ordem; vazio = galeria do estoque
+  mediaRevisionId String? // revisão de mídia aprovada em uso
+  approvedById    String?
+  approvedAt      DateTime?
+  updatedById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("publication_drafts")
+}
+
+// Revisões imutáveis de mídia (fotos/capa/ordem) e de conteúdo. Só a revisão
+// APROVADA é enviada. hash = impressão digital do que foi enviado.
+model PublicationRevision {
+  id           String    @id @default(cuid())
+  tenantId     String
+  vehicleId    String
+  kind         String // MEDIA | CONTENT
+  number       Int
+  hash         String
+  payload      Json
+  status       String    @default("PENDENTE") // PENDENTE | APROVADA | SUBSTITUIDA
+  origin       String? // PAINEL | ESTUDIO | CENTRAL
+  createdById  String?
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([vehicleId, kind, number])
+  @@index([tenantId, vehicleId, kind])
+  @@map("publication_revisions")
+}
+
+model Publication {
+  id                String    @id @default(cuid())
+  tenantId          String
+  unitId            String?
+  vehicleId         String
+  channel           String
+  connectionId      String?
+  connectionKey     String    @default("default") // = connectionId (unicidade sem NULL)
+  campaignKey       String    @default("principal") // redes sociais: nova campanha legítima = nova chave
+  externalRef       String // nossa referência no canal (id enviado, curto e estável)
+  status            String    @default("RASCUNHO")
+  desiredState      String    @default("PUBLICADO") // PUBLICADO | PAUSADO | REMOVIDO
+  confirmedState    String? // último estado CONFIRMADO no canal
+  generation        Int       @default(0) // sobe a cada mudança de intenção (bloqueia tarefa velha)
+  overrides         Json? // título/descrição/preço/fotos específicos deste destino
+  sentRevisionHash  String?
+  remoteId          String?
+  remoteUrl         String?
+  remoteStatus      String?
+  remoteData        Json?
+  pendingToken      String? // ex.: token de importação da OLX
+  scheduledAt       DateTime? // UTC
+  manual            Boolean   @default(false)
+  manualAction      String? // o que a loja precisa fazer à mão (e link)
+  lastError         String?
+  lastErrorCode     String?
+  lastErrorHint     String?
+  lastSyncAt        DateTime?
+  lastVerifiedAt    DateTime?
+  lastRemoteEventAt DateTime?
+  publishedAt       DateTime?
+  removedAt         DateTime?
+  pausedReason      String?
+  archivedAt        DateTime?
+  archiveReason     String? // VENDIDO | RETIRADO
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  vehicle    Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  connection PublicationConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  jobs       PublicationJob[]
+
+  @@unique([tenantId, vehicleId, channel, connectionKey, campaignKey])
+  @@unique([channel, connectionKey, externalRef])
+  @@index([tenantId, status])
+  @@index([tenantId, vehicleId])
+  @@index([tenantId, scheduledAt])
+  @@index([tenantId, channel])
+  @@map("publications")
+}
+
+model PublicationJob {
+  id             String    @id @default(cuid())
+  tenantId       String
+  publicationId  String
+  vehicleId      String
+  channel        String
+  op             String // PUBLICAR | ATUALIZAR | PAUSAR | RETOMAR | REMOVER | VERIFICAR
+  priority       Int       @default(5) // 0 = retirada de vendido
+  status         String    @default("PENDENTE") // PENDENTE | EXECUTANDO | CONCLUIDO | FALHOU | CANCELADO | BLOQUEADO
+  runAt          DateTime  @default(now())
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(6)
+  lockedBy       String?
+  lockedUntil    DateTime?
+  idempotencyKey String    @unique
+  generation     Int       @default(0)
+  revisionHash   String?
+  outcomeUnknown Boolean   @default(false) // timeout após envio: reconsultar antes de repetir
+  lastError      String?
+  lastErrorKind  String?
+  result         Json?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  finishedAt     DateTime?
+
+  publication Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAt, priority])
+  @@index([publicationId, status])
+  @@index([tenantId, status])
+  @@map("publication_jobs")
+}
+
+// Histórico/auditoria: quem publicou, alterou, pausou ou retirou — e o que
+// o canal respondeu. Nunca guarda segredo.
+model PublicationEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  publicationId String?
+  vehicleId     String?
+  channel       String?
+  type          String
+  fromStatus    String?
+  toStatus      String?
+  message       String
+  data          Json?
+  actorId       String?
+  actorName     String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([publicationId, createdAt])
+  @@index([tenantId, vehicleId, createdAt])
+  @@map("publication_events")
+}
+
+// Webhooks recebidos: dedupKey único por canal (evento repetido é ignorado).
+model PublicationWebhookEvent {
+  id          String    @id @default(cuid())
+  channel     String
+  tenantId    String?
+  dedupKey    String
+  occurredAt  DateTime?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  status      String    @default("RECEBIDO") // RECEBIDO | PROCESSADO | IGNORADO | ERRO
+  payload     Json?
+  error       String?
+
+  @@unique([channel, dedupKey])
+  @@index([channel, receivedAt])
+  @@map("publication_webhook_events")
+}
+
+// De-para do estoque para os códigos de cada portal (marca, modelo, versão,
+// cor, combustível, câmbio). Ambíguo = REVISAR (nunca troca a versão calado).
+model PublicationMapping {
+  id            String   @id @default(cuid())
+  tenantId      String
+  channel       String
+  kind          String // BRAND | MODEL | VERSION | COLOR | FUEL | TRANSMISSION
+  sourceKey     String // chave normalizada do estoque (ex.: "FIAT|ARGO|DRIVE 1.0")
+  sourceLabel   String
+  targetId      String?
+  targetLabel   String?
+  status        String   @default("REVISAR") // AUTOMATICO | CONFIRMADO | REVISAR
+  candidates    Json?
+  confirmedById String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, channel, kind, sourceKey])
+  @@index([tenantId, channel, status])
+  @@map("publication_mappings")
 }
 
 // ── Histórico de precificação de venda ────────────────────────────────────────

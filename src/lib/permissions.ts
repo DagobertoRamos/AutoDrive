@@ -92,6 +92,11 @@ export type Module =
   | 'marketing.telephony.manage'            // gerenciar conexões/números de telefonia
   | 'marketing.telephony.recordings'        // ouvir gravações de chamadas
   | 'marketing.telephony.recordings.audit'  // auditar acesso a gravações de chamadas
+  | 'marketing.publications'                // Central de Publicações: ver publicações, calendário e canais
+  | 'marketing.publications.prepare'        // preparar publicação (conteúdo, fotos, canais)
+  | 'marketing.publications.approve'        // aprovar fotos/conteúdo que vão aos canais
+  | 'marketing.publications.publish'        // publicar, agendar, pausar e retirar anúncios
+  | 'marketing.publications.connections'    // conectar/desconectar contas dos canais e regras automáticas
   | 'logs'
   | 'profile'
   | 'master'                    // painel master da plataforma
@@ -465,6 +470,30 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     // Auditar quem acessou gravações — compliance/gestão sênior.
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
     actions: ['read'],
+  },
+  // ── Central de Publicações (Marketing) ─────────────────────────────────────
+  // Ver: gestão + vendedor líder (acompanha anúncios). Preparar: quem cuida
+  // do marketing/estoque. Aprovar/publicar: gestão. Conexões (contas da loja
+  // nos portais/redes e regra de publicação automática): alta gestão.
+  'marketing.publications': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'USUARIO_LIDER'],
+    actions: ['read'],
+  },
+  'marketing.publications.prepare': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'USUARIO_LIDER'],
+    actions: ['read', 'create', 'update'],
+  },
+  'marketing.publications.approve': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
+    actions: ['read', 'approve'],
+  },
+  'marketing.publications.publish': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
+    actions: ['read', 'create', 'update', 'delete'],
+  },
+  'marketing.publications.connections': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL'],
+    actions: ['read', 'create', 'update', 'delete', 'configure'],
   },
   profile: {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE', 'VENDEDOR_LIDER', 'VENDEDOR', 'FINANCEIRO', 'USUARIO_LIDER', 'USUARIO'],

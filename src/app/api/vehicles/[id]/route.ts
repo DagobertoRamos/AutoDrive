@@ -16,6 +16,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { feedOrigins } from '@/lib/site/feed-import'
+import { notifyStockChanged } from '@/lib/publications/service'
 
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
 
@@ -176,6 +177,11 @@ export async function PATCH(
       userRole: user.role,
     })
 
+    // Central de Publicações: mudou a situação no estoque → anúncios acompanham.
+    if (existing.stockStatus !== updated.stockStatus || existing.active !== updated.active) {
+      notifyStockChanged(existing.tenantId, [params.id], { id: user.id, name: user.name })
+    }
+
     return NextResponse.json({ success: true, data: updated })
   } catch (err) {
     return handlePrismaError(err)
@@ -234,6 +240,8 @@ export async function DELETE(
       userName: user.name,
       userRole: user.role,
     })
+
+    notifyStockChanged(tenantId, [params.id], { id: user.id, name: user.name })
 
     return NextResponse.json({ success: true, message: 'Veículo removido do estoque.' })
   } catch (err) {

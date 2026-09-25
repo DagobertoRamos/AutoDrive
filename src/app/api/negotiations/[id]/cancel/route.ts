@@ -12,6 +12,7 @@ import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { cancelCommissionsForDeal } from '@/lib/commission/sync'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { notifyStockChanged } from '@/lib/publications/service'
 
 export async function POST(
   req: NextRequest,
@@ -109,6 +110,9 @@ export async function POST(
 
       return d
     })
+
+    // Central de Publicações: venda cancelada → reativa o que a venda pausou.
+    notifyStockChanged(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' ? dv.vehicleId : null)), { id: session.user.id, name: session.user.name ?? null })
 
     let commissionCancelResult: Awaited<ReturnType<typeof cancelCommissionsForDeal>> | null = null
     try {

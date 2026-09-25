@@ -57,6 +57,13 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'marketing.telephony.manage', label: 'Gerir telefonia' },
     { key: 'marketing.telephony.recordings', label: 'Gravações' },
   ] },
+  { area: 'Marketing — Central de Publicações', features: [
+    { key: 'marketing.publications', label: 'Ver publicações, calendário e canais' },
+    { key: 'marketing.publications.prepare', label: 'Preparar publicação' },
+    { key: 'marketing.publications.approve', label: 'Aprovar fotos e conteúdo' },
+    { key: 'marketing.publications.publish', label: 'Publicar, agendar, pausar e retirar' },
+    { key: 'marketing.publications.connections', label: 'Conectar contas e regras automáticas' },
+  ] },
   { area: 'Comercial — Fila de Atendimento', features: [
     { key: 'sellerQueue.view', label: 'Ver a fila (para chamar, marque também "Chamar vendedor da vez")' },
     { key: 'sellerQueue.checkIn', label: 'Entrar na fila (ser chamado p/ atender)' },

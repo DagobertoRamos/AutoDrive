@@ -20,7 +20,8 @@
     "queue:worker": "node scripts/seller-queue-worker.cjs",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "danger:delete-negotiations-commissions": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/danger-delete-negotiations-and-commissions.ts"
+    "danger:delete-negotiations-commissions": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/danger-delete-negotiations-and-commissions.ts",
+    "publications:worker": "node scripts/publications-worker.cjs"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

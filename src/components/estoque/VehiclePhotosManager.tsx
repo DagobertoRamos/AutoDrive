@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Camera, Globe, ImagePlus, Loader2, Star, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Camera, Globe, ImagePlus, Loader2, Rocket, Star, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { compressPhoto } from '@/lib/stock/photo-compress'
 
@@ -32,6 +32,19 @@ export function VehiclePhotosManager({ vehicleId, photos, onChange }: Props) {
   const sorted = [...photos].sort((a, b) => a.order - b.order)
 
   const apply = (data: { photos: VehiclePhotoItem[]; mainPhotoUrl: string | null }) => onChange(data.photos, data.mainPhotoUrl)
+
+  // Central de Publicações: encaminha o veículo e as fotos (capa e ordem atuais)
+  // para aprovação e escolha dos canais.
+  const [preparing, setPreparing] = useState(false)
+  const prepare = async () => {
+    setPreparing(true); setErr([])
+    try {
+      const r = await fetch(`/api/publications/drafts/${vehicleId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'preparar' }), credentials: 'include' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr([j?.error ?? 'Não foi possível preparar a publicação.']); return }
+      window.location.href = j.redirect ?? `/marketing/publicacoes/nova?veiculos=${vehicleId}`
+    } finally { setPreparing(false) }
+  }
 
   const upload = async (list: FileList | File[]) => {
     const files = [...list].filter((f) => f.type.startsWith('image/') || /\.hei[cf]$/i.test(f.name))
@@ -99,10 +112,15 @@ export function VehiclePhotosManager({ vehicleId, photos, onChange }: Props) {
 
       {err.length > 0 && <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{err.map((m) => <p key={m}>{m}</p>)}</div>}
 
-      <p className="flex items-center gap-1.5 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
         <Globe size={13} />
-        {sorted.length ? 'Com fotos, este carro aparece publicado no site da loja. A foto marcada como Capa é a principal do anúncio.' : 'Sem fotos, o carro aparece no site como “Em breve”. Envie as fotos para publicá-lo.'}
-      </p>
+        <span className="min-w-0 flex-1">{sorted.length ? 'Com fotos, este carro aparece publicado no site da loja. A foto marcada como Capa é a principal do anúncio.' : 'Sem fotos, o carro aparece no site como “Em breve”. Envie as fotos para publicá-lo.'}</span>
+        {sorted.length > 0 && (
+          <button type="button" onClick={() => void prepare()} disabled={busy || preparing} className="btn-primary px-3 py-1.5 text-xs" title="Levar este veículo e as fotos para a Central de Publicações">
+            {preparing ? <Loader2 size={13} className="animate-spin" /> : <Rocket size={13} />}Preparar publicação
+          </button>
+        )}
+      </div>
 
       {sorted.length > 0 && (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

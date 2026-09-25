@@ -14,6 +14,7 @@ import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { canForceFinalize } from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { notifyStockChanged } from '@/lib/publications/service'
 
 export const dynamic = 'force-dynamic'
 
@@ -159,6 +160,10 @@ export async function POST(
 
       return d
     })
+
+    // Central de Publicações: negociação finalizada → retira os anúncios e
+    // arquiva como Vendido (em segundo plano; nunca bloqueia a finalização).
+    notifyStockChanged(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' ? dv.vehicleId : null)), { id: session.user.id, name: session.user.name ?? null })
 
     // Gera comissões automaticamente (não bloqueia o close em caso de falha)
     let commissionResult: Awaited<ReturnType<typeof generateCommissionsForDeal>> | null = null

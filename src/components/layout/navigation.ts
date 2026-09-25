@@ -71,6 +71,9 @@ import {
   Columns3,
   // Marketing / Mesa SDR + Telefonia
   Headset,
+  CalendarDays,
+  PlugZap,
+  Rocket,
   Phone,
   PhoneCall,
   Disc,
@@ -269,6 +272,10 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  Megaphone,
     module: 'marketing',
     children: [
+      // Central de Publicações (anúncios nos canais)
+      { label: 'Publicações',      href: '/marketing/publicacoes',            icon: Rocket,       module: 'marketing.publications' },
+      { label: 'Calendário',       href: '/marketing/calendario',             icon: CalendarDays, module: 'marketing.publications' },
+      { label: 'Canais conectados', href: '/marketing/canais',                 icon: PlugZap,      module: 'marketing.publications' },
       // Mesa de Pré-Vendas / SDR
       { label: 'Caixa de Leads',  href: '/marketing/sdr/inbox',     icon: Inbox,      module: 'marketing.sdr' },
       { label: 'Times SDR',       href: '/marketing/sdr/times',     icon: Users,      module: 'marketing.sdr.manage' },
