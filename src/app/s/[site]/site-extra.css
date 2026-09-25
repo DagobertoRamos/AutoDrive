@@ -98,3 +98,17 @@
 .autodrive-site .service-panels-single { grid-template-columns: 1fr; }
 .autodrive-site .service-panel .notice-box { margin-top: 12px; }
 .autodrive-site .service-panel .hero-actions { margin-top: 14px; flex-wrap: wrap; gap: 10px; }
+
+/* Selo "Periciado" (cautelar aprovada) no cartão do carro. */
+.autodrive-site .vcard-inspected { color: #0f766e; font-weight: 700; }
+/* Banner com texto e botão sobre a arte (opção "Mostrar texto" do painel). */
+.autodrive-site .banner-slide-caption { position: relative; }
+.autodrive-site .banner-caption { position: absolute; inset: auto 0 0 0; display: grid; gap: 6px; justify-items: start; padding: clamp(16px, 3vw, 32px); color: #fff; background: linear-gradient(0deg, rgba(3, 18, 28, .88) 0%, rgba(3, 18, 28, .55) 60%, rgba(3, 18, 28, 0) 100%); }
+.autodrive-site .banner-caption h2 { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.9rem); line-height: 1.15; color: #fff; }
+.autodrive-site .banner-caption p { margin: 0; max-width: 560px; font-size: .95rem; color: #e2eef0; }
+.autodrive-site .banner-caption .button { margin-top: 6px; }
+.autodrive-site .banner-eyebrow { display: inline-block; padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, .18); font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+/* Links legais do rodapé. */
+.autodrive-site .footer-legal-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.autodrive-site .footer-legal-links a { opacity: .8; }
+.autodrive-site .footer-legal-links a:hover { opacity: 1; text-decoration: underline; }

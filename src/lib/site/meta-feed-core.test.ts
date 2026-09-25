@@ -5,7 +5,7 @@ import type { SiteVehicle } from './vehicles'
 const car = (p: Partial<SiteVehicle> = {}): SiteVehicle => ({
   id: 'v1', slug: 'vw-t-cross-2023--v1', title: 'VW T-Cross', brand: 'Volkswagen', model: 'T-Cross', version: '200 TSI',
   year: 2022, modelYear: 2023, km: 38500, fuel: 'FLEX', transmission: 'AUTOMATICO', color: 'Branco', doors: 4, bodyType: 'SUV', vehicleType: 'CARRO',
-  price: 99900, oldPrice: null, state: 'PUBLICADO', featured: false, promo: false,
+  price: 99900, oldPrice: null, state: 'PUBLICADO', featured: false, promo: false, inspected: false,
   photos: ['/api/site/assets/abc', 'https://cdn.x.com/2.jpg'], cover: '/api/site/assets/abc',
   description: '<p>Único dono</p>', options: ['Ar'], videoUrl: '', seoTitle: '', seoDescription: '', ...p,
 })

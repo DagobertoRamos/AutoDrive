@@ -64,7 +64,8 @@ function vehicleData(item: FeedVehicle) {
     color: item.color,
     vehicleType: item.vehicleType,
     mainPhotoUrl: item.photos[0] ?? null,
-  } as const
+    ...(item.inspected ? { cautelarStatus: 'APROVADA' as const } : {}),
+  }
 }
 
 async function writePhotos(vehicleId: string, photos: string[]) {

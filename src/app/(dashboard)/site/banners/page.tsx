@@ -66,7 +66,7 @@ export default function SiteBannersPage() {
         const r = await fetch('/api/site-admin/assets', { method: 'POST', body: fd, credentials: 'include' })
         const j = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(j?.error ?? 'Falha no envio.')
-        added.push({ id: newId(), title: f.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, 120), imageUrl: j.data.url, linkUrl: '', newTab: false, active: true })
+        added.push({ id: newId(), title: f.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').slice(0, 120), imageUrl: j.data.url, linkUrl: '', newTab: false, active: true, showText: false, eyebrow: '', text: '', buttonLabel: '' })
       }
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha no envio.' })
@@ -138,8 +138,16 @@ export default function SiteBannersPage() {
               <li key={b.id} className={cn('flex flex-col gap-3 rounded-lg border p-3 sm:flex-row', b.active ? 'border-gray-200' : 'border-gray-100 bg-gray-50 opacity-70')}>
                 <img src={b.imageUrl} alt="" className="aspect-[2/1] w-full shrink-0 rounded-md bg-gray-900 object-contain sm:w-56" />
                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-                  <label className="block"><span className={label}>Título (texto alternativo)</span><input disabled={dis} className={input} value={b.title} maxLength={120} onChange={(e) => setBanner(i, { title: e.target.value })} /></label>
+                  <label className="block"><span className={label}>Título {b.showText ? '(aparece sobre a imagem)' : '(texto alternativo)'}</span><input disabled={dis} className={input} value={b.title} maxLength={120} onChange={(e) => setBanner(i, { title: e.target.value })} /></label>
                   <label className="block"><span className={label}>Link ao clicar <span className="text-gray-400">(opcional)</span></span><input disabled={dis} className={input} value={b.linkUrl} placeholder="/veiculos ou https://wa.me/..." onChange={(e) => setBanner(i, { linkUrl: e.target.value })} /></label>
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 sm:col-span-2"><input type="checkbox" disabled={dis} checked={b.showText} onChange={(e) => setBanner(i, { showText: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Mostrar texto e botão sobre a imagem <span className="font-normal text-gray-400">(use em artes sem texto; como no modelo “Oportunidades de vários parceiros”)</span></label>
+                  {b.showText && (
+                    <>
+                      <label className="block"><span className={label}>Etiqueta</span><input disabled={dis} className={input} value={b.eyebrow} maxLength={60} placeholder="Ex.: Estoque atualizado" onChange={(e) => setBanner(i, { eyebrow: e.target.value })} /></label>
+                      <label className="block"><span className={label}>Texto do botão</span><input disabled={dis} className={input} value={b.buttonLabel} maxLength={40} placeholder="Ex.: Ver veículos (leva ao link acima)" onChange={(e) => setBanner(i, { buttonLabel: e.target.value })} /></label>
+                      <label className="block sm:col-span-2"><span className={label}>Texto</span><textarea disabled={dis} rows={2} className={input} value={b.text} maxLength={240} placeholder="Ex.: Compare modelos e encontre uma opção que combine com o seu momento." onChange={(e) => setBanner(i, { text: e.target.value })} /></label>
+                    </>
+                  )}
                   <div className="flex flex-wrap items-center gap-4 text-xs text-gray-700 sm:col-span-2">
                     <label className="flex items-center gap-1.5"><input type="checkbox" disabled={dis} checked={b.active} onChange={(e) => setBanner(i, { active: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Ativo</label>
                     <label className="flex items-center gap-1.5"><input type="checkbox" disabled={dis} checked={b.newTab} onChange={(e) => setBanner(i, { newTab: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Abrir link em nova aba</label>

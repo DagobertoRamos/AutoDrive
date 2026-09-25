@@ -1,6 +1,6 @@
 // Card do veículo na vitrine (porta do VehicleCard do dagobertoeasycar).
 import Link from 'next/link'
-import { CalendarDays, Gauge } from 'lucide-react'
+import { CalendarDays, Gauge, ShieldCheck } from 'lucide-react'
 import { money } from '@/lib/site/listing-core'
 import type { SiteVehicle } from '@/lib/site/vehicles'
 import { SiteVehicleImage } from './SiteVehicleImage'
@@ -51,6 +51,7 @@ export function SiteVehicleCard({ vehicle, base, index = 0 }: { vehicle: SiteVeh
         <div className="vcard-meta">
           {(vehicle.year || vehicle.modelYear) && <span><CalendarDays size={14} aria-hidden="true" />{vehicle.year ?? '—'}/{vehicle.modelYear ?? '—'}</span>}
           {vehicle.km != null && <span><Gauge size={14} aria-hidden="true" />{vehicle.km.toLocaleString('pt-BR')} km</span>}
+          {vehicle.inspected && <span className="vcard-inspected"><ShieldCheck size={14} aria-hidden="true" />Periciado</span>}
         </div>
         <div className="vcard-foot">
           <div className="vcard-price">

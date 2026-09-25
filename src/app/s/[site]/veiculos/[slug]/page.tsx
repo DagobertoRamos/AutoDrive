@@ -55,6 +55,7 @@ export default async function SiteVehiclePage({ params }: Props) {
         <div className="detail-badges">
           {v.state === 'EM_BREVE' && <div className="detail-badge"><span className="detail-badge-icon">⏳</span><span>Fotos em breve</span></div>}
           {v.featured && <div className="detail-badge"><span className="detail-badge-icon">⭐</span><span>Destaque</span></div>}
+          {v.inspected && <div className="detail-badge"><span className="detail-badge-icon">🛡️</span><span>Veículo periciado</span></div>}
           {v.promo && <div className="detail-badge"><span className="detail-badge-icon">🏷️</span><span>Promoção</span></div>}
           <div className="detail-badge"><span className="detail-badge-icon">🔄</span><span>Aceita troca</span></div>
         </div>

@@ -53,6 +53,10 @@ describe('parseFeed', () => {
     expect(parseFeed([HEAD, row({ link: 'https://www.appautodrive.com.br/veiculos/Fiat-Palio-2001-815886' })].join('\n'))[0].legacySlug).toBe('fiat-palio-2001-815886')
     expect(parseFeed([HEAD, row({ link: 'nada' })].join('\n'))[0].legacySlug).toBeNull()
   })
+  it('"Veículo periciado" na descrição vira selo', () => {
+    expect(parseFeed([HEAD, row({ description: 'Palio · Cor Cinza · Veículo PERICIADO' })].join('\n'))[0].inspected).toBe(true)
+    expect(parseFeed([HEAD, row({ description: 'Sem perícia' })].join('\n'))[0].inspected).toBe(false)
+  })
   it('fora de estoque não entra', () => {
     expect(parseFeed([HEAD, row({ availability: 'out of stock' })].join('\n'))).toEqual([])
   })

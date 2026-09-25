@@ -28,7 +28,11 @@ export const SITE_SERVICES = [
 ] as const
 export type SiteServiceKey = (typeof SITE_SERVICES)[number]['key']
 
-export interface SiteBanner { id: string; title: string; imageUrl: string; linkUrl: string; newTab: boolean; active: boolean }
+export interface SiteBanner {
+  id: string; title: string; imageUrl: string; linkUrl: string; newTab: boolean; active: boolean
+  /** Texto por cima da arte (modelo): etiqueta, título, texto e botão que leva ao link. */
+  showText: boolean; eyebrow: string; text: string; buttonLabel: string
+}
 export interface SiteTestimonial { name: string; text: string; vehicle: string }
 export const SITE_MAX_BANNERS = 10
 export const SITE_MAX_TESTIMONIALS = 6
@@ -184,7 +188,7 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
       items: pairs(bn.items, SITE_MAX_BANNERS, (o) => {
         const imageUrl = url(o.imageUrl)
         if (!imageUrl) return null
-        return { id: str(o.id, 40).replace(/[^\w-]/g, '') || imageUrl.slice(-24), title: str(o.title, 120), imageUrl, linkUrl: url(o.linkUrl), newTab: Boolean(o.newTab), active: o.active !== false }
+        return { id: str(o.id, 40).replace(/[^\w-]/g, '') || imageUrl.slice(-24), title: str(o.title, 120), imageUrl, linkUrl: url(o.linkUrl), newTab: Boolean(o.newTab), active: o.active !== false, showText: Boolean(o.showText), eyebrow: str(o.eyebrow, 60), text: str(o.text, 240), buttonLabel: str(o.buttonLabel, 40) }
       }, []),
     },
     testimonials: pairs(b.testimonials, SITE_MAX_TESTIMONIALS, (o) => str(o.name, 80) && str(o.text, 360) ? { name: str(o.name, 80), text: str(o.text, 360), vehicle: str(o.vehicle, 100) } : null, []),

@@ -70,7 +70,8 @@ export default async function SiteLayout({ children, params }: { children: React
       {ctx.preview && <SitePreviewBar />}
       <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
       <main>{children}</main>
-      <SiteFooter config={ctx.config} nav={ctx.nav} whatsappHref={wa} seoLinks={seoLinks} />
+      <SiteFooter config={ctx.config} nav={ctx.nav} whatsappHref={wa} seoLinks={seoLinks}
+        legalLinks={[{ label: 'Política de privacidade', href: ctx.href('/privacidade') }, { label: 'Termos de uso', href: ctx.href('/termos') }, { label: 'Política de cookies', href: ctx.href('/cookies') }]} />
       {/* useSearchParams exige Suspense */}
       <Suspense fallback={null}><SiteAnalytics trackUrl={`/api/site/${encodeURIComponent(ctx.key)}/track`} /></Suspense>
       <SiteTracking pixelId={ctx.config.tracking.metaPixelId} googleTagId={ctx.config.tracking.googleTagId} privacyHref={ctx.href('/privacidade')} />

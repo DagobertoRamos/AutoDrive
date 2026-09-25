@@ -26,6 +26,8 @@ export interface FeedVehicle {
   description: string
   photos: string[]
   legacySlug: string | null // último trecho do link no site antigo (/veiculos/<slug>)
+  /** A descrição do site de origem diz "periciado". */
+  inspected: boolean
 }
 
 /** CSV RFC 4180 (aspas, aspas duplas escapadas e quebras de linha dentro do campo). */
@@ -136,6 +138,7 @@ export function parseFeed(text: string): FeedVehicle[] {
       description: col(r, 'description'),
       photos: [...new Set(photos)],
       legacySlug: legacySlugFromLink(col(r, 'link')),
+      inspected: /\bpericiad[oa]\b/.test(fold(col(r, 'description'))),
     })
   }
   return out

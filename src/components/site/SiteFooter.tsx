@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { SiteConfig } from '@/lib/site/config-core'
 import type { SiteNavItem } from './SiteHeader'
 
-export function SiteFooter({ config, nav, whatsappHref, seoLinks = [] }: { config: SiteConfig; nav: SiteNavItem[]; whatsappHref: string; seoLinks?: SiteNavItem[] }) {
+export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLinks = [] }: { config: SiteConfig; nav: SiteNavItem[]; whatsappHref: string; seoLinks?: SiteNavItem[]; legalLinks?: SiteNavItem[] }) {
   const { identity, contact } = config
   const address = [contact.addressLine1, contact.addressLine2].filter(Boolean)
   return (
@@ -48,6 +48,7 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [] }: { confi
       {config.legalNote && <div className="shell footer-legal"><p>{config.legalNote}</p></div>}
       <div className="shell footer-bottom">
         <span>&copy; {new Date().getFullYear()} {identity.name}. Todos os direitos reservados.</span>
+        {legalLinks.length > 0 && <span className="footer-legal-links">{legalLinks.map((l) => <a key={l.href} href={l.href}>{l.label}</a>)}</span>}
         <span className="footer-powered">Site por AutoDrive</span>
       </div>
     </footer>
