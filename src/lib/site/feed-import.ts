@@ -156,7 +156,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
 
     const known = Object.values(state.map)
     const existing = known.length
-      ? await prisma.vehicle.findMany({ where: { id: { in: known }, tenantId: src.tenantId }, select: { id: true, active: true, stockStatus: true, photos: { select: { url: true }, orderBy: { order: 'asc' } } } })
+      ? await prisma.vehicle.findMany({ where: { id: { in: known }, tenantId: src.tenantId }, select: { id: true, active: true, stockStatus: true, photos: { select: { url: true }, orderBy: { order: 'asc' } }, siteListing: { select: { photosLocked: true } } } })
       : []
     const byId = new Map(existing.map((v) => [v.id, v]))
     // Vínculo para veículo apagado no SaaS: esquece e recria.
@@ -194,11 +194,15 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
           item.extras.reserved && cur?.stockStatus === 'DISPONIVEL' ? { stockStatus: 'RESERVADO' as const }
           : !item.extras.reserved && item.extras.origin && cur?.stockStatus === 'RESERVADO' ? { stockStatus: 'DISPONIVEL' as const }
           : {}
+        // Fotos travadas (tratadas no estúdio ou em tratamento): a galeria e a
+        // capa ficam como estão; o resto do cadastro segue o site de origem.
+        const locked = cur?.siteListing?.photosLocked === true
+        const { mainPhotoUrl, ...data } = vehicleData(item)
         await prisma.vehicle.update({
           where: { id: vehicleId },
-          data: { ...vehicleData(item), ...reservedSync, ...(cur && !cur.active ? { active: true, exitDate: null, stockStatus: item.extras.reserved ? 'RESERVADO' : 'DISPONIVEL' } : {}) },
+          data: { ...data, ...(locked ? {} : { mainPhotoUrl }), ...reservedSync, ...(cur && !cur.active ? { active: true, exitDate: null, stockStatus: item.extras.reserved ? 'RESERVADO' : 'DISPONIVEL' } : {}) },
         })
-        if (!samePhotos(cur?.photos.map((p) => p.url) ?? [], item.photos)) await writePhotos(vehicleId, item.photos)
+        if (!locked && !samePhotos(cur?.photos.map((p) => p.url) ?? [], item.photos)) await writePhotos(vehicleId, item.photos)
         await upsertListing(src.tenantId, vehicleId, item)
         if (item.legacySlug) state.slugs[item.legacySlug] = vehicleId
         if (item.extras.origin) state.origins[vehicleId] = item.extras.origin
