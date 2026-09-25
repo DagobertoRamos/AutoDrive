@@ -36,6 +36,7 @@ interface VehicleCardProps {
     conditionType: string | null
     cautelarStatus: string
     unit:          { id: string; name: string } | null
+    origin?:       { internalCode: string | null; partnerName: string | null; partnerCity: string | null } | null
     stockPendencies: VehiclePendency[]
     hasOpenNegotiation:    boolean
     openNegotiationId:     string | null
@@ -141,6 +142,9 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-sm font-bold tracking-widest text-gray-800">
             {vehicle.plate ?? 'S/PLACA'}
+            {vehicle.origin?.internalCode && (
+              <span className="ml-2 font-sans text-[10px] font-medium tracking-normal text-gray-400">#{vehicle.origin.internalCode}</span>
+            )}
           </span>
           {vehicle.conditionType && <ConditionBadge condition={vehicle.conditionType} />}
         </div>
@@ -176,8 +180,15 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
           )}
         </div>
 
-        {/* Unidade */}
-        {vehicle.unit && (
+        {/* Loja parceira (carro de parceiro importado do site) ou unidade */}
+        {vehicle.origin?.partnerName ? (
+          <span className="flex items-center gap-1 text-xs font-medium text-indigo-700" title={vehicle.unit ? `Anunciado por ${vehicle.unit.name}` : undefined}>
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className="truncate">
+              Parceiro: {vehicle.origin.partnerName}{vehicle.origin.partnerCity ? ` · ${vehicle.origin.partnerCity}` : ''}
+            </span>
+          </span>
+        ) : vehicle.unit && (
           <span className="flex items-center gap-1 text-xs text-gray-500">
             <MapPin className="h-3 w-3 shrink-0" />
             {vehicle.unit.name}

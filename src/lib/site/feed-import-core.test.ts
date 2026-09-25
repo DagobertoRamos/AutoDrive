@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { feedTitle, isPlaceholderPhoto, normalizeFuel, normalizeTransmission, parseCsv, parseFeed, parseKm, parsePrice, planFeedSync } from './feed-import-core'
+import { feedTitle, isPlaceholderPhoto, normalizeFuel, normalizeTransmission, parseCsv, parseFeed, parseKm, parsePrice, planFeedSync, mergeLegacy, normalizePlate } from './feed-import-core'
 
 const HEAD = '"id","title","description","availability","condition","price","link","image_link","additional_image_link","brand","model","version","year","mileage","transmission","fuel_type","body_style","color","city","state"'
 const row = (o: Partial<Record<string, string>>) => {
@@ -80,5 +80,54 @@ describe('planFeedSync', () => {
     expect(planFeedSync([], map, active).aborted).toBeTruthy()
     expect(planFeedSync([item('X1')], map, active).aborted).toBeTruthy()
     expect(planFeedSync(Array.from({ length: 30 }, (_, i) => item(`X${i}`)), map, active).aborted).toBeNull()
+  })
+})
+
+describe('mergeLegacy (banco do site de origem)', () => {
+  const base = parseFeed(['id,title,description,availability,condition,price,link,image_link,additional_image_link,brand,model,version,year,mileage,transmission,fuel_type,body_style,color',
+    'EC-000001,Fiat Toro,x,in stock,used,218900.00 BRL,https://s/veiculos/fiat-toro-1,https://s/em-breve.jpg,,Fiat,Toro,2.2 TURBO,2027,0 km,Automático,Diesel,Picape,Cinza'].join(String.fromCharCode(10)))[0]
+  const lg = {
+    catalog_item_id: 'EC-000001', plate: 'abc-1d23', year_make: 2026, year_model: 2027, mileage: 35200, doors: 4,
+    color: 'Prata', options: ['Ar-condicionado', 'Ar-condicionado', ' Airbag '], video_url: 'https://youtu.be/x',
+    internal_code: 'AD-PAR-000001', origin_type: 'PARTNER', store: 'Loja X', partner_name: 'Auto Parceira', partner_city: 'Osasco',
+    partner_whatsapp: '11999990000', fuel: 'Diesel', transmission: 'Automático', body_type: 'Picape',
+    price_cents: 21890000, old_price_cents: 22990000, promotion: true, origin_price_cents: 20000000, price_markup_cents: 1890000,
+    source_url: 'https://parceira.com.br/carro/1', featured: true, stock_status: 'reserved', seo_title: 'Toro', seo_description: null,
+  }
+
+  it('sem cadastro no banco: mantém o feed e não inventa nada', () => {
+    const m = mergeLegacy(base, undefined)
+    expect(m.extras.plate).toBeNull()
+    expect(m.extras.origin).toBeNull()
+    expect(m.km).toBe(0)
+  })
+
+  it('traz o que o painel do site mostra', () => {
+    const m = mergeLegacy(base, lg)
+    expect(m.extras.plate).toBe('ABC1D23')
+    expect(m.extras.year).toBe(2026)
+    expect(m.modelYear).toBe(2027)
+    expect(m.km).toBe(35200)
+    expect(m.color).toBe('Prata')
+    expect(m.extras.doors).toBe(4)
+    expect(m.extras.options).toEqual(['Ar-condicionado', 'Airbag'])
+    expect(m.extras.promo).toEqual({ from: 229900, to: 218900 })
+    expect(m.extras.reserved).toBe(true)
+    expect(m.extras.featured).toBe(true)
+    expect(m.extras.consigned).toBe(true)
+    expect(m.extras.origin).toMatchObject({
+      internalCode: 'AD-PAR-000001', partnerName: 'Auto Parceira', partnerCity: 'Osasco',
+      sourceUrl: 'https://parceira.com.br/carro/1', originPrice: 200000, markup: 18900,
+    })
+  })
+
+  it('carro próprio não vira parceiro; placa e vídeo inválidos são ignorados; sem promoção sem preço "de"', () => {
+    const m = mergeLegacy(base, { ...lg, plate: 'SEM PLACA', origin_type: 'OWN', video_url: 'http://inseguro', old_price_cents: null })
+    expect(m.extras.plate).toBeNull()
+    expect(m.extras.origin?.partnerName).toBeNull()
+    expect(m.extras.consigned).toBe(false)
+    expect(m.extras.videoUrl).toBeNull()
+    expect(m.extras.promo).toBeNull()
+    expect(normalizePlate('ABC1234')).toBe('ABC1234')
   })
 })

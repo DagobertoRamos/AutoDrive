@@ -16,6 +16,8 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { feedOrigins } from '@/lib/site/feed-import'
+import type { FeedOrigin } from '@/lib/site/feed-import-core'
 
 // Status que NÃO finalizaram a negociação — veículo está em negociação ativa
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
@@ -241,6 +243,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Origem dos carros importados do site antigo (loja parceira, código interno...).
+    const originsByTenant = new Map<string, Record<string, FeedOrigin>>()
+    for (const tid of new Set(vehiclesAny.map((v) => v.tenantId as string | null).filter((t): t is string => !!t))) {
+      originsByTenant.set(tid, await feedOrigins(tid))
+    }
+
     // Computa hasOpenNegotiation com info de vendedor e unidade da negociação
     const data = vehiclesAny.map((v) => {
       const openDealRow = v.dealVehicles?.[0]
@@ -270,6 +278,7 @@ export async function GET(req: NextRequest) {
         openNegotiationStatus: openDeal?.status      ?? null,
         openNegotiationSeller: sellerName,
         openNegotiationUnit:   unitName,
+        origin:                originsByTenant.get(v.tenantId)?.[v.id] ?? null,
       }
     })
 

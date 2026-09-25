@@ -61,6 +61,17 @@ interface VehicleDetail {
   createdAt:      string
   updatedAt:      string
   unit:     { id: string; name: string; city: string | null; state: string | null } | null
+  origin?: {
+    catalogId: string
+    internalCode: string | null
+    originType: string | null
+    partnerName: string | null
+    partnerCity: string | null
+    partnerWhatsapp: string | null
+    sourceUrl: string | null
+    originPrice: number | null
+    markup: number | null
+  } | null
   customer: { id: string; name: string; phone: string | null; email: string | null; cpf: string | null } | null
   photos: { id: string; url: string; caption: string | null; isMain: boolean; order: number }[]
   stockPendencies: {
@@ -402,6 +413,34 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
               <InfoRow label="Tipo"       value={vehicle.stockType ? <StockTypeBadge type={vehicle.stockType} /> : '—'} />
               <InfoRow label="Condição"   value={vehicle.conditionType ? <ConditionBadge condition={vehicle.conditionType} /> : '—'} />
               <InfoRow label="Unidade"    value={vehicle.unit ? `${vehicle.unit.name}${vehicle.unit.city ? ` — ${vehicle.unit.city}/${vehicle.unit.state}` : ''}` : '—'} />
+              {vehicle.origin && (
+                <>
+                  <InfoRow label="Código interno" value={vehicle.origin.internalCode ? `#${vehicle.origin.internalCode}` : '—'} />
+                  <InfoRow label="Código catálogo" value={vehicle.origin.catalogId} />
+                  <InfoRow
+                    label="Origem"
+                    value={vehicle.origin.originType === 'PARTNER' ? 'Loja parceira' : vehicle.origin.originType === 'PRIVATE' ? 'Particular' : 'Próprio'}
+                  />
+                  {vehicle.origin.partnerName && (
+                    <InfoRow
+                      label="Loja parceira"
+                      value={[vehicle.origin.partnerName, vehicle.origin.partnerCity, vehicle.origin.partnerWhatsapp].filter(Boolean).join(' — ')}
+                    />
+                  )}
+                  {vehicle.origin.sourceUrl && (
+                    <InfoRow
+                      label="Anúncio na origem"
+                      value={<a href={vehicle.origin.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-brand-700 underline break-all">{vehicle.origin.sourceUrl}</a>}
+                    />
+                  )}
+                  {vehicle.origin.originPrice != null && (
+                    <InfoRow label="Preço do parceiro" value={vehicle.origin.originPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
+                  )}
+                  {vehicle.origin.markup != null && (
+                    <InfoRow label="Margem do site" value={vehicle.origin.markup.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
+                  )}
+                </>
+              )}
               <InfoRow label="Cautelar"   value={<CautelarBadge status={vehicle.cautelarStatus} />} />
               {vehicle.notes && (
                 <div className="mt-4 rounded-lg bg-gray-50 p-3">

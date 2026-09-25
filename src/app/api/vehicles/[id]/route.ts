@@ -15,6 +15,7 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { feedOrigins } from '@/lib/site/feed-import'
 
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
 
@@ -82,6 +83,7 @@ export async function GET(
     const openDeal = vehicleAny.dealVehicles?.[0]
     const data = {
       ...vehicleAny,
+      origin: (await feedOrigins(vehicleAny.tenantId))[vehicleAny.id] ?? null,
       hasOpenNegotiation: !!openDeal,
       openNegotiationId:  openDeal?.dealId ?? null,
     }

@@ -144,9 +144,9 @@ export function parseFeed(text: string): FeedVehicle[] {
   return out
 }
 
-export interface SyncPlan {
-  create: FeedVehicle[]
-  update: { vehicleId: string; item: FeedVehicle }[]
+export interface SyncPlan<T extends FeedVehicle = FeedVehicle> {
+  create: T[]
+  update: { vehicleId: string; item: T }[]
   remove: string[] // vehicleIds que saíram do feed
   aborted: string | null
 }
@@ -156,15 +156,15 @@ export interface SyncPlan {
  * Trava: feed vazio, ou com menos da metade do que já estava no ar (com
  * pelo menos 20 carros), é tratado como falha do site de origem — nada muda.
  */
-export function planFeedSync(items: FeedVehicle[], map: Record<string, string>, activeIds: Set<string>): SyncPlan {
+export function planFeedSync<T extends FeedVehicle>(items: T[], map: Record<string, string>, activeIds: Set<string>): SyncPlan<T> {
   const live = Object.entries(map).filter(([, id]) => activeIds.has(id))
   if (!items.length) return { create: [], update: [], remove: [], aborted: 'Feed vazio' }
   if (live.length >= 20 && items.length < live.length / 2) {
     return { create: [], update: [], remove: [], aborted: `Feed com ${items.length} carros (antes ${live.length}) — parece falha do site de origem` }
   }
   const inFeed = new Set(items.map((i) => i.extId))
-  const create: FeedVehicle[] = []
-  const update: SyncPlan['update'] = []
+  const create: T[] = []
+  const update: SyncPlan<T>['update'] = []
   for (const item of items) {
     const id = map[item.extId]
     if (id) update.push({ vehicleId: id, item })
@@ -176,4 +176,132 @@ export function planFeedSync(items: FeedVehicle[], map: Record<string, string>, 
 
 export function samePhotos(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((u, i) => u === b[i])
+}
+
+// ── Enriquecimento pelo banco do site de origem ─────────────────────────────
+// O CSV da Meta não traz placa, loja parceira, ano de fabricação, km real,
+// portas, opcionais, promoção "de/por"... O banco do site antigo tem tudo o
+// que o painel dele mostra. Quando configurado (env SITE_FEED_LEGACY_DB),
+// cada item do feed é completado pelo catalog_item_id.
+
+export interface LegacyVehicle {
+  catalog_item_id: string
+  plate: string | null
+  year_make: number | null
+  year_model: number | null
+  mileage: number | null
+  doors: number | null
+  color: string | null
+  options: unknown
+  video_url: string | null
+  internal_code: string | null
+  origin_type: string | null // OWN | PARTNER | PRIVATE
+  store: string | null
+  partner_name: string | null
+  partner_city: string | null
+  partner_whatsapp: string | null
+  fuel: string | null
+  transmission: string | null
+  body_type: string | null
+  price_cents: number | null
+  old_price_cents: number | null
+  promotion: boolean | null
+  origin_price_cents: number | null
+  price_markup_cents: number | null
+  source_url: string | null
+  featured: boolean | null
+  stock_status: string | null // available | reserved | sold
+  seo_title: string | null
+  seo_description: string | null
+}
+
+/** Dados de origem que o Vehicle do SaaS não tem coluna (ficam no estado da importação). */
+export interface FeedOrigin {
+  catalogId: string
+  internalCode: string | null
+  originType: string | null
+  partnerName: string | null
+  partnerCity: string | null
+  partnerWhatsapp: string | null
+  sourceUrl: string | null
+  originPrice: number | null // preço do parceiro
+  markup: number | null // margem somada pelo site
+}
+
+export interface FeedExtras {
+  plate: string | null
+  year: number | null // fabricação
+  doors: number | null
+  options: string[]
+  videoUrl: string | null
+  consigned: boolean
+  featured: boolean
+  reserved: boolean
+  /** Promoção "de/por" do site: salePrice = de, promoPrice = por. */
+  promo: { from: number; to: number } | null
+  seoTitle: string | null
+  seoDescription: string | null
+  origin: FeedOrigin | null
+}
+
+/** Placa brasileira (antiga ou Mercosul) em maiúsculas sem hífen; outra coisa → null. */
+export function normalizePlate(v: string | null | undefined): string | null {
+  const p = String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return /^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(p) ? p : null
+}
+
+const cents = (v: number | null | undefined) => (v != null && Number(v) > 0 ? Math.round(Number(v)) / 100 : null)
+const txt = (v: string | null | undefined) => (v ?? '').trim() || null
+
+/** Completa o item do feed com o cadastro do site de origem. */
+export function mergeLegacy(item: FeedVehicle, lg: LegacyVehicle | undefined): FeedVehicle & { extras: FeedExtras } {
+  if (!lg) {
+    return {
+      ...item,
+      extras: {
+        plate: null, year: item.modelYear, doors: null, options: [], videoUrl: null, consigned: false,
+        featured: false, reserved: false, promo: null, seoTitle: null, seoDescription: null, origin: null,
+      },
+    }
+  }
+  const opts = Array.isArray(lg.options) ? lg.options.map((o) => String(o ?? '').trim()).filter(Boolean) : []
+  const isPartner = lg.origin_type === 'PARTNER'
+  const yearOk = (y: number | null | undefined) => (y && y > 1900 && y < 2100 ? y : null)
+  const price = cents(lg.price_cents) ?? item.price
+  const oldPrice = cents(lg.old_price_cents)
+  const promo = lg.promotion && price && oldPrice && oldPrice > price ? { from: oldPrice, to: price } : null
+  return {
+    ...item,
+    modelYear: yearOk(lg.year_model) ?? item.modelYear,
+    km: lg.mileage && lg.mileage > 0 ? lg.mileage : item.km,
+    price,
+    color: txt(lg.color) ?? item.color,
+    bodyType: item.bodyType ?? txt(lg.body_type),
+    fuel: item.fuel ?? (lg.fuel ? normalizeFuel(lg.fuel) : null),
+    transmission: item.transmission ?? (lg.transmission ? normalizeTransmission(lg.transmission) : null),
+    extras: {
+      plate: normalizePlate(lg.plate),
+      year: yearOk(lg.year_make) ?? yearOk(lg.year_model) ?? item.modelYear,
+      doors: lg.doors && lg.doors > 0 && lg.doors < 10 ? lg.doors : null,
+      options: [...new Set(opts)],
+      videoUrl: /^https:\/\//i.test(lg.video_url ?? '') ? lg.video_url : null,
+      consigned: isPartner || lg.origin_type === 'PRIVATE',
+      featured: !!lg.featured,
+      reserved: lg.stock_status === 'reserved',
+      promo,
+      seoTitle: txt(lg.seo_title),
+      seoDescription: txt(lg.seo_description),
+      origin: {
+        catalogId: lg.catalog_item_id,
+        internalCode: txt(lg.internal_code),
+        originType: txt(lg.origin_type),
+        partnerName: isPartner ? txt(lg.partner_name) ?? txt(lg.store) : null,
+        partnerCity: isPartner ? txt(lg.partner_city) : null,
+        partnerWhatsapp: isPartner ? txt(lg.partner_whatsapp) : null,
+        sourceUrl: /^https?:\/\//i.test(lg.source_url ?? '') ? lg.source_url : null,
+        originPrice: cents(lg.origin_price_cents),
+        markup: cents(lg.price_markup_cents),
+      },
+    },
+  }
 }
