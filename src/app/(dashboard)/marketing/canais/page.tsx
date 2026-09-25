@@ -46,6 +46,9 @@ function Channels() {
   const [configFor, setConfigFor] = useState<Connection | null>(null)
   const [group, setGroup] = useState<string>('')
   const [diag, setDiag] = useState<Channel | null>(null)
+  const [pending, setPending] = useState<Channel | null>(null)
+  // Aviso sempre à vista (quem clica lá embaixo no catálogo também vê).
+  useEffect(() => { if (flash) window.scrollTo({ top: 0, behavior: 'smooth' }) }, [flash])
 
   const load = useCallback(async () => { try { const j = await api('/api/publications/connections'); setData(j.data) } catch (e) { setErr((e as Error).message) } }, [])
   useEffect(() => { const t = setTimeout(() => void load(), 0); return () => clearTimeout(t) }, [load])
@@ -61,7 +64,7 @@ function Channels() {
   }
   const startConnect = (ch: Channel) => {
     if (ch.connect === 'OAUTH') {
-      if (!data?.oauth[OAUTH_KEY[ch.id]]) { setFlash({ ok: false, text: `${ch.name}: o aplicativo oficial da plataforma ainda não foi configurado (homologação pendente). Fale com o suporte AutoDrive.` }); return }
+      if (!data?.oauth[OAUTH_KEY[ch.id]]) { setPending(ch); return }
       window.location.assign(`/api/publications/oauth/${OAUTH_SLUG[ch.id]}/start`)
     } else setConnectFor(ch)
   }
@@ -132,7 +135,9 @@ function Channels() {
                     <div className="mt-2 flex flex-wrap gap-1">{Object.entries(ch.capabilities).filter(([k]) => ['publish', 'get', 'update', 'pause', 'remove'].includes(k)).map(([k, v]) => <span key={k} className={cn('rounded px-1.5 py-0.5 text-[10px]', v === 'SIM' ? 'bg-green-50 text-green-700' : v === 'MANUAL' ? 'bg-amber-50 text-amber-700' : v === 'NAO' ? 'bg-gray-100 text-gray-400 line-through' : 'bg-gray-50 text-gray-400')}>{CAP[k]}</span>)}</div>
                     <p className="mt-2 flex-1 text-[11px] text-gray-500">{ch.source.notes}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && <button onClick={() => startConnect(ch)} className="btn-primary px-2 py-1 text-xs"><Plug size={13} />{connected ? 'Conectar outra conta' : 'Conectar'}</button>}
+                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && (ch.connect === 'OAUTH' && !data.oauth[OAUTH_KEY[ch.id]]
+                        ? <button onClick={() => startConnect(ch)} className="btn-secondary px-2 py-1 text-xs"><AlertTriangle size={13} className="text-amber-600" />Como conectar</button>
+                        : <button onClick={() => startConnect(ch)} className="btn-primary px-2 py-1 text-xs"><Plug size={13} />{connected ? 'Conectar outra conta' : 'Conectar'}</button>)}
                       {connected > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-green-700"><CheckCircle2 size={12} />{connected} conectada(s)</span>}
                       <button onClick={() => setDiag(ch)} className="ml-auto text-[11px] font-medium text-brand-700 hover:underline">Detalhes técnicos</button>
                     </div>
@@ -142,6 +147,17 @@ function Channels() {
             </ul>
           </section>
         </>
+      )}
+      {pending && (
+        <Drawer open onClose={() => setPending(null)} title={`Conectar ${pending.name}`} subtitle="Ainda não disponível nesta plataforma">
+          <div className="space-y-3 text-sm text-gray-700">
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">A conexão com {pending.name} usa a autorização oficial do canal. O aplicativo oficial do AutoDrive neste canal ainda está em homologação, por isso o botão não abre a tela de login do {pending.name} por enquanto.</p>
+            <div><p className="text-xs font-semibold text-gray-800">O que a sua loja vai precisar</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">{pending.dependencies.map((d: string) => <li key={d}>{d.replace(' — plataforma', ' (feito pelo AutoDrive)')}</li>)}</ul></div>
+            <p className="text-xs text-gray-600">{pending.commercial}</p>
+            <p className="text-xs text-gray-500">Quando a homologação terminar, este botão passa a abrir o login oficial do {pending.name} e a conta da loja fica conectada aqui. Enquanto isso, publique no Site próprio e nos canais já disponíveis.</p>
+            <div className="flex justify-end gap-2"><button onClick={() => { setDiag(pending); setPending(null) }} className="btn-secondary px-3 py-1.5 text-xs">Detalhes técnicos</button><button autoFocus onClick={() => setPending(null)} className="btn-primary px-3 py-1.5 text-xs">Entendi</button></div>
+          </div>
+        </Drawer>
       )}
       {connectFor && <ConnectForm channel={connectFor} onClose={() => setConnectFor(null)} onDone={(t) => { setConnectFor(null); setFlash(t); void load() }} />}
       {configFor && <ConfigForm conn={configFor} spec={specOf(configFor.channel)} onClose={() => setConfigFor(null)} onDone={(t) => { setConfigFor(null); setFlash(t); void load() }} />}
