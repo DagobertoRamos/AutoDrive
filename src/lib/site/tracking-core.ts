@@ -4,15 +4,26 @@
 
 export interface SiteTracking { metaPixelId: string; googleTagId: string }
 
+/**
+ * Aceita o ID puro OU o código inteiro que a Meta manda colar no site
+ * (<script>… fbq('init', '123…') … <noscript>…tr?id=123…</noscript>).
+ * O script em si nunca é gravado: o site monta o dele (com consentimento de cookies).
+ */
 export function cleanMetaPixelId(v: unknown): string {
-  const s = String(v ?? '').replace(/\s/g, '')
-  return /^\d{10,20}$/.test(s) ? s : ''
+  const raw = String(v ?? '')
+  const s = raw.replace(/\s/g, '')
+  if (/^\d{10,20}$/.test(s)) return s
+  const m = raw.match(/fbq\(\s*['"]init['"]\s*,\s*['"](\d{10,20})['"]/) ?? raw.match(/facebook\.com\/tr\?[^"'\s]*?\bid=(\d{10,20})/)
+  return m ? m[1] : ''
 }
 
-/** G- (Analytics 4), AW- (Google Ads) ou GT- (tag do Google). */
+/** G- (Analytics 4), AW- (Google Ads) ou GT- (tag do Google). Aceita também o código gtag.js inteiro. */
 export function cleanGoogleTagId(v: unknown): string {
-  const s = String(v ?? '').trim().toUpperCase()
-  return /^(G|AW|GT)-[A-Z0-9]{4,20}$/.test(s) ? s : ''
+  const raw = String(v ?? '')
+  const s = raw.trim().toUpperCase()
+  if (/^(G|AW|GT)-[A-Z0-9]{4,20}$/.test(s)) return s
+  const m = raw.match(/gtag\/js\?id=((?:G|AW|GT)-[A-Z0-9]{4,20})/i) ?? raw.match(/gtag\(\s*['"]config['"]\s*,\s*['"]((?:G|AW|GT)-[A-Z0-9]{4,20})['"]/i)
+  return m ? m[1].toUpperCase() : ''
 }
 
 export function sanitizeTracking(v: unknown): SiteTracking {

@@ -239,14 +239,14 @@ export default function SiteConfigPage() {
       <Section title="Medição de anúncios (Pixel da Meta e Google)" hint="Com os IDs preenchidos, o site mostra o aviso de cookies e, com o aceite do visitante, mede visitas, carros vistos, contatos pelo WhatsApp e formulários enviados (Lead). Nenhum dado pessoal do cliente é enviado.">
         <div className="grid gap-3 md:grid-cols-2">
           {([
-            ['metaPixelId', 'ID do Pixel da Meta', '1234567890123456', 'Gerenciador de Eventos da Meta → Fontes de dados → seu Pixel (só números).', cleanMetaPixelId],
-            ['googleTagId', 'ID da tag do Google', 'G-XXXXXXXXXX ou AW-XXXXXXXXX', 'Google Analytics (G-…) ou Google Ads (AW-…). Use uma tag por site.', cleanGoogleTagId],
+            ['metaPixelId', 'ID do Pixel da Meta', '1234567890123456', 'Cole o ID (só números) ou o código inteiro que a Meta mandou — o sistema pega o ID sozinho.', cleanMetaPixelId],
+            ['googleTagId', 'ID da tag do Google', 'G-XXXXXXXXXX ou AW-XXXXXXXXX', 'G-… (Analytics) ou AW-… (Ads). Pode colar o código inteiro do Google — o sistema pega o ID.', cleanGoogleTagId],
           ] as const).map(([k, l, ph, help, clean]) => {
             const v = cfg.tracking[k]
             const bad = v.trim() !== '' && !clean(v)
             return (
               <Field key={k} l={l}>
-                <input disabled={dis} className={cn(input, bad && 'border-red-300')} value={v} placeholder={ph} onChange={(e) => setIn('tracking', { [k]: e.target.value.trim() })} />
+                <input disabled={dis} className={cn(input, bad && 'border-red-300')} value={v} placeholder={ph} onChange={(e) => setIn('tracking', { [k]: clean(e.target.value) || e.target.value.trim() })} />
                 <span className={cn('mt-1 block text-[11px]', bad ? 'text-red-600' : v ? 'text-green-700' : 'text-gray-400')}>{bad ? 'Formato inválido: não será salvo.' : v ? 'Ativo no site.' : help}</span>
               </Field>
             )
