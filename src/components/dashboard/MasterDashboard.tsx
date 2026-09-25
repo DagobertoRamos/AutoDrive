@@ -52,6 +52,7 @@ interface MasterDashboardData {
       inadimplente: number
       paused: number
       cancelado: number
+      desativado: number
     }
     warnings: Array<{
       id: string
@@ -75,17 +76,17 @@ interface MasterDashboardData {
       priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
       status: 'OPEN' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED'
       durationText: string
+      href?: string
     }>
   }
   infrastructure: {
-    app: { status: string; pingMs: number }
     database: { status: string; pingMs: number; error: string | null }
-    jobs: { status: string; lastExecution: string }
+    queueActivity: { lastEventAt: string; ago: string } | null
     deploy: {
       branch: string
       commit: string
       env: string
-      updatedAt: string
+      message: string | null
     }
   }
   integrations: Array<{
@@ -104,8 +105,11 @@ interface MasterDashboardData {
   }
   queue: {
     activeQueues: number
+    openUnits: number
     pendingCalls: number
-    averageAcceptSeconds: number
+    stuckCalls: number
+    averageAcceptSeconds: number | null
+    acceptSample: number
   }
   security: {
     failedLoginsToday: number
@@ -272,7 +276,12 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
               {data.tenants.summary.ativo} ativos
             </p>
             <p className="text-[10px] text-gray-500 mt-0.5">
-              Total: {data.tenants.summary.total} | Suspensos: {data.tenants.summary.suspenso + data.tenants.summary.bloqueado}
+              Total: {data.tenants.summary.total}
+              {data.tenants.summary.teste > 0 && ` | Teste: ${data.tenants.summary.teste}`}
+              {data.tenants.summary.suspenso + data.tenants.summary.bloqueado + data.tenants.summary.inadimplente > 0 &&
+                ` | Suspensos: ${data.tenants.summary.suspenso + data.tenants.summary.bloqueado + data.tenants.summary.inadimplente}`}
+              {data.tenants.summary.desativado > 0 && ` | Desativados: ${data.tenants.summary.desativado}`}
+              {data.tenants.summary.cancelado > 0 && ` | Cancelados: ${data.tenants.summary.cancelado}`}
             </p>
           </div>
         </div>
@@ -283,10 +292,10 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
             <ShieldAlert size={20} />
           </div>
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Chamados / Tickets</h3>
-            <p className="text-xl font-black text-gray-950 mt-0.5">{data.tickets.open} em aberto</p>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Alertas</h3>
+            <p className="text-xl font-black text-gray-950 mt-0.5">{data.tickets.items.length} {data.tickets.items.length === 1 ? 'alerta' : 'alertas'}</p>
             <p className="text-[10px] text-gray-500 mt-0.5">
-              Críticos: {data.tickets.critical} | SLA próximo: {data.tickets.overdue}
+              Críticos: {data.tickets.critical} | Altos: {data.tickets.overdue}
             </p>
           </div>
         </div>
@@ -315,17 +324,17 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
           <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldAlert size={18} className="text-amber-500" />
-              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Tickets de Suporte & Plataforma</h2>
+              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Alertas da Plataforma</h2>
             </div>
-            <span className="text-xs text-gray-400 font-medium">SLA Ativo</span>
+            <span className="text-xs text-gray-400 font-medium">Dados reais</span>
           </div>
 
           <div className="p-4 flex-1 divide-y divide-gray-100 max-h-[360px] overflow-y-auto">
             {data.tickets.items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <CheckCircle2 className="text-emerald-500" size={32} />
-                <p className="text-sm font-semibold text-gray-800 mt-2">Nenhum chamado crítico no momento.</p>
-                <p className="text-xs text-gray-400 mt-0.5">Todas as lojas e integradoras estão operando sem falhas relatadas.</p>
+                <p className="text-sm font-semibold text-gray-800 mt-2">Nenhum alerta no momento.</p>
+                <p className="text-xs text-gray-400 mt-0.5">Lojas, fila, integrações e notificações sem problemas detectados.</p>
               </div>
             ) : (
               data.tickets.items.map((ticket) => (
@@ -338,7 +347,11 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
                       </span>
                       <span className="text-xs text-gray-500 font-medium truncate">{ticket.tenantName}</span>
                     </div>
-                    <p className="text-sm font-bold text-gray-900 mt-1">{ticket.title}</p>
+                    {ticket.href ? (
+                      <Link href={ticket.href} className="text-sm font-bold text-gray-900 mt-1 block hover:underline">{ticket.title}</Link>
+                    ) : (
+                      <p className="text-sm font-bold text-gray-900 mt-1">{ticket.title}</p>
+                    )}
                   </div>
                   <span className="text-xs font-semibold text-gray-400 shrink-0 mt-0.5 bg-gray-50 border border-gray-150 px-2 py-0.5 rounded-lg">
                     {ticket.durationText}
@@ -366,7 +379,7 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <CheckCircle2 className="text-emerald-500" size={32} />
                 <p className="text-sm font-semibold text-gray-800 mt-2">Nenhum tenant em atenção.</p>
-                <p className="text-xs text-gray-400 mt-0.5">Todas as lojas possuem configurações válidas e usuários ativos.</p>
+                <p className="text-xs text-gray-400 mt-0.5">Todas as lojas estão ativas, com unidade e usuários cadastrados.</p>
               </div>
             ) : (
               data.tenants.warnings.map((tenant) => (
@@ -413,22 +426,30 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
             </div>
 
             <div className="border border-gray-100 p-4 rounded-xl">
-              <p className="text-xs text-gray-400 font-semibold uppercase">Cron / Workers</p>
+              <p className="text-xs text-gray-400 font-semibold uppercase">Atividade da Fila</p>
               <div className="flex items-center gap-2 mt-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                <p className="text-sm font-bold text-gray-900">Agendador Fila (OK)</p>
+                <span className={`h-2.5 w-2.5 rounded-full ${data.infrastructure.queueActivity ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                <p className="text-sm font-bold text-gray-900">
+                  {data.infrastructure.queueActivity ? `Último evento ${data.infrastructure.queueActivity.ago}` : 'Sem eventos'}
+                </p>
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">Último tick: {data.infrastructure.jobs.lastExecution}</p>
+              <p className="text-[10px] text-gray-500 mt-1">
+                {data.infrastructure.queueActivity
+                  ? new Date(data.infrastructure.queueActivity.lastEventAt).toLocaleString('pt-BR')
+                  : 'Nenhuma loja usou a fila ainda'}
+              </p>
             </div>
           </div>
 
           <div className="border border-gray-100 p-4 rounded-xl">
-            <p className="text-xs text-gray-400 font-semibold uppercase">Último Deploy Vercel</p>
+            <p className="text-xs text-gray-400 font-semibold uppercase">Versão no ar</p>
             <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
               <p className="text-gray-500">Branch: <strong className="text-gray-800">{data.infrastructure.deploy.branch}</strong></p>
               <p className="text-gray-500">Commit: <strong className="text-gray-800">{data.infrastructure.deploy.commit}</strong></p>
               <p className="text-gray-500">Ambiente: <strong className="text-gray-800">{data.infrastructure.deploy.env}</strong></p>
-              <p className="text-gray-500">Data: <strong className="text-gray-800">{data.infrastructure.deploy.updatedAt}</strong></p>
+              <p className="text-gray-500 col-span-2 truncate" title={data.infrastructure.deploy.message ?? ''}>
+                Mensagem: <strong className="text-gray-800">{data.infrastructure.deploy.message ?? '—'}</strong>
+              </p>
             </div>
           </div>
         </div>
@@ -486,7 +507,7 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
               <span className="text-sm font-bold text-gray-900">{data.notifications.webPushActive}</span>
             </div>
             <div className="flex items-center justify-between border-b border-gray-50 pb-2">
-              <span className="text-xs text-gray-500 font-semibold">Devices FCM Registrados</span>
+              <span className="text-xs text-gray-500 font-semibold">Celulares (app) Ativos</span>
               <span className="text-sm font-bold text-gray-900">{data.notifications.fcmActive}</span>
             </div>
             <div className="flex items-center justify-between border-b border-gray-50 pb-2">
@@ -494,7 +515,7 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
               <span className="text-sm font-bold text-red-600">{data.notifications.invalidSubscriptions}</span>
             </div>
             <div className="flex items-center justify-between pb-1">
-              <span className="text-xs text-gray-500 font-semibold">Falhas nas últimas 24h</span>
+              <span className="text-xs text-gray-500 font-semibold">Entregas com erro (24h)</span>
               <span className="text-sm font-bold text-amber-600">{data.notifications.failures24h}</span>
             </div>
           </div>
@@ -509,16 +530,24 @@ export function MasterDashboard({ firstName, greeting }: MasterDashboardProps) {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-gray-50 pb-2">
-              <span className="text-xs text-gray-500 font-semibold">Filas Ativas</span>
-              <span className="text-sm font-bold text-gray-900">{data.queue.activeQueues} lojas</span>
+              <span className="text-xs text-gray-500 font-semibold">Filas abertas hoje</span>
+              <span className="text-sm font-bold text-gray-900">
+                {data.queue.activeQueues} {data.queue.activeQueues === 1 ? 'loja' : 'lojas'} ({data.queue.openUnits} {data.queue.openUnits === 1 ? 'unidade' : 'unidades'})
+              </span>
             </div>
             <div className="flex items-center justify-between border-b border-gray-50 pb-2">
-              <span className="text-xs text-gray-500 font-semibold">Chamadas Pendentes (CALLED)</span>
-              <span className="text-sm font-bold text-gray-900">{data.queue.pendingCalls} chamadas</span>
+              <span className="text-xs text-gray-500 font-semibold">Chamadas aguardando aceite</span>
+              <span className="text-sm font-bold text-gray-900">{data.queue.pendingCalls}</span>
+            </div>
+            <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+              <span className="text-xs text-gray-500 font-semibold">Chamadas presas (+15min)</span>
+              <span className={`text-sm font-bold ${data.queue.stuckCalls > 0 ? 'text-red-600' : 'text-gray-900'}`}>{data.queue.stuckCalls}</span>
             </div>
             <div className="flex items-center justify-between pb-1">
-              <span className="text-xs text-gray-500 font-semibold">Tempo médio de Aceite</span>
-              <span className="text-sm font-bold text-indigo-600">{data.queue.averageAcceptSeconds}s</span>
+              <span className="text-xs text-gray-500 font-semibold">Tempo médio de aceite (7 dias)</span>
+              <span className="text-sm font-bold text-indigo-600" title={`${data.queue.acceptSample} chamadas aceitas`}>
+                {data.queue.averageAcceptSeconds == null ? '—' : `${data.queue.averageAcceptSeconds}s`}
+              </span>
             </div>
           </div>
         </div>

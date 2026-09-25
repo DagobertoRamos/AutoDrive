@@ -17,13 +17,17 @@ import { blockedTenantMessage } from '@/lib/tenant-lifecycle/core'
 // ---------------------------------------------------------------------------
 async function createAuditLog({
   userId,
+  userName,
   action,
   entity,
   entityId,
   ipAddress,
   userAgent,
+  status,
 }: {
-  userId: string
+  userId?: string | null
+  userName?: string | null
+  status?: string
   action: string
   entity: string
   entityId?: string
@@ -33,7 +37,9 @@ async function createAuditLog({
   try {
     await prisma.auditLog.create({
       data: {
-        userId,
+        userId:   userId   ?? null,
+        userName: userName ?? null,
+        status:   status   ?? 'SUCCESS',
         action,
         entity,
         entityId:  entityId  ?? null,
@@ -141,6 +147,17 @@ export const authOptions: NextAuthOptions = {
 
         const normalizedEmail = credentials.email.toLowerCase().trim()
 
+        const reqHeaders = req?.headers as Record<string, string | string[] | undefined> | undefined
+        const reqIp =
+          getHeaderValue(reqHeaders, 'x-forwarded-for')?.split(',')[0]?.trim() ??
+          getHeaderValue(reqHeaders, 'x-real-ip')
+        // Tentativa falha → auditoria (alimenta "Falhas de login (hoje)" no Painel Master).
+        const logFailure = (userId: string | null, reason: string) =>
+          void createAuditLog({
+            userId, userName: normalizedEmail, action: 'LOGIN_FAILED', entity: 'User',
+            entityId: reason, ipAddress: reqIp, userAgent: getHeaderValue(reqHeaders, 'user-agent'), status: 'BLOCKED',
+          })
+
         // 1. Busca o usuário pelo e-mail
         const user = await prisma.user.findUnique({
           where: { email: normalizedEmail },
@@ -159,6 +176,7 @@ export const authOptions: NextAuthOptions = {
         })
 
         if (!user) {
+          logFailure(null, 'EMAIL_DESCONHECIDO')
           throw new Error('Credenciais inválidas.')
         }
 
@@ -180,6 +198,7 @@ export const authOptions: NextAuthOptions = {
         )
 
         if (!passwordValid) {
+          logFailure(user.id, 'SENHA_INCORRETA')
           throw new Error('Credenciais inválidas.')
         }
 
