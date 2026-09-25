@@ -13,6 +13,8 @@ import { SiteHeader } from '@/components/site/SiteHeader'
 import { SitePreviewBar } from '@/components/site/SitePreviewBar'
 import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteTracking } from '@/components/site/SiteTracking'
+import { cleanGoogleTagId, tagBootstrapScript } from '@/lib/site/tracking-core'
+import { CONSENT_COOKIE } from '@/lib/site/tracking-cookie'
 import { SiteAnalytics } from '@/components/site/SiteAnalytics'
 import { siteBrandLandings } from '@/lib/site/vehicles'
 import { Suspense } from 'react'
@@ -63,10 +65,17 @@ export default async function SiteLayout({ children, params }: { children: React
     '--blue': darken(identity.primaryColor, 0.2), '--blue-dark': identity.darkColor,
   } as React.CSSProperties
 
+  const tagBoot = tagBootstrapScript(ctx.config.tracking.metaPixelId, ctx.config.tracking.googleTagId, CONSENT_COOKIE)
+  const googleTag = cleanGoogleTagId(ctx.config.tracking.googleTagId)
+
   return (
     <div className="autodrive-site" style={vars}>
       {/* Marca a página como site público: o vigia de sessão do painel não age aqui. */}
       <script dangerouslySetInnerHTML={{ __html: 'window.__AUTODRIVE_PUBLIC_SITE__=true' }} />
+      {/* Pixel da Meta / tag do Google DA LOJA no HTML (detectáveis pela Meta e pelo Google),
+          em modo de consentimento: nada é coletado antes do "Aceitar" dos cookies. */}
+      {tagBoot && <script dangerouslySetInnerHTML={{ __html: tagBoot }} />}
+      {googleTag && <script async src={`https://www.googletagmanager.com/gtag/js?id=${googleTag}`} />}
       {ctx.preview && <SitePreviewBar />}
       <SiteHeader homeHref={ctx.href('/')} name={identity.name} logoUrl={identity.logoUrl} nav={ctx.nav} whatsappHref={wa} phone={contact.phone} />
       <main>{children}</main>

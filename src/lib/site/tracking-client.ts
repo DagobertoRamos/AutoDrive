@@ -8,7 +8,8 @@ declare global {
   interface Window { fbq?: Fn; _fbq?: Fn; dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void; __siteTracking?: { pixel: string; google: string } }
 }
 
-export const CONSENT_COOKIE = 'site_analytics_consent'
+import { CONSENT_COOKIE } from './tracking-cookie'
+export { CONSENT_COOKIE }
 export type Consent = 'unknown' | 'accepted' | 'rejected'
 
 export function readConsent(): Consent {
@@ -30,10 +31,18 @@ function addScript(src: string) {
 
 export const TRACKING_READY_EVENT = 'site-tracking-ready'
 
-/** Carrega e inicia as tags configuradas (chamar só com consentimento). */
+const GRANTED = { ad_storage: 'granted', analytics_storage: 'granted', ad_user_data: 'granted', ad_personalization: 'granted' }
+
+/**
+ * Libera as tags (chamar só com consentimento). Normalmente elas já vieram no
+ * HTML em modo "consentimento negado" (tagBootstrapScript) — aqui só concede.
+ * Sem o script do servidor (ex.: navegação antiga em cache), carrega do zero.
+ */
 export function startTags(pixel: string, google: string) {
   const first = !window.__siteTracking
   window.__siteTracking = { pixel, google }
+  if (pixel && window.fbq) window.fbq('consent', 'grant')
+  if (google && window.gtag) window.gtag('consent', 'update', GRANTED)
   if (pixel && !window.fbq) {
     const fbq: Fn = (...args) => { if (fbq.callMethod) fbq.callMethod(...args); else fbq.queue?.push(args) }
     fbq.push = fbq; fbq.loaded = true; fbq.version = '2.0'; fbq.queue = []

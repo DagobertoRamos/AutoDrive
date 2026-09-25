@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cleanGoogleTagId, cleanMetaPixelId, safePageUrl, sanitizeEventParams, sanitizeTracking } from './tracking-core'
+import { cleanGoogleTagId, cleanMetaPixelId, safePageUrl, sanitizeEventParams, sanitizeTracking, tagBootstrapScript } from './tracking-core'
 
 describe('rastreamento do site', () => {
   it('IDs válidos passam, o resto vira vazio', () => {
@@ -46,3 +46,43 @@ src="https://www.facebook.com/tr?id=1324364829627249&ev=PageView&noscript=1"
   })
 })
 
+
+describe('tagBootstrapScript (tags no HTML, em modo de consentimento)', () => {
+  const run = (code: string, cookie: string) => {
+    const calls: unknown[][] = []
+    const inserted: string[] = []
+    const document = {
+      cookie,
+      createElement: () => ({} as { src?: string }),
+      getElementsByTagName: () => [{ parentNode: { insertBefore: (t: { src: string }) => inserted.push(t.src) } }],
+    }
+    const window: Record<string, unknown> = {}
+    // o script usa `window`, `document`, `fbq`, `gtag` e `dataLayer` globais
+    new Function('window', 'document', `with (window) { ${code.replace(/\b(fbq|gtag)\(/g, 'window.$1(')} }`)(window, document)
+    const fbq = window.fbq as { queue: ArrayLike<unknown>[] } | undefined
+    if (fbq) calls.push(...fbq.queue.map((a) => Array.from(a)))
+    const dl = (window.dataLayer ?? []) as IArguments[]
+    return { fbq: calls, gtag: dl.map((a) => Array.from(a)), inserted }
+  }
+
+  it('sem IDs não gera nada', () => {
+    expect(tagBootstrapScript('', '', 'c')).toBe('')
+    expect(tagBootstrapScript('<script>', 'xx', 'c')).toBe('')
+  })
+
+  it('visitante novo: Pixel iniciado com consentimento REVOGADO e Google NEGADO', () => {
+    const r = run(tagBootstrapScript('1324364829627249', 'AW-18468438331', 'site_analytics_consent'), '')
+    expect(r.inserted).toEqual(['https://connect.facebook.net/en_US/fbevents.js'])
+    expect(r.fbq).toEqual([['consent', 'revoke'], ['init', '1324364829627249']])
+    expect(r.gtag[0]).toEqual(['consent', 'default', { ad_storage: 'denied', analytics_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' }])
+    expect(r.gtag[2]).toEqual(['config', 'AW-18468438331', { send_page_view: false }])
+    // nenhum evento/PageView antes do aceite
+    expect(r.fbq.some((c) => c[0] === 'track')).toBe(false)
+  })
+
+  it('quem já aceitou começa com consentimento concedido', () => {
+    const r = run(tagBootstrapScript('1324364829627249', 'G-ABC123XYZ', 'site_analytics_consent'), 'x=1; site_analytics_consent=accepted')
+    expect(r.fbq[0]).toEqual(['consent', 'grant'])
+    expect((r.gtag[0][2] as Record<string, string>).ad_storage).toBe('granted')
+  })
+})

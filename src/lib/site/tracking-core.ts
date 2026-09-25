@@ -69,3 +69,44 @@ export function sanitizeEventParams(p: Record<string, unknown> = {}): SiteEventP
   }
   return out as SiteEventParams
 }
+
+/**
+ * Script inline que vai no HTML de TODA página do site da loja (renderizado no
+ * servidor), para a Meta (Pixel Helper / Gerenciador de Eventos) e o Google
+ * (Tag Assistant) DETECTAREM a instalação — antes, as tags só entravam depois
+ * do "Aceitar" e nenhum verificador as encontrava.
+ *
+ * LGPD continua valendo pelo modo de consentimento:
+ *   • Meta: fbq('consent','revoke') antes do init → nada é enviado até o grant;
+ *   • Google: consent default "denied" + config sem page_view → nenhuma coleta;
+ *   • quem já aceitou (cookie) começa com consentimento concedido.
+ * O aceite no aviso de cookies chama grant/update (tracking-client.startTags).
+ * IDs passam por cleanMetaPixelId/cleanGoogleTagId (só dígitos / G-, AW-, GT-).
+ */
+export function tagBootstrapScript(pixelId: string, googleTagId: string, consentCookie: string): string {
+  const pixel = cleanMetaPixelId(pixelId)
+  const google = cleanGoogleTagId(googleTagId)
+  if (!pixel && !google) return ''
+  // Sem regex de propósito (nada de barras invertidas dentro do script gerado).
+  const cookie = JSON.stringify(`${consentCookie}=accepted`)
+  const parts = [`var ok=document.cookie.split(';').some(function(c){return c.trim()===${cookie}});`]
+  if (pixel) {
+    parts.push(
+      "!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
+      "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;" +
+      "s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');",
+      "fbq('consent',ok?'grant':'revoke');",
+      `fbq('init',${JSON.stringify(pixel)});`,
+    )
+  }
+  if (google) {
+    parts.push(
+      'window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};',
+      "var st=ok?'granted':'denied';",
+      "gtag('consent','default',{ad_storage:st,analytics_storage:st,ad_user_data:st,ad_personalization:st});",
+      "gtag('js',new Date());",
+      `gtag('config',${JSON.stringify(google)},{send_page_view:false});`,
+    )
+  }
+  return `(function(){${parts.join('')}})();`
+}
