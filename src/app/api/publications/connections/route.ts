@@ -5,6 +5,9 @@
 //   POST conecta canal por CREDENCIAIS de integração (Webmotors, Chaves na Mão).
 //        Testa na hora; sem sucesso fica "com pendência" e mostra o motivo.
 //        Nunca pede senha pessoal de rede social (essas usam OAuth).
+//        Facebook/Instagram também aceitam TOKEN de acesso colado pela loja
+//        (usuário do sistema do Gerenciador de Negócios) enquanto o app da
+//        plataforma não passa no App Review.
 // Gate: ver = marketing.publications; conectar = .connections
 // =============================================================================
 
@@ -15,7 +18,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { CHANNELS, channelSpec, isPublishable } from '@/lib/publications/channels'
 import { isConnectorError } from '@/lib/publications/errors'
 import { getConnector } from '@/lib/publications/connectors'
-import { oauthConfigured } from '@/lib/publications/oauth'
+import { connectMetaByToken, oauthConfigured } from '@/lib/publications/oauth'
 import { ensureSiteConnection, logEvent, maskHint, releaseBlockedJobs, sealSecrets } from '@/lib/publications/service'
 import { connectorContext } from '@/lib/publications/worker'
 import { audit, bad, permissions, pubAuth } from '@/lib/publications/api'
@@ -48,6 +51,20 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { channel?: string; label?: string; environment?: string; credentials?: Record<string, unknown>; config?: Record<string, unknown> }
   const spec = channelSpec(String(b.channel ?? ''))
   if (!spec) return bad('Canal desconhecido.')
+  if (spec.id === 'META_PAGE' || spec.id === 'INSTAGRAM') {
+    const str = (k: string) => (typeof b.credentials?.[k] === 'string' ? (b.credentials[k] as string).trim().slice(0, 1000) : '')
+    const token = str('token')
+    if (!token) return bad('Cole o token de acesso gerado no Gerenciador de Negócios da Meta.')
+    try {
+      const r = await connectMetaByToken(a.tenantId, { token, appId: str('appId') || undefined, appSecret: str('appSecret') || undefined }, a.actor)
+      await audit(a, 'CONNECT', 'PublicationConnection', r.connected.join(', '), { channel: 'META', method: 'token' })
+      const validade = r.expiresAt ? ` Atenção: este token vence em ${r.expiresAt.toLocaleDateString('pt-BR')} — prefira o token de usuário do sistema (não expira).` : ''
+      return NextResponse.json({ success: true, ok: true, message: `Conectado: ${r.connected.join(', ')}.${validade}` })
+    } catch (e) {
+      if (isConnectorError(e)) return bad(`${e.message}${e.hint ? ` ${e.hint}` : ''}`)
+      return handlePrismaError(e)
+    }
+  }
   if (spec.connect !== 'CREDENCIAIS' || !spec.credentialFields) return bad(spec.connect === 'OAUTH' ? 'Este canal é conectado pelo botão "Conectar" (autorização oficial).' : 'Este canal não precisa de conexão.')
   const creds: Record<string, string> = {}
   for (const f of spec.credentialFields) {

@@ -31,6 +31,8 @@ const VERIFIED: Record<string, string> = { NENHUM: 'não verificado', TESTES_LOC
 const CAP: Record<string, string> = { authenticate: 'Autenticar', testConnection: 'Testar', validate: 'Validar', publish: 'Publicar', get: 'Consultar', update: 'Atualizar', pause: 'Pausar', resume: 'Reativar', remove: 'Remover', limits: 'Limites', webhooks: 'Eventos' }
 const OAUTH_SLUG: Record<string, string> = { MERCADO_LIVRE: 'mercado-livre', OLX: 'olx', META_PAGE: 'meta', INSTAGRAM: 'meta', MOBIAUTO: 'mobiauto' }
 const OAUTH_KEY: Record<string, string> = { MERCADO_LIVRE: 'MERCADO_LIVRE', OLX: 'OLX', META_PAGE: 'META', INSTAGRAM: 'META', MOBIAUTO: 'MOBIAUTO' }
+/** Canais OAuth que a loja também conecta colando um token (sem esperar o app da plataforma). */
+const TOKEN_CONNECT = new Set(['META_PAGE', 'INSTAGRAM'])
 
 export default function ChannelsPage() {
   return <Suspense fallback={<Loader2 className="m-6 animate-spin text-gray-400" />}><Channels /></Suspense>
@@ -47,6 +49,7 @@ function Channels() {
   const [group, setGroup] = useState<string>('')
   const [diag, setDiag] = useState<Channel | null>(null)
   const [pending, setPending] = useState<Channel | null>(null)
+  const [metaFor, setMetaFor] = useState<Channel | null>(null)
   // Aviso sempre à vista (quem clica lá embaixo no catálogo também vê).
   useEffect(() => { if (flash) window.scrollTo({ top: 0, behavior: 'smooth' }) }, [flash])
 
@@ -64,7 +67,7 @@ function Channels() {
   }
   const startConnect = (ch: Channel) => {
     if (ch.connect === 'OAUTH') {
-      if (!data?.oauth[OAUTH_KEY[ch.id]]) { setPending(ch); return }
+      if (!data?.oauth[OAUTH_KEY[ch.id]]) { if (TOKEN_CONNECT.has(ch.id)) setMetaFor(ch); else setPending(ch); return }
       window.location.assign(`/api/publications/oauth/${OAUTH_SLUG[ch.id]}/start`)
     } else setConnectFor(ch)
   }
@@ -135,7 +138,7 @@ function Channels() {
                     <div className="mt-2 flex flex-wrap gap-1">{Object.entries(ch.capabilities).filter(([k]) => ['publish', 'get', 'update', 'pause', 'remove'].includes(k)).map(([k, v]) => <span key={k} className={cn('rounded px-1.5 py-0.5 text-[10px]', v === 'SIM' ? 'bg-green-50 text-green-700' : v === 'MANUAL' ? 'bg-amber-50 text-amber-700' : v === 'NAO' ? 'bg-gray-100 text-gray-400 line-through' : 'bg-gray-50 text-gray-400')}>{CAP[k]}</span>)}</div>
                     <p className="mt-2 flex-1 text-[11px] text-gray-500">{ch.source.notes}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && (ch.connect === 'OAUTH' && !data.oauth[OAUTH_KEY[ch.id]]
+                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && (ch.connect === 'OAUTH' && !data.oauth[OAUTH_KEY[ch.id]] && !TOKEN_CONNECT.has(ch.id)
                         ? <button onClick={() => startConnect(ch)} className="btn-secondary px-2 py-1 text-xs"><AlertTriangle size={13} className="text-amber-600" />Como conectar</button>
                         : <button onClick={() => startConnect(ch)} className="btn-primary px-2 py-1 text-xs"><Plug size={13} />{connected ? 'Conectar outra conta' : 'Conectar'}</button>)}
                       {connected > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-green-700"><CheckCircle2 size={12} />{connected} conectada(s)</span>}
@@ -159,6 +162,7 @@ function Channels() {
           </div>
         </Drawer>
       )}
+      {metaFor && <MetaConnectForm channel={metaFor} onClose={() => setMetaFor(null)} onDone={(t) => { setMetaFor(null); setFlash(t); void load() }} />}
       {connectFor && <ConnectForm channel={connectFor} onClose={() => setConnectFor(null)} onDone={(t) => { setConnectFor(null); setFlash(t); void load() }} />}
       {configFor && <ConfigForm conn={configFor} spec={specOf(configFor.channel)} onClose={() => setConfigFor(null)} onDone={(t) => { setConfigFor(null); setFlash(t); void load() }} />}
       {diag && (
@@ -196,6 +200,53 @@ function ConnectForm({ channel, onClose, onDone }: { channel: Channel; onClose: 
         {err && <ErrorNote message={err} />}
         <p className="text-[11px] text-gray-500">Ao salvar, testamos a conexão. Autenticação aprovada ainda não comprova publicação.</p>
         <div className="flex justify-end gap-2"><button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button><button onClick={submit} disabled={busy} className="btn-primary px-3 py-1.5 text-xs">{busy && <Loader2 size={13} className="animate-spin" />}Salvar e testar</button></div>
+      </div>
+    </Drawer>
+  )
+}
+
+const META_STEPS: Array<[string, string, string?]> = [
+  ['Crie o app da loja', 'Em developers.facebook.com/apps clique em “Criar app”, escolha “Outro” › tipo “Empresa” e vincule ao portfólio (Gerenciador de Negócios) da loja.', 'https://developers.facebook.com/apps/creation/'],
+  ['Crie um usuário do sistema', 'Em Configurações do negócio › Usuários do sistema, clique em “Adicionar”, dê um nome (ex.: AutoDrive) e a função Administrador.', 'https://business.facebook.com/settings/system-users'],
+  ['Dê acesso à Página e ao app', 'Com o usuário selecionado, “Atribuir ativos”: marque a Página da loja com controle total e o app criado no passo 1.'],
+  ['Gere o token', '“Gerar novo token” › escolha o app › validade “Nunca” › marque pages_show_list, pages_read_engagement, pages_manage_posts, instagram_basic e instagram_content_publish › Gerar. Copie o token.'],
+]
+
+function MetaConnectForm({ channel, onClose, onDone }: { channel: Channel; onClose: () => void; onDone: (f: { ok: boolean; text: string }) => void }) {
+  const [token, setToken] = useState('')
+  const [appId, setAppId] = useState('')
+  const [appSecret, setAppSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const submit = async () => {
+    setBusy(true); setErr(null)
+    try { const j = await api('/api/publications/connections', { method: 'POST', json: { channel: channel.id, credentials: { token, appId, appSecret } } }); onDone({ ok: j.ok, text: j.message }) } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+  return (
+    <Drawer open onClose={onClose} title="Conectar Facebook e Instagram" subtitle="Posts gratuitos na Página e no Instagram profissional da loja">
+      <div className="space-y-4 text-sm text-gray-700">
+        <p className="text-xs text-gray-600">Uma única conexão liga a <strong>Página do Facebook</strong> e o <strong>Instagram profissional</strong> vinculado a ela. Leva uns 5 minutos, feito por quem é administrador da Página:</p>
+        <ol className="space-y-2">
+          {META_STEPS.map(([t, d, href], i) => (
+            <li key={t} className="flex gap-2">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-semibold text-white">{i + 1}</span>
+              <div className="text-xs"><p className="font-semibold text-gray-800">{t}</p><p className="text-gray-600">{d}</p>{href && <a href={href} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex items-center gap-1 text-brand-700 underline">Abrir<ExternalLink size={11} /></a>}</div>
+            </li>
+          ))}
+          <li className="flex gap-2"><span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-semibold text-white">5</span><p className="text-xs font-semibold text-gray-800">Cole o token abaixo e clique em Conectar.</p></li>
+        </ol>
+        <label className="block text-xs text-gray-600">Token de acesso<textarea className={cn(inputCls, 'font-mono text-[11px]')} rows={3} autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG..." /></label>
+        <details className="text-xs text-gray-600">
+          <summary className="cursor-pointer text-brand-700">Usei um token de usuário comum (não do usuário do sistema)</summary>
+          <p className="mt-1 text-[11px] text-gray-500">Tokens comuns vencem em poucas horas. Informe o ID e a chave secreta do app (Configurações do app › Básico) para convertermos em um token que não vence.</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className="block">ID do app<input className={inputCls} autoComplete="off" value={appId} onChange={(e) => setAppId(e.target.value)} /></label>
+            <label className="block">Chave secreta do app<input className={inputCls} type="password" autoComplete="new-password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} /></label>
+          </div>
+        </details>
+        <p className="text-[11px] text-gray-500">O Instagram precisa ser conta profissional (empresa ou criador) vinculada à Página. O token fica cifrado no servidor.</p>
+        {err && <ErrorNote message={err} />}
+        <div className="flex justify-end gap-2"><button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button><button onClick={submit} disabled={busy || !token.trim()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />}Conectar</button></div>
       </div>
     </Drawer>
   )

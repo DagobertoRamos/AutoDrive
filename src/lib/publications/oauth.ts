@@ -127,19 +127,64 @@ export async function completeOAuth(claims: StateClaims, code: string, actor: Ac
   const long = await http.request({ url: `${base}/oauth/access_token?${new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: app.clientId, client_secret: app.clientSecret, fb_exchange_token: st })}` })
   throwForStatus(long, 'Meta (token longo)')
   const lt = long.json<{ access_token: string }>()!.access_token
-  const pages = await http.request({ url: `${base}/me/accounts?${new URLSearchParams({ fields: 'id,name,access_token,instagram_business_account{id,username}', access_token: lt })}` })
+  const pages = await http.request({ url: `${base}/me/accounts?${new URLSearchParams({ fields: PAGE_FIELDS, access_token: lt })}` })
   throwForStatus(pages, 'Meta (Páginas)')
-  const list = pages.json<{ data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string } }> }>()?.data ?? []
+  const list = pages.json<{ data?: MetaPage[] }>()?.data ?? []
   if (!list.length) throw new ConnectorError('CONFIG', 'Nenhuma Página foi autorizada.', 'Ao conectar, selecione a Página da loja e confirme as permissões.')
+  return { connected: await saveMetaPages(claims.t, list, null, actor) }
+}
+
+const PAGE_FIELDS = 'id,name,access_token,instagram_business_account{id,username}'
+type MetaPage = { id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string } }
+
+/** Grava Página (+ Instagram profissional vinculado) como conexões da loja. */
+async function saveMetaPages(tenantId: string, list: MetaPage[], expiresAt: Date | null, actor: Actor): Promise<string[]> {
   const connected: string[] = []
   for (const p of list) {
-    const c = await upsertConnection(claims.t, 'META_PAGE', p.id, p.name, { page_access_token: p.access_token }, { pagina: p.name }, null, actor)
+    const c = await upsertConnection(tenantId, 'META_PAGE', p.id, p.name, { page_access_token: p.access_token }, { pagina: p.name }, expiresAt, actor)
     connected.push(c.label)
     if (p.instagram_business_account?.id) {
       const ig = p.instagram_business_account
-      const ci = await upsertConnection(claims.t, 'INSTAGRAM', ig.id, ig.username ? `@${ig.username}` : `Instagram de ${p.name}`, { page_access_token: p.access_token, page_id: p.id }, { conta: ig.username ? `@${ig.username}` : ig.id, pagina: p.name }, null, actor)
+      const ci = await upsertConnection(tenantId, 'INSTAGRAM', ig.id, ig.username ? `@${ig.username}` : `Instagram de ${p.name}`, { page_access_token: p.access_token, page_id: p.id }, { conta: ig.username ? `@${ig.username}` : ig.id, pagina: p.name }, expiresAt, actor)
       connected.push(ci.label)
     }
   }
-  return { connected }
+  return connected
+}
+
+/**
+ * Conexão Meta por TOKEN colado pela loja (sem depender do app da plataforma
+ * aprovado no App Review). Aceita token de usuário do sistema (Gerenciador de
+ * Negócios — não expira), token de usuário ou token de Página. Com o ID e a
+ * chave secreta do app da loja, um token de usuário curto vira de longo prazo
+ * e os tokens de Página derivados deixam de expirar.
+ */
+export async function connectMetaByToken(tenantId: string, input: { token: string; appId?: string; appSecret?: string }, actor: Actor, http: HttpClient = createHttpClient()): Promise<{ connected: string[]; expiresAt: Date | null }> {
+  const base = graphBase()
+  let token = input.token.trim()
+  if (input.appId && input.appSecret) {
+    const long = await http.request({ url: `${base}/oauth/access_token?${new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: input.appId.trim(), client_secret: input.appSecret.trim(), fb_exchange_token: token })}` })
+    const lt = long.status < 300 ? long.json<{ access_token?: string }>()?.access_token : undefined
+    if (lt) token = lt // token de Página/usuário do sistema não troca: segue com o original
+  }
+  // Token de usuário: lista as Páginas que ele administra.
+  const acc = await http.request({ url: `${base}/me/accounts?${new URLSearchParams({ fields: PAGE_FIELDS, access_token: token })}` })
+  let list: MetaPage[] = acc.status < 300 ? acc.json<{ data?: MetaPage[] }>()?.data ?? [] : []
+  if (!list.length) {
+    // Token de Página: /me é a própria Página.
+    const me = await http.request({ url: `${base}/me?${new URLSearchParams({ fields: 'id,name,instagram_business_account{id,username}', access_token: token })}` })
+    if (me.status >= 300) {
+      const msg = me.json<{ error?: { message?: string } }>()?.error?.message
+      throw new ConnectorError('AUTH', `A Meta recusou o token${msg ? `: ${msg}` : '.'}`, 'Gere um novo token seguindo o passo a passo e cole de novo.')
+    }
+    const p = me.json<Omit<MetaPage, 'access_token'>>()!
+    if (acc.status < 300) throw new ConnectorError('CONFIG', 'Este token não administra nenhuma Página.', 'Ao gerar o token, marque a Página da loja e as permissões pages_manage_posts e pages_read_engagement.')
+    list = [{ ...p, access_token: token }]
+  }
+  // Validade do token de Página (0 = não expira). Falha aqui não impede conectar.
+  let expiresAt: Date | null = null
+  const dbg = await http.request({ url: `${base}/debug_token?${new URLSearchParams({ input_token: list[0].access_token, access_token: list[0].access_token })}` }).catch(() => null)
+  const exp = dbg && dbg.status < 300 ? dbg.json<{ data?: { expires_at?: number } }>()?.data?.expires_at : undefined
+  if (exp && exp > 0) expiresAt = new Date(exp * 1000)
+  return { connected: await saveMetaPages(tenantId, list, expiresAt, actor), expiresAt }
 }
