@@ -213,7 +213,7 @@ export const CHANNELS: ChannelSpec[] = [
     auth: 'Nenhuma — o AutoDrive NÃO pede senha de perfil pessoal.', protocol: 'Exportação de fotos (ZIP) e texto para a loja postar à mão.',
     commercial: 'Gratuito.', limits: '—', sandbox: '—', dependencies: [],
     media: { min: 1, max: 20, formats: ['jpg'], watermark: 'PERMITIDA' }, text: { contactsInDescription: true },
-    source: { url: 'https://developers.facebook.com/documentation/pages-api/posts', verifiedAt: D, notes: 'Sem suporte oficial vigente verificado para publicar no Marketplace, em grupos ou perfis pessoais por API: fica identificado como MANUAL.' },
+    source: { url: 'https://developers.facebook.com/documentation/pages-api/posts', verifiedAt: D, notes: 'A Meta não deixa nenhum sistema publicar no Marketplace, em grupos ou em perfil pessoal. O AutoDrive prepara tudo e você posta: em Publicações › Nova publicação, marque “Marketplace, grupos e perfis”; depois, no detalhe, clique em “Baixar fotos e texto” e cole no Facebook.' },
     priority: 9,
   },
   evaluating('ICARROS', 'iCarros', ['icarros', 'icarros.com.br', 'portal revenda icarros'], 'API OAuth 2.0 com credenciais pedidas ao atendimento iCarros; a documentação pública (icarros.com.br/apidocs) redireciona para o catálogo em 25/09/2026. Prioritário para expansão.', 'https://www.icarros.com.br/portalrevenda/adesao.jsp', 10),
