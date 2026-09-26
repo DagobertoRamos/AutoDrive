@@ -219,7 +219,7 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
 }
 
 // ── Carrossel das fotos do card (auto-rotate + setas no hover) ──────────────
-function VehicleCardCarousel({ photos, alt }: { photos: string[]; alt: string }) {
+export function VehicleCardCarousel({ photos, alt }: { photos: string[]; alt: string }) {
   const [idx, setIdx] = useState(0)
   const [hovering, setHovering] = useState(false)
   const total = photos.length

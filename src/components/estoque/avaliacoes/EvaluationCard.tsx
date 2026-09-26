@@ -31,6 +31,9 @@ export interface EvaluationListItem {
   evaluatedById?:     string | null
   evaluatorName?:     string | null
   createdAt:          string
+  customerDecision?:  string | null
+  vehicleId?:         string | null
+  stockType?:         string | null
   // Fotos tiradas durante a avaliação (vem do GET /api/evaluations)
   coverPhotoUrl?:     string | null
   photoCount?:        number
@@ -82,13 +85,44 @@ const fmtDateTime = (iso: string): string => {
   return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+/** "Reabrir" de avaliação cancelada (gerente+) — usado pelos cards de lista e de grade. */
+export function useReopenEvaluation(id: string, onReopened?: () => void) {
+  const router = useRouter()
+  const [reopening, setReopening] = useState(false)
+  async function handleReopen(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const reason = window.prompt('Motivo da reabertura (opcional, máx 200 chars):', 'Cliente retornou para fechar negócio')
+    if (reason === null) return  // usuário clicou Cancel
+    setReopening(true)
+    try {
+      const r = await fetch(`/api/evaluations/${id}/reopen`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ reason: reason.slice(0, 200) || null }),
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        alert(d?.error ?? 'Falha ao reabrir avaliação.')
+        return
+      }
+      onReopened?.()
+      router.push(`/estoque/avaliacao/${id}/inspecao`)
+    } catch {
+      alert('Erro de conexão ao reabrir.')
+    } finally {
+      setReopening(false)
+    }
+  }
+  return { reopening, handleReopen }
+}
+
 export function EvaluationCard({ item, detailsHref, evaluateHref, onReopened }: Props) {
   const router  = useRouter()
   const { data: session } = useSession()
   const status  = getStatusDef(item.status)
   const fipeStr = fmtBRL(item.fipeValue)
   const evalStr = fmtBRL(item.evaluatedValue)
-  const [reopening, setReopening] = useState(false)
   const [galleryOpen, setGalleryOpen]   = useState(false)
   const [galleryStart, setGalleryStart] = useState(0)
 
@@ -107,31 +141,7 @@ export function EvaluationCard({ item, detailsHref, evaluateHref, onReopened }: 
   const isCanceled  = CANCELED_STATUSES.has((item.status ?? '').toUpperCase())
   const canReopen   = isCanceled && MANAGER_PLUS.has(session?.user?.role ?? '')
 
-  async function handleReopen(e: React.MouseEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    const reason = window.prompt('Motivo da reabertura (opcional, máx 200 chars):', 'Cliente retornou para fechar negócio')
-    if (reason === null) return  // usuário clicou Cancel
-    setReopening(true)
-    try {
-      const r = await fetch(`/api/evaluations/${item.id}/reopen`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ reason: reason.slice(0, 200) || null }),
-      })
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}))
-        alert(d?.error ?? 'Falha ao reabrir avaliação.')
-        return
-      }
-      onReopened?.()
-      router.push(`/estoque/avaliacao/${item.id}/inspecao`)
-    } catch {
-      alert('Erro de conexão ao reabrir.')
-    } finally {
-      setReopening(false)
-    }
-  }
+  const { reopening, handleReopen } = useReopenEvaluation(item.id, onReopened)
 
   // Card inteiro clicável → leva pra inspeção; botões internos têm stopPropagation
   return (

@@ -17,7 +17,8 @@ import { canAccessModule } from '@/lib/permissions'
 import { EvaluationHeader }     from '@/components/estoque/avaliacoes/EvaluationHeader'
 import { EvaluationStatsCards, type StatsCounts } from '@/components/estoque/avaliacoes/EvaluationStatsCards'
 import { EvaluationFilters, EMPTY_FILTERS, type EvaluationFiltersState } from '@/components/estoque/avaliacoes/EvaluationFilters'
-import { EvaluationCard, EvaluationCardSkeleton, type EvaluationListItem } from '@/components/estoque/avaliacoes/EvaluationCard'
+import { EvaluationCardSkeleton, type EvaluationListItem } from '@/components/estoque/avaliacoes/EvaluationCard'
+import { EvaluationGridCard } from '@/components/estoque/avaliacoes/EvaluationGridCard'
 import { EmptyState }            from '@/components/estoque/avaliacoes/EmptyState'
 import { OPEN_STATUSES, expandStatusFilter, getStatusDef } from '@/components/estoque/avaliacoes/status'
 
@@ -144,9 +145,9 @@ export default function AvaliacoesPage() {
     const c: StatsCounts = { pending: 0, inProgress: 0, finalized: 0, canceled: 0, total: items.length }
     for (const i of items) {
       const s = (i.status ?? '').toUpperCase()
-      if (s === 'PENDING_REVIEW' || s === 'DRAFT' || s === 'REOPENED' || s === 'AGUARDANDO_APROVACAO') c.pending++
+      if (s === 'PENDING_REVIEW' || s === 'DRAFT' || s === 'REOPENED' || s === 'AGUARDANDO_APROVACAO' || s === 'AGUARDANDO_ENTRADA') c.pending++
       else if (s === 'IN_PROGRESS') c.inProgress++
-      else if (s === 'FINALIZED' || s === 'APPROVED' || s === 'LIBERADA') c.finalized++
+      else if (s === 'FINALIZED' || s === 'APPROVED' || s === 'LIBERADA' || s === 'NO_ESTOQUE') c.finalized++
       else if (s === 'CANCELED' || s === 'CANCELADA' || s === 'REJECTED') c.canceled++
     }
     return c
@@ -249,9 +250,9 @@ export default function AvaliacoesPage() {
       ) : viewMode === 'list' ? (
         <EvaluationListTable items={visibleItems} />
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visibleItems.map((item) => (
-            <EvaluationCard key={item.id} item={item} onReopened={load} />
+            <EvaluationGridCard key={item.id} item={item} onReopened={load} />
           ))}
         </div>
       )}

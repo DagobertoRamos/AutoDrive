@@ -13,6 +13,8 @@ export type EvaluationStatus =
   | 'APPROVED'
   | 'REJECTED'
   | 'REOPENED'
+  | 'AGUARDANDO_ENTRADA'    // vendedor devolveu ao gestor p/ entrada no estoque
+  | 'NO_ESTOQUE'            // gestor deu entrada: virou veículo no estoque
   | 'CANCELADA'             // novo (padrão pt-BR)
   | 'CANCELED'              // legado (inglês) — mantém retrocompat
 
@@ -38,7 +40,9 @@ export const EVALUATION_STATUS: StatusDef[] = [
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação', badge: 'bg-amber-50 text-amber-800 border-amber-200', dot: 'bg-amber-500',  isOpen: true },
   { value: 'PENDING_REVIEW',       label: 'Aguardando aprovação', badge: 'bg-amber-50 text-amber-800 border-amber-200', dot: 'bg-amber-500',  isOpen: true },
   { value: 'LIBERADA',             label: 'Liberada',             badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', isOpen: true },
-  { value: 'REOPENED',             label: 'Reaberta',             badge: 'bg-orange-50 text-orange-800 border-orange-200', dot: 'bg-orange-500', isOpen: true },
+  { value: 'AGUARDANDO_ENTRADA',   label: 'Aguardando entrada',   badge: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: 'bg-indigo-500', isOpen: true },
+  { value: 'NO_ESTOQUE',           label: 'No estoque',           badge: 'bg-teal-50 text-teal-700 border-teal-200',    dot: 'bg-teal-500',   isOpen: false },
+  { value: 'REOPENED',            label: 'Reaberta',             badge: 'bg-orange-50 text-orange-800 border-orange-200', dot: 'bg-orange-500', isOpen: true },
   { value: 'APPROVED',             label: 'Aprovada',             badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', isOpen: false },
   { value: 'FINALIZED',            label: 'Finalizada',           badge: 'bg-teal-50 text-teal-700 border-teal-200',    dot: 'bg-teal-500',   isOpen: false },
   { value: 'REJECTED',             label: 'Rejeitada',            badge: 'bg-red-50 text-red-700 border-red-200',       dot: 'bg-red-500',    isOpen: false },
@@ -59,7 +63,9 @@ export const STATUS_ALIASES: Record<string, string[]> = {
   PENDING_REVIEW:       ['AGUARDANDO_APROVACAO', 'PENDING_REVIEW'],
   LIBERADA:             ['LIBERADA', 'APPROVED'],
   APPROVED:             ['APPROVED', 'LIBERADA'],
-  FINALIZED:            ['FINALIZED', 'APPROVED', 'LIBERADA'],
+  FINALIZED:            ['FINALIZED', 'APPROVED', 'LIBERADA', 'NO_ESTOQUE'],
+  AGUARDANDO_ENTRADA:   ['AGUARDANDO_ENTRADA'],
+  NO_ESTOQUE:           ['NO_ESTOQUE'],
   DRAFT:                ['DRAFT'],
   IN_PROGRESS:          ['IN_PROGRESS'],
   REOPENED:             ['REOPENED'],

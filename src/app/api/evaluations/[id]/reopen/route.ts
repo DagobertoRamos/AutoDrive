@@ -24,6 +24,9 @@ export async function POST(
     const user = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId }
     if (!canReopenEvaluation(user, ctx))
       return NextResponse.json({ error: 'Sem permissão para reabrir' }, { status: 403 })
+    if (ctx.vehicleId || ctx.status === 'NO_ESTOQUE' || ctx.status === 'AGUARDANDO_ENTRADA') {
+      return NextResponse.json({ error: 'A avaliação já foi para o estoque; não pode ser reaberta.' }, { status: 409 })
+    }
 
     const body = await req.json().catch(() => ({}))
     const reason = body?.reason ? String(body.reason) : null

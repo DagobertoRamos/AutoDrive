@@ -58,6 +58,8 @@ export async function GET(req: NextRequest) {
           ownerName: true, unitId: true, evaluatedById: true,
           negotiationId: true, createdAt: true, updatedAt: true,
           result: true,
+          version: true, manufactureYear: true, color: true, ownerPhone: true,
+          customerDecision: true, vehicleId: true, stockType: true,
         },
       }),
       prisma.vehicleEvaluation.count({ where }),

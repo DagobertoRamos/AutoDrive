@@ -19,6 +19,8 @@ import { AwaitingReleaseBanner } from '../../_components/AwaitingReleaseBanner'
 import { EvaluationSections } from '../../_components/EvaluationSections'
 import { parseOpcionais } from '@/lib/evaluation/rules'
 import { CautelarUploader, type AttachmentLite } from '../../_components/CautelarUploader'
+import { StockEntryPanel } from '../../_components/StockEntryPanel'
+import { getStatusDef } from '@/components/estoque/avaliacoes/status'
 import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
   Gauge, Wrench, FileText, CheckCircle2, AlertTriangle, Plus,
@@ -93,6 +95,10 @@ interface Evaluation {
   customerDecisionNote?: string | null
   availableFor?:         string | null   // CSV: "COMPRA,TROCA,CONSIGNACAO"
   proposalValidUntil?:   string | null
+  // Entrada no estoque
+  vehicleId?:     string | null
+  stockType?:     string | null
+  pendencyNotes?: string | null
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -187,7 +193,7 @@ export default function InspecaoPage() {
   }, [data, evalId, load])
 
   const status = data?.status ?? 'DRAFT'
-  const isLocked = ['FINALIZED', 'APPROVED', 'REJECTED', 'CANCELED', 'CANCELADA', 'LIBERADA'].includes(status)
+  const isLocked = ['FINALIZED', 'APPROVED', 'REJECTED', 'CANCELED', 'CANCELADA', 'LIBERADA', 'AGUARDANDO_ENTRADA', 'NO_ESTOQUE'].includes(status)
   const total    = data?.totalExpenses != null ? Number(data.totalExpenses) : 0
   const isManagerPlus = role ? ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role) : false
   const isAwaitingApproval = status === 'AGUARDANDO_APROVACAO'
@@ -285,7 +291,7 @@ export default function InspecaoPage() {
               isLocked ? 'bg-gray-200 text-gray-700' : 'bg-blue-100 text-blue-800'
             }`}>
               {isLocked && <Lock size={10} />}
-              {status}
+              {getStatusDef(status).label}
             </span>
           </div>
           <p className="text-sm text-gray-500">
@@ -304,7 +310,7 @@ export default function InspecaoPage() {
               Finalizar
             </button>
           )}
-          {isLocked && (
+          {isLocked && status !== 'NO_ESTOQUE' && status !== 'AGUARDANDO_ENTRADA' && (
             <button
               onClick={handleReopen}
               disabled={saving}
@@ -314,7 +320,7 @@ export default function InspecaoPage() {
             </button>
           )}
           {/* Cancelar avaliação — gerente+ apenas, status não-finais */}
-          {isManagerPlus && !['CANCELADA', 'CANCELED', 'LIBERADA', 'APPROVED', 'REJECTED'].includes(status) && (
+          {isManagerPlus && !['CANCELADA', 'CANCELED', 'LIBERADA', 'APPROVED', 'REJECTED', 'AGUARDANDO_ENTRADA', 'NO_ESTOQUE'].includes(status) && (
             <button
               onClick={async () => {
                 const motivo = prompt('Informe o motivo do cancelamento:')
@@ -348,6 +354,9 @@ export default function InspecaoPage() {
         releasedAt={data.releasedAt ?? null}
         role={role}
       />
+
+      {/* Entrada no estoque — vendedor devolve ao gestor; gestor confirma */}
+      <StockEntryPanel evaluation={data} isManagerPlus={isManagerPlus} onChanged={load} showToast={showToast} />
 
       {/* Totalizador sticky */}
       <div className="sticky top-0 z-20 grid grid-cols-2 gap-2 rounded-xl border border-brand-200 bg-white/95 p-3 shadow-sm backdrop-blur sm:grid-cols-4">
@@ -981,6 +990,7 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
   const decision = (evaluation.customerDecision ?? 'PENDENTE').toUpperCase()
   const availableFor = (evaluation.availableFor ?? '').toUpperCase().split(',').filter(Boolean)
   const released = !!evaluation.releasedAt
+  const handedToStock = !!evaluation.vehicleId || ['AGUARDANDO_ENTRADA', 'NO_ESTOQUE'].includes((evaluation.status ?? '').toUpperCase())
 
   const [busy, setBusy]   = useState<string | null>(null)
   const [note, setNote]   = useState('')
@@ -1052,8 +1062,8 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
           )}
         </div>
 
-        {/* Botões de ação */}
-        {released && (
+        {/* Botões de ação — somem quando já foi para o gestor/estoque */}
+        {released && !handedToStock && (
           <div className="space-y-3">
             <textarea
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"

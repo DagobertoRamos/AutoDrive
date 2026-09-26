@@ -147,6 +147,24 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
   const canManage = canAccessModule(role, 'stock.manage')
 
   const [vehicle, setVehicle]   = useState<VehicleDetail | null>(null)
+  const [pendBusy, setPendBusy] = useState<string | null>(null)
+
+  async function togglePendency(pendencyId: string, resolved: boolean) {
+    if (!vehicle) return
+    setPendBusy(pendencyId)
+    try {
+      const r = await fetch(`/api/vehicles/${vehicle.id}/pendencies/${pendencyId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resolved }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || !d.success) { alert(d?.error ?? 'Não foi possível atualizar a pendência.'); return }
+      setVehicle((v) => v && { ...v, stockPendencies: v.stockPendencies.map((x) => (x.id === pendencyId ? d.data : x)) })
+    } catch {
+      alert('Erro de conexão.')
+    } finally {
+      setPendBusy(null)
+    }
+  }
   const [loading, setLoading]   = useState(true)
   const [activeTab, setActiveTab] = useState('resumo')
   const [photoIdx, setPhotoIdx] = useState(0)
@@ -737,16 +755,30 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                           <span className="ml-2 text-xs font-normal opacity-70">{p.option.category}</span>
                         )}
                       </p>
-                      {p.notes && <p className="mt-0.5 text-xs text-gray-600">{p.notes}</p>}
+                      {p.notes && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-600">{p.notes}</p>}
                       {p.resolved && p.resolvedBy && (
                         <p className="mt-0.5 text-xs text-emerald-600">
                           Resolvida por {p.resolvedBy.name}
                         </p>
                       )}
                     </div>
-                    <span className={`text-xs font-medium ${p.resolved ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {p.resolved ? 'Resolvida' : 'Pendente'}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <span className={`text-xs font-medium ${p.resolved ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {p.resolved ? 'Resolvida' : 'Pendente'}
+                      </span>
+                      {canManage && (
+                        <button
+                          type="button"
+                          disabled={pendBusy === p.id}
+                          onClick={() => togglePendency(p.id, !p.resolved)}
+                          className={p.resolved
+                            ? 'rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50'
+                            : 'rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50'}
+                        >
+                          {pendBusy === p.id ? '...' : p.resolved ? 'Reabrir' : 'Resolver'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
