@@ -21,7 +21,7 @@ import { audit, bad, kickWorker, pubAuth } from '@/lib/publications/api'
 export const dynamic = 'force-dynamic'
 type Ctx = { params: Promise<{ id: string }> }
 
-const CONFIG_KEYS = ['modalidade', 'motivoVendido', 'motivoRetirado', 'flags', 'listingTypeId', 'cityId', 'addressLine', 'baseUrl']
+const CONFIG_KEYS = ['modalidade', 'motivoVendido', 'motivoRetirado', 'flags', 'listingTypeId', 'cityId', 'addressLine', 'baseUrl', 'planId']
 
 export async function PATCH(req: Request, ctx: Ctx) {
   const a = await pubAuth(req, 'marketing.publications.connections')

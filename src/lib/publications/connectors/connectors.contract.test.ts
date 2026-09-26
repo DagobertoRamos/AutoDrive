@@ -5,7 +5,10 @@
 // respostas/erros documentados. NÃO comprovam integração externa real.
 // =============================================================================
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// Cofre de apps SIMULADO: testes de contrato nunca consultam banco.
+vi.mock('../platform-apps', () => ({ getPlatformApp: async () => ({ clientId: 'app', clientSecret: 'sec', source: 'env' }) }))
 import { buildPayload } from '../content-core'
 import { ConnectorError } from '../errors'
 import { exactMatch } from '../mapping-core'
@@ -162,7 +165,6 @@ describe('Mercado Livre (classificados de veículos) — SIMULAÇÃO', () => {
     expect(b.pictures).toHaveLength(2)
   })
   it('renova o token vencido antes de publicar e grava a nova autorização', async () => {
-    process.env.ML_CLIENT_ID = 'app'; process.env.ML_CLIENT_SECRET = 'sec'
     const s = simulated([
       (c) => c.url.endsWith('/oauth/token') ? { status: 200, body: { access_token: 'NEW', refresh_token: 'R2', expires_in: 21600 } } : null,
       (c) => c.url.endsWith('/items') && c.method === 'POST' ? { status: 201, body: { id: 'MLB1', status: 'active', permalink: 'https://carro.mercadolivre.com.br/MLB-1', attributes: [{ id: 'BRAND', value_name: 'Fiat' }, { id: 'MODEL', value_name: 'Argo' }] } } : null,

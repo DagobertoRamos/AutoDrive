@@ -17,6 +17,7 @@ import { clearPlacasCredentialCache, isPlacasConfigured, getBalance as getPlacas
 import { getReferences as getFipeReferences, clearFipeConfigCache } from '@/lib/fipe/parallelum'
 import { getServiceDef } from '@/lib/integrations/catalog'
 import { clearActiveCredentialCache } from '@/lib/integrations/active'
+import { clearPlatformAppCache, sealIfPublication, testPlatformApp } from '@/lib/publications/platform-apps'
 
 const MASKED = '••••••••'
 const SENSITIVE_KEYS = ['apiKey', 'apiSecret', 'token', 'webhookSecret']
@@ -106,7 +107,7 @@ export async function PATCH(
       const val = body[key]
       if (val === MASKED || val == null) continue
       const s = String(val).trim()
-      data[key] = s || null
+      data[key] = key === 'apiSecret' ? sealIfPublication(cred.service, s || null) : s || null
     }
 
     // Limpa campos que NÃO são permitidos pelo serviço atual (cleanup defensivo)
@@ -130,6 +131,7 @@ export async function PATCH(
       data,
     })
     clearActiveCredentialCache()
+    clearPlatformAppCache()
     // Limpa caches de service-specific (FIPE/Brasil/Plate) que possam ter
     // memorizado credencial antiga.
     if (cred.service === 'FIPE_PROVIDER' || cred.service === 'FIPE') clearFipeConfigCache()
@@ -287,6 +289,15 @@ export async function POST(
             message = ok
               ? 'Provedor responde normalmente (validado via BrasilAPI).'
               : `Falha de conexão: ${r.error ?? 'desconhecido'}.`
+            break
+          }
+          case 'PUB_MERCADO_LIVRE':
+          case 'PUB_OLX':
+          case 'PUB_META':
+          case 'PUB_MOBIAUTO': {
+            clearPlatformAppCache()
+            const r = await testPlatformApp(cred.service, cred.apiKey, cred.apiSecret)
+            ok = r.ok; message = r.message
             break
           }
           default:

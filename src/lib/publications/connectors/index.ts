@@ -4,6 +4,7 @@
 import type { ChannelId } from '../channels'
 import { chavesNaMaoConnector } from './chavesnamao'
 import { mercadoLivreConnector } from './mercadolivre'
+import { mobiautoConnector } from './mobiauto'
 import { instagramConnector, metaPageConnector } from './meta'
 import { olxConnector } from './olx'
 import { siteConnector } from './site'
@@ -16,6 +17,7 @@ const REGISTRY: Partial<Record<ChannelId, Connector>> = {
   OLX: olxConnector,
   MERCADO_LIVRE: mercadoLivreConnector,
   CHAVES_NA_MAO: chavesNaMaoConnector,
+  MOBIAUTO: mobiautoConnector,
   META_PAGE: metaPageConnector,
   INSTAGRAM: instagramConnector,
 }

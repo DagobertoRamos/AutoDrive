@@ -11,6 +11,7 @@ import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { enqueue, logEvent, SYSTEM_ACTOR } from './service'
+import { getPlatformApp } from './platform-apps'
 
 export interface MlNotification { resource?: string; user_id?: number | string; topic?: string; application_id?: number | string; attempts?: number; sent?: string; received?: string }
 
@@ -21,7 +22,7 @@ export function mlDedupKey(n: MlNotification): string {
 export type WebhookResult = { status: 'PROCESSADO' | 'IGNORADO' | 'ERRO'; reason: string }
 
 export async function handleMercadoLivre(n: MlNotification): Promise<WebhookResult> {
-  const appId = process.env.ML_CLIENT_ID
+  const appId = (await getPlatformApp('MERCADO_LIVRE'))?.clientId
   if (appId && String(n.application_id ?? '') !== appId) return { status: 'IGNORADO', reason: 'application_id de outro app.' }
   if (n.topic !== 'items' || !n.resource) return { status: 'IGNORADO', reason: 'Tópico não usado.' }
   const itemId = /\/items\/(MLB\d+)/.exec(n.resource)?.[1]

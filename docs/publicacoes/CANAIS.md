@@ -1,4 +1,4 @@
-# Canais — matriz (verificado em 25/09/2026)
+# Canais — matriz (verificado em 25–26/09/2026)
 
 Níveis de verificação: **local** (testes locais/banco local) · **contrato** (protocolo
 oficial reproduzido em simulação) · **sandbox** · **produção**.
@@ -16,9 +16,11 @@ produção: faltam credenciais/homologação (abaixo).
 | Instagram profissional | ✅ Graph | envio | ❌ | contrato | Não | app Meta + App Review; conta profissional ligada à Página |
 | Meta — Catálogo | feed existente | portal consulta | conforme loja | local (proteção de feed) | Feed sim; **não** é Marketplace | catálogo no Commerce Manager |
 | Marketplace, grupos, perfis | manual | exportação ZIP + texto | ✅ | local | Manual (identificado) | — |
-| iCarros | — | a definir | — | — | Não (em avaliação) | credenciais OAuth via atendimento iCarros; doc pública indisponível em 25/09/2026 |
-| Mobiauto | — | a definir | — | — | Não (em avaliação) | autorização da Mobiauto (swagger de teste citado) |
-| NaPista, CarroSP, Autoline Brasil, SóCarrão, Usadosbr, Comprecar, Shopcar, Seminovos.com.br, LitoralCar, Carros na Serra, SorocabaMotors | — | a definir | — | — | Não (em avaliação) | contato comercial/técnico e documentação oficial |
+| Mobiauto | ✅ API (Open API 1.0) | envio | ❌ | contrato | Não | app OAuth (client_id/segredo) pedido a openapi@mobiauto.com.br; revenda com plano |
+| iCarros | — | a definir | — | — | Não (em avaliação) | credenciais OAuth via atendimento iCarros; doc pública indisponível |
+| Usadosbr | — | API oficial (manual v8 fora do ar) | — | — | Não (em avaliação) | pedir manual e login de integração a suporte@usadosbr.com com o CNPJ |
+| NaPista | — | protocolo não público | — | — | Não (em avaliação) | revenda credenciada no Banco BV + documentação do NaPista/BV |
+| CarroSP, Autoline Brasil, SóCarrão, Comprecar, Shopcar, Seminovos.com.br, LitoralCar, Carros na Serra, SorocabaMotors | — | a definir | — | — | Não (em avaliação) | nenhuma documentação oficial pública encontrada em 26/09/2026 |
 | Carflix | — | — | — | — | Não | é rede de intermediação/franquias: exige parceria antes de qualquer integração |
 
 ## Fontes e fatos por canal
@@ -56,6 +58,19 @@ do app; DELETE. Instagram: contêineres → CAROUSEL (até 10) → `media_publis
 (`content_publishing_limit`); só JPEG; sem edição/remoção documentadas → pendência manual.
 Página ≠ Catálogo ≠ anúncios pagos ≠ Marketplace.
 
+**Mobiauto** — Swagger público https://open-api.mobiauto.com.br/swagger-ui.html (grupo
+open-api-1.0). OAuth2 Keycloak (`auth.mobiauto.com.br/auth/realms/mobiauto`), estoque
+`/api/dealer/{dealerId}/inventory/v1.0`, fotos com posição, publicar/despublicar
+(`/api/publish/v1.0/...`), planos com `quantityAvailable`, tabelas de marca/modelo/versão/cor.
+
+## Apps da plataforma (Master › Integrações)
+
+Os apps OAuth são do AutoDrive e ficam no cofre do Master (segredo cifrado):
+`Publicações — Mercado Livre (app)`, `— OLX (app)`, `— Meta (app)`, `— Mobiauto (app)`.
+O botão "Testar" confere ID e segredo pelo meio oficial de cada canal (Meta e Mercado Livre:
+token de aplicativo; Mobiauto: client_credentials; OLX não oferece teste sem login).
+Variáveis de ambiente continuam aceitas como alternativa.
+
 ## Passos de homologação (por canal)
 
 1. **Webmotors**: pedir usuário de integração e acesso ao hportal; cadastrar conta em
@@ -71,7 +86,10 @@ Página ≠ Catálogo ≠ anúncios pagos ≠ Marketplace.
 4. **Chaves na Mão**: pedir token de homologação a tecnologia@chavesnamao.com.br;
    conectar em Homologação (confirmar o caminho base da API de homologação);
    publicar/pausar/retirar; conferir plano.
-5. **Meta**: criar app (Facebook Login for Business), pedir Advanced Access
+5. **Mobiauto**: escrever para openapi@mobiauto.com.br pedindo client_id/segredo para
+   integrador (redirect: `https://www.appautodrive.online/api/publications/oauth/mobiauto/callback`);
+   cadastrar em Master › Integrações; conectar a revenda; publicar/pausar/retirar 1 veículo autorizado.
+6. **Meta**: criar app (Facebook Login for Business), pedir Advanced Access
    (pages_manage_posts, pages_read_engagement, pages_show_list, instagram_basic,
    instagram_content_publish) no App Review com vídeo do fluxo; testar com Página/conta
    de teste; publicar post e carrossel; excluir post da Página.

@@ -69,7 +69,7 @@ export function PubTabs() {
 
 /** Sigla do canal (sem logotipos de terceiros). */
 const INITIALS: Record<string, string> = {
-  SITE: 'SI', WEBMOTORS: 'WM', OLX: 'OLX', MERCADO_LIVRE: 'ML', CHAVES_NA_MAO: 'CM', META_PAGE: 'FB', INSTAGRAM: 'IG', META_CATALOGO: 'CT', MANUAL_SOCIAL: 'MN',
+  SITE: 'SI', WEBMOTORS: 'WM', OLX: 'OLX', MERCADO_LIVRE: 'ML', CHAVES_NA_MAO: 'CM', META_PAGE: 'FB', INSTAGRAM: 'IG', META_CATALOGO: 'CT', MANUAL_SOCIAL: 'MN', MOBIAUTO: 'MB',
 }
 export function ChannelMark({ channel, className }: { channel: string; className?: string }) {
   return <span className={cn('inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-gray-200 bg-white px-1 text-[10px] font-bold tracking-tight text-gray-600', className)} aria-hidden>{INITIALS[channel] ?? channel.slice(0, 2)}</span>

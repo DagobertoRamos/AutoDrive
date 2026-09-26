@@ -11,6 +11,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { prisma } from '@/lib/prisma'
 import { getServiceDef } from '@/lib/integrations/catalog'
 import { clearActiveCredentialCache } from '@/lib/integrations/active'
+import { sealIfPublication } from '@/lib/publications/platform-apps'
 import { clearPlacasCredentialCache } from '@/lib/integrations/placas/client'
 import { clearPlateProviderCache } from '@/lib/plate-lookup/service'
 
@@ -29,6 +30,7 @@ const SERVICES = [
   'FIPE_PROVIDER',
   'FIPE', 'PLATE_LOOKUP', 'RENAVAM', 'CNPJ_LOOKUP', 'CEP',
   'STORAGE', 'PAYMENT_GATEWAY', 'DIGITAL_SIGN', 'MAPS', 'OTHER',
+  'PUB_MERCADO_LIVRE', 'PUB_OLX', 'PUB_META', 'PUB_MOBIAUTO',
 ] as const
 
 export async function GET(req: NextRequest) {
@@ -121,7 +123,8 @@ export async function POST(req: NextRequest) {
         description:   description ? String(description).trim() : null,
         apiUrl:        allowsField('apiUrl')        ? cleanString(apiUrl)        : null,
         apiKey:        allowsField('apiKey')        ? cleanString(apiKey)        : null,
-        apiSecret:     allowsField('apiSecret')     ? cleanString(apiSecret)     : null,
+        // Apps da Central de Publicações: segredo cifrado no banco (AES-256-GCM).
+        apiSecret:     allowsField('apiSecret')     ? sealIfPublication(serviceKey, cleanString(apiSecret)) : null,
         token:         allowsField('token')         ? cleanString(token)         : null,
         username:      allowsField('username')      ? cleanString(username)      : null,
         webhookSecret: allowsField('webhookSecret') ? cleanString(webhookSecret) : null,

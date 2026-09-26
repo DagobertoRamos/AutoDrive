@@ -54,12 +54,14 @@ Variáveis (Vercel/`.env`):
 | `CRON_SECRET` | já existente — protege `/api/internal/publications/run` |
 | `NEXTAUTH_URL` | base dos links de foto e do retorno OAuth |
 | `PUBLICATIONS_MEDIA_SECRET` (opcional) | assina links de foto (padrão: `NEXTAUTH_SECRET`) |
-| `ML_CLIENT_ID` / `ML_CLIENT_SECRET` | app do Mercado Livre (DevCenter) |
-| `OLX_CLIENT_ID` / `OLX_CLIENT_SECRET` | app registrado com suporteintegrador@olxbr.com |
-| `META_APP_ID` / `META_APP_SECRET` / `META_GRAPH_VERSION` | app Meta (Página + Instagram) |
+| `META_GRAPH_VERSION` (opcional) | versão da Graph API (padrão v23.0) |
+
+Apps OAuth (Mercado Livre, OLX, Meta, Mobiauto): cadastrar em **Master › Integrações**
+(serviços "Publicações — … (app)", segredo cifrado). Alternativa: variáveis
+`ML_CLIENT_ID/SECRET`, `OLX_CLIENT_ID/SECRET`, `META_APP_ID/SECRET`, `MOBIAUTO_CLIENT_ID/SECRET`.
 
 URLs a cadastrar nos apps dos canais:
-- Retorno OAuth: `https://www.appautodrive.online/api/publications/oauth/{mercado-livre|olx|meta}/callback`
+- Retorno OAuth: `https://www.appautodrive.online/api/publications/oauth/{mercado-livre|olx|meta|mobiauto}/callback`
 - Notificações Mercado Livre (tópico `items`): `https://www.appautodrive.online/api/webhook/publications/mercado-livre`
 
 Fila: cron da Vercel (`vercel.json`) a cada minuto + `?reconcile=1` a cada 15 min;

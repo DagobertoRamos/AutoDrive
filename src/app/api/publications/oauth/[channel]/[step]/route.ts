@@ -12,7 +12,7 @@ import { audit, kickWorker, pubAuth } from '@/lib/publications/api'
 
 export const dynamic = 'force-dynamic'
 
-const CHANNEL: Record<string, OAuthChannel> = { 'mercado-livre': 'MERCADO_LIVRE', olx: 'OLX', meta: 'META' }
+const CHANNEL: Record<string, OAuthChannel> = { 'mercado-livre': 'MERCADO_LIVRE', olx: 'OLX', meta: 'META', mobiauto: 'MOBIAUTO' }
 
 function back(req: Request, params: Record<string, string>) {
   const u = new URL('/marketing/canais', req.url)
@@ -28,8 +28,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ channel: string
   if (a instanceof NextResponse) return a
 
   if (step === 'start') {
-    if (!oauthConfigured(channel)) return back(req, { erro: 'A plataforma ainda não tem o aplicativo oficial deste canal configurado. Fale com o suporte AutoDrive.' })
-    return NextResponse.redirect(authorizeUrl(channel, signState({ t: a.tenantId, u: a.user.id, c: channel })))
+    if (!await oauthConfigured(channel)) return back(req, { erro: 'A plataforma ainda não tem o aplicativo oficial deste canal configurado. Fale com o suporte AutoDrive.' })
+    return NextResponse.redirect(await authorizeUrl(channel, signState({ t: a.tenantId, u: a.user.id, c: channel })))
   }
 
   const sp = new URL(req.url).searchParams

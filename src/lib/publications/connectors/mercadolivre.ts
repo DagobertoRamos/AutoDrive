@@ -17,6 +17,7 @@ import { channelText, fuelLabel, gearLabel, splitBrPhone, type ListingPayload } 
 import { normalizePlate } from '../validate-core'
 import { normalizeLabel } from '../mapping-core'
 import { throwForStatus, type HttpResponse } from './http'
+import { getPlatformApp } from '../platform-apps'
 import type { Connector, ConnectorContext, RemoteRef, RemoteResult } from './types'
 
 const spec = channelSpec('MERCADO_LIVRE')!
@@ -50,8 +51,9 @@ export function mlError(res: HttpResponse, what: string): ConnectorError | null 
 async function ensureToken(ctx: ConnectorContext, force = false): Promise<string> {
   const exp = Number(ctx.secrets.expires_at ?? 0)
   if (!force && ctx.secrets.access_token && exp - ctx.now().getTime() > REFRESH_BEFORE_MS) return ctx.secrets.access_token
-  const clientId = process.env.ML_CLIENT_ID; const clientSecret = process.env.ML_CLIENT_SECRET
-  if (!clientId || !clientSecret) throw new ConnectorError('CONFIG', 'App do Mercado Livre não configurado na plataforma.', 'O administrador do AutoDrive precisa definir ML_CLIENT_ID e ML_CLIENT_SECRET.')
+  const app = await getPlatformApp('MERCADO_LIVRE')
+  if (!app) throw new ConnectorError('CONFIG', 'App do Mercado Livre não configurado na plataforma.', 'O MASTER cadastra o app em Master › Integrações (Publicações — Mercado Livre).')
+  const { clientId, clientSecret } = app
   if (!ctx.secrets.refresh_token) throw new ConnectorError('AUTH', 'Autorização do Mercado Livre ausente.', 'Conecte a conta em Canais conectados.')
   const res = await ctx.http.request({
     method: 'POST', url: `${API}/oauth/token`, headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },

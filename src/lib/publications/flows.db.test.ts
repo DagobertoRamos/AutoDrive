@@ -299,7 +299,7 @@ describe.skipIf(!RUN)('Central de Publicações — banco local', () => {
   }, 90_000)
 
   it('webhook: repetido e fora de ordem são ignorados; só afeta a loja dona da conta', async () => {
-    process.env.ML_CLIENT_ID = 'APP-TESTE'
+    process.env.ML_CLIENT_ID = 'APP-TESTE'; process.env.ML_CLIENT_SECRET = 'SEGREDO-TESTE'
     const conn = await prisma.publicationConnection.create({ data: { tenantId: T.A.t.id, channel: 'MERCADO_LIVRE', externalAccountId: `ml${tag}`, label: 'ML teste', status: 'CONECTADO' } })
     const pub = await prisma.publication.create({ data: { tenantId: T.A.t.id, vehicleId: T.vMulti.id, channel: 'MERCADO_LIVRE', connectionId: conn.id, connectionKey: conn.id, externalRef: `ml${tag}`, status: 'PUBLICADO', confirmedState: 'PUBLICADO', remoteId: 'MLB999', desiredState: 'PUBLICADO' } })
     const n = { resource: '/items/MLB999', user_id: `ml${tag}`, topic: 'items', application_id: 'APP-TESTE', sent: '2026-09-25T12:00:00.000Z' }

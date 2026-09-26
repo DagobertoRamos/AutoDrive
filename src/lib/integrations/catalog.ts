@@ -22,6 +22,10 @@ export type ServiceKey =
   | 'CNPJ_LOOKUP'   // legado
   | 'CEP'           // legado
   | 'FIPE'          // legado
+  | 'PUB_MERCADO_LIVRE' // app da plataforma no DevCenter (Central de Publicações)
+  | 'PUB_OLX'           // app registrado com a OLX (autoupload)
+  | 'PUB_META'          // app Meta (Página + Instagram)
+  | 'PUB_MOBIAUTO'      // app OAuth da Mobiauto Open API
   | 'OTHER'
 
 export type FieldKey =
@@ -156,6 +160,43 @@ export const SERVICES: ServiceDef[] = [
     fields:      ['apiUrl'],
     legacy:      true,
     badgeColor:  'bg-gray-100 text-gray-600 border-gray-200',
+  },
+  // ── Central de Publicações: apps DA PLATAFORMA (cada loja autoriza a própria conta) ──
+  {
+    key:         'PUB_MERCADO_LIVRE',
+    label:       'Publicações — Mercado Livre (app)',
+    description: 'App criado em developers.mercadolivre.com.br › Minhas aplicações. URI de redirect: https://www.appautodrive.online/api/publications/oauth/mercado-livre/callback · Notificações (tópico items): https://www.appautodrive.online/api/webhook/publications/mercado-livre',
+    fields:      ['apiKey', 'apiSecret'],
+    fieldLabels: { apiKey: 'Client ID (App ID)', apiSecret: 'Client Secret' },
+    fieldRequired: { apiKey: true, apiSecret: true },
+    badgeColor:  'bg-yellow-50 text-yellow-800 border-yellow-200',
+  },
+  {
+    key:         'PUB_OLX',
+    label:       'Publicações — OLX (app)',
+    description: 'client_id e segredo enviados pela OLX após o registro com suporteintegrador@olxbr.com. URI de redirect a informar: https://www.appautodrive.online/api/publications/oauth/olx/callback',
+    fields:      ['apiKey', 'apiSecret'],
+    fieldLabels: { apiKey: 'client_id', apiSecret: 'Chave de segurança (client_secret)' },
+    fieldRequired: { apiKey: true, apiSecret: true },
+    badgeColor:  'bg-purple-50 text-purple-700 border-purple-200',
+  },
+  {
+    key:         'PUB_META',
+    label:       'Publicações — Meta: Facebook e Instagram (app)',
+    description: 'App em developers.facebook.com (Facebook Login for Business). URI de redirect OAuth válida: https://www.appautodrive.online/api/publications/oauth/meta/callback',
+    fields:      ['apiKey', 'apiSecret'],
+    fieldLabels: { apiKey: 'App ID', apiSecret: 'App Secret' },
+    fieldRequired: { apiKey: true, apiSecret: true },
+    badgeColor:  'bg-blue-50 text-blue-700 border-blue-200',
+  },
+  {
+    key:         'PUB_MOBIAUTO',
+    label:       'Publicações — Mobiauto (app)',
+    description: 'client_id e segredo da Mobiauto Open API (pedir a openapi@mobiauto.com.br). URI de redirect a informar: https://www.appautodrive.online/api/publications/oauth/mobiauto/callback',
+    fields:      ['apiKey', 'apiSecret'],
+    fieldLabels: { apiKey: 'client_id', apiSecret: 'client_secret' },
+    fieldRequired: { apiKey: true, apiSecret: true },
+    badgeColor:  'bg-indigo-50 text-indigo-700 border-indigo-200',
   },
   {
     key:         'OTHER',

@@ -1,9 +1,9 @@
 // =============================================================================
 // OAuth dos canais (a LOJA autoriza a própria conta; o app é da plataforma).
 // Segredos do SaaS (env) ≠ autorizações das lojas (cifradas por conexão).
-//   Mercado Livre: ML_CLIENT_ID / ML_CLIENT_SECRET
-//   OLX:           OLX_CLIENT_ID / OLX_CLIENT_SECRET (registro com suporteintegrador@olxbr.com)
-//   Meta:          META_APP_ID / META_APP_SECRET (+ META_GRAPH_VERSION)
+//   Apps cadastrados em Master › Integrações (PUB_MERCADO_LIVRE, PUB_OLX,
+//   PUB_META — segredo cifrado) ou nas variáveis ML_CLIENT_ID/SECRET,
+//   OLX_CLIENT_ID/SECRET, META_APP_ID/SECRET (ver platform-apps.ts).
 // `state` assinado (HMAC) com loja, usuário, canal e validade de 15 min; no
 // retorno exigimos o MESMO usuário logado → sem CSRF nem troca de loja.
 // =============================================================================
@@ -13,9 +13,11 @@ import { prisma } from '@/lib/prisma'
 import { ConnectorError } from './errors'
 import { createHttpClient, throwForStatus, type HttpClient } from './connectors/http'
 import { graphBase } from './connectors/meta'
+import { getPlatformApp } from './platform-apps'
+import { MOBIAUTO_API, MOBIAUTO_AUTH } from './connectors/mobiauto'
 import { logEvent, maskHint, releaseBlockedJobs, sealSecrets, type Actor } from './service'
 
-export type OAuthChannel = 'MERCADO_LIVRE' | 'OLX' | 'META'
+export type OAuthChannel = 'MERCADO_LIVRE' | 'OLX' | 'META' | 'MOBIAUTO'
 
 interface StateClaims { t: string; u: string; c: OAuthChannel; n: string; e: number }
 
@@ -46,19 +48,26 @@ export function redirectUri(channel: OAuthChannel): string {
   return `${base}/api/publications/oauth/${channel.toLowerCase().replace('_', '-')}/callback`
 }
 
-export function oauthConfigured(channel: OAuthChannel): boolean {
-  if (channel === 'MERCADO_LIVRE') return !!(process.env.ML_CLIENT_ID && process.env.ML_CLIENT_SECRET)
-  if (channel === 'OLX') return !!(process.env.OLX_CLIENT_ID && process.env.OLX_CLIENT_SECRET)
-  return !!(process.env.META_APP_ID && process.env.META_APP_SECRET)
+/** App da plataforma cadastrado (Master › Integrações ou variável de ambiente). */
+export async function oauthConfigured(channel: OAuthChannel): Promise<boolean> {
+  return !!(await getPlatformApp(channel))
+}
+
+async function appOf(channel: OAuthChannel) {
+  const app = await getPlatformApp(channel)
+  if (!app) throw new ConnectorError('CONFIG', 'O aplicativo oficial deste canal ainda não foi cadastrado na plataforma.', 'O MASTER cadastra em Master › Integrações.')
+  return app
 }
 
 export const META_SCOPES = ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish']
 
-export function authorizeUrl(channel: OAuthChannel, state: string): string {
+export async function authorizeUrl(channel: OAuthChannel, state: string): Promise<string> {
   const redirect = redirectUri(channel)
-  if (channel === 'MERCADO_LIVRE') return `https://auth.mercadolivre.com.br/authorization?${new URLSearchParams({ response_type: 'code', client_id: process.env.ML_CLIENT_ID ?? '', redirect_uri: redirect, state })}`
-  if (channel === 'OLX') return `https://auth.olx.com.br/oauth?${new URLSearchParams({ response_type: 'code', client_id: process.env.OLX_CLIENT_ID ?? '', redirect_uri: redirect, scope: 'autoupload basic_user_info', state })}`
-  return `https://www.facebook.com/${process.env.META_GRAPH_VERSION || 'v23.0'}/dialog/oauth?${new URLSearchParams({ client_id: process.env.META_APP_ID ?? '', redirect_uri: redirect, state, scope: META_SCOPES.join(','), response_type: 'code' })}`
+  const app = await appOf(channel)
+  if (channel === 'MERCADO_LIVRE') return `https://auth.mercadolivre.com.br/authorization?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, state })}`
+  if (channel === 'MOBIAUTO') return `${MOBIAUTO_AUTH}/auth?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, scope: 'openid', state })}`
+  if (channel === 'OLX') return `https://auth.olx.com.br/oauth?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, scope: 'autoupload basic_user_info', state })}`
+  return `https://www.facebook.com/${process.env.META_GRAPH_VERSION || 'v23.0'}/dialog/oauth?${new URLSearchParams({ client_id: app.clientId, redirect_uri: redirect, state, scope: META_SCOPES.join(','), response_type: 'code' })}`
 }
 
 async function upsertConnection(tenantId: string, channel: string, externalAccountId: string, label: string, secrets: Record<string, string>, hints: Record<string, string>, expiresAt: Date | null, actor: Actor) {
@@ -75,8 +84,9 @@ async function upsertConnection(tenantId: string, channel: string, externalAccou
 /** Troca o código pela autorização e grava a(s) conexão(ões) da loja. */
 export async function completeOAuth(claims: StateClaims, code: string, actor: Actor, http: HttpClient = createHttpClient()): Promise<{ connected: string[] }> {
   const redirect = redirectUri(claims.c)
+  const app = await appOf(claims.c)
   if (claims.c === 'MERCADO_LIVRE') {
-    const res = await http.request({ method: 'POST', url: 'https://api.mercadolibre.com/oauth/token', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: process.env.ML_CLIENT_ID ?? '', client_secret: process.env.ML_CLIENT_SECRET ?? '', code, redirect_uri: redirect }) })
+    const res = await http.request({ method: 'POST', url: 'https://api.mercadolibre.com/oauth/token', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: app.clientId, client_secret: app.clientSecret, code, redirect_uri: redirect }) })
     throwForStatus(res, 'Mercado Livre (autorização)')
     const j = res.json<{ access_token: string; refresh_token: string; expires_in: number; user_id: number }>()!
     const me = (await http.request({ url: 'https://api.mercadolibre.com/users/me', headers: { Authorization: `Bearer ${j.access_token}` } })).json<{ nickname?: string }>()
@@ -84,8 +94,23 @@ export async function completeOAuth(claims: StateClaims, code: string, actor: Ac
     const c = await upsertConnection(claims.t, 'MERCADO_LIVRE', String(j.user_id), me?.nickname ? `ML ${me.nickname}` : `ML ${j.user_id}`, { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: String(expiresAt.getTime()), user_id: String(j.user_id) }, { conta: String(me?.nickname ?? j.user_id) }, expiresAt, actor)
     return { connected: [c.label] }
   }
+  if (claims.c === 'MOBIAUTO') {
+    const res = await http.request({ method: 'POST', url: `${MOBIAUTO_AUTH}/token`, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: app.clientId, client_secret: app.clientSecret, code, redirect_uri: redirect }) })
+    throwForStatus(res, 'Mobiauto (autorização)')
+    const j = res.json<{ access_token: string; refresh_token: string; expires_in?: number }>()!
+    const expiresAt = new Date(Date.now() + (j.expires_in ?? 300) * 1000)
+    // Uma conexão por revenda autorizada para o usuário.
+    const dealers = (await http.request({ url: `${MOBIAUTO_API}/api/dealer/v1.0/dealers`, headers: { Authorization: `Bearer ${j.access_token}`, Accept: 'application/json' } })).json<Array<{ id: number; name?: string; cnpj?: string }>>() ?? []
+    if (!dealers.length) throw new ConnectorError('CONFIG', 'Nenhuma revenda da Mobiauto está ligada a este usuário.', 'Entre com um usuário que tenha acesso à revenda na Mobiauto.')
+    const connected: string[] = []
+    for (const d of dealers) {
+      const c = await upsertConnection(claims.t, 'MOBIAUTO', String(d.id), d.name ? `Mobiauto ${d.name}` : `Mobiauto ${d.id}`, { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: String(expiresAt.getTime()) }, { revenda: d.name ?? String(d.id), ...(d.cnpj ? { cnpj: d.cnpj } : {}) }, expiresAt, actor)
+      connected.push(c.label)
+    }
+    return { connected }
+  }
   if (claims.c === 'OLX') {
-    const res = await http.request({ method: 'POST', url: 'https://auth.olx.com.br/oauth/token', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: process.env.OLX_CLIENT_ID ?? '', client_secret: process.env.OLX_CLIENT_SECRET ?? '', redirect_uri: redirect, grant_type: 'authorization_code' }) })
+    const res = await http.request({ method: 'POST', url: 'https://auth.olx.com.br/oauth/token', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: app.clientId, client_secret: app.clientSecret, redirect_uri: redirect, grant_type: 'authorization_code' }) })
     throwForStatus(res, 'OLX (autorização)')
     const token = res.json<{ access_token?: string }>()?.access_token
     if (!token) throw new ConnectorError('AUTH', 'A OLX não devolveu a chave de acesso.')
@@ -96,10 +121,10 @@ export async function completeOAuth(claims: StateClaims, code: string, actor: Ac
   }
   // Meta: token de usuário → longo prazo → Páginas autorizadas (+ Instagram profissional vinculado).
   const base = graphBase()
-  const short = await http.request({ url: `${base}/oauth/access_token?${new URLSearchParams({ client_id: process.env.META_APP_ID ?? '', client_secret: process.env.META_APP_SECRET ?? '', redirect_uri: redirect, code })}` })
+  const short = await http.request({ url: `${base}/oauth/access_token?${new URLSearchParams({ client_id: app.clientId, client_secret: app.clientSecret, redirect_uri: redirect, code })}` })
   throwForStatus(short, 'Meta (autorização)')
   const st = short.json<{ access_token: string }>()!.access_token
-  const long = await http.request({ url: `${base}/oauth/access_token?${new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: process.env.META_APP_ID ?? '', client_secret: process.env.META_APP_SECRET ?? '', fb_exchange_token: st })}` })
+  const long = await http.request({ url: `${base}/oauth/access_token?${new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: app.clientId, client_secret: app.clientSecret, fb_exchange_token: st })}` })
   throwForStatus(long, 'Meta (token longo)')
   const lt = long.json<{ access_token: string }>()!.access_token
   const pages = await http.request({ url: `${base}/me/accounts?${new URLSearchParams({ fields: 'id,name,access_token,instagram_business_account{id,username}', access_token: lt })}` })

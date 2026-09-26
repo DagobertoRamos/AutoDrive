@@ -18,7 +18,7 @@ interface PubItem { id: string; channel: string; channelName: string; account: s
 interface Row { vehicle: { id: string; title: string; plate: string | null; year: number | null; modelYear: number | null; km: number | null; stockStatus: string | null; cover: string | null; unit: string | null; price: number | null; oldPrice: number | null }; publications: PubItem[]; summary: string; lastSync: string | null }
 interface Can { prepare: boolean; approve: boolean; publish: boolean; connections: boolean }
 
-const CHANNELS = [['SITE', 'Site próprio'], ['WEBMOTORS', 'Webmotors'], ['OLX', 'OLX'], ['MERCADO_LIVRE', 'Mercado Livre'], ['CHAVES_NA_MAO', 'Chaves na Mão'], ['META_PAGE', 'Facebook'], ['INSTAGRAM', 'Instagram'], ['MANUAL_SOCIAL', 'Manual']] as const
+const CHANNELS = [['SITE', 'Site próprio'], ['WEBMOTORS', 'Webmotors'], ['OLX', 'OLX'], ['MERCADO_LIVRE', 'Mercado Livre'], ['CHAVES_NA_MAO', 'Chaves na Mão'], ['MOBIAUTO', 'Mobiauto'], ['META_PAGE', 'Facebook'], ['INSTAGRAM', 'Instagram'], ['MANUAL_SOCIAL', 'Manual']] as const
 const QUICK: Array<[string, string]> = [['', 'Todas'], ['PUBLICADO', 'Publicadas'], ['EM_ANALISE', 'Em análise'], ['AGENDADO', 'Agendadas'], ['FALHA', 'Com falha'], ['REJEITADO', 'Rejeitadas'], ['ACAO_MANUAL', 'Ação manual'], ['PAUSADO', 'Pausadas']]
 
 export default function PublicationsPage() {

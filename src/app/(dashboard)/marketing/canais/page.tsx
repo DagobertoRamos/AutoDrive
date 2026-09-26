@@ -29,8 +29,8 @@ const DEV: Record<string, { label: string; tone: Tone }> = {
 }
 const VERIFIED: Record<string, string> = { NENHUM: 'não verificado', TESTES_LOCAIS: 'testes locais', CONTRATO: 'teste de contrato (simulação)', SANDBOX: 'sandbox/homologação', PRODUCAO: 'produção' }
 const CAP: Record<string, string> = { authenticate: 'Autenticar', testConnection: 'Testar', validate: 'Validar', publish: 'Publicar', get: 'Consultar', update: 'Atualizar', pause: 'Pausar', resume: 'Reativar', remove: 'Remover', limits: 'Limites', webhooks: 'Eventos' }
-const OAUTH_SLUG: Record<string, string> = { MERCADO_LIVRE: 'mercado-livre', OLX: 'olx', META_PAGE: 'meta', INSTAGRAM: 'meta' }
-const OAUTH_KEY: Record<string, string> = { MERCADO_LIVRE: 'MERCADO_LIVRE', OLX: 'OLX', META_PAGE: 'META', INSTAGRAM: 'META' }
+const OAUTH_SLUG: Record<string, string> = { MERCADO_LIVRE: 'mercado-livre', OLX: 'olx', META_PAGE: 'meta', INSTAGRAM: 'meta', MOBIAUTO: 'mobiauto' }
+const OAUTH_KEY: Record<string, string> = { MERCADO_LIVRE: 'MERCADO_LIVRE', OLX: 'OLX', META_PAGE: 'META', INSTAGRAM: 'META', MOBIAUTO: 'MOBIAUTO' }
 
 export default function ChannelsPage() {
   return <Suspense fallback={<Loader2 className="m-6 animate-spin text-gray-400" />}><Channels /></Suspense>
@@ -212,6 +212,7 @@ const CONFIG_FIELDS: Record<string, Array<{ key: string; label: string; help?: s
     { key: 'cityId', label: 'Cidade (id de localização do Mercado Livre)', help: 'Ex.: BR-SP-56 ou o id retornado pela API de localização.' },
     { key: 'addressLine', label: 'Endereço (rua e número)' },
   ],
+  MOBIAUTO: [{ key: 'planId', label: 'Plano de anúncios (dealPlanId) — opcional', help: 'Vazio = o primeiro plano com anúncios disponíveis (veja em Testar).' }],
   CHAVES_NA_MAO: [{ key: 'baseUrl', label: 'Endereço da API de homologação (opcional)', help: 'Só se o Chaves na Mão indicar outro endereço de testes.' }],
 }
 

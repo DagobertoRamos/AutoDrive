@@ -30,7 +30,8 @@ export async function GET(req: Request) {
     where: { tenantId: a.tenantId }, orderBy: [{ channel: 'asc' }, { createdAt: 'asc' }],
     select: { id: true, channel: true, label: true, externalAccountId: true, status: true, environment: true, maskedHints: true, config: true, tokenExpiresAt: true, throttledUntil: true, quota: true, lastCheckedAt: true, lastError: true, connectedAt: true, disconnectedAt: true, _count: { select: { publications: { where: { archivedAt: null } } } } },
   })
-  const oauth = { MERCADO_LIVRE: oauthConfigured('MERCADO_LIVRE'), OLX: oauthConfigured('OLX'), META: oauthConfigured('META') }
+  const [ml, olx, meta, mobi] = await Promise.all([oauthConfigured('MERCADO_LIVRE'), oauthConfigured('OLX'), oauthConfigured('META'), oauthConfigured('MOBIAUTO')])
+  const oauth = { MERCADO_LIVRE: ml, OLX: olx, META: meta, MOBIAUTO: mobi }
   return NextResponse.json({
     success: true,
     data: {
