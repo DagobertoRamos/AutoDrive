@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   try {
     const where: Prisma.VehicleWhereInput = {
       tenantId: a.tenantId,
-      ...(ids.length ? { id: { in: ids } } : { active: true, stockStatus: { in: [...PUBLISHABLE_STOCK] } }),
+      ...(ids.length ? { id: { in: ids } } : { active: true, stockStatus: { in: [...PUBLISHABLE_STOCK, 'EM_SERVICO'] } }),
       ...(q ? { OR: [{ brand: { contains: q, mode: 'insensitive' } }, { model: { contains: q, mode: 'insensitive' } }, { version: { contains: q, mode: 'insensitive' } }, { plate: { contains: q.replace(/[^a-z0-9]/gi, ''), mode: 'insensitive' } }] } : {}),
     }
     const total = ids.length ? ids.length : await prisma.vehicle.count({ where })
@@ -49,6 +49,8 @@ export async function GET(req: Request) {
         return {
           id: v.id, title: vehicleTitle(v), plate: v.plate, year: v.year, modelYear: v.modelYear, km: v.km, stockStatus: v.stockStatus, unit: v.unit?.name ?? null,
           cover: v.mainPhotoUrl, photos: v._count.photos, price: p.price, publishable: v.active && (PUBLISHABLE_STOCK as readonly string[]).includes(String(v.stockStatus)),
+          // Em serviço: já recebe fotos novas e ficha; portais só quando ficar Disponível.
+          preparable: v.active && ((PUBLISHABLE_STOCK as readonly string[]).includes(String(v.stockStatus)) || v.stockStatus === 'EM_SERVICO'),
           photosStatus: v.siteListing?.photosStatus ?? 'ORIGEM', mediaApproved: !!drafts.get(v.id)?.mediaRevisionId, mediaPending: pending.has(v.id),
           channels: v.publications.map((x) => ({ channel: x.channel, status: x.status })),
         }

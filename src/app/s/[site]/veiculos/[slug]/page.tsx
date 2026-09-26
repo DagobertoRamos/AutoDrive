@@ -1,6 +1,7 @@
 // Anúncio do veículo (porta de /veiculos/[slug] do dagobertoeasycar).
 import type { Metadata } from 'next'
 import { originPublicTag } from '@/lib/stock/origin-core'
+import { groupOptions } from '@/lib/stock/options-catalog'
 import Link from 'next/link'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { legacyVehicleId } from '@/lib/site/feed-import'
@@ -74,7 +75,7 @@ export default async function SiteVehiclePage({ params }: Props) {
               <div className="detail-specs">{specs.map(([icon, text]) => <div key={text} className="detail-spec"><span className="detail-spec-icon">{icon}</span><span>{text}</span></div>)}</div>
             </div>
             {v.options.length > 0 && (
-              <div className="detail-section"><h2 className="detail-section-title">Opcionais</h2><div className="detail-options">{v.options.map((o) => <span key={o} className="detail-option">{o}</span>)}</div></div>
+              <div className="detail-section"><h2 className="detail-section-title">Opcionais e itens</h2>{groupOptions(v.options).map((g) => <div key={g.group} className="detail-option-group"><h3>{g.group}</h3><div className="detail-options">{g.items.map((o) => <span key={o} className="detail-option">{o}</span>)}</div></div>)}</div>
             )}
             {paragraphs.length > 0 && (
               <div className="detail-section"><h2 className="detail-section-title">+ Informações</h2><div className="detail-description">{paragraphs.map((p, i) => <p key={i}>{p}</p>)}</div></div>

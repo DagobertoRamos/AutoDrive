@@ -3,8 +3,8 @@
 
 // =============================================================================
 // Marketing › Publicações › Nova — fluxo principal:
-//   1 Veículos · 2 Fotos (capa e ordem, aprovação) · 3 Conteúdo · 4 Canais ·
-//   5 Revisão (prévia + pendências com "como resolver") · Publicar agora / Agendar
+//   1 Veículos · 2 Fotos (enviar fotos novas, capa e ordem, aprovação) ·
+//   3 Ficha (origem + opcionais) · 4 Conteúdo · 5 Canais · 6 Revisão (prévia + pendências com "como resolver") · Publicar agora / Agendar
 // Depois disso o envio segue sozinho em segundo plano (fila no servidor).
 // =============================================================================
 
@@ -14,14 +14,16 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, ArrowRight, CalendarClock, Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Rocket, Save, Search, Star, Wand2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, ErrorNote, inputCls, money, PubTabs, Thumb } from '@/components/publications/ui'
+import { ListingProfileStep } from '@/components/publications/ListingProfileStep'
+import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-interface Veh { id: string; title: string; plate: string | null; year: number | null; modelYear: number | null; km: number | null; cover: string | null; photos: number; price: number | null; publishable: boolean; stockStatus: string | null; photosStatus: string; mediaApproved: boolean; mediaPending: boolean; channels: Array<{ channel: string; status: string }>; unit: string | null }
+interface Veh { id: string; title: string; plate: string | null; year: number | null; modelYear: number | null; km: number | null; cover: string | null; photos: number; price: number | null; publishable: boolean; preparable?: boolean; stockStatus: string | null; photosStatus: string; mediaApproved: boolean; mediaPending: boolean; channels: Array<{ channel: string; status: string }>; unit: string | null }
 interface Conn { id: string; channel: string; label: string; status: string }
 interface ChannelInfo { id: string; name: string; campaigns: boolean; publishable: boolean; devStatus: string; group: string }
 interface Content { title: string; description: string; conditions: string; price: string }
 
-const STEPS = ['Veículos', 'Fotos', 'Conteúdo', 'Canais', 'Revisão'] as const
+const STEPS = ['Veículos', 'Fotos', 'Ficha', 'Conteúdo', 'Canais', 'Revisão'] as const
 
 export default function NovaPublicacaoPage() {
   return <Suspense fallback={<div className="p-6"><Loader2 className="animate-spin text-gray-400" /></div>}><Wizard /></Suspense>
@@ -60,7 +62,7 @@ function Wizard() {
   const cur = current && selected.includes(current) ? current : selected[0] ?? null
 
   const go = (n: number) => { setErr(null); setStep(Math.max(0, Math.min(STEPS.length - 1, n))) }
-  const canNext = step === 0 ? selected.length > 0 : step === 3 ? targets.size > 0 : true
+  const canNext = step === 0 ? selected.length > 0 : step === 4 ? targets.size > 0 : true
 
   return (
     <div className="space-y-4">
@@ -86,17 +88,18 @@ function Wizard() {
       {err && <ErrorNote message={err} />}
 
       {step === 0 && <StepVehicles selected={selected} setSelected={setSelected} vehicles={vehicles} onLoaded={(list) => setVehicles((v) => ({ ...v, ...Object.fromEntries(list.map((x) => [x.id, x])) }))} />}
-      {step >= 1 && step <= 2 && selected.length > 1 && (
+      {step >= 1 && step <= 3 && selected.length > 1 && (
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Veículo em edição">
           {selected.map((id) => <button key={id} role="tab" aria-selected={cur === id} onClick={() => setCurrent(id)} className={cn('flex items-center gap-2 rounded-lg border px-2 py-1 text-xs', cur === id ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-gray-200 text-gray-600')}><Thumb src={vehicles[id]?.cover} className="h-6 w-8" />{vehicles[id]?.title ?? '…'}{vehicles[id]?.mediaApproved && <CheckCircle2 size={12} className="text-green-600" />}</button>)}
         </div>
       )}
       {step === 1 && cur && <StepPhotos key={cur} vehicleId={cur} canApprove={can.approve} onApproved={() => loadVehicles([cur])} />}
-      {step === 2 && cur && <StepContent key={cur} vehicleId={cur} />}
-      {step === 3 && <StepChannels conns={conns} channels={channels} targets={targets} setTargets={setTargets} campaign={campaign} setCampaign={setCampaign} />}
-      {step === 4 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} />}
+      {step === 2 && cur && <ListingProfileStep key={cur} vehicleId={cur} canEdit={can.prepare} />}
+      {step === 3 && cur && <StepContent key={cur} vehicleId={cur} />}
+      {step === 4 && <StepChannels conns={conns} channels={channels} targets={targets} setTargets={setTargets} campaign={campaign} setCampaign={setCampaign} />}
+      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} />}
 
-      {step < 4 && (
+      {step < 5 && (
         <div className="sticky bottom-2 z-10 flex items-center justify-between rounded-xl border border-gray-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
           <button onClick={() => go(step - 1)} disabled={step === 0} className="btn-secondary px-3 py-1.5 text-xs"><ChevronLeft size={14} />Voltar</button>
           <span className="text-xs text-gray-500">{selected.length} veículo(s){targets.size ? ` · ${targets.size} destino(s)` : ''}</span>
@@ -122,7 +125,7 @@ function StepVehicles({ selected, setSelected, vehicles, onLoaded }: { selected:
   }, [q, page]) // eslint-disable-line react-hooks/exhaustive-deps
   const pages = Math.max(1, Math.ceil(paging.total / paging.pageSize))
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
-  const pageIds = (list ?? []).filter((v) => v.publishable).map((v) => v.id)
+  const pageIds = (list ?? []).filter((v) => v.publishable || v.preparable).map((v) => v.id)
   const allOnPage = pageIds.length > 0 && pageIds.every((id) => selected.includes(id))
   const togglePage = () => setSelected((s) => (allOnPage ? s.filter((id) => !pageIds.includes(id)) : [...new Set([...s, ...pageIds])]))
   const pager = pages > 1 && (
@@ -148,14 +151,15 @@ function StepVehicles({ selected, setSelected, vehicles, onLoaded }: { selected:
             const on = selected.includes(v.id)
             return (
               <li key={v.id}>
-                <label className={cn('flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-2.5 focus-within:ring-2 focus-within:ring-brand-600', on ? 'border-brand-500 bg-brand-50/40' : 'border-gray-200 hover:border-gray-300', !v.publishable && 'opacity-60')}>
-                  <input type="checkbox" checked={on} onChange={() => toggle(v.id)} disabled={!v.publishable} className="rounded border-gray-300 text-brand-600" />
+                <label className={cn('flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-2.5 focus-within:ring-2 focus-within:ring-brand-600', on ? 'border-brand-500 bg-brand-50/40' : 'border-gray-200 hover:border-gray-300', !v.publishable && !v.preparable && 'opacity-60')}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(v.id)} disabled={!v.publishable && !v.preparable} className="rounded border-gray-300 text-brand-600" />
                   <Thumb src={v.cover} className="h-12 w-16" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-gray-900">{v.title}</span>
                     <span className="block text-xs text-gray-500">{[v.plate, v.modelYear, money(v.price)].filter(Boolean).join(' · ')}</span>
                     <span className="mt-0.5 flex flex-wrap gap-1 text-[10px]">
                       <span className={cn('rounded px-1', v.photos ? 'bg-gray-100 text-gray-600' : 'bg-amber-50 text-amber-700')}>{v.photos} foto(s)</span>
+                      {v.stockStatus === 'EM_SERVICO' && <span className="rounded bg-sky-50 px-1 text-sky-700" title="Pode receber fotos e ficha; portais quando ficar Disponível.">em serviço</span>}
                       {v.photosStatus === 'TRATADA' && <span className="rounded bg-violet-50 px-1 text-violet-700">tratadas</span>}
                       {v.mediaApproved ? <span className="rounded bg-green-50 px-1 text-green-700">fotos aprovadas</span> : v.mediaPending ? <span className="rounded bg-amber-50 px-1 text-amber-700">aprovação pendente</span> : null}
                       {v.channels.length > 0 && <span className="rounded bg-gray-100 px-1 text-gray-600">{v.channels.length} canal(is)</span>}
@@ -179,13 +183,21 @@ function StepPhotos({ vehicleId, canApprove, onApproved }: { vehicleId: string; 
   const [order, setOrder] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  useEffect(() => {
-    api(`/api/publications/drafts/${vehicleId}`).then((j) => {
-      setData(j.data)
-      const approved = Array.isArray(j.data.draft?.photos) ? (j.data.draft.photos as string[]).filter((u) => j.data.gallery.includes(u) || j.data.originals.includes(u)) : []
-      setOrder(approved.length ? approved : j.data.gallery)
-    }).catch((e) => setMsg({ ok: false, text: (e as Error).message }))
-  }, [vehicleId])
+  const [upload, setUpload] = useState<VehiclePhotoItem[] | null>(null)
+  const reload = useCallback(() => api(`/api/publications/drafts/${vehicleId}`).then((j) => {
+    setData(j.data)
+    const approved = Array.isArray(j.data.draft?.photos) ? (j.data.draft.photos as string[]).filter((u) => j.data.gallery.includes(u) || j.data.originals.includes(u)) : []
+    setOrder(approved.length ? approved : j.data.gallery)
+  }).catch((e) => setMsg({ ok: false, text: (e as Error).message })), [vehicleId])
+  useEffect(() => { void reload() }, [reload])
+  // Envio das fotos novas (setor de fotografia) aqui mesmo: vão para a galeria do
+  // estoque; o site troca o "aguardando fotos" por elas e as fotos da avaliação
+  // ficam só na aba "Fotos da avaliação" do veículo.
+  const openUpload = async () => {
+    const d = await fetch(`/api/vehicles/${vehicleId}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
+    if (!d?.success) { setMsg({ ok: false, text: d?.error ?? 'Sem permissão para enviar fotos (estoque).' }); return }
+    setUpload(d.data.photos ?? [])
+  }
   const pool = useMemo(() => (data ? [...new Set<string>([...data.gallery, ...data.originals])].filter((u) => !order.includes(u)) : []), [data, order])
   const move = (i: number, d: number) => setOrder((o) => { const n = [...o]; const j = i + d; if (j < 0 || j >= n.length) return o; [n[i], n[j]] = [n[j], n[i]]; return n })
   const cover = (i: number) => setOrder((o) => [o[i], ...o.filter((_, k) => k !== i)])
@@ -210,7 +222,17 @@ function StepPhotos({ vehicleId, canApprove, onApproved }: { vehicleId: string; 
         </div>
       </div>
       {msg && <p role="status" className={cn('rounded-lg px-3 py-2 text-xs', msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>{msg.text}</p>}
-      {!order.length && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Sem fotos. <Link className="underline" href={`/estoque/${vehicleId}`}>Envie as fotos no estoque</Link>.</p>}
+      {upload ? (
+        <div className="rounded-xl border border-brand-200 bg-brand-50/30 p-3">
+          <div className="mb-2 flex items-center justify-between"><p className="text-sm font-semibold text-gray-900">Fotos novas do veículo</p><button onClick={() => setUpload(null)} className="text-xs font-medium text-brand-700 hover:underline">Concluir envio</button></div>
+          <VehiclePhotosManager vehicleId={vehicleId} photos={upload} onChange={(photos) => { setUpload(photos); void reload() }} />
+        </div>
+      ) : (
+        <div className={cn('flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs', order.length ? 'bg-gray-50 text-gray-600' : 'bg-amber-50 text-amber-800')}>
+          <span>{order.length ? 'Chegaram fotos novas do setor de fotografia?' : 'Sem fotos novas: o site mostra a imagem de “aguardando fotos”.'}</span>
+          <button onClick={() => void openUpload()} className="btn-primary px-3 py-1.5 text-xs">Enviar fotos novas</button>
+        </div>
+      )}
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {order.map((u, i) => (
           <li key={u} className={cn('overflow-hidden rounded-xl border bg-white', i === 0 ? 'border-brand-500 ring-1 ring-brand-500' : 'border-gray-200')}>
@@ -345,7 +367,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, channels, c
       setResults(j.results)
     } catch (e) { setErr((e as Error).message); requestKey.current = crypto.randomUUID() } finally { setSending(false) }
   }
-  const fixStep = (field: string) => (field === 'photos' || field === 'media' ? 1 : field === 'connection' ? 3 : 2)
+  const fixStep = (field: string) => (field === 'photos' || field === 'media' ? 1 : field === 'connection' ? 4 : field === 'options' ? 2 : 3)
   const connName = (id: string) => { const c = conns.find((x) => x.id === id); return c ? `${channels[c.channel]?.name ?? c.channel} · ${c.label}` : id }
 
   if (results) {

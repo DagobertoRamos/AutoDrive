@@ -27,6 +27,7 @@ import { VehiclePhotosManager } from '@/components/estoque/VehiclePhotosManager'
 import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
 import { PendencyActions } from '@/components/estoque/PendencyActions'
 import { IntakeTimeline } from '@/components/estoque/IntakeTimeline'
+import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -239,8 +240,10 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
     { id: 'resumo',        label: 'Resumo',        count: null },
     { id: 'ficha',         label: 'Ficha Técnica', count: null },
     { id: 'fotos',         label: 'Fotos',         count: vehicle._count.photos },
+    { id: 'fotos-avaliacao', label: 'Fotos da avaliação', count: null },
     { id: 'documentacao',  label: 'Documentação',  count: null },
     { id: 'avaliacoes',    label: 'Avaliações',    count: vehicle._count.evaluations },
+    { id: 'historico',     label: 'Histórico',     count: null },
     { id: 'cautelar',      label: 'Cautelar',      count: null },
     { id: 'precos',        label: 'Precificação',  count: null },
     { id: 'pendencias',    label: 'Pendências',    count: vehicle._count.stockPendencies > 0 ? vehicle._count.stockPendencies : null },
@@ -727,6 +730,22 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
               </h3>
               <VehicleSalePricingPanel vehicleId={id} canManage={canManage} />
             </div>
+          </div>
+        )}
+
+        {/* ── Fotos da avaliação (antigas; as do anúncio ficam em Fotos) ── */}
+        {activeTab === 'fotos-avaliacao' && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">Fotos tiradas nas avaliações deste carro (inclusive de passagens anteriores pela loja), guardadas para comparação. As fotos do anúncio ficam na aba Fotos.</p>
+            <VehicleHistoryPanel vehicleId={vehicle.id} mode="photos" />
+          </div>
+        )}
+
+        {/* ── Histórico do carro na loja (mesma placa/chassi/renavam) ── */}
+        {activeTab === 'historico' && (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">Todas as avaliações e passagens deste carro pelo estoque. Se ele voltar numa troca, o histórico aparece aqui e na avaliação nova.</p>
+            <VehicleHistoryPanel vehicleId={vehicle.id} mode="timeline" />
           </div>
         )}
 

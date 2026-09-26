@@ -128,3 +128,7 @@
 .autodrive-site .footer-legal-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .autodrive-site .footer-legal-links a { opacity: .8; }
 .autodrive-site .footer-legal-links a:hover { opacity: 1; text-decoration: underline; }
+
+/* Opcionais agrupados no anúncio (grupos do catálogo de opcionais). */
+.autodrive-site .detail-option-group + .detail-option-group { margin-top: 14px; }
+.autodrive-site .detail-option-group h3 { margin: 0 0 6px; font-size: .78rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #64748b; }

@@ -20,6 +20,7 @@ import { EvaluationSections } from '../../_components/EvaluationSections'
 import { parseOpcionais } from '@/lib/evaluation/rules'
 import { CautelarUploader, type AttachmentLite } from '../../_components/CautelarUploader'
 import { StockEntryPanel } from '../../_components/StockEntryPanel'
+import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
 import { getStatusDef } from '@/components/estoque/avaliacoes/status'
 import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
@@ -354,6 +355,9 @@ export default function InspecaoPage() {
         releasedAt={data.releasedAt ?? null}
         role={role}
       />
+
+      {/* Carro que já passou pela loja (troca que volta): histórico e fotos para comparar */}
+      <VehicleHistoryPanel evaluationId={data.id} mode="banner" />
 
       {/* Entrada no estoque — vendedor devolve ao gestor; gestor confirma */}
       <StockEntryPanel evaluation={data} isManagerPlus={isManagerPlus} onChanged={load} showToast={showToast} />
