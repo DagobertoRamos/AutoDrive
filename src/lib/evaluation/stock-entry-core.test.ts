@@ -30,9 +30,20 @@ describe('blockConfirmStockEntry', () => {
 })
 
 describe('buildEntryPendencies', () => {
-  it('sempre inclui o recebimento do veículo', () => {
+  it('cria os 4 portões: avaliação resolvida, recebimento pendente', () => {
     const p = buildEntryPendencies({ services: [] })
-    expect(p.map((x) => x.label)).toEqual([PENDENCY_RECEIVE])
+    expect(p.map((x) => [x.label, x.resolved])).toEqual([
+      ['Avaliação', true], ['Negociação de entrada', false], ['Perícia', false], [PENDENCY_RECEIVE, false],
+    ])
+  })
+  it('perícia pendente conta como resolvida; sem perícia não', () => {
+    expect(buildEntryPendencies({ services: [], cautelarStatus: 'PENDENTE' })[2].resolved).toBe(true)
+    expect(buildEntryPendencies({ services: [], cautelarStatus: 'SEM_CAUTELAR' })[2].resolved).toBe(false)
+  })
+  it('negociação vinculada concluída já nasce resolvida', () => {
+    const n = buildEntryPendencies({ services: [], negotiationLabel: '#123', negotiationClosed: true })[1]
+    expect(n.resolved).toBe(true)
+    expect(n.notes).toContain('#123')
   })
   it('lista só serviços em aberto, com total, e as observações', () => {
     const p = buildEntryPendencies({
@@ -44,13 +55,13 @@ describe('buildEntryPendencies', () => {
       ],
       pendencyNotes: '  Falta 2ª chave  ',
     })
-    expect(p.map((x) => x.label)).toEqual([PENDENCY_RECEIVE, PENDENCY_SERVICES, PENDENCY_NOTES])
-    const svc = p[1].notes ?? ''
+    expect(p.map((x) => x.label).slice(4)).toEqual([PENDENCY_SERVICES, PENDENCY_NOTES])
+    const svc = p[4].notes ?? ''
     expect(svc).toContain('Pintura para-choque')
     expect(svc).toContain('Higienização')
     expect(svc).not.toContain('Polimento')
     expect(svc).not.toContain('Troca de pneu')
     expect(svc).toMatch(/Total previsto: R\$\s600,00/)
-    expect(p[2].notes).toBe('Falta 2ª chave')
+    expect(p[5].notes).toBe('Falta 2ª chave')
   })
 })

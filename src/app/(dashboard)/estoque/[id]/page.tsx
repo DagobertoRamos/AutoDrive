@@ -25,6 +25,8 @@ import {
 import { VehicleSalePricingPanel } from '@/components/estoque/VehicleSalePricingPanel'
 import { VehiclePhotosManager } from '@/components/estoque/VehiclePhotosManager'
 import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
+import { PendencyActions } from '@/components/estoque/PendencyActions'
+import { IntakeTimeline } from '@/components/estoque/IntakeTimeline'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -147,23 +149,18 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
   const canManage = canAccessModule(role, 'stock.manage')
 
   const [vehicle, setVehicle]   = useState<VehicleDetail | null>(null)
-  const [pendBusy, setPendBusy] = useState<string | null>(null)
+  async function reloadVehicle() {
+    const d = await fetch(`/api/vehicles/${id}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
+    if (d?.success) setVehicle(d.data)
+  }
 
-  async function togglePendency(pendencyId: string, resolved: boolean) {
-    if (!vehicle) return
-    setPendBusy(pendencyId)
-    try {
-      const r = await fetch(`/api/vehicles/${vehicle.id}/pendencies/${pendencyId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resolved }),
-      })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || !d.success) { alert(d?.error ?? 'Não foi possível atualizar a pendência.'); return }
-      setVehicle((v) => v && { ...v, stockPendencies: v.stockPendencies.map((x) => (x.id === pendencyId ? d.data : x)) })
-    } catch {
-      alert('Erro de conexão.')
-    } finally {
-      setPendBusy(null)
-    }
+  async function patchPendency(pendencyId: string, body: Record<string, unknown>) {
+    const r = await fetch(`/api/vehicles/${id}/pendencies/${pendencyId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok || !d.success) { alert(d?.error ?? 'Não foi possível atualizar a pendência.'); return }
+    await reloadVehicle()
   }
   const [loading, setLoading]   = useState(true)
   const [activeTab, setActiveTab] = useState('resumo')
@@ -371,6 +368,15 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
           </button>
         </div>
       </div>
+
+      {/* Esteira de entrada (só para carros que entraram pela esteira) */}
+      <IntakeTimeline
+        entryDate={vehicle.entryDate}
+        stockStatus={vehicle.stockStatus}
+        pendencies={vehicle.stockPendencies.map((p) => ({ label: p.option.label, resolved: p.resolved, resolvedAt: p.resolvedAt }))}
+        photosAt={vehicle.photos.length ? (vehicle.photos as Array<{ createdAt?: string }>).map((p) => p.createdAt).filter((d): d is string => !!d).sort()[0] ?? null : null}
+        onGoToPendencies={() => setActiveTab('pendencias')}
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
@@ -767,16 +773,13 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                         {p.resolved ? 'Resolvida' : 'Pendente'}
                       </span>
                       {canManage && (
-                        <button
-                          type="button"
-                          disabled={pendBusy === p.id}
-                          onClick={() => togglePendency(p.id, !p.resolved)}
-                          className={p.resolved
-                            ? 'rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50'
-                            : 'rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50'}
-                        >
-                          {pendBusy === p.id ? '...' : p.resolved ? 'Reabrir' : 'Resolver'}
-                        </button>
+                        <PendencyActions
+                          label={p.option.label}
+                          resolved={p.resolved}
+                          cautelarStatus={vehicle.cautelarStatus}
+                          km={vehicle.km}
+                          onSubmit={(body) => patchPendency(p.id, body)}
+                        />
                       )}
                     </div>
                   </div>

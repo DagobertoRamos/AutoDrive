@@ -17,6 +17,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { feedOrigins } from '@/lib/site/feed-import'
 import { mergeOrigin } from '@/lib/stock/origin-core'
+import { syncIntake } from '@/lib/stock/intake'
 import { notifyStockChanged } from '@/lib/publications/service'
 
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
@@ -178,6 +179,12 @@ export async function PATCH(
       userName: user.name,
       userRole: user.role,
     })
+
+    // Esteira de entrada: cautelar mudou → portão de Perícia e status acompanham.
+    if (existing.cautelarStatus !== updated.cautelarStatus) {
+      const intake = await syncIntake(params.id, { id: user.id, name: user.name, role: user.role }).catch(() => null)
+      if (intake?.nextStatus) updated.stockStatus = intake.nextStatus as typeof updated.stockStatus
+    }
 
     // Central de Publicações: mudou a situação no estoque → anúncios acompanham.
     if (existing.stockStatus !== updated.stockStatus || existing.active !== updated.active) {

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import type { SiteConfig } from '@/lib/site/config-core'
 import { cleanGoogleTagId, cleanMetaPixelId } from '@/lib/site/tracking-core'
 import { BrandingSection } from './BrandingSection'
+import { ComingSoonImageField } from './ComingSoonImageField'
 import { DomainsSection } from './DomainsSection'
 import { LayoutSection } from './LayoutSection'
 
@@ -105,7 +106,7 @@ export default function SiteConfigPage() {
         ))}
       </div>
 
-      <Section title="Publicação e endereço" hint="Todo carro Disponível no estoque aparece no site como “Em breve”; quando ganha fotos no estoque, é publicado automaticamente.">
+      <Section title="Publicação e endereço" hint="Todo carro Disponível ou Em serviço (preparação depois de recebido) aparece no site como “Em breve”; quando ganha as fotos novas, é publicado automaticamente.">
         <label className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-800">
           <input type="checkbox" disabled={dis} checked={cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
           Site no ar
@@ -119,6 +120,7 @@ export default function SiteConfigPage() {
             <span className="mt-1 block text-[11px] text-gray-400">{publicUrl ? `Endereço público: ${publicUrl}` : `Teste agora em ${previewUrl} (o subdomínio público é ativado na publicação).`}</span>
           </Field>
         </div>
+        <ComingSoonImageField value={cfg.identity.comingSoonImage} disabled={dis} onChange={(url) => setIn('identity', { comingSoonImage: url })} />
       </Section>
 
       <DomainsSection domains={cfg.domains} slug={cfg.slug} siteBaseDomain={data.siteBaseDomain} hostingIntegration={data.hostingIntegration} canManage={data.canManage}

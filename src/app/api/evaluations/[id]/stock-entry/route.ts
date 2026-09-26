@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canApproveServices, canViewEvaluation } from '@/lib/evaluation/permissions'
 import { recordHistory } from '@/lib/evaluation/history'
+import { syncIntake } from '@/lib/stock/intake'
 import { blockConfirmStockEntry, buildEntryPendencies, EVAL_IN_STOCK } from '@/lib/evaluation/stock-entry-core'
 import {
   applyEntryPendencies, defaultStockType, evalLabel, loadEvaluationForStock, notifySeller, vehicleDataFromEvaluation,
@@ -21,6 +22,7 @@ import {
 export const runtime = 'nodejs'
 
 const CLOSED_STOCK = ['VENDIDO', 'CANCELADO', 'DEVOLVIDO'] as const
+const CLOSED_DEAL = new Set(['FINALIZADA', 'CONCLUIDA', 'APROVADA', 'LIBERADA'])
 
 function money(v: unknown): number | null {
   if (v == null || v === '') return null
@@ -75,10 +77,26 @@ export async function POST(req: NextRequest, ctxArg: { params: Promise<{ id: str
       where:  { evaluationId: id },
       select: { description: true, serviceType: true, estimatedCost: true, status: true },
     })
+    // Negociação vinculada à avaliação: se já concluída, o portão nasce resolvido.
+    const deal = ev.negotiationId
+      ? await prisma.deal.findUnique({ where: { id: ev.negotiationId }, select: { dealNumber: true, status: true } })
+      : null
+    const releasedBy = ev.releasedByUserId
+      ? await prisma.user.findUnique({ where: { id: ev.releasedByUserId }, select: { name: true } })
+      : null
+    const evalValue = money(ev.evaluatedValue)
     const pendencies = buildEntryPendencies({
-      services:      services.map((s) => ({ ...s, estimatedCost: s.estimatedCost == null ? null : Number(s.estimatedCost) })),
-      pendencyNotes: ev.pendencyNotes,
-      receiveNotes:  body.receiveNotes,
+      services:          services.map((s) => ({ ...s, estimatedCost: s.estimatedCost == null ? null : Number(s.estimatedCost) })),
+      pendencyNotes:     ev.pendencyNotes,
+      receiveNotes:      body.receiveNotes,
+      cautelarStatus:    ev.cautelarStatus,
+      evaluationNote:    [
+        ev.releasedAt ? `Liberada em ${ev.releasedAt.toLocaleDateString('pt-BR')}` : 'Liberada',
+        releasedBy?.name ? `por ${releasedBy.name}` : null,
+        evalValue ? `· avaliada em ${evalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : null,
+      ].filter(Boolean).join(' '),
+      negotiationLabel:  deal ? (deal.dealNumber ?? ev.negotiationId) : null,
+      negotiationClosed: !!deal && CLOSED_DEAL.has(String(deal.status)),
     })
 
     const vehicle = await prisma.$transaction(async (tx) => {
@@ -94,10 +112,11 @@ export async function POST(req: NextRequest, ctxArg: { params: Promise<{ id: str
         select: { id: true },
       })
       await tx.vehicleEvaluation.update({ where: { id }, data: { vehicleId: v.id, stockType } })
-      await applyEntryPendencies(tx, ev.tenantId, v.id, pendencies)
+      await applyEntryPendencies(tx, ev.tenantId, v.id, pendencies, session.user.id)
       return v
     })
 
+    await syncIntake(vehicle.id, { id: session.user.id, name: session.user.name, role: session.user.role })
     await recordHistory({
       tenantId: ev.tenantId ?? '', evaluationId: id,
       userId: session.user.id, userName: session.user.name ?? undefined, userRole: session.user.role,

@@ -48,7 +48,7 @@ export default async function SiteBrandLanding({ params }: Props) {
         <p>{brand.total} {brand.name} disponíveis hoje{brand.minPrice && brand.maxPrice ? `, de ${money(brand.minPrice)} a ${money(brand.maxPrice)}` : ''}. Financiamento, avaliação do seu usado na troca e atendimento rápido pelo WhatsApp.</p>
       </div></section>
       <section className="shell section">
-        <div className="vehicle-grid">{items.map((v, i) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={i} storeName={ctx.config.identity.name} />)}</div>
+        <div className="vehicle-grid">{items.map((v, i) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={i} storeName={ctx.config.identity.name} placeholder={ctx.config.identity.comingSoonImage} />)}</div>
         <p className="mapa-acoes">
           <Link className="button" href={ctx.href(`/veiculos?brand=${encodeURIComponent(brand.name)}`)}>Ver com filtros</Link>
           {ctx.on('encontreSeuCarro') && <Link className="button button-outline" href={ctx.href('/encontre-seu-carro')}>Não achei o que queria</Link>}

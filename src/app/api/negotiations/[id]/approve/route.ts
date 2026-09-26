@@ -13,6 +13,7 @@ import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifyStockChanged } from '@/lib/publications/service'
+import { resolveNegotiationGate } from '@/lib/stock/intake'
 
 export async function POST(
   req: NextRequest,
@@ -113,6 +114,11 @@ export async function POST(
 
     // Central de Publicações: venda aprovada → pausa os anúncios do veículo.
     notifyStockChanged(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' || dv.role === 'CONSIGNADO' ? dv.vehicleId : null)), { id: session.user.id, name: session.user.name ?? null })
+
+    // Esteira de entrada: carro que ENTROU nesta negociação (troca/compra/
+    // consignação) tem o portão "Negociação de entrada" resolvido.
+    await resolveNegotiationGate(deal.id, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
+      .catch((e) => console.error('[esteira] portão de negociação', e))
 
     // ── Notificação sistêmica (broadcast tenant) — best-effort, não bloqueia ──
     try {

@@ -32,7 +32,7 @@ function badge(v: SiteVehicle) {
   return null
 }
 
-export function SiteVehicleCard({ vehicle, base, index = 0, storeName }: { vehicle: SiteVehicle; base: string; index?: number; storeName?: string }) {
+export function SiteVehicleCard({ vehicle, base, index = 0, storeName, placeholder }: { vehicle: SiteVehicle; base: string; index?: number; storeName?: string; placeholder?: string }) {
   const href = `${base}/veiculos/${vehicle.slug}`
   const heading = [tidy(vehicle.brand), tidy(vehicle.model)].filter(Boolean).join(' ') || vehicle.title
   const version = vehicle.version.trim() || vehicle.title
@@ -40,7 +40,7 @@ export function SiteVehicleCard({ vehicle, base, index = 0, storeName }: { vehic
   return (
     <article className="vehicle-card vcard">
       <Link href={href} className="vehicle-image vcard-image" aria-label={`Ver ${vehicle.title}`}>
-        <SiteVehicleImage src={vehicle.cover} alt={vehicle.title} loading={index < 6 ? 'eager' : 'lazy'} />
+        <SiteVehicleImage src={vehicle.cover} alt={vehicle.title} loading={index < 6 ? 'eager' : 'lazy'} placeholder={placeholder} />
         {b && <span className={`vcard-badge ${b.tone}`}>{b.label}</span>}
       </Link>
       <div className="vcard-body">

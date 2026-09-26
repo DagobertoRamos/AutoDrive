@@ -57,6 +57,8 @@ export function vehicleDataFromEvaluation(
     // venda até o gestor resolver as pendências e mudar o status.
     stockStatus:        'PENDENTE_PREPARACAO',
     stockType:          opts.stockType,
+    // Veio de avaliação: compra = estoque próprio; consignação = particular intermediado.
+    originType:         opts.stockType === 'CONSIGNADO' ? 'PRIVATE' : 'OWN',
     salePrice:          opts.salePrice,
     purchasePrice:      opts.purchasePrice,
     notes:              opts.notes || ev.evaluationNotes || null,
@@ -91,13 +93,14 @@ async function ensurePendencyOption(tx: Tx, tenantId: string | null, p: EntryPen
 }
 
 /** Aplica as pendências de entrada ao veículo recém-criado. */
-export async function applyEntryPendencies(tx: Tx, tenantId: string | null, vehicleId: string, list: EntryPendency[]) {
+export async function applyEntryPendencies(tx: Tx, tenantId: string | null, vehicleId: string, list: EntryPendency[], actorId: string | null = null) {
   for (const p of list) {
     const optionId = await ensurePendencyOption(tx, tenantId, p)
+    const state = p.resolved ? { resolved: true, resolvedAt: new Date(), resolvedById: actorId } : { resolved: false, resolvedAt: null, resolvedById: null }
     await tx.vehicleStockPendency.upsert({
       where:  { vehicleId_optionId: { vehicleId, optionId } },
-      create: { vehicleId, optionId, notes: p.notes },
-      update: { notes: p.notes, resolved: false, resolvedAt: null, resolvedById: null },
+      create: { vehicleId, optionId, notes: p.notes, ...state },
+      update: { notes: p.notes, ...state },
     })
   }
 }

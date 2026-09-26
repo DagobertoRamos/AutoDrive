@@ -49,13 +49,14 @@ function Lightbox({ media, start, title, onClose }: { media: Media[]; start: num
   )
 }
 
-export function SiteVehicleGallery({ photos, title, videoUrl }: { photos: string[]; title: string; videoUrl: string }) {
+export function SiteVehicleGallery({ photos, title, videoUrl, placeholder }: { photos: string[]; title: string; videoUrl: string; placeholder?: string }) {
+  const fallback = placeholder || EM_BREVE_IMG
   const media: Media[] = [...photos.map((url) => ({ type: 'image' as const, url })), ...(videoUrl ? [{ type: 'video' as const, url: videoUrl }] : [])]
-  if (!media.length) media.push({ type: 'image', url: EM_BREVE_IMG })
+  if (!media.length) media.push({ type: 'image', url: fallback })
   const [current, setCurrent] = useState(0)
   const [lightbox, setLightbox] = useState<number | null>(null)
   const item = media[current]
-  const zoomable = item.type === 'image' && item.url !== EM_BREVE_IMG
+  const zoomable = item.type === 'image' && item.url !== fallback
 
   return (
     <>

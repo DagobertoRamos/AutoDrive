@@ -1,7 +1,8 @@
 // =============================================================================
 // Site da loja — regra de publicação do estoque. PURO (testado).
-//   • Carro ATIVO e com status de estoque visível (Disponível / Em promoção)
-//     entra no site automaticamente como "Em breve" (sem fotos).
+//   • Carro ATIVO e com status de estoque visível (Disponível / Em promoção /
+//     Em serviço — preparação depois de recebido) entra no site
+//     automaticamente como "Em breve" (sem fotos novas).
 //   • Quando o carro ganha fotos (painel de fotos do estoque), vira
 //     "Publicado". O fluxo de fotos TRATADAS (estúdio) é opcional, por loja,
 //     e ainda não está ligado.
@@ -10,7 +11,7 @@
 
 import { slugify } from './config-core'
 
-export const SITE_VISIBLE_STOCK = ['DISPONIVEL', 'EM_PROMOCAO'] as const
+export const SITE_VISIBLE_STOCK = ['DISPONIVEL', 'EM_PROMOCAO', 'EM_SERVICO'] as const
 export type SiteVehicleState = 'HIDDEN' | 'EM_BREVE' | 'PUBLICADO'
 export const PHOTO_STATUSES = ['ORIGEM', 'EM_TRATAMENTO', 'TRATADA'] as const
 export type PhotoStatus = (typeof PHOTO_STATUSES)[number]

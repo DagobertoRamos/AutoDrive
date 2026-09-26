@@ -6,10 +6,11 @@ import { useEffect, useRef, useState } from 'react'
 
 export const EM_BREVE_IMG = '/site/em-breve.svg'
 
-export function SiteVehicleImage({ src, alt, loading = 'lazy' }: { src: string | null; alt: string; loading?: 'eager' | 'lazy' }) {
+export function SiteVehicleImage({ src, alt, loading = 'lazy', placeholder }: { src: string | null; alt: string; loading?: 'eager' | 'lazy'; placeholder?: string }) {
+  const fallback = placeholder || EM_BREVE_IMG
   const [failed, setFailed] = useState<string | null>(null)
   const img = useRef<HTMLImageElement>(null)
-  const real = src || EM_BREVE_IMG
+  const real = src || fallback
   useEffect(() => {
     // A imagem pode falhar antes do listener existir durante a hidratação.
     const f = requestAnimationFrame(() => { if (img.current?.complete && img.current.naturalWidth === 0) setFailed(real) })

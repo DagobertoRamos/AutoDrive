@@ -93,7 +93,7 @@ function renderBlock(b: HomeBlock, i: number, blocks: HomeBlock[], p: Parts) {
             <Link className="button button-dark" href={ctx.href('/veiculos')}>Ver todo o estoque<ArrowRight size={18} aria-hidden="true" /></Link>
           </div>
           {items.length
-            ? <div className="vehicle-grid">{items.slice(0, 8).map((v, k) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={k} storeName={ctx.config.identity.name} />)}</div>
+            ? <div className="vehicle-grid">{items.slice(0, 8).map((v, k) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={k} storeName={ctx.config.identity.name} placeholder={ctx.config.identity.comingSoonImage} />)}</div>
             : <div className="empty-state"><h3>Estoque em atualização</h3><p>Novos veículos chegam em breve.</p>{wa && <a className="button" href={wa} target="_blank" rel="noreferrer">Consultar pelo WhatsApp</a>}</div>}
         </div></section>
       )

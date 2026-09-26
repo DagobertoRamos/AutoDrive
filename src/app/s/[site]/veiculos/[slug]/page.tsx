@@ -52,7 +52,7 @@ export default async function SiteVehiclePage({ params }: Props) {
     <>
       <section className="shell section">
         <SiteTrackView id={v.id} name={v.title} value={v.price} />
-        <SiteVehicleGallery photos={v.photos} title={v.title} videoUrl={v.videoUrl} />
+        <SiteVehicleGallery photos={v.photos} title={v.title} videoUrl={v.videoUrl} placeholder={ctx.config.identity.comingSoonImage} />
         <div className="detail-badges">
           {v.state === 'EM_BREVE' && <div className="detail-badge"><span className="detail-badge-icon">⏳</span><span>Fotos em breve</span></div>}
           {v.featured && <div className="detail-badge"><span className="detail-badge-icon">⭐</span><span>Destaque</span></div>}
@@ -94,7 +94,7 @@ export default async function SiteVehiclePage({ params }: Props) {
         <section className="shell section">
           <div className="section-heading"><h2>Sugestões para você</h2><Link href={ctx.href('/veiculos')}>Ver todos</Link></div>
           <div className="vehicle-grid" style={{ gridTemplateColumns: `repeat(${Math.min(suggestions.length, 3)}, minmax(0, 1fr))` }}>
-            {suggestions.map((s, i) => <SiteVehicleCard key={s.id} vehicle={s} base={ctx.base} index={i} storeName={ctx.config.identity.name} />)}
+            {suggestions.map((s, i) => <SiteVehicleCard key={s.id} vehicle={s} base={ctx.base} index={i} storeName={ctx.config.identity.name} placeholder={ctx.config.identity.comingSoonImage} />)}
           </div>
         </section>
       )}

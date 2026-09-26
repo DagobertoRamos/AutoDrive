@@ -41,7 +41,7 @@ export interface SiteConfig {
   enabled: boolean
   slug: string
   domains: SiteDomain[]
-  identity: { name: string; tagline: string; logoUrl: string; footerLogoUrl: string; faviconUrl: string; primaryColor: string; darkColor: string }
+  identity: { name: string; tagline: string; logoUrl: string; footerLogoUrl: string; faviconUrl: string; primaryColor: string; darkColor: string; comingSoonImage: string }
   contact: {
     whatsapp: string; phone: string; email: string
     addressLine1: string; addressLine2: string; mapsUrl: string; wazeUrl: string; mapsEmbedUrl: string; hours: string
@@ -87,7 +87,7 @@ export function defaultSiteConfig(storeName: string): SiteConfig {
     enabled: false,
     slug: slugify(name),
     domains: [],
-    identity: { name, tagline: 'Seminovos com procedência e atendimento de verdade.', logoUrl: '', footerLogoUrl: '', faviconUrl: '', primaryColor: '#079ca6', darkColor: '#061b29' },
+    identity: { name, tagline: 'Seminovos com procedência e atendimento de verdade.', logoUrl: '', footerLogoUrl: '', faviconUrl: '', primaryColor: '#079ca6', darkColor: '#061b29', comingSoonImage: '' },
     contact: { whatsapp: '', phone: '', email: '', addressLine1: '', addressLine2: '', mapsUrl: '', wazeUrl: '', mapsEmbedUrl: '', hours: '' },
     home: {
       heroEyebrow: 'Seu próximo carro está aqui',
@@ -156,7 +156,7 @@ export function sanitizeSiteConfig(input: unknown, storeName: string): SiteConfi
     identity: {
       name: str(id.name, 80) || d.identity.name,
       tagline: str(id.tagline, 160),
-      logoUrl: url(id.logoUrl), footerLogoUrl: url(id.footerLogoUrl), faviconUrl: url(id.faviconUrl),
+      logoUrl: url(id.logoUrl), footerLogoUrl: url(id.footerLogoUrl), faviconUrl: url(id.faviconUrl), comingSoonImage: url(id.comingSoonImage),
       primaryColor: HEX.test(str(id.primaryColor)) ? str(id.primaryColor) : d.identity.primaryColor,
       darkColor: HEX.test(str(id.darkColor)) ? str(id.darkColor) : d.identity.darkColor,
     },
