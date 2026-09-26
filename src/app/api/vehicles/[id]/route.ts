@@ -16,6 +16,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { feedOrigins } from '@/lib/site/feed-import'
+import { mergeOrigin } from '@/lib/stock/origin-core'
 import { notifyStockChanged } from '@/lib/publications/service'
 
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
@@ -43,6 +44,7 @@ export async function GET(
         unit: { select: { id: true, name: true, city: true, state: true } },
         customer: { select: { id: true, name: true, phone: true, email: true, cpf: true } },
         photos: { orderBy: { order: 'asc' } },
+        partnerStore: { select: { id: true, name: true, city: true, whatsapp: true } },
         stockPendencies: {
           include: {
             option: true,
@@ -84,7 +86,7 @@ export async function GET(
     const openDeal = vehicleAny.dealVehicles?.[0]
     const data = {
       ...vehicleAny,
-      origin: (await feedOrigins(vehicleAny.tenantId))[vehicleAny.id] ?? null,
+      origin: mergeOrigin((await feedOrigins(vehicleAny.tenantId))[vehicleAny.id] ?? null, vehicleAny),
       hasOpenNegotiation: !!openDeal,
       openNegotiationId:  openDeal?.dealId ?? null,
     }

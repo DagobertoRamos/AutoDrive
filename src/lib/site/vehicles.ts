@@ -6,6 +6,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { effectiveOrigin, type OriginType } from '@/lib/stock/origin-core'
 import { brandLandings, type BrandLanding } from './seo-core'
 import { effectivePrice, siteVehicleState, SITE_VISIBLE_STOCK, vehicleIdFromSlug, vehicleSlug, vehicleTitle, type SiteVehicleState } from './listing-core'
 
@@ -20,6 +21,8 @@ export interface SiteVehicle {
   state: SiteVehicleState; featured: boolean; promo: boolean
   /** Cautelar/perícia aprovada no estoque: selo Periciado. */
   inspected: boolean
+  /** De quem é o carro — vira a tag pública (Estoque X / Lojista parceiro / Particular intermediado). */
+  origin: OriginType
   photos: string[]; cover: string | null
   description: string; options: string[]; videoUrl: string
   seoTitle: string; seoDescription: string
@@ -36,6 +39,7 @@ const SELECT = {
   fuel: true, transmission: true, color: true, doors: true, bodyType: true, vehicleType: true,
   salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true,
   active: true, stockStatus: true, createdAt: true, cautelarStatus: true,
+  originType: true, partnerStoreId: true, stockType: true,
   photos: { select: { url: true, isMain: true, order: true }, orderBy: [{ isMain: 'desc' as const }, { order: 'asc' as const }] },
   siteListing: { select: { photosStatus: true, hidden: true, featured: true, description: true, options: true, videoUrl: true, seoTitle: true, seoDescription: true, title: true } },
 } satisfies Prisma.VehicleSelect
@@ -57,6 +61,7 @@ function toSiteVehicle(r: Row): SiteVehicle {
     year: r.year, modelYear: r.modelYear, km: r.km,
     fuel: r.fuel ?? '', transmission: r.transmission ?? '', color: r.color ?? '', doors: r.doors, bodyType: r.bodyType ?? '', vehicleType: r.vehicleType,
     price, oldPrice, state, featured: !!l?.featured, promo: oldPrice != null, inspected: r.cautelarStatus === 'APROVADA',
+    origin: effectiveOrigin(r),
     photos, cover: photos[0] ?? null,
     description: l?.description ?? '', options, videoUrl: l?.videoUrl ?? '',
     seoTitle: l?.seoTitle ?? '', seoDescription: l?.seoDescription ?? '',

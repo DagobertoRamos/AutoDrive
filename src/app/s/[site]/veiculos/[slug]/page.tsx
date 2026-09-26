@@ -1,5 +1,6 @@
 // Anúncio do veículo (porta de /veiculos/[slug] do dagobertoeasycar).
 import type { Metadata } from 'next'
+import { originPublicTag } from '@/lib/stock/origin-core'
 import Link from 'next/link'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { legacyVehicleId } from '@/lib/site/feed-import'
@@ -62,7 +63,7 @@ export default async function SiteVehiclePage({ params }: Props) {
         <div className="detail-layout">
           <div className="detail-main">
             <div className="detail-header">
-              <div><h1 className="detail-title">{v.brand} <span>{v.model}</span></h1><p className="detail-version">{v.version}</p></div>
+              <div><h1 className="detail-title">{v.brand} <span>{v.model}</span></h1><p className="detail-version">{v.version}</p><p className={`vcard-origin ${v.origin.toLowerCase()}`}>{originPublicTag(v.origin, ctx.config.identity.name)}</p></div>
               <div className="detail-price-box">
                 {v.oldPrice != null && <span className="detail-old-price">de {money(v.oldPrice)}</span>}
                 <strong className="detail-price">{money(v.price)}</strong>
@@ -93,7 +94,7 @@ export default async function SiteVehiclePage({ params }: Props) {
         <section className="shell section">
           <div className="section-heading"><h2>Sugestões para você</h2><Link href={ctx.href('/veiculos')}>Ver todos</Link></div>
           <div className="vehicle-grid" style={{ gridTemplateColumns: `repeat(${Math.min(suggestions.length, 3)}, minmax(0, 1fr))` }}>
-            {suggestions.map((s, i) => <SiteVehicleCard key={s.id} vehicle={s} base={ctx.base} index={i} />)}
+            {suggestions.map((s, i) => <SiteVehicleCard key={s.id} vehicle={s} base={ctx.base} index={i} storeName={ctx.config.identity.name} />)}
           </div>
         </section>
       )}

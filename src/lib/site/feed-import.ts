@@ -19,6 +19,8 @@ import {
   mergeLegacy, parseFeed, planFeedSync, samePhotos,
   type FeedExtras, type FeedOrigin, type FeedVehicle, type LegacyVehicle,
 } from './feed-import-core'
+import { normalizeOrigin } from '@/lib/stock/origin-core'
+import { ensurePartnerStoreByName } from '@/lib/stock/partner-stores'
 
 type Item = FeedVehicle & { extras: FeedExtras }
 
@@ -63,6 +65,37 @@ async function saveState(tenantId: string, state: ImportState) {
   const existing = await prisma.systemSetting.findFirst({ where: { key }, select: { id: true } })
   if (existing) await prisma.systemSetting.update({ where: { id: existing.id }, data: { value } })
   else await prisma.systemSetting.create({ data: { key, value, tenantId, group: 'site', description: 'Importação de estoque do site (feed)' } })
+}
+
+/**
+ * Lojas parceiras do site antigo → Cadastros › Lojas parceiras (só SELECT lá).
+ * Cria as que faltam e completa campos vazios; não sobrescreve edição feita no SaaS.
+ */
+async function syncLegacyPartners(tenantId: string) {
+  const url = process.env.SITE_FEED_LEGACY_DB
+  if (!url) return
+  neonConfig.webSocketConstructor = ws
+  const pool = new Pool({ connectionString: url, max: 1 })
+  try {
+    const { rows } = await pool.query<Record<string, string | boolean | null>>(
+      `SELECT name, legal_name, cnpj, responsible_name, whatsapp, email, city, address, instagram, website, commission, notes, active
+         FROM partners WHERE NULLIF(BTRIM(name), '') IS NOT NULL`,
+    )
+    for (const r of rows) {
+      const id = await ensurePartnerStoreByName(tenantId, String(r.name), { city: (r.city as string) || null, whatsapp: (r.whatsapp as string) || null })
+      const cur = await prisma.partnerStore.findUnique({ where: { id } })
+      if (!cur) continue
+      const fill: Record<string, string> = {}
+      const map: Array<[keyof typeof cur, string]> = [['legalName', 'legal_name'], ['cnpj', 'cnpj'], ['responsibleName', 'responsible_name'], ['email', 'email'], ['address', 'address'], ['instagram', 'instagram'], ['website', 'website'], ['commission', 'commission']]
+      for (const [k, col] of map) {
+        const v = String(r[col] ?? '').trim()
+        if (v && !cur[k]) fill[k as string] = k === 'cnpj' ? v.replace(/\D/g, '') : v
+      }
+      if (Object.keys(fill).length) await prisma.partnerStore.update({ where: { id }, data: fill })
+    }
+  } finally {
+    await pool.end().catch(() => {})
+  }
 }
 
 /** Lê o cadastro completo no banco do site de origem (só SELECT). */
@@ -151,6 +184,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
     let legacy = new Map<string, LegacyVehicle>()
     let legacyError: string | undefined
     try { legacy = await fetchLegacy(parsed.map((i) => i.extId)) } catch (e) { legacyError = e instanceof Error ? e.message : String(e) }
+    await syncLegacyPartners(src.tenantId).catch((e) => console.error('[feed-import] parceiros do site antigo', e instanceof Error ? e.message : e))
     const items: Item[] = parsed.map((i) => mergeLegacy(i, legacy.get(i.extId)))
     const enrichInfo = { enriched: items.filter((i) => legacy.has(i.extId)).length, ...(legacyError ? { legacyError } : {}) }
 
@@ -182,6 +216,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         state.map[item.extId] = v.id
         if (item.legacySlug) state.slugs[item.legacySlug] = v.id
         if (item.extras.origin) state.origins[v.id] = item.extras.origin
+        await applyFeedOrigin(src.tenantId, v.id, item.extras.origin, true)
         if (item.photos.length) await writePhotos(v.id, item.photos)
         await upsertListing(src.tenantId, v.id, item)
         created++
@@ -206,6 +241,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         await upsertListing(src.tenantId, vehicleId, item)
         if (item.legacySlug) state.slugs[item.legacySlug] = vehicleId
         if (item.extras.origin) state.origins[vehicleId] = item.extras.origin
+        await applyFeedOrigin(src.tenantId, vehicleId, item.extras.origin, false)
         updated++
       }
       if (plan.remove.length) {
@@ -219,6 +255,28 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
   state.last = result
   await saveState(src.tenantId, state)
   return result
+}
+
+/**
+ * Origem do site antigo → colunas do veículo (originType + loja parceira
+ * cadastrada). Na atualização só preenche se o SaaS ainda não tiver origem:
+ * o que a loja definir no painel (Publicações) prevalece.
+ */
+export async function applyFeedOrigin(tenantId: string, vehicleId: string, origin: FeedOrigin | null, isNew: boolean) {
+  const type = normalizeOrigin(origin?.originType)
+  if (!origin || !type) return
+  try {
+    if (!isNew) {
+      const cur = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { originType: true } })
+      if (cur?.originType) return
+    }
+    const partnerStoreId = type === 'PARTNER' && origin.partnerName
+      ? await ensurePartnerStoreByName(tenantId, origin.partnerName, { city: origin.partnerCity, whatsapp: origin.partnerWhatsapp })
+      : null
+    await prisma.vehicle.update({ where: { id: vehicleId }, data: { originType: type, partnerStoreId } })
+  } catch (e) {
+    console.error('[feed-import] origem não aplicada', vehicleId, e instanceof Error ? e.message : e)
+  }
 }
 
 /** Origem de cada veículo importado (vehicleId → loja parceira, código, link...). Vazio se a loja não importa feed. */

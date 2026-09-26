@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { CalendarDays, Gauge, ShieldCheck } from 'lucide-react'
 import { money } from '@/lib/site/listing-core'
+import { originPublicTag } from '@/lib/stock/origin-core'
 import type { SiteVehicle } from '@/lib/site/vehicles'
 import { SiteVehicleImage } from './SiteVehicleImage'
 
@@ -31,7 +32,7 @@ function badge(v: SiteVehicle) {
   return null
 }
 
-export function SiteVehicleCard({ vehicle, base, index = 0 }: { vehicle: SiteVehicle; base: string; index?: number }) {
+export function SiteVehicleCard({ vehicle, base, index = 0, storeName }: { vehicle: SiteVehicle; base: string; index?: number; storeName?: string }) {
   const href = `${base}/veiculos/${vehicle.slug}`
   const heading = [tidy(vehicle.brand), tidy(vehicle.model)].filter(Boolean).join(' ') || vehicle.title
   const version = vehicle.version.trim() || vehicle.title
@@ -53,6 +54,7 @@ export function SiteVehicleCard({ vehicle, base, index = 0 }: { vehicle: SiteVeh
           {vehicle.km != null && <span><Gauge size={14} aria-hidden="true" />{vehicle.km.toLocaleString('pt-BR')} km</span>}
           {vehicle.inspected && <span className="vcard-inspected"><ShieldCheck size={14} aria-hidden="true" />Periciado</span>}
         </div>
+        <p className={`vcard-origin ${vehicle.origin.toLowerCase()}`}>{originPublicTag(vehicle.origin, storeName)}</p>
         <div className="vcard-foot">
           <div className="vcard-price">
             {vehicle.oldPrice != null && <span className="vcard-old">de {money(vehicle.oldPrice)}</span>}

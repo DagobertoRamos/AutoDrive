@@ -806,6 +806,10 @@ model Vehicle {
 
   // Origem
   originEvaluationId String? // avaliação que originou este cadastro
+  /// De quem é o carro: OWN (estoque próprio) | PARTNER (loja parceira) | PRIVATE (particular intermediado).
+  /// Vira a tag pública no site. null = ainda não informado (tratado como próprio).
+  originType         String?
+  partnerStoreId     String?
 
   // Meta
   active     Boolean   @default(true)
@@ -828,6 +832,7 @@ model Vehicle {
   stockPendencies VehicleStockPendency[] // pendências de estoque configuráveis
   pricingHistory  VehiclePricingHistory[]
   siteListing     SiteListing? // anúncio no site da loja (tabela própria)
+  partnerStore    PartnerStore?           @relation(fields: [partnerStoreId], references: [id], onDelete: SetNull)
   publications    Publication[] // Central de Publicações (Marketing)
 
   @@index([tenantId])
@@ -836,7 +841,40 @@ model Vehicle {
   @@index([stockStatus])
   @@index([stockLocation])
   @@index([brand, model])
+  @@index([partnerStoreId])
   @@map("vehicles")
+}
+
+// ── Lojas parceiras ───────────────────────────────────────────────────────────
+// Lojistas cujos carros a loja anuncia/intermedeia (origem PARTNER do veículo).
+// `sourceRef` = identificação na origem (ex.: "legacy:<uuid>" do site antigo,
+// "feed:<nome>") para importar sem duplicar.
+model PartnerStore {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  legalName       String?
+  cnpj            String?
+  responsibleName String?
+  whatsapp        String?
+  email           String?
+  city            String?
+  state           String?
+  address         String?
+  instagram       String?
+  website         String?
+  commission      String?
+  notes           String?
+  active          Boolean  @default(true)
+  sourceRef       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  vehicles Vehicle[]
+
+  @@unique([tenantId, sourceRef])
+  @@index([tenantId, active])
+  @@map("partner_stores")
 }
 
 // ── Site da loja: anúncio do veículo ──────────────────────────────────────────

@@ -95,7 +95,7 @@ export default async function SiteStock({ params, searchParams }: { params: Prom
         {total > 0 && <p className="results-count"><strong>{total}</strong> veículos encontrados</p>}
         {items.length ? (
           <>
-            <div className="vehicle-grid">{items.map((v, i) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={i} />)}</div>
+            <div className="vehicle-grid">{items.map((v, i) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={i} storeName={ctx.config.identity.name} />)}</div>
             {totalPages > 1 && (
               <nav className="pagination" aria-label="Páginas">
                 {page > 1 && <Link href={buildHref({ p: String(page - 1) })} className="pagination-link">&#8249; Anterior</Link>}

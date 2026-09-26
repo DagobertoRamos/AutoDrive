@@ -18,6 +18,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { feedOrigins } from '@/lib/site/feed-import'
 import type { FeedOrigin } from '@/lib/site/feed-import-core'
+import { mergeOrigin } from '@/lib/stock/origin-core'
 
 // Status que NÃO finalizaram a negociação — veículo está em negociação ativa
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
@@ -131,6 +132,8 @@ export async function GET(req: NextRequest) {
           fipeValue:    true,
           cautelarStatus: true,
           mainPhotoUrl: true,
+          originType:   true,
+          partnerStore: { select: { id: true, name: true, city: true } },
           active:       true,
           entryDate:    true,
           exitDate:     true,
@@ -278,7 +281,7 @@ export async function GET(req: NextRequest) {
         openNegotiationStatus: openDeal?.status      ?? null,
         openNegotiationSeller: sellerName,
         openNegotiationUnit:   unitName,
-        origin:                originsByTenant.get(v.tenantId)?.[v.id] ?? null,
+        origin:                mergeOrigin(originsByTenant.get(v.tenantId)?.[v.id] ?? null, v),
       }
     })
 
@@ -387,3 +390,4 @@ export async function POST(req: NextRequest) {
     return handlePrismaError(err)
   }
 }
+

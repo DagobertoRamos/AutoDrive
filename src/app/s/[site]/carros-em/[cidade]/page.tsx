@@ -45,7 +45,7 @@ export default async function SiteCityLanding({ params }: Props) {
         <p>{city.text || `Atendemos ${city.name} com o mesmo cuidado de sempre: visita combinada pelo WhatsApp, financiamento e avaliação do seu usado na troca.`}</p>
       </div></section>
       <section className="shell section">
-        <div className="vehicle-grid">{items.slice(0, 12).map((v, i) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={i} />)}</div>
+        <div className="vehicle-grid">{items.slice(0, 12).map((v, i) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={i} storeName={ctx.config.identity.name} />)}</div>
         <p className="mapa-acoes"><Link className="button" href={ctx.href('/veiculos')}>Ver todo o estoque</Link></p>
       </section>
       <section className="shell section"><div className="prose">
