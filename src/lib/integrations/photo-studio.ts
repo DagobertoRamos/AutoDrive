@@ -100,7 +100,8 @@ export async function studioQueue(tenantId: string, opts: { limit: number; statu
   }
   const filtered = opts.origin ? veiculos.filter((v) => v.origem === opts.origin || v.parceiro === opts.origin) : veiculos
   const emTratamento = await prisma.siteListing.count({ where: { tenantId, photosStatus: 'EM_TRATAMENTO' } })
-  return { total: filtered.length, semFotoPropria, artesIgnoradas, jaTratadosNaOrigem, emTratamento, veiculos: filtered }
+  const estoqueComFoto = await prisma.vehicle.count({ where: { tenantId, active: true, photos: { some: {} } } })
+  return { total: filtered.length, estoqueComFoto, semFotoPropria, artesIgnoradas, jaTratadosNaOrigem, emTratamento, veiculos: filtered }
 }
 
 /** Origem pública do SaaS, para devolver URL absoluta de foto guardada aqui. */
