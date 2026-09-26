@@ -370,6 +370,7 @@ export default function IntegrationsPage() {
 
   const [creds,     setCreds]     = useState<Credential[]>([])
   const [loading,   setLoading]   = useState(true)
+  const [loaded,    setLoaded]    = useState(false)
   const [error,     setError]     = useState('')
   const [success,   setSuccess]   = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -388,8 +389,12 @@ export default function IntegrationsPage() {
     if (status === 'authenticated' && session?.user?.role !== 'MASTER') router.replace('/inicio')
   }, [session, status, router])
 
+  // Depende só do papel (string), não do objeto `session`: o NextAuth refaz a
+  // sessão ao focar a aba e cada objeto novo recarregava a página, fechando o
+  // modal de edição no meio da configuração.
+  const role = session?.user?.role
   const load = useCallback(async () => {
-    if (session?.user?.role !== 'MASTER') return
+    if (role !== 'MASTER') return
     setLoading(true)
     setError('')
     try {
@@ -401,8 +406,9 @@ export default function IntegrationsPage() {
       setError(err instanceof Error ? err.message : 'Erro ao carregar.')
     } finally {
       setLoading(false)
+      setLoaded(true)
     }
-  }, [session])
+  }, [role])
 
   useEffect(() => { load() }, [load])
 
@@ -487,7 +493,9 @@ export default function IntegrationsPage() {
     return acc
   }, {})
 
-  if (status === 'loading' || loading) {
+  // Spinner de página inteira só no primeiro carregamento; recargas depois disso
+  // (testar, ativar, salvar) não desmontam a lista nem o modal aberto.
+  if (!loaded && (status === 'loading' || loading)) {
     return <div className="flex h-64 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" /></div>
   }
 
