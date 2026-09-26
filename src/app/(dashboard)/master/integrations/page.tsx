@@ -461,8 +461,9 @@ export default function IntegrationsPage() {
         body:    JSON.stringify({ action: 'TEST' }),
       })
       const data = await res.json()
-      setSuccess(data.message ?? 'Teste concluído.')
-      setTimeout(() => setSuccess(''), 4000)
+      // Teste reprovado aparece como erro (antes saía em verde).
+      if (data.ok === false || data.success === false) { setSuccess(''); setError(data.message ?? 'O teste falhou.'); setTimeout(() => setError(''), 8000) }
+      else { setError(''); setSuccess(data.message ?? 'Teste concluído.'); setTimeout(() => setSuccess(''), 4000) }
       load()
     } finally {
       setTesting(null)
