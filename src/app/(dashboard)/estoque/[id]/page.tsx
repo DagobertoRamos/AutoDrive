@@ -12,7 +12,7 @@ import Image from 'next/image'
 import {
   ArrowLeft, Car, Pencil, Trash2, Handshake, AlertTriangle,
   MapPin, Calendar, Gauge, Fuel, Cog, DoorOpen, Palette,
-  FileText, Camera, ClipboardCheck, ShieldCheck, Tag,
+  FileText, ClipboardCheck, ShieldCheck, Tag,
   DollarSign, History, CheckCircle2, XCircle, Clock,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
@@ -24,6 +24,7 @@ import {
 } from '@/components/estoque/VehicleStatusBadge'
 import { VehicleSalePricingPanel } from '@/components/estoque/VehicleSalePricingPanel'
 import { VehiclePhotosManager } from '@/components/estoque/VehiclePhotosManager'
+import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -298,17 +299,11 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
         <div className="flex items-start gap-4">
           {/* Foto thumbnail */}
           <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-gray-100">
-            {allPhotos[0] ? (
-              <Image
-                src={allPhotos[0].url}
-                alt={`${vehicle.brand} ${vehicle.model}`}
-                fill className="object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <Car className="h-8 w-8 text-gray-300" />
-              </div>
-            )}
+            <Image
+              src={allPhotos[0]?.url ?? VEHICLE_NO_PHOTO_IMG}
+              alt={allPhotos[0] ? `${vehicle.brand} ${vehicle.model}` : 'Aguardando fotos'}
+              fill className="object-cover"
+            />
           </div>
 
           <div>
@@ -549,9 +544,8 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
         {activeTab === 'fotos' && !canManage && (
           <div>
             {allPhotos.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center text-gray-400">
-                <Camera className="h-12 w-12 mb-2" />
-                <p className="text-sm">Nenhuma foto cadastrada</p>
+              <div className="relative h-80 w-full overflow-hidden rounded-xl bg-gray-100">
+                <Image src={VEHICLE_NO_PHOTO_IMG} alt="Aguardando fotos" fill className="object-contain" />
               </div>
             ) : (
               <div className="flex flex-col gap-4">

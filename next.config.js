@@ -40,6 +40,12 @@ const nextConfig = {
     preloadEntriesOnStart: false,
   },
 
+  // Fotos de veículo vêm de vários hosts externos (AutoConf/S3, BNDV, Vercel
+  // Blob, Supabase...). Sem remotePatterns o otimizador respondia 400 e a foto
+  // aparecia quebrada na ficha do veículo. As fotos já chegam comprimidas, então
+  // servimos direto — e ainda poupamos a cota de otimização da Vercel.
+  images: { unoptimized: true },
+
   // Esconde o botão flutuante "N" do Next no canto inferior esquerdo durante o dev.
   devIndicators: false,
 

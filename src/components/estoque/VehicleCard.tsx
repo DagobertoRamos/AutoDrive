@@ -7,9 +7,10 @@
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { MapPin, Gauge, Calendar, AlertTriangle, Tag, Car, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MapPin, Gauge, Calendar, AlertTriangle, Tag, ChevronLeft, ChevronRight } from 'lucide-react'
 import { VehicleStatusBadge, CautelarBadge, StockTypeBadge, ConditionBadge } from './VehicleStatusBadge'
 import { cn } from '@/lib/utils'
+import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
 
 interface VehiclePendency {
   id: string
@@ -240,8 +241,14 @@ function VehicleCardCarousel({ photos, alt }: { photos: string[]; alt: string })
 
   if (total === 0) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Car className="h-16 w-16 text-gray-300" />
+      <div className="relative h-full w-full">
+        <Image
+          src={VEHICLE_NO_PHOTO_IMG}
+          alt="Aguardando fotos"
+          fill
+          className="object-cover"
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        />
       </div>
     )
   }
