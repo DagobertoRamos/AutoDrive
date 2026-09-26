@@ -110,16 +110,38 @@ function Wizard() {
 // ── 1. Veículos ──────────────────────────────────────────────────────────────
 function StepVehicles({ selected, setSelected, vehicles, onLoaded }: { selected: string[]; setSelected: (f: (s: string[]) => string[]) => void; vehicles: Record<string, Veh>; onLoaded: (l: Veh[]) => void }) {
   const [q, setQ] = useState('')
+  const [page, setPage] = useState(1)
+  const [paging, setPaging] = useState({ total: 0, pageSize: 30 })
   const [list, setList] = useState<Veh[] | null>(null)
   useEffect(() => {
-    const t = setTimeout(() => { api(`/api/publications/vehicles${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`).then((j) => { setList(j.data); onLoaded(j.data) }).catch(() => setList([])) }, 250)
+    const t = setTimeout(() => {
+      const qs = new URLSearchParams({ page: String(page), ...(q.trim() ? { q: q.trim() } : {}) })
+      api(`/api/publications/vehicles?${qs}`).then((j) => { setList(j.data); setPaging({ total: j.total ?? j.data.length, pageSize: j.pageSize ?? 30 }); onLoaded(j.data) }).catch(() => setList([]))
+    }, 250)
     return () => clearTimeout(t)
-  }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, page]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pages = Math.max(1, Math.ceil(paging.total / paging.pageSize))
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
+  const pageIds = (list ?? []).filter((v) => v.publishable).map((v) => v.id)
+  const allOnPage = pageIds.length > 0 && pageIds.every((id) => selected.includes(id))
+  const togglePage = () => setSelected((s) => (allOnPage ? s.filter((id) => !pageIds.includes(id)) : [...new Set([...s, ...pageIds])]))
+  const pager = pages > 1 && (
+    <nav className="flex items-center justify-center gap-2 text-xs text-gray-600" aria-label="Páginas do estoque">
+      <button onClick={() => setPage((p) => p - 1)} disabled={page <= 1} className="btn-secondary px-2 py-1 text-xs"><ChevronLeft size={14} />Anterior</button>
+      <span>Página {page} de {pages}</span>
+      <button onClick={() => setPage((p) => p + 1)} disabled={page >= pages} className="btn-secondary px-2 py-1 text-xs">Próxima<ChevronRight size={14} /></button>
+    </nav>
+  )
   return (
     <section className="space-y-3">
-      <div className="relative sm:max-w-sm"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no estoque (marca, modelo, placa)" className={cn(inputCls, 'pl-9')} aria-label="Buscar no estoque" /></div>
+      <div className="relative sm:max-w-sm"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} placeholder="Buscar no estoque (marca, modelo, placa)" className={cn(inputCls, 'pl-9')} aria-label="Buscar no estoque" /></div>
       {selected.length > 0 && <div className="flex flex-wrap gap-1.5">{selected.map((id) => <span key={id} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-900">{vehicles[id]?.title ?? id}<button onClick={() => toggle(id)} aria-label="Remover"><X size={12} /></button></span>)}</div>}
+      {list && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+          <span>{paging.total} veículo(s) disponível(is){q.trim() ? ' na busca' : ' no estoque'}{pages > 1 ? ` · página ${page} de ${pages}` : ''}</span>
+          {pageIds.length > 0 && <button onClick={togglePage} className="font-medium text-brand-700 hover:underline">{allOnPage ? 'Desmarcar esta página' : 'Selecionar todos desta página'}</button>}
+        </div>
+      )}
       {!list ? <Loader2 className="animate-spin text-gray-400" /> : (
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {list.map((v) => {
@@ -146,6 +168,7 @@ function StepVehicles({ selected, setSelected, vehicles, onLoaded }: { selected:
           {!list.length && <li className="text-sm text-gray-500">Nenhum veículo disponível encontrado.</li>}
         </ul>
       )}
+      {pager}
     </section>
   )
 }
