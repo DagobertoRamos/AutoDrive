@@ -29,11 +29,14 @@ export async function GET(
   if (!fileId) return NextResponse.json({ error: 'Arquivo não informado.' }, { status: 400 })
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const file: any = await (prisma as any).evaluationFile.findUnique({
-      where:  { id: fileId },
-      select: { id: true, evaluationId: true, fileName: true, mimeType: true, data: true },
-    })
+    // Lê os bytes como base64 via SQL: o adapter Neon (usado em produção) não
+    // consegue devolver colunas Bytes pelo findUnique ("JS functions cannot be
+    // represented as a serde_json::Value") — a rota falhava e a foto aparecia
+    // quebrada. Mesmo contorno de src/lib/site/assets.ts.
+    const rows = await prisma.$queryRaw<Array<{ evaluationId: string; fileName: string; mimeType: string; b64: string }>>`
+      SELECT "evaluationId", "fileName", "mimeType", encode(data, 'base64') AS b64
+      FROM evaluation_files WHERE id = ${fileId} LIMIT 1`
+    const file = rows[0]
     if (!file) return NextResponse.json({ error: 'Arquivo não encontrado' }, { status: 404 })
 
     const ctx = await loadEvaluationContext(file.evaluationId)
@@ -44,7 +47,7 @@ export async function GET(
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
-    const bytes: Buffer = Buffer.from(file.data)
+    const bytes = Buffer.from(file.b64, 'base64')
     return new NextResponse(new Uint8Array(bytes), {
       status: 200,
       headers: {
