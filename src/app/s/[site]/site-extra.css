@@ -178,7 +178,7 @@
 .autodrive-site .site-footer { padding: 0 0 22px; color: #b6c4cc; background: color-mix(in srgb, var(--blue-dark) 28%, #050c14); }
 .autodrive-site .site-footer a { color: inherit; text-decoration: none; }
 .autodrive-site .site-footer a:hover { color: #fff; }
-.autodrive-site .site-footer .footer-cta { display: flex; align-items: center; gap: 24px; margin-top: 0; padding: 26px 0; border: 0; border-bottom: 1px solid rgba(255,255,255,.1); border-radius: 0; background: transparent; }
+.autodrive-site .site-footer .footer-cta { display: flex; flex-wrap: nowrap; align-items: center; gap: 24px; margin-top: 0; padding: 26px 0; border: 0; border-bottom: 1px solid rgba(255,255,255,.1); border-radius: 0; background: transparent; }
 .autodrive-site .site-footer .footer-cta strong { display: block; margin: 0 0 4px; color: #fff; font-size: 1.2rem; }
 .autodrive-site .site-footer .footer-cta p { margin: 0; max-width: 560px; color: #b6c4cc; font-size: .92rem; }
 .autodrive-site .site-footer .footer-cta .button { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; color: #fff; }

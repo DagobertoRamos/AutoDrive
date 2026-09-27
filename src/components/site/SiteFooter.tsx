@@ -13,6 +13,8 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLink
   const { identity, contact } = config
   const address = [contact.addressLine1, contact.addressLine2].filter(Boolean)
   const phoneDigits = contact.phone.replace(/\D/g, '')
+  // Telefone legível: 11934718276 → (11) 93471-8276 (o lojista às vezes grava só os dígitos).
+  const phoneLabel = /^\d{10,11}$/.test(phoneDigits) ? `(${phoneDigits.slice(0, 2)}) ${phoneDigits.slice(2, -4)}-${phoneDigits.slice(-4)}` : contact.phone
   const logo = identity.footerLogoUrl || identity.logoUrl
   const hasContact = !!(whatsappHref || phoneDigits || contact.email || address.length || contact.hours || contact.mapsUrl || contact.wazeUrl)
   return (
@@ -39,8 +41,8 @@ export function SiteFooter({ config, nav, whatsappHref, seoLinks = [], legalLink
         {hasContact && <div className="footer-col">
           <strong>Atendimento</strong>
           <ul className="footer-contact">
-            {whatsappHref && <li><MessageCircle size={16} aria-hidden="true" /><a href={whatsappHref} target="_blank" rel="noreferrer">{contact.phone || 'WhatsApp'}</a></li>}
-            {!whatsappHref && phoneDigits && <li><Phone size={16} aria-hidden="true" /><a href={`tel:${phoneDigits}`}>{contact.phone}</a></li>}
+            {whatsappHref && <li><MessageCircle size={16} aria-hidden="true" /><a href={whatsappHref} target="_blank" rel="noreferrer">{phoneLabel || 'WhatsApp'}</a></li>}
+            {!whatsappHref && phoneDigits && <li><Phone size={16} aria-hidden="true" /><a href={`tel:${phoneDigits}`}>{phoneLabel}</a></li>}
             {contact.email && <li><Mail size={16} aria-hidden="true" /><a href={`mailto:${contact.email}`}>{contact.email}</a></li>}
             {address.length > 0 && <li><MapPin size={16} aria-hidden="true" /><span>{address.map((l, i) => <span key={i}>{l}<br /></span>)}</span></li>}
             {contact.hours && <li><Clock size={16} aria-hidden="true" /><span>{contact.hours}</span></li>}
