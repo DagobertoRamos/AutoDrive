@@ -4499,14 +4499,83 @@ export default function NovaNegociacaoPage() {
 
   const canProceed = () => validateStep(step).length === 0
 
-  const tryNext = () => {
-    const errs = validateStep(step)
-    if (errs.length === 0) {
-      setStep((s) => Math.min(STEPS.length - 1, s + 1))
-      return
+  // Etapa Cliente: ao avançar, grava o cliente no cadastro (cria ou atualiza
+  // pelo CPF/CNPJ) — fica disponível para as próximas negociações mesmo que
+  // esta não seja concluída.
+  const [savingClient, setSavingClient] = useState(false)
+  const saveClient = async (): Promise<boolean> => {
+    setSavingClient(true)
+    try {
+      const res = await fetch('/api/people/upsert', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personId: form.personId ?? null, person: buildPersonPayload() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.data?.id) { showToast(data?.error ?? 'Não foi possível salvar o cliente no cadastro.', false); return false }
+      setField('personId', data.data.id)
+      showToast(data.data.created ? 'Cliente cadastrado — já disponível para as próximas negociações.' : 'Cadastro do cliente atualizado.', true)
+      return true
+    } catch {
+      showToast('Sem conexão: o cliente não foi salvo. Tente de novo.', false)
+      return false
+    } finally {
+      setSavingClient(false)
     }
-    showToast(errs[0], false)
   }
+
+  const tryNext = async () => {
+    const errs = validateStep(step)
+    if (errs.length > 0) { showToast(errs[0], false); return }
+    if (step === 1 && mode === 'create' && !(await saveClient())) return
+    setStep((s) => Math.min(STEPS.length - 1, s + 1))
+  }
+
+  // Dados do cliente (Person) — usados ao avançar da etapa Cliente (grava no
+  // cadastro) e no envio final da negociação.
+  const buildPersonPayload = () => ({
+    type:              form.personType,
+    cpf:               form.personType === 'FISICA'
+                         ? normalizeCPF(form.cpf) || null : null,
+    cnpj:              form.personType === 'JURIDICA'
+                         ? normalizeCNPJ(form.cnpj) || null : null,
+    nomeCompleto:      form.personType === 'FISICA'
+                         ? form.nomeCompleto : form.razaoSocial,
+    rg:                form.personType === 'FISICA' ? form.rg || null : null,
+    dataNascimento:    form.personType === 'FISICA' && form.dataNascimento
+                         ? form.dataNascimento : null,
+    nomeMae:           form.personType === 'FISICA' ? form.nomeMae || null : null,
+    razaoSocial:       form.personType === 'JURIDICA' ? form.razaoSocial || null : null,
+    nomeFantasia:      form.personType === 'JURIDICA' ? form.nomeFantasia || null : null,
+    inscricaoEstadual: form.personType === 'JURIDICA' ? form.inscricaoEstadual || null : null,
+    socioAdmNome:      form.personType === 'JURIDICA' ? form.socioAdmNome || null : null,
+    socioAdmCpf:       form.personType === 'JURIDICA'
+                         ? normalizeCPF(form.socioAdmCpf) || null : null,
+    socioAdmPhone:     form.personType === 'JURIDICA'
+                         ? normalizePhone(form.socioAdmPhone) || null : null,
+    socioAdmNomeMae:   form.personType === 'JURIDICA' ? form.socioAdmNomeMae   || null : null,
+    socioAdmEmail:     form.personType === 'JURIDICA' ? form.socioAdmEmail     || null : null,
+    socioAdmWhatsapp:  form.personType === 'JURIDICA' ? form.socioAdmWhatsapp  : false,
+    // Extras de sócio adm (RG/data nasc./endereço) — armazenados em notes (JSON)
+    socioAdmRg:             form.personType === 'JURIDICA' ? form.socioAdmRg             || null : null,
+    socioAdmDataNascimento: form.personType === 'JURIDICA' ? form.socioAdmDataNascimento || null : null,
+    socioAdmCep:            form.personType === 'JURIDICA' ? normalizeCEP(form.socioAdmCep) || null : null,
+    socioAdmLogradouro:     form.personType === 'JURIDICA' ? form.socioAdmLogradouro     || null : null,
+    socioAdmNumero:         form.personType === 'JURIDICA' ? form.socioAdmNumero         || null : null,
+    socioAdmComplemento:    form.personType === 'JURIDICA' ? form.socioAdmComplemento    || null : null,
+    socioAdmBairro:         form.personType === 'JURIDICA' ? form.socioAdmBairro         || null : null,
+    socioAdmCidade:         form.personType === 'JURIDICA' ? form.socioAdmCidade         || null : null,
+    socioAdmEstado:         form.personType === 'JURIDICA' ? form.socioAdmEstado         || null : null,
+    email:             form.email   || null,
+    phone:             normalizePhone(form.celular) || null,
+    whatsapp:          form.whatsapp,
+    cep:               normalizeCEP(form.cep) || null,
+    logradouro:        form.logradouro  || null,
+    numero:            form.numero      || null,
+    complemento:       form.complemento || null,
+    bairro:            form.bairro      || null,
+    cidade:            form.cidade      || null,
+    estado:            form.estado      || null,
+  })
 
   const buildPayload = (submit: boolean) => {
     const v  = form.vehicle
@@ -4520,50 +4589,7 @@ export default function NovaNegociacaoPage() {
       sellerId: form.sellerId || undefined,
       submit,
       personId: form.personId ?? undefined,
-      person: form.personId ? undefined : {
-        type:              form.personType,
-        cpf:               form.personType === 'FISICA'
-                             ? normalizeCPF(form.cpf) || null : null,
-        cnpj:              form.personType === 'JURIDICA'
-                             ? normalizeCNPJ(form.cnpj) || null : null,
-        nomeCompleto:      form.personType === 'FISICA'
-                             ? form.nomeCompleto : form.razaoSocial,
-        rg:                form.personType === 'FISICA' ? form.rg || null : null,
-        dataNascimento:    form.personType === 'FISICA' && form.dataNascimento
-                             ? form.dataNascimento : null,
-        nomeMae:           form.personType === 'FISICA' ? form.nomeMae || null : null,
-        razaoSocial:       form.personType === 'JURIDICA' ? form.razaoSocial || null : null,
-        nomeFantasia:      form.personType === 'JURIDICA' ? form.nomeFantasia || null : null,
-        inscricaoEstadual: form.personType === 'JURIDICA' ? form.inscricaoEstadual || null : null,
-        socioAdmNome:      form.personType === 'JURIDICA' ? form.socioAdmNome || null : null,
-        socioAdmCpf:       form.personType === 'JURIDICA'
-                             ? normalizeCPF(form.socioAdmCpf) || null : null,
-        socioAdmPhone:     form.personType === 'JURIDICA'
-                             ? normalizePhone(form.socioAdmPhone) || null : null,
-        socioAdmNomeMae:   form.personType === 'JURIDICA' ? form.socioAdmNomeMae   || null : null,
-        socioAdmEmail:     form.personType === 'JURIDICA' ? form.socioAdmEmail     || null : null,
-        socioAdmWhatsapp:  form.personType === 'JURIDICA' ? form.socioAdmWhatsapp  : false,
-        // Extras de sócio adm (RG/data nasc./endereço) — armazenados em notes (JSON)
-        socioAdmRg:             form.personType === 'JURIDICA' ? form.socioAdmRg             || null : null,
-        socioAdmDataNascimento: form.personType === 'JURIDICA' ? form.socioAdmDataNascimento || null : null,
-        socioAdmCep:            form.personType === 'JURIDICA' ? normalizeCEP(form.socioAdmCep) || null : null,
-        socioAdmLogradouro:     form.personType === 'JURIDICA' ? form.socioAdmLogradouro     || null : null,
-        socioAdmNumero:         form.personType === 'JURIDICA' ? form.socioAdmNumero         || null : null,
-        socioAdmComplemento:    form.personType === 'JURIDICA' ? form.socioAdmComplemento    || null : null,
-        socioAdmBairro:         form.personType === 'JURIDICA' ? form.socioAdmBairro         || null : null,
-        socioAdmCidade:         form.personType === 'JURIDICA' ? form.socioAdmCidade         || null : null,
-        socioAdmEstado:         form.personType === 'JURIDICA' ? form.socioAdmEstado         || null : null,
-        email:             form.email   || null,
-        phone:             normalizePhone(form.celular) || null,
-        whatsapp:          form.whatsapp,
-        cep:               normalizeCEP(form.cep) || null,
-        logradouro:        form.logradouro  || null,
-        numero:            form.numero      || null,
-        complemento:       form.complemento || null,
-        bairro:            form.bairro      || null,
-        cidade:            form.cidade      || null,
-        estado:            form.estado      || null,
-      },
+      person: form.personId ? undefined : buildPersonPayload(),
       vehicle: hasVehicle ? {
         role:           form.type === 'COMPRA' ? 'COMPRADO' : form.type === 'CONSIGNACAO' ? 'CONSIGNADO' : 'VENDIDO',
         vehicleId:      v.vehicleId ?? undefined,
@@ -4880,15 +4906,15 @@ export default function NovaNegociacaoPage() {
         ) : (
           <button
             type="button"
-            onClick={tryNext}
-            className={`flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors ${
+            onClick={() => void tryNext()}
+            disabled={savingClient}
+            className={`flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors disabled:opacity-70 ${
               canProceed()
                 ? 'bg-brand-600 hover:bg-brand-700'
                 : 'bg-brand-300 hover:bg-brand-400'
             }`}
           >
-            Próximo
-            <ArrowRight size={14} />
+            {savingClient ? <><Loader2 size={14} className="animate-spin" />Salvando cliente…</> : <>Próximo<ArrowRight size={14} /></>}
           </button>
         )}
       </div>
