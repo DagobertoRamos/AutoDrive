@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const {
-      type, person, customer, personId: bodyPersonId,
+      type, person, customer, personId: bodyPersonId, draftId,
       // Localização
       unitId: bodyUnitId, sellerId: bodySellerId,
       vehicle, tradeInVehicle,
@@ -303,6 +303,30 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // ── Trava de envio duplicado ─────────────────────────────────────────
+      // 1) Rascunho de uso único: o mesmo rascunho aberto em dois aparelhos
+      //    só vira negociação uma vez (quem consumir primeiro).
+      if (typeof draftId === 'string' && draftId) {
+        const used = await tx.dealDraft.deleteMany({ where: { id: draftId, tenantId: session.user.tenantId ?? null } })
+        if (used.count === 0) throw new Error('Esta negociação já foi enviada (ou o rascunho foi descartado) em outro aparelho. Confira em Negociações antes de enviar de novo.')
+      }
+      // 2) Um carro só tem UMA negociação de entrada (consignação/compra) ativa.
+      if ((type === 'CONSIGNACAO' || type === 'COMPRA') && (vehicle?.vehicleId || vehicle?.plate)) {
+        const plate = typeof vehicle.plate === 'string' ? vehicle.plate.toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
+        const dup = await tx.dealVehicle.findFirst({
+          where: {
+            role: { in: ['CONSIGNADO', 'COMPRADO'] },
+            OR: [
+              ...(vehicle.vehicleId ? [{ vehicleId: vehicle.vehicleId as string }] : []),
+              ...(!vehicle.vehicleId && plate ? [{ plate }] : []),
+            ],
+            deal: { tenantId: session.user.tenantId ?? null, status: { notIn: ['CANCELADA', 'RECUSADA', 'DESAPROVADA', 'FINALIZADA'] as never[] } },
+          },
+          select: { deal: { select: { dealNumber: true, status: true } } },
+        })
+        if (dup) throw new Error(`Este veículo já tem a negociação de entrada ${dup.deal.dealNumber ?? ''} (${String(dup.deal.status).toLowerCase().replace(/_/g, ' ')}). Abra-a em vez de criar outra.`.replace('  ', ' '))
+      }
+
       let personId: string | null = null
 
       // 1) Reuso: se o wizard já vinculou um Person existente, valida tenant e usa.

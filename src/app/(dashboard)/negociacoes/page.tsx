@@ -193,17 +193,42 @@ interface ActionsMenuProps {
 
 function ActionsMenu({ deal, role, onAction }: ActionsMenuProps) {
   const [open, setOpen] = useState(false)
+  // Posição do menu na TELA (fixed): dentro da tabela ele era cortado pela borda
+  // (overflow) — na última linha não aparecia. Abre para cima se faltar espaço.
+  const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
+    const close = () => setOpen(false)
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
   }, [])
 
-  const isManager = ['GERENTE', 'MASTER', 'ADM'].includes(role ?? '')
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      const vh = window.innerHeight
+      const H = 260 // altura aproximada do menu completo
+      const right = Math.min(Math.max(8, window.innerWidth - r.right), Math.max(8, window.innerWidth - 200))
+      // Abaixo do botão se couber; senão acima; sempre dentro da tela (rola por dentro se faltar).
+      const below = vh - r.bottom - 8
+      const top = below >= H ? r.bottom + 4 : Math.max(8, Math.min(r.top - 4 - H, vh - H - 8))
+      setPos({ top, right, maxHeight: Math.max(120, vh - top - 8) })
+    }
+    setOpen((p) => !p)
+  }
+
+  const isManager = ['GERENTE', 'GERENTE_GERAL', 'MASTER', 'ADM'].includes(role ?? '')
   const isAdm     = ['MASTER', 'ADM'].includes(role ?? '')
 
   const canSubmit  = ['RASCUNHO', 'EM_PREENCHIMENTO', 'DEVOLVIDA_PARA_CORRECAO'].includes(deal.status)
@@ -214,13 +239,15 @@ function ActionsMenu({ deal, role, onAction }: ActionsMenuProps) {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen((p) => !p) }}
+        ref={btnRef}
+        onClick={(e) => { e.stopPropagation(); toggle() }}
+        aria-label="Ações da negociação"
         className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
       >
         <MoreVertical size={15} />
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-48 rounded-xl border border-gray-200 bg-white py-1 shadow-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed z-50 w-48 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg" style={pos ?? undefined} onClick={(e) => e.stopPropagation()}>
           <Link
             href={`/negociacoes/${deal.id}`}
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"

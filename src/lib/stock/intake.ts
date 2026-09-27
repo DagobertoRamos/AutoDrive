@@ -124,6 +124,21 @@ export async function reopenNegotiationGate(dealId: string, actor: Actor = null)
     for (const v of vehicles) {
       const gate = v.stockPendencies.find((p) => sameLabel(p.option.label, GATE_NEGOTIATION))
       if (!gate) continue
+      // Outra negociação de entrada ainda ativa para o mesmo carro (ex.: cancelou
+      // a duplicada)? Então a entrada continua valendo — não reabre.
+      const other = await prisma.dealVehicle.findFirst({
+        where: {
+          dealId: { not: dealId },
+          role:   { in: ['TROCA', 'COMPRADO', 'CONSIGNADO'] },
+          OR:     [{ vehicleId: v.id }, ...(plate ? [{ plate }] : [])],
+          deal:   { tenantId: dv.deal.tenantId, status: { notIn: ['CANCELADA', 'RECUSADA', 'DESAPROVADA'] as never[] } },
+        },
+        select: { deal: { select: { dealNumber: true } } },
+      })
+      if (other) {
+        await prisma.vehicleStockPendency.update({ where: { id: gate.id }, data: { notes: `Negociação ${other.deal.dealNumber ?? ''} ativa (a ${dv.deal.dealNumber ?? dealId} foi cancelada).` } })
+        continue
+      }
       await prisma.vehicleStockPendency.update({
         where: { id: gate.id },
         data:  { resolved: false, resolvedAt: null, resolvedById: null, notes: `Negociação ${dv.deal.dealNumber ?? dealId} cancelada: cadastre a negociação de entrada novamente.` },

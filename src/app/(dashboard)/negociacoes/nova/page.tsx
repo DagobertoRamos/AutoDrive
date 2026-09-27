@@ -4588,6 +4588,8 @@ export default function NovaNegociacaoPage() {
       unitId:   form.unitId   || undefined,
       sellerId: form.sellerId || undefined,
       submit,
+      // Rascunho de uso único: o servidor recusa o segundo envio (outro aparelho).
+      draftId:  mode === 'create' && draftId ? draftId : undefined,
       personId: form.personId ?? undefined,
       person: form.personId ? undefined : buildPersonPayload(),
       vehicle: hasVehicle ? {

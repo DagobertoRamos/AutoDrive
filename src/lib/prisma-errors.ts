@@ -133,6 +133,8 @@ export function mapPrismaError(err: unknown): { body: ApiError; status: number }
       'Este veículo avaliado não está disponível para troca',
       'Este veículo avaliado já está vinculado',
       'Avaliação informada não foi encontrada',
+      'Esta negociação já foi enviada',
+      'Este veículo já tem a negociação de entrada',
     ]
     const isKnown = knownPrefixes.some(p => err.message.startsWith(p))
     if (isKnown) {

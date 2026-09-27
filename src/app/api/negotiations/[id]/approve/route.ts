@@ -40,10 +40,17 @@ export async function POST(
     if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
     if (!APPROVABLE_STATUSES.has(deal.status)) {
-      return NextResponse.json({ error: 'Apenas negociações aguardando aprovação podem ser aprovadas' }, { status: 409 })
+      return NextResponse.json({ error: await alreadyApprovedMessage(params.id, deal.status) }, { status: 409 })
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      // Trava de dupla aprovação (dois aparelhos / clique duplo): só aprova quem
+      // "pegar" a negociação ainda aguardando; o segundo recebe 409.
+      const claimed = await tx.deal.updateMany({
+        where: { id: params.id, status: { in: [...APPROVABLE_STATUSES] as never[] } },
+        data:  { status: 'APROVADA' as never },
+      })
+      if (claimed.count === 0) throw new Error('ALREADY_APPROVED')
       const d = await tx.deal.update({
         where: { id: params.id },
         data: {
@@ -162,6 +169,18 @@ export async function POST(
         : null,
     })
   } catch (err) {
+    if (err instanceof Error && err.message === 'ALREADY_APPROVED') {
+      return NextResponse.json({ error: await alreadyApprovedMessage(params.id, 'APROVADA') }, { status: 409 })
+    }
     return handlePrismaError(err)
   }
+}
+
+/** "Esta negociação já foi aprovada por Fulano em 27/09 14:32" — para quem tentar aprovar de novo. */
+async function alreadyApprovedMessage(dealId: string, status: string): Promise<string> {
+  if (status !== 'APROVADA') return 'Apenas negociações aguardando aprovação podem ser aprovadas.'
+  const d = await prisma.deal.findUnique({ where: { id: dealId }, select: { dealNumber: true, approvedAt: true, approvedById: true } as never }) as { dealNumber: string | null; approvedAt: Date | null; approvedById: string | null } | null
+  const who = d?.approvedById ? await prisma.user.findUnique({ where: { id: d.approvedById }, select: { name: true } }) : null
+  const when = d?.approvedAt ? ` em ${d.approvedAt.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })}` : ''
+  return `A negociação ${d?.dealNumber ?? ''} já foi aprovada${who?.name ? ` por ${who.name}` : ''}${when}. Não é possível aprovar duas vezes.`.replace('  ', ' ')
 }
