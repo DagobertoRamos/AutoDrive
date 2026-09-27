@@ -511,6 +511,24 @@ export async function approveMedia(tenantId: string, vehicleId: string, photos: 
       update: { photos: json(clean), mediaRevisionId: r.id, approvedById: actor.id, approvedAt: new Date(), updatedById: actor.id },
     })
     await logEvent(tx, { tenantId, vehicleId, type: 'FOTOS_APROVADAS', message: `Fotos aprovadas (${clean.length}, revisão ${r.number}).`, actor, data: { capa: clean[0] } })
+    // Uma capa só: a ordem aprovada vale também para o estoque/site. Fotos da
+    // galeria fora da seleção vão para o fim (não são apagadas). A trava
+    // impede a importação do feed de desfazer a ordem escolhida.
+    const gallery = v.photos.map((p) => p.url)
+    const inGallery = clean.filter((u) => gallery.includes(u))
+    if (inGallery.length) {
+      const ordered = [...inGallery, ...gallery.filter((u) => !inGallery.includes(u))]
+      // Sempre regrava: a capa do site é isMain, que pode divergir da ordem.
+      for (const [i, url] of ordered.entries()) {
+        await tx.vehiclePhoto.updateMany({ where: { vehicleId, url }, data: { order: i, isMain: i === 0 } })
+      }
+      await tx.vehicle.update({ where: { id: vehicleId }, data: { mainPhotoUrl: ordered[0] } })
+      await tx.siteListing.upsert({
+        where: { vehicleId },
+        create: { tenantId, vehicleId, photosLocked: true, photosLockedAt: new Date() },
+        update: { photosLocked: true, photosLockedAt: new Date() },
+      })
+    }
     return r
   })
   const updates = await syncLive(tenantId, vehicleId, actor)
