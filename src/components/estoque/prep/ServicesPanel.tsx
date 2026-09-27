@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ChevronDown, ChevronUp, Clock, ExternalLink, Loader2, Plus, Save, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { SERVICE_TYPE_LABELS } from '@/lib/evaluation/catalog'
 import { isOverdue, parseMoneyInput, SERVICE_STATUS_LABEL, type ServiceStatus } from '@/lib/stock/prep-core'
 
@@ -96,7 +97,7 @@ export function ServicesPanel({ vehicleId, canEdit, onChanged }: { vehicleId: st
             <select className={input} value={nw.serviceType} onChange={(e) => setNw({ ...nw, serviceType: e.target.value })}>
               {Object.entries(SERVICE_TYPE_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
-            <input className={input} inputMode="decimal" placeholder="Valor previsto" value={nw.estimatedCost} onChange={(e) => setNw({ ...nw, estimatedCost: e.target.value.replace(/[^\d,.]/g, '') })} />
+            <MoneyInput className={input} placeholder="Valor previsto" value={textToMoney(nw.estimatedCost)} onChange={(n) => setNw({ ...nw, estimatedCost: moneyToText(n) })} />
             <select className={input} value={nw.supplierId} onChange={(e) => setNw({ ...nw, supplierId: e.target.value })}>
               <option value="">Fornecedor (opcional)</option>
               {d.suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
@@ -189,8 +190,8 @@ function ServiceCard({ s, suppliers, canEdit, onPatch }: { s: Svc; suppliers: Da
             {s.supplier && !suppliers.some((x) => x.id === s.supplier!.id) && <option value={s.supplier.id}>{s.supplier.name} (inativo)</option>}
           </select>
         </label>
-        <label className="text-[11px] text-gray-500">Valor cadastrado<input className={input} inputMode="decimal" disabled={!canEdit} value={f.estimatedCost} onChange={(e) => setF({ ...f, estimatedCost: e.target.value.replace(/[^\d,.]/g, '') })} /></label>
-        <label className="text-[11px] text-gray-500">Valor real<input className={input} inputMode="decimal" disabled={!canEdit} value={f.actualCost} placeholder={s.estimatedCost != null ? String(s.estimatedCost) : ''} onChange={(e) => setF({ ...f, actualCost: e.target.value.replace(/[^\d,.]/g, '') })} /></label>
+        <label className="text-[11px] text-gray-500">Valor cadastrado<MoneyInput className={input} disabled={!canEdit} value={textToMoney(f.estimatedCost)} onChange={(n) => setF({ ...f, estimatedCost: moneyToText(n) })} /></label>
+        <label className="text-[11px] text-gray-500">Valor real<MoneyInput className={input} disabled={!canEdit} value={textToMoney(f.actualCost)} placeholder={s.estimatedCost != null ? s.estimatedCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'} onChange={(n) => setF({ ...f, actualCost: moneyToText(n) })} /></label>
         <label className="text-[11px] text-gray-500">Entrada no prestador<input type="date" className={input} disabled={!canEdit} value={f.sentAt} onChange={(e) => setF({ ...f, sentAt: e.target.value })} /></label>
         <label className="text-[11px] text-gray-500">Previsão de entrega<input type="date" className={input} disabled={!canEdit} value={f.dueAt} onChange={(e) => setF({ ...f, dueAt: e.target.value })} /></label>
         <label className="text-[11px] text-gray-500 sm:col-span-3 lg:col-span-3">Notas<textarea rows={1} className={input} disabled={!canEdit} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>

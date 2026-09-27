@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { BadgePercent, CalendarClock, Images, Loader2, Pencil, Search, Star, Tag, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { discountPct, type PromoState } from '@/lib/site/listing-core'
 
 interface Row {
@@ -26,7 +27,7 @@ const PROMO: Record<PromoState, { label: string; cls: string }> = {
   ENCERRADA: { label: 'Encerrada', cls: 'bg-gray-100 text-gray-500 border-gray-200' },
   NENHUMA: { label: 'Sem promoção', cls: 'bg-white text-gray-500 border-gray-200' },
 }
-const brl = (v: number | null) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }))
+const brl = (v: number | null) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const when = (s: string | null) => (s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null)
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
@@ -153,7 +154,7 @@ function PromoEditor({ row, onClose, onSaved }: { row: Row; onClose: () => void;
   const [end, setEnd] = useState(row.promo.state === 'ENCERRADA' ? '' : toLocalInput(row.promo.endsAt))
   const [busy, setBusy] = useState<'save' | 'end' | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const value = Number(price.replace(/\D/g, '')) || null
+  const value = textToMoney(price) || null
   const off = discountPct(sale, value)
   const hasPromo = row.promo.state === 'ATIVA' || row.promo.state === 'AGENDADA'
 
@@ -187,7 +188,7 @@ function PromoEditor({ row, onClose, onSaved }: { row: Row; onClose: () => void;
         <div className="space-y-3">
           <p className="text-sm text-gray-600">Preço de venda: <b>{brl(sale)}</b></p>
           <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Preço promocional (R$)</span>
-            <input inputMode="numeric" className={input} value={price} placeholder="Ex.: 89900" onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} />
+            <MoneyInput className={input} value={textToMoney(price)} placeholder="89.900,00" onChange={(n) => setPrice(moneyToText(n))} />
           </label>
           {sale != null && (
             <div className="flex flex-wrap items-center gap-1.5">

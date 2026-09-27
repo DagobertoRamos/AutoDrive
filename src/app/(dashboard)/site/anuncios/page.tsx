@@ -25,7 +25,7 @@ const STATE: Record<State, { label: string; cls: string }> = {
   EM_BREVE: { label: 'Em breve', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   HIDDEN: { label: 'Fora do site', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
 }
-const money = (v: number | null) => (v == null ? 'Consulte' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }))
+const money = (v: number | null) => (v == null ? 'Consulte' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
 export default function SiteListingsPage() {

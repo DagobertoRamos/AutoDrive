@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { X, ExternalLink, Printer, RefreshCw, FileText, Ban, Plus, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 
 interface Lanc {
   id: string; ruleType: string; commissionScope: string | null; commissionScopeLabel?: string | null
@@ -80,7 +81,7 @@ export default function ExtratoDetalheModal({ entry, onClose, onChanged }: { ent
   }
 
   const addManual = async () => {
-    const value = Number(String(manual.value).replace(',', '.'))
+    const value = textToMoney(manual.value) ?? NaN
     if (!Number.isFinite(value) || value <= 0) { setError('Informe um valor maior que zero.'); return }
     if (manual.description.trim().length < 2) { setError('Informe a descrição.'); return }
     setBusy(true); setError('')
@@ -218,7 +219,7 @@ export default function ExtratoDetalheModal({ entry, onClose, onChanged }: { ent
                   <button onClick={() => setManual((m) => ({ ...m, kind: 'DEBITO' }))} className={cn('flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold', manual.kind === 'DEBITO' ? 'bg-red-600 text-white' : 'border border-gray-300 text-gray-600')}>− Débito</button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <input inputMode="decimal" value={manual.value} onChange={(e) => setManual((m) => ({ ...m, value: e.target.value }))} placeholder="Valor (ex: 100)" className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                  <MoneyInput value={textToMoney(manual.value)} onChange={(n) => setManual((m) => ({ ...m, value: moneyToText(n) }))} placeholder="Valor" className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   <input value={manual.description} onChange={(e) => setManual((m) => ({ ...m, description: e.target.value }))} placeholder="Descrição (ex: garantia X)" className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                 </div>
                 <input value={manual.reason} onChange={(e) => setManual((m) => ({ ...m, reason: e.target.value }))} placeholder="Motivo (opcional)" className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />

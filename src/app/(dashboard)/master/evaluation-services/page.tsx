@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Loader2, Plus, Trash2, GripVertical, Save, RotateCcw, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { MoneyInput } from '@/components/ui/money-input'
 
 interface ServiceCatalogItem {
   key:            string
@@ -185,14 +186,10 @@ export default function MasterEvaluationServicesPage() {
                     </select>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <input
-                      type="number"
-                      min="0"
-                      step="10"
-                      value={it.suggestedCost ?? ''}
-                      onChange={(e) => updateItem(idx, { suggestedCost: e.target.value ? Number(e.target.value) : undefined })}
-                      className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm"
-                      placeholder="R$"
+                    <MoneyInput
+                      value={it.suggestedCost ?? null}
+                      onChange={(n) => updateItem(idx, { suggestedCost: n ?? undefined })}
+                      className="w-32 rounded border border-gray-300 px-2 py-1 text-right text-sm"
                     />
                   </td>
                   <td className="px-3 py-2 text-center">

@@ -83,7 +83,7 @@ export function Thumb({ src, className }: { src: string | null | undefined; clas
   )
 }
 
-export const money = (v: number | null | undefined) => (v == null ? 'Consulte' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }))
+export const money = (v: number | null | undefined) => (v == null ? 'Consulte' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 export function ago(d: string | Date | null | undefined): string {
   if (!d) return '—'

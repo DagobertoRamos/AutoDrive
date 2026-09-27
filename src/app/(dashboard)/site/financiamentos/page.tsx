@@ -26,7 +26,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   CONVERTED: { label: 'Convertido', cls: 'bg-green-50 text-green-700' }, LOST: { label: 'Perdido', cls: 'bg-gray-100 text-gray-500' },
   DISCARDED: { label: 'Descartado', cls: 'bg-gray-100 text-gray-500' }, RECYCLED: { label: 'Reciclado', cls: 'bg-gray-100 text-gray-600' },
 }
-const brl = (v: number | null) => (v == null ? '' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }))
+const brl = (v: number | null) => (v == null ? '' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const wa = (phone: string | null) => { const d = (phone ?? '').replace(/\D/g, ''); return d ? `https://wa.me/${d.length <= 11 ? `55${d}` : d}` : '' }
 
 export default function SiteFinancingPage() {

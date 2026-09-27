@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, FileText, Loader2, Plus, Receipt, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { EXPENSE_CATEGORIES, parseMoneyInput, REVENUE_CATEGORIES } from '@/lib/stock/prep-core'
 import { VehicleFilesField, type VFile } from './VehicleFilesField'
 
@@ -164,7 +165,7 @@ function PayModal({ line, accounts, onClose, onPay }: { line: Line; accounts: Da
     <Modal title={`${line.type === 'RECEITA' ? 'Receber' : 'Pagar'}: ${line.description}`} onClose={onClose}>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-gray-600">Data<input type="date" className={input} value={f.paidDate} onChange={(e) => setF({ ...f, paidDate: e.target.value })} /></label>
-        <label className="text-xs text-gray-600">Valor<input className={input} inputMode="decimal" disabled={!!line.locked} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value.replace(/[^\d,.]/g, '') })} /></label>
+        <label className="text-xs text-gray-600">Valor<MoneyInput className={input} disabled={!!line.locked} value={textToMoney(f.amount)} onChange={(n) => setF({ ...f, amount: moneyToText(n) })} /></label>
         <label className="text-xs text-gray-600">Forma<select className={input} value={f.paymentMethod} onChange={(e) => setF({ ...f, paymentMethod: e.target.value })}>{METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>
         <label className="text-xs text-gray-600">Conta<select className={input} value={f.accountId} onChange={(e) => setF({ ...f, accountId: e.target.value })}><option value="">—</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       </div>
@@ -198,7 +199,7 @@ function NewEntryModal({ vehicleId, accounts, onClose, onSaved }: { vehicleId: s
         <label className="text-xs text-gray-600">Tipo<select className={input} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value, category: e.target.value === 'DESPESA' ? 'DOCUMENTACAO' : 'OUTRA_RECEITA' })}><option value="DESPESA">Despesa / custo</option><option value="RECEITA">Receita</option></select></label>
         <label className="text-xs text-gray-600">Categoria<select className={input} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{cats.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
         <label className="text-xs text-gray-600 sm:col-span-2">Descrição<input className={input} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Ex.: transferência DETRAN, multa AIT 123, pneu dianteiro" maxLength={200} /></label>
-        <label className="text-xs text-gray-600">Valor<input className={input} inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value.replace(/[^\d,.]/g, '') })} /></label>
+        <label className="text-xs text-gray-600">Valor<MoneyInput className={input} value={textToMoney(f.amount)} onChange={(n) => setF({ ...f, amount: moneyToText(n) })} /></label>
         <label className="text-xs text-gray-600">Vencimento<input type="date" className={input} value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} /></label>
         <label className="text-xs text-gray-600 sm:col-span-2">Fornecedor / favorecido<input className={input} value={f.counterparty} onChange={(e) => setF({ ...f, counterparty: e.target.value })} maxLength={120} /></label>
         <label className="flex items-center gap-2 text-xs text-gray-700 sm:col-span-2"><input type="checkbox" checked={f.paid} onChange={(e) => setF({ ...f, paid: e.target.checked })} className="rounded border-gray-300" />Já está pago</label>

@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, ArrowRight, CalendarClock, Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Rocket, Save, Search, Star, Wand2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, ErrorNote, inputCls, money, PubTabs, Thumb } from '@/components/publications/ui'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { ListingProfileStep } from '@/components/publications/ListingProfileStep'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 
@@ -290,7 +291,7 @@ function StepContent({ vehicleId }: { vehicleId: string }) {
           <span className="text-[11px] text-gray-400">Vazio = texto gerado só com a ficha do estoque. Não inclua opcionais, garantia ou financiamento que não existam.</span>
         </label>
         <label className="block text-xs font-medium text-gray-600">Condições comerciais<textarea rows={3} className={inputCls} value={c.conditions} placeholder="Ex.: Aceita troca. Documentação em dia." onChange={(e) => set({ conditions: e.target.value })} maxLength={1000} /></label>
-        <label className="block text-xs font-medium text-gray-600">Preço anunciado<input inputMode="numeric" className={inputCls} value={c.price} placeholder={data.vehicle.price != null ? `${money(data.vehicle.price)} (estoque)` : 'Defina no estoque'} onChange={(e) => set({ price: e.target.value.replace(/[^\d.]/g, '') })} /></label>
+        <label className="block text-xs font-medium text-gray-600">Preço anunciado<MoneyInput className={inputCls} value={textToMoney(c.price)} placeholder={data.vehicle.price != null ? `${money(data.vehicle.price).replace(/^R\$\s*/, '')} (estoque)` : 'Defina no estoque'} onChange={(n) => set({ price: moneyToText(n) })} /></label>
         <div className="flex items-center gap-2"><button onClick={save} className="btn-secondary px-3 py-1.5 text-xs"><Save size={14} />Salvar</button><span className="text-xs text-gray-500" role="status">{state === 'saving' ? 'Salvando…' : state === 'saved' ? 'Salvo' : state === 'error' ? msg : ''}</span></div>
       </div>
       <aside className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">

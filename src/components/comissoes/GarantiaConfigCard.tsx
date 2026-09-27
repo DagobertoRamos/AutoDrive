@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ShieldCheck, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 
 interface Produto { match: string; valorCheia: string; vendedorCheia: string; vendedorDesconto: string; gerente: string }
 interface Config { active: boolean; lojaPagaSemComissao: boolean; produtos: Produto[]; defaultGerente: string; defaultVendedorCheia: string; defaultVendedorDesconto: string }
@@ -97,10 +98,10 @@ export default function GarantiaConfigCard() {
                 {cfg.produtos.map((p, i) => (
                   <tr key={i}>
                     <td className="px-2 py-1.5"><input value={p.match} onChange={(e) => setProd(i, 'match', e.target.value)} placeholder="Ex: 150EX 2anos" className={inputCls} /></td>
-                    <td className="px-2 py-1.5"><input inputMode="decimal" value={p.valorCheia} onChange={(e) => setProd(i, 'valorCheia', e.target.value)} placeholder="Ex: 3350" className={inputNum} /></td>
-                    <td className="px-2 py-1.5"><input inputMode="decimal" value={p.vendedorCheia} onChange={(e) => setProd(i, 'vendedorCheia', e.target.value)} placeholder="0" className={inputNum} /></td>
-                    <td className="px-2 py-1.5"><input inputMode="decimal" value={p.vendedorDesconto} onChange={(e) => setProd(i, 'vendedorDesconto', e.target.value)} placeholder="0" className={inputNum} /></td>
-                    <td className="px-2 py-1.5"><input inputMode="decimal" value={p.gerente} onChange={(e) => setProd(i, 'gerente', e.target.value)} placeholder="0" className={inputNum} /></td>
+                    <td className="px-2 py-1.5"><MoneyInput value={textToMoney(p.valorCheia)} onChange={(n) => setProd(i, 'valorCheia', moneyToText(n))} className={inputNum} /></td>
+                    <td className="px-2 py-1.5"><MoneyInput value={textToMoney(p.vendedorCheia)} onChange={(n) => setProd(i, 'vendedorCheia', moneyToText(n))} className={inputNum} /></td>
+                    <td className="px-2 py-1.5"><MoneyInput value={textToMoney(p.vendedorDesconto)} onChange={(n) => setProd(i, 'vendedorDesconto', moneyToText(n))} className={inputNum} /></td>
+                    <td className="px-2 py-1.5"><MoneyInput value={textToMoney(p.gerente)} onChange={(n) => setProd(i, 'gerente', moneyToText(n))} className={inputNum} /></td>
                     <td className="px-2 py-1.5 text-center"><button onClick={() => delProd(i)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover produto"><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
@@ -113,15 +114,15 @@ export default function GarantiaConfigCard() {
           <div className="grid gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">Default vend. cheia</label>
-              <input inputMode="decimal" value={cfg.defaultVendedorCheia} onChange={(e) => { setSaved(false); setCfg({ ...cfg, defaultVendedorCheia: e.target.value }) }} placeholder="0" className={inputNum} />
+              <MoneyInput value={textToMoney(cfg.defaultVendedorCheia)} onChange={(n) => { setSaved(false); setCfg({ ...cfg, defaultVendedorCheia: moneyToText(n) }) }} className={inputNum} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">Default vend. desconto</label>
-              <input inputMode="decimal" value={cfg.defaultVendedorDesconto} onChange={(e) => { setSaved(false); setCfg({ ...cfg, defaultVendedorDesconto: e.target.value }) }} placeholder="0" className={inputNum} />
+              <MoneyInput value={textToMoney(cfg.defaultVendedorDesconto)} onChange={(n) => { setSaved(false); setCfg({ ...cfg, defaultVendedorDesconto: moneyToText(n) }) }} className={inputNum} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">Default gerente</label>
-              <input inputMode="decimal" value={cfg.defaultGerente} onChange={(e) => { setSaved(false); setCfg({ ...cfg, defaultGerente: e.target.value }) }} placeholder="0" className={inputNum} />
+              <MoneyInput value={textToMoney(cfg.defaultGerente)} onChange={(n) => { setSaved(false); setCfg({ ...cfg, defaultGerente: moneyToText(n) }) }} className={inputNum} />
             </div>
           </div>
           <p className="text-xs text-gray-400">Cobrado ≥ “valor cheio” → comissão cheia; abaixo → desconto. Sem valor cheio cadastrado, paga cheia. O produto é casado por trecho do nome (ex.: “150EX 2anos” casa “Gestauto - +150EX 2anos”).</p>

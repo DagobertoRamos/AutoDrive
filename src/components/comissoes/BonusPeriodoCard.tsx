@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Trophy, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 
 interface Rate { key: string; nome: string; rate: string }
 interface Config {
@@ -139,7 +140,7 @@ export default function BonusPeriodoCard() {
           {/* Bônus 3 dezenas */}
           <div className="space-y-2">
             {chk(cfg.dezenaCombo.active, (b) => setCfg({ ...cfg, dezenaCombo: { ...cfg.dezenaCombo, active: b } }), 'Bônus das 3 dezenas — quando o vendedor fecha as 3 dezenas do mês')}
-            <div className="max-w-xs"><label className="mb-1 block text-xs font-medium text-gray-700">Valor do bônus (R$)</label><input inputMode="decimal" value={cfg.dezenaCombo.value} onChange={(e) => { dirty(); setCfg({ ...cfg, dezenaCombo: { ...cfg.dezenaCombo, value: e.target.value } }) }} placeholder="1000" className={inputNum} /></div>
+            <div className="max-w-xs"><label className="mb-1 block text-xs font-medium text-gray-700">Valor do bônus (R$)</label><MoneyInput value={textToMoney(cfg.dezenaCombo.value)} onChange={(n) => { dirty(); setCfg({ ...cfg, dezenaCombo: { ...cfg.dezenaCombo, value: moneyToText(n) } }) }} className={inputNum} /></div>
           </div>
 
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={14} />{error}</div>}

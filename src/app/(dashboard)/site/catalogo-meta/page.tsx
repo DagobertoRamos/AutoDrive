@@ -21,7 +21,7 @@ interface Report {
 }
 
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
-const brl = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }) : '—' }
+const brl = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—' }
 
 export default function SiteMetaCatalogPage() {
   const [r, setR] = useState<Report | null>(null)

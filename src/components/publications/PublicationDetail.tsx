@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, ExternalLink, Loader2, Pause, Play, RefreshCw, Save, Trash2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { api, ago, ChannelMark, Drawer, ErrorNote, inputCls, money, StatusPill, STATUS_TONE, when } from './ui'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -102,7 +103,7 @@ export function PublicationDetail({ id, onClose, onChanged }: { id: string | nul
                 <div className="space-y-2 rounded-xl border border-gray-200 p-3">
                   <label className="block text-xs text-gray-600">Título<input className={inputCls} value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></label>
                   <label className="block text-xs text-gray-600">Descrição<textarea rows={6} className={inputCls} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></label>
-                  <label className="block text-xs text-gray-600">Preço neste canal (vazio = preço do estoque)<input inputMode="numeric" className={inputCls} value={edit.price} onChange={(e) => setEdit({ ...edit, price: e.target.value.replace(/[^\d.]/g, '') })} /></label>
+                  <label className="block text-xs text-gray-600">Preço neste canal (vazio = preço do estoque)<MoneyInput className={inputCls} value={textToMoney(edit.price)} onChange={(n) => setEdit({ ...edit, price: moneyToText(n) })} /></label>
                   <div className="flex justify-end gap-2"><button onClick={() => setEdit(null)} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button><button onClick={saveOverrides} disabled={busy === 'save'} className="btn-primary px-3 py-1.5 text-xs">{busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Salvar</button></div>
                 </div>
               ) : (

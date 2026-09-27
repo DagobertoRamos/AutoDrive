@@ -16,7 +16,7 @@ import { PhotoGalleryModal } from './avaliacoes/PhotoGalleryModal'
 import { getStatusDef } from './avaliacoes/status'
 import type { VehicleHistory } from '@/lib/stock/vehicle-history'
 
-const brl = (v: number | null) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }))
+const brl = (v: number | null) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const date = (s: string | null) => (s ? new Date(s).toLocaleDateString('pt-BR') : '—')
 const kmTxt = (k: number | null) => (k == null ? 'km —' : `${k.toLocaleString('pt-BR')} km`)
 const STOCK_LABEL: Record<string, string> = {
