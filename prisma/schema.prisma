@@ -970,6 +970,27 @@ model VehicleServiceEvent {
   @@map("vehicle_service_events")
 }
 
+// ── Rascunho de negociação (assistente Nova Negociação) ──────────────────────
+// Gravado sozinho enquanto o vendedor preenche; guarda o formulário e a etapa
+// onde parou. Não é uma negociação (sem número, sem efeitos): vira Deal só ao
+// salvar/enviar no fim do assistente, e então o rascunho é apagado.
+model DealDraft {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String
+  userName  String?
+  type      String? // VENDA | COMPRA | TROCA | CONSIGNACAO
+  step      Int      @default(0)
+  title     String? // resumo: cliente · veículo
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId])
+  @@index([updatedAt])
+  @@map("deal_drafts")
+}
+
 // ── Lojas parceiras ───────────────────────────────────────────────────────────
 // Lojistas cujos carros a loja anuncia/intermedeia (origem PARTNER do veículo).
 // `sourceRef` = identificação na origem (ex.: "legacy:<uuid>" do site antigo,

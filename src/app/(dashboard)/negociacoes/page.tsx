@@ -35,6 +35,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
+import { DealDraftsPanel } from '@/components/negotiations/DealDraftsPanel'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -575,6 +576,9 @@ export default function NegociacoesPage() {
           </button>
         </div>
       )}
+
+      {/* Negociações abertas no assistente e ainda não concluídas */}
+      {canAccessModule(role, 'negotiations') && <DealDraftsPanel />}
 
       {/* Cards de resumo */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

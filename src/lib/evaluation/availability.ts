@@ -32,7 +32,9 @@ export interface EvaluationAvailabilityResult {
 }
 
 // Status do workflow paralelo que indicam liberação pelo gerente+
-const RELEASED_STATUSES = new Set(['LIBERADA', 'APPROVED', 'FINALIZED', 'PENDING_REVIEW'])
+// AGUARDANDO_ENTRADA / NO_ESTOQUE: a avaliação seguiu para a esteira de entrada
+// (o carro já está no estoque aguardando a negociação de entrada).
+const RELEASED_STATUSES = new Set(['LIBERADA', 'APPROVED', 'FINALIZED', 'PENDING_REVIEW', 'AGUARDANDO_ENTRADA', 'NO_ESTOQUE'])
 const LEGACY_RELEASED   = new Set(['APROVADO'])
 
 // Status de negociação que bloqueiam reuso do veículo (já vinculado em deal ativo)

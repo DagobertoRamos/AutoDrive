@@ -4,7 +4,7 @@
 // /negociacoes/nova — Wizard multi-step 8 etapas de criação de negociação
 // =============================================================================
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -13,6 +13,7 @@ import { formatCNPJ, normalizeCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
 import { formatCEP, normalizeCEP, isCEPComplete } from '@/lib/br-docs/cep'
 import { BankCombo } from '@/components/forms/BankCombo'
+import { draftTitle } from '@/lib/negotiation-drafts'
 import {
   ArrowLeft,
   ArrowRight,
@@ -256,7 +257,18 @@ interface EvaluationItem {
   result:         string
   createdAt:      string
   ownerName:      string | null
+  // Esteira de entrada: avaliação que já virou carro no estoque
+  status?:             string | null
+  modelYear?:          number | null
+  manufactureYear?:    number | null
+  suggestedSalePrice?: number | string | null
+  vehicleId?:          string | null
+  vehicle?:            { id: string; stockStatus: string | null; salePrice: number | string | null; purchasePrice: number | string | null } | null
 }
+
+/** Ano da avaliação (a API devolve modelo/fabricação; `year` é legado). */
+const evalYear = (ev: EvaluationItem) => ev.modelYear ?? ev.manufactureYear ?? ev.year ?? null
+const moneyMask = (v: number | string | null | undefined) => (v == null || v === '' ? '' : maskBRLInput(String(Math.round(Number(v) * 100))))
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -794,7 +806,7 @@ function EvaluationSearchModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-          <h3 className="font-semibold text-gray-900">Buscar Avaliação Aprovada</h3>
+          <h3 className="font-semibold text-gray-900">Veículos avaliados e liberados</h3>
           <button
             onClick={onClose}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
@@ -860,12 +872,17 @@ function EvaluationSearchModal({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-gray-900 text-sm">
-                      {[ev.brand, ev.model, ev.year].filter(Boolean).join(' ')}
+                      {[ev.brand, ev.model, evalYear(ev)].filter(Boolean).join(' ')}
                       {ev.plate && <span className="ml-1.5 font-mono text-xs text-gray-500">· {ev.plate}</span>}
                     </p>
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                       Aprovada
                     </span>
+                    {ev.vehicle && (
+                      <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800" title="Já entrou no estoque pela esteira; aguarda a negociação de entrada">
+                        No estoque
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {ev.km != null ? `${ev.km.toLocaleString('pt-BR')} km` : ''}
@@ -1950,10 +1967,11 @@ function StepVeiculos({
   // Seleciona avaliação para o veículo recebido na troca
   const handleSelectEvaluation = (ev: EvaluationItem) => {
     setTradeVehicleField('evaluationId', ev.id)
+    setTradeVehicleField('vehicleId', ev.vehicle?.id ?? ev.vehicleId ?? null)
     setTradeVehicleField('plate', ev.plate ?? '')
     setTradeVehicleField('brand', ev.brand ?? '')
     setTradeVehicleField('model', ev.model ?? '')
-    setTradeVehicleField('year',  ev.year != null ? String(ev.year) : '')
+    setTradeVehicleField('year',  evalYear(ev) != null ? String(evalYear(ev)) : '')
     setTradeVehicleField('km',    ev.km   != null ? String(ev.km)   : '')
     if (ev.evaluatedValue != null)
       setTradeVehicleField('evaluatedValue', maskBRLInput(String(Math.round(Number(ev.evaluatedValue) * 100))))
@@ -1968,10 +1986,11 @@ function StepVeiculos({
   // Avaliação aprovada selecionada para COMPRA
   const handleSelectEvaluationCompra = (ev: EvaluationItem) => {
     setVehicleField('evaluationId', ev.id)
+    setVehicleField('vehicleId', ev.vehicle?.id ?? ev.vehicleId ?? null)
     setVehicleField('plate', ev.plate ?? '')
     setVehicleField('brand', ev.brand ?? '')
     setVehicleField('model', ev.model ?? '')
-    setVehicleField('year', ev.year != null ? String(ev.year) : '')
+    setVehicleField('year', evalYear(ev) != null ? String(evalYear(ev)) : '')
     setVehicleField('km',   ev.km   != null ? String(ev.km)   : '')
     setVehicleField('color', ev.color ?? '')
     setVehicleField('fuel',  ev.fuel  ?? '')
@@ -1992,6 +2011,28 @@ function StepVeiculos({
   const fi = (k: keyof DealForm) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => setField(k, e.target.value as DealForm[typeof k])
+
+  // Consignação: veículo avaliado/liberado (muitas vezes já no estoque pela esteira).
+  const [showEvalModalConsig, setShowEvalModalConsig] = useState(false)
+  const handleSelectEvaluationConsig = (ev: EvaluationItem) => {
+    setVehicleField('evaluationId', ev.id)
+    setVehicleField('vehicleId', ev.vehicle?.id ?? ev.vehicleId ?? null)
+    setVehicleField('plate', ev.plate ?? '')
+    setVehicleField('brand', ev.brand ?? '')
+    setVehicleField('model', ev.model ?? '')
+    setVehicleField('year', evalYear(ev) != null ? String(evalYear(ev)) : '')
+    setVehicleField('km', ev.km != null ? String(ev.km) : '')
+    setVehicleField('color', ev.color ?? '')
+    setVehicleField('fuel', ev.fuel ?? '')
+    // Valor anunciado = preço de venda do estoque/sugerido; mínimo ao proprietário = valor avaliado.
+    const anuncio = ev.vehicle?.salePrice ?? ev.suggestedSalePrice ?? null
+    if (anuncio != null) setVehicleField('vehicleValue', moneyMask(anuncio))
+    if (ev.evaluatedValue != null) {
+      setVehicleField('evaluatedValue', moneyMask(ev.evaluatedValue))
+      setField('consignMinValue', moneyMask(ev.vehicle?.purchasePrice ?? ev.evaluatedValue))
+    }
+    if (ev.fipeValue != null) setVehicleField('fipeValue', moneyMask(ev.fipeValue))
+  }
 
   // Input monetário com máscara BRL
   const moneyInput = (k: keyof VehicleFields, placeholder = '0,00') => (
@@ -2389,8 +2430,30 @@ function StepVeiculos({
           <div className="space-y-4">
             <div>
               <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo em Consignação</h2>
-              <p className="text-sm text-gray-500">Dados do veículo que será anunciado pela loja.</p>
+              <p className="text-sm text-gray-500">Selecione o veículo avaliado e liberado (já no estoque) — os dados vêm preenchidos. Sem avaliação, preencha à mão.</p>
             </div>
+            {showEvalModalConsig && (
+              <EvaluationSearchModal
+                operation="CONSIGNACAO"
+                onSelect={(ev) => { handleSelectEvaluationConsig(ev); setShowEvalModalConsig(false) }}
+                onClose={() => setShowEvalModalConsig(false)}
+              />
+            )}
+            {form.vehicle.evaluationId ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Veículo liberado selecionado</p>
+                  <p className="text-sm font-bold text-gray-900">{[form.vehicle.brand, form.vehicle.model, form.vehicle.year].filter(Boolean).join(' ')}{form.vehicle.plate && <span className="ml-2 font-mono text-xs text-gray-500">{form.vehicle.plate}</span>}</p>
+                  {form.vehicle.vehicleId && <p className="text-[11px] text-emerald-700">Já está no estoque: a negociação de entrada será vinculada a ele.</p>}
+                </div>
+                <button type="button" onClick={() => { setVehicleField('evaluationId', ''); setVehicleField('vehicleId', null) }} className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Trocar</button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setShowEvalModalConsig(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-brand-300 bg-brand-50/40 px-4 py-4 text-sm font-semibold text-brand-700 hover:bg-brand-50">
+                <Search size={16} />Selecionar veículo liberado no estoque
+              </button>
+            )}
             <VehicleFormBlock data={form.vehicle} onChange={setVehicleField} showValuation={false} lockValue={lockVehicleValue} />
           </div>
           <div className="border-t border-gray-200 pt-6 space-y-4">
@@ -4058,6 +4121,68 @@ export default function NovaNegociacaoPage() {
   const [hydrating, setHydrating] = useState(mode === 'edit')
   const [dealMeta,  setDealMeta]  = useState<{ dealNumber: string | null; status: string } | null>(null)
 
+  // ── Rascunho automático (só na criação) ───────────────────────────────────
+  // O assistente grava sozinho o que já foi preenchido e a etapa onde parou
+  // (tabela deal_drafts — não é negociação, não gera número nem efeitos).
+  // Retoma por /negociacoes/nova?rascunho=<id>; some ao salvar/enviar.
+  const draftParam = searchParams.get('rascunho') ?? ''
+  const [draftId, setDraftId]       = useState(draftParam)
+  const [draftState, setDraftState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'error'; at: string | null }>({ status: 'idle', at: null })
+  const [draftReady, setDraftReady] = useState(!draftParam)
+  const [openDrafts, setOpenDrafts] = useState<Array<{ id: string; title: string | null; step: number; updatedAt: string; type: string | null }>>([])
+  const creatingDraft = useRef<Promise<string | null> | null>(null)
+
+  useEffect(() => {
+    if (mode !== 'create' || !draftParam) return
+    let alive = true
+    fetch(`/api/negotiations/drafts/${draftParam}`).then((r) => r.json()).then((j) => {
+      if (!alive) return
+      if (j?.success && j.data?.data?.form) {
+        setForm({ ...INITIAL_FORM, ...(j.data.data.form as Partial<DealForm>) })
+        setStep(Number(j.data.step) || 0)
+        setDraftState({ status: 'saved', at: j.data.updatedAt })
+      } else {
+        setDraftId('')
+      }
+    }).catch(() => setDraftId('')).finally(() => { if (alive) setDraftReady(true) })
+    return () => { alive = false }
+  }, [mode, draftParam])
+
+  // Rascunhos em aberto (aviso ao abrir uma negociação nova do zero).
+  useEffect(() => {
+    if (mode !== 'create' || draftParam) return
+    fetch('/api/negotiations/drafts').then((r) => r.json())
+      .then((j) => setOpenDrafts(Array.isArray(j?.data) ? j.data.filter((d: { mine?: boolean }) => d.mine).slice(0, 3) : []))
+      .catch(() => undefined)
+  }, [mode, draftParam])
+
+  useEffect(() => {
+    if (mode !== 'create' || !draftReady) return
+    if (!form.type && step === 0) return // nada preenchido ainda
+    const t = setTimeout(async () => {
+      setDraftState((d) => ({ ...d, status: 'saving' }))
+      const body = JSON.stringify({ data: { form }, step, type: form.type || null, title: draftTitle(form) })
+      try {
+        let id = draftId
+        if (!id) {
+          creatingDraft.current ??= fetch('/api/negotiations/drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+            .then((r) => r.json()).then((j) => (j?.success ? (j.data.id as string) : null)).catch(() => null)
+          id = (await creatingDraft.current) ?? ''
+          if (!id) throw new Error('rascunho')
+          setDraftId(id)
+          window.history.replaceState(null, '', `/negociacoes/nova?rascunho=${id}`)
+        } else {
+          const r = await fetch(`/api/negotiations/drafts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body })
+          if (!r.ok) throw new Error('rascunho')
+        }
+        setDraftState({ status: 'saved', at: new Date().toISOString() })
+      } catch {
+        setDraftState((d) => ({ ...d, status: 'error' }))
+      }
+    }, 1500)
+    return () => clearTimeout(t)
+  }, [form, step, mode, draftReady, draftId])
+
   // ── Hidratação em modo edição: carrega deal completo e popula o form ──────
   useEffect(() => {
     if (mode !== 'edit' || !dealId) return
@@ -4461,6 +4586,7 @@ export default function NovaNegociacaoPage() {
       } : undefined,
       tradeInVehicle: hasTradeVehicle ? {
         evaluationId:   tv.evaluationId ?? undefined,
+        vehicleId:      tv.vehicleId ?? undefined,
         plate:          tv.plate   || null,
         brand:          tv.brand   || null,
         model:          tv.model   || null,
@@ -4565,6 +4691,7 @@ export default function NovaNegociacaoPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao criar negociação')
+      if (draftId) await fetch(`/api/negotiations/drafts/${draftId}`, { method: 'DELETE' }).catch(() => undefined)
       router.replace(`/negociacoes/${data.data.id}`)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro inesperado')
@@ -4576,6 +4703,14 @@ export default function NovaNegociacaoPage() {
   const isFinalButtons = step === 6 || step === 7
 
   // ── Tela de loading durante hidratação (modo edição) ─────────────────────
+  if (mode === 'create' && !draftReady) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col items-center justify-center gap-3 py-24">
+        <Loader2 size={28} className="animate-spin text-brand-600" />
+        <p className="text-sm font-medium text-gray-700">Abrindo o rascunho da negociação…</p>
+      </div>
+    )
+  }
   if (hydrating) {
     return (
       <div className="mx-auto flex max-w-3xl flex-col items-center justify-center gap-3 py-24">
@@ -4614,11 +4749,34 @@ export default function NovaNegociacaoPage() {
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500">
-            Etapa {step + 1} de {STEPS.length} — {STEPS[step].label}
+          <p className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+            <span>Etapa {step + 1} de {STEPS.length} — {STEPS[step].label}</span>
+            {mode === 'create' && draftState.status !== 'idle' && (
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${draftState.status === 'error' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}`}
+                title="A negociação fica salva como rascunho: pode sair e continuar depois em Negociações.">
+                {draftState.status === 'saving' ? <Loader2 size={10} className="animate-spin" /> : <CheckCircle2 size={10} />}
+                {draftState.status === 'saving' ? 'Salvando rascunho…'
+                  : draftState.status === 'error' ? 'Rascunho não salvo'
+                  : `Rascunho salvo${draftState.at ? ` às ${new Date(draftState.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''} · parou em ${STEPS[step].label}`}
+              </span>
+            )}
           </p>
         </div>
       </div>
+
+      {mode === 'create' && !draftParam && !form.type && step === 0 && openDrafts.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Você tem negociação em andamento:</p>
+          <ul className="mt-1 space-y-1">
+            {openDrafts.map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs">{d.title || 'Sem cliente/veículo'} · parou em <b>{STEPS[d.step]?.label ?? '—'}</b> · {new Date(d.updatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <Link href={`/negociacoes/nova?rascunho=${d.id}`} className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700">Continuar</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Barra de progresso */}
       <div className="h-1 overflow-hidden rounded-full bg-gray-200">

@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
         {
           OR: [
             { result: 'APROVADO' },
-            { status: 'LIBERADA' },
+            { status: { in: ['LIBERADA', 'AGUARDANDO_ENTRADA', 'NO_ESTOQUE'] } },
           ],
         },
         { evaluatedValue: { not: null, gt: 0 } },
@@ -130,6 +130,8 @@ export async function GET(req: NextRequest) {
           proposalValidUntil:  true,
           vehicleId:           true,
           cancelledAt:         true,
+          // Carro que já entrou no estoque pela esteira (aguardando a negociação de entrada)
+          vehicle:        { select: { id: true, stockStatus: true, active: true, salePrice: true, purchasePrice: true } },
           evaluatedBy:    { select: { id: true, name: true } },
           unit:           { select: { id: true, name: true } },
         } as never,
@@ -170,6 +172,8 @@ export async function GET(req: NextRequest) {
         { ...e, dealVehicles: dealVehiclesByEval[e.id] ?? [] },
         operation ?? 'COMPRA',
       )
+      // Carro já vendido/inativo não entra de novo por esta avaliação.
+      if (e.vehicle && (!e.vehicle.active || e.vehicle.stockStatus === 'VENDIDO')) return false
       return check.canUse
     })
 

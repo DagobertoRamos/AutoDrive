@@ -548,7 +548,7 @@ export async function POST(req: NextRequest) {
           // (não importa aqui pra evitar ciclo — duplica a checagem mínima).
           if (ev.cancelledAt)
             throw new Error('Este veículo avaliado não está disponível para troca. Avaliação cancelada.')
-          const releasedOk = ['LIBERADA', 'APROVADO', 'APPROVED', 'FINALIZED'].includes(
+          const releasedOk = ['LIBERADA', 'APROVADO', 'APPROVED', 'FINALIZED', 'AGUARDANDO_ENTRADA', 'NO_ESTOQUE'].includes(
             (ev.status ?? ev.result ?? '').toUpperCase(),
           ) || (ev.result ?? '').toUpperCase() === 'APROVADO'
           if (!releasedOk)
@@ -586,6 +586,8 @@ export async function POST(req: NextRequest) {
           data: {
             dealId:        deal.id,
             role:          'TROCA',
+            // Carro que já está no estoque (veio da avaliação pela esteira): vincula direto.
+            vehicleId:     tradeInVehicle.vehicleId ?? null,
             plate:         tradeInVehicle.plate?.toUpperCase()  ?? null,
             brand:         tradeInVehicle.brand  ?? null,
             model:         tradeInVehicle.model  ?? null,
