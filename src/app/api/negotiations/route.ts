@@ -294,7 +294,8 @@ export async function POST(req: NextRequest) {
         where: {
           id: bodySellerId,
           ...(resolvedUnitId      ? { unitId:   resolvedUnitId } : {}),
-          ...(session.user.tenantId ? { tenantId: session.user.tenantId } : {}),
+          // Seller não tem tenantId: a loja vem pela unidade do vendedor.
+          ...(session.user.tenantId ? { unit: { tenantId: session.user.tenantId } } : {}),
         },
         select: { id: true },
       })

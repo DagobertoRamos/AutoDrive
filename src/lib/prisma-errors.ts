@@ -51,6 +51,17 @@ function buildP2003Hint(fieldName: string | null): string {
   return `Campo "${fieldName}" referencia um registro inexistente.`
 }
 
+/**
+ * Resumo curto e seguro de um PrismaClientValidationError para o usuário
+ * repassar ao suporte: "seller.findFirst · campo tenantId".
+ */
+export function describeValidationError(message: string): string | null {
+  const call = /`prisma\.(\w+)\.(\w+)\(\)`/.exec(message)
+  const arg = /(?:Unknown argument|Argument|Invalid value for argument|Unknown field) `([^`]+)`/.exec(message)
+  const parts = [call ? `${call[1]}.${call[2]}` : null, arg ? `campo ${arg[1]}` : null].filter(Boolean)
+  return parts.length ? parts.join(' · ') : null
+}
+
 // ── mapPrismaError ────────────────────────────────────────────────────────────
 
 /**
@@ -96,10 +107,17 @@ export function mapPrismaError(err: unknown): { body: ApiError; status: number }
 
   // Erros de validação do Prisma Client
   if (err instanceof Prisma.PrismaClientValidationError) {
-    if (isDev) console.error('[prisma-validation]', err.message)
+    // Sempre registra (em produção também): é defeito de código, não do usuário.
+    console.error('[prisma-validation]', err.message.slice(0, 2000))
+    const where = describeValidationError(err.message)
     return {
-      body: { success: false, error: 'Dados inválidos. Verifique os campos enviados.' },
-      status: 400,
+      body: {
+        success: false,
+        error:   `Erro interno do sistema ao gravar${where ? ` (${where})` : ''}. Não é problema no que você preencheu — avise o suporte com esta mensagem.`,
+        hint:    'Os dados preenchidos continuam salvos (rascunho).',
+        ...(isDev ? { code: 'PRISMA_VALIDATION' } : {}),
+      },
+      status: 500,
     }
   }
 
