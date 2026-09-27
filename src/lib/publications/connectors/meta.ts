@@ -6,6 +6,10 @@
 // na Página não comprova Marketplace e vice-versa.
 // Fontes: developers.facebook.com/documentation/pages-api/posts e
 //         .../instagram-platform/content-publishing (lidas em 25/09/2026).
+// Estúdio social (payload.social): Post/Carrossel com arte na capa, Story
+// (Instagram: media_type STORIES; Página: /photo_stories) e Reels (Instagram:
+// media_type REELS processado em segundo plano; Página: /video_reels em 3
+// fases com file_url). Sem formato = post com as fotos (comportamento antigo).
 // Versão da Graph API: META_GRAPH_VERSION (padrão abaixo).
 // =============================================================================
 
@@ -13,7 +17,8 @@ import { channelSpec } from '../channels'
 import { ConnectorError } from '../errors'
 import { channelText, type ListingPayload } from '../content-core'
 import type { HttpResponse } from './http'
-import type { Connector, ConnectorContext, RemoteRef } from './types'
+import type { Connector, ConnectorContext, RemoteRef, RemoteResult } from './types'
+import type { SocialSpec } from '../social/formats'
 
 const pageSpec = channelSpec('META_PAGE')!
 const igSpec = channelSpec('INSTAGRAM')!
@@ -47,6 +52,23 @@ async function graph<T>(ctx: ConnectorContext, method: 'GET' | 'POST' | 'DELETE'
   return (res.json<T>() ?? ({} as T))
 }
 
+/** Fotos do post: com formato social, a 1ª vira a arte (Post = só a arte). */
+function feedPhotos(p: ListingPayload, ctx: ConnectorContext, max: number): string[] {
+  const photos = p.photos.slice(0, max)
+  const s = p.social
+  if (!s || !ctx.social || !photos.length) return photos.map((u) => ctx.mediaUrl(u))
+  const art = ctx.social.artUrl(photos[0], p, s.format === 'CARROSSEL' ? 'CARROSSEL' : 'POST', s.template)
+  if (s.format === 'POST') return [art]
+  return [art, ...photos.slice(1).map((u) => ctx.mediaUrl(u))]
+}
+
+function needStudio(ctx: ConnectorContext, s: SocialSpec) {
+  if (!ctx.social) throw new ConnectorError('CONFIG', `O formato ${s.format.toLowerCase()} precisa do estúdio de artes, indisponível nesta execução.`)
+  return ctx.social
+}
+
+const STORY_OK: RemoteResult['state'] = 'PUBLICADO'
+
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export const metaPageConnector: Connector = {
@@ -57,11 +79,27 @@ export const metaPageConnector: Connector = {
   },
   async publish(p, ctx) {
     const page = ctx.connection.externalAccountId
-    const photos = p.photos.slice(0, pageSpec.media.max)
+    const s = p.social
+    if (s?.format === 'STORY') {
+      const art = needStudio(ctx, s).artUrl(p.photos[0], p, 'STORY', s.template)
+      const photo = await graph<{ id: string }>(ctx, 'POST', `/${page}/photos`, { url: art, published: 'false' }, 'Story (foto)')
+      const st = await graph<{ post_id?: string; id?: string }>(ctx, 'POST', `/${page}/photo_stories`, { photo_id: photo.id }, 'Story', true)
+      return { state: STORY_OK, remoteId: st.post_id ?? st.id ?? photo.id, remoteStatus: 'story (some em 24 h)', message: 'Story publicado na Página.' }
+    }
+    if (s?.format === 'REELS') {
+      const url = await needStudio(ctx, s).reelUrl(p, s.template)
+      const start = await graph<{ video_id: string }>(ctx, 'POST', `/${page}/video_reels`, { upload_phase: 'start' }, 'Reels (início)')
+      const version = graphBase().split('/').pop()
+      const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/video-upload/${version}/${start.video_id}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, file_url: url } })
+      const upErr = graphError(up, 'Reels (envio do vídeo)')
+      if (upErr) throw upErr
+      await graph(ctx, 'POST', `/${page}/video_reels`, { upload_phase: 'finish', video_id: start.video_id, video_state: 'PUBLISHED', description: channelText(p, pageSpec).description }, 'Reels (publicar)', true)
+      return { state: 'EM_ANALISE', remoteId: start.video_id, message: 'Reels enviado; o Facebook está processando o vídeo.' }
+    }
     const ids: string[] = []
-    for (const u of photos) {
+    for (const u of feedPhotos(p, ctx, pageSpec.media.max)) {
       // Foto sem publicar: vira anexo do post (não aparece solta na Página).
-      const r = await graph<{ id: string }>(ctx, 'POST', `/${page}/photos`, { url: ctx.mediaUrl(u), published: 'false' }, 'Foto')
+      const r = await graph<{ id: string }>(ctx, 'POST', `/${page}/photos`, { url: u, published: 'false' }, 'Foto')
       ids.push(r.id)
     }
     const params: Record<string, string> = { message: channelText(p, pageSpec).description }
@@ -71,6 +109,21 @@ export const metaPageConnector: Connector = {
   },
   async get(ref, ctx) {
     if (!ref.remoteId) return { state: 'NAO_ENCONTRADO' }
+    // Story some sozinho em 24 h: publicado é publicado (não vira "falha").
+    if (ref.format === 'STORY') return { state: STORY_OK, remoteId: ref.remoteId, remoteStatus: 'story (some em 24 h)' }
+    if (ref.format === 'REELS') {
+      try {
+        const v = await graph<{ id: string; permalink_url?: string; status?: { video_status?: string; processing_phase?: { errors?: Array<{ message?: string }> } } }>(ctx, 'GET', `/${ref.remoteId}`, { fields: 'id,permalink_url,status' }, 'Reels')
+        const st = v.status?.video_status
+        const link = v.permalink_url ? (v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`) : null
+        if (st === 'error') return { state: 'REJEITADO', remoteId: v.id, remoteStatus: 'erro no processamento', message: v.status?.processing_phase?.errors?.[0]?.message ?? 'O Facebook não conseguiu processar o vídeo.' }
+        if (st === 'ready' || st === 'published') return { state: 'PUBLICADO', remoteId: v.id, remoteUrl: link, remoteStatus: 'Reels no ar' }
+        return { state: 'EM_ANALISE', remoteId: v.id, remoteUrl: link, remoteStatus: `processando (${st ?? 'aguardando'})` }
+      } catch (e) {
+        if (e instanceof ConnectorError && e.kind === 'NOT_FOUND') return { state: 'NAO_ENCONTRADO', remoteId: ref.remoteId }
+        throw e
+      }
+    }
     try {
       const j = await graph<{ id: string; permalink_url?: string; is_published?: boolean }>(ctx, 'GET', `/${ref.remoteId}`, { fields: 'id,permalink_url,is_published' }, 'Post')
       return { state: j.is_published === false ? 'EM_ANALISE' : 'PUBLICADO', remoteId: j.id, remoteUrl: j.permalink_url ?? `https://www.facebook.com/${j.id}`, remoteStatus: j.is_published === false ? 'não publicado' : 'publicado' }
@@ -80,6 +133,7 @@ export const metaPageConnector: Connector = {
     }
   },
   async update(ref, p, ctx) {
+    if (ref.format === 'STORY' || ref.format === 'REELS') return { ...(await this.get!(ref, ctx)), message: 'Story e Reels não são editáveis: o preço novo entra nas próximas publicações.' }
     // Só o texto pode ser editado (e só de posts criados pelo app). Fotos não.
     await graph(ctx, 'POST', `/${ref.remoteId}`, { message: channelText(p, pageSpec).description }, 'Editar post')
     const r = await this.get!(ref, ctx)
@@ -87,7 +141,8 @@ export const metaPageConnector: Connector = {
   },
   async remove(ref, _reason, ctx) {
     if (!ref.remoteId) return { state: 'NAO_ENCONTRADO' }
-    try { await graph(ctx, 'DELETE', `/${ref.remoteId}`, {}, 'Excluir post') } catch (e) {
+    if (ref.format === 'STORY') return { state: 'REMOVIDO', remoteId: ref.remoteId, message: 'Story some sozinho em até 24 h.' }
+    try { await graph(ctx, 'DELETE', `/${ref.remoteId}`, {}, ref.format === 'REELS' ? 'Excluir Reels' : 'Excluir post') } catch (e) {
       if (!(e instanceof ConnectorError && e.kind === 'NOT_FOUND')) throw e
     }
     return { state: 'REMOVIDO', remoteId: ref.remoteId }
@@ -125,13 +180,27 @@ export const instagramConnector: Connector = {
     const lim = await this.limits!(ctx) as { usado: number | null; total: number | null }
     if (lim.total != null && lim.usado != null && lim.usado >= lim.total) throw new ConnectorError('QUOTA', `Limite de ${lim.total} posts por API em 24 h atingido.`, 'Aguarde a janela de 24 h do Instagram.')
     const caption = channelText(p, igSpec).description
-    const photos = p.photos.slice(0, igSpec.media.max)
+    const s = p.social
+    if (s?.format === 'STORY') {
+      const art = needStudio(ctx, s).artUrl(p.photos[0], p, 'STORY', s.template)
+      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: art, media_type: 'STORIES' }, 'Instagram (story)')).id
+      await waitContainer(ctx, c)
+      const media = await graph<{ id: string }>(ctx, 'POST', `/${ig}/media_publish`, { creation_id: c }, 'Instagram (publicar story)', true)
+      return { state: STORY_OK, remoteId: media.id, remoteStatus: 'story (some em 24 h)', message: 'Story publicado no Instagram.' }
+    }
+    if (s?.format === 'REELS') {
+      const url = await needStudio(ctx, s).reelUrl(p, s.template)
+      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'REELS', video_url: url, caption, share_to_feed: 'true' }, 'Instagram (Reels)')).id
+      // O Instagram processa o vídeo em segundo plano: a conferência publica quando ficar pronto.
+      return { state: 'EM_ANALISE', pendingToken: c, message: 'Reels enviado; o Instagram está processando o vídeo.' }
+    }
+    const photos = feedPhotos(p, ctx, igSpec.media.max)
     let creation: string
     if (photos.length === 1) {
-      creation = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: ctx.mediaUrl(photos[0]), caption }, 'Instagram (mídia)')).id
+      creation = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: photos[0], caption }, 'Instagram (mídia)')).id
     } else {
       const children: string[] = []
-      for (const u of photos) children.push((await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: ctx.mediaUrl(u), is_carousel_item: 'true' }, 'Instagram (item)')).id)
+      for (const u of photos) children.push((await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: u, is_carousel_item: 'true' }, 'Instagram (item)')).id)
       for (const c of children) await waitContainer(ctx, c)
       creation = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'CAROUSEL', children: children.join(','), caption }, 'Instagram (carrossel)')).id
     }
@@ -140,7 +209,17 @@ export const instagramConnector: Connector = {
     return this.get!({ vehicleId: p.vehicle.id, remoteId: media.id, externalRef: p.reference }, ctx)
   },
   async get(ref, ctx) {
+    // Reels em processamento: publica quando o contêiner termina.
+    if (!ref.remoteId && ref.pendingToken) {
+      const st = await graph<{ status_code?: string; status?: string }>(ctx, 'GET', `/${ref.pendingToken}`, { fields: 'status_code,status' }, 'Instagram (processamento)')
+      if (st.status_code === 'ERROR' || st.status_code === 'EXPIRED') return { state: 'REJEITADO', pendingToken: null, remoteStatus: st.status_code.toLowerCase(), message: `O Instagram recusou o vídeo (${st.status ?? st.status_code}).` }
+      if (st.status_code !== 'FINISHED') return { state: 'EM_ANALISE', remoteStatus: 'processando o vídeo' }
+      const media = await graph<{ id: string }>(ctx, 'POST', `/${ctx.connection.externalAccountId}/media_publish`, { creation_id: ref.pendingToken }, 'Instagram (publicar Reels)', true)
+      const j = await graph<{ id: string; permalink?: string }>(ctx, 'GET', `/${media.id}`, { fields: 'id,permalink' }, 'Instagram').catch(() => ({ id: media.id, permalink: undefined }))
+      return { state: 'PUBLICADO', remoteId: media.id, remoteUrl: j.permalink ?? null, pendingToken: null, remoteStatus: 'Reels no ar' }
+    }
     if (!ref.remoteId) return { state: 'NAO_ENCONTRADO' }
+    if (ref.format === 'STORY') return { state: STORY_OK, remoteId: ref.remoteId, remoteStatus: 'story (some em 24 h)' }
     try {
       const j = await graph<{ id: string; permalink?: string }>(ctx, 'GET', `/${ref.remoteId}`, { fields: 'id,permalink,timestamp' }, 'Instagram')
       return { state: 'PUBLICADO', remoteId: j.id, remoteUrl: j.permalink ?? null, remoteStatus: 'publicado' }
@@ -150,8 +229,8 @@ export const instagramConnector: Connector = {
     }
   },
   /** Timeout no media_publish: procura o post recente com a mesma legenda antes de repetir. */
-  async findByReference(_ref: RemoteRef, p, ctx) {
-    if (!p) return null
+  async findByReference(ref: RemoteRef, p, ctx) {
+    if (!p || ref.pendingToken || p.social?.format === 'STORY') return null
     const caption = channelText(p, igSpec).description.trim()
     const j = await graph<{ data?: Array<{ id: string; caption?: string; permalink?: string }> }>(ctx, 'GET', `/${ctx.connection.externalAccountId}/media`, { fields: 'id,caption,permalink,timestamp', limit: '10' }, 'Instagram')
     const hit = (j.data ?? []).find((m) => (m.caption ?? '').trim() === caption)

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runWorker } from '@/lib/publications/worker'
 import { reconcile } from '@/lib/publications/reconcile'
+import { pruneSocialVideos } from '@/lib/publications/social/studio'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -22,7 +23,8 @@ async function handle(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   const doReconcile = req.nextUrl.searchParams.get('reconcile') === '1'
   const rec = doReconcile ? await reconcile() : null
-  const work = await runWorker({ maxJobs: 60, deadlineMs: 240_000 })
+  if (doReconcile) await pruneSocialVideos().catch(() => 0)
+  const work = await runWorker({ maxJobs: 60, deadlineMs: 240_000, heavy: true })
   return NextResponse.json({ success: true, reconcile: rec, recovered: work.recovered, processed: work.processed.length, results: work.processed.map((p) => ({ op: p.op, channel: p.channel, result: p.result })) })
 }
 

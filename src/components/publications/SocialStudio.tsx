@@ -1,0 +1,126 @@
+'use client'
+/* eslint-disable @next/next/no-img-element -- prévias geradas pelo servidor */
+
+// =============================================================================
+// Estúdio para Instagram e Facebook (Nova publicação › Canais):
+//   formatos (Post, Carrossel, Story, Reels), modelo da arte com prévia real,
+//   legenda por formato (escrita pela loja ou pela IA) e opção de espalhar os
+//   envios nos horários de pico. Cada formato vira uma publicação na fila.
+// =============================================================================
+
+import { useState } from 'react'
+import { Clapperboard, Images, Loader2, Smartphone, Sparkles, Square } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { api, inputCls } from '@/components/publications/ui'
+import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type ArtTemplate, type SocialFormat } from '@/lib/publications/social/formats'
+import { CAPTION_TONES, TONE_LABEL, type CaptionTone } from '@/lib/publications/social/caption-core'
+
+export interface SocialChoice {
+  formats: SocialFormat[]
+  template: ArtTemplate
+  tone: CaptionTone
+  /** Legenda por `${vehicleId}:${formato}`; vazio = legenda automática. */
+  captions: Record<string, string>
+  spread: boolean
+}
+
+export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: false }
+
+const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard }
+
+export function SocialStudio({ vehicles, value, onChange }: { vehicles: Array<{ id: string; title: string }>; value: SocialChoice; onChange: (v: SocialChoice) => void }) {
+  const [current, setCurrent] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const vid = current && vehicles.some((v) => v.id === current) ? current : vehicles[0]?.id ?? null
+  const set = (p: Partial<SocialChoice>) => onChange({ ...value, ...p })
+  const toggle = (f: SocialFormat) => set({ formats: value.formats.includes(f) ? value.formats.filter((x) => x !== f) : SOCIAL_FORMATS.filter((x) => x === f || value.formats.includes(x)) })
+
+  const generate = async (format: SocialFormat) => {
+    if (!vid) return
+    setBusy(format); setNote(null)
+    try {
+      const j = await api('/api/publications/social/caption', { method: 'POST', json: { vehicleId: vid, format, tone: value.tone } })
+      set({ captions: { ...value.captions, [`${vid}:${format}`]: j.text } })
+      setNote({ ok: true, text: j.ai ? `Legenda escrita pela IA (${j.source}). Revise antes de publicar.` : 'Nenhuma IA configurada: usei o modelo automático de legenda.' })
+    } catch (e) { setNote({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-brand-200 bg-brand-50/30 p-4">
+      <div>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900"><Sparkles size={15} className="text-brand-700" />Estúdio Instagram e Facebook</h3>
+        <p className="text-xs text-gray-600">A arte sai pronta com a foto do carro, o preço, o ano/km e o seu WhatsApp, nas cores da loja. Cada formato vira um envio próprio.</p>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" role="group" aria-label="Formatos">
+        {SOCIAL_FORMATS.map((f) => {
+          const Icon = ICON[f]; const on = value.formats.includes(f)
+          return (
+            <button key={f} type="button" aria-pressed={on} onClick={() => toggle(f)}
+              className={cn('flex items-start gap-2 rounded-xl border bg-white p-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600', on ? 'border-brand-600 ring-1 ring-brand-600' : 'border-gray-200 hover:border-gray-300')}>
+              <Icon size={18} className={on ? 'text-brand-700' : 'text-gray-400'} />
+              <span><span className="block text-sm font-semibold text-gray-900">{FORMAT_INFO[f].label}</span><span className="block text-[11px] text-gray-500">{FORMAT_INFO[f].hint}</span></span>
+            </button>
+          )
+        })}
+      </div>
+      {!value.formats.length && <p className="text-xs text-amber-700">Sem formato marcado: vai um post comum com as fotos, sem arte.</p>}
+
+      {value.formats.length > 0 && (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Modelo da arte">
+            <span className="mr-1 text-xs font-medium text-gray-600">Modelo da arte:</span>
+            {ART_TEMPLATES.map((t) => (
+              <button key={t} type="button" aria-pressed={value.template === t} onClick={() => set({ template: t })}
+                className={cn('rounded-full border px-2.5 py-0.5 text-xs', value.template === t ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}>{TEMPLATE_INFO[t].label}</button>
+            ))}
+          </div>
+
+          {vehicles.length > 1 && (
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Veículo">
+              {vehicles.map((v) => <button key={v.id} role="tab" aria-selected={vid === v.id} onClick={() => setCurrent(v.id)} className={cn('rounded-lg border px-2 py-1 text-xs', vid === v.id ? 'border-brand-600 bg-white text-brand-900' : 'border-gray-200 text-gray-600')}>{v.title}</button>)}
+            </div>
+          )}
+
+          {vid && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {value.formats.map((f) => {
+                const key = `${vid}:${f}`
+                const src = `/api/publications/social/preview?vehicleId=${encodeURIComponent(vid)}&format=${f}&template=${value.template}`
+                return (
+                  <div key={f} className="flex gap-3 rounded-xl border border-gray-200 bg-white p-3">
+                    <div className={cn('shrink-0 overflow-hidden rounded-lg bg-gray-100', FORMAT_INFO[f].canvas === 'FEED' ? 'h-40 w-32' : 'h-44 w-[99px]')}>
+                      <img src={src} alt={`Prévia ${FORMAT_INFO[f].label}`} className="h-full w-full object-cover" loading="lazy" />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-800">{FORMAT_INFO[f].label}{f === 'REELS' && <span className="font-normal text-gray-500"> · 1º quadro do vídeo (≈ 20 s com todas as fotos)</span>}</p>
+                      {f === 'STORY' ? (
+                        <p className="text-[11px] text-gray-500">Story não leva legenda: a arte já traz preço e WhatsApp.</p>
+                      ) : (
+                        <>
+                          <textarea rows={5} className={cn(inputCls, 'text-xs')} value={value.captions[key] ?? ''} placeholder="Vazio = legenda automática com modelo, preço e contatos." onChange={(e) => set({ captions: { ...value.captions, [key]: e.target.value.slice(0, 2200) } })} />
+                          <button type="button" onClick={() => generate(f)} disabled={busy === f} className="btn-secondary px-2 py-1 text-xs">{busy === f ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}Escrever com IA</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+            <label className="flex items-center gap-1.5">Tom da IA
+              <select className={cn(inputCls, 'w-auto py-1 text-xs')} value={value.tone} onChange={(e) => set({ tone: e.target.value as CaptionTone })}>
+                {CAPTION_TONES.map((t) => <option key={t} value={t}>{TONE_LABEL[t]}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar nos horários de pico (12 h e 19 h)</label>
+          </div>
+          {note && <p role="status" className={cn('text-xs', note.ok ? 'text-green-700' : 'text-red-700')}>{note.text}</p>}
+        </>
+      )}
+    </section>
+  )
+}

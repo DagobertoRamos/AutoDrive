@@ -28,7 +28,9 @@ import { createHttpClient, type HttpClient } from './connectors/http'
 import type { ConnectorContext, MappingResolver, RemoteResult } from './connectors/types'
 import { buildFor, enqueue, loadVehicle, logEvent, onVehicleStockChanged, readSecrets, sealSecrets, SYSTEM_ACTOR } from './service'
 import { loadPublicationSettings } from './settings'
-import { mediaUrlFor } from './media-token'
+import { artUrlFor, mediaUrlFor, videoUrlFor } from './media-token'
+import { socialOf } from './social/formats'
+import { renderAndStoreReel } from './social/studio'
 import { exactMatch, rankCandidates } from './mapping-core'
 
 const LOCK_MS = 5 * 60_000
@@ -36,7 +38,11 @@ const VERIFY_DELAYS_MS = [60_000, 3 * 60_000, 10 * 60_000, 30 * 60_000, 2 * 3_60
 
 type JobRow = { id: string; tenantId: string; publicationId: string; vehicleId: string; channel: string; op: string; attempts: number; maxAttempts: number; generation: number; outcomeUnknown: boolean; revisionHash: string | null }
 
-export interface WorkerDeps { http?: HttpClient; now?: () => Date; origin?: string; workerId?: string }
+export interface WorkerDeps {
+  http?: HttpClient; now?: () => Date; origin?: string; workerId?: string
+  /** Pode gerar vídeo (Reels, ffmpeg): só a rotina agendada. As execuções logo após um clique deixam o Reels para ela. */
+  heavy?: boolean
+}
 
 function appOrigin(): string {
   return (process.env.NEXTAUTH_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
@@ -124,6 +130,13 @@ export async function connectorContext(conn: { id: string; tenantId: string; cha
     http: deps.http ?? createHttpClient(),
     mapping: mappingResolver(conn.tenantId, conn.channel),
     mediaUrl: (u) => mediaUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { now: now() }),
+    social: {
+      artUrl: (u, p, format, template) => artUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { v: p.vehicle.id, f: format, k: template, p: p.price, o: p.oldPrice }, { now: now() }),
+      async reelUrl(p, template) {
+        const { assetId } = await renderAndStoreReel(conn.tenantId, p, template)
+        return videoUrlFor(deps.origin ?? appOrigin(), conn.tenantId, assetId, { now: now() })
+      },
+    },
     async saveSecrets(s, expiresAt) {
       await prisma.publicationConnection.update({ where: { id: conn.id }, data: { secretsEncrypted: sealSecrets(s), ...(expiresAt !== undefined ? { tokenExpiresAt: expiresAt } : {}) } })
     },
@@ -151,6 +164,10 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
   const op = job.op as JobOp
   const ev = (type: string, message: string, toStatus?: string | null, data?: unknown) => logEvent(prisma, { tenantId: pub.tenantId, publicationId: pub.id, vehicleId: pub.vehicleId, channel: pub.channel, type, message, fromStatus: pub.status, toStatus: toStatus ?? null, data, actor: SYSTEM_ACTOR })
   const makesLive = op === 'PUBLICAR' || op === 'ATUALIZAR' || op === 'RETOMAR'
+  if (!deps.heavy && (op === 'PUBLICAR' || op === 'RETOMAR') && socialOf(pub.overrides)?.format === 'REELS') {
+    await prisma.publicationJob.update({ where: { id: job.id }, data: { status: 'PENDENTE', runAt: new Date(now.getTime() + 20_000), attempts: { decrement: 1 }, lockedBy: null, lockedUntil: null } })
+    return out('REPETIR', { message: 'O vídeo do Reels é gerado pela rotina de publicação (em até 1 minuto).' })
+  }
 
   // 1) Tarefa velha? (a intenção mudou depois que ela foi criada)
   if (makesLive && (job.generation < pub.generation || pub.desiredState !== 'PUBLICADO')) {
@@ -196,7 +213,9 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
   }
 
   const ctx = await connectorContext(conn, deps)
-  const ref = { vehicleId: pub.vehicleId, remoteId: pub.remoteId, externalRef: pub.externalRef, remoteUrl: pub.remoteUrl, pendingToken: pub.pendingToken }
+  const format = socialOf(pub.overrides)?.format ?? null
+  const ref = { vehicleId: pub.vehicleId, remoteId: pub.remoteId, externalRef: pub.externalRef, remoteUrl: pub.remoteUrl, pendingToken: pub.pendingToken, format }
+  const ephemeral = format === 'STORY' || format === 'REELS'
   const payload = makesLive || op === 'PAUSAR' ? await buildFor(pub.tenantId, vehicle, pub.externalRef, pub.overrides) : null
   const hash = payload ? payloadHash(payload) : null
 
@@ -222,6 +241,8 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
         break
       }
       case 'ATUALIZAR':
+        // Story/Reels não se editam: registra o conteúdo novo sem pedir ação manual.
+        if (ephemeral && connector.get) { r = { ...(await connector.get(ref, ctx)), message: 'Story e Reels não são editáveis: o conteúdo novo vale para as próximas publicações.' }; break }
         if (!connector.update || spec.capabilities.update !== 'SIM') { manual = 'Este canal não permite atualizar pela integração. Edite o anúncio no próprio canal.'; break }
         r = await connector.update(ref, payload!, ctx)
         break
@@ -234,7 +255,8 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
         else manual = `${spec.name} não permite pausar pela integração. O anúncio continua no ar: pause ou retire manualmente${pub.remoteUrl ? ` em ${pub.remoteUrl}` : ''}.`
         break
       case 'REMOVER':
-        if (connector.remove && spec.capabilities.remove === 'SIM') r = await connector.remove(ref, pub.archiveReason === 'VENDIDO' ? 'VENDIDO' : pub.archiveReason === 'RETIRADO' ? 'RETIRADO' : 'MANUAL', ctx)
+        if (format === 'STORY') r = { state: 'REMOVIDO', remoteId: pub.remoteId, message: 'Story some sozinho em até 24 h.' }
+        else if (connector.remove && spec.capabilities.remove === 'SIM') r = await connector.remove(ref, pub.archiveReason === 'VENDIDO' ? 'VENDIDO' : pub.archiveReason === 'RETIRADO' ? 'RETIRADO' : 'MANUAL', ctx)
         else manual = `${spec.name} não permite remover pela integração. Remova manualmente${pub.remoteUrl ? `: ${pub.remoteUrl}` : ''}.`
         break
       case 'VERIFICAR':

@@ -9,6 +9,7 @@ import type { ListingPayload } from '../content-core'
 import type { Issue } from '../validate-core'
 import type { RemoteState } from '../states'
 import type { HttpClient } from './http'
+import type { ArtTemplate, SocialFormat } from '../social/formats'
 
 export interface ConnectionInfo {
   id: string
@@ -33,13 +34,24 @@ export interface ConnectorContext {
   mapping: MappingResolver
   /** URL pública assinada da foto (variante JPEG). */
   mediaUrl: (photoUrl: string) => string
+  /** Estúdio social (Instagram/Facebook): arte desenhada e vídeo do Reels. */
+  social?: SocialMedia
   /** Grava segredos renovados (token novo) — cifrado pelo serviço. */
   saveSecrets: (s: Secrets, expiresAt?: Date | null) => Promise<void>
   now: () => Date
 }
 
+export interface SocialMedia {
+  /** URL pública da arte do formato sobre a foto (preço do anúncio já aplicado). */
+  artUrl(photoUrl: string, p: ListingPayload, format: SocialFormat, template: ArtTemplate): string
+  /** Gera e guarda o vídeo do Reels; devolve a URL pública do MP4. */
+  reelUrl(p: ListingPayload, template: ArtTemplate): Promise<string>
+}
+
 export interface RemoteRef {
   vehicleId: string
+  /** Formato social da publicação (Story/Reels mudam a consulta e a remoção). */
+  format?: SocialFormat | null
   remoteId: string | null
   externalRef: string
   remoteUrl?: string | null

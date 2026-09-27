@@ -16,6 +16,10 @@ export interface MediaClaims {
   u?: string // URL externa já cadastrada na galeria (importada com proteção SSRF)
   w: number // largura máxima da variante
   e: number // expira (epoch s)
+  /** Arte do estúdio social desenhada sobre a foto: veículo, formato, modelo e preço anunciado. */
+  x?: { v: string; f: string; k: string; p?: number | null; o?: number | null }
+  /** Arquivo pronto servido como está (vídeo do Reels guardado em site_assets). */
+  m?: 'mp4'
 }
 
 const b64 = (s: Buffer | string) => Buffer.from(s).toString('base64url')
@@ -45,6 +49,7 @@ export function verifyMedia(token: string, now = new Date(), key = secret()): Me
     const c = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as MediaClaims
     if (typeof c.t !== 'string' || typeof c.e !== 'number' || typeof c.w !== 'number') return null
     if (!c.a && !c.u) return null
+    if (c.m && !c.a) return null
     if (c.e * 1000 < now.getTime()) return null
     return c
   } catch { return null }
@@ -63,4 +68,19 @@ export function mediaUrlFor(origin: string, tenantId: string, photoUrl: string, 
   }
   // Prefixo /api/integrations: rota pública (sem sessão), fora do proxy de login.
   return `${origin.replace(/\/+$/, '')}/api/integrations/publications/media/${signMedia(claims)}.jpg`
+}
+
+/** Arte do estúdio social (Post/Story/Reels) sobre uma foto da galeria. */
+export function artUrlFor(origin: string, tenantId: string, photoUrl: string, art: NonNullable<MediaClaims['x']>, opts: { ttlDays?: number; now?: Date } = {}): string {
+  const now = opts.now ?? new Date()
+  const m = ASSET.exec(photoUrl)
+  const claims: MediaClaims = { t: tenantId, w: 1080, e: Math.floor(now.getTime() / 1000) + (opts.ttlDays ?? 30) * 86_400, x: art, ...(m ? { a: m[1] } : { u: photoUrl }) }
+  return `${origin.replace(/\/+$/, '')}/api/integrations/publications/media/${signMedia(claims)}.jpg`
+}
+
+/** Vídeo pronto (Reels) guardado em site_assets. */
+export function videoUrlFor(origin: string, tenantId: string, assetId: string, opts: { ttlDays?: number; now?: Date } = {}): string {
+  const now = opts.now ?? new Date()
+  const claims: MediaClaims = { t: tenantId, a: assetId, w: 720, m: 'mp4', e: Math.floor(now.getTime() / 1000) + (opts.ttlDays ?? 7) * 86_400 }
+  return `${origin.replace(/\/+$/, '')}/api/integrations/publications/media/${signMedia(claims)}.mp4`
 }

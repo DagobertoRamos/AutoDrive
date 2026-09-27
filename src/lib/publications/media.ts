@@ -15,7 +15,7 @@ const PUBLIC_KINDS = new Set(['VEHICLE_PHOTO', 'IMAGE'])
 
 export class MediaNotFound extends Error {}
 
-async function originalBytes(c: Pick<MediaClaims, 't' | 'a' | 'u'>): Promise<Buffer> {
+export async function originalBytes(c: Pick<MediaClaims, 't' | 'a' | 'u'>): Promise<Buffer> {
   if (c.a) {
     const asset = await readSiteAsset(c.a)
     if (!asset || asset.tenantId !== c.t || !PUBLIC_KINDS.has(asset.kind)) throw new MediaNotFound('Foto não encontrada.')

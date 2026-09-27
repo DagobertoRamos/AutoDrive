@@ -16,6 +16,9 @@ import { cn } from '@/lib/utils'
 import { api, ChannelMark, ErrorNote, inputCls, money, PubTabs, Thumb } from '@/components/publications/ui'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { ListingProfileStep } from '@/components/publications/ListingProfileStep'
+import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/publications/SocialStudio'
+import { campaignKeyFor, planLocal } from '@/lib/publications/social/formats'
+import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -41,6 +44,7 @@ function Wizard() {
   const [channels, setChannels] = useState<Record<string, ChannelInfo>>({})
   const [targets, setTargets] = useState<Set<string>>(new Set())
   const [campaign, setCampaign] = useState('principal')
+  const [social, setSocial] = useState<SocialChoice>(DEFAULT_SOCIAL)
   const [can, setCan] = useState({ prepare: false, approve: false, publish: false, connections: false })
   const [err, setErr] = useState<string | null>(null)
   const [tz, setTz] = useState('America/Sao_Paulo')
@@ -97,8 +101,8 @@ function Wizard() {
       {step === 1 && cur && <StepPhotos key={cur} vehicleId={cur} canApprove={can.approve} onApproved={() => loadVehicles([cur])} />}
       {step === 2 && cur && <ListingProfileStep key={cur} vehicleId={cur} canEdit={can.prepare} />}
       {step === 3 && cur && <StepContent key={cur} vehicleId={cur} />}
-      {step === 4 && <StepChannels conns={conns} channels={channels} targets={targets} setTargets={setTargets} campaign={campaign} setCampaign={setCampaign} />}
-      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} />}
+      {step === 4 && <StepChannels conns={conns} channels={channels} targets={targets} setTargets={setTargets} campaign={campaign} setCampaign={setCampaign} social={social} setSocial={setSocial} vehicles={selected.map((id) => ({ id, title: vehicles[id]?.title ?? '…' }))} />}
+      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} social={social} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} />}
 
       {step < 5 && (
         <div className="sticky bottom-2 z-10 flex items-center justify-between rounded-xl border border-gray-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
@@ -308,7 +312,7 @@ function StepContent({ vehicleId }: { vehicleId: string }) {
 }
 
 // ── 4. Canais ────────────────────────────────────────────────────────────────
-function StepChannels({ conns, channels, targets, setTargets, campaign, setCampaign }: { conns: Conn[]; channels: Record<string, ChannelInfo>; targets: Set<string>; setTargets: (s: Set<string>) => void; campaign: string; setCampaign: (s: string) => void }) {
+function StepChannels({ conns, channels, targets, setTargets, campaign, setCampaign, social, setSocial, vehicles }: { conns: Conn[]; channels: Record<string, ChannelInfo>; targets: Set<string>; setTargets: (s: Set<string>) => void; campaign: string; setCampaign: (s: string) => void; social: SocialChoice; setSocial: (s: SocialChoice) => void; vehicles: Array<{ id: string; title: string }> }) {
   const usable = conns.filter((c) => channels[c.channel]?.publishable)
   const hasSocial = [...targets].some((id) => channels[conns.find((c) => c.id === id)?.channel ?? '']?.campaigns)
   const toggle = (id: string) => { const n = new Set(targets); if (n.has(id)) n.delete(id); else n.add(id); setTargets(n) }
@@ -333,7 +337,8 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
       </ul>
       {!usable.length && <p className="text-sm text-gray-500">Nenhuma conta conectada.</p>}
       <Link href="/marketing/canais" className="inline-block text-xs font-medium text-brand-700 hover:underline">Conectar mais canais</Link>
-      {hasSocial && (
+      {hasSocial && <SocialStudio vehicles={vehicles} value={social} onChange={setSocial} />}
+      {hasSocial && !social.formats.length && (
         <label className="block max-w-sm text-xs font-medium text-gray-600">Nome da campanha (redes sociais)
           <input className={inputCls} value={campaign} onChange={(e) => setCampaign(e.target.value.slice(0, 60))} />
           <span className="text-[11px] text-gray-400">Use outro nome para um novo post do mesmo carro (ex.: “promoção-outubro”).</span>
@@ -344,7 +349,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
 }
 
 // ── 5. Revisão + publicar ───────────────────────────────────────────────────
-function StepReview({ vehicleIds, connectionIds, vehicles, campaign, channels, conns, can, tz, goTo, onDone }: { vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
+function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, channels, conns, can, tz, goTo, onDone }: { vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; social: SocialChoice; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
   const [items, setItems] = useState<any[] | null>(null)
   const [checks, setChecks] = useState<Record<string, any[]>>({})
   const [err, setErr] = useState<string | null>(null)
@@ -363,9 +368,30 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, channels, c
     if (sending) return // clique duplo
     setSending(true); setErr(null)
     try {
-      const targets = vehicleIds.flatMap((v) => connectionIds.map((c) => ({ vehicleId: v, connectionId: c, campaignKey: campaign })))
-      const j = await api('/api/publications', { method: 'POST', json: { targets, mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined, requestKey: requestKey.current } })
-      setResults(j.results)
+      // Instagram/Facebook com formatos do estúdio: um envio por formato.
+      const isSocial = (c: string) => social.formats.length > 0 && ['INSTAGRAM', 'META_PAGE'].includes(conns.find((x) => x.id === c)?.channel ?? '')
+      const plain = vehicleIds.flatMap((v) => connectionIds.filter((c) => !isSocial(c)).map((c) => ({ vehicleId: v, connectionId: c, campaignKey: campaign })))
+      const nowLocal = utcToLocalInput(new Date(), tz)
+      const socialTargets = (local: string, formats = social.formats) => vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => formats.map((f) => ({
+        vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f, local),
+        overrides: { social: { format: f, template: social.template }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) },
+      }))))
+      const calls: Array<{ targets: unknown[]; mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO'; scheduledLocal?: string }> = []
+      if (social.spread && mode !== 'RASCUNHO') {
+        // Espalha a partir de agora (ou do horário escolhido) nos picos 12 h / 19 h.
+        const start = mode === 'AGENDAR' && when ? when : nowLocal
+        if (plain.length) calls.push({ targets: plain, mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined })
+        for (const slot of planLocal(start, social.formats)) calls.push({ targets: socialTargets(slot.local, [slot.format]), mode: 'AGENDAR', scheduledLocal: slot.local })
+      } else {
+        calls.push({ targets: [...plain, ...socialTargets(mode === 'AGENDAR' && when ? when : nowLocal)], mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined })
+      }
+      const all: any[] = []
+      for (const [n, c] of calls.entries()) {
+        if (!c.targets.length) continue
+        const j = await api('/api/publications', { method: 'POST', json: { ...c, requestKey: `${requestKey.current}-${n}` } })
+        all.push(...j.results)
+      }
+      setResults(all)
     } catch (e) { setErr((e as Error).message); requestKey.current = crypto.randomUUID() } finally { setSending(false) }
   }
   const fixStep = (field: string) => (field === 'photos' || field === 'media' ? 1 : field === 'connection' ? 4 : field === 'options' ? 2 : 3)

@@ -13,6 +13,7 @@ import { loadSiteConfig } from '@/lib/site/config'
 import type { ContactSettings } from './content-core'
 import { DEFAULT_SALE_RULES, type SaleRules } from './sale-rules-core'
 import { DEFAULT_TIMEZONE, isValidTimeZone } from './schedule-core'
+import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './social/formats'
 
 export interface AutoPublishRule {
   enabled: boolean
@@ -21,6 +22,8 @@ export interface AutoPublishRule {
   enabledById: string | null
   enabledByName: string | null
   enabledAt: string | null
+  /** Instagram/Facebook: formatos criados sozinhos (espalhados nos horários de pico) e modelo de arte. */
+  social: { formats: SocialFormat[]; template: ArtTemplate }
 }
 
 export interface PublicationSettings {
@@ -40,6 +43,7 @@ export function sanitizeSettings(input: unknown, fallback: PublicationSettings):
   const c = (i.contacts ?? {}) as Record<string, unknown>
   const s = (i.sale ?? {}) as Record<string, unknown>
   const a = (i.autoPublish ?? {}) as Record<string, unknown>
+  const soc = (a.social && typeof a.social === 'object' ? a.social : {}) as Record<string, unknown>
   const tz = str(i.timezone, 64)
   const per = Number(i.perConnectionPerMinute)
   return {
@@ -63,6 +67,10 @@ export function sanitizeSettings(input: unknown, fallback: PublicationSettings):
       enabledById: typeof a.enabledById === 'string' ? a.enabledById : fallback.autoPublish.enabledById,
       enabledByName: typeof a.enabledByName === 'string' ? a.enabledByName : fallback.autoPublish.enabledByName,
       enabledAt: typeof a.enabledAt === 'string' ? a.enabledAt : fallback.autoPublish.enabledAt,
+      social: {
+        formats: Array.isArray(soc.formats) ? [...new Set((soc.formats as unknown[]).filter(isSocialFormat))] : fallback.autoPublish.social.formats,
+        template: isArtTemplate(soc.template) ? soc.template : fallback.autoPublish.social.template,
+      },
     },
     perConnectionPerMinute: Number.isFinite(per) && per >= 1 && per <= 120 ? Math.round(per) : fallback.perConnectionPerMinute,
   }
@@ -85,7 +93,7 @@ async function defaults(tenantId: string): Promise<PublicationSettings> {
       contactName: t?.nomeFantasia || t?.name || '',
     },
     sale: DEFAULT_SALE_RULES,
-    autoPublish: { enabled: false, connectionIds: [], enabledById: null, enabledByName: null, enabledAt: null },
+    autoPublish: { enabled: false, connectionIds: [], enabledById: null, enabledByName: null, enabledAt: null, social: { formats: [], template: 'CHEGOU' } },
     perConnectionPerMinute: 20,
   }
 }

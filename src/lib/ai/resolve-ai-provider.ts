@@ -14,7 +14,7 @@ import { prisma } from '@/lib/prisma'
 import { getAiAdapter, type AiProviderAdapter, type AiAdapterContext } from './adapters'
 import { decryptSecrets, isAiCryptoConfigured } from './crypto'
 
-export type AiFeature = 'help_chat' | 'analyze_document' | 'summarize_report'
+export type AiFeature = 'help_chat' | 'analyze_document' | 'summarize_report' | 'social_caption'
 
 export interface ResolvedAi {
   adapter: AiProviderAdapter
@@ -27,6 +27,8 @@ export interface ResolvedAi {
 function capabilityOk(p: { allowHelpChat: boolean; allowDocAnalysis: boolean; allowReports: boolean }, feature: AiFeature): boolean {
   if (feature === 'help_chat') return p.allowHelpChat
   if (feature === 'analyze_document') return p.allowDocAnalysis
+  // Legendas de redes sociais: texto livre, liberado para quem gera texto.
+  if (feature === 'social_caption') return p.allowReports || p.allowHelpChat
   return p.allowReports
 }
 

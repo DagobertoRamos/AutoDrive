@@ -8,6 +8,7 @@
 // as condições digitadas pela loja.
 // =============================================================================
 
+import type { SocialSpec } from './social/formats'
 import { createHash } from 'crypto'
 import { effectivePrice } from '@/lib/site/listing-core'
 import type { ChannelSpec } from './channels'
@@ -52,6 +53,10 @@ export interface ContentSource {
   conditions?: string | null
   price?: number | null
   photos?: string[] | null
+  /** Legenda própria para redes sociais (escrita pela loja ou pela IA). */
+  caption?: string | null
+  /** Estúdio social: formato (Post, Carrossel, Story, Reels) e modelo de arte. */
+  social?: SocialSpec | null
 }
 
 export interface ListingPayload {
@@ -60,6 +65,7 @@ export interface ListingPayload {
   title: string
   description: string
   caption: string // redes sociais
+  social: SocialSpec | null
   price: number | null
   oldPrice: number | null
   photos: string[] // ordem final; [0] = capa
@@ -143,7 +149,8 @@ export function buildPayload(i: BuildInput): ListingPayload {
   const price = positive(o.price) ?? positive(d.price) ?? stockPrice.price
   const oldPrice = positive(o.price) || positive(d.price) ? null : stockPrice.oldPrice
   const photos = dedupe((o.photos?.length ? o.photos : d.photos?.length ? d.photos : i.gallery) ?? [])
-  const caption = [
+  const custom = (o.caption ?? '').trim() || (d.caption ?? '').trim()
+  const caption = custom || [
     `🚗 ${title}`,
     price != null ? `💰 ${money(price)}` : '',
     factLines(i.vehicle).join(' · '),
@@ -151,7 +158,7 @@ export function buildPayload(i: BuildInput): ListingPayload {
     contactLines(i.contacts).join('\n'),
   ].filter(Boolean).join('\n\n')
   return {
-    reference: i.reference, vehicle: i.vehicle, title, description, caption, price, oldPrice, photos, options, conditions,
+    reference: i.reference, vehicle: i.vehicle, title, description, caption, social: o.social ?? null, price, oldPrice, photos, options, conditions,
     contacts: i.contacts, location: i.location, storeName: i.storeName,
     isNew: (i.vehicle.conditionType ?? '').toUpperCase() === 'NOVO' || i.vehicle.km === 0,
   }
@@ -201,7 +208,7 @@ export function stripContacts(text: string): string {
 export function payloadHash(p: ListingPayload): string {
   const stable = JSON.stringify({
     t: p.title, d: p.description, c: p.caption, p: p.price, o: p.oldPrice, f: p.photos, op: p.options, cd: p.conditions,
-    k: p.vehicle.km, ct: p.contacts,
+    k: p.vehicle.km, ct: p.contacts, ...(p.social ? { s: p.social } : {}),
   })
   return createHash('sha256').update(stable).digest('hex').slice(0, 32)
 }

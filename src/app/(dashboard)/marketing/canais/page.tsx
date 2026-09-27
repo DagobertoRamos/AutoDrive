@@ -14,6 +14,7 @@ import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Plug, RefreshCw, Settings2, Unplug } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ago, ChannelMark, Drawer, ErrorNote, inputCls, PubTabs, StatusPill, type Tone } from '@/components/publications/ui'
+import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO } from '@/lib/publications/social/formats'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Channel = any
@@ -347,6 +348,20 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
           {eligible.map((c) => <label key={c.id} className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={s.autoPublish.connectionIds.includes(c.id)} onChange={(e) => set('autoPublish.connectionIds', e.target.checked ? [...s.autoPublish.connectionIds, c.id] : s.autoPublish.connectionIds.filter((x: string) => x !== c.id))} />{channels.find((ch) => ch.id === c.channel)?.name} · {c.label}</label>)}
           {!eligible.length && <p className="text-[11px] text-gray-400">Conecte um canal para escolher.</p>}
           {s.autoPublish.enabled && !s.autoPublish.connectionIds.length && <p className="flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle size={12} />Escolha ao menos um destino.</p>}
+          {eligible.some((c) => c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE') && (
+            <div className="space-y-1.5 rounded-lg border border-brand-100 bg-brand-50/40 p-2">
+              <p className="text-[11px] font-semibold text-gray-700">Instagram e Facebook no piloto automático</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {SOCIAL_FORMATS.map((f) => (
+                  <label key={f} className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={s.autoPublish.social?.formats?.includes(f) ?? false} onChange={(e) => { const cur: string[] = s.autoPublish.social?.formats ?? []; set('autoPublish.social', { template: s.autoPublish.social?.template ?? 'CHEGOU', formats: e.target.checked ? [...cur, f] : cur.filter((x) => x !== f) }) }} />{FORMAT_INFO[f].label}</label>
+                ))}
+              </div>
+              <label className="block text-xs text-gray-600">Modelo da arte
+                <select className={inputCls} value={s.autoPublish.social?.template ?? 'CHEGOU'} onChange={(e) => set('autoPublish.social', { formats: s.autoPublish.social?.formats ?? [], template: e.target.value })}>{ART_TEMPLATES.map((t) => <option key={t} value={t}>{TEMPLATE_INFO[t].label}</option>)}</select>
+              </label>
+              <p className="text-[11px] text-gray-500">Com formatos marcados, cada carro aprovado ganha arte e legenda prontas, agendadas nos horários de pico (12 h e 19 h). Sem formato: post comum com as fotos.</p>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 lg:col-span-3">
           {canEdit ? <button onClick={save} disabled={busy} className="btn-primary px-3 py-1.5 text-xs">{busy && <Loader2 size={13} className="animate-spin" />}Salvar</button> : <p className="text-xs text-gray-500">Somente gestores alteram estas regras.</p>}

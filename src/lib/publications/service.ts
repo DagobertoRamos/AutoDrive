@@ -11,6 +11,8 @@
 //   • venda tem prioridade 0 na fila e cancela agendamentos.
 // =============================================================================
 
+import { campaignKeyFor, formatsFor, planLocal, socialOf } from './social/formats'
+import { localToUtc, utcToLocalInput } from './schedule-core'
 import { Prisma } from '@prisma/client'
 import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -109,6 +111,8 @@ export function overridesSource(o: Prisma.JsonValue | null | undefined): Content
     title: typeof x.title === 'string' ? x.title : null, description: typeof x.description === 'string' ? x.description : null,
     conditions: typeof x.conditions === 'string' ? x.conditions : null, price: typeof x.price === 'number' ? x.price : null,
     photos: Array.isArray(x.photos) ? x.photos.filter((p): p is string => typeof p === 'string') : null,
+    caption: typeof x.caption === 'string' ? x.caption.slice(0, 2200) : null,
+    social: socialOf(x),
   }
 }
 
@@ -479,7 +483,7 @@ export async function releaseBlockedJobs(tenantId: string, connectionId: string)
 
 // ── Fotos / conteúdo aprovados ────────────────────────────────────────────────
 
-export function mediaHash(photos: string[]): string { return payloadHash({ title: '', description: '', caption: '', price: null, oldPrice: null, photos, options: [], conditions: '', vehicle: { id: '' }, contacts: {}, location: {}, reference: '', storeName: '', isNew: false }) }
+export function mediaHash(photos: string[]): string { return payloadHash({ title: '', description: '', caption: '', social: null, price: null, oldPrice: null, photos, options: [], conditions: '', vehicle: { id: '' }, contacts: {}, location: {}, reference: '', storeName: '', isNew: false }) }
 
 /** Registra uma revisão de mídia pendente (painel "Preparar publicação" ou estúdio). */
 export async function proposeMedia(tenantId: string, vehicleId: string, photos: string[], origin: 'PAINEL' | 'ESTUDIO' | 'CENTRAL', actor: Actor) {
@@ -535,10 +539,25 @@ export async function approveMedia(tenantId: string, vehicleId: string, photos: 
   const settings = await loadPublicationSettings(tenantId)
   let autoPublished: CreateResult[] = []
   if (settings.autoPublish.enabled && settings.autoPublish.connectionIds.length && isPublishableStock(v.stockStatus, v.active)) {
-    const existing = new Set((await prisma.publication.findMany({ where: { tenantId, vehicleId, archivedAt: null }, select: { connectionId: true } })).map((p) => p.connectionId))
-    const targets = settings.autoPublish.connectionIds.filter((c) => !existing.has(c)).map((connectionId) => ({ vehicleId, connectionId }))
-    if (targets.length) {
-      autoPublished = await createPublications(tenantId, targets, { mode: 'AGORA', actor: { id: settings.autoPublish.enabledById, name: `Regra automática (ativada por ${settings.autoPublish.enabledByName ?? 'gestor'})` } })
+    const actor = { id: settings.autoPublish.enabledById, name: `Regra automática (ativada por ${settings.autoPublish.enabledByName ?? 'gestor'})` }
+    const pubs = await prisma.publication.findMany({ where: { tenantId, vehicleId, archivedAt: null }, select: { connectionId: true, campaignKey: true } })
+    const existing = new Set(pubs.map((p) => p.connectionId))
+    const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: settings.autoPublish.connectionIds } }, select: { id: true, channel: true } })
+    const social = settings.autoPublish.social
+    const isSocial = (channel: string) => social.formats.length > 0 && formatsFor(channel).length > 0
+    // Portais e site: publica agora (como antes).
+    const targets = conns.filter((c) => !isSocial(c.channel) && !existing.has(c.id)).map((c) => ({ vehicleId, connectionId: c.id }))
+    if (targets.length) autoPublished = await createPublications(tenantId, targets, { mode: 'AGORA', actor })
+    // Instagram/Facebook: um envio por formato, espalhado nos horários de pico.
+    const socialConns = conns.filter((c) => isSocial(c.channel))
+    if (socialConns.length) {
+      const taken = new Set(pubs.map((p) => `${p.connectionId}:${p.campaignKey}`))
+      for (const slot of planLocal(utcToLocalInput(new Date(), settings.timezone), social.formats)) {
+        const key = campaignKeyFor(slot.format, slot.local)
+        const t = socialConns.filter((c) => !taken.has(`${c.id}:${key}`)).map((c) => ({ vehicleId, connectionId: c.id, campaignKey: key, overrides: { social: { format: slot.format, template: social.template } } }))
+        const at = localToUtc(slot.local, settings.timezone)
+        if (t.length && at) autoPublished.push(...await createPublications(tenantId, t, { mode: 'AGENDAR', scheduledAt: at, actor }))
+      }
     }
   }
   return { revisionId: rev.id, autoPublished, updates }

@@ -62,7 +62,17 @@ const nextConfig = {
     '@neondatabase/serverless',
     '@prisma/adapter-neon',
     'ws',
+    // Estúdio social: binário do ffmpeg (Reels) resolvido pelo caminho do pacote.
+    'ffmpeg-static',
   ],
+
+  // Estúdio social: fonte embutida para desenhar texto nas artes (o servidor
+  // da Vercel não tem fontes) e o ffmpeg só na rotina que gera os Reels.
+  outputFileTracingIncludes: {
+    '/api/internal/publications/run': ['./node_modules/ffmpeg-static/ffmpeg', './src/lib/publications/social/fonts/**'],
+    '/api/integrations/publications/media/[file]': ['./src/lib/publications/social/fonts/**'],
+    '/api/publications/social/preview': ['./src/lib/publications/social/fonts/**'],
+  },
 
   // Webpack: fallback de módulos Node em código client + alias para canvas
   webpack: (config, { isServer, dev }) => {
