@@ -132,3 +132,10 @@
 /* Opcionais agrupados no anúncio (grupos do catálogo de opcionais). */
 .autodrive-site .detail-option-group + .detail-option-group { margin-top: 14px; }
 .autodrive-site .detail-option-group h3 { margin: 0 0 6px; font-size: .78rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #64748b; }
+
+/* Etiquetas sobre a foto: situação (Seminovo/Destaque…) + origem do carro. */
+.autodrive-site .vcard-tags { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; }
+.autodrive-site .vcard-tags .vcard-badge { position: static; }
+.autodrive-site .vcard-badge.origin-own { background: #047857; }
+.autodrive-site .vcard-badge.origin-partner { background: #4338ca; }
+.autodrive-site .vcard-badge.origin-private { background: #b45309; }

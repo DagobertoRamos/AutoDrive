@@ -41,7 +41,10 @@ export function SiteVehicleCard({ vehicle, base, index = 0, storeName, placehold
     <article className="vehicle-card vcard">
       <Link href={href} className="vehicle-image vcard-image" aria-label={`Ver ${vehicle.title}`}>
         <SiteVehicleImage src={vehicle.cover} alt={vehicle.title} loading={index < 6 ? 'eager' : 'lazy'} placeholder={placeholder} />
-        {b && <span className={`vcard-badge ${b.tone}`}>{b.label}</span>}
+        <span className="vcard-tags">
+          {b && <span className={`vcard-badge ${b.tone}`}>{b.label}</span>}
+          <span className={`vcard-badge origin-${vehicle.origin.toLowerCase()}`}>{originPublicTag(vehicle.origin, storeName)}</span>
+        </span>
       </Link>
       <div className="vcard-body">
         <div className="vcard-head">
@@ -54,7 +57,6 @@ export function SiteVehicleCard({ vehicle, base, index = 0, storeName, placehold
           {vehicle.km != null && <span><Gauge size={14} aria-hidden="true" />{vehicle.km.toLocaleString('pt-BR')} km</span>}
           {vehicle.inspected && <span className="vcard-inspected"><ShieldCheck size={14} aria-hidden="true" />Periciado</span>}
         </div>
-        <p className={`vcard-origin ${vehicle.origin.toLowerCase()}`}>{originPublicTag(vehicle.origin, storeName)}</p>
         <div className="vcard-foot">
           <div className="vcard-price">
             {vehicle.oldPrice != null && <span className="vcard-old">de {money(vehicle.oldPrice)}</span>}
