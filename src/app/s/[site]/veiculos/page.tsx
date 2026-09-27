@@ -2,7 +2,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getSiteContext } from '@/lib/site/context'
-import { listSiteVehicles, siteFilterOptions, SITE_PAGE_SIZE, type SiteFilters } from '@/lib/site/vehicles'
+import { listSiteVehicles, siteBrandCounts, siteFilterOptions, SITE_PAGE_SIZE, type SiteFilters } from '@/lib/site/vehicles'
+import { canonicalBrand } from '@/lib/site/brands-core'
+import { SiteBrandStrip } from '@/components/site/SiteBrandStrip'
 import { SiteVehicleCard } from '@/components/site/SiteVehicleCard'
 import { fuelLabel, transmissionLabel } from '@/lib/site/listing-core'
 
@@ -20,13 +22,14 @@ export default async function SiteStock({ params, searchParams }: { params: Prom
   const ctx = await getSiteContext(site)
   const listHref = ctx.href('/veiculos')
   const filters: SiteFilters = {
-    q: sp.q || '', brand: sp.brand || '', fuel: sp.fuel || '', transmission: sp.transmission || '',
+    q: sp.q || '', brand: (sp.brand && canonicalBrand(sp.brand)?.slug) || sp.brand || '', fuel: sp.fuel || '', transmission: sp.transmission || '',
     yearMin: int(sp.yearMin), yearMax: int(sp.yearMax), priceMin: int(sp.priceMin), priceMax: int(sp.priceMax),
     type: sp.type === 'cars' || sp.type === 'motorcycles' ? sp.type : undefined, sort: sp.sort || 'recent', page: int(sp.p) ?? 1,
   }
-  const [{ items, total }, opts] = await Promise.all([
+  const [{ items, total }, opts, brands] = await Promise.all([
     listSiteVehicles(ctx.tenantId, filters).catch(() => ({ items: [], total: 0 })),
     siteFilterOptions(ctx.tenantId).catch(() => ({ brands: [], fuels: [], transmissions: [], years: [] })),
+    siteBrandCounts(ctx.tenantId).catch(() => []),
   ])
   const totalPages = Math.ceil(total / SITE_PAGE_SIZE)
   const page = filters.page ?? 1
@@ -43,6 +46,7 @@ export default async function SiteStock({ params, searchParams }: { params: Prom
     <>
       <section className="page-hero"><div className="shell"><p className="eyebrow">Estoque {ctx.config.identity.name}</p><h1>Encontre seu próximo veículo</h1><p>Use a busca e os filtros para encontrar a melhor oportunidade.</p></div></section>
       <section className="shell section">
+        <SiteBrandStrip items={brands.map((b) => ({ ...b, active: filters.brand === b.slug, href: buildHref({ brand: filters.brand === b.slug ? '' : b.slug, p: '1' }) }))} />
         <div className="filter-bar">
           <nav className="vehicle-type-switch" aria-label="Tipo de veículo">
             <Link href={buildHref({ type: '', p: '1' })} className={!filters.type ? 'active' : ''}>Todos</Link>
@@ -66,7 +70,7 @@ export default async function SiteStock({ params, searchParams }: { params: Prom
               <form action={listHref}>
                 {hidden(['q', 'type'])}
                 {filters.sort && filters.sort !== 'recent' && <input type="hidden" name="sort" value={filters.sort} />}
-                <div className="filter-group"><label>Marca</label><select name="brand" defaultValue={filters.brand}><option value="">Todas</option>{opts.brands.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
+                <div className="filter-group"><label>Marca</label><select name="brand" defaultValue={filters.brand}><option value="">Todas</option>{opts.brands.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}</select></div>
                 <div className="filter-group"><label>Combustível</label><select name="fuel" defaultValue={filters.fuel}><option value="">Todos</option>{opts.fuels.map((f) => <option key={f} value={f}>{fuelLabel(f)}</option>)}</select></div>
                 <div className="filter-group"><label>Câmbio</label><select name="transmission" defaultValue={filters.transmission}><option value="">Todos</option>{opts.transmissions.map((t) => <option key={t} value={t}>{transmissionLabel(t)}</option>)}</select></div>
                 <div className="filter-row">

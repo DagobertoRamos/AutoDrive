@@ -5,7 +5,9 @@
 import Link from 'next/link'
 import { ArrowRight, BadgeCheck, CarFront, CheckCircle2, CircleDollarSign, HandCoins, Handshake, HelpCircle, Info, Mail, MapPin, MessageCircle, Search, ShieldCheck, Star, Store } from 'lucide-react'
 import { getSiteContext, type SiteContext } from '@/lib/site/context'
-import { listSiteVehicles, type SiteVehicle } from '@/lib/site/vehicles'
+import { listSiteVehicles, siteBrandCounts, type SiteVehicle } from '@/lib/site/vehicles'
+import type { BrandCount } from '@/lib/site/brands-core'
+import { SiteBrandStrip } from '@/components/site/SiteBrandStrip'
 import { SiteVehicleCard } from '@/components/site/SiteVehicleCard'
 import { SiteBannerCarousel } from '@/components/site/SiteBannerCarousel'
 import { activeBanners } from '@/lib/site/config-core'
@@ -14,7 +16,7 @@ import { ACTION_DEFS, type ActionKind, type HomeBlock } from '@/lib/site/layout-
 const BENEFIT_ICONS = [ShieldCheck, CircleDollarSign, CarFront, BadgeCheck]
 const ACTION_ICONS: Record<ActionKind, typeof CarFront> = { comprar: CarFront, vender: HandCoins, buscar: Search, parceiro: Handshake, financiaFacil: CircleDollarSign, financiamento: CircleDollarSign, sobre: Store }
 
-interface Parts { ctx: SiteContext; items: SiteVehicle[]; wa: string; address: string[] }
+interface Parts { ctx: SiteContext; items: SiteVehicle[]; brands: BrandCount[]; wa: string; address: string[] }
 
 function Hero({ ctx, wa, withBanners }: { ctx: SiteContext; wa: string; withBanners: boolean }) {
   const { home } = ctx.config
@@ -44,7 +46,7 @@ function Heading({ b }: { b: HomeBlock }) {
 }
 
 function renderBlock(b: HomeBlock, i: number, blocks: HomeBlock[], p: Parts) {
-  const { ctx, items, wa, address } = p
+  const { ctx, items, brands, wa, address } = p
   const { home, contact, identity } = ctx.config
   switch (b.type) {
     case 'hero': {
@@ -85,6 +87,12 @@ function renderBlock(b: HomeBlock, i: number, blocks: HomeBlock[], p: Parts) {
         </div></section>
       )
     }
+    case 'brands':
+      return brands.length > 1 ? (
+        <section key="brands" className="brand-section"><div className="shell">
+          <SiteBrandStrip title={b.title || 'Marcas no estoque'} items={brands.map((x) => ({ ...x, href: ctx.href(`/veiculos?brand=${x.slug}`) }))} />
+        </div></section>
+      ) : null
     case 'showcase':
       return (
         <section key="showcase" className="featured-showcase"><div className="shell">
@@ -212,8 +220,11 @@ export default async function SiteHome({ params }: { params: Promise<{ site: str
   const { site } = await params
   const ctx = await getSiteContext(site)
   const { contact } = ctx.config
-  const { items } = await listSiteVehicles(ctx.tenantId, { page: 1 }).catch(() => ({ items: [] }))
-  const parts: Parts = { ctx, items, wa: ctx.whatsapp(), address: [contact.addressLine1, contact.addressLine2].filter(Boolean) }
+  const [{ items }, brands] = await Promise.all([
+    listSiteVehicles(ctx.tenantId, { page: 1 }).catch(() => ({ items: [] as SiteVehicle[] })),
+    siteBrandCounts(ctx.tenantId).catch(() => [] as BrandCount[]),
+  ])
+  const parts: Parts = { ctx, items, brands, wa: ctx.whatsapp(), address: [contact.addressLine1, contact.addressLine2].filter(Boolean) }
   const blocks = ctx.config.homeBlocks.filter((b) => b.visible)
   return <>{blocks.map((b, i) => renderBlock(b, i, blocks, parts))}</>
 }

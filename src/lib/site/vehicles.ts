@@ -8,6 +8,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { effectiveOrigin, type OriginType } from '@/lib/stock/origin-core'
 import { brandLandings, type BrandLanding } from './seo-core'
+import { brandCounts, brandVariants, type BrandCount } from './brands-core'
 import { effectivePrice, siteVehicleState, SITE_VISIBLE_STOCK, vehicleIdFromSlug, vehicleSlug, vehicleTitle, type SiteVehicleState } from './listing-core'
 
 export const SITE_PAGE_SIZE = 24
@@ -75,11 +76,12 @@ function baseWhere(tenantId: string): Prisma.VehicleWhereInput {
   }
 }
 
-function filteredWhere(tenantId: string, f: SiteFilters): Prisma.VehicleWhereInput {
+function filteredWhere(tenantId: string, f: SiteFilters, brandIn: string[] | null = null): Prisma.VehicleWhereInput {
   const and: Prisma.VehicleWhereInput[] = [baseWhere(tenantId)]
   const q = f.q?.trim()
   if (q) and.push({ OR: [{ brand: { contains: q, mode: 'insensitive' } }, { model: { contains: q, mode: 'insensitive' } }, { version: { contains: q, mode: 'insensitive' } }] })
-  if (f.brand) and.push({ brand: { equals: f.brand, mode: 'insensitive' } })
+  // Marca: todas as grafias do estoque que são a mesma marca ("VW - VolksWagen" = Volkswagen).
+  if (f.brand) and.push(brandIn?.length ? { brand: { in: brandIn } } : { brand: { equals: f.brand, mode: 'insensitive' } })
   if (f.fuel) and.push({ fuel: { equals: f.fuel, mode: 'insensitive' } })
   if (f.transmission) and.push({ transmission: { equals: f.transmission, mode: 'insensitive' } })
   if (f.yearMin) and.push({ modelYear: { gte: f.yearMin } })
@@ -108,11 +110,23 @@ function sortRows(list: SiteVehicle[], sort: string | undefined, created: Map<st
 
 /** Lista paginada. A ordenação (publicado → destaque → critério) é feita em memória: estoque de loja é pequeno. */
 export async function listSiteVehicles(tenantId: string, f: SiteFilters = {}): Promise<{ items: SiteVehicle[]; total: number }> {
-  const rows = await prisma.vehicle.findMany({ where: filteredWhere(tenantId, f), select: SELECT, take: 1000 })
+  const brandIn = f.brand ? brandVariants(f.brand, await rawBrands(tenantId)) : null
+  const rows = await prisma.vehicle.findMany({ where: filteredWhere(tenantId, f, brandIn), select: SELECT, take: 1000 })
   const created = new Map(rows.map((r) => [r.id, r.createdAt.getTime()]))
   const all = sortRows(rows.map(toSiteVehicle).filter((v) => v.state !== 'HIDDEN'), f.sort, created)
   const page = Math.max(1, f.page ?? 1)
   return { items: all.slice((page - 1) * SITE_PAGE_SIZE, page * SITE_PAGE_SIZE), total: all.length }
+}
+
+/** Marca (crua) de cada carro visível no site. */
+async function rawBrands(tenantId: string): Promise<string[]> {
+  const rows = await prisma.vehicle.findMany({ where: baseWhere(tenantId), select: { brand: true }, take: 2000 })
+  return rows.map((r) => r.brand ?? '')
+}
+
+/** Marcas com carro no site, já unificadas, com logo e quantidade (carrossel de marcas). */
+export async function siteBrandCounts(tenantId: string): Promise<BrandCount[]> {
+  return brandCounts(await rawBrands(tenantId))
 }
 
 /** Marcas com carro visível no site (páginas por marca, rodapé). Consulta leve. */
@@ -143,7 +157,7 @@ export async function siteFilterOptions(tenantId: string) {
   const rows = await prisma.vehicle.findMany({ where: baseWhere(tenantId), select: { brand: true, fuel: true, transmission: true, modelYear: true } })
   const uniq = (xs: (string | number | null)[]) => [...new Set(xs.filter((x): x is string | number => x != null && x !== ''))]
   return {
-    brands: (uniq(rows.map((r) => r.brand)) as string[]).sort((a, b) => a.localeCompare(b)),
+    brands: brandCounts(rows.map((r) => r.brand)).map((b) => ({ value: b.slug, label: b.label })),
     fuels: (uniq(rows.map((r) => r.fuel)) as string[]).sort(),
     transmissions: (uniq(rows.map((r) => r.transmission)) as string[]).sort(),
     years: (uniq(rows.map((r) => r.modelYear)) as number[]).sort((a, b) => b - a),

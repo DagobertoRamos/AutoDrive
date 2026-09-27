@@ -82,7 +82,7 @@ export function visibleMenu(menu: SiteMenuItem[], on: (s: SiteServiceKey) => boo
 // ── Blocos da página inicial ─────────────────────────────────────────────────
 
 export type HomeBlockType =
-  | 'hero' | 'banners' | 'actions' | 'showcase' | 'benefits' | 'partners'
+  | 'hero' | 'banners' | 'actions' | 'brands' | 'showcase' | 'benefits' | 'partners'
   | 'financeSell' | 'services' | 'testimonials' | 'faqLocation' | 'contactBand'
 
 export type ActionKind = 'comprar' | 'vender' | 'buscar' | 'parceiro' | 'financiaFacil' | 'financiamento' | 'sobre'
@@ -117,6 +117,7 @@ export const HOME_BLOCKS: HomeBlockDef[] = [
   { type: 'hero', label: 'Topo (chamada principal)', hint: 'Título, texto, botões e selos. Os textos ficam em “Página inicial” abaixo.', fields: [] },
   { type: 'banners', label: 'Carrossel de banners', hint: 'As imagens ficam em Site → Banners. Sem banner ativo, o bloco não aparece.', fields: [] },
   { type: 'actions', label: 'Como podemos ajudar? (atalhos)', hint: 'Cartões que levam o cliente para comprar, vender, buscar um carro, financiar ou virar parceiro.', fields: ['eyebrow', 'title', 'text', 'cards'] },
+  { type: 'brands', label: 'Marcas do estoque (logos)', hint: 'Logos das marcas que têm carro no estoque; cada uma abre o estoque filtrado. Marca sem carro não aparece.', fields: ['title'] },
   { type: 'showcase', label: 'Vitrine de destaques', hint: 'Os carros do estoque. Título e texto ficam em “Página inicial”.', fields: [] },
   { type: 'benefits', label: 'Diferenciais', hint: 'Faixa com até 4 diferenciais (edite em “Página inicial”).', fields: [] },
   { type: 'partners', label: 'Parceiros (para lojistas)', hint: 'Convite para lojistas oferecerem estoque ou buscarem carros. O item “Quero ser parceiro” do menu leva para cá.', fields: ['eyebrow', 'title', 'text', 'bullets'] },
@@ -149,6 +150,7 @@ export function defaultHomeBlocks(storeName: string, on: (s: SiteServiceKey) => 
     b('hero', true),
     b('banners', true),
     b('actions', true, { eyebrow: 'Como podemos ajudar?', title: 'Escolha o que você precisa agora', text: `Você fala com a ${storeName} e nós direcionamos o atendimento para o caminho certo.`, cards }),
+    b('brands', true, { title: 'Marcas no estoque' }),
     b('showcase', true),
     b('benefits', true),
     b('partners', on('atacado'), {
@@ -168,6 +170,9 @@ export function defaultHomeBlocks(storeName: string, on: (s: SiteServiceKey) => 
     b('contactBand', true, { eyebrow: `Atendimento ${storeName}`, title: 'Vamos conversar?' }),
   ]
 }
+
+/** Blocos novos que já nascem ligados nos sites existentes. */
+const DEFAULT_ON_WHEN_ADDED = new Set<HomeBlockType>(['brands'])
 
 export function sanitizeHomeBlocks(input: unknown, storeName: string, on: (s: SiteServiceKey) => boolean): HomeBlock[] {
   const defaults = defaultHomeBlocks(storeName, on)
@@ -206,7 +211,14 @@ export function sanitizeHomeBlocks(input: unknown, storeName: string, on: (s: Si
       cards,
     })
   }
-  // Bloco novo do produto entra no fim, desligado.
-  for (const d of defaults) if (!out.some((x) => x.type === d.type)) out.push({ ...d, visible: false })
+  // Bloco novo do produto entra no fim, desligado — exceto os que são padrão
+  // de todo site (entram ligados, antes da vitrine).
+  for (const d of defaults) {
+    if (out.some((x) => x.type === d.type)) continue
+    if (DEFAULT_ON_WHEN_ADDED.has(d.type)) {
+      const at = out.findIndex((x) => x.type === 'showcase')
+      out.splice(at < 0 ? out.length : at, 0, { ...d })
+    } else out.push({ ...d, visible: false })
+  }
   return out
 }

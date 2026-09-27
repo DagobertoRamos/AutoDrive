@@ -38,7 +38,7 @@ export default async function SiteBrandLanding({ params }: Props) {
   const r = await load(site, marca)
   if (!r) notFound()
   const { ctx, brand, brands } = r
-  const { items } = await listSiteVehicles(ctx.tenantId, { brand: brand.name, sort: 'price_asc' }).catch(() => ({ items: [] }))
+  const { items } = await listSiteVehicles(ctx.tenantId, { brand: brand.slug, sort: 'price_asc' }).catch(() => ({ items: [] }))
   const name = ctx.config.identity.name
   return (
     <>
@@ -50,7 +50,7 @@ export default async function SiteBrandLanding({ params }: Props) {
       <section className="shell section">
         <div className="vehicle-grid">{items.map((v, i) => <SiteVehicleCard key={v.id} vehicle={v} base={ctx.base} index={i} storeName={ctx.config.identity.name} placeholder={ctx.config.identity.comingSoonImage} />)}</div>
         <p className="mapa-acoes">
-          <Link className="button" href={ctx.href(`/veiculos?brand=${encodeURIComponent(brand.name)}`)}>Ver com filtros</Link>
+          <Link className="button" href={ctx.href(`/veiculos?brand=${encodeURIComponent(brand.slug)}`)}>Ver com filtros</Link>
           {ctx.on('encontreSeuCarro') && <Link className="button button-outline" href={ctx.href('/encontre-seu-carro')}>Não achei o que queria</Link>}
         </p>
       </section>

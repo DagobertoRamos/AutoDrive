@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { CalendarDays, Gauge, ShieldCheck } from 'lucide-react'
 import { money } from '@/lib/site/listing-core'
 import { originPublicTag } from '@/lib/stock/origin-core'
+import { brandLogo, canonicalBrand } from '@/lib/site/brands-core'
 import type { SiteVehicle } from '@/lib/site/vehicles'
 import { SiteVehicleImage } from './SiteVehicleImage'
 
@@ -34,7 +35,9 @@ function badge(v: SiteVehicle) {
 
 export function SiteVehicleCard({ vehicle, base, index = 0, storeName, placeholder }: { vehicle: SiteVehicle; base: string; index?: number; storeName?: string; placeholder?: string }) {
   const href = `${base}/veiculos/${vehicle.slug}`
-  const heading = [tidy(vehicle.brand), tidy(vehicle.model)].filter(Boolean).join(' ') || vehicle.title
+  const cb = canonicalBrand(vehicle.brand)
+  const logo = cb ? brandLogo(cb.slug) : null
+  const heading = [cb?.label ?? tidy(vehicle.brand), tidy(vehicle.model)].filter(Boolean).join(' ') || vehicle.title
   const version = vehicle.version.trim() || vehicle.title
   const b = badge(vehicle)
   return (
@@ -48,7 +51,10 @@ export function SiteVehicleCard({ vehicle, base, index = 0, storeName, placehold
       </Link>
       <div className="vcard-body">
         <div className="vcard-head">
-          <span className="vcard-logo" aria-hidden="true">{brandMark(vehicle.brand || heading)}</span>
+          <span className={`vcard-logo${logo ? ' has-img' : ''}`} aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {logo ? <img src={logo} alt="" loading="lazy" width={28} height={20} /> : brandMark(vehicle.brand || heading)}
+          </span>
           <h2><Link href={href} title={vehicle.title}>{heading}</Link></h2>
         </div>
         <p className="vcard-version" title={version}>{version}</p>

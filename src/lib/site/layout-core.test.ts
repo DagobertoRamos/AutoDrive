@@ -52,11 +52,13 @@ describe('blocos da página inicial', () => {
       { type: 'hacker' },
       { type: 'hero', visible: false },
     ], 'Loja', allOn)
-    expect(b.slice(0, 3).map((x) => x.type)).toEqual(['showcase', 'actions', 'hero'])
-    expect(b[2].visible).toBe(false)
-    expect(b[1].title).toBe('Como ajudar')
-    expect(b[1].cards[0]).toMatchObject({ kind: 'buscar', title: 'Busca', visible: true })
-    expect(b[1].cards.length).toBeGreaterThan(1)
+    // "Marcas do estoque" é padrão de todo site: entra ligado, antes da vitrine.
+    expect(b.slice(0, 4).map((x) => x.type)).toEqual(['brands', 'showcase', 'actions', 'hero'])
+    expect(b[0].visible).toBe(true)
+    expect(b[3].visible).toBe(false)
+    expect(b[2].title).toBe('Como ajudar')
+    expect(b[2].cards[0]).toMatchObject({ kind: 'buscar', title: 'Busca', visible: true })
+    expect(b[2].cards.length).toBeGreaterThan(1)
     expect(b.find((x) => x.type === 'contactBand')?.visible).toBe(false)
     expect(b.length).toBe(HOME_BLOCKS.length)
   })

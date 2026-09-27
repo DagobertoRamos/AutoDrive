@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { slugify } from './config-core'
+import { canonicalBrand } from './brands-core'
 
 export interface SeoCity { name: string; slug: string; text: string }
 export interface BrandLanding { slug: string; name: string; total: number; minPrice: number | null; maxPrice: number | null }
@@ -29,9 +30,9 @@ export function sanitizeSeoCities(v: unknown): SeoCity[] {
 export function brandLandings(vehicles: { brand: string; price: number | null }[]): BrandLanding[] {
   const map = new Map<string, BrandLanding>()
   for (const v of vehicles) {
-    const name = v.brand.trim()
-    const slug = slugify(name)
-    if (!slug) continue
+    const c = canonicalBrand(v.brand)
+    if (!c) continue
+    const { slug, label: name } = c
     const b = map.get(slug) ?? { slug, name, total: 0, minPrice: null, maxPrice: null }
     b.total++
     if (v.price != null && v.price > 0) {
