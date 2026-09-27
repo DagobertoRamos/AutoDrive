@@ -45,7 +45,7 @@ export default async function SiteContact({ params }: { params: Promise<{ site: 
             </>
           )}
         </div>
-        <SiteLeadForm apiUrl={ctx.apiUrl} title="Enviar mensagem" privacyHref={ctx.href('/privacidade')} />
+        <SiteLeadForm apiUrl={ctx.apiUrl} title="Enviar mensagem" privacyHref={ctx.href('/privacidade')} whatsappHref={wa} />
       </section>
     </>
   )

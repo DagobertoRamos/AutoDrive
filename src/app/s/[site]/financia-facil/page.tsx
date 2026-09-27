@@ -28,7 +28,7 @@ export default async function SitePrivateFinancing({ params }: { params: Promise
           <div className="notice"><strong>Crédito responsável</strong><p>Crédito sujeito à análise e aprovação da instituição financeira, incluindo a elegibilidade do veículo. O envio não garante aprovação.</p></div>
           {ctx.on('financiamento') && <div className="finance-service-alternative"><h3>Gostou de um carro do nosso estoque?</h3><p>A simulação dos nossos veículos tem um atendimento próprio.</p><Link href={ctx.href('/financiamento')} className="button button-outline">Ir para Financiamento</Link></div>}
         </div>
-        <SitePrivateFinancingForm apiUrl={ctx.apiUrl} privacyHref={ctx.href('/privacidade')} />
+        <SitePrivateFinancingForm apiUrl={ctx.apiUrl} privacyHref={ctx.href('/privacidade')} whatsappHref={ctx.whatsapp()} />
       </section>
     </>
   )

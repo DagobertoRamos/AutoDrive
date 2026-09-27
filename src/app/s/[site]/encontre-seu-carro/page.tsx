@@ -26,7 +26,7 @@ export default async function SiteFindCar({ params }: { params: Promise<{ site: 
           <p>Antes, vale conferir o <Link href={ctx.href('/veiculos')}>estoque atual</Link>.</p>
           <div className="notice"><strong>Busca direcionada</strong><p>Quanto mais claro o orçamento e as preferências, mais rápido encontramos boas oportunidades.</p></div>
         </div>
-        <SiteFindCarForm apiUrl={ctx.apiUrl} privacyHref={ctx.href('/privacidade')} />
+        <SiteFindCarForm apiUrl={ctx.apiUrl} privacyHref={ctx.href('/privacidade')} whatsappHref={ctx.whatsapp()} />
       </section>
     </>
   )

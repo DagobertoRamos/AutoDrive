@@ -24,7 +24,7 @@ export default async function SiteWholesale({ params }: { params: Promise<{ site
           </ul>
           <div className="notice"><strong>Venda entre empresas</strong><p>As condições de atacado valem só para lojistas com CNPJ ativo. Veículos no estado, com a documentação conferida na negociação.</p></div>
         </div>
-        <SiteWholesaleForm apiUrl={ctx.apiUrl} privacyHref={ctx.href('/privacidade')} />
+        <SiteWholesaleForm apiUrl={ctx.apiUrl} privacyHref={ctx.href('/privacidade')} whatsappHref={ctx.whatsapp()} />
       </section>
     </>
   )

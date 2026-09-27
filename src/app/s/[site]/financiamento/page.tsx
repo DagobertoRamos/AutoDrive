@@ -24,7 +24,7 @@ export default async function SiteFinancing({ params, searchParams }: { params: 
           <ul><li>Simulação para os veículos do nosso estoque.</li><li>Seu usado pode entrar como parte do pagamento.</li><li>Condições sujeitas à análise de crédito.</li></ul>
           <div className="notice"><strong>Crédito responsável</strong><p>As condições dependem da análise das instituições financeiras. Confirmamos os próximos passos antes de pedir qualquer documento.</p></div>
         </div>
-        <SiteFinancingForm apiUrl={ctx.apiUrl} vehicles={choices} preselected={sp.veiculo} privacyHref={ctx.href('/privacidade')} />
+        <SiteFinancingForm apiUrl={ctx.apiUrl} vehicles={choices} preselected={sp.veiculo} privacyHref={ctx.href('/privacidade')} whatsappHref={ctx.whatsapp()} />
       </section>
     </>
   )

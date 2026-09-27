@@ -5,6 +5,7 @@
 // dagobertoeasycar): simulação, interesse e agendamento de visita. Cada envio
 // vira lead no CRM da loja já com o veículo vinculado.
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { CalendarDays, CheckCircle2, HandCoins, MessageCircle, X } from 'lucide-react'
 import { HONEYPOT_STYLE, moneyMask, phoneMask, submitSiteLead, todayIso } from './lead-utils'
 
@@ -129,7 +130,9 @@ function IntentButton({ intent, className, children, ...rest }: { intent: Intent
   return (
     <>
       <button type="button" className={className} onClick={() => setOpen(true)}>{children}</button>
-      {open && <Modal intent={intent} {...rest} onClose={() => setOpen(false)} />}
+      {/* Portal na raiz do site: dentro da coluna do anúncio o pop-up ficava
+          preso no empilhamento dela e o topo fixo cobria a foto do carro. */}
+      {open && createPortal(<Modal intent={intent} {...rest} onClose={() => setOpen(false)} />, document.querySelector('.autodrive-site') ?? document.body)}
     </>
   )
 }

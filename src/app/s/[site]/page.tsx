@@ -113,8 +113,6 @@ function renderBlock(b: HomeBlock, i: number, blocks: HomeBlock[], p: Parts) {
         </div></section>
       )
     case 'partners': {
-      const offer = ctx.whatsapp(`Olá! Sou lojista e quero cadastrar meu estoque como parceiro da ${identity.name}.`)
-      const want = ctx.whatsapp('Olá! Sou lojista e procuro veículos para abastecer meu estoque.')
       return (
         <section key="partners" className="section home-partner-band" id="parceiros"><div className="shell home-partner-grid">
           <div>
@@ -124,8 +122,7 @@ function renderBlock(b: HomeBlock, i: number, blocks: HomeBlock[], p: Parts) {
             {b.bullets.length > 0 && <div className="partner-points">{b.bullets.map((t) => <span key={t}><CheckCircle2 size={17} aria-hidden="true" />{t}</span>)}</div>}
           </div>
           <div className="partner-actions">
-            {offer && <a className="button button-light" href={offer} target="_blank" rel="noreferrer">Quero oferecer meu estoque</a>}
-            {want && <a className="button partner-outline" href={want} target="_blank" rel="noreferrer">Procuro carros para estoque</a>}
+            <Link className="button button-light" href={ctx.href('/quero-ser-parceiro')}><Handshake size={18} aria-hidden="true" />Cadastrar minha loja</Link>
             {ctx.on('atacado') && <Link className="button partner-outline" href={ctx.href('/atacado')}>Conhecer o atacado</Link>}
           </div>
         </div></section>

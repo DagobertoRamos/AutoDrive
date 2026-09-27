@@ -74,5 +74,18 @@ describe('Financia Fácil e Atacado', () => {
     expect(msg).toContain('Carro negociado (particular): Fiat · Argo · 2021')
     expect(msg).toContain('Valor combinado: R$ 65.000,00')
   })
+  it('parceiro (lojista): tipo, loja e cidade obrigatórios; CNPJ opcional mas válido', () => {
+    const base = { ...ok, kind: 'partner', message: '', partnerType: 'Os dois', companyName: 'Loja Boa', city: 'Osasco' }
+    expect(parseSiteLead({ ...base, partnerType: '' }).ok).toBe(false)
+    expect(parseSiteLead({ ...base, city: '' }).ok).toBe(false)
+    expect(parseSiteLead({ ...base, cnpj: '11.111.111/1111-11' }).ok).toBe(false)
+    const r = parseSiteLead({ ...base, stockSize: '11 a 30', interest: 'SUVs' })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const msg = buildLeadMessage(r.value, null)
+    expect(msg).toContain('Quero ser parceiro (lojista).')
+    expect(msg).toContain('Parceria: Os dois')
+    expect(msg).toContain('Empresa: Loja Boa')
+    expect(msg).toContain('Carros em estoque: 11 a 30')
+  })
 })
-
