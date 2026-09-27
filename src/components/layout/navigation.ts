@@ -169,6 +169,7 @@ export const NAV_GROUPS: NavItem[] = [
     children: [
       { label: 'Lançamentos', href: '/financeiro/lancamentos', icon: Wallet,    module: 'finance' },
       { label: 'Contas',      href: '/financeiro/contas',      icon: Landmark,  module: 'finance' },
+      { label: 'Custos de veículos', href: '/financeiro/veiculos', icon: Car, module: 'finance' },
       { label: 'Categorias',  href: '/financeiro/categorias',  icon: Tags,      module: 'finance' },
     ],
   },
@@ -313,6 +314,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Veículos',   href: '/cadastros/veiculos',   icon: Car,          module: 'registrations.vehicles' },
       { label: 'Unidades',   href: '/cadastros/unidades',   icon: Building2,    module: 'registrations.units' },
       { label: 'Lojas parceiras', href: '/cadastros/lojas-parceiras', icon: Handshake, module: 'registrations.vehicles' },
+      { label: 'Fornecedores', href: '/cadastros/fornecedores', icon: Wrench, module: 'registrations.vehicles' },
       { label: 'Colaboradores', href: '/cadastros/vendedores', icon: UserCircle, module: 'registrations.sellers' },
       { label: 'Gerentes',   href: '/cadastros/gerentes',   icon: UserCog,      module: 'registrations.managers' },
       { label: 'Cargos',     href: '/cadastros/cargos',     icon: Briefcase,    module: 'registrations.positions' },

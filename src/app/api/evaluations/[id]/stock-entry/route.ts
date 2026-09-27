@@ -14,6 +14,8 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canApproveServices, canViewEvaluation } from '@/lib/evaluation/permissions'
 import { recordHistory } from '@/lib/evaluation/history'
 import { syncIntake } from '@/lib/stock/intake'
+import { importEvaluationServices } from '@/lib/stock/vehicle-services'
+import { createAcquisitionEntry } from '@/lib/stock/vehicle-ledger'
 import { blockConfirmStockEntry, buildEntryPendencies, EVAL_IN_STOCK } from '@/lib/evaluation/stock-entry-core'
 import {
   applyEntryPendencies, defaultStockType, evalLabel, loadEvaluationForStock, notifySeller, vehicleDataFromEvaluation,
@@ -116,6 +118,9 @@ export async function POST(req: NextRequest, ctxArg: { params: Promise<{ id: str
       return v
     })
 
+    // Preparação: serviços da avaliação viram serviços do carro; compra/repasse vai ao Financeiro.
+    await importEvaluationServices(vehicle.id, { id: session.user.id, name: session.user.name, role: session.user.role }).catch((e) => console.error('[entrada] serviços', e))
+    await createAcquisitionEntry(vehicle.id, session.user.id).catch((e) => console.error('[entrada] lançamento de compra', e))
     await syncIntake(vehicle.id, { id: session.user.id, name: session.user.name, role: session.user.role })
     await recordHistory({
       tenantId: ev.tenantId ?? '', evaluationId: id,

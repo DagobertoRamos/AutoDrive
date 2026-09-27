@@ -58,6 +58,16 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const entry = await prisma.financialEntry.update({ where: { id }, data: updateData })
     await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'UPDATE', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role })
+
+    // Comissão paga pelo Financeiro → baixa também no sistema de comissões
+    // (e no extrato do veículo, que lê a comissão ao vivo). Estorno volta para Liberada.
+    if (existing.commissionCalculationId && d.status && d.status !== existing.status) {
+      if (d.status === 'PAGO') {
+        await prisma.commissionCalculation.updateMany({ where: { id: existing.commissionCalculationId, status: { notIn: ['CANCELADO', 'PAGO'] } }, data: { status: 'PAGO', paidAt: (updateData.paidDate as Date | undefined) ?? existing.paidDate ?? new Date() } })
+      } else if (existing.status === 'PAGO' && d.status === 'PREVISTO') {
+        await prisma.commissionCalculation.updateMany({ where: { id: existing.commissionCalculationId, status: 'PAGO' }, data: { status: 'APROVADO', paidAt: null } })
+      }
+    }
     return NextResponse.json({ success: true, data: { ...entry, amount: num(entry.amount) } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)

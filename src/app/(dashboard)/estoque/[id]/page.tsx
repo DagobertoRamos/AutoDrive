@@ -28,6 +28,10 @@ import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
 import { PendencyActions } from '@/components/estoque/PendencyActions'
 import { IntakeTimeline } from '@/components/estoque/IntakeTimeline'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
+import { CautelarPanel } from '@/components/estoque/prep/CautelarPanel'
+import { ReceptionPanel } from '@/components/estoque/prep/ReceptionPanel'
+import { ServicesPanel } from '@/components/estoque/prep/ServicesPanel'
+import { LedgerPanel } from '@/components/estoque/prep/LedgerPanel'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -148,6 +152,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
   const role = (session?.user as { role?: string })?.role ?? ''
 
   const canManage = canAccessModule(role, 'stock.manage')
+  const canFinance = canAccessModule(role as never, 'finance') || ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role)
 
   const [vehicle, setVehicle]   = useState<VehicleDetail | null>(null)
   async function reloadVehicle() {
@@ -164,7 +169,10 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
     await reloadVehicle()
   }
   const [loading, setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState('resumo')
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return 'resumo'
+    return new URLSearchParams(window.location.search).get('aba') ?? 'resumo'
+  })
   const [photoIdx, setPhotoIdx] = useState(0)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -245,8 +253,11 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
     { id: 'avaliacoes',    label: 'Avaliações',    count: vehicle._count.evaluations },
     { id: 'historico',     label: 'Histórico',     count: null },
     { id: 'cautelar',      label: 'Cautelar',      count: null },
+    { id: 'recebimento',   label: 'Recebimento',   count: null },
+    { id: 'servicos',      label: 'Serviços',      count: null },
     { id: 'precos',        label: 'Precificação',  count: null },
     { id: 'pendencias',    label: 'Pendências',    count: vehicle._count.stockPendencies > 0 ? vehicle._count.stockPendencies : null },
+    ...(canFinance ? [{ id: 'extrato', label: 'Extrato financeiro', count: null }] : []),
   ]
 
   return (
@@ -665,28 +676,20 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
 
         {/* ── Cautelar ── */}
         {activeTab === 'cautelar' && (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="h-6 w-6 text-gray-400" />
-              <div>
-                <p className="text-sm font-semibold text-gray-900">Status da Cautelar</p>
-                <CautelarBadge status={vehicle.cautelarStatus} />
-              </div>
-            </div>
-            {vehicle.cautelarNumber && (
-              <InfoRow label="Número" value={vehicle.cautelarNumber} />
-            )}
-            {vehicle.cautelarNotes && (
-              <div className="rounded-lg bg-gray-50 p-4">
-                <p className="text-xs font-medium text-gray-500 mb-1">Apontamentos / Observações</p>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{vehicle.cautelarNotes}</p>
-              </div>
-            )}
-            {!vehicle.cautelarNumber && !vehicle.cautelarNotes && vehicle.cautelarStatus === 'SEM_CAUTELAR' && (
-              <p className="text-sm text-gray-400">Cautelar não realizada.</p>
-            )}
-          </div>
+          <CautelarPanel
+            vehicleId={vehicle.id} cautelarStatus={vehicle.cautelarStatus} cautelarNumber={vehicle.cautelarNumber ?? null}
+            cautelarNotes={vehicle.cautelarNotes ?? null} canEdit={canManage} onSaved={reloadVehicle}
+          />
         )}
+
+        {/* ── Recebimento (checklist com fotos) ── */}
+        {activeTab === 'recebimento' && <ReceptionPanel vehicleId={vehicle.id} canEdit={canManage} onChanged={reloadVehicle} />}
+
+        {/* ── Serviços de preparação ── */}
+        {activeTab === 'servicos' && <ServicesPanel vehicleId={vehicle.id} canEdit={canManage} onChanged={reloadVehicle} />}
+
+        {/* ── Extrato financeiro ── */}
+        {activeTab === 'extrato' && canFinance && <LedgerPanel vehicleId={vehicle.id} />}
 
         {/* ── Precificação ── */}
         {activeTab === 'precos' && (
@@ -795,8 +798,8 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                         <PendencyActions
                           label={p.option.label}
                           resolved={p.resolved}
-                          cautelarStatus={vehicle.cautelarStatus}
-                          km={vehicle.km}
+                          plate={vehicle.plate}
+                          onGoTab={setActiveTab}
                           onSubmit={(body) => patchPendency(p.id, body)}
                         />
                       )}

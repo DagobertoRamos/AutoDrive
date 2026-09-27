@@ -7,7 +7,9 @@
 
 import type { VehicleStockStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { GATE_INSPECTION, GATE_NEGOTIATION, inspectionOk, intakeState, sameLabel, type IntakeState } from './intake-core'
+import { GATE_INSPECTION, GATE_NEGOTIATION, intakeState, sameLabel, STAGE_SERVICES, type IntakeState } from './intake-core'
+import { inspectionReady, servicesDone } from './prep-core'
+import { countInspectionFiles } from './vehicle-files'
 
 const CAUTELAR_LABEL: Record<string, string> = {
   APROVADA: 'aprovada', REPROVADA: 'reprovada', PENDENTE: 'pendente (laudo em andamento)', COM_APONTAMENTO: 'com apontamento',
@@ -19,8 +21,9 @@ export async function syncIntake(vehicleId: string, actor: Actor = null): Promis
   const v = await prisma.vehicle.findUnique({
     where:  { id: vehicleId },
     select: {
-      id: true, tenantId: true, stockStatus: true, cautelarStatus: true,
+      id: true, tenantId: true, stockStatus: true, cautelarStatus: true, originEvaluationId: true,
       stockPendencies: { select: { id: true, resolved: true, notes: true, option: { select: { label: true } } } },
+      services: { select: { status: true } },
     },
   })
   if (!v) return null
@@ -28,9 +31,13 @@ export async function syncIntake(vehicleId: string, actor: Actor = null): Promis
   // Perícia é derivada da cautelar: "sem perícia" = pendente; qualquer outro status = ok.
   const insp = v.stockPendencies.find((p) => sameLabel(p.option.label, GATE_INSPECTION))
   if (insp) {
-    const ok = inspectionOk(v.cautelarStatus)
-    const note = ok ? `Perícia ${CAUTELAR_LABEL[String(v.cautelarStatus)] ?? String(v.cautelarStatus).toLowerCase()}.` : 'Sem perícia registrada: solicite a cautelar.'
-    if (ok !== insp.resolved || (ok && insp.notes !== note)) {
+    const laudos = await countInspectionFiles(v.id, v.originEvaluationId)
+    const ready = inspectionReady(v.cautelarStatus, laudos)
+    const ok = ready.ok
+    const note = ok
+      ? `Perícia ${CAUTELAR_LABEL[String(v.cautelarStatus)] ?? String(v.cautelarStatus).toLowerCase()} · ${laudos} laudo(s) anexado(s).`
+      : `Falta: ${ready.missing.join(' e ')}. Resolva na aba Cautelar.`
+    if (ok !== insp.resolved || insp.notes !== note) {
       await prisma.vehicleStockPendency.update({
         where: { id: insp.id },
         data:  ok
@@ -38,6 +45,19 @@ export async function syncIntake(vehicleId: string, actor: Actor = null): Promis
           : { resolved: false, resolvedAt: null, resolvedById: null, notes: note },
       })
       insp.resolved = ok
+    }
+  }
+
+  // Serviços: com serviços de preparação cadastrados, a etapa é derivada deles.
+  const svc = v.stockPendencies.find((p) => sameLabel(p.option.label, STAGE_SERVICES))
+  if (svc && v.services.length > 0) {
+    const done = servicesDone(v.services)
+    if (done !== svc.resolved) {
+      await prisma.vehicleStockPendency.update({
+        where: { id: svc.id },
+        data:  done ? { resolved: true, resolvedAt: new Date(), resolvedById: actor?.id ?? null } : { resolved: false, resolvedAt: null, resolvedById: null },
+      })
+      svc.resolved = done
     }
   }
 
@@ -79,7 +99,34 @@ export async function resolveNegotiationGate(dealId: string, actor: Actor = null
       if (!gate) continue
       await prisma.vehicleStockPendency.update({
         where: { id: gate.id },
-        data:  { resolved: true, resolvedAt: new Date(), resolvedById: actor?.id ?? null, notes: `Negociação ${dv.deal.dealNumber ?? dealId} concluída.` },
+        data:  { resolved: true, resolvedAt: new Date(), resolvedById: actor?.id ?? null, notes: `Negociação ${dv.deal.dealNumber ?? dealId} registrada.` },
+      })
+      await syncIntake(v.id, actor)
+      n++
+    }
+  }
+  return n
+}
+
+/** Negociação cancelada → reabre o portão "Negociação de entrada" dos carros que entrariam nela. */
+export async function reopenNegotiationGate(dealId: string, actor: Actor = null): Promise<number> {
+  const entering = await prisma.dealVehicle.findMany({
+    where:  { dealId, role: { in: ['TROCA', 'COMPRADO', 'CONSIGNADO'] } },
+    select: { vehicleId: true, plate: true, deal: { select: { tenantId: true, dealNumber: true } } },
+  })
+  let n = 0
+  for (const dv of entering) {
+    const plate = dv.plate?.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const vehicles = await prisma.vehicle.findMany({
+      where: dv.vehicleId ? { id: dv.vehicleId } : plate ? { tenantId: dv.deal.tenantId, active: true, plate: { equals: plate, mode: 'insensitive' } } : { id: '__none__' },
+      select: { id: true, stockPendencies: { where: { resolved: true }, select: { id: true, option: { select: { label: true } } } } },
+    })
+    for (const v of vehicles) {
+      const gate = v.stockPendencies.find((p) => sameLabel(p.option.label, GATE_NEGOTIATION))
+      if (!gate) continue
+      await prisma.vehicleStockPendency.update({
+        where: { id: gate.id },
+        data:  { resolved: false, resolvedAt: null, resolvedById: null, notes: `Negociação ${dv.deal.dealNumber ?? dealId} cancelada: cadastre a negociação de entrada novamente.` },
       })
       await syncIntake(v.id, actor)
       n++

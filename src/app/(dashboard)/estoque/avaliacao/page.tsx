@@ -11,7 +11,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, ArrowRight, Car, CheckCircle,
-  ClipboardCheck, DollarSign, ShieldCheck, User,
+  ClipboardCheck, DollarSign, User,
   FileCheck, AlertTriangle, Info, XCircle,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
@@ -22,7 +22,6 @@ import type { VehicleLookupData, VehicleCategory } from '@/lib/vehicle-lookup/ty
 import { parseBRL, maskKM, parseKM, numberToBRLMask } from '@/lib/masks'
 import { StepCliente, type CustomerLite } from './_components/StepCliente'
 import { EvaluationSections } from './_components/EvaluationSections'
-import { CautelarUploader, type AttachmentLite } from './_components/CautelarUploader'
 import { FieldLabel, FieldError } from '@/components/ui/field'
 import { isEmptyValue } from '@/lib/evaluation/rules'
 import { StepDocumentoVeiculo, type ExtractionSource } from './_components/StepDocumentoVeiculo'
@@ -340,7 +339,6 @@ function Section({ title, icon, children }: {
 const STEPS = [
   { num: 0, label: 'Cliente',      icon: <User className="h-4 w-4" /> },
   { num: 1, label: 'Veículo',      icon: <Car className="h-4 w-4" /> },
-  { num: 4, label: 'Cautelar',     icon: <ShieldCheck className="h-4 w-4" /> },
   { num: 5, label: 'Avaliação',    icon: <ClipboardCheck className="h-4 w-4" /> },
   { num: 6, label: 'Resultado',    icon: <FileCheck className="h-4 w-4" /> },
 ]
@@ -404,7 +402,6 @@ function AvaliacaoForm() {
   const [evaluationId,    setEvaluationId]    = useState<string | null>(null)
   const [autoSavingDraft, setAutoSavingDraft] = useState(false)
   const [draftAttempted,  setDraftAttempted]  = useState(false)
-  const [cautelarFiles,   setCautelarFiles]   = useState<AttachmentLite[]>([])
   // Status/reopenCount reais da avaliação (carregados via GET /api/evaluations/[id]
   // quando o usuário entra em modo edição via ?id=).
   const [evalStatus,     setEvalStatus]     = useState<string>('DRAFT')
@@ -644,9 +641,6 @@ function AvaliacaoForm() {
   }
 
   // ── Etapa 4 — Cautelar ───────────────────────────────────────────────────────
-  const [cautelarStatus, setCautelarStatus] = useState('SEM_CAUTELAR')
-  const [cautelarNumber, setCautelarNumber] = useState('')
-  const [cautelarNotes,  setCautelarNotes]  = useState('')
 
   // ── Etapa 5 — Cliente ────────────────────────────────────────────────────────
   const [ownerName,  setOwnerName]  = useState('')
@@ -709,9 +703,6 @@ function AvaliacaoForm() {
     try {
       const r = await fetch(`/api/evaluations/${evaluationId}`, { cache: 'no-store' })
       const d = await r.json()
-      const list = Array.isArray(d?.data?.attachments) ? d.data.attachments : []
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setCautelarFiles(list.filter((a: any) => a?.category === 'LAUDO_CAUTELAR'))
       // Mantém status/reopenCount em dia para passar valores reais ao
       // EvaluationSections (e não o hardcode "DRAFT" / 0).
       if (d?.data?.status) setEvalStatus(String(d.data.status))
@@ -1146,9 +1137,6 @@ function AvaliacaoForm() {
         desiredValue:    parseMoney(desiredValue),
         minimumValue:    parseMoney(minimumValue),
         suggestedSalePrice: parseMoney(suggestedSale),
-        cautelarStatus:  cautelarStatus || 'SEM_CAUTELAR',
-        cautelarNumber:  cautelarNumber || null,
-        cautelarNotes:   cautelarNotes  || null,
         ownerName:       ownerName  || null,
         ownerPhone:      ownerPhone || null,
         ownerCpf:        ownerCpf   || null,
@@ -1782,7 +1770,7 @@ function AvaliacaoForm() {
           <p className="text-sm text-gray-600">Redirecionando para a próxima etapa...</p>
           <button
             type="button"
-            onClick={() => setStep(4)}
+            onClick={() => setStep(5)}
             className="self-start flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             Continuar <ArrowRight className="h-4 w-4" />
@@ -1799,71 +1787,8 @@ function AvaliacaoForm() {
           Helpers `handleFipeComplete`, `FipeWizard`, mini-chart continuam
           disponíveis caso queiramos reintroduzir num drawer "Ver FIPE". */}
 
-      {/* ── Etapa 4 — Cautelar ── */}
-      {step === 4 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
-          <Section title="Cautelar / Perícia" icon={<ShieldCheck className="h-5 w-5" />}>
-            <Field label="Status da Cautelar" required>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { v: 'SEM_CAUTELAR',    l: 'Sem Cautelar',    active: 'border-gray-400 bg-gray-100 text-gray-800 ring-gray-300' },
-                  { v: 'PENDENTE',        l: 'Pendente',        active: 'border-amber-400 bg-amber-50 text-amber-800 ring-amber-300' },
-                  { v: 'APROVADA',        l: 'Aprovada',        active: 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-emerald-300' },
-                  { v: 'REPROVADA',       l: 'Reprovada',       active: 'border-red-500 bg-red-50 text-red-800 ring-red-300' },
-                  { v: 'COM_APONTAMENTO', l: 'Com Apontamento', active: 'border-orange-500 bg-orange-50 text-orange-800 ring-orange-300' },
-                ].map(({ v, l, active }) => {
-                  const selected = cautelarStatus === v
-                  return (
-                    <button
-                      key={v} type="button"
-                      onClick={() => setCautelarStatus(v)}
-                      className={[
-                        'rounded-lg border-2 px-4 py-2 text-sm font-medium transition-colors',
-                        selected ? `${active} ring-2 ring-offset-1` : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50',
-                      ].join(' ')}
-                    >
-                      {l}
-                    </button>
-                  )
-                })}
-              </div>
-            </Field>
-            <Grid cols={2}>
-              <Field label="Número do Laudo / Cautelar">
-                <input value={cautelarNumber} onChange={(e) => setCautelarNumber(e.target.value)} className={inputCls} placeholder="Número do documento" />
-              </Field>
-            </Grid>
-            <Field label="Apontamentos / Observações">
-              <textarea value={cautelarNotes} onChange={(e) => setCautelarNotes(e.target.value)} rows={3} className={inputCls + ' resize-none'} placeholder="Descreva os apontamentos encontrados na cautelar..." />
-            </Field>
-          </Section>
-
-          {/* Anexos do Laudo Cautelar (PDF/imagem) — habilitado após criar rascunho */}
-          <div className="border-t border-gray-100 pt-4">
-            {evaluationId ? (
-              <CautelarUploader
-                evaluationId={evaluationId}
-                existingFiles={cautelarFiles}
-                onChange={refreshCautelar}
-              />
-            ) : (
-              <p className="text-xs text-gray-400 italic">
-                Os anexos do laudo cautelar ficarão disponíveis assim que o rascunho da avaliação for criado.
-              </p>
-            )}
-          </div>
-
-          {/* Cautelar é PÓS avaliação no novo fluxo: anterior = Avaliação (5), próxima = Resumo (6) */}
-          <div className="flex justify-between pt-2">
-            <button type="button" onClick={() => setStep(5)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-              <ArrowLeft className="h-4 w-4" /> Voltar à avaliação
-            </button>
-            <button type="button" onClick={() => setStep(6)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">
-              Ir para resumo <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Cautelar/perícia saiu da avaliação: fica na ficha do veículo (aba
+          Cautelar) e na pendência "Perícia" da esteira de entrada, com laudo. */}
 
       {/* ── Etapa 5 — Avaliação por seções (sectional checklist) ── */}
       {step === 5 && (
@@ -1876,7 +1801,7 @@ function AvaliacaoForm() {
                 reopenCount={evalReopenCount}
                 opcionais={opcionais}
                 onBack={() => setStep(1)}
-                onComplete={() => setStep(4)}
+                onComplete={() => setStep(6)}
               />
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -1922,8 +1847,8 @@ function AvaliacaoForm() {
           </Section>
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <button type="button" onClick={() => setStep(4)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-              <ArrowLeft className="h-4 w-4" /> Voltar à cautelar
+            <button type="button" onClick={() => setStep(5)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              <ArrowLeft className="h-4 w-4" /> Voltar à avaliação
             </button>
 
             <div className="flex flex-wrap gap-3">

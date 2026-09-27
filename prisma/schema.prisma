@@ -833,6 +833,9 @@ model Vehicle {
   pricingHistory  VehiclePricingHistory[]
   siteListing     SiteListing? // anúncio no site da loja (tabela própria)
   partnerStore    PartnerStore?           @relation(fields: [partnerStoreId], references: [id], onDelete: SetNull)
+  services        VehicleService[] // preparação (oficinas, estética, funilaria...)
+  files           VehicleFile[] // laudo, recebimento, comprovantes
+  reception       VehicleReception?
   publications    Publication[] // Central de Publicações (Marketing)
 
   @@index([tenantId])
@@ -843,6 +846,128 @@ model Vehicle {
   @@index([brand, model])
   @@index([partnerStoreId])
   @@map("vehicles")
+}
+
+// ── Arquivos do veículo (laudo cautelar, fotos do recebimento, comprovantes) ─
+// Bytes no banco (funciona em serverless); servidos por /api/vehicles/files/[id]
+// com sessão. kind: LAUDO_CAUTELAR | RECEBIMENTO | SERVICO | COMPROVANTE | OUTRO.
+// refKey: item do checklist, id do serviço ou do lançamento financeiro.
+model VehicleFile {
+  id             String   @id @default(cuid())
+  tenantId       String?
+  vehicleId      String
+  kind           String
+  refKey         String?
+  fileName       String
+  mimeType       String
+  fileSize       Int
+  data           Bytes
+  uploadedById   String?
+  uploadedByName String?
+  createdAt      DateTime @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, kind])
+  @@map("vehicle_files")
+}
+
+// ── Recebimento do veículo (checklist com fotos) ───────────────────────────────
+// items: [{ key, status: OK | NAO_POSSUI, note }] — foto em VehicleFile (RECEBIMENTO, refKey=key).
+model VehicleReception {
+  id              String    @id @default(cuid())
+  tenantId        String?
+  vehicleId       String    @unique
+  items           Json?
+  km              Int?
+  receivedAt      DateTime?
+  notes           String?
+  confirmedAt     DateTime?
+  confirmedById   String?
+  confirmedByName String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("vehicle_receptions")
+}
+
+// ── Fornecedores / prestadores (oficinas, funilaria, estética, despachante…) ──
+model Supplier {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  kind        String   @default("OFICINA") // OFICINA | FUNILARIA | ESTETICA | MECANICA | ELETRICA | PECAS | DESPACHANTE | LAUDO | OUTRO
+  document    String? // CNPJ/CPF
+  contactName String?
+  phone       String?
+  whatsapp    String?
+  email       String?
+  city        String?
+  address     String?
+  pixKey      String?
+  bankInfo    String?
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  services VehicleService[]
+
+  @@index([tenantId, active])
+  @@map("suppliers")
+}
+
+// ── Serviços de preparação do veículo ──────────────────────────────────────────
+// status: AGUARDANDO | EM_SERVICO | CONCLUIDO | NEGADO | CANCELADO
+model VehicleService {
+  id                  String    @id @default(cuid())
+  tenantId            String?
+  vehicleId           String
+  evaluationServiceId String?   @unique // veio da avaliação
+  description         String
+  serviceType         String    @default("OUTRO")
+  status              String    @default("AGUARDANDO")
+  supplierId          String?
+  estimatedCost       Decimal?  @db.Decimal(12, 2) // valor cadastrado/previsto
+  actualCost          Decimal?  @db.Decimal(12, 2) // valor que realmente ficou
+  notes               String?
+  sentAt              DateTime? // entrada no prestador/oficina
+  dueAt               DateTime? // previsão de entrega
+  finishedAt          DateTime?
+  deniedReason        String?
+  overdueNotifiedAt   DateTime? // último aviso de atraso (evita repetir)
+  createdById         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  vehicle  Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  supplier Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  events   VehicleServiceEvent[]
+
+  @@index([vehicleId])
+  @@index([tenantId, status])
+  @@index([supplierId])
+  @@map("vehicle_services")
+}
+
+// Acompanhamento do serviço (linha do tempo).
+model VehicleServiceEvent {
+  id        String   @id @default(cuid())
+  serviceId String
+  type      String // CRIADO | STATUS | FORNECEDOR | VALOR | PRAZO | NOTA | ATRASO
+  fromValue String?
+  toValue   String?
+  note      String?
+  userId    String?
+  userName  String?
+  createdAt DateTime @default(now())
+
+  service VehicleService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId])
+  @@map("vehicle_service_events")
 }
 
 // ── Lojas parceiras ───────────────────────────────────────────────────────────
@@ -4047,6 +4172,9 @@ model FinancialEntry {
   dealId                  String?
   commissionCalculationId String?
   sellerId                String?
+  // Custos/receitas do veículo (extrato do veículo e Financeiro › Custos de veículos)
+  vehicleId               String?
+  vehicleServiceId        String?              @unique // serviço de preparação que gerou a despesa
   source                  String?              @default("MANUAL") // MANUAL | VENDA | COMISSAO | RETORNO | GARANTIA
   // Auxiliares
   counterparty            String? // fornecedor / cliente
@@ -4070,6 +4198,7 @@ model FinancialEntry {
   @@index([competenceDate])
   @@index([sellerId])
   @@index([unitId])
+  @@index([vehicleId])
   @@map("financial_entries")
 }
 

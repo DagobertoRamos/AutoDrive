@@ -18,7 +18,6 @@ import Link from 'next/link'
 import { AwaitingReleaseBanner } from '../../_components/AwaitingReleaseBanner'
 import { EvaluationSections } from '../../_components/EvaluationSections'
 import { parseOpcionais } from '@/lib/evaluation/rules'
-import { CautelarUploader, type AttachmentLite } from '../../_components/CautelarUploader'
 import { StockEntryPanel } from '../../_components/StockEntryPanel'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
 import { getStatusDef } from '@/components/estoque/avaliacoes/status'
@@ -532,32 +531,14 @@ function DocumentosTab({
   showToast: (msg: string, ok?: boolean) => void
 }) {
   const [category, setCategory] = useState('CRLV')
-  // Particiona: anexos cautelares ficam no widget dedicado; demais (CRLV, OUTRO,
-  // FOTO genérica) continuam no widget existente, que aceita todas as categorias.
-  const cautelar = attachments.filter((a) => a.category === 'LAUDO_CAUTELAR')
-  const outros   = attachments.filter((a) => a.category !== 'LAUDO_CAUTELAR')
-  const cautelarLite: AttachmentLite[] = cautelar.map((a) => ({
-    id:        a.id,
-    fileName:  a.fileName,
-    fileType:  a.fileType,
-    mimeType:  a.mimeType,
-    fileSize:  a.fileSize,
-    publicUrl: a.publicUrl,
-    category:  a.category,
-    uploadedByName: a.uploadedByName,
-    createdAt: a.createdAt,
-  }))
+  // Cautelar/perícia saiu da avaliação (vai para a ficha do veículo › Cautelar).
+  // Laudos que já tinham subido aqui continuam listados como anexos comuns.
+  const outros = attachments
   return (
     <div className="space-y-6">
-      {/* Widget dedicado: Laudo Cautelar */}
-      <CautelarUploader
-        evaluationId={evalId}
-        existingFiles={cautelarLite}
-        onChange={() => { onChanged(); showToast('Arquivos cautelar atualizados.', true) }}
-        readOnly={disabled}
-      />
+      <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900">A perícia/cautelar é feita depois, na ficha do veículo (aba Cautelar), com o laudo anexado — faz parte da esteira de entrada no estoque.</p>
 
-      <div className="border-t border-gray-100 pt-4 space-y-4">
+      <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-gray-800">Outros documentos e anexos</p>
         <select

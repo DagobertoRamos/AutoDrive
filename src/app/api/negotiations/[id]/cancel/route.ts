@@ -11,6 +11,7 @@ import { canCancelDeal } from '@/lib/negotiation-permissions'
 import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/negotiation-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { cancelCommissionsForDeal } from '@/lib/commission/sync'
+import { reopenNegotiationGate } from '@/lib/stock/intake'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifyStockChanged } from '@/lib/publications/service'
 
@@ -129,6 +130,10 @@ export async function POST(
         message: err instanceof Error ? err.message : 'Erro desconhecido',
       })
     }
+
+    // Esteira de entrada: carro que entraria por esta negociação volta a pedir a negociação de entrada.
+    await reopenNegotiationGate(params.id, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
+      .catch((e) => console.error('[esteira] reabrir portão de negociação', e))
 
     return NextResponse.json({ data: updated, commissionCancelResult })
   } catch (err) {

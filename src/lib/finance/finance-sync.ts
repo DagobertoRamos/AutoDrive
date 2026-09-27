@@ -82,6 +82,15 @@ async function runSync(dealWhere: Record<string, unknown>, commWhere: Record<str
     ? await prisma.financialEntry.findMany({ where: { commissionCalculationId: { in: comIds } }, select: { commissionCalculationId: true } })
     : []
   const haveCom = new Set(existingCom.map((e) => e.commissionCalculationId))
+
+  // Comissão paga no sistema de comissões → lançamento baixado no Financeiro.
+  const paidIds = comissoes.filter((c) => c.status === 'PAGO').map((c) => c.id)
+  if (paidIds.length) {
+    await prisma.financialEntry.updateMany({
+      where: { commissionCalculationId: { in: paidIds }, status: 'PREVISTO' },
+      data:  { status: 'PAGO', paidDate: new Date() },
+    }).catch(() => { /* não bloqueia o sync */ })
+  }
   const comEntries: Record<string, unknown>[] = []
   for (const c of comissoes.filter((x) => !haveCom.has(x.id))) {
     const source = COMMISSION_SOURCE[c.ruleType] ?? 'COMISSAO'

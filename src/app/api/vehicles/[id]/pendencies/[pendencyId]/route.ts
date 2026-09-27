@@ -14,7 +14,7 @@ import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forb
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
-import { GATE_INSPECTION, GATE_RECEIVE, sameLabel } from '@/lib/stock/intake-core'
+import { GATE_INSPECTION, GATE_NEGOTIATION, GATE_RECEIVE, sameLabel, STAGE_SERVICES } from '@/lib/stock/intake-core'
 import { syncIntake } from '@/lib/stock/intake'
 
 export const dynamic = 'force-dynamic'
@@ -48,6 +48,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       }
       await prisma.vehicle.update({ where: { id }, data: { cautelarStatus: cs as CautelarStatus } })
       if (note) await prisma.vehicleStockPendency.update({ where: { id: pendencyId }, data: { notes: note } })
+    } else if (sameLabel(pend.option.label, GATE_NEGOTIATION)) {
+      return NextResponse.json({ success: false, error: 'A negociação de entrada é resolvida automaticamente ao cadastrar a negociação (Negociações › Nova negociação).' }, { status: 400 })
+    } else if (sameLabel(pend.option.label, GATE_RECEIVE)) {
+      return NextResponse.json({ success: false, error: 'Confirme o recebimento na aba Recebimento (fotos do checklist).' }, { status: 400 })
+    } else if (sameLabel(pend.option.label, STAGE_SERVICES) && await prisma.vehicleService.count({ where: { vehicleId: id } })) {
+      return NextResponse.json({ success: false, error: 'Os serviços se resolvem na aba Serviços: conclua ou negue cada um.' }, { status: 400 })
     } else {
       if (typeof body.resolved !== 'boolean') {
         return NextResponse.json({ success: false, error: 'Informe resolved: true ou false.' }, { status: 400 })

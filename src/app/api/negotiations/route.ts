@@ -15,6 +15,7 @@ import {
   parseNegotiationFilters,
 } from '@/lib/negotiation-filters'
 import { notifyStockChanged } from '@/lib/publications/service'
+import { resolveNegotiationGate } from '@/lib/stock/intake'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
 
@@ -718,6 +719,14 @@ export async function POST(req: NextRequest) {
     // Central de Publicações: venda registrada (veículo em negociação) → pausa
     // os anúncios conforme a regra da loja. Segundo plano; nunca bloqueia.
     if (type === 'VENDA' || type === 'TROCA') notifyStockChanged((result as { tenantId?: string | null }).tenantId ?? session.user.tenantId, [vehicle?.vehicleId], { id: session.user.id, name: session.user.name ?? null })
+
+    // Esteira de entrada: carro que ENTRA por esta negociação (troca/compra/
+    // consignação) tem o portão "Negociação de entrada" resolvido ao cadastrar.
+    const newDealId = (result as { id?: string }).id
+    if (newDealId) {
+      await resolveNegotiationGate(newDealId, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
+        .catch((e) => console.error('[esteira] portão de negociação', e))
+    }
 
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err) {
