@@ -56,7 +56,7 @@ export default function LoginPage() {
   // Redireciona se já autenticado
   useEffect(() => {
     if (status === 'authenticated' && session) {
-      router.replace('/dashboard')
+      router.replace('/inicio')
     }
   }, [status, session, router])
 
@@ -94,7 +94,7 @@ export default function LoginPage() {
         )
       } else if (result?.ok) {
         clearSidebarMenuState()
-        router.replace('/dashboard')
+        router.replace('/inicio')
       }
     } catch {
       setAuthError('Erro inesperado. Tente novamente.')

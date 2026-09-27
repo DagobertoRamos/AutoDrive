@@ -78,6 +78,15 @@ function anyChildActive(pathname: string, item: NavItem): boolean {
  * Filtra recursivamente o menu de acordo com (a) permissões do role e
  * (b) presença de URL para itens externos (redes sociais).
  */
+/** Chaves dos grupos (por nível) que contêm a página atual — mantém o menu dela aberto. */
+function activeMenuPath(items: NavItem[], pathname: string, depth = 0): string[] {
+  for (const it of items) {
+    if (!it.children?.length || !anyChildActive(pathname, it)) continue
+    return [`${depth}:${it.label}`, ...activeMenuPath(it.children, pathname, depth + 1)]
+  }
+  return []
+}
+
 function filterTree(items: NavItem[], role: string | undefined, socials: Record<string, string>, disabled: Set<string>, open: Set<string>): NavItem[] {
   const out: NavItem[] = []
   for (const it of items) {
@@ -287,10 +296,6 @@ export function Sidebar() {
     setMounted(true)
   }, [])
 
-  useEffect(() => {
-    if (!isMobileOpen) setOpenPath([])
-  }, [isMobileOpen])
-
   // Busca URLs sociais dinamicamente
   useEffect(() => {
     let cancelled = false
@@ -335,8 +340,8 @@ export function Sidebar() {
     closeMobile()
   }
 
+  // Clicar num item NÃO recolhe o menu: ele fica aberto até abrir outro.
   const handleNavigate = () => {
-    setOpenPath([])
     closeMobile()
   }
 
@@ -344,6 +349,16 @@ export function Sidebar() {
     () => filterTree(NAV_GROUPS, userRole, socials, new Set(disabledModules), new Set(openModules)),
     [userRole, socials, disabledModules, openModules],
   )
+
+  // Menu aberto acompanha a página atual (entrar por link, voltar, recarregar):
+  // ajuste de estado durante o render quando a página ou o menu mudam.
+  const syncKey = `${pathname}|${filteredTree.length}`
+  const [syncedKey, setSyncedKey] = useState('')
+  if (syncKey !== syncedKey) {
+    setSyncedKey(syncKey)
+    const path = activeMenuPath(filteredTree, pathname)
+    if (path.length) setOpenPath(path)
+  }
 
   // Mesmo caminho único de saída usado pela Topbar.
   const handleSignOut = () => {
