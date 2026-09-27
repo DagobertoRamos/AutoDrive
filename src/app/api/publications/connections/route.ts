@@ -21,7 +21,7 @@ import { getConnector } from '@/lib/publications/connectors'
 import { connectMetaByToken, oauthConfigured } from '@/lib/publications/oauth'
 import { ensureSiteConnection, logEvent, maskHint, releaseBlockedJobs, sealSecrets } from '@/lib/publications/service'
 import { connectorContext } from '@/lib/publications/worker'
-import { audit, bad, permissions, pubAuth } from '@/lib/publications/api'
+import { audit, bad, kickWorker, permissions, pubAuth } from '@/lib/publications/api'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +58,13 @@ export async function POST(req: Request) {
     try {
       const r = await connectMetaByToken(a.tenantId, { token, appId: str('appId') || undefined, appSecret: str('appSecret') || undefined }, a.actor)
       await audit(a, 'CONNECT', 'PublicationConnection', r.connected.join(', '), { channel: 'META', method: 'token' })
-      const validade = r.expiresAt ? ` Atenção: este token vence em ${r.expiresAt.toLocaleDateString('pt-BR')} — prefira o token de usuário do sistema (não expira).` : ''
+      // Token curto (horas/dias) para de publicar sozinho: avisa bem claro.
+      const hrs = r.expiresAt ? (r.expiresAt.getTime() - Date.now()) / 3_600_000 : null
+      const quando = r.expiresAt?.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      const validade = hrs == null ? ' Token permanente: as publicações não param por vencimento.'
+        : hrs < 72 ? ` ATENÇÃO: este token é TEMPORÁRIO e vence em ${quando} (${Math.max(1, Math.round(hrs))} h). Depois disso Facebook/Instagram param de publicar. Use o token de usuário do sistema do Gerenciador de Negócios (não expira) ou informe o ID e a chave secreta do app para torná-lo de longo prazo.`
+        : ` Atenção: este token vence em ${quando} — o sistema avisa 7 dias antes; prefira o token de usuário do sistema (não expira).`
+      kickWorker()
       return NextResponse.json({ success: true, ok: true, message: `Conectado: ${r.connected.join(', ')}.${validade}` })
     } catch (e) {
       if (isConnectorError(e)) return bad(`${e.message}${e.hint ? ` ${e.hint}` : ''}`)

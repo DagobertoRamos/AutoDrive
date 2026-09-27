@@ -16,7 +16,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { effectivePrice, vehicleTitle } from '@/lib/site/listing-core'
 import { channelSpec } from '@/lib/publications/channels'
 import { STATUS_LABEL, STATUS_TONE, summarize, type PubStatus } from '@/lib/publications/states'
-import { createPublications, ensureSiteConnection, type TargetInput } from '@/lib/publications/service'
+import { createPublications, ensureMediaApproved, ensureSiteConnection, type TargetInput } from '@/lib/publications/service'
 import { loadPublicationSettings } from '@/lib/publications/settings'
 import { localToUtc, validateSchedule } from '@/lib/publications/schedule-core'
 import { audit, bad, kickWorker, permissions, pubAuth } from '@/lib/publications/api'
@@ -121,6 +121,11 @@ export async function POST(req: Request) {
   }
   const requestKey = typeof body.requestKey === 'string' && /^[\w-]{8,64}$/.test(body.requestKey) ? body.requestKey : undefined
   try {
+    // Gestor publicando/agendando: fotos da galeria ainda não aprovadas são
+    // aprovadas agora — senão Facebook/Instagram ficavam em rascunho sem aviso.
+    if (mode !== 'RASCUNHO' && (await permissions(a.user)).approve) {
+      await ensureMediaApproved(a.tenantId, targets.map((t) => t.vehicleId), a.actor)
+    }
     const results = await createPublications(a.tenantId, targets, { mode, scheduledAt, actor: a.actor, requestKey })
     await audit(a, mode === 'AGENDAR' ? 'SCHEDULE' : mode === 'RASCUNHO' ? 'DRAFT' : 'PUBLISH', 'Publication', null, { total: targets.length, scheduledAt, results: results.map((r) => ({ v: r.vehicleId, c: r.channel, s: r.status })) })
     if (mode === 'AGORA') kickWorker()

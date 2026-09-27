@@ -143,6 +143,25 @@ export async function buildFor(tenantId: string, v: VehicleRow, externalRef: str
   })
 }
 
+/**
+ * Aprova as fotos (ordem da galeria) dos carros que ainda não têm mídia
+ * aprovada — usado quando um gestor publica direto. Devolve os aprovados.
+ */
+export async function ensureMediaApproved(tenantId: string, vehicleIds: string[], actor: Actor): Promise<string[]> {
+  const ids = [...new Set(vehicleIds)]
+  const done = new Set((await prisma.publicationDraft.findMany({ where: { tenantId, vehicleId: { in: ids }, mediaRevisionId: { not: null } }, select: { vehicleId: true } })).map((d) => d.vehicleId))
+  const approvedNow: string[] = []
+  for (const id of ids) {
+    if (done.has(id)) continue
+    const v = await loadVehicle(tenantId, id)
+    const photos = v?.photos.map((p) => p.url) ?? []
+    if (!photos.length) continue
+    await approveMedia(tenantId, id, photos, actor)
+    approvedNow.push(id)
+  }
+  return approvedNow
+}
+
 // ── Pré-validação (prévia) ─────────────────────────────────────────────────────
 
 export interface PreviewItem {
@@ -151,7 +170,7 @@ export interface PreviewItem {
   issues: Issue[]; blocked: boolean
 }
 
-export async function previewTargets(tenantId: string, vehicleIds: string[], connectionIds: string[], overridesByTarget: Record<string, unknown> = {}): Promise<PreviewItem[]> {
+export async function previewTargets(tenantId: string, vehicleIds: string[], connectionIds: string[], overridesByTarget: Record<string, unknown> = {}, opts: { canApprove?: boolean } = {}): Promise<PreviewItem[]> {
   const ctx = await payloadContext(tenantId)
   const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: connectionIds } } })
   const approved = new Set((await prisma.publicationDraft.findMany({ where: { tenantId, vehicleId: { in: vehicleIds }, mediaRevisionId: { not: null } }, select: { vehicleId: true } })).map((d) => d.vehicleId))
@@ -165,7 +184,13 @@ export async function previewTargets(tenantId: string, vehicleIds: string[], con
       const ov = (overridesByTarget[`${vehicleId}:${conn.id}`] ?? null) as Prisma.JsonValue
       const p = await buildFor(tenantId, v, 'previa', ov, ctx)
       const issues = validatePayload(p, spec)
-      if (!approved.has(vehicleId) && spec.id !== 'SITE') issues.unshift({ field: 'media', severity: 'error', message: 'Fotos ainda não aprovadas para os canais.', hint: 'Na etapa Fotos, confira capa e ordem e clique em "Aprovar fotos" (gestor).' })
+      if (!approved.has(vehicleId) && spec.id !== 'SITE') {
+        // Gestor publicando: as fotos da galeria são aprovadas sozinhas ao publicar
+        // (antes o destino virava rascunho sem aviso e "parava de publicar").
+        issues.unshift(opts.canApprove && v.photos.length
+          ? { field: 'media', severity: 'warning', message: 'Fotos ainda não aprovadas: serão aprovadas automaticamente ao publicar (capa e ordem da galeria).', hint: 'Para mudar capa/ordem, use a etapa Fotos.' }
+          : { field: 'media', severity: 'error', message: 'Fotos ainda não aprovadas para os canais.', hint: 'Na etapa Fotos, confira capa e ordem e clique em "Aprovar fotos" (gestor).' })
+      }
       if (!isPublishableStock(v.stockStatus, v.active)) issues.unshift({ field: 'stock', severity: 'error', message: `Veículo ${String(v.stockStatus ?? '').toLowerCase().replace(/_/g, ' ')} no estoque — não pode ser anunciado.`, hint: 'Só veículos Disponíveis ou Em promoção vão para os canais.' })
       if (conn.status !== 'CONECTADO') issues.unshift({ field: 'connection', severity: 'error', message: `Conta ${conn.label} ${conn.status === 'RECONECTAR' ? 'precisa ser reconectada' : 'não está conectada'}.`, hint: 'Resolva em Marketing › Canais conectados.' })
       out.push({

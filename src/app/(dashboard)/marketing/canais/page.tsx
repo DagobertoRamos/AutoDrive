@@ -100,6 +100,11 @@ function Channels() {
                     </div>
                     <p className="mt-2 text-[11px] text-gray-500">{c.activePublications} publicação(ões) · conferida {ago(c.lastCheckedAt)}{c.throttledUntil && new Date(c.throttledUntil) > new Date() ? ' · aguardando limite do canal' : ''}</p>
                     {c.maskedHints && <p className="text-[11px] text-gray-400">{Object.entries(c.maskedHints).map(([k, v]) => `${k}: ${v}`).join(' · ')}</p>}
+                    {c.tokenExpiresAt && c.status === 'CONECTADO' && (() => {
+                      const ms = new Date(c.tokenExpiresAt).getTime() - Date.now()
+                      const soon = ms < 7 * 86_400_000
+                      return <p className={`mt-1 text-[11px] ${soon ? 'font-medium text-amber-700' : 'text-gray-500'}`}>Acesso {ms <= 0 ? 'venceu' : 'vence'} em {new Date(c.tokenExpiresAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{soon ? ' — reconecte com token permanente para as publicações não pararem.' : ''}</p>
+                    })()}
                     {c.lastError && <p className="mt-1 text-[11px] text-red-700">{c.lastError}</p>}
                     {c.status === 'RECONECTAR' && <p className="mt-1 text-[11px] text-red-700">A autorização expirou ou foi revogada. Envios desta conta estão parados até reconectar.</p>}
                     {data.can.connections && c.channel !== 'SITE' && (

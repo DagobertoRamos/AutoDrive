@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { checkPhotos } from '@/lib/publications/media'
 import { ensureSiteConnection, previewTargets } from '@/lib/publications/service'
-import { bad, pubAuth } from '@/lib/publications/api'
+import { bad, permissions, pubAuth } from '@/lib/publications/api'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   if (!vehicleIds.length || !connectionIds.length) return bad('Escolha veículos e canais para a prévia.')
   try {
     await ensureSiteConnection(a.tenantId)
-    const items = await previewTargets(a.tenantId, vehicleIds, connectionIds, (b.overrides && typeof b.overrides === 'object' ? b.overrides : {}) as Record<string, unknown>)
+    const items = await previewTargets(a.tenantId, vehicleIds, connectionIds, (b.overrides && typeof b.overrides === 'object' ? b.overrides : {}) as Record<string, unknown>, { canApprove: (await permissions(a.user)).approve })
     let photoChecks: Record<string, Awaited<ReturnType<typeof checkPhotos>>> = {}
     if (b.checkPhotos) {
       const byVehicle = new Map<string, string[]>()
