@@ -256,7 +256,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
     { id: 'recebimento',   label: 'Recebimento',   count: null },
     { id: 'servicos',      label: 'Serviços',      count: null },
     { id: 'precos',        label: 'Precificação',  count: null },
-    { id: 'pendencias',    label: 'Pendências',    count: vehicle._count.stockPendencies > 0 ? vehicle._count.stockPendencies : null },
+    { id: 'pendencias',    label: 'Pendências',    count: vehicle.stockPendencies.filter((p) => !p.resolved).length || null },
     ...(canFinance ? [{ id: 'extrato', label: 'Extrato financeiro', count: null }] : []),
   ]
 

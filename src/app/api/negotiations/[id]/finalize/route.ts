@@ -114,6 +114,12 @@ export async function POST(
       if (deal.type === 'COMPRA') {
         for (const dv of deal.vehicles) {
           if (dv.vehicleId && dv.role === 'COMPRADO') {
+            // Carro que entrou pela esteira de entrada (avaliação → estoque)
+            // já está no estoque sendo preparado: a esteira cuida do status.
+            const inIntake = await (tx as any).vehicleStockPendency.count({
+              where: { vehicleId: dv.vehicleId, option: { label: { in: ['Negociação de entrada', 'Recebimento do veículo'] } } },
+            })
+            if (inIntake > 0) continue
             await (tx as any).vehicle.update({
               where: { id: dv.vehicleId },
               data:  {

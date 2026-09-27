@@ -481,7 +481,8 @@ export async function POST(req: NextRequest) {
           const conflict: any = await tx.dealVehicle.findFirst({
             where: {
               vehicleId,
-              role:  { in: ['VENDIDO', 'CONSIGNADO'] },
+              // Só venda conflita: consignação/compra são a ENTRADA do carro.
+              role:  'VENDIDO',
               deal:  { status: { in: OPEN as never[] } },
             },
             select: {

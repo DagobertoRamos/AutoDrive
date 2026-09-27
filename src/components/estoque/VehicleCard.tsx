@@ -67,7 +67,8 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
     ? `${vehicle.year ?? '—'}/${vehicle.modelYear}`
     : vehicle.year?.toString() ?? '—'
 
-  const pendencyCount = vehicle._count.stockPendencies
+  // Só as pendências em aberto (a API já traz só as não resolvidas; _count conta todas).
+  const pendencyCount = vehicle.stockPendencies?.length ?? vehicle._count.stockPendencies
 
   return (
     <Link

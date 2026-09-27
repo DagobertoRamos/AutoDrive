@@ -83,8 +83,10 @@ export async function POST(
       // Aprovação tira o veículo da lista de disponíveis IMEDIATAMENTE
       // (sem aguardar finalize). Status RESERVADO indica "reservado pra venda
       // já aprovada" — fica fora da busca de novas vendas mas histórico OK.
+      // Só o carro que SAI (VENDIDO). CONSIGNADO/COMPRADO/TROCA são carros que
+      // ENTRAM na loja — reservá-los travava a esteira e as publicações.
       for (const dv of deal.vehicles) {
-        if (dv.vehicleId && (dv.role === 'VENDIDO' || dv.role === 'CONSIGNADO')) {
+        if (dv.vehicleId && dv.role === 'VENDIDO') {
           await tx.vehicle.update({
             where: { id: dv.vehicleId },
             data:  {
@@ -113,7 +115,7 @@ export async function POST(
     })
 
     // Central de Publicações: venda aprovada → pausa os anúncios do veículo.
-    notifyStockChanged(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' || dv.role === 'CONSIGNADO' ? dv.vehicleId : null)), { id: session.user.id, name: session.user.name ?? null })
+    notifyStockChanged(deal.tenantId, deal.vehicles.map((dv) => (dv.role === 'VENDIDO' ? dv.vehicleId : null)), { id: session.user.id, name: session.user.name ?? null })
 
     // Esteira de entrada: carro que ENTROU nesta negociação (troca/compra/
     // consignação) tem o portão "Negociação de entrada" resolvido.
