@@ -4,7 +4,6 @@
 .autodrive-site .hero-grid-single { grid-template-columns: 1fr; }
 .autodrive-site .hero-grid-single .hero-content h1 { max-width: 760px; }
 .autodrive-site .footer-powered { opacity: .7; font-size: .8rem; }
-.autodrive-site .site-footer .footer-grid a { display: block; }
 .autodrive-site .vcard-image img { width: 100%; height: 100%; object-fit: cover; }
 /* O tema original deixava o texto branco no hover do botão contornado (fundo claro). */
 .autodrive-site .button-outline:hover { color: var(--ink); }
@@ -17,8 +16,7 @@
 .autodrive-site .home-partner-band,
 .autodrive-site .contact-band,
 .autodrive-site .notice,
-.autodrive-site .detail-notice,
-.autodrive-site .site-footer { background: var(--blue-dark); }
+.autodrive-site .detail-notice { background: var(--blue-dark); }
 .autodrive-site .button-dark,
 .autodrive-site .vcard-more,
 .autodrive-site .vcard-badge.dark,
@@ -39,7 +37,6 @@
   .autodrive-site input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
   .autodrive-site select,
   .autodrive-site textarea { font-size: 16px; }
-  .autodrive-site .site-footer .footer-grid a { display: flex; align-items: center; min-height: 40px; }
 }
 
 /* Topo: todos os itens do menu do lojista visíveis no computador e no tablet.
@@ -173,4 +170,49 @@
 @media (max-width: 560px) {
   .autodrive-site .vlead-card { border-radius: 12px; }
   .autodrive-site .vlead-form fieldset { grid-template-columns: 1fr; }
+}
+
+/* ── Rodapé padrão (o mesmo do site modelo) ─────────────────────────────────
+   Fundo sempre escuro, tingido pela cor escura da loja (cor clara/cinza da
+   loja não deixa o rodapé desbotado). 4 colunas → 2 → 1. */
+.autodrive-site .site-footer { padding: 0 0 22px; color: #b6c4cc; background: color-mix(in srgb, var(--blue-dark) 28%, #050c14); }
+.autodrive-site .site-footer a { color: inherit; text-decoration: none; }
+.autodrive-site .site-footer a:hover { color: #fff; }
+.autodrive-site .site-footer .footer-cta { display: flex; align-items: center; gap: 24px; margin-top: 0; padding: 26px 0; border: 0; border-bottom: 1px solid rgba(255,255,255,.1); border-radius: 0; background: transparent; }
+.autodrive-site .site-footer .footer-cta strong { display: block; margin: 0 0 4px; color: #fff; font-size: 1.2rem; }
+.autodrive-site .site-footer .footer-cta p { margin: 0; max-width: 560px; color: #b6c4cc; font-size: .92rem; }
+.autodrive-site .site-footer .footer-cta .button { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; color: #fff; }
+.autodrive-site .site-footer .footer-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.25fr); gap: 40px; padding-top: 40px; }
+.autodrive-site .site-footer .footer-grid > * { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.autodrive-site .site-footer .footer-grid strong { color: #fff; font-size: .8rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.autodrive-site .site-footer .footer-grid p { margin: 0; font-size: .9rem; line-height: 1.55; }
+.autodrive-site .site-footer .footer-logo { display: block; width: auto; height: auto; max-width: 200px; max-height: 40px; object-fit: contain; }
+.autodrive-site .site-footer .footer-logo-badge { display: inline-flex; padding: 10px 14px; border-radius: 12px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.autodrive-site .site-footer .footer-logo-plain { display: inline-flex; }
+.autodrive-site .site-footer .footer-grid .footer-brand-text { font-size: 1.3rem; letter-spacing: 0; text-transform: none; }
+.autodrive-site .site-footer .footer-links { display: grid; gap: 9px 22px; }
+.autodrive-site .site-footer .footer-links.two-cols { grid-template-columns: repeat(2, max-content); }
+.autodrive-site .site-footer .footer-links a { font-size: .9rem; }
+.autodrive-site .site-footer .footer-contact { display: grid; gap: 11px; margin: 0; padding: 0; list-style: none; }
+.autodrive-site .site-footer .footer-contact li { display: flex; align-items: flex-start; gap: 10px; font-size: .9rem; line-height: 1.45; overflow-wrap: anywhere; }
+.autodrive-site .site-footer .footer-contact svg { margin-top: 2px; color: var(--brand); }
+.autodrive-site .site-footer .footer-mapas { display: flex; flex-wrap: wrap; gap: 8px; }
+.autodrive-site .site-footer .footer-mapas a { padding: 5px 12px; border: 1px solid rgba(255,255,255,.18); border-radius: 999px; color: #fff; font-size: .8rem; font-weight: 700; text-decoration: none; }
+.autodrive-site .site-footer .footer-mapas a:hover { border-color: var(--brand); background: rgba(255,255,255,.06); }
+.autodrive-site .site-footer .footer-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.autodrive-site .site-footer .footer-tags a { padding: 5px 11px; border-radius: 999px; background: rgba(255,255,255,.07); font-size: .78rem; line-height: 1.3; }
+.autodrive-site .site-footer .footer-tags a:hover { background: rgba(255,255,255,.14); }
+.autodrive-site .site-footer .footer-legal { margin-top: 34px; }
+.autodrive-site .site-footer .footer-legal p { margin: 0; color: #7f93a0; font-size: .78rem; line-height: 1.55; }
+.autodrive-site .site-footer .footer-bottom { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.1); color: #8a9ca8; font-size: .8rem; }
+@media (max-width: 1080px) {
+  .autodrive-site .site-footer .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 28px; }
+}
+@media (max-width: 640px) {
+  .autodrive-site .site-footer .footer-cta { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .autodrive-site .site-footer .footer-cta .button { margin-left: 0; width: 100%; justify-content: center; }
+  .autodrive-site .site-footer .footer-grid { grid-template-columns: 1fr; gap: 28px; padding-top: 30px; }
+  .autodrive-site .site-footer .footer-links a { display: inline-flex; align-items: center; min-height: 32px; }
+  .autodrive-site .site-footer .footer-contact li { min-height: 28px; }
+  .autodrive-site .site-footer .footer-bottom { flex-direction: column; align-items: flex-start; }
 }

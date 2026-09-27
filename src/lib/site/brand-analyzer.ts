@@ -5,7 +5,7 @@
 //      apaga partes brancas internas da logo);
 //   2. recorta as sobras e redimensiona;
 //   3. sugere cores (brand-core) com contraste garantido;
-//   4. gera versão branca p/ o rodapé escuro (se a logo for escura);
+//   4. gera versão clara p/ o rodapé escuro (partes escuras viram brancas);
 //   5. gera o favicon (logo no quadrado, ou monograma se ela for muito larga).
 // Tudo sai como PNG: SVG vira PNG aqui (o servidor não aceita SVG).
 // =============================================================================
@@ -102,15 +102,29 @@ export async function analyzeLogo(file: File, storeName: string): Promise<Analyz
   const finalPx = out.ctx.getImageData(0, 0, out.c.width, out.c.height)
   const suggestion = suggestBrand(finalPx.data, { hasTransparency })
 
-  // Versão branca (rodapé escuro) quando a logo é escura e tem transparência.
+  // Versão clara (rodapé escuro) sempre que a logo tem partes escuras e
+  // transparência: só o que é escuro vira branco (texto preto/cinza); as partes
+  // coloridas ficam como estão. Logo mista (ícone colorido + nome escuro) também
+  // ganha a versão clara — antes só a logo toda escura ganhava.
   let light: Blob | null = null
   let lightPreview: string | null = null
-  if (suggestion.logoIsDark && hasTransparency) {
-    const l = canvas(out.c.width, out.c.height)
+  if (hasTransparency) {
     const lp = new ImageData(new Uint8ClampedArray(finalPx.data), finalPx.width, finalPx.height)
-    for (let i = 0; i < lp.data.length; i += 4) { lp.data[i] = 255; lp.data[i + 1] = 255; lp.data[i + 2] = 255 }
-    l.ctx.putImageData(lp, 0, 0)
-    light = await toBlob(l.c); lightPreview = l.c.toDataURL('image/png')
+    let opaque = 0, dark = 0
+    for (let i = 0; i < lp.data.length; i += 4) {
+      if (lp.data[i + 3] < 40) continue
+      opaque++
+      const r = lp.data[i], g = lp.data[i + 1], b = lp.data[i + 2]
+      const max = Math.max(r, g, b), min = Math.min(r, g, b)
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+      // escuro, ou acinzentado médio (sem cor): vai para branco
+      if (lum < 0.42 || (max - min < 28 && lum < 0.72)) { lp.data[i] = 255; lp.data[i + 1] = 255; lp.data[i + 2] = 255; dark++ }
+    }
+    if (opaque && dark / opaque > 0.04) {
+      const l = canvas(out.c.width, out.c.height)
+      l.ctx.putImageData(lp, 0, 0)
+      light = await toBlob(l.c); lightPreview = l.c.toDataURL('image/png')
+    }
   }
 
   // Favicon 256×256: logo no quadrado; muito larga → monograma na cor da marca.
