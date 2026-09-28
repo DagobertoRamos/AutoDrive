@@ -38,7 +38,7 @@ function ctxWith(http: ReturnType<typeof simulated>['http'], account: string): C
     mediaUrl: (u) => `https://app.test/m/${encodeURIComponent(u)}.jpg`,
     social: {
       artUrl: (u, p, f, k) => `https://app.test/art/${f}-${k}-${p.price}-${encodeURIComponent(u)}.jpg`,
-      async videoUrl(p, kind, o) { reels.push(`${kind}:${o.format}:${o.template}:${o.embedMusic ? 'com-trilha' : 'mudo'}`); return kind === 'REELS' ? 'https://app.test/reel.mp4' : 'https://app.test/clip.mp4' },
+      async video(p, kind, o) { reels.push(`${kind}:${o.format}:${o.template}:${o.embedMusic ? 'com-trilha' : 'mudo'}`); return { url: kind === 'REELS' ? 'https://app.test/reel.mp4' : 'https://app.test/clip.mp4', bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]) } },
     },
     async saveSecrets() {},
     now: () => new Date('2026-09-27T12:00:00Z'),
@@ -159,7 +159,7 @@ describe('Estúdio social — Página do Facebook — SIMULAÇÃO', () => {
     expect(new URLSearchParams(s.calls.find((c) => c.url.includes('/photo_stories'))!.body).get('photo_id')).toBe('PH2')
   })
 
-  it('Reels: start → envio por file_url (rupload) → finish PUBLISHED com a legenda; conferência pelo status do vídeo', async () => {
+  it('Reels: start → envio do arquivo (rupload binário) → finish PUBLISHED com a legenda; conferência pelo status do vídeo', async () => {
     let vs = 'processing'
     const s = simulated([
       (c) => c.url.includes('/PAGE/video_reels') && c.body.includes('upload_phase=start') ? { status: 200, body: { video_id: 'VID1', upload_url: 'https://rupload.facebook.com/video-upload/v23.0/VID1' } } : null,
@@ -172,7 +172,8 @@ describe('Estúdio social — Página do Facebook — SIMULAÇÃO', () => {
     expect(r).toMatchObject({ state: 'EM_ANALISE', remoteId: 'VID1' })
     const up = s.calls.find((c) => c.url.includes('rupload'))!
     expect(up.url).toMatch(/\/video-upload\/v\d+\.\d+\/VID1$/)
-    expect(up.headers).toMatchObject({ Authorization: 'OAuth PT', file_url: 'https://app.test/reel.mp4' })
+    expect(up.headers).toMatchObject({ Authorization: 'OAuth PT', offset: '0', file_size: '8' })
+    expect(up.headers.file_url).toBeUndefined()
     const finish = new URLSearchParams(s.calls.find((c) => c.body.includes('upload_phase=finish'))!.body)
     expect(finish.get('video_state')).toBe('PUBLISHED')
     expect(finish.get('description')).toContain('Tiguan')
@@ -275,7 +276,7 @@ describe('Estúdio social — música — SIMULAÇÃO', () => {
     ])
     const ctx = ctxWith(s.http, 'PAGE')
     expect(await metaPageConnector.publish!(payload({ format: 'STORY', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } }), ctx)).toMatchObject({ state: 'PUBLICADO', remoteId: 'PS1' })
-    expect(s.calls.find((c) => c.url.includes('rupload'))!.headers).toMatchObject({ file_url: 'https://app.test/clip.mp4' })
+    expect(s.calls.find((c) => c.url.includes('rupload'))!.headers).toMatchObject({ offset: '0', file_size: '8' })
     expect(await metaPageConnector.publish!(payload({ format: 'POST', template: 'OFERTA', music: { mode: 'TRACK', source: 'IG', id: '5' } }), ctx)).toMatchObject({ state: 'EM_ANALISE', remoteId: 'PV1' })
     const v = new URLSearchParams(s.calls.find((c) => c.url.includes('/PAGE/videos'))!.body)
     expect(v.get('file_url')).toBe('https://app.test/clip.mp4')
@@ -296,5 +297,26 @@ describe('Estúdio social — música — SIMULAÇÃO', () => {
   it('Post em vídeo da Página é conferido pelo status do vídeo', async () => {
     const s = simulated([(c) => c.url.includes('/PV1?') ? { status: 200, body: { id: 'PV1', permalink_url: '/v/1', status: { video_status: 'ready' } } } : null])
     expect(await metaPageConnector.get!({ vehicleId: 'v1', remoteId: 'PV1', externalRef: 'x', format: 'POST', video: true }, ctxWith(s.http, 'PAGE'))).toMatchObject({ state: 'PUBLICADO', remoteStatus: 'vídeo no ar' })
+  })
+})
+
+describe('Estúdio social — recusas — SIMULAÇÃO', () => {
+  it('Story em vídeo recusado pelo Instagram: publica o story com a arte e explica o motivo', async () => {
+    const s = simulated([IG_LIMIT,
+      (c) => c.url.includes('/IG/media_publish') ? { status: 200, body: { id: 'STX' } } : null,
+      (c) => c.url.includes('/IG/media') && c.method === 'POST' ? { status: 200, body: { id: c.body.includes('video_url') ? 'VIDC' : 'IMGC' } } : null,
+      (c) => c.url.includes('/VIDC?') ? { status: 200, body: { status_code: 'ERROR', status: 'Error: 2207026 formato de vídeo' } } : null,
+      (c) => c.url.includes('/IMGC?') ? { status: 200, body: { status_code: 'FINISHED' } } : null,
+    ])
+    const r = await instagramConnector.publish!(payload({ format: 'STORY', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } }), ctxWith(s.http, 'IG'))
+    expect(r).toMatchObject({ state: 'PUBLICADO', remoteId: 'STX', remoteStatus: 'story sem música (some em 24 h)' })
+    expect(r.message).toContain('2207026')
+  })
+  it('rupload recusado: o erro traz a mensagem do debug_info', async () => {
+    const s = simulated([
+      (c) => c.url.includes('/PAGE/video_reels') && c.body.includes('upload_phase=start') ? { status: 200, body: { video_id: 'V9' } } : null,
+      (c) => c.url.startsWith('https://rupload.facebook.com/') ? { status: 422, body: { debug_info: { retriable: false, type: 'ProcessingFailedError', message: 'Request processing failed' } } } : null,
+    ])
+    await expect(metaPageConnector.publish!(payload({ format: 'REELS', template: 'OFERTA' }), ctxWith(s.http, 'PAGE'))).rejects.toMatchObject({ message: expect.stringContaining('Request processing failed') })
   })
 })

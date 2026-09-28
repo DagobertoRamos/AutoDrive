@@ -12,7 +12,7 @@ export interface HttpRequest {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   url: string
   headers?: Record<string, string>
-  body?: string | URLSearchParams
+  body?: string | URLSearchParams | Uint8Array
   timeoutMs?: number
   /** Operação cria algo no canal? Timeout vira TIMEOUT (resultado desconhecido). */
   creates?: boolean
@@ -31,7 +31,7 @@ export function createHttpClient(fetchImpl: FetchLike = (u, i) => fetch(u, i)): 
       const timer = setTimeout(() => ctrl.abort(), r.timeoutMs ?? 30_000)
       let res: Response
       try {
-        res = await fetchImpl(r.url, { method: r.method ?? 'GET', headers: r.headers, body: r.body, signal: ctrl.signal, redirect: 'follow' })
+        res = await fetchImpl(r.url, { method: r.method ?? 'GET', headers: r.headers, body: r.body as BodyInit | undefined, signal: ctrl.signal, redirect: 'follow' })
       } catch (e) {
         const aborted = (e as Error)?.name === 'AbortError'
         if (aborted && r.creates) throw new ConnectorError('TIMEOUT', 'O canal não respondeu a tempo depois do envio.', undefined, { code: 'TIMEOUT' })

@@ -73,14 +73,26 @@ export async function searchIgLibrary(tenantId: string, q: string, http: HttpCli
  * Áudio para EMBUTIR no vídeo (sempre CC0). Faixa do Instagram escolhida para
  * um formato que não aceita a biblioteca vira uma faixa CC0 do mesmo clima.
  */
-export async function audioToEmbed(choice: MusicChoice, seed: string, http: HttpClient = createHttpClient()): Promise<{ bytes: Buffer; track: MusicTrack } | null> {
+export async function audioToEmbed(choice: MusicChoice, seed: string, http: HttpClient = createHttpClient()): Promise<{ bytes: Buffer; track: MusicTrack }> {
+  if (!(await freesoundKey())) throw new Error('músicas livres (Freesound) não configuradas em Master › Integrações')
   let track: MusicTrack | null = null
   if (choice.mode === 'TRACK' && choice.source === 'FREESOUND') track = await freesoundTrack(choice.id, http)
+  // Clima escolhido; sem resultado, qualquer música CC0 bem avaliada.
   if (!track) track = pickTrack(await searchFreesound({ mood: choice.mood ?? 'ANIMADA' }, http), seed)
-  if (!track) return null
-  const res = await fetch(track.previewUrl, { signal: AbortSignal.timeout(20_000) })
-  if (!res.ok) throw new Error(`Não foi possível baixar a música (${res.status}).`)
-  const bytes = Buffer.from(await res.arrayBuffer())
-  if (bytes.length > 15_000_000) throw new Error('Arquivo de música grande demais.')
-  return { bytes, track }
+  if (!track) track = pickTrack(await searchFreesound({ q: 'music' }, http), seed)
+  if (!track) throw new Error('o Freesound não devolveu nenhuma música CC0 para o clima escolhido')
+  // Prévia em alta; se falhar, a de baixa.
+  const urls = [track.previewUrl, track.previewUrl.replace('-hq.mp3', '-lq.mp3')].filter((u, i, a) => a.indexOf(u) === i)
+  let last = ''
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(25_000), headers: { 'User-Agent': 'AutoDrive/1.0 (+https://www.appautodrive.com.br)' } })
+      if (!res.ok) { last = `HTTP ${res.status}`; continue }
+      const bytes = Buffer.from(await res.arrayBuffer())
+      if (bytes.length < 1000) { last = 'arquivo vazio'; continue }
+      if (bytes.length > 15_000_000) { last = 'arquivo grande demais'; continue }
+      return { bytes, track }
+    } catch (e) { last = (e as Error).message }
+  }
+  throw new Error(`não foi possível baixar a música "${track.title}" (${last})`)
 }

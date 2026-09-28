@@ -123,7 +123,7 @@ function mappingResolver(tenantId: string, channel: string): MappingResolver {
   }
 }
 
-export async function connectorContext(conn: { id: string; tenantId: string; channel: string; externalAccountId: string; environment: string; config: Prisma.JsonValue; secretsEncrypted: string | null }, deps: WorkerDeps): Promise<ConnectorContext> {
+export async function connectorContext(conn: { id: string; tenantId: string; channel: string; externalAccountId: string; environment: string; config: Prisma.JsonValue; secretsEncrypted: string | null }, deps: WorkerDeps, note?: (type: string, message: string, data?: unknown) => Promise<void>): Promise<ConnectorContext> {
   const now = deps.now ?? (() => new Date())
   return {
     connection: { id: conn.id, tenantId: conn.tenantId, externalAccountId: conn.externalAccountId, environment: conn.environment === 'HOMOLOGACAO' ? 'HOMOLOGACAO' : 'PRODUCAO', config: (conn.config && typeof conn.config === 'object' && !Array.isArray(conn.config) ? conn.config : {}) as Record<string, unknown> },
@@ -133,10 +133,20 @@ export async function connectorContext(conn: { id: string; tenantId: string; cha
     mediaUrl: (u) => mediaUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { now: now() }),
     social: {
       artUrl: (u, p, format, template) => artUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { v: p.vehicle.id, f: format, k: template, p: p.price, o: p.oldPrice }, { now: now() }),
-      async videoUrl(p, kind, o) {
-        const music = o.embedMusic && p.social?.music ? await audioToEmbed(p.social.music, p.vehicle.id, deps.http).catch((e) => { console.error('[publications] música', (e as Error).message); return null }) : null
-        const { assetId } = await renderAndStoreVideo(conn.tenantId, p, kind, o.format, o.template, music?.bytes ?? null)
-        return videoUrlFor(deps.origin ?? appOrigin(), conn.tenantId, assetId, { now: now() })
+      async video(p, kind, o) {
+        let audio: Buffer | null = null
+        if (o.embedMusic && p.social?.music) {
+          try {
+            const m = await audioToEmbed(p.social.music, p.vehicle.id, deps.http)
+            audio = m.bytes
+            await note?.('TRILHA', `Trilha: "${m.track.title}"${m.track.artist ? ` — ${m.track.artist}` : ''} (${m.track.license}, Freesound #${m.track.id}).`, { freesoundId: m.track.id })
+          } catch (e) {
+            console.error('[publications] música', (e as Error).message)
+            await note?.('TRILHA', `Sem trilha: ${(e as Error).message}. O vídeo foi publicado sem música.`)
+          }
+        }
+        const r = await renderAndStoreVideo(conn.tenantId, p, kind, o.format, o.template, audio)
+        return { url: videoUrlFor(deps.origin ?? appOrigin(), conn.tenantId, r.assetId, { now: now() }), bytes: new Uint8Array(r.mp4) }
       },
     },
     async saveSecrets(s, expiresAt) {
@@ -215,7 +225,7 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
     return out('REPETIR', { message: 'Limite por minuto desta conta.' })
   }
 
-  const ctx = await connectorContext(conn, deps)
+  const ctx = await connectorContext(conn, deps, (type, message, data) => ev(type, message, null, data))
   const format = socialOf(pub.overrides)?.format ?? null
   const video = format === 'REELS' || (format === 'POST' && !!soc?.music && pub.channel === 'META_PAGE')
   const ref = { vehicleId: pub.vehicleId, remoteId: pub.remoteId, externalRef: pub.externalRef, remoteUrl: pub.remoteUrl, pendingToken: pub.pendingToken, format, video }

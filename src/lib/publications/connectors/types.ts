@@ -45,10 +45,11 @@ export interface SocialMedia {
   /** URL pública da arte do formato sobre a foto (preço do anúncio já aplicado). */
   artUrl(photoUrl: string, p: ListingPayload, format: SocialFormat, template: ArtTemplate): string
   /**
-   * Gera e guarda o vídeo (REELS = todas as fotos; CLIP = uma arte com zoom)
-   * e devolve a URL pública do MP4. `embedMusic`: embute a trilha CC0 escolhida.
+   * Gera e guarda o vídeo (REELS = todas as fotos; CLIP = uma arte com zoom):
+   * URL pública do MP4 (Instagram baixa) e os bytes (Facebook recebe o
+   * arquivo direto). `embedMusic`: embute a trilha CC0 escolhida.
    */
-  videoUrl(p: ListingPayload, kind: 'REELS' | 'CLIP', opts: { format: SocialFormat; template: ArtTemplate; embedMusic: boolean }): Promise<string>
+  video(p: ListingPayload, kind: 'REELS' | 'CLIP', opts: { format: SocialFormat; template: ArtTemplate; embedMusic: boolean }): Promise<{ url: string; bytes: Uint8Array }>
 }
 
 export interface RemoteRef {

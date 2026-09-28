@@ -97,7 +97,7 @@ const factsOfPayload = (p: ListingPayload) => artFacts({ brand: p.vehicle.brand 
  *   capa de Carrossel, Post com música). `audio` = trilha CC0 embutida.
  * Mesmo conteúdo = mesmo arquivo (reaproveita pelo hash).
  */
-export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audio: Buffer | null): Promise<{ assetId: string; seconds: number }> {
+export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audio: Buffer | null): Promise<{ assetId: string; seconds: number; mp4: Buffer }> {
   const brand = await loadBrand(tenantId)
   const photos: Buffer[] = []
   for (const url of p.photos.slice(0, kind === 'REELS' ? 7 : 1)) {
@@ -108,11 +108,11 @@ export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, k
   const out = kind === 'REELS'
     ? await renderReel({ ...base, photos, audio })
     : await renderArtClip(await renderArt({ ...base, photo: photos[0], format: format === 'STORY' ? 'STORY' : 'POST' }, { quality: 90 }), format === 'STORY' ? 10 : 12, audio)
-  return { assetId: await storeVideo(tenantId, out.mp4), seconds: out.seconds }
+  return { assetId: await storeVideo(tenantId, out.mp4), seconds: out.seconds, mp4: out.mp4 }
 }
 
 /** Compat: Reels sem trilha. */
-export async function renderAndStoreReel(tenantId: string, p: ListingPayload, template: ArtTemplate): Promise<{ assetId: string; seconds: number }> {
+export async function renderAndStoreReel(tenantId: string, p: ListingPayload, template: ArtTemplate): Promise<{ assetId: string; seconds: number; mp4: Buffer }> {
   return renderAndStoreVideo(tenantId, p, 'REELS', 'REELS', template, null)
 }
 
