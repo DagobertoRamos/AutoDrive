@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   if (sp.get('diag') === '1') {
     const b = await pubAuth(req, 'marketing.publications.connections')
     if (b instanceof NextResponse) return b
-    return NextResponse.json({ success: true, diag: await diagIgLibrary(a.tenantId) })
+    return NextResponse.json({ success: true, diag: await diagIgLibrary(a.tenantId, sp.get('post')) })
   }
   if (sp.get('check') === '1') return NextResponse.json({ success: true, freesoundConfigured, tracks: [] })
   try {

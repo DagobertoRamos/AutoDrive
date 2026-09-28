@@ -73,7 +73,7 @@ export async function searchIgLibrary(tenantId: string, q: string, http: HttpCli
 }
 
 /** Diagnóstico da biblioteca do Instagram (Master/gestor): tipo do token, permissões e resposta crua — nunca o token. */
-export async function diagIgLibrary(tenantId: string): Promise<Record<string, unknown>> {
+export async function diagIgLibrary(tenantId: string, postId?: string | null): Promise<Record<string, unknown>> {
   const conn = await prisma.publicationConnection.findFirst({ where: { tenantId, channel: 'INSTAGRAM', status: 'CONECTADO' }, orderBy: { updatedAt: 'desc' } })
   if (!conn) return { erro: 'sem conexão do Instagram' }
   const s = readSecrets(conn.secretsEncrypted)
@@ -103,7 +103,7 @@ export async function diagIgLibrary(tenantId: string): Promise<Record<string, un
     out.userAccounts = await get('/me/accounts', { fields: 'id,name,tasks' })
     out.pageRoles = await getP(`/${page.externalAccountId}`, { fields: 'id,name,tasks,business,access_token' }).then((r) => ({ ...r, body: r.body.replace(/"access_token":"[^"]*"/, '"access_token":"***"') }))
     // Um post nosso (o mais recente com id remoto) lido como a conferência do sistema lê.
-    const last = await prisma.publication.findFirst({ where: { tenantId, channel: 'META_PAGE', remoteId: { contains: '_' } }, orderBy: { updatedAt: 'desc' }, select: { remoteId: true } })
+    const last = postId && /^[\d_]{5,60}$/.test(postId) ? { remoteId: postId } : await prisma.publication.findFirst({ where: { tenantId, channel: 'META_PAGE', remoteId: { contains: '_' } }, orderBy: { updatedAt: 'desc' }, select: { remoteId: true } })
     if (last?.remoteId) {
       out.postFull = await getP(`/${last.remoteId}`, { fields: 'id,permalink_url,is_published' })
       out.postBasic = await getP(`/${last.remoteId}`, { fields: 'id,permalink_url' })
