@@ -102,6 +102,12 @@ export async function diagIgLibrary(tenantId: string): Promise<Record<string, un
     out.pageFeed = await getP(`/${page.externalAccountId}/feed`, { limit: '1', fields: 'id,created_time' })
     out.userAccounts = await get('/me/accounts', { fields: 'id,name,tasks' })
     out.pageRoles = await getP(`/${page.externalAccountId}`, { fields: 'id,name,tasks,business,access_token' }).then((r) => ({ ...r, body: r.body.replace(/"access_token":"[^"]*"/, '"access_token":"***"') }))
+    // Um post nosso (o mais recente com id remoto) lido como a conferência do sistema lê.
+    const last = await prisma.publication.findFirst({ where: { tenantId, channel: 'META_PAGE', remoteId: { contains: '_' } }, orderBy: { updatedAt: 'desc' }, select: { remoteId: true } })
+    if (last?.remoteId) {
+      out.postFull = await getP(`/${last.remoteId}`, { fields: 'id,permalink_url,is_published' })
+      out.postBasic = await getP(`/${last.remoteId}`, { fields: 'id,permalink_url' })
+    }
     out.pagePublished = await getP(`/${page.externalAccountId}/published_posts`, { limit: '1', fields: 'id' })
   }
   for (const [k, p] of [['music', { audio_type: 'music' }], ['musicPop', { audio_type: 'music', search_query: 'pop' }], ['originalSound', { audio_type: 'original_sound' }]] as const) out[k] = await get('/ig_audio', { ...p, user_id: conn.externalAccountId })
