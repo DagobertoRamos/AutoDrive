@@ -12,8 +12,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarClock, Eye, ExternalLink, HardDrive, ImagePlus, Link2, Loader2, Pencil, Rocket, Save, Trash2, Upload, X } from 'lucide-react'
 import { RETENTION_NOTICE } from '@/lib/publications/retention-core'
+import { partsUrl, StoredPreview } from '@/components/publications/AvulsaPreview'
 import { cn } from '@/lib/utils'
-import { api, Drawer, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
+import { api, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
 import { PostPreview, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
 import { AVULSA_FORMATS, AVULSA_LABEL, FACEBOOK_ONLY, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia } from '@/lib/publications/social/avulsa-core'
 import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
@@ -71,17 +72,6 @@ async function postRaw(url: string, body: Blob): Promise<any> {
 }
 
 /** Mídias guardadas → prévia (fotos e capa do vídeo servidas pela loja). */
-function storedPreview(media: AvulsaMedia[]): { items: PreviewMedia[]; link?: string } {
-  const items: PreviewMedia[] = []
-  let link: string | undefined
-  for (const m of media) {
-    if (m.type === 'image') items.push({ type: 'image', url: `/api/site/assets/${m.assetId}` })
-    else if (m.type === 'link') link = m.url
-    else if ('posterAssetId' in m && m.posterAssetId) items.push({ type: 'image', url: `/api/site/assets/${m.posterAssetId}`, note: 'Vídeo (capa)' })
-    else items.push({ type: 'image', url: '', note: 'link' in m ? `Vídeo por link (${classifyVideo(m.link)?.label ?? 'link'})` : 'Vídeo' })
-  }
-  return { items: items.filter((i) => i.url), link }
-}
 
 /** Rascunho salvo → itens do editor (com miniatura de volta). */
 function itemsFromMedia(media: AvulsaMedia[]): Item[] {
@@ -89,7 +79,7 @@ function itemsFromMedia(media: AvulsaMedia[]): Item[] {
     if (m.type === 'link') return []
     if (m.type === 'image') return [{ key: crypto.randomUUID(), media: m, preview: `/api/site/assets/${m.assetId}`, kind: 'image', name: 'Foto', progress: 100 }]
     if ('link' in m) return [{ key: crypto.randomUUID(), media: m, preview: classifyVideo(m.link)?.siteUrl ?? '', kind: 'video', name: `Vídeo (${classifyVideo(m.link)?.label ?? 'link'})`, progress: 100 }]
-    return [{ key: crypto.randomUUID(), media: m, preview: 'posterAssetId' in m && m.posterAssetId ? `/api/site/assets/${m.posterAssetId}` : '', kind: 'image', name: m.name ?? 'Vídeo', progress: 100 }]
+    return [{ key: crypto.randomUUID(), media: m, preview: partsUrl(m), kind: 'video', name: m.name ?? 'Vídeo', progress: 100 }]
   })
 }
 const DRAFT_KEY = 'autodrive:avulsa:editor:v1'
@@ -154,6 +144,21 @@ export default function PostAvulsoPage() {
     setMsg({ ok: true, text: 'Rascunho aberto no editor: ajuste e publique, agende ou salve de novo.' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+  // Vindo do Painel ("Retomar"/"Visualizar"): ?editar=<id> ou ?ver=<id>.
+  const [linked, setLinked] = useState(false)
+  useEffect(() => {
+    if (linked || !posts) return
+    const sp = new URLSearchParams(window.location.search)
+    const id = sp.get('editar') ?? sp.get('ver')
+    const t = setTimeout(() => {
+      setLinked(true)
+      const p = id ? posts.find((x) => x.id === id) : null
+      if (!p) return
+      if (sp.get('editar') && p.status === 'RASCUNHO') continueDraft(p); else setViewing(p)
+    }, 0)
+    return () => clearTimeout(t)
+  }, [posts, linked]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const clearEditor = () => { setItems([]); setLinkMedia(''); setCaption(''); setTitle(''); setWhen(''); setEditingId(null); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ok */ } }
 
   const loadPosts = useCallback(() => { api('/api/publications/avulsa').then((j) => { setPosts(j.data); setStorage(j.storage) }).catch(() => setPosts([])) }, [])
@@ -374,25 +379,5 @@ export default function PostAvulsoPage() {
 
       {viewing && <StoredPreview post={viewing} conns={conns} onClose={() => setViewing(null)} />}
     </div>
-  )
-}
-
-/** "Ver como ficou": prévia de um post já feito ou agendado, com o que foi guardado. */
-function StoredPreview({ post, conns, onClose }: { post: any; conns: Conn[]; onClose: () => void }) {
-  const targets = conns.filter((c) => (post.connectionIds as string[]).includes(c.id))
-  const [cid, setCid] = useState<string>(targets[0]?.id ?? '')
-  const c = targets.find((t) => t.id === cid)
-  const { items, link } = storedPreview(post.media as AvulsaMedia[])
-  const format: PreviewFormat = post.format === 'POST' ? (items.length > 1 ? 'CARROSSEL' : 'POST') : post.format
-  const r = post.results?.[cid]
-  return (
-    <Drawer open onClose={onClose} title="Como ficou o post" subtitle={post.title || AVULSA_LABEL[post.format as AvulsaFormat]}>
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-1.5">{targets.map((t) => <button key={t.id} onClick={() => setCid(t.id)} className={cn('rounded-lg border px-2 py-0.5 text-xs', cid === t.id ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-gray-200 text-gray-600')}>{t.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'} · {t.label}</button>)}</div>
-        {r?.remoteUrl && <a href={r.remoteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 underline">Abrir o post na rede<ExternalLink size={11} /></a>}
-        <PostPreview network={c?.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'} format={format} account={c?.label ?? ''} media={items} caption={post.format === 'STORY' ? '' : post.caption ?? ''} link={link} />
-        {!items.length && post.format !== 'LINK' && <p className="text-center text-[11px] text-gray-500">As mídias deste post já foram limpas do servidor para economizar espaço. Abra o post na rede para ver.</p>}
-      </div>
-    </Drawer>
   )
 }

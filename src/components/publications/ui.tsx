@@ -4,7 +4,7 @@
 // Peças visuais da Central de Publicações (padrão AutoDrive: discreto, textos curtos).
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarDays, Car, History, ImagePlus, PlugZap, Rocket } from 'lucide-react'
+import { CalendarDays, Car, History, ImagePlus, LayoutDashboard, PlugZap, Rocket } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export type Tone = 'neutral' | 'info' | 'progress' | 'success' | 'warning' | 'danger' | 'muted'
@@ -18,7 +18,7 @@ const TONE: Record<Tone, string> = {
   danger: 'bg-red-50 text-red-700 border-red-200',
   muted: 'bg-gray-100 text-gray-500 border-gray-200',
 }
-const DOT: Record<Tone, string> = {
+export const DOT: Record<Tone, string> = {
   neutral: 'bg-gray-400', info: 'bg-sky-500', progress: 'bg-indigo-500 animate-pulse', success: 'bg-green-500',
   warning: 'bg-amber-500', danger: 'bg-red-500', muted: 'bg-gray-300',
 }
@@ -44,7 +44,8 @@ export const STATUS_LABEL: Record<string, string> = {
 }
 
 const TABS = [
-  { href: '/marketing/publicacoes', label: 'Publicações', icon: Rocket },
+  { href: '/marketing/publicacoes', label: 'Painel', icon: LayoutDashboard },
+  { href: '/marketing/publicacoes/lista', label: 'Anúncios', icon: Rocket },
   { href: '/marketing/avulsa', label: 'Post avulso', icon: ImagePlus },
   { href: '/marketing/calendario', label: 'Calendário', icon: CalendarDays },
   { href: '/marketing/historico', label: 'Histórico', icon: History },
@@ -57,7 +58,7 @@ export function PubTabs() {
   return (
     <nav aria-label="Central de Publicações" className="-mx-1 flex gap-1 overflow-x-auto border-b border-gray-200 px-1">
       {TABS.map((t) => {
-        const active = pathname === t.href || (t.href === '/marketing/publicacoes' && pathname.startsWith('/marketing/publicacoes/'))
+        const active = pathname === t.href || (t.href === '/marketing/publicacoes/lista' && pathname.startsWith('/marketing/publicacoes/'))
         return (
           <Link key={t.href} href={t.href} aria-current={active ? 'page' : undefined}
             className={cn('inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-t', active ? 'border-brand-700 text-brand-800' : 'border-transparent text-gray-500 hover:text-gray-800')}>

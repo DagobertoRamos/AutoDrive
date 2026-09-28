@@ -7,19 +7,65 @@
 // a legenda e as mídias são as mesmas que vão ser enviadas.
 // =============================================================================
 
-import { useState } from 'react'
-import { Bookmark, ChevronLeft, ChevronRight, Globe, Heart, MessageCircle, MoreHorizontal, Music2, Send, Share2, ThumbsUp } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Bookmark, ChevronLeft, ChevronRight, Globe, Heart, MessageCircle, MoreHorizontal, Music2, Pause, Play, Send, Share2, ThumbsUp, Volume2, VolumeX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface PreviewMedia { type: 'image' | 'video'; url: string; note?: string }
+export interface PreviewAudio { url: string; title: string; artist?: string }
+
+/**
+ * Tocador da prévia: passa os quadros no tempo do vídeo (zoom suave, como o
+ * vídeo gerado) e toca a música escolhida. Sem `slides`, só a música.
+ */
+function usePlayer(count: number, slides: number[] | null | undefined, audioUrl: string | null | undefined) {
+  const [playing, setPlaying] = useState(false)
+  const [idx, setIdx] = useState(0)
+  const [cycle, setCycle] = useState(0)
+  const [muted, setMuted] = useState(false)
+  const audio = useRef<HTMLAudioElement | null>(null)
+  const timed = !!slides?.length && count > 0
+  useEffect(() => {
+    if (!playing || !timed) return
+    const d = (slides![Math.min(idx, slides!.length - 1)] ?? 3) * 1000
+    const t = setTimeout(() => {
+      if (idx + 1 >= Math.min(count, slides!.length)) { setIdx(0); setCycle((c) => c + 1); if (audio.current) audio.current.currentTime = 0 } else setIdx(idx + 1)
+    }, d)
+    return () => clearTimeout(t)
+  }, [playing, timed, idx, slides, count])
+  useEffect(() => {
+    const a = audio.current
+    if (!a) return
+    a.muted = muted
+    if (playing) void a.play().catch(() => undefined); else a.pause()
+  }, [playing, muted, audioUrl])
+  useEffect(() => { const a = audio.current; return () => { a?.pause() } }, [])
+  const el = audioUrl ? <audio ref={audio} src={audioUrl} loop preload="auto" /> : null
+  return { playing, toggle: () => setPlaying((p) => !p), idx: timed ? idx : null, cycle, muted, setMuted, el, total: slides?.slice(0, count).reduce((a, b) => a + b, 0) ?? 0 }
+}
+
+const KEYFRAMES = '@keyframes pp-kb{from{transform:scale(1)}to{transform:scale(1.08)}}@keyframes pp-bar{from{width:0%}to{width:100%}}'
+
+function PlayLayer({ p, label }: { p: ReturnType<typeof usePlayer>; label: string }) {
+  return (
+    <>
+      {p.el}
+      {!p.playing
+        ? <button type="button" onClick={p.toggle} className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-black/25 text-white"><span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60"><Play size={26} className="ml-1" /></span><span className="rounded-full bg-black/60 px-2 py-0.5 text-[11px]">{label}</span></button>
+        : <button type="button" onClick={p.toggle} aria-label="Pausar" className="absolute inset-0 z-10" />}
+      {p.el && <button type="button" onClick={() => p.setMuted(!p.muted)} aria-label={p.muted ? 'Ligar som' : 'Tirar som'} className="absolute bottom-16 left-2 z-20 rounded-full bg-black/50 p-1.5 text-white">{p.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>}
+      {p.playing && <span className="pointer-events-none absolute right-2 top-9 z-20 rounded-full bg-black/50 p-1 text-white"><Pause size={12} /></span>}
+    </>
+  )
+}
 export type PreviewFormat = 'POST' | 'CARROSSEL' | 'STORY' | 'REELS' | 'VIDEO' | 'LINK'
 
 const initial = (s: string) => (s.replace(/^@/, '').trim()[0] ?? 'A').toUpperCase()
 
-function Media({ m, className }: { m: PreviewMedia; className?: string }) {
+function Media({ m, className, kb }: { m: PreviewMedia; className?: string; kb?: number }) {
   return m.type === 'video'
-    ? <video src={m.url} className={cn('h-full w-full object-cover', className)} muted loop autoPlay playsInline />
-    : <img src={m.url} alt="" className={cn('h-full w-full object-cover', className)} />
+    ? <video src={m.url} className={cn('h-full w-full object-cover', className)} loop autoPlay playsInline controls />
+    : <img src={m.url} alt="" className={cn('h-full w-full object-cover', className)} style={kb ? { animation: `pp-kb ${kb}s linear both` } : undefined} />
 }
 
 function Avatar({ name, small }: { name: string; small?: boolean }) {
@@ -40,6 +86,7 @@ function Caption({ account, text, dark }: { account: string; text: string; dark?
 function Phone({ children, dark }: { children: React.ReactNode; dark?: boolean }) {
   return (
     <div className={cn('mx-auto w-[300px] overflow-hidden rounded-[2rem] border-[6px] border-gray-900 shadow-xl', dark ? 'bg-black' : 'bg-white')}>
+      <style>{KEYFRAMES}</style>
       <div className="flex h-5 items-center justify-center bg-gray-900"><span className="h-1.5 w-16 rounded-full bg-gray-700" /></div>
       {children}
     </div>
@@ -52,8 +99,14 @@ function linkThumb(url: string): string | null {
   return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null
 }
 
-export function PostPreview({ network, format, account, media, caption, music, link }: { network: 'INSTAGRAM' | 'FACEBOOK'; format: PreviewFormat; account: string; media: PreviewMedia[]; caption: string; music?: string | null; link?: string }) {
-  const [i, setI] = useState(0)
+export function PostPreview({ network, format, account, media, caption, music, link, audio, slides }: { network: 'INSTAGRAM' | 'FACEBOOK'; format: PreviewFormat; account: string; media: PreviewMedia[]; caption: string; music?: string | null; link?: string; audio?: PreviewAudio | null; slides?: number[] | null }) {
+  const [sel, setI] = useState(0)
+  const player = usePlayer(media.length, slides, audio?.url)
+  const i = player.idx ?? sel
+  const kb = player.playing && player.idx !== null ? slides?.[player.idx] : undefined
+  const mkey = `${i}-${player.cycle}-${player.playing ? 1 : 0}`
+  const playable = !!(slides?.length || audio)
+  const playLabel = slides && slides.length > 1 ? `Tocar o vídeo (${Math.round(player.total)} s)` : slides?.length ? 'Tocar como vídeo' : 'Ouvir com a música'
   const name0 = account || 'sua loja'
 
   // ── Link de vídeo (só Facebook) ───────────────────────────────────────────
@@ -84,9 +137,10 @@ export function PostPreview({ network, format, account, media, caption, music, l
   if (format === 'STORY') {
     return (
       <Phone dark>
-        <div className="relative aspect-[9/16] w-full">
-          <Media m={cur} />
-          <div className="absolute inset-x-2 top-2 h-0.5 rounded bg-white/40"><div className="h-full w-1/3 rounded bg-white" /></div>
+        <div className="relative aspect-[9/16] w-full overflow-hidden">
+          <Media key={mkey} m={cur} kb={kb} />
+          <div className="absolute inset-x-2 top-2 h-0.5 overflow-hidden rounded bg-white/40"><div key={mkey} className="h-full rounded bg-white" style={player.playing && slides?.[0] ? { animation: `pp-bar ${slides[0]}s linear both` } : { width: '0%' }} /></div>
+          {playable && <PlayLayer p={player} label={playLabel} />}
           <div className="absolute left-2 top-4 flex items-center gap-2 text-[11px] font-semibold text-white drop-shadow"><Avatar name={name} small />{name.replace(/^@/, '')} <span className="font-normal text-white/70">agora</span></div>
           {music && <div className="absolute left-2 top-11 flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 text-[10px] text-white"><Music2 size={10} />{music}</div>}
           <div className="absolute inset-x-2 bottom-2 flex items-center gap-2"><span className="flex-1 rounded-full border border-white/60 px-3 py-1.5 text-[11px] text-white/80">Enviar mensagem</span><Heart size={18} className="text-white" /><Send size={18} className="text-white" /></div>
@@ -99,9 +153,11 @@ export function PostPreview({ network, format, account, media, caption, music, l
   if (vertical) {
     return (
       <Phone dark>
-        <div className="relative aspect-[9/16] w-full">
-          <Media m={cur} />
+        <div className="relative aspect-[9/16] w-full overflow-hidden">
+          <Media key={mkey} m={cur} kb={kb} />
           <span className="absolute left-3 top-3 text-sm font-bold text-white drop-shadow">Reels</span>
+          {playable && cur.type !== 'video' && <PlayLayer p={player} label={playLabel} />}
+          {player.playing && slides && slides.length > 1 && <div className="absolute inset-x-0 bottom-0 z-20 h-0.5 bg-white/30"><div className="h-full bg-white transition-all" style={{ width: `${(((player.idx ?? 0) + 1) / slides.length) * 100}%` }} /></div>}
           <div className="absolute bottom-24 right-2 flex flex-col items-center gap-4 text-white drop-shadow">
             {network === 'INSTAGRAM' ? <><Heart size={22} /><MessageCircle size={22} /><Send size={22} /><MoreHorizontal size={22} /></> : <><ThumbsUp size={22} /><MessageCircle size={22} /><Share2 size={22} /></>}
           </div>
@@ -130,7 +186,7 @@ export function PostPreview({ network, format, account, media, caption, music, l
     return (
       <Phone>
         <div className="flex items-center gap-2 px-3 py-2"><Avatar name={name} /><span className="flex-1 text-[12px] font-semibold">{name.replace(/^@/, '')}</span><MoreHorizontal size={16} /></div>
-        <div className="relative aspect-[4/5] w-full bg-gray-100"><Media m={cur} />{nav}</div>
+        <div className="relative aspect-[4/5] w-full overflow-hidden bg-gray-100"><Media key={mkey} m={cur} kb={kb} />{playable && (i === 0 || !slides) && <PlayLayer p={player} label={playLabel} />}{nav}</div>
         <div className="flex items-center gap-3 px-3 py-2"><Heart size={20} /><MessageCircle size={20} /><Send size={20} /><span className="flex-1" />
           {carousel && <span className="absolute left-1/2 flex -translate-x-1/2 gap-1">{media.map((_, k) => <span key={k} className={cn('h-1.5 w-1.5 rounded-full', k === i ? 'bg-blue-500' : 'bg-gray-300')} />)}</span>}
           <Bookmark size={20} /></div>
@@ -153,7 +209,7 @@ export function PostPreview({ network, format, account, media, caption, music, l
             </div>
           ))}
         </div>
-      ) : <div className="aspect-[4/5] w-full bg-gray-100"><Media m={cur} /></div>}
+      ) : <div className="relative aspect-[4/5] w-full overflow-hidden bg-gray-100"><Media key={mkey} m={cur} kb={kb} />{playable && <PlayLayer p={player} label={playLabel} />}</div>}
       <div className="flex justify-around border-t border-gray-100 py-2 text-[11px] text-gray-600"><span className="flex items-center gap-1"><ThumbsUp size={13} />Curtir</span><span className="flex items-center gap-1"><MessageCircle size={13} />Comentar</span><span className="flex items-center gap-1"><Share2 size={13} />Compartilhar</span></div>
     </Phone>
   )

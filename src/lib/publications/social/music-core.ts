@@ -19,7 +19,7 @@ export type MusicSource = 'IG' | 'FREESOUND'
 /** Escolha gravada na publicação (overrides.social.music). */
 export type MusicChoice =
   | { mode: 'AUTO'; mood: MusicMood }
-  | { mode: 'TRACK'; source: MusicSource; id: string; title?: string; artist?: string; mood?: MusicMood }
+  | { mode: 'TRACK'; source: MusicSource; id: string; title?: string; artist?: string; mood?: MusicMood; /** Só para ouvir na prévia. */ previewUrl?: string }
 
 export interface MusicTrack { source: MusicSource; id: string; title: string; artist: string; seconds: number; previewUrl: string; license: string }
 
@@ -85,7 +85,7 @@ export function musicOf(x: unknown): MusicChoice | null {
   const mood = (MUSIC_MOODS as readonly string[]).includes(String(m.mood)) ? (m.mood as MusicMood) : undefined
   if (m.mode === 'AUTO') return { mode: 'AUTO', mood: mood ?? 'ANIMADA' }
   if (m.mode === 'TRACK' && (m.source === 'IG' || m.source === 'FREESOUND') && typeof m.id === 'string' && /^[\w-]{1,64}$/.test(m.id)) {
-    return { mode: 'TRACK', source: m.source, id: m.id, title: typeof m.title === 'string' ? m.title.slice(0, 120) : undefined, artist: typeof m.artist === 'string' ? m.artist.slice(0, 80) : undefined, mood }
+    return { mode: 'TRACK', source: m.source, id: m.id, title: typeof m.title === 'string' ? m.title.slice(0, 120) : undefined, artist: typeof m.artist === 'string' ? m.artist.slice(0, 80) : undefined, mood, ...(typeof m.previewUrl === 'string' && /^https:\/\/[^\s]{8,800}$/.test(m.previewUrl) ? { previewUrl: m.previewUrl } : {}) }
   }
   return null
 }

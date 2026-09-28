@@ -9,7 +9,7 @@ import { decrypt } from '@/lib/crypto'
 import { createHttpClient, type HttpClient } from '../connectors/http'
 import { graphBase } from '../connectors/meta'
 import { readSecrets } from '../service'
-import { freesoundQuery, parseFreesound, parseIgAudio, pickTrack, type MusicChoice, type MusicMood, type MusicTrack } from './music-core'
+import { freesoundQuery, musicPlan, parseFreesound, parseIgAudio, pickTrack, type MusicChoice, type MusicMood, type MusicTrack } from './music-core'
 
 const FREESOUND = 'https://freesound.org/apiv2'
 let keyCache: { v: string | null; exp: number } | null = null
@@ -74,7 +74,8 @@ export async function searchIgLibrary(tenantId: string, q: string, http: HttpCli
  * Áudio para EMBUTIR no vídeo (sempre CC0). Faixa do Instagram escolhida para
  * um formato que não aceita a biblioteca vira uma faixa CC0 do mesmo clima.
  */
-export async function audioToEmbed(choice: MusicChoice, seed: string, http: HttpClient = createHttpClient()): Promise<{ bytes: Buffer; track: MusicTrack }> {
+/** Faixa CC0 que vai embutida no vídeo (a mesma escolha na prévia e no envio). */
+export async function embedTrack(choice: MusicChoice, seed: string, http: HttpClient = createHttpClient()): Promise<MusicTrack> {
   if (!(await freesoundKey())) throw new Error('músicas livres (Freesound) não configuradas em Master › Integrações')
   let track: MusicTrack | null = null
   if (choice.mode === 'TRACK' && choice.source === 'FREESOUND') track = await freesoundTrack(choice.id, http)
@@ -82,6 +83,19 @@ export async function audioToEmbed(choice: MusicChoice, seed: string, http: Http
   if (!track) track = pickTrack(await searchFreesound({ mood: choice.mood ?? 'ANIMADA' }, http), seed)
   if (!track) track = pickTrack(await searchFreesound({ q: 'music' }, http), seed)
   if (!track) throw new Error('o Freesound não devolveu nenhuma música CC0 para o clima escolhido')
+  return track
+}
+
+/** Música para OUVIR na pré-visualização (a mesma que vai no post). */
+export async function previewAudio(choice: MusicChoice | null, channel: string, format: string, seed: string): Promise<{ url: string; title: string; artist: string } | null> {
+  const plan = musicPlan(choice, channel, format)
+  if (!plan || !choice) return null
+  if (plan === 'IG_LIBRARY') return choice.mode === 'TRACK' && choice.previewUrl ? { url: choice.previewUrl, title: choice.title ?? 'Faixa do Instagram', artist: choice.artist ?? '' } : null
+  try { const t = await embedTrack(choice, seed); return { url: t.previewUrl, title: t.title, artist: t.artist } } catch { return null }
+}
+
+export async function audioToEmbed(choice: MusicChoice, seed: string, http: HttpClient = createHttpClient()): Promise<{ bytes: Buffer; track: MusicTrack }> {
+  const track = await embedTrack(choice, seed, http)
   // Prévia em alta; se falhar, a de baixa.
   const urls = [track.previewUrl, track.previewUrl.replace('-hq.mp3', '-lq.mp3')].filter((u, i, a) => a.indexOf(u) === i)
   let last = ''

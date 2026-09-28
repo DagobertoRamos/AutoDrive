@@ -20,7 +20,7 @@ import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/pu
 import { TextAssist } from '@/components/publications/TextAssist'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
-import { campaignKeyFor, planLocal } from '@/lib/publications/social/formats'
+import { campaignKeyFor, isArtTemplate, isSocialFormat, planLocal } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { RETENTION_DAYS } from '@/lib/publications/retention-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
@@ -46,9 +46,13 @@ function Wizard() {
   const [current, setCurrent] = useState<string | null>(null)
   const [conns, setConns] = useState<Conn[]>([])
   const [channels, setChannels] = useState<Record<string, ChannelInfo>>({})
-  const [targets, setTargets] = useState<Set<string>>(new Set())
-  const [campaign, setCampaign] = useState('principal')
-  const [social, setSocial] = useState<SocialChoice>(DEFAULT_SOCIAL)
+  // "Retomar" do Painel: ?veiculos=&contas=&formato=&modelo=&campanha= já vêm preenchidos.
+  const [targets, setTargets] = useState<Set<string>>(() => new Set((params.get('contas') ?? '').split(',').filter(Boolean)))
+  const [campaign, setCampaign] = useState(() => params.get('campanha') || 'principal')
+  const [social, setSocial] = useState<SocialChoice>(() => {
+    const f = params.get('formato'); const m = params.get('modelo')
+    return { ...DEFAULT_SOCIAL, ...(f && isSocialFormat(f) ? { formats: [f] } : {}), ...(m && isArtTemplate(m) ? { template: m } : {}) }
+  })
   const [can, setCan] = useState({ prepare: false, approve: false, publish: false, connections: false })
   const [err, setErr] = useState<string | null>(null)
   const [tz, setTz] = useState('America/Sao_Paulo')

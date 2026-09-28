@@ -333,3 +333,34 @@ export const instagramConnector: Connector = {
   // update/pause/resume/remove: não oferecidos pela API de publicação → pendência manual (ver worker).
 }
 
+
+// ── "Ver como ficou": a mídia REAL publicada na rede ────────────────────────
+
+export interface RemoteMedia { media: Array<{ type: 'image' | 'video'; url: string }>; caption: string; permalink: string | null }
+
+type IgItem = { media_type?: string; media_url?: string; thumbnail_url?: string }
+const igItem = (m: IgItem) => (m.media_type === 'VIDEO' && m.media_url ? { type: 'video' as const, url: m.media_url } : m.media_url || m.thumbnail_url ? { type: 'image' as const, url: (m.media_url || m.thumbnail_url)! } : null)
+
+/**
+ * Lê o post publicado (Instagram: media_url dos itens; Página: vídeo pelo
+ * `source` ou foto/álbum pelos anexos). Story expirado (24 h) → null.
+ */
+export async function remoteMedia(ctx: ConnectorContext, channel: string, remoteId: string): Promise<RemoteMedia | null> {
+  if (channel === 'INSTAGRAM') {
+    const j = await graph<IgItem & { permalink?: string; caption?: string; children?: { data?: IgItem[] } }>(ctx, 'GET', `/${remoteId}`, { fields: 'media_type,media_url,thumbnail_url,permalink,caption,children{media_type,media_url,thumbnail_url}' }, 'Instagram')
+    const items = (j.children?.data?.length ? j.children.data : [j]).map(igItem).filter((x): x is NonNullable<typeof x> => !!x)
+    return items.length ? { media: items, caption: j.caption ?? '', permalink: j.permalink ?? null } : null
+  }
+  if (!remoteId.includes('_')) {
+    // Vídeo/Reels da Página (o id é o do vídeo).
+    const v = await graph<{ source?: string; picture?: string; description?: string; permalink_url?: string }>(ctx, 'GET', `/${remoteId}`, { fields: 'source,picture,description,permalink_url' }, 'Página').catch(() => null)
+    if (v?.source) return { media: [{ type: 'video', url: v.source }], caption: v.description ?? '', permalink: v.permalink_url ? new URL(v.permalink_url, 'https://www.facebook.com').toString() : null }
+  }
+  type Att = { media_type?: string; media?: { image?: { src?: string }; source?: string }; subattachments?: { data?: Att[] } }
+  const j = await graph<{ message?: string; full_picture?: string; permalink_url?: string; attachments?: { data?: Att[] } }>(ctx, 'GET', `/${remoteId}`, { fields: 'message,full_picture,permalink_url,attachments{media_type,media,subattachments{media_type,media}}' }, 'Página')
+  const att = j.attachments?.data?.[0]
+  const list = att?.subattachments?.data?.length ? att.subattachments.data : att ? [att] : []
+  const media = list.map((a) => (a.media?.source ? { type: 'video' as const, url: a.media.source } : a.media?.image?.src ? { type: 'image' as const, url: a.media.image.src } : null)).filter((x): x is NonNullable<typeof x> => !!x)
+  if (!media.length && j.full_picture) media.push({ type: 'image', url: j.full_picture })
+  return media.length ? { media, caption: j.message ?? '', permalink: j.permalink_url ?? null } : null
+}

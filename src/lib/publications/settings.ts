@@ -40,6 +40,8 @@ export interface PublicationSettings {
   autoProgram: AutoProgram
   /** Worker: máximo de envios por minuto por conexão (proteção extra além do limite do portal). */
   perConnectionPerMinute: number
+  /** Tratamento automático das fotos enviadas (luz, contraste, cor e nitidez). */
+  photoEnhance: boolean
 }
 
 const key = (tenantId: string) => `t:${tenantId}:publications:v1`
@@ -82,6 +84,7 @@ export function sanitizeSettings(input: unknown, fallback: PublicationSettings):
     },
     perConnectionPerMinute: Number.isFinite(per) && per >= 1 && per <= 120 ? Math.round(per) : fallback.perConnectionPerMinute,
     terms: sanitizeTerms(i.terms, fallback.terms),
+    photoEnhance: typeof i.photoEnhance === 'boolean' ? i.photoEnhance : fallback.photoEnhance,
     autoProgram: sanitizeProgram(i.autoProgram, fallback.autoProgram),
   }
 }
@@ -107,6 +110,7 @@ async function defaults(tenantId: string): Promise<PublicationSettings> {
     perConnectionPerMinute: 20,
     terms: EMPTY_TERMS,
     autoProgram: DEFAULT_PROGRAM,
+    photoEnhance: true,
   }
 }
 

@@ -13,6 +13,7 @@ import type { MediaClaims } from '../media-token'
 import { fetchImageSafely } from '../safe-fetch'
 import { loadPublicationSettings } from '../settings'
 import { renderArt } from './art'
+import { maybeEnhance } from './enhance'
 import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './formats'
 import { renderArtClip, renderReel } from './reel'
 
@@ -67,18 +68,18 @@ export async function artFromClaims(c: MediaClaims): Promise<Buffer> {
     prisma.vehicle.findFirst({ where: { id: x.v, tenantId: c.t }, select: { brand: true, model: true, version: true, year: true, modelYear: true, km: true, transmission: true } }),
   ])
   if (!v) throw new Error('Veículo não encontrado.')
-  return renderArt({ ...artFacts(v), ...brand, logo: brand.logo, format, template, price: x.p ?? null, oldPrice: x.o ?? null, photo })
+  return renderArt({ ...artFacts(v), ...brand, logo: brand.logo, format, template, price: x.p ?? null, oldPrice: x.o ?? null, photo: await maybeEnhance(c.t, photo) })
 }
 
 /** Prévia na tela (usuário logado da loja): mesma arte que vai para a rede. */
-export async function previewArt(tenantId: string, vehicleId: string, photoUrl: string, format: SocialFormat, template: ArtTemplate, price: number | null, oldPrice: number | null): Promise<Buffer> {
+export async function previewArt(tenantId: string, vehicleId: string, photoUrl: string, format: SocialFormat, template: ArtTemplate, price: number | null, oldPrice: number | null, opts: { forVideo?: boolean; endCard?: boolean } = {}): Promise<Buffer> {
   const [photo, brand, v] = await Promise.all([
     originalBytes(photoRef(tenantId, photoUrl)),
     loadBrand(tenantId),
     prisma.vehicle.findFirst({ where: { id: vehicleId, tenantId }, select: { brand: true, model: true, version: true, year: true, modelYear: true, km: true, transmission: true } }),
   ])
   if (!v) throw new Error('Veículo não encontrado.')
-  return renderArt({ ...artFacts(v), ...brand, logo: brand.logo, format, template, price, oldPrice, photo }, { quality: 80 })
+  return renderArt({ ...artFacts(v), ...brand, logo: brand.logo, format, template, price, oldPrice, photo: await maybeEnhance(tenantId, photo), ...opts }, { quality: 80 })
 }
 
 async function storeVideo(tenantId: string, mp4: Buffer): Promise<string> {
@@ -101,7 +102,7 @@ export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, k
   const brand = await loadBrand(tenantId)
   const photos: Buffer[] = []
   for (const url of p.photos.slice(0, kind === 'REELS' ? 7 : 1)) {
-    try { photos.push(await originalBytes(photoRef(tenantId, url))) } catch { /* foto inacessível: pula */ }
+    try { photos.push(await maybeEnhance(tenantId, await originalBytes(photoRef(tenantId, url)))) } catch { /* foto inacessível: pula */ }
   }
   if (!photos.length) throw new Error('Nenhuma foto do veículo pôde ser aberta para montar o vídeo.')
   const base = { ...factsOfPayload(p), ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice }

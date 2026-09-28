@@ -9,7 +9,9 @@ import { channelSpec } from '@/lib/publications/channels'
 import { channelText } from '@/lib/publications/content-core'
 import { buildFor, loadVehicle } from '@/lib/publications/service'
 import { isArtTemplate, isSocialFormat } from '@/lib/publications/social/formats'
-import { musicOf, MOOD_LABEL } from '@/lib/publications/social/music-core'
+import { musicOf, musicPlan, MOOD_LABEL } from '@/lib/publications/social/music-core'
+import { previewAudio } from '@/lib/publications/social/music'
+import { REEL } from '@/lib/publications/social/reel'
 import { classifyVideo } from '@/lib/publications/social/video-core'
 
 export const dynamic = 'force-dynamic'
@@ -30,15 +32,37 @@ export async function POST(req: Request) {
   if (!spec) return bad('Canal desconhecido.')
   const overrides = { social: { format: b.format, template, ...(music ? { music } : {}) }, ...(typeof b.caption === 'string' && b.caption.trim() ? { caption: b.caption.trim().slice(0, 2200) } : {}) }
   const p = await buildFor(a.tenantId, v, 'previa', overrides)
-  const art = (format: string) => `/api/publications/social/preview?${new URLSearchParams({ vehicleId: v.id, format, template })}`
+  const art = (format: string, extra: Record<string, string> = {}, tpl: string = template) => `/api/publications/social/preview?${new URLSearchParams({ vehicleId: v.id, format, template: tpl, ...extra })}`
   const format = b.format
-  const media: Array<{ type: 'image' | 'video'; url: string; note?: string }> =
-    format === 'POST' ? [{ type: 'image', url: art('POST') }]
-    : format === 'CARROSSEL' ? [{ type: 'image', url: art('CARROSSEL') }, ...p.photos.slice(1, 10).map((url) => ({ type: 'image' as const, url }))]
-    : format === 'STORY' ? [{ type: 'image', url: art('STORY') }]
-    : format === 'REELS' ? [{ type: 'image', url: art('REELS'), note: 'Primeiro quadro do vídeo (todas as fotos + chamada final)' }]
-    : (() => { const vid = classifyVideo(p.videoUrl); return vid?.siteUrl && /\.(mp4|webm)|raw=1/i.test(vid.siteUrl) ? [{ type: 'video' as const, url: vid.siteUrl }] : [{ type: 'image' as const, url: p.photos[0] ?? art('REELS'), note: vid ? `Vídeo do carro (${vid.label})` : 'Carro sem vídeo cadastrado' }] })()
+  const network = conn.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'
+  const plan = musicPlan(music, conn.channel, format)
+  // Com música, Post e Story viram vídeo curto da arte (a prévia toca como vídeo).
+  const clip = !!plan && (format === 'STORY' || format === 'POST')
+  let slides: number[] | null = null
+  let media: Array<{ type: 'image' | 'video'; url: string; note?: string }>
+  if (format === 'REELS') {
+    // Os mesmos quadros do vídeo: 1ª foto com o selo, demais limpas e a chamada final.
+    const n = Math.max(1, Math.min(REEL.maxPhotos, p.photos.length))
+    media = [
+      ...Array.from({ length: n }, (_, k) => ({ type: 'image' as const, url: art('REELS', { photo: String(k), video: '1' }, k === 0 ? template : 'LIMPA') })),
+      { type: 'image', url: art('REELS', { photo: '0', video: '1', end: '1' }) },
+    ]
+    slides = [...media.slice(0, -1).map(() => REEL.secondsPerPhoto), REEL.endSeconds]
+  } else if (format === 'POST') {
+    media = [{ type: 'image', url: art('POST') }]
+    if (clip) slides = [12]
+  } else if (format === 'CARROSSEL') {
+    media = [{ type: 'image', url: art('CARROSSEL'), ...(plan && network === 'INSTAGRAM' ? { note: 'Capa em vídeo com a música' } : {}) }, ...p.photos.slice(1, 10).map((_, k) => ({ type: 'image' as const, url: `/api/publications/social/photo?${new URLSearchParams({ vehicleId: v.id, photo: String(k + 1) })}` }))]
+  } else if (format === 'STORY') {
+    media = [{ type: 'image', url: art('STORY') }]
+    slides = [clip ? 10 : 5]
+  } else {
+    const vid = classifyVideo(p.videoUrl)
+    media = vid?.siteUrl && /\.(mp4|webm)|raw=1/i.test(vid.siteUrl) ? [{ type: 'video', url: vid.siteUrl }] : [{ type: 'image', url: p.photos[0] ?? art('REELS'), note: vid ? `Vídeo do carro (${vid.label})` : 'Carro sem vídeo cadastrado' }]
+  }
   const caption = format === 'STORY' ? '' : channelText(p, spec).description
   const musicLabel = !music || format === 'VIDEO' ? null : music.mode === 'TRACK' ? `${music.title ?? 'Faixa escolhida'}${music.artist ? ` · ${music.artist}` : ''}` : `Música automática · ${MOOD_LABEL[music.mood]}`
-  return NextResponse.json({ success: true, network: conn.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK', account: conn.label, format, media, caption, music: musicLabel })
+  // Carrossel no Facebook é álbum de fotos: sem música.
+  const audio = format === 'CARROSSEL' && network === 'FACEBOOK' ? null : await previewAudio(music, conn.channel, format, v.id)
+  return NextResponse.json({ success: true, network, account: conn.label, format, media, caption, music: audio ? `${audio.title}${audio.artist ? ` · ${audio.artist}` : ''}` : musicLabel, audio, slides })
 }

@@ -86,7 +86,7 @@ export function MusicPicker({ value, onChange, hasInstagram }: { value: MusicCho
                   <li key={`${t.source}:${t.id}`} className={cn('flex items-center gap-2 rounded-lg border px-2 py-1', on ? 'border-brand-600 bg-brand-50' : 'border-gray-100')}>
                     <button type="button" onClick={() => toggle(t)} disabled={!t.previewUrl} aria-label={playing === t.id ? 'Pausar' : 'Ouvir'} className="rounded-full p-1 text-brand-700 hover:bg-brand-50 disabled:opacity-40">{playing === t.id ? <Pause size={14} /> : <Play size={14} />}</button>
                     <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium text-gray-900">{t.title}</span><span className="block truncate text-[10px] text-gray-500">{[t.artist, t.seconds ? `${t.seconds}s` : '', t.license].filter(Boolean).join(' · ')}</span></span>
-                    <button type="button" onClick={() => onChange({ mode: 'TRACK', source: t.source, id: t.id, title: t.title.slice(0, 120), artist: t.artist.slice(0, 80), mood })} className={cn('rounded-md px-2 py-0.5 text-[11px] font-medium', on ? 'bg-brand-700 text-white' : 'border border-gray-200 text-gray-700')}>{on ? 'Escolhida' : 'Usar'}</button>
+                    <button type="button" onClick={() => onChange({ mode: 'TRACK', source: t.source, id: t.id, title: t.title.slice(0, 120), artist: t.artist.slice(0, 80), mood, ...(t.previewUrl ? { previewUrl: t.previewUrl } : {}) })} className={cn('rounded-md px-2 py-0.5 text-[11px] font-medium', on ? 'bg-brand-700 text-white' : 'border border-gray-200 text-gray-700')}>{on ? 'Escolhida' : 'Usar'}</button>
                   </li>
                 )
               })}

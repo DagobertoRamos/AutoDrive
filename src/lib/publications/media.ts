@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma'
 import { readSiteAsset } from '@/lib/site/assets'
 import { fetchImageSafely } from './safe-fetch'
 import type { MediaClaims } from './media-token'
+import { maybeEnhance } from './social/enhance'
 
 const PUBLIC_KINDS = new Set(['VEHICLE_PHOTO', 'IMAGE', 'SOCIAL_UPLOAD'])
 
@@ -29,7 +30,8 @@ export async function originalBytes(c: Pick<MediaClaims, 't' | 'a' | 'u'>): Prom
 }
 
 export async function renderVariant(c: Pick<MediaClaims, 't' | 'a' | 'u' | 'w'>): Promise<Buffer> {
-  const input = await originalBytes(c)
+  // Foto tratada (luz, contraste, cor e nitidez) quando a loja deixa ligado.
+  const input = await maybeEnhance(c.t, await originalBytes(c))
   const sharp = (await import('sharp')).default
   return sharp(input, { failOn: 'error' })
     .rotate()

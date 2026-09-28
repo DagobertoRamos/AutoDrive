@@ -17,6 +17,7 @@ import { CAPTION_TONES, TONE_LABEL, type CaptionTone } from '@/lib/publications/
 import type { MusicChoice } from '@/lib/publications/social/music-core'
 import { MusicPicker } from '@/components/publications/MusicPicker'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
+import { PhotoEnhanceToggle } from '@/components/publications/PhotoEnhanceToggle'
 
 export interface SocialChoice {
   formats: SocialFormat[]
@@ -35,6 +36,8 @@ const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Ima
 
 export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, targets = [] }: { vehicles: Array<{ id: string; title: string }>; value: SocialChoice; onChange: (v: SocialChoice) => void; hasInstagram?: boolean; targets?: Array<{ id: string; channel: string; label: string }> }) {
   const [preview, setPreview] = useState(false)
+  // Muda ao ligar/desligar o tratamento das fotos: recarrega as prévias da arte.
+  const [artRev, setArtRev] = useState(0)
   const [current, setCurrent] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -93,7 +96,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
             <div className="grid gap-3 lg:grid-cols-2">
               {value.formats.map((f) => {
                 const key = `${vid}:${f}`
-                const src = `/api/publications/social/preview?vehicleId=${encodeURIComponent(vid)}&format=${f}&template=${value.template}`
+                const src = `/api/publications/social/preview?vehicleId=${encodeURIComponent(vid)}&format=${f}&template=${value.template}&r=${artRev}`
                 return (
                   <div key={f} className="flex gap-3 rounded-xl border border-gray-200 bg-white p-3">
                     <div className={cn('shrink-0 overflow-hidden rounded-lg bg-gray-100', FORMAT_INFO[f].canvas === 'FEED' ? 'h-40 w-32' : 'h-44 w-[99px]')}>
@@ -123,6 +126,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
               </select>
             </label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar nos horários de pico (12 h e 19 h)</label>
+            <PhotoEnhanceToggle onChanged={() => setArtRev((n) => n + 1)} />
           </div>
           <MusicPicker value={value.music} onChange={(music) => set({ music })} hasInstagram={hasInstagram} />
           {vid && targets.length > 0 && (

@@ -348,6 +348,8 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
           </label>
           <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={s.sale.resumeOnCancel} onChange={(e) => set('sale.resumeOnCancel', e.target.checked)} />Reativar sozinho se a negociação for cancelada</label>
           <p className="text-[11px] text-gray-500">Negociação finalizada: agendamentos cancelados, anúncios retirados e arquivados como “Vendido”.</p>
+          <p className="pt-2 text-xs font-semibold text-gray-700">Fotos</p>
+          <label className="flex items-start gap-2 text-xs text-gray-600"><input type="checkbox" className="mt-0.5" checked={s.photoEnhance !== false} onChange={(e) => set('photoEnhance', e.target.checked)} /><span>Tratar as fotos automaticamente: clareia fotos escuras, recupera sombras, ajusta contraste, cor e nitidez. Vale para redes e portais; a foto original do estoque não muda.</span></label>
           <label className="block text-xs text-gray-600">Fuso horário<input className={inputCls} value={s.timezone} onChange={(e) => set('timezone', e.target.value)} /></label>
         </div>
         <div className="space-y-2">

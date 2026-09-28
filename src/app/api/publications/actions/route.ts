@@ -4,6 +4,7 @@
 //   PAUSAR | RETOMAR | RETIRAR | VERIFICAR | SINCRONIZAR | CANCELAR_AGENDAMENTO
 //   MANUAL_PUBLICADO (loja confirma que postou; informa o link)
 //   MANUAL_REMOVIDO  (loja confirma que removeu à mão)
+//   EXCLUIR (nunca publicado: apaga; já publicado: retira do canal)
 // Gate: .publish
 // =============================================================================
 
@@ -46,6 +47,23 @@ export async function POST(req: Request) {
         })
         await logEvent(prisma, { tenantId: a.tenantId, publicationId: id, vehicleId: pub.vehicleId, channel: pub.channel, type: action, message: action === 'MANUAL_PUBLICADO' ? `Publicação manual confirmada pela loja: ${url}` : 'Remoção manual confirmada pela loja.', fromStatus: pub.status, toStatus: status, actor: a.actor })
         results.push({ id, ok: true, message: 'Registrado.', status })
+        continue
+      }
+      if (action === 'EXCLUIR') {
+        // Nunca foi ao ar: apaga. Já publicado: retira do canal (fica no histórico).
+        const pub = await prisma.publication.findFirst({ where: { id, tenantId: a.tenantId }, select: { id: true, status: true, remoteId: true, publishedAt: true, pendingToken: true } })
+        if (!pub) { results.push({ id, ok: false, message: 'Publicação não encontrada.' }); continue }
+        if ((pub.remoteId || pub.publishedAt || pub.pendingToken) && pub.status !== 'REMOVIDO') {
+          const r = await applyIntent(a.tenantId, id, 'RETIRAR', a.actor, { reason: 'MANUAL', archive: 'RETIRADO' })
+          results.push({ id, ...r, message: r.ok ? 'Já estava no ar: retirando do canal.' : r.message })
+          continue
+        }
+        await prisma.$transaction([
+          prisma.publicationJob.deleteMany({ where: { publicationId: id } }),
+          prisma.publicationEvent.deleteMany({ where: { publicationId: id } }),
+          prisma.publication.delete({ where: { id } }),
+        ])
+        results.push({ id, ok: true, message: 'Excluído.' })
         continue
       }
       results.push({ id, ok: false, message: 'Ação desconhecida.' })

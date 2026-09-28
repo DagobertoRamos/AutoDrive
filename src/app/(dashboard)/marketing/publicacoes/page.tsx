@@ -1,198 +1,277 @@
 'use client'
+/* eslint-disable @next/next/no-img-element -- miniaturas do estoque */
 
 // =============================================================================
-// Marketing › Publicações — cada veículo com a situação em cada canal.
-// Filtros (veículo, canal, situação, loja, período), ações em lote com
-// resultado por item, detalhe com histórico e diagnóstico.
+// Marketing › Publicações › Painel — página inicial da Central.
+// Indicadores da semana + quadro (kanban) em 5 colunas, no padrão dos grandes
+// gerenciadores de redes: Rascunhos · Agendados · Publicando · Publicados ·
+// Precisam de atenção. Cada cartão é um post (o anúncio do veículo num
+// formato/campanha, com a situação em cada canal, ou um post avulso) com
+// Visualizar, Retomar, Tentar de novo e Excluir. Atualiza sozinho.
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ExternalLink, Filter, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Search, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, CalendarClock, CheckCircle2, Eye, FileText, ImagePlus, Info, Loader2, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TrendingUp, Wand2, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { api, ChannelMark, DOT, Drawer, ErrorNote, PubTabs, STATUS_LABEL, STATUS_TONE } from '@/components/publications/ui'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
-import { MappingReview } from '@/components/publications/MappingReview'
-import { api, ago, ChannelMark, Empty, inputCls, money, PubTabs, StatusPill, STATUS_LABEL, STATUS_TONE, Thumb, type Tone } from '@/components/publications/ui'
+import { loadPreview, PreviewView } from '@/components/publications/PublishedPreview'
+import { StoredPreview } from '@/components/publications/AvulsaPreview'
+import type { PreviewFormat } from '@/components/publications/PostPreview'
+import { BOARD_COLUMNS, COLUMN_INFO, type BoardColumn } from '@/lib/publications/board-core'
+import type { BoardCard, BoardChannel } from '@/app/api/publications/board/route'
 
-interface PubItem { id: string; channel: string; channelName: string; account: string | null; campaign: string | null; status: string; statusLabel: string; tone: Tone; remoteUrl: string | null; lastVerifiedAt: string | null; lastError: string | null; hint: string | null; manualAction: string | null; scheduledAt: string | null; archiveReason: string | null }
-interface Row { vehicle: { id: string; title: string; plate: string | null; year: number | null; modelYear: number | null; km: number | null; stockStatus: string | null; cover: string | null; unit: string | null; price: number | null; oldPrice: number | null }; publications: PubItem[]; summary: string; lastSync: string | null }
-interface Can { prepare: boolean; approve: boolean; publish: boolean; connections: boolean }
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const COL_STYLE: Record<BoardColumn, { bar: string; badge: string; icon: LucideIcon }> = {
+  rascunhos: { bar: 'bg-gray-400', badge: 'bg-gray-100 text-gray-700', icon: FileText },
+  agendados: { bar: 'bg-sky-500', badge: 'bg-sky-50 text-sky-700', icon: CalendarClock },
+  publicando: { bar: 'bg-indigo-500', badge: 'bg-indigo-50 text-indigo-700', icon: Send },
+  publicados: { bar: 'bg-green-500', badge: 'bg-green-50 text-green-700', icon: CheckCircle2 },
+  atencao: { bar: 'bg-red-500', badge: 'bg-red-50 text-red-700', icon: AlertTriangle },
+}
+const LIST_STATUS: Partial<Record<BoardColumn, string>> = { agendados: 'AGENDADO', publicados: 'PUBLICADO', atencao: 'FALHA', publicando: 'EM_ANALISE' }
+const FAILED = new Set(['FALHA', 'REJEITADO'])
 
-const CHANNELS = [['SITE', 'Site próprio'], ['WEBMOTORS', 'Webmotors'], ['OLX', 'OLX'], ['MERCADO_LIVRE', 'Mercado Livre'], ['CHAVES_NA_MAO', 'Chaves na Mão'], ['MOBIAUTO', 'Mobiauto'], ['META_PAGE', 'Facebook'], ['INSTAGRAM', 'Instagram'], ['MANUAL_SOCIAL', 'Manual']] as const
-const QUICK: Array<[string, string]> = [['', 'Todas'], ['PUBLICADO', 'Publicadas'], ['EM_ANALISE', 'Em análise'], ['AGENDADO', 'Agendadas'], ['FALHA', 'Com falha'], ['REJEITADO', 'Rejeitadas'], ['ACAO_MANUAL', 'Ação manual'], ['PAUSADO', 'Pausadas']]
+/** "hoje 19:05", "amanhã 12:00", "ontem 08:10" ou "03/10 19:05" no fuso da loja. */
+function whenLabel(iso: string | null, tz: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const day = (x: Date) => x.toLocaleDateString('en-CA', { timeZone: tz })
+  const hm = d.toLocaleTimeString('pt-BR', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
+  const today = day(new Date())
+  const diff = Math.round((Date.parse(day(d)) - Date.parse(today)) / 86_400_000)
+  if (diff === 0) return `hoje ${hm}`
+  if (diff === 1) return `amanhã ${hm}`
+  if (diff === -1) return `ontem ${hm}`
+  return `${d.toLocaleDateString('pt-BR', { timeZone: tz, day: '2-digit', month: '2-digit' })} ${hm}`
+}
 
-export default function PublicationsPage() {
-  const [rows, setRows] = useState<Row[]>([])
-  const [counts, setCounts] = useState<Record<string, number>>({})
-  const [units, setUnits] = useState<Array<{ id: string; name: string }>>([])
-  const [can, setCan] = useState<Can | null>(null)
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
+export default function PainelPage() {
+  const router = useRouter()
+  const [data, setData] = useState<any | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [f, setF] = useState({ q: '', channel: '', status: '', unitId: '', from: '', to: '', archived: false })
-  const [showFilters, setShowFilters] = useState(false)
-  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(false)
+  const [at, setAt] = useState<number>(0)
+  const [now, setNow] = useState(0)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [preview, setPreview] = useState<BoardCard | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
-  const [bulk, setBulk] = useState<{ busy: boolean; results?: Array<{ id: string; ok: boolean; message: string }>; summary?: string } | null>(null)
-  const [pendingMaps, setPendingMaps] = useState(0)
-  const [showMaps, setShowMaps] = useState(false)
+  const [avulso, setAvulso] = useState<{ post: any; conns: any[] } | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true); setErr(null)
-    try {
-      const p = new URLSearchParams({ page: String(page) })
-      if (f.q.trim()) p.set('q', f.q.trim())
-      for (const k of ['channel', 'status', 'unitId', 'from', 'to'] as const) if (f[k]) p.set(k, f[k])
-      if (f.archived) p.set('archived', '1')
-      const [j, m] = await Promise.all([api(`/api/publications?${p}`), api('/api/publications/mappings').catch(() => ({ data: [] }))])
-      setRows(j.data); setCounts(j.counts ?? {}); setUnits(j.units ?? []); setCan(j.can); setTotal(j.total ?? 0)
-      setPendingMaps((m.data ?? []).length)
-    } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
-  }, [f, page])
-  useEffect(() => { const t = setTimeout(() => void load(), 250); return () => clearTimeout(t) }, [load])
+    setLoading(true)
+    try { setData(await api('/api/publications/board')); setErr(null); setAt(Date.now()) } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
+  }, [])
+  // Atualiza sozinho a cada 10 s com a aba visível (os cartões mudam de coluna conforme publicam).
+  useEffect(() => {
+    const t0 = setTimeout(() => void load(), 0)
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') void load(); setNow(Date.now()) }, 10_000)
+    const vis = () => { if (document.visibilityState === 'visible') void load() }
+    document.addEventListener('visibilitychange', vis)
+    return () => { clearTimeout(t0); clearInterval(iv); document.removeEventListener('visibilitychange', vis) }
+  }, [load])
 
-  const allPubIds = useMemo(() => rows.flatMap((r) => r.publications.map((p) => p.id)), [rows])
-  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  const toggleVehicle = (r: Row) => setSel((s) => {
-    const ids = r.publications.map((p) => p.id); const n = new Set(s)
-    const all = ids.every((i) => n.has(i)); ids.forEach((i) => (all ? n.delete(i) : n.add(i))); return n
-  })
+  const tz: string = data?.timezone ?? 'America/Sao_Paulo'
+  const can = data?.can ?? {}
+  const k = data?.kpis
 
-  const runBulk = async (action: string) => {
-    if (!sel.size) return
-    if (action === 'RETIRAR' && !confirm(`Retirar ${sel.size} anúncio(s) dos canais?`)) return
-    setBulk({ busy: true })
-    try {
-      const j = await api<{ results: Array<{ id: string; ok: boolean; message: string }>; summary: string }>('/api/publications/actions', { method: 'POST', json: { ids: [...sel], action } })
-      setBulk({ busy: false, results: j.results, summary: j.summary }); setSel(new Set()); await load()
-    } catch (e) { setBulk({ busy: false, summary: (e as Error).message }) }
+  const resume = (c: BoardCard) => {
+    if (c.kind === 'ASSISTENTE') return router.push('/marketing/publicacoes/nova')
+    if (c.kind === 'AVULSO') return router.push(`/marketing/avulsa?editar=${c.postId}`)
+    const s = (c.overrides as any)?.social
+    const q = new URLSearchParams({ veiculos: c.vehicleId!, contas: c.channels.map((x) => x.connectionId).filter(Boolean).join(',') })
+    if (s?.format) q.set('formato', s.format)
+    if (s?.template) q.set('modelo', s.template)
+    if (!s?.format && c.campaignKey && c.campaignKey !== 'principal') q.set('campanha', c.campaignKey)
+    router.push(`/marketing/publicacoes/nova?${q}`)
   }
 
-  const pubName = (id: string) => { for (const r of rows) for (const p of r.publications) if (p.id === id) return `${r.vehicle.title} · ${p.channelName}`; return id }
-  const liveTotal = Object.entries(counts).filter(([k]) => k !== 'REMOVIDO').reduce((n, [, v]) => n + v, 0)
+  const run = async (c: BoardCard, what: 'EXCLUIR' | 'REENVIAR') => {
+    const live = c.channels.some((x) => x.status === 'PUBLICADO')
+    if (what === 'EXCLUIR' && !confirm(c.kind === 'ASSISTENTE' ? 'Descartar a publicação em andamento?' : c.kind === 'AVULSO' ? `Excluir o post "${c.title}"?` : live ? `Excluir "${c.title} · ${c.format}"?\n\nOs canais onde já está no ar serão retirados; os demais, apagados.` : `Excluir "${c.title} · ${c.format}"?`)) return
+    setBusy(c.key); setMsg(null)
+    try {
+      if (c.kind === 'ASSISTENTE') await api('/api/publications/wizard', { method: 'DELETE' })
+      else if (c.kind === 'AVULSO') await api(`/api/publications/avulsa/${c.postId}`, { method: 'DELETE' })
+      else {
+        const ids = c.channels.filter((x) => x.pubId && (what === 'EXCLUIR' || FAILED.has(x.status))).map((x) => x.pubId!)
+        const j = await api('/api/publications/actions', { method: 'POST', json: { ids, action: what } })
+        const bad = (j.results as Array<{ ok: boolean; message: string }>).filter((r) => !r.ok)
+        if (bad.length) throw new Error(bad.map((r) => r.message).join(' · '))
+      }
+      setMsg({ ok: true, text: what === 'REENVIAR' ? 'Enviado de novo para a fila.' : 'Excluído.' })
+      await load()
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+  }
+
+  const view = async (c: BoardCard) => {
+    if (c.kind === 'AVULSO') {
+      setBusy(c.key)
+      try {
+        const [p, cn] = await Promise.all([api('/api/publications/avulsa'), api('/api/publications/connections')])
+        const post = (p.data as any[]).find((x) => x.id === c.postId)
+        if (!post) throw new Error('Post não encontrado.')
+        setAvulso({ post, conns: cn.data.connections })
+      } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+      return
+    }
+    if (c.socialFormat && c.channels.some((x) => x.channel === 'INSTAGRAM' || x.channel === 'META_PAGE')) setPreview(c)
+    else setDetail(c.channels[0]?.pubId ?? null)
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Central de Publicações</h1>
-          <p className="text-sm text-gray-500">Anúncios do estoque no site, portais e redes — com confirmação de cada canal.</p>
+          <p className="text-sm text-gray-500">Site, portais e redes sociais num só lugar — o quadro se atualiza sozinho conforme os posts saem.</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => void load()} className="btn-secondary px-3 py-2 text-xs" aria-label="Atualizar"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /><span className="hidden sm:inline">Atualizar</span></button>
-          {can?.prepare && <Link href="/marketing/publicacoes/nova" className="btn-primary px-3 py-2 text-xs"><Plus size={14} />Nova publicação</Link>}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hidden text-[11px] text-gray-400 sm:inline">{at ? `Atualizado ${Math.max(now, at) - at < 15_000 ? 'agora' : `há ${Math.round((now - at) / 1000)} s`}` : ''}</span>
+          <button onClick={() => void load()} className="btn-secondary px-3 py-2 text-xs" aria-label="Atualizar"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
+          {can.prepare && <Link href="/marketing/avulsa" className="btn-secondary px-3 py-2 text-xs"><ImagePlus size={14} />Post avulso</Link>}
+          {can.prepare && <Link href="/marketing/publicacoes/nova" className="btn-primary px-3 py-2 text-xs"><Plus size={14} />Nova publicação</Link>}
         </div>
       </div>
       <PubTabs />
 
-      {pendingMaps > 0 && (
-        <button onClick={() => setShowMaps(true)} className="flex w-full items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900 hover:bg-amber-100">
-          <AlertTriangle size={14} /><span><b>{pendingMaps}</b> correspondência(s) de marca/modelo/versão precisam de revisão antes de publicar. <u>Revisar</u></span>
-        </button>
+      {err && <ErrorNote message={err} />}
+      {msg && <p role="status" className={cn('rounded-lg px-3 py-2 text-xs', msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>{msg.text}</p>}
+      {k?.reconectar > 0 && (
+        <Link href="/marketing/canais" className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 hover:bg-amber-100"><AlertTriangle size={14} /><span><b>{k.reconectar}</b> canal(is) precisam ser reconectados — os posts desses canais não saem até lá. <u>Resolver</u></span></Link>
       )}
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Situação">
-        {QUICK.map(([k, l]) => (
-          <button key={k} onClick={() => { setPage(1); setF((x) => ({ ...x, status: k })) }} aria-pressed={f.status === k}
-            className={cn('rounded-full border px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600', f.status === k ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50')}>
-            {l}{k && counts[k] ? <span className="ml-1 opacity-70">{counts[k]}</span> : !k ? <span className="ml-1 opacity-70">{liveTotal}</span> : null}
-          </button>
-        ))}
-        <div className="relative ml-auto w-full sm:w-64">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={f.q} onChange={(e) => { setPage(1); setF((x) => ({ ...x, q: e.target.value })) }} placeholder="Marca, modelo ou placa" className={cn(inputCls, 'pl-9')} aria-label="Buscar veículo" />
-        </div>
-        <button onClick={() => setShowFilters((s) => !s)} aria-expanded={showFilters} className="btn-secondary px-3 py-2 text-xs"><Filter size={14} />Filtros</button>
-      </div>
+      {/* Indicadores */}
+      {!data ? <div className="flex h-40 items-center justify-center"><Loader2 className="animate-spin text-gray-400" /></div> : (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <Kpi icon={CheckCircle2} tone="text-green-700 bg-green-50" label="Publicados" sub="últimos 7 dias" value={k.publicados7} />
+            <Kpi icon={CalendarClock} tone="text-sky-700 bg-sky-50" label="Agendados" sub={k.proximo ? `Próximo: ${whenLabel(k.proximo.when, tz)} · ${k.proximo.title}` : 'próximos 7 dias'} value={k.agendados7} />
+            <Kpi icon={Send} tone="text-indigo-700 bg-indigo-50" label="Publicando agora" sub="na fila ou processando" value={k.publicando} />
+            <Kpi icon={AlertTriangle} tone={k.atencao ? 'text-red-700 bg-red-50' : 'text-gray-500 bg-gray-50'} label="Precisam de atenção" sub={k.atencao ? 'erro ou ação da loja' : 'tudo certo'} value={k.atencao} onClick={k.atencao ? () => document.getElementById('col-atencao')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }) : undefined} />
+            <Kpi icon={TrendingUp} tone="text-brand-700 bg-brand-50" label="Taxa de sucesso" sub={`${k.conectados} canal(is) conectado(s)${k.pausados ? ` · ${k.pausados} pausado(s)` : ''}`} value={k.sucesso == null ? '—' : `${k.sucesso}%`} className="col-span-2 lg:col-span-1" />
+          </div>
 
-      {showFilters && (
-        <div className="grid gap-2 rounded-xl border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
-          <label className="text-xs text-gray-600">Canal<select className={inputCls} value={f.channel} onChange={(e) => { setPage(1); setF((x) => ({ ...x, channel: e.target.value })) }}><option value="">Todos</option>{CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-          <label className="text-xs text-gray-600">Situação<select className={inputCls} value={f.status} onChange={(e) => { setPage(1); setF((x) => ({ ...x, status: e.target.value })) }}><option value="">Todas</option>{Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-          <label className="text-xs text-gray-600">Loja<select className={inputCls} value={f.unitId} onChange={(e) => { setPage(1); setF((x) => ({ ...x, unitId: e.target.value })) }}><option value="">Todas</option>{units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
-          <label className="text-xs text-gray-600">De<input type="date" className={inputCls} value={f.from} onChange={(e) => { setPage(1); setF((x) => ({ ...x, from: e.target.value })) }} /></label>
-          <label className="text-xs text-gray-600">Até<input type="date" className={inputCls} value={f.to} onChange={(e) => { setPage(1); setF((x) => ({ ...x, to: e.target.value })) }} /></label>
-          <label className="flex items-center gap-2 text-xs text-gray-600 sm:col-span-2"><input type="checkbox" checked={f.archived} onChange={(e) => { setPage(1); setF((x) => ({ ...x, archived: e.target.checked })) }} className="rounded border-gray-300 text-brand-600" />Mostrar arquivados (vendidos e retirados)</label>
-        </div>
-      )}
-
-      {sel.size > 0 && can?.publish && (
-        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs shadow-sm" role="toolbar" aria-label="Ações em lote">
-          <b className="text-brand-900">{sel.size} selecionada(s)</b>
-          <button onClick={() => runBulk('VERIFICAR')} className="btn-secondary px-2.5 py-1 text-xs"><RefreshCw size={13} />Conferir</button>
-          <button onClick={() => runBulk('SINCRONIZAR')} className="btn-secondary px-2.5 py-1 text-xs"><RefreshCw size={13} />Sincronizar</button>
-          <button onClick={() => runBulk('PAUSAR')} className="btn-secondary px-2.5 py-1 text-xs"><Pause size={13} />Pausar</button>
-          <button onClick={() => runBulk('RETOMAR')} className="btn-secondary px-2.5 py-1 text-xs"><Play size={13} />Reativar</button>
-          <button onClick={() => runBulk('REENVIAR')} className="btn-secondary px-2.5 py-1 text-xs"><RotateCcw size={13} />Tentar de novo (com erro)</button>
-          <button onClick={() => runBulk('RETIRAR')} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 hover:bg-red-50"><Trash2 size={13} />Retirar</button>
-          <button onClick={() => setSel(new Set())} className="ml-auto text-gray-500 hover:text-gray-800">Limpar</button>
-        </div>
-      )}
-
-      {bulk && (
-        <div role="status" className="rounded-xl border border-gray-200 bg-white p-3 text-xs">
-          <div className="flex items-center justify-between"><b>{bulk.busy ? 'Processando…' : `Resultado: ${bulk.summary ?? ''}`}</b>{!bulk.busy && <button onClick={() => setBulk(null)} className="text-gray-500 hover:text-gray-800">Fechar</button>}</div>
-          {bulk.results && <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">{bulk.results.map((r) => <li key={r.id} className={r.ok ? 'text-green-700' : 'text-red-700'}>{r.ok ? '✓' : '✕'} {pubName(r.id)} — {r.message}</li>)}</ul>}
-        </div>
-      )}
-
-      {err && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{err}</p>}
-
-      {loading && !rows.length ? <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl bg-gray-100" />)}</div>
-        : !rows.length ? <Empty>{f.q || f.channel || f.status || f.unitId || f.from ? 'Nenhuma publicação com esses filtros.' : <>Nenhum veículo publicado ainda. {can?.prepare && <Link href="/marketing/publicacoes/nova" className="font-medium text-brand-700 underline">Preparar a primeira publicação</Link>}</>}</Empty>
-        : (
-          <ul className="space-y-2">
-            {rows.map((r) => {
-              const ids = r.publications.map((p) => p.id); const allSel = ids.length > 0 && ids.every((i) => sel.has(i))
+          {/* Quadro */}
+          <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 xl:mx-0 xl:grid xl:grid-cols-5 xl:overflow-visible xl:px-0">
+            {BOARD_COLUMNS.map((col) => {
+              const cards: BoardCard[] = data.columns[col]
+              const total: number = data.totals[col]
+              const st = COL_STYLE[col]
               return (
-                <li key={r.vehicle.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-card">
-                  <div className="flex flex-wrap items-start gap-3">
-                    {can?.publish && <input type="checkbox" checked={allSel} onChange={() => toggleVehicle(r)} className="mt-1 rounded border-gray-300 text-brand-600" aria-label={`Selecionar ${r.vehicle.title}`} />}
-                    <Thumb src={r.vehicle.cover} className="h-16 w-24" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-gray-900">{r.vehicle.title}</p>
-                      <p className="text-xs text-gray-500">{[r.vehicle.plate, r.vehicle.year || r.vehicle.modelYear ? `${r.vehicle.year ?? '—'}/${r.vehicle.modelYear ?? '—'}` : null, r.vehicle.unit].filter(Boolean).join(' · ')}</p>
-                      <p className="text-sm">{r.vehicle.oldPrice != null && <s className="mr-1 text-xs text-gray-400">{money(r.vehicle.oldPrice)}</s>}<b className="text-gray-800">{money(r.vehicle.price)}</b></p>
-                    </div>
-                    <div className="flex w-full flex-wrap items-baseline gap-x-3 text-xs sm:block sm:w-auto sm:text-right">
-                      <p className="font-medium text-gray-700">{r.summary || '—'}</p>
-                      <p className="text-gray-400">Sincronizado {ago(r.lastSync)}</p>
-                      {can?.prepare && <Link href={`/marketing/publicacoes/nova?veiculos=${r.vehicle.id}`} className="mt-1 inline-block font-medium text-brand-700 hover:underline">Editar / mais canais</Link>}
-                    </div>
+                <section key={col} id={`col-${col}`} aria-label={COLUMN_INFO[col].label} className="flex w-[82vw] shrink-0 snap-start flex-col rounded-xl border border-gray-200 bg-gray-50/70 sm:w-72 xl:w-auto">
+                  <div className={cn('h-1 rounded-t-xl', st.bar)} />
+                  <header className="flex items-center gap-2 px-3 py-2">
+                    <st.icon size={14} className="text-gray-500" />
+                    <h2 className="flex-1 text-xs font-semibold uppercase tracking-wide text-gray-700">{COLUMN_INFO[col].label}</h2>
+                    <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', st.badge)}>{total}</span>
+                    <span title={COLUMN_INFO[col].hint} className="text-gray-400"><Info size={13} /></span>
+                  </header>
+                  <div className="flex max-h-[68vh] min-h-[120px] flex-col gap-2 overflow-y-auto px-2 pb-2">
+                    {!cards.length && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{col === 'atencao' ? 'Nenhum problema. 👍' : col === 'rascunhos' ? 'Nenhum rascunho.' : col === 'publicando' ? 'Nada saindo agora.' : 'Nada por aqui.'}</p>}
+                    {cards.map((c) => <Card key={c.key} c={c} col={col} tz={tz} can={can} busy={busy === c.key} onView={() => void view(c)} onResume={() => resume(c)} onRetry={() => void run(c, 'REENVIAR')} onDelete={() => void run(c, 'EXCLUIR')} onDetail={(id) => setDetail(id)} />)}
+                    {total > cards.length && LIST_STATUS[col] && <Link href={`/marketing/publicacoes/lista?status=${LIST_STATUS[col]}`} className="py-1 text-center text-[11px] font-medium text-brand-700 hover:underline">Ver todos ({total})</Link>}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {r.publications.map((p) => (
-                      <div key={p.id} className={cn('flex items-center gap-1.5 rounded-lg border px-2 py-1', sel.has(p.id) ? 'border-brand-300 bg-brand-50' : 'border-gray-200')}>
-                        {can?.publish && <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggle(p.id)} className="h-3.5 w-3.5 rounded border-gray-300 text-brand-600" aria-label={`Selecionar ${p.channelName}`} />}
-                        <button onClick={() => setDetail(p.id)} className="flex items-center gap-1.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600" title={p.lastError ? `${p.lastError}${p.hint ? ` — ${p.hint}` : ''}` : p.manualAction ?? undefined}>
-                          <ChannelMark channel={p.channel} />
-                          <span className="text-xs text-gray-700">{p.channelName}{p.campaign && p.campaign !== 'principal' ? ` · ${p.campaign}` : ''}</span>
-                          <StatusPill tone={STATUS_TONE[p.status] ?? p.tone} label={p.archiveReason === 'VENDIDO' ? 'Vendido' : p.statusLabel} />
-                        </button>
-                        {p.remoteUrl && <a href={p.remoteUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-brand-700" aria-label={`Abrir anúncio em ${p.channelName}`}><ExternalLink size={13} /></a>}
-                      </div>
-                    ))}
-                  </div>
-                  {r.publications.filter((p) => p.lastError && ['FALHA', 'REJEITADO'].includes(p.status)).slice(0, 2).map((p) => <p key={p.id} className="mt-1.5 text-[11px] text-red-700">{p.channelName}: {p.lastError}{p.hint && <span className="text-gray-500"> — {p.hint}</span>}</p>)}
-                </li>
+                </section>
               )
             })}
-          </ul>
-        )}
-
-      {total > 30 && (
-        <div className="flex items-center justify-center gap-2 text-xs">
-          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="btn-secondary px-3 py-1.5 text-xs">Anterior</button>
-          <span className="text-gray-500">Página {page} de {Math.ceil(total / 30)}</span>
-          <button disabled={page >= Math.ceil(total / 30)} onClick={() => setPage((p) => p + 1)} className="btn-secondary px-3 py-1.5 text-xs">Próxima</button>
-        </div>
+          </div>
+          <p className="text-[11px] text-gray-400">Pausados, vendidos e retirados ficam em <Link href="/marketing/publicacoes/lista" className="underline">Anúncios</Link>; o registro completo, em <Link href="/marketing/historico" className="underline">Histórico</Link>.</p>
+        </>
       )}
-      {loading && rows.length > 0 && <p className="flex items-center gap-1 text-xs text-gray-400"><Loader2 size={12} className="animate-spin" />Atualizando…</p>}
-      <p className="sr-only" aria-live="polite">{allPubIds.length} publicações listadas</p>
 
+      {preview && <SocialPreviewDrawer card={preview} onClose={() => setPreview(null)} onDetail={(id) => { setPreview(null); setDetail(id) }} />}
+      {avulso && <StoredPreview post={avulso.post} conns={avulso.conns} onClose={() => setAvulso(null)} />}
       <PublicationDetail id={detail} onClose={() => setDetail(null)} onChanged={() => void load()} />
-      {showMaps && <MappingReview onClose={() => { setShowMaps(false); void load() }} canConfirm={!!can?.approve} />}
     </div>
+  )
+}
+
+function Kpi({ icon: Icon, tone, label, sub, value, onClick, className }: { icon: LucideIcon; tone: string; label: string; sub: string; value: number | string; onClick?: () => void; className?: string }) {
+  const Tag = onClick ? 'button' : 'div'
+  return (
+    <Tag onClick={onClick} className={cn('flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left', onClick && 'hover:border-red-300', className)}>
+      <span className={cn('rounded-lg p-2', tone)}><Icon size={16} /></span>
+      <span className="min-w-0">
+        <span className="block text-2xl font-bold leading-tight text-gray-900">{value}</span>
+        <span className="block text-xs font-medium text-gray-700">{label}</span>
+        <span className="block truncate text-[11px] text-gray-500" title={sub}>{sub}</span>
+      </span>
+    </Tag>
+  )
+}
+
+function ChannelDot({ ch }: { ch: BoardChannel }) {
+  const tone = STATUS_TONE[ch.status] ?? 'neutral'
+  const label = `${ch.name}${ch.account ? ` · ${ch.account}` : ''}: ${STATUS_LABEL[ch.status] ?? ch.status}${ch.error ? ` — ${ch.error}` : ''}`
+  const inner = <><ChannelMark channel={ch.channel} className="h-5 min-w-5 text-[9px]" /><span className={cn('absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-white', DOT[tone])} /></>
+  return ch.url
+    ? <a href={ch.url} target="_blank" rel="noreferrer" title={label} aria-label={label} className="relative inline-flex">{inner}</a>
+    : <span title={label} aria-label={label} className="relative inline-flex">{inner}</span>
+}
+
+function Card({ c, col, tz, can, busy, onView, onResume, onRetry, onDelete, onDetail }: { c: BoardCard; col: BoardColumn; tz: string; can: any; busy: boolean; onView: () => void; onResume: () => void; onRetry: () => void; onDelete: () => void; onDetail: (id: string) => void }) {
+  const err = c.channels.find((x) => x.error && (FAILED.has(x.status) || x.status === 'ACAO_MANUAL'))
+  const failing = c.kind === 'VEICULO' && c.channels.some((x) => FAILED.has(x.status))
+  const manual = c.channels.find((x) => x.status === 'ACAO_MANUAL' && x.pubId)
+  const Icon = c.kind === 'AVULSO' ? ImagePlus : c.kind === 'ASSISTENTE' ? Wand2 : FileText
+  return (
+    <article className={cn('rounded-lg border bg-white p-2.5 shadow-sm transition hover:shadow', col === 'atencao' ? 'border-red-200' : 'border-gray-200')}>
+      <div className="flex gap-2.5">
+        {c.cover ? <img src={c.cover} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-md object-cover" /> : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-700"><Icon size={18} /></span>}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold text-gray-900" title={c.title}>{c.title}</p>
+          {c.subtitle && <p className="truncate text-[11px] text-gray-500">{c.subtitle}</p>}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+        {c.format && <span className="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700">{c.format}</span>}
+        {c.when && <span className={cn('text-gray-500', col === 'agendados' && 'font-medium text-sky-700')}>{col === 'agendados' ? '⏰ ' : ''}{whenLabel(c.when, tz)}</span>}
+      </div>
+      {c.channels.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{c.channels.slice(0, 8).map((ch, i) => <ChannelDot key={`${ch.connectionId ?? ch.channel}-${i}`} ch={ch} />)}{c.channels.length > 8 && <span className="text-[11px] text-gray-500">+{c.channels.length - 8}</span>}</div>}
+      {err && <p className="mt-1.5 line-clamp-2 text-[11px] text-red-700" title={err.error!}>{err.error}</p>}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-gray-100 pt-1.5 text-[11px]">
+        {busy ? <Loader2 size={13} className="animate-spin text-gray-400" /> : (
+          <>
+            {c.kind !== 'ASSISTENTE' && <button type="button" onClick={onView} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Eye size={12} />Visualizar</button>}
+            {col === 'rascunhos' && can.prepare && <button type="button" onClick={onResume} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Play size={12} />Retomar</button>}
+            {failing && can.publish && <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><RotateCcw size={12} />Tentar de novo</button>}
+            {manual && <button type="button" onClick={() => onDetail(manual.pubId!)} className="inline-flex items-center gap-1 font-medium text-amber-700 hover:underline"><AlertTriangle size={12} />Resolver</button>}
+            {(can.publish || (c.kind === 'ASSISTENTE' && can.prepare)) && <button type="button" onClick={onDelete} className="ml-auto inline-flex items-center gap-1 text-gray-500 hover:text-red-700"><Trash2 size={12} />Excluir</button>}
+          </>
+        )}
+      </div>
+    </article>
+  )
+}
+
+/** Prévia de um post de rede do quadro: uma aba por conta; publicado = mídia real. */
+function SocialPreviewDrawer({ card, onClose, onDetail }: { card: BoardCard; onClose: () => void; onDetail: (pubId: string) => void }) {
+  const social = useMemo(() => card.channels.filter((x) => (x.channel === 'INSTAGRAM' || x.channel === 'META_PAGE') && x.connectionId && x.pubId), [card])
+  const [cur, setCur] = useState(social[0]?.pubId ?? '')
+  const ch = social.find((x) => x.pubId === cur)
+  const [res, setRes] = useState<{ key: string; data?: any; err?: string } | null>(null)
+  useEffect(() => {
+    if (!ch) return
+    let live = true
+    loadPreview({ publicationId: ch.pubId!, connectionId: ch.connectionId!, vehicleId: card.vehicleId, overrides: card.overrides, published: ch.status === 'PUBLICADO' })
+      .then((data) => { if (live) setRes({ key: cur, data }) }).catch((e) => { if (live) setRes({ key: cur, err: (e as Error).message }) })
+    return () => { live = false }
+  }, [ch, cur, card])
+  const r = res?.key === cur ? res : null
+  return (
+    <Drawer open onClose={onClose} title={`${card.format ?? 'Post'} · ${card.title}`} subtitle="Como fica no celular — aperte ▶ para tocar">
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Conta">
+          {social.map((x) => <button key={x.pubId} role="tab" aria-selected={cur === x.pubId} onClick={() => setCur(x.pubId!)} className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs', cur === x.pubId ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-gray-200 text-gray-600')}><span className={cn('h-1.5 w-1.5 rounded-full', DOT[STATUS_TONE[x.status] ?? 'neutral'])} />{x.name} · {x.account}</button>)}
+        </div>
+        {r?.err && <ErrorNote message={r.err} />}
+        {!r ? <div className="flex h-96 items-center justify-center"><Loader2 className="animate-spin text-gray-400" /></div> : r.data && <PreviewView key={cur} data={r.data} format={(card.socialFormat ?? 'POST') as PreviewFormat} />}
+        {ch && <button type="button" onClick={() => onDetail(ch.pubId!)} className="btn-secondary w-full justify-center px-3 py-1.5 text-xs">Detalhes e histórico desta conta</button>}
+      </div>
+    </Drawer>
   )
 }
