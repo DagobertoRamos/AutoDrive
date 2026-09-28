@@ -184,6 +184,27 @@ describe.skipIf(!RUN)('Estúdio social — banco local + Instagram simulado', ()
     const r2 = await svc.approveMedia(T.t.id, T.v.id, photos, T.actor)
     expect(r2.autoPublished.filter((x: any) => x.status === 'AGENDADO')).toHaveLength(0)
   }, 60_000)
+  it('programação automática: preenche as próximas 48 h com o estoque em rodízio, sem duplicar', async () => {
+    const { planAutoProgram } = await import('./autoprog')
+    const key = `t:${T.t.id}:publications:v1`
+    const cur = JSON.parse((await prisma.systemSetting.findUnique({ where: { key } })).value)
+    await prisma.systemSetting.update({ where: { key }, data: { value: JSON.stringify({ ...cur, autoProgram: { enabled: true, connectionIds: [T.ig.id], slots: [{ days: [0, 1, 2, 3, 4, 5, 6], time: '12:00', format: 'POST' }, { days: [0, 1, 2, 3, 4, 5, 6], time: '19:00', format: 'REELS' }], template: 'DESTAQUE', music: null, promoFirst: false, minDaysBetween: 0 } }) } })
+    // Mais 3 carros no estoque para o rodízio (o do teste já tem agendamentos futuros).
+    const urls = (await prisma.vehiclePhoto.findMany({ where: { vehicleId: T.v.id }, orderBy: { order: 'asc' } })).map((p: any) => p.url)
+    for (const n of [1, 2, 3]) await prisma.vehicle.create({ data: { tenantId: T.t.id, unitId: T.unit.id, brand: 'Fiat', model: `Argo ${n}`, year: 2022, modelYear: 2022, km: 20000 * n, salePrice: 70000 + n, stockStatus: 'DISPONIVEL', active: true, mainPhotoUrl: urls[0], photos: { create: urls.map((url: string, i: number) => ({ url, order: i, isMain: i === 0 })) } } })
+    const r1 = await planAutoProgram(T.t.id)
+    expect(r1.planned).toBeGreaterThanOrEqual(3)
+    const pubs = await prisma.publication.findMany({ where: { tenantId: T.t.id, campaignKey: { startsWith: 'auto-' } } })
+    expect(pubs.length).toBe(r1.planned)
+    for (const p of pubs) { expect(p.status).toBe('AGENDADO'); expect(p.overrides.social.template).toBe('DESTAQUE'); expect(p.scheduledAt.getTime()).toBeGreaterThan(Date.now()) }
+    const r2 = await planAutoProgram(T.t.id)
+    expect(r2.planned).toBe(0)
+    await prisma.publicationJob.deleteMany({ where: { publicationId: { in: pubs.map((p: any) => p.id) } } })
+    await prisma.publicationEvent.deleteMany({ where: { publicationId: { in: pubs.map((p: any) => p.id) } } })
+    await prisma.publication.deleteMany({ where: { id: { in: pubs.map((p: any) => p.id) } } })
+    await prisma.systemSetting.update({ where: { key }, data: { value: JSON.stringify(cur) } })
+  }, 60_000)
+
   it('Reels com música automática: o MP4 que a rede baixa tem a trilha CC0 audível', async () => {
     const res = await svc.createPublications(T.t.id, [{ vehicleId: T.v.id, connectionId: T.ig.id, campaignKey: 'reels-2026-02-02', overrides: { social: { format: 'REELS', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } } } }], { mode: 'AGORA', actor: T.actor })
     expect(res[0].status).toBe('ENFILEIRADO')

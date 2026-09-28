@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { runWorker } from '@/lib/publications/worker'
 import { reconcile } from '@/lib/publications/reconcile'
 import { pruneSocialVideos } from '@/lib/publications/social/studio'
+import { planAllAutoPrograms } from '@/lib/publications/social/autoprog'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -24,8 +25,9 @@ async function handle(req: NextRequest) {
   const doReconcile = req.nextUrl.searchParams.get('reconcile') === '1'
   const rec = doReconcile ? await reconcile() : null
   if (doReconcile) await pruneSocialVideos().catch(() => 0)
+  const program = doReconcile ? await planAllAutoPrograms().catch((e) => [{ tenantId: '-', planned: 0, message: `Erro: ${(e as Error).message}` }]) : null
   const work = await runWorker({ maxJobs: 60, deadlineMs: 240_000, heavy: true })
-  return NextResponse.json({ success: true, reconcile: rec, recovered: work.recovered, processed: work.processed.length, results: work.processed.map((p) => ({ op: p.op, channel: p.channel, result: p.result })) })
+  return NextResponse.json({ success: true, reconcile: rec, program, recovered: work.recovered, processed: work.processed.length, results: work.processed.map((p) => ({ op: p.op, channel: p.channel, result: p.result })) })
 }
 
 export const GET = handle

@@ -11,6 +11,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
 import { api, Empty, PubTabs } from '@/components/publications/ui'
+import { AutoProgramPanel } from '@/components/publications/AutoProgramPanel'
 
 interface Item { day: string; at: string; kind: 'AGENDADO' | 'PUBLICADO' | 'REMOVIDO'; id: string; title: string; plate: string | null; channel: string; account: string | null; statusLabel: string }
 
@@ -55,6 +56,7 @@ export default function CalendarPage() {
         <p className="text-sm text-gray-500">Horários no fuso {tz.replace('_', ' ')}.</p>
       </div>
       <PubTabs />
+      <AutoProgramPanel onPlanned={() => void load()} />
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => shift(-1)} className="btn-secondary p-2" aria-label="Mês anterior"><ChevronLeft size={15} /></button>
         <p className="min-w-40 text-center font-semibold text-gray-800">{cap(new Date(ym.y, ym.m, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))}</p>

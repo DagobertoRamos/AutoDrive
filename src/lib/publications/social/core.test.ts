@@ -186,3 +186,38 @@ describe('textos do anúncio (modelos e condições)', () => {
     expect(t.sanitizeTerms({ extra: 'a'.repeat(500) }).extra.length).toBe(300)
   })
 })
+
+describe('programação automática (grade + rodízio)', () => {
+  it('horários das próximas 48 h, só no futuro (margem 10 min), nos dias marcados', async () => {
+    const a = await import('./autoprog-core')
+    // 2026-09-27 é domingo (0).
+    const occ = a.upcoming([{ days: [0, 1], time: '12:00', format: 'POST' }, { days: [1], time: '19:00', format: 'REELS' }], '2026-09-27T11:55', 48)
+    expect(occ).toEqual([
+      { local: '2026-09-28T12:00', format: 'POST' },
+      { local: '2026-09-28T19:00', format: 'REELS' },
+    ])
+    expect(a.autoKey('REELS', '2026-09-28T19:00')).toBe('auto-reels-2026-09-28-1900')
+  })
+  it('rodízio: nunca postado primeiro, depois o mais antigo; promoção na frente; sem repetir no dia', async () => {
+    const a = await import('./autoprog-core')
+    const d = (s: string) => new Date(s)
+    const cands = [
+      { id: 'velho', lastPostedAt: d('2026-09-01T12:00Z'), promo: false, createdAt: d('2026-01-01') },
+      { id: 'recente', lastPostedAt: d('2026-09-26T12:00Z'), promo: false, createdAt: d('2026-01-01') },
+      { id: 'nunca', lastPostedAt: null, promo: false, createdAt: d('2026-09-20') },
+      { id: 'promo', lastPostedAt: d('2026-09-10T12:00Z'), promo: true, createdAt: d('2026-01-01') },
+    ]
+    const slots = [{ local: '2026-09-28T09:00', format: 'STORY' as const }, { local: '2026-09-28T12:00', format: 'POST' as const }, { local: '2026-09-28T19:00', format: 'REELS' as const }]
+    expect(a.assign(slots, cands, { promoFirst: true, minDaysBetween: 7, now: d('2026-09-27T12:00Z') }).map((x) => x.vehicleId)).toEqual(['promo', 'nunca', 'velho'])
+    expect(a.assign(slots, cands, { promoFirst: false, minDaysBetween: 7, now: d('2026-09-27T12:00Z') }).map((x) => x.vehicleId)).toEqual(['nunca', 'velho', 'promo'])
+    // "recente" apareceu há 2 dias: fica fora com intervalo de 7 dias.
+    expect(a.assign(slots, cands, { promoFirst: false, minDaysBetween: 7, now: d('2026-09-27T12:00Z') }).some((x) => x.vehicleId === 'recente')).toBe(false)
+  })
+  it('configuração: descarta horário inválido, limita e mantém padrão', async () => {
+    const a = await import('./autoprog-core')
+    const p = a.sanitizeProgram({ enabled: true, slots: [{ days: [9, 1, 1], time: '25:00', format: 'POST' }, { days: [1, 3], time: '08:30', format: 'STORY' }], minDaysBetween: 999 })
+    expect(p.slots).toEqual([{ days: [1, 3], time: '08:30', format: 'STORY' }])
+    expect(p.minDaysBetween).toBe(7)
+    expect(a.sanitizeProgram(undefined)).toEqual(a.DEFAULT_PROGRAM)
+  })
+})

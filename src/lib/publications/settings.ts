@@ -16,6 +16,7 @@ import { DEFAULT_TIMEZONE, isValidTimeZone } from './schedule-core'
 import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './social/formats'
 import { musicOf, type MusicChoice } from './social/music-core'
 import { EMPTY_TERMS, sanitizeTerms, type StoreTerms } from './social/text-core'
+import { DEFAULT_PROGRAM, sanitizeProgram, type AutoProgram } from './social/autoprog-core'
 
 export interface AutoPublishRule {
   enabled: boolean
@@ -35,6 +36,8 @@ export interface PublicationSettings {
   autoPublish: AutoPublishRule
   /** Condições comerciais padrão (entram no anúncio quando ele não tem condições próprias). */
   terms: StoreTerms
+  /** Programação automática (grade semanal × rodízio do estoque) no Instagram/Facebook. */
+  autoProgram: AutoProgram
   /** Worker: máximo de envios por minuto por conexão (proteção extra além do limite do portal). */
   perConnectionPerMinute: number
 }
@@ -79,6 +82,7 @@ export function sanitizeSettings(input: unknown, fallback: PublicationSettings):
     },
     perConnectionPerMinute: Number.isFinite(per) && per >= 1 && per <= 120 ? Math.round(per) : fallback.perConnectionPerMinute,
     terms: sanitizeTerms(i.terms, fallback.terms),
+    autoProgram: sanitizeProgram(i.autoProgram, fallback.autoProgram),
   }
 }
 
@@ -102,6 +106,7 @@ async function defaults(tenantId: string): Promise<PublicationSettings> {
     autoPublish: { enabled: false, connectionIds: [], enabledById: null, enabledByName: null, enabledAt: null, social: { formats: [], template: 'CHEGOU', music: { mode: 'AUTO', mood: 'ANIMADA' } } },
     perConnectionPerMinute: 20,
     terms: EMPTY_TERMS,
+    autoProgram: DEFAULT_PROGRAM,
   }
 }
 
