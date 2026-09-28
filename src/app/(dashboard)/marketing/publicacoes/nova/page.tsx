@@ -18,6 +18,7 @@ import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-inpu
 import { ListingProfileStep } from '@/components/publications/ListingProfileStep'
 import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/publications/SocialStudio'
 import { TextAssist } from '@/components/publications/TextAssist'
+import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
 import { campaignKeyFor, planLocal } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
@@ -26,7 +27,7 @@ import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoqu
 interface Veh { id: string; title: string; plate: string | null; year: number | null; modelYear: number | null; km: number | null; cover: string | null; photos: number; price: number | null; publishable: boolean; preparable?: boolean; stockStatus: string | null; photosStatus: string; mediaApproved: boolean; mediaPending: boolean; channels: Array<{ channel: string; status: string }>; unit: string | null }
 interface Conn { id: string; channel: string; label: string; status: string }
 interface ChannelInfo { id: string; name: string; campaigns: boolean; publishable: boolean; devStatus: string; group: string }
-interface Content { title: string; description: string; conditions: string; price: string }
+interface Content { title: string; description: string; conditions: string; price: string; videoUrl: string }
 
 const STEPS = ['Veículos', 'Fotos', 'Ficha', 'Conteúdo', 'Canais', 'Revisão'] as const
 
@@ -265,14 +266,14 @@ function StepPhotos({ vehicleId, canApprove, onApproved }: { vehicleId: string; 
 // ── 3. Conteúdo ──────────────────────────────────────────────────────────────
 function StepContent({ vehicleId }: { vehicleId: string }) {
   const [data, setData] = useState<any>(null)
-  const [c, setC] = useState<Content>({ title: '', description: '', conditions: '', price: '' })
+  const [c, setC] = useState<Content>({ title: '', description: '', conditions: '', price: '', videoUrl: '' })
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [msg, setMsg] = useState<string | null>(null)
   const dirty = useRef(false)
   useEffect(() => {
     api(`/api/publications/drafts/${vehicleId}`).then((j) => {
       setData(j.data)
-      setC({ title: j.data.draft?.title ?? '', description: j.data.draft?.description ?? '', conditions: j.data.draft?.conditions ?? '', price: j.data.draft?.price != null ? String(j.data.draft.price) : '' })
+      setC({ title: j.data.draft?.title ?? '', description: j.data.draft?.description ?? '', conditions: j.data.draft?.conditions ?? '', price: j.data.draft?.price != null ? String(j.data.draft.price) : '', videoUrl: j.data.videoUrl ?? '' })
     }).catch((e) => setMsg((e as Error).message))
   }, [vehicleId])
   const save = useCallback(async () => {
@@ -297,6 +298,10 @@ function StepContent({ vehicleId }: { vehicleId: string }) {
           <span className="text-[11px] text-gray-400">Vazio = texto gerado só com a ficha do estoque. Não inclua opcionais, garantia ou financiamento que não existam.</span>
         </label>
         <label className="block text-xs font-medium text-gray-600">Condições comerciais<textarea rows={3} className={inputCls} value={c.conditions} placeholder="Vazio = condições padrão da loja (configuradas em Canais conectados)." onChange={(e) => set({ conditions: e.target.value })} maxLength={1000} /></label>
+        <label className="block text-xs font-medium text-gray-600">Vídeo do carro (link)
+          <input className={inputCls} value={c.videoUrl} placeholder="https://youtu.be/… ou link do Google Drive / Dropbox / .mp4" onChange={(e) => set({ videoUrl: e.target.value })} />
+          <VideoLinkHint url={c.videoUrl} />
+        </label>
         <label className="block text-xs font-medium text-gray-600">Preço anunciado<MoneyInput className={inputCls} value={textToMoney(c.price)} placeholder={data.vehicle.price != null ? `${money(data.vehicle.price).replace(/^R\$\s*/, '')} (estoque)` : 'Defina no estoque'} onChange={(n) => set({ price: moneyToText(n) })} /></label>
         <div className="flex items-center gap-2"><button onClick={save} className="btn-secondary px-3 py-1.5 text-xs"><Save size={14} />Salvar</button><span className="text-xs text-gray-500" role="status">{state === 'saving' ? 'Salvando…' : state === 'saved' ? 'Salvo' : state === 'error' ? msg : ''}</span></div>
       </div>

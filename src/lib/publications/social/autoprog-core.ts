@@ -79,7 +79,7 @@ export function upcoming(slots: AutoSlot[], nowLocal: string, hours = 48): Array
   return out.sort((a, b) => a.local.localeCompare(b.local))
 }
 
-export interface Candidate { id: string; lastPostedAt: Date | null; promo: boolean; createdAt: Date }
+export interface Candidate { id: string; lastPostedAt: Date | null; promo: boolean; createdAt: Date; /** Tem vídeo que dá para baixar (formato "Vídeo do carro"). */ hasVideo?: boolean }
 
 /**
  * Escolhe um carro para cada horário vazio. Rodízio: nunca postado primeiro,
@@ -97,6 +97,7 @@ export function assign(slots: Array<{ local: string; format: SocialFormat }>, ca
     const at = Date.parse(`${s.local}:00Z`)
     const pool = cands
       .filter((c) => !used.has(c.id))
+      .filter((c) => s.format !== 'VIDEO' || !!c.hasVideo)
       .filter((c) => { const l = last.get(c.id); return l == null || at - l >= minGap })
       .sort((a, b) => {
         if (opts.promoFirst && a.promo !== b.promo) return a.promo ? -1 : 1

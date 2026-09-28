@@ -19,7 +19,7 @@ describe('formatos e piloto automático', () => {
     expect(campaignKeyFor('REELS', '2026-09-28T19:00')).toBe('reels-2026-09-28')
   })
   it('só Instagram e Página do Facebook têm formatos', () => {
-    expect(formatsFor('INSTAGRAM')).toHaveLength(4)
+    expect(formatsFor('INSTAGRAM')).toHaveLength(5)
     expect(formatsFor('WEBMOTORS')).toEqual([])
   })
   it('espalha nos horários de pico a partir da hora local', () => {
@@ -219,5 +219,32 @@ describe('programação automática (grade + rodízio)', () => {
     expect(p.slots).toEqual([{ days: [1, 3], time: '08:30', format: 'STORY' }])
     expect(p.minDaysBetween).toBe(7)
     expect(a.sanitizeProgram(undefined)).toEqual(a.DEFAULT_PROGRAM)
+  })
+})
+
+describe('vídeo do carro (links)', () => {
+  it('classifica: YouTube toca no site mas não baixa; Drive/Dropbox/mp4 baixam', async () => {
+    const v = await import('./video-core')
+    expect(v.classifyVideo('https://youtu.be/dQw4w9WgXcQ')).toMatchObject({ kind: 'YOUTUBE', downloadUrl: null, siteUrl: 'https://youtu.be/dQw4w9WgXcQ' })
+    expect(v.classifyVideo('https://www.tiktok.com/@loja/video/123')).toMatchObject({ kind: 'TIKTOK', downloadUrl: null, siteUrl: null })
+    expect(v.classifyVideo('https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing')?.downloadUrl).toBe('https://drive.usercontent.google.com/download?id=1AbCdEfGhIjKlMnOp&export=download&confirm=t')
+    expect(v.classifyVideo('https://www.dropbox.com/s/abc/carro.mp4?dl=0')?.downloadUrl).toBe('https://www.dropbox.com/s/abc/carro.mp4?raw=1')
+    expect(v.classifyVideo('https://cdn.loja.com/carro.mov')).toMatchObject({ kind: 'ARQUIVO', siteUrl: null })
+    expect(v.classifyVideo('http://inseguro.com/a.mp4')).toBeNull()
+    expect(v.classifyVideo('https://exemplo.com/pagina')).toBeNull()
+  })
+  it('formato "Vídeo do carro" mantém o áudio original (sem trilha)', async () => {
+    const m = await import('./music-core')
+    expect(m.musicPlan({ mode: 'AUTO', mood: 'ANIMADA' }, 'INSTAGRAM', 'VIDEO')).toBeNull()
+  })
+})
+
+describe('rodízio com vídeo do carro', () => {
+  it('horário "Vídeo do carro" só pega carro com vídeo que dá para baixar', async () => {
+    const a = await import('./autoprog-core')
+    const d = new Date('2026-01-01')
+    const cands = [{ id: 'sem', lastPostedAt: null, promo: false, createdAt: d }, { id: 'com', lastPostedAt: null, promo: false, createdAt: d, hasVideo: true }]
+    expect(a.assign([{ local: '2026-09-28T19:00', format: 'VIDEO' }], cands, { promoFirst: false, minDaysBetween: 0, now: d }).map((x) => x.vehicleId)).toEqual(['com'])
+    expect(a.assign([{ local: '2026-09-28T19:00', format: 'VIDEO' }], [cands[0]], { promoFirst: false, minDaysBetween: 0, now: d })).toEqual([])
   })
 })

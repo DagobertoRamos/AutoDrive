@@ -81,7 +81,7 @@ const vehicleSelect = {
   promoStartsAt: true, promoEndsAt: true, conditionType: true, active: true, stockStatus: true, mainPhotoUrl: true,
   cautelarStatus: true, originType: true, partnerStoreId: true, stockType: true,
   photos: { select: { url: true }, orderBy: [{ order: 'asc' as const }, { createdAt: 'asc' as const }] },
-  siteListing: { select: { title: true, description: true, options: true, hidden: true, photosStatus: true, originalPhotos: true } },
+  siteListing: { select: { title: true, description: true, options: true, hidden: true, photosStatus: true, originalPhotos: true, videoUrl: true } },
 } satisfies Prisma.VehicleSelect
 
 export type VehicleRow = Prisma.VehicleGetPayload<{ select: typeof vehicleSelect }>
@@ -486,7 +486,7 @@ export async function releaseBlockedJobs(tenantId: string, connectionId: string)
 
 // ── Fotos / conteúdo aprovados ────────────────────────────────────────────────
 
-export function mediaHash(photos: string[]): string { return payloadHash({ title: '', description: '', caption: '', social: null, price: null, oldPrice: null, photos, options: [], conditions: '', vehicle: { id: '' }, contacts: {}, location: {}, reference: '', storeName: '', isNew: false }) }
+export function mediaHash(photos: string[]): string { return payloadHash({ title: '', description: '', caption: '', social: null, videoUrl: null, price: null, oldPrice: null, photos, options: [], conditions: '', vehicle: { id: '' }, contacts: {}, location: {}, reference: '', storeName: '', isNew: false }) }
 
 /** Registra uma revisão de mídia pendente (painel "Preparar publicação" ou estúdio). */
 export async function proposeMedia(tenantId: string, vehicleId: string, photos: string[], origin: 'PAINEL' | 'ESTUDIO' | 'CENTRAL', actor: Actor) {

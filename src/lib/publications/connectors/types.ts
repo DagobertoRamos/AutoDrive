@@ -50,6 +50,8 @@ export interface SocialMedia {
    * arquivo direto). `embedMusic`: embute a trilha CC0 escolhida.
    */
   video(p: ListingPayload, kind: 'REELS' | 'CLIP', opts: { format: SocialFormat; template: ArtTemplate; embedMusic: boolean }): Promise<{ url: string; bytes: Uint8Array }>
+  /** Vídeo gravado do carro (link do anúncio) ajustado para Reels: bytes do MP4. */
+  carVideo(p: ListingPayload): Promise<Uint8Array>
 }
 
 export interface RemoteRef {

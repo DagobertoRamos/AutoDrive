@@ -1,3 +1,4 @@
+import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
 // Site da loja — validação do que o lojista edita no anúncio. PURO (testado).
 export interface ListingInput {
   featured: boolean
@@ -18,14 +19,15 @@ export function cleanVideoUrl(v: unknown): string | null {
   if (!s) return null
   if (/^https:\/\/(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]{6,}/i.test(s)) return s.slice(0, 300)
   if (/^https:\/\/[^\s]+\.(mp4|webm)(\?.*)?$/i.test(s)) return s.slice(0, 500)
-  return null
+  // Também Vimeo, TikTok, Instagram, Facebook, Google Drive e Dropbox (o site toca só o que é tocável).
+  return classifyVideo(s)?.url ?? null
 }
 
 export function sanitizeListingInput(body: unknown): { ok: true; value: ListingInput } | { ok: false; error: string } {
   const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
   const rawVideo = String(b.videoUrl ?? '').trim()
   const videoUrl = cleanVideoUrl(rawVideo)
-  if (rawVideo && !videoUrl) return { ok: false, error: 'Vídeo: use um link do YouTube ou de um arquivo .mp4/.webm (https).' }
+  if (rawVideo && !videoUrl) return { ok: false, error: `Vídeo: link não reconhecido. ${VIDEO_HINT}` }
   const rawOptions = Array.isArray(b.options) ? b.options : String(b.options ?? '').split(/[\n,;]+/)
   const options = [...new Set(rawOptions.map((o) => String(o ?? '').trim().slice(0, 60)).filter(Boolean))].slice(0, 60)
   return {

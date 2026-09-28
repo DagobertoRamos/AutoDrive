@@ -13,6 +13,7 @@ import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { effectivePrice, vehicleTitle } from '@/lib/site/listing-core'
 import { autoDescription, baseTitle } from '@/lib/publications/content-core'
+import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
 import { approveMedia, factsOf, loadVehicle, logEvent, proposeMedia, syncLive } from '@/lib/publications/service'
 import { audit, bad, kickWorker, permissions, pubAuth } from '@/lib/publications/api'
 
@@ -37,7 +38,7 @@ export async function GET(req: Request, ctx: Ctx) {
     success: true,
     data: {
       vehicle: { ...facts, title: vehicleTitle(v), stockStatus: v.stockStatus, active: v.active, photosStatus: v.siteListing?.photosStatus ?? 'ORIGEM', price: price.price, oldPrice: price.oldPrice },
-      gallery: v.photos.map((p) => p.url), originals, options,
+      gallery: v.photos.map((p) => p.url), originals, options, videoUrl: v.siteListing?.videoUrl ?? '',
       draft: draft ? { title: draft.title, description: draft.description, conditions: draft.conditions, price: draft.price == null ? null : Number(draft.price), photos: Array.isArray(draft.photos) ? draft.photos : null, mediaRevisionId: draft.mediaRevisionId, approvedAt: draft.approvedAt } : null,
       suggestions: { title: baseTitle(facts), description: autoDescription(facts, options, draft?.conditions ?? '') },
       revisions, can: await permissions(a.user),
@@ -56,7 +57,14 @@ export async function PUT(req: Request, ctx: Ctx) {
   const price = b.price === null || b.price === '' || b.price === undefined ? null : Number(b.price)
   if (price !== null && (!Number.isFinite(price) || price <= 0 || price > 50_000_000)) return bad('Preço inválido.')
   const data = { title: s(b.title, 150), description: s(b.description, 6000), conditions: s(b.conditions, 1000), price: price == null ? null : new Prisma.Decimal(price) }
+  // Vídeo do carro: fica no anúncio do site (site, Facebook e formato "Vídeo do carro").
+  const rawVideo = typeof b.videoUrl === 'string' ? b.videoUrl.trim() : undefined
+  const video = rawVideo ? classifyVideo(rawVideo) : null
+  if (rawVideo && !video) return bad(`Vídeo: link não reconhecido. ${VIDEO_HINT}`)
   try {
+    if (rawVideo !== undefined) {
+      await prisma.siteListing.upsert({ where: { vehicleId }, create: { tenantId: a.tenantId, vehicleId, videoUrl: video?.url ?? null }, update: { videoUrl: video?.url ?? null } })
+    }
     const before = await prisma.publicationDraft.findUnique({ where: { vehicleId } })
     await prisma.publicationDraft.upsert({ where: { vehicleId }, create: { tenantId: a.tenantId, vehicleId, ...data, updatedById: a.user.id }, update: { ...data, updatedById: a.user.id } })
     await logEvent(prisma, { tenantId: a.tenantId, vehicleId, type: 'CONTEUDO', message: 'Conteúdo do anúncio atualizado.', actor: a.actor, data: { antes: before ? { title: before.title, price: before.price, conditions: before.conditions } : null, depois: { title: data.title, price, conditions: data.conditions } } })

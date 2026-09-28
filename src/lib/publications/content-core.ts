@@ -9,6 +9,7 @@
 // =============================================================================
 
 import type { SocialSpec } from './social/formats'
+import { classifyVideo } from './social/video-core'
 import { createHash } from 'crypto'
 import { effectivePrice } from '@/lib/site/listing-core'
 import type { ChannelSpec } from './channels'
@@ -66,6 +67,8 @@ export interface ListingPayload {
   description: string
   caption: string // redes sociais
   social: SocialSpec | null
+  /** Vídeo do carro (link do anúncio do site): no texto do Facebook e no formato "Vídeo do carro". */
+  videoUrl: string | null
   price: number | null
   oldPrice: number | null
   photos: string[] // ordem final; [0] = capa
@@ -125,7 +128,7 @@ export function autoDescription(v: VehicleFacts, options: string[], conditions: 
 export interface BuildInput {
   reference: string
   vehicle: VehicleFacts
-  siteListing?: { title?: string | null; description?: string | null; options?: unknown } | null
+  siteListing?: { title?: string | null; description?: string | null; options?: unknown; videoUrl?: string | null } | null
   gallery: string[]
   draft?: ContentSource | null
   overrides?: ContentSource | null
@@ -160,7 +163,7 @@ export function buildPayload(i: BuildInput): ListingPayload {
     contactLines(i.contacts).join('\n'),
   ].filter(Boolean).join('\n\n')
   return {
-    reference: i.reference, vehicle: i.vehicle, title, description, caption, social: o.social ?? null, price, oldPrice, photos, options, conditions,
+    reference: i.reference, vehicle: i.vehicle, title, description, caption, social: o.social ?? null, videoUrl: classifyVideo(i.siteListing?.videoUrl)?.url ?? null, price, oldPrice, photos, options, conditions,
     contacts: i.contacts, location: i.location, storeName: i.storeName,
     isNew: (i.vehicle.conditionType ?? '').toUpperCase() === 'NOVO' || i.vehicle.km === 0,
   }
@@ -182,6 +185,8 @@ export function channelText(p: ListingPayload, spec: ChannelSpec): { title: stri
   let title = p.title
   if (spec.text.titleMax && title.length > spec.text.titleMax) { title = title.slice(0, spec.text.titleMax).trim(); truncated.push('título') }
   let description = spec.group === 'SOCIAL' || spec.group === 'MANUAL' ? p.caption : p.description
+  // Facebook deixa o link clicável: o vídeo do carro entra no texto.
+  if (spec.id === 'META_PAGE' && p.videoUrl && !description.includes(p.videoUrl)) description = `${description}\n\n🎥 Veja o vídeo: ${p.videoUrl}`
   if (!spec.text.contactsInDescription) description = stripContacts(description)
   else if (spec.group === 'PROPRIO' || spec.group === 'PORTAL') {
     const c = contactLines(p.contacts)

@@ -12,6 +12,7 @@ import { localToUtc, utcToLocalInput } from '../schedule-core'
 import { createPublications, ensureMediaApproved, type CreateResult } from '../service'
 import { loadPublicationSettings } from '../settings'
 import { assign, autoKey, upcoming, type Candidate } from './autoprog-core'
+import { classifyVideo } from './video-core'
 
 const ACTOR = { id: null, name: 'Programação automática' }
 
@@ -32,7 +33,7 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
   // Estoque anunciável com foto + quando apareceu por último nas redes.
   const vehicles = await prisma.vehicle.findMany({
     where: { tenantId, active: true, stockStatus: { in: [...PUBLISHABLE_STOCK] }, photos: { some: {} } },
-    select: { id: true, createdAt: true, salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true },
+    select: { id: true, createdAt: true, salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true, siteListing: { select: { videoUrl: true } } },
     take: 500,
   })
   if (!vehicles.length) return { planned: 0, results: [], message: 'Nenhum carro disponível com fotos para programar.' }
@@ -42,7 +43,7 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
   })
   const lastBy = new Map(recent.map((r) => [r.vehicleId, [r._max.publishedAt, r._max.scheduledAt, r._max.createdAt].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null]))
   const cands: Candidate[] = vehicles.map((v) => ({
-    id: v.id, createdAt: v.createdAt, lastPostedAt: lastBy.get(v.id) ?? null,
+    id: v.id, createdAt: v.createdAt, lastPostedAt: lastBy.get(v.id) ?? null, hasVideo: !!classifyVideo(v.siteListing?.videoUrl)?.downloadUrl,
     promo: effectivePrice({ salePrice: v.salePrice == null ? null : Number(v.salePrice), promoPrice: v.promoPrice == null ? null : Number(v.promoPrice), isPromo: v.isPromo, promoStartsAt: v.promoStartsAt, promoEndsAt: v.promoEndsAt }, now).oldPrice != null,
   }))
 

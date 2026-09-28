@@ -115,6 +115,14 @@ export const metaPageConnector: Connector = {
       const st = await graph<{ post_id?: string; id?: string }>(ctx, 'POST', `/${page}/photo_stories`, { photo_id: photo.id }, 'Story', true)
       return { state: STORY_OK, remoteId: st.post_id ?? st.id ?? photo.id, remoteStatus: 'story (some em 24 h)', message: 'Story publicado na Página.' }
     }
+    if (s?.format === 'VIDEO') {
+      // Vídeo gravado do carro como Reels da Página (arquivo enviado direto).
+      const bytes = await needStudio(ctx, s).carVideo(p)
+      const start = await graph<{ video_id: string }>(ctx, 'POST', `/${page}/video_reels`, { upload_phase: 'start' }, 'Vídeo do carro (início)')
+      await rupload(ctx, start.video_id, bytes, 'Vídeo do carro (envio)')
+      await graph(ctx, 'POST', `/${page}/video_reels`, { upload_phase: 'finish', video_id: start.video_id, video_state: 'PUBLISHED', description: channelText(p, pageSpec).description }, 'Vídeo do carro (publicar)', true)
+      return { state: 'EM_ANALISE', remoteId: start.video_id, message: 'Vídeo do carro enviado; o Facebook está processando.' }
+    }
     if (s?.format === 'REELS') {
       const vid = await needStudio(ctx, s).video(p, 'REELS', { format: 'REELS', template: s.template, embedMusic: music === 'EMBED' })
       const start = await graph<{ video_id: string }>(ctx, 'POST', `/${page}/video_reels`, { upload_phase: 'start' }, 'Reels (início)')
@@ -235,6 +243,18 @@ export const instagramConnector: Connector = {
         const media = await graph<{ id: string }>(ctx, 'POST', `/${ig}/media_publish`, { creation_id: ci }, 'Instagram (publicar story)', true)
         return { state: STORY_OK, remoteId: media.id, remoteStatus: 'story sem música (some em 24 h)', message: `Story publicado com a arte, sem música: ${e.message}` }
       }
+    }
+    if (s?.format === 'VIDEO') {
+      // Vídeo gravado do carro: envio retomável (o arquivo vai direto ao Instagram, sem limite do nosso link).
+      const bytes = await needStudio(ctx, s).carVideo(p)
+      const c = await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'REELS', upload_type: 'resumable', caption, share_to_feed: 'true' }, 'Instagram (vídeo do carro)')
+      const version = graphBase().split('/').pop()
+      const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/ig-api-upload/${version}/${c.id}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, offset: '0', file_size: String(bytes.length), 'Content-Type': 'application/octet-stream' }, body: bytes, timeoutMs: 180_000 })
+      if (up.status < 200 || up.status >= 300) {
+        const dbg = up.json<{ debug_info?: { message?: string } }>()?.debug_info?.message
+        throw graphError(up, dbg ? `Instagram (envio do vídeo): ${dbg}` : 'Instagram (envio do vídeo)') ?? new ConnectorError('UNAVAILABLE', `Instagram (envio do vídeo): HTTP ${up.status}`)
+      }
+      return { state: 'EM_ANALISE', pendingToken: c.id, message: 'Vídeo do carro enviado; o Instagram está processando.' }
     }
     if (s && (s.format === 'REELS' || (s.format === 'POST' && music))) {
       // Post com música sai como vídeo curto (Reels que também aparece no feed).

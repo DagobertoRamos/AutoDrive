@@ -7,6 +7,7 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { effectiveOrigin, type OriginType } from '@/lib/stock/origin-core'
+import { classifyVideo } from '@/lib/publications/social/video-core'
 import { brandLandings, type BrandLanding } from './seo-core'
 import { brandCounts, brandVariants, type BrandCount } from './brands-core'
 import { effectivePrice, siteVehicleState, SITE_VISIBLE_STOCK, vehicleIdFromSlug, vehicleSlug, vehicleTitle, type SiteVehicleState } from './listing-core'
@@ -64,7 +65,7 @@ function toSiteVehicle(r: Row): SiteVehicle {
     price, oldPrice, state, featured: !!l?.featured, promo: oldPrice != null, inspected: r.cautelarStatus === 'APROVADA',
     origin: effectiveOrigin(r),
     photos, cover: photos[0] ?? null,
-    description: l?.description ?? '', options, videoUrl: l?.videoUrl ?? '',
+    description: l?.description ?? '', options, videoUrl: classifyVideo(l?.videoUrl)?.siteUrl ?? '',
     seoTitle: l?.seoTitle ?? '', seoDescription: l?.seoDescription ?? '',
   }
 }

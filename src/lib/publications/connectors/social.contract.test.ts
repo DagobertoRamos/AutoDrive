@@ -39,6 +39,7 @@ function ctxWith(http: ReturnType<typeof simulated>['http'], account: string): C
     social: {
       artUrl: (u, p, f, k) => `https://app.test/art/${f}-${k}-${p.price}-${encodeURIComponent(u)}.jpg`,
       async video(p, kind, o) { reels.push(`${kind}:${o.format}:${o.template}:${o.embedMusic ? 'com-trilha' : 'mudo'}`); return { url: kind === 'REELS' ? 'https://app.test/reel.mp4' : 'https://app.test/clip.mp4', bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]) } },
+      async carVideo(p) { reels.push(`CARRO:${p.videoUrl}`); return new Uint8Array(20) },
     },
     async saveSecrets() {},
     now: () => new Date('2026-09-27T12:00:00Z'),
@@ -318,5 +319,39 @@ describe('Estúdio social — recusas — SIMULAÇÃO', () => {
       (c) => c.url.startsWith('https://rupload.facebook.com/') ? { status: 422, body: { debug_info: { retriable: false, type: 'ProcessingFailedError', message: 'Request processing failed' } } } : null,
     ])
     await expect(metaPageConnector.publish!(payload({ format: 'REELS', template: 'OFERTA' }), ctxWith(s.http, 'PAGE'))).rejects.toMatchObject({ message: expect.stringContaining('Request processing failed') })
+  })
+})
+
+describe('Vídeo do carro — SIMULAÇÃO', () => {
+  const withVideo = (social: SocialSpec) => ({ ...payload(social), videoUrl: 'https://www.dropbox.com/s/abc/tiguan.mp4?raw=1' })
+  it('Instagram: contêiner REELS com upload_type=resumable + arquivo no rupload ig-api-upload; publica depois do processamento', async () => {
+    reels.length = 0
+    const s = simulated([IG_LIMIT,
+      (c) => c.url.includes('/IG/media') && c.method === 'POST' && !c.url.includes('publish') ? { status: 200, body: { id: 'VC1', uri: 'https://rupload.facebook.com/ig-api-upload/v23.0/VC1' } } : null,
+      (c) => c.url.startsWith('https://rupload.facebook.com/ig-api-upload/') ? { status: 200, body: { success: true } } : null,
+    ])
+    const r = await instagramConnector.publish!(withVideo({ format: 'VIDEO', template: 'OFERTA' }), ctxWith(s.http, 'IG'))
+    expect(r).toMatchObject({ state: 'EM_ANALISE', pendingToken: 'VC1' })
+    const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media'))!.body)
+    expect(create.get('upload_type')).toBe('resumable')
+    expect(create.get('media_type')).toBe('REELS')
+    expect(create.get('video_url')).toBeNull()
+    const up = s.calls.find((c) => c.url.includes('ig-api-upload'))!
+    expect(up.url).toMatch(/\/ig-api-upload\/v\d+\.\d+\/VC1$/)
+    expect(up.headers).toMatchObject({ offset: '0', file_size: '20' })
+    expect(reels).toEqual(['CARRO:https://www.dropbox.com/s/abc/tiguan.mp4?raw=1'])
+  })
+  it('Página: Reels com o vídeo do carro (arquivo direto) e o link do vídeo no texto do post comum', async () => {
+    const s = simulated([
+      (c) => c.url.includes('/PAGE/video_reels') && c.body.includes('upload_phase=start') ? { status: 200, body: { video_id: 'VCF' } } : null,
+      (c) => c.url.startsWith('https://rupload.facebook.com/video-upload/') ? { status: 200, body: { success: true } } : null,
+      (c) => c.url.includes('/PAGE/video_reels') && c.body.includes('upload_phase=finish') ? { status: 200, body: { success: true } } : null,
+      (c) => c.url.includes('/PAGE/photos') ? { status: 200, body: { id: 'PH' } } : null,
+      (c) => c.url.includes('/PAGE/feed') ? { status: 200, body: { id: 'PF' } } : null,
+    ])
+    const ctx = ctxWith(s.http, 'PAGE')
+    expect(await metaPageConnector.publish!(withVideo({ format: 'VIDEO', template: 'OFERTA' }), ctx)).toMatchObject({ state: 'EM_ANALISE', remoteId: 'VCF' })
+    await metaPageConnector.publish!(withVideo({ format: 'POST', template: 'OFERTA' }), ctx)
+    expect(new URLSearchParams(s.calls.find((c) => c.url.includes('/PAGE/feed'))!.body).get('message')).toContain('🎥 Veja o vídeo: https://www.dropbox.com/s/abc/tiguan.mp4?raw=1')
   })
 })

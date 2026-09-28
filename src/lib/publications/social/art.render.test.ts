@@ -107,3 +107,29 @@ describe('trilha sonora embutida (ffmpeg real)', () => {
     if (process.env.SOCIAL_ART_OUT) writeFileSync(path.join(process.env.SOCIAL_ART_OUT, 'clip-post-musica.mp4'), mp4)
   }, 120_000)
 })
+
+describe('vídeo do carro → Reels (ffmpeg real)', () => {
+  const ff = async (args: string[]) => {
+    const { spawnSync } = await import('node:child_process')
+    return spawnSync((await import('ffmpeg-static')).default as unknown as string, args, { encoding: 'utf8' })
+  }
+  it('vídeo horizontal com som e vídeo mudo viram 1080×1920 com áudio AAC', async () => {
+    const { mkdtempSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { toReels } = await import('./video')
+    const dir = mkdtempSync(path.join(tmpdir(), 'vtest-'))
+    const withAudio = path.join(dir, 'a.mp4'); const mute = path.join(dir, 'm.mp4')
+    await ff(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30:duration=4', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=4', '-shortest', '-c:v', 'libx264', '-c:a', 'aac', withAudio])
+    await ff(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30:duration=3', '-c:v', 'libx264', '-an', mute])
+    for (const [src, audible] of [[withAudio, true], [mute, false]] as const) {
+      const out = `${src}.reels.mp4`
+      await toReels(src, out)
+      const info = (await ff(['-hide_banner', '-i', out])).stderr
+      expect(info).toMatch(/1080x1920/)
+      expect(info).toMatch(/Audio: aac/)
+      const vol = Number(/mean_volume:\s*(-?[\d.]+) dB/.exec((await ff(['-hide_banner', '-i', out, '-af', 'volumedetect', '-vn', '-f', 'null', '-'])).stderr)?.[1] ?? '-999')
+      if (audible) expect(vol).toBeGreaterThan(-40); else expect(vol).toBeLessThan(-80)
+      if (process.env.SOCIAL_ART_OUT && audible) writeFileSync(path.join(process.env.SOCIAL_ART_OUT, 'video-carro-reels.mp4'), (await import('node:fs')).readFileSync(out))
+    }
+  }, 180_000)
+})

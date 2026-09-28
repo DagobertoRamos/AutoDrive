@@ -98,6 +98,8 @@ export function musicOf(x: unknown): MusicChoice | null {
  */
 export function musicPlan(choice: MusicChoice | null, channel: string, format: string): 'IG_LIBRARY' | 'EMBED' | null {
   if (!choice) return null
+  // Vídeo do carro mantém o áudio original.
+  if (format === 'VIDEO') return null
   if (choice.mode === 'TRACK' && choice.source === 'IG') {
     // A Audio API só anexa em Reels do Instagram (o Post com música também sai como Reels).
     if (channel === 'INSTAGRAM' && (format === 'REELS' || format === 'POST')) return 'IG_LIBRARY'

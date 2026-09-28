@@ -76,6 +76,7 @@ export function captionPrompt(i: CaptionInput): string {
     CARROSSEL: 'legenda de carrossel: convide a deslizar as fotos, destaques em tópicos curtos com emoji e chamada final',
     STORY: 'texto curtíssimo (até 2 linhas) para story',
     REELS: 'legenda de Reels: gancho forte na 1ª linha, 2 a 4 linhas curtas e chamada final',
+    VIDEO: 'legenda de vídeo (Reels) do carro filmado: gancho forte na 1ª linha, 2 a 4 linhas curtas e chamada final',
   }
   const tone: Record<CaptionTone, string> = { VENDEDOR: 'vendedor, direto e confiante', DESCONTRAIDO: 'descontraído e próximo', SOFISTICADO: 'sofisticado e elegante' }
   return [
@@ -110,6 +111,7 @@ export function fallbackCaption(i: CaptionInput): string {
     CARROSSEL: `👉 Arrasta para o lado e confere cada detalhe deste ${t}!`,
     STORY: `🔥 ${t} disponível agora!`,
     REELS: `🔥 Olha só o que acabou de chegar: ${t}!`,
+    VIDEO: `🎬 Dá o play e confere cada detalhe deste ${t}!`,
   }
   const lines = [
     yearText(i) && `📅 Ano ${yearText(i)}`,

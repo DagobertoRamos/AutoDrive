@@ -9,7 +9,7 @@
 
 import { musicOf, type MusicChoice } from './music-core'
 
-export const SOCIAL_FORMATS = ['POST', 'CARROSSEL', 'STORY', 'REELS'] as const
+export const SOCIAL_FORMATS = ['POST', 'CARROSSEL', 'STORY', 'REELS', 'VIDEO'] as const
 export type SocialFormat = (typeof SOCIAL_FORMATS)[number]
 
 export const ART_TEMPLATES = ['OFERTA', 'CHEGOU', 'DESTAQUE', 'LIMPA'] as const
@@ -22,6 +22,7 @@ export const FORMAT_INFO: Record<SocialFormat, { label: string; hint: string; ca
   CARROSSEL: { label: 'Carrossel', hint: 'Arte de capa + até 9 fotos para deslizar.', canvas: 'FEED' },
   STORY: { label: 'Story', hint: 'Arte vertical que some em 24 h.', canvas: 'VERTICAL' },
   REELS: { label: 'Reels', hint: 'Vídeo vertical com as fotos, preço e contato.', canvas: 'VERTICAL' },
+  VIDEO: { label: 'Vídeo do carro', hint: 'O vídeo gravado do carro (Drive, Dropbox ou .mp4) como Reels.', canvas: 'VERTICAL' },
 }
 
 export const TEMPLATE_INFO: Record<ArtTemplate, { label: string; badge: string | null }> = {
@@ -90,6 +91,7 @@ export function autoPlan(formats: SocialFormat[], localHour: number): Array<{ fo
     STORY: at(first, 5),
     REELS: at(second),
     CARROSSEL: at({ dayOffset: first.dayOffset + 2, hour: first.hour }),
+    VIDEO: at({ dayOffset: first.dayOffset + 1, hour: PEAK_HOURS[1] }),
   }
   return formats.map((format) => ({ format, ...plan[format] }))
 }

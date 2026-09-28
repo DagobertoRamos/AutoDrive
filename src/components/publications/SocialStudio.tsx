@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { useState } from 'react'
-import { Clapperboard, Images, Loader2, Smartphone, Sparkles, Square } from 'lucide-react'
+import { Clapperboard, Images, Loader2, Smartphone, Sparkles, Square, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, inputCls } from '@/components/publications/ui'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type ArtTemplate, type SocialFormat } from '@/lib/publications/social/formats'
@@ -30,7 +30,7 @@ export interface SocialChoice {
 
 export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: false, music: { mode: 'AUTO', mood: 'ANIMADA' } }
 
-const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard }
+const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard, VIDEO: Video }
 
 export function SocialStudio({ vehicles, value, onChange, hasInstagram = true }: { vehicles: Array<{ id: string; title: string }>; value: SocialChoice; onChange: (v: SocialChoice) => void; hasInstagram?: boolean }) {
   const [current, setCurrent] = useState<string | null>(null)

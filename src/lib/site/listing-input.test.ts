@@ -15,7 +15,9 @@ describe('anúncio', () => {
     expect(r.ok && r.value.options).toEqual(['Ar-condicionado', 'Multimídia', 'Câmera de ré'])
   })
   it('vídeo inválido é erro; campos vazios viram null e SEO é limitado', () => {
-    expect(sanitizeListingInput({ videoUrl: 'https://vimeo.com/1' }).ok).toBe(false)
+    expect(sanitizeListingInput({ videoUrl: 'https://exemplo.com/pagina' }).ok).toBe(false)
+    // Vimeo/TikTok/Drive/Dropbox são aceitos (o site toca só YouTube e arquivo; o resto vai nos posts).
+    expect(sanitizeListingInput({ videoUrl: 'https://vimeo.com/1' }).ok).toBe(true)
     const r = sanitizeListingInput({ title: '  ', seoTitle: 'x'.repeat(100), featured: 1 })
     expect(r.ok && r.value).toMatchObject({ title: null, featured: true, hidden: false })
     expect(r.ok && r.value.seoTitle?.length).toBe(70)

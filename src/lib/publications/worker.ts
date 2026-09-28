@@ -32,6 +32,7 @@ import { artUrlFor, mediaUrlFor, videoUrlFor } from './media-token'
 import { socialOf } from './social/formats'
 import { renderAndStoreVideo } from './social/studio'
 import { audioToEmbed } from './social/music'
+import { carVideoForReels } from './social/video'
 import { exactMatch, rankCandidates } from './mapping-core'
 
 const LOCK_MS = 5 * 60_000
@@ -148,6 +149,10 @@ export async function connectorContext(conn: { id: string; tenantId: string; cha
         const r = await renderAndStoreVideo(conn.tenantId, p, kind, o.format, o.template, audio)
         return { url: videoUrlFor(deps.origin ?? appOrigin(), conn.tenantId, r.assetId, { now: now() }), bytes: new Uint8Array(r.mp4) }
       },
+      async carVideo(p) {
+        if (!p.videoUrl) throw new ConnectorError('VALIDATION', 'Este carro não tem vídeo cadastrado.', 'Cole o link do vídeo (Google Drive, Dropbox ou .mp4) na etapa Conteúdo da publicação.')
+        try { return await carVideoForReels(p.videoUrl) } catch (e) { throw new ConnectorError('VALIDATION', `Vídeo do carro: ${(e as Error).message}`) }
+      },
     },
     async saveSecrets(s, expiresAt) {
       await prisma.publicationConnection.update({ where: { id: conn.id }, data: { secretsEncrypted: sealSecrets(s), ...(expiresAt !== undefined ? { tokenExpiresAt: expiresAt } : {}) } })
@@ -177,7 +182,7 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
   const ev = (type: string, message: string, toStatus?: string | null, data?: unknown) => logEvent(prisma, { tenantId: pub.tenantId, publicationId: pub.id, vehicleId: pub.vehicleId, channel: pub.channel, type, message, fromStatus: pub.status, toStatus: toStatus ?? null, data, actor: SYSTEM_ACTOR })
   const makesLive = op === 'PUBLICAR' || op === 'ATUALIZAR' || op === 'RETOMAR'
   const soc = socialOf(pub.overrides)
-  if (!deps.heavy && (op === 'PUBLICAR' || op === 'RETOMAR') && soc && (soc.format === 'REELS' || !!soc.music)) {
+  if (!deps.heavy && (op === 'PUBLICAR' || op === 'RETOMAR') && soc && (soc.format === 'REELS' || soc.format === 'VIDEO' || !!soc.music)) {
     await prisma.publicationJob.update({ where: { id: job.id }, data: { status: 'PENDENTE', runAt: new Date(now.getTime() + 20_000), attempts: { decrement: 1 }, lockedBy: null, lockedUntil: null } })
     return out('REPETIR', { message: 'O vídeo (Reels/trilha) é gerado pela rotina de publicação (em até 1 minuto).' })
   }
@@ -227,9 +232,9 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
 
   const ctx = await connectorContext(conn, deps, (type, message, data) => ev(type, message, null, data))
   const format = socialOf(pub.overrides)?.format ?? null
-  const video = format === 'REELS' || (format === 'POST' && !!soc?.music && pub.channel === 'META_PAGE')
+  const video = format === 'REELS' || format === 'VIDEO' || (format === 'POST' && !!soc?.music && pub.channel === 'META_PAGE')
   const ref = { vehicleId: pub.vehicleId, remoteId: pub.remoteId, externalRef: pub.externalRef, remoteUrl: pub.remoteUrl, pendingToken: pub.pendingToken, format, video }
-  const ephemeral = format === 'STORY' || format === 'REELS'
+  const ephemeral = format === 'STORY' || format === 'REELS' || format === 'VIDEO'
   const payload = makesLive || op === 'PAUSAR' ? await buildFor(pub.tenantId, vehicle, pub.externalRef, pub.overrides) : null
   const hash = payload ? payloadHash(payload) : null
 

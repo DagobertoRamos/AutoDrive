@@ -43,7 +43,7 @@ export function assertSafeUrl(raw: string): URL {
   return u
 }
 
-const safeLookup: net.LookupFunction = (hostname, options, callback) => {
+export const safeLookup: net.LookupFunction = (hostname, options, callback) => {
   dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
     if (err) return (callback as (e: Error | null, a: string, f: number) => void)(err, '', 0)
     const list = (addresses as unknown as dns.LookupAddress[]) ?? []
