@@ -15,6 +15,7 @@ import { DEFAULT_SALE_RULES, type SaleRules } from './sale-rules-core'
 import { DEFAULT_TIMEZONE, isValidTimeZone } from './schedule-core'
 import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './social/formats'
 import { musicOf, type MusicChoice } from './social/music-core'
+import { EMPTY_TERMS, sanitizeTerms, type StoreTerms } from './social/text-core'
 
 export interface AutoPublishRule {
   enabled: boolean
@@ -32,6 +33,8 @@ export interface PublicationSettings {
   contacts: Required<Pick<ContactSettings, 'whatsapp' | 'phone' | 'email' | 'instagram' | 'site' | 'contactName'>>
   sale: SaleRules
   autoPublish: AutoPublishRule
+  /** Condições comerciais padrão (entram no anúncio quando ele não tem condições próprias). */
+  terms: StoreTerms
   /** Worker: máximo de envios por minuto por conexão (proteção extra além do limite do portal). */
   perConnectionPerMinute: number
 }
@@ -75,6 +78,7 @@ export function sanitizeSettings(input: unknown, fallback: PublicationSettings):
       },
     },
     perConnectionPerMinute: Number.isFinite(per) && per >= 1 && per <= 120 ? Math.round(per) : fallback.perConnectionPerMinute,
+    terms: sanitizeTerms(i.terms, fallback.terms),
   }
 }
 
@@ -97,6 +101,7 @@ async function defaults(tenantId: string): Promise<PublicationSettings> {
     sale: DEFAULT_SALE_RULES,
     autoPublish: { enabled: false, connectionIds: [], enabledById: null, enabledByName: null, enabledAt: null, social: { formats: [], template: 'CHEGOU', music: { mode: 'AUTO', mood: 'ANIMADA' } } },
     perConnectionPerMinute: 20,
+    terms: EMPTY_TERMS,
   }
 }
 

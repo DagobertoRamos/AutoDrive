@@ -132,6 +132,8 @@ export interface BuildInput {
   contacts: ContactSettings
   location: ListingPayload['location']
   storeName: string
+  /** Condições comerciais padrão da loja (quando o anúncio não tem as próprias). */
+  defaultConditions?: string
   now?: Date
 }
 
@@ -139,7 +141,7 @@ export function buildPayload(i: BuildInput): ListingPayload {
   const o = i.overrides ?? {}
   const d = i.draft ?? {}
   const options = Array.isArray(i.siteListing?.options) ? (i.siteListing!.options as unknown[]).filter((x): x is string => typeof x === 'string' && !!x.trim()).map(clean) : []
-  const conditions = clean(o.conditions ?? d.conditions)
+  const conditions = clean(o.conditions ?? d.conditions) || (i.defaultConditions ?? '').trim()
   const title = clean(o.title) || clean(d.title) || clean(i.siteListing?.title) || baseTitle(i.vehicle)
   const description = (o.description ?? '').trim() || (d.description ?? '').trim() || (i.siteListing?.description ?? '').trim() || autoDescription(i.vehicle, options, conditions)
   const stockPrice = effectivePrice({

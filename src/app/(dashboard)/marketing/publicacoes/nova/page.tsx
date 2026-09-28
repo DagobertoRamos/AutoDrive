@@ -17,6 +17,7 @@ import { api, ChannelMark, ErrorNote, inputCls, money, PubTabs, Thumb } from '@/
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { ListingProfileStep } from '@/components/publications/ListingProfileStep'
 import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/publications/SocialStudio'
+import { TextAssist } from '@/components/publications/TextAssist'
 import { campaignKeyFor, planLocal } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
@@ -289,12 +290,13 @@ function StepContent({ vehicleId }: { vehicleId: string }) {
     <section className="grid gap-4 lg:grid-cols-[1fr,18rem]">
       <div className="space-y-3">
         <label className="block text-xs font-medium text-gray-600">Título<input className={inputCls} value={c.title} placeholder={data.suggestions.title} onChange={(e) => set({ title: e.target.value })} maxLength={150} /></label>
+        <TextAssist vehicleId={vehicleId} onDescription={(t) => set({ description: t })} onConditions={(t) => set({ conditions: t })} />
         <label className="block text-xs font-medium text-gray-600">
           <span className="flex items-center justify-between">Descrição<button type="button" onClick={() => set({ description: data.suggestions.description })} className="inline-flex items-center gap-1 text-brand-700 hover:underline"><Wand2 size={12} />Usar texto sugerido</button></span>
           <textarea rows={8} className={inputCls} value={c.description} placeholder={data.suggestions.description} onChange={(e) => set({ description: e.target.value })} />
           <span className="text-[11px] text-gray-400">Vazio = texto gerado só com a ficha do estoque. Não inclua opcionais, garantia ou financiamento que não existam.</span>
         </label>
-        <label className="block text-xs font-medium text-gray-600">Condições comerciais<textarea rows={3} className={inputCls} value={c.conditions} placeholder="Ex.: Aceita troca. Documentação em dia." onChange={(e) => set({ conditions: e.target.value })} maxLength={1000} /></label>
+        <label className="block text-xs font-medium text-gray-600">Condições comerciais<textarea rows={3} className={inputCls} value={c.conditions} placeholder="Vazio = condições padrão da loja (configuradas em Canais conectados)." onChange={(e) => set({ conditions: e.target.value })} maxLength={1000} /></label>
         <label className="block text-xs font-medium text-gray-600">Preço anunciado<MoneyInput className={inputCls} value={textToMoney(c.price)} placeholder={data.vehicle.price != null ? `${money(data.vehicle.price).replace(/^R\$\s*/, '')} (estoque)` : 'Defina no estoque'} onChange={(n) => set({ price: moneyToText(n) })} /></label>
         <div className="flex items-center gap-2"><button onClick={save} className="btn-secondary px-3 py-1.5 text-xs"><Save size={14} />Salvar</button><span className="text-xs text-gray-500" role="status">{state === 'saving' ? 'Salvando…' : state === 'saved' ? 'Salvo' : state === 'error' ? msg : ''}</span></div>
       </div>

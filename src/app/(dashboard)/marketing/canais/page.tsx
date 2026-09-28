@@ -328,6 +328,13 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
             <label key={k} className="block text-xs text-gray-600">{l}<input className={inputCls} value={k.split('.').reduce((o: any, x) => o?.[x], s) ?? ''} placeholder={ph} onChange={(e) => set(k, e.target.value)} /></label>
           ))}
           <p className="text-[11px] text-gray-400">Portais que penalizam contato na descrição recebem esses dados só nos campos próprios.</p>
+          <p className="pt-2 text-xs font-semibold text-gray-700">Condições comerciais padrão</p>
+          {([['terms.acceptsTrade', 'Aceita usado na troca'], ['terms.financing', 'Financiamento (sujeito à aprovação)'], ['terms.cards', 'Parcela no cartão'], ['terms.transferIncluded', 'Transferência inclusa'], ['terms.ipvaPaid', 'IPVA pago']] as const).map(([k, l]) => (
+            <label key={k} className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={!!k.split('.').reduce((o: any, x) => o?.[x], s)} onChange={(e) => set(k, e.target.checked)} />{l}</label>
+          ))}
+          <label className="block text-xs text-gray-600">Garantia (meses, vazio = não oferece)<input type="number" min={1} max={60} className={inputCls} value={s.terms?.warrantyMonths ?? ''} onChange={(e) => set('terms.warrantyMonths', e.target.value ? Number(e.target.value) : null)} /></label>
+          <label className="block text-xs text-gray-600">Outra condição (opcional)<input className={inputCls} maxLength={300} value={s.terms?.extra ?? ''} placeholder="Ex.: Entrada facilitada" onChange={(e) => set('terms.extra', e.target.value)} /></label>
+          <p className="text-[11px] text-gray-400">Entram no anúncio quando ele não tiver condições próprias. Laudo cautelar aprovado na ficha é acrescentado sozinho.</p>
         </div>
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-700">Venda × anúncios</p>

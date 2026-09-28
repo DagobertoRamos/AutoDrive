@@ -143,3 +143,46 @@ describe('trilha sonora (regras)', () => {
     expect(m.audioFilter(10)).toBe('volume=0.85,afade=t=in:st=0:d=0.6,afade=t=out:st=8.50:d=1.5')
   })
 })
+
+describe('textos do anúncio (modelos e condições)', () => {
+  const now = new Date('2026-09-27T12:00:00Z')
+  const i = {
+    brand: 'Volkswagen', model: 'Tiguan', version: '2.0 TSI', year: 2020, modelYear: 2021, km: 30000, gear: 'Automático', fuel: 'Flex', color: 'Prata', doors: 4, engine: null,
+    price: 99900, oldPrice: 104900, options: ['Teto solar', 'Couro'], origin: 'OWN' as const, inspected: true, isNew: false, storeName: 'AutoDrive', city: 'Barueri',
+    terms: { acceptsTrade: true, financing: true, cards: false, transferIncluded: false, ipvaPaid: true, warrantyMonths: 3, extra: '' },
+  }
+  it('destaques só com o que dá para afirmar pelos dados', async () => {
+    const t = await import('./text-core')
+    expect(t.highlights(i, now)).toEqual(['baixa quilometragem para o ano', 'laudo cautelar aprovado', 'câmbio automático', 'preço reduzido (de R$ 104.900 por R$ 99.900)'])
+    expect(t.highlights({ ...i, km: 200000, inspected: false, gear: 'Manual', oldPrice: null }, now)).toEqual([])
+  })
+  it('condições saem da configuração da loja + laudo da ficha; nada configurado = vazio', async () => {
+    const t = await import('./text-core')
+    expect(t.termsText(i, 'LISTA').split('\n')).toEqual(['✔ Aceitamos seu usado na troca', '✔ Financiamento com as principais financeiras (sujeito à aprovação de crédito)', '✔ IPVA pago', '✔ Garantia de 3 meses (conforme termo da loja)', '✔ Laudo cautelar aprovado'])
+    expect(t.termsText({ terms: t.EMPTY_TERMS, inspected: false })).toBe('')
+  })
+  it('3 modelos prontos; opcionais só os cadastrados; sem opcional, não cita', async () => {
+    const t = await import('./text-core')
+    for (const st of t.DESC_STYLES) {
+      const d = t.descriptionTemplate(i, st, now)
+      expect(d).toContain('Tiguan')
+      expect(d).toContain('Teto solar')
+      expect(d).not.toMatch(/único dono|revisad/i)
+    }
+    expect(t.descriptionTemplate({ ...i, options: [] }, 'COMPLETO', now)).not.toContain('Opcionais')
+    expect(t.descriptionTemplate({ ...i, terms: t.EMPTY_TERMS, inspected: false }, 'COMPLETO', now)).not.toContain('Condições')
+  })
+  it('pedido à IA: só fatos e condições exatas; resposta limpa de markdown e telefone', async () => {
+    const t = await import('./text-core')
+    const p = t.descriptionPrompt(i, 'EMOCIONAL', now)
+    expect(p).toContain('Opcionais (use só estes): Teto solar, Couro')
+    expect(p).toContain('Condições da loja (use exatamente): Aceitamos seu usado na troca.')
+    expect(t.descriptionPrompt({ ...i, terms: t.EMPTY_TERMS, inspected: false }, 'DIRETO', now)).toContain('não informadas (não cite nenhuma)')
+    expect(t.finishDescription('**Linda** Tiguan\nLigue (11) 93471-8276')).toBe('Linda Tiguan\nLigue')
+  })
+  it('configuração das condições: limpa e limita', async () => {
+    const t = await import('./text-core')
+    expect(t.sanitizeTerms({ acceptsTrade: true, warrantyMonths: 999, extra: ' x '.repeat(200) })).toMatchObject({ acceptsTrade: true, warrantyMonths: null })
+    expect(t.sanitizeTerms({ extra: 'a'.repeat(500) }).extra.length).toBe(300)
+  })
+})

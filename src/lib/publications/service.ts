@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { campaignKeyFor, formatsFor, planLocal, socialOf } from './social/formats'
+import { termsText } from './social/text-core'
 import { localToUtc, utcToLocalInput } from './schedule-core'
 import { Prisma } from '@prisma/client'
 import { after } from 'next/server'
@@ -78,6 +79,7 @@ const vehicleSelect = {
   id: true, tenantId: true, unitId: true, plate: true, chassi: true, brand: true, model: true, version: true, year: true, modelYear: true, km: true,
   color: true, fuel: true, transmission: true, doors: true, bodyType: true, engine: true, salePrice: true, promoPrice: true, isPromo: true,
   promoStartsAt: true, promoEndsAt: true, conditionType: true, active: true, stockStatus: true, mainPhotoUrl: true,
+  cautelarStatus: true, originType: true, partnerStoreId: true, stockType: true,
   photos: { select: { url: true }, orderBy: [{ order: 'asc' as const }, { createdAt: 'asc' as const }] },
   siteListing: { select: { title: true, description: true, options: true, hidden: true, photosStatus: true, originalPhotos: true } },
 } satisfies Prisma.VehicleSelect
@@ -144,6 +146,7 @@ export async function buildFor(tenantId: string, v: VehicleRow, externalRef: str
   return buildPayload({
     reference: externalRef, vehicle: factsOf(v), siteListing: v.siteListing, gallery: v.photos.map((p) => p.url),
     draft: src, overrides: ov, contacts: c.settings.contacts, location: c.loc.location, storeName: c.loc.storeName,
+    defaultConditions: termsText({ terms: c.settings.terms, inspected: v.cautelarStatus === 'APROVADA' }, 'FRASE'),
   })
 }
 
