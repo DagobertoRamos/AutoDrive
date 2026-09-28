@@ -41,7 +41,7 @@ export function graphError(res: HttpResponse, what: string): ConnectorError | nu
   return new ConnectorError('VALIDATION', msg, undefined, { code: String(code ?? res.status) })
 }
 
-async function graph<T>(ctx: ConnectorContext, method: 'GET' | 'POST' | 'DELETE', path: string, params: Record<string, string> = {}, what = 'Meta', creates = false): Promise<T> {
+export async function graph<T>(ctx: ConnectorContext, method: 'GET' | 'POST' | 'DELETE', path: string, params: Record<string, string> = {}, what = 'Meta', creates = false): Promise<T> {
   const token = ctx.secrets.page_access_token
   if (!token) throw new ConnectorError('AUTH', 'Página não autorizada.', 'Conecte a Página em Canais conectados.')
   const qs = new URLSearchParams({ ...params, access_token: token })
@@ -75,7 +75,7 @@ const STORY_OK: RemoteResult['state'] = 'PUBLICADO'
  * corpo (offset 0, tamanho total) — não depende do Facebook conseguir baixar
  * o nosso link. Erro do rupload vem em debug_info.
  */
-async function rupload(ctx: ConnectorContext, videoId: string, bytes: Uint8Array, what: string) {
+export async function rupload(ctx: ConnectorContext, videoId: string, bytes: Uint8Array, what: string) {
   const version = graphBase().split('/').pop()
   const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/video-upload/${version}/${videoId}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, offset: '0', file_size: String(bytes.length), 'Content-Type': 'application/octet-stream' }, body: bytes, timeoutMs: 120_000 })
   if (up.status >= 200 && up.status < 300) return
@@ -187,7 +187,7 @@ export const metaPageConnector: Connector = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-async function waitContainer(ctx: ConnectorContext, id: string, tries = 6, waitMs = 4_000): Promise<void> {
+export async function waitContainer(ctx: ConnectorContext, id: string, tries = 6, waitMs = 4_000): Promise<void> {
   for (let i = 0; i < tries; i++) {
     const s = await graph<{ status_code?: string; status?: string }>(ctx, 'GET', `/${id}`, { fields: 'status_code,status' }, 'Instagram (processamento)')
     if (s.status_code === 'FINISHED') return
@@ -198,7 +198,7 @@ async function waitContainer(ctx: ConnectorContext, id: string, tries = 6, waitM
 }
 
 /** Vídeo leva mais tempo para processar (a rotina tem até 5 min). */
-const waitVideo = (ctx: ConnectorContext, id: string) => waitContainer(ctx, id, 30, 5_000)
+export const waitVideo = (ctx: ConnectorContext, id: string) => waitContainer(ctx, id, 30, 5_000)
 
 /** Parâmetro oficial para anexar música da biblioteca do Instagram ao Reels (vídeo nosso vai mudo). */
 function igAudio(s: SocialSpec): Record<string, string> {

@@ -11,7 +11,7 @@ import { readSiteAsset } from '@/lib/site/assets'
 import { fetchImageSafely } from './safe-fetch'
 import type { MediaClaims } from './media-token'
 
-const PUBLIC_KINDS = new Set(['VEHICLE_PHOTO', 'IMAGE'])
+const PUBLIC_KINDS = new Set(['VEHICLE_PHOTO', 'IMAGE', 'SOCIAL_UPLOAD'])
 
 export class MediaNotFound extends Error {}
 

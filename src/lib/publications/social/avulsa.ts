@@ -1,0 +1,218 @@
+// =============================================================================
+// Posts avulsos (fotos/vídeos da loja) — serviço. Criação, envio de vídeo em
+// pedaços, e a publicação pela rotina agendada (cada conta com seu resultado;
+// vídeo fica "processando" até a rede terminar, e a rotina seguinte publica).
+// =============================================================================
+
+import { writeFile, appendFile, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { prisma } from '@/lib/prisma'
+import { ConnectorError, isConnectorError } from '../errors'
+import { graph, graphBase, graphError, rupload, waitContainer } from '../connectors/meta'
+import type { ConnectorContext } from '../connectors/types'
+import { mediaUrlFor } from '../media-token'
+import { connectorContext, type WorkerDeps } from '../worker'
+import { overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult } from './avulsa-core'
+import { carVideoForReels, toReels } from './video'
+
+export const VIDEO_PART_KIND = 'SOCIAL_VPART'
+const partKey = (uploadId: string, index: number) => `${uploadId}:${index}`
+
+/** Guarda um pedaço do vídeo enviado pelo navegador. */
+export async function storeVideoPart(tenantId: string, uploadId: string, index: number, bytes: Uint8Array): Promise<void> {
+  const key = partKey(uploadId, index)
+  await prisma.siteAsset.deleteMany({ where: { tenantId, kind: VIDEO_PART_KIND, sha256: key } })
+  await prisma.siteAsset.create({ data: { tenantId, kind: VIDEO_PART_KIND, mimeType: 'application/octet-stream', fileSize: bytes.length, sha256: key, data: new Uint8Array(bytes) } })
+}
+
+async function partsReady(tenantId: string, m: Extract<AvulsaMedia, { uploadId: string }>): Promise<boolean> {
+  const n = await prisma.siteAsset.count({ where: { tenantId, kind: VIDEO_PART_KIND, sha256: { in: Array.from({ length: m.parts }, (_, i) => partKey(m.uploadId, i)) } } })
+  return n === m.parts
+}
+
+/** Junta os pedaços num arquivo e ajusta para vertical 9:16 (Reels/Story). */
+async function assembleVideo(tenantId: string, m: Extract<AvulsaMedia, { type: 'video' }>): Promise<Uint8Array> {
+  if ('link' in m) return carVideoForReels(m.link)
+  const dir = await mkdtemp(path.join(tmpdir(), 'avulsa-'))
+  try {
+    const src = path.join(dir, 'in'); const out = path.join(dir, 'out.mp4')
+    await writeFile(src, new Uint8Array())
+    for (let i = 0; i < m.parts; i++) {
+      const rows = await prisma.$queryRaw<{ b64: string }[]>`SELECT encode(data, 'base64') AS b64 FROM site_assets WHERE "tenantId" = ${tenantId} AND kind = ${VIDEO_PART_KIND} AND sha256 = ${partKey(m.uploadId, i)} LIMIT 1`
+      if (!rows[0]) throw new ConnectorError('VALIDATION', 'O vídeo não foi enviado por completo. Envie de novo.')
+      await appendFile(src, Buffer.from(rows[0].b64, 'base64'))
+    }
+    await toReels(src, out)
+    return new Uint8Array(await readFile(out))
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+// ── Criação ──────────────────────────────────────────────────────────────────
+
+export interface AvulsaInput { title?: string; format: AvulsaFormat; caption: string; media: unknown; connectionIds: string[]; scheduledAt: Date | null; draft: boolean }
+
+export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id: string | null; name: string | null }) {
+  const media = sanitizeMedia(i.media)
+  const err = validateAvulsa(i.format, media, i.caption)
+  if (err) throw new Error(err)
+  const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: i.connectionIds }, channel: { in: ['INSTAGRAM', 'META_PAGE'] } }, select: { id: true } })
+  if (!conns.length) throw new Error('Escolha ao menos uma conta do Instagram ou do Facebook.')
+  const imgs = media.flatMap((m) => (m.type === 'image' ? [m.assetId] : []))
+  if (imgs.length && (await prisma.siteAsset.count({ where: { tenantId, id: { in: imgs }, kind: 'SOCIAL_UPLOAD' } })) !== imgs.length) throw new Error('Alguma foto não foi encontrada. Envie de novo.')
+  for (const m of media) if (m.type === 'video' && 'uploadId' in m && !(await partsReady(tenantId, m))) throw new Error('O vídeo ainda não terminou de subir. Aguarde e tente de novo.')
+  return prisma.socialPost.create({
+    data: {
+      tenantId, title: i.title?.trim().slice(0, 120) || null, format: i.format, caption: i.caption.trim() || null, media: media as unknown as object, connectionIds: conns.map((c) => c.id),
+      status: i.draft ? 'RASCUNHO' : 'AGENDADO', scheduledAt: i.draft ? i.scheduledAt : i.scheduledAt ?? new Date(), createdById: actor.id, createdByName: actor.name,
+    },
+  })
+}
+
+// ── Publicação ───────────────────────────────────────────────────────────────
+
+async function igResumable(ctx: ConnectorContext, params: Record<string, string>, bytes: Uint8Array, what: string): Promise<string> {
+  const c = await graph<{ id: string }>(ctx, 'POST', `/${ctx.connection.externalAccountId}/media`, { ...params, upload_type: 'resumable' }, what)
+  const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/ig-api-upload/${graphBase().split('/').pop()}/${c.id}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, offset: '0', file_size: String(bytes.length), 'Content-Type': 'application/octet-stream' }, body: bytes, timeoutMs: 180_000 })
+  if (up.status < 200 || up.status >= 300) throw graphError(up, `${what} (envio)`) ?? new ConnectorError('UNAVAILABLE', `${what}: HTTP ${up.status}`)
+  return c.id
+}
+
+async function igPublish(ctx: ConnectorContext, creation: string): Promise<AvulsaResult> {
+  const media = await graph<{ id: string }>(ctx, 'POST', `/${ctx.connection.externalAccountId}/media_publish`, { creation_id: creation }, 'Instagram (publicar)', true)
+  const j = await graph<{ permalink?: string }>(ctx, 'GET', `/${media.id}`, { fields: 'permalink' }, 'Instagram').catch(() => ({ permalink: undefined }))
+  return { state: 'PUBLICADO', remoteId: media.id, remoteUrl: j.permalink ?? null }
+}
+
+interface Prepared { images: string[]; video: () => Promise<Uint8Array> }
+
+async function publishTo(channel: string, ctx: ConnectorContext, format: AvulsaFormat, caption: string, m: Prepared): Promise<AvulsaResult> {
+  const acc = ctx.connection.externalAccountId
+  if (channel === 'INSTAGRAM') {
+    if (format === 'POST') {
+      if (m.images.length === 1) {
+        const c = (await graph<{ id: string }>(ctx, 'POST', `/${acc}/media`, { image_url: m.images[0], caption }, 'Instagram (foto)')).id
+        await waitContainer(ctx, c); return igPublish(ctx, c)
+      }
+      const kids: string[] = []
+      for (const u of m.images) kids.push((await graph<{ id: string }>(ctx, 'POST', `/${acc}/media`, { image_url: u, is_carousel_item: 'true' }, 'Instagram (item)')).id)
+      for (const k of kids) await waitContainer(ctx, k)
+      const c = (await graph<{ id: string }>(ctx, 'POST', `/${acc}/media`, { media_type: 'CAROUSEL', children: kids.join(','), caption }, 'Instagram (carrossel)')).id
+      await waitContainer(ctx, c); return igPublish(ctx, c)
+    }
+    if (format === 'STORY' && m.images.length) {
+      const c = (await graph<{ id: string }>(ctx, 'POST', `/${acc}/media`, { image_url: m.images[0], media_type: 'STORIES' }, 'Instagram (story)')).id
+      await waitContainer(ctx, c); return igPublish(ctx, c)
+    }
+    const bytes = await m.video()
+    const c = await igResumable(ctx, format === 'STORY' ? { media_type: 'STORIES' } : { media_type: 'REELS', caption, share_to_feed: 'true' }, bytes, format === 'STORY' ? 'Instagram (story em vídeo)' : 'Instagram (Reels)')
+    return { state: 'EM_ANALISE', pendingToken: c }
+  }
+  // Página do Facebook
+  if (format === 'POST') {
+    const ids: string[] = []
+    for (const u of m.images) ids.push((await graph<{ id: string }>(ctx, 'POST', `/${acc}/photos`, { url: u, published: 'false' }, 'Foto')).id)
+    const params: Record<string, string> = { message: caption }
+    ids.forEach((id, i) => { params[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id }) })
+    const post = await graph<{ id: string }>(ctx, 'POST', `/${acc}/feed`, params, 'Post', true)
+    const j = await graph<{ permalink_url?: string }>(ctx, 'GET', `/${post.id}`, { fields: 'permalink_url' }, 'Post').catch(() => ({ permalink_url: undefined }))
+    return { state: 'PUBLICADO', remoteId: post.id, remoteUrl: j.permalink_url ?? null }
+  }
+  if (format === 'STORY' && m.images.length) {
+    const photo = await graph<{ id: string }>(ctx, 'POST', `/${acc}/photos`, { url: m.images[0], published: 'false' }, 'Story (foto)')
+    const st = await graph<{ post_id?: string }>(ctx, 'POST', `/${acc}/photo_stories`, { photo_id: photo.id }, 'Story', true)
+    return { state: 'PUBLICADO', remoteId: st.post_id ?? photo.id }
+  }
+  const bytes = await m.video()
+  const edge = format === 'STORY' ? 'video_stories' : 'video_reels'
+  const start = await graph<{ video_id: string }>(ctx, 'POST', `/${acc}/${edge}`, { upload_phase: 'start' }, `${format === 'STORY' ? 'Story em vídeo' : 'Reels'} (início)`)
+  await rupload(ctx, start.video_id, bytes, `${format === 'STORY' ? 'Story em vídeo' : 'Reels'} (envio)`)
+  const fin = await graph<{ post_id?: string }>(ctx, 'POST', `/${acc}/${edge}`, format === 'STORY' ? { upload_phase: 'finish', video_id: start.video_id } : { upload_phase: 'finish', video_id: start.video_id, video_state: 'PUBLISHED', description: caption }, format === 'STORY' ? 'Story em vídeo' : 'Reels (publicar)', true)
+  return format === 'STORY' ? { state: 'PUBLICADO', remoteId: fin.post_id ?? start.video_id } : { state: 'EM_ANALISE', remoteId: start.video_id, video: true }
+}
+
+/** Vídeo em processamento: confere e publica (Instagram) ou confirma (Facebook). */
+async function checkPending(channel: string, ctx: ConnectorContext, r: AvulsaResult): Promise<AvulsaResult> {
+  if (channel === 'INSTAGRAM' && r.pendingToken) {
+    const st = await graph<{ status_code?: string; status?: string }>(ctx, 'GET', `/${r.pendingToken}`, { fields: 'status_code,status' }, 'Instagram (processamento)')
+    if (st.status_code === 'ERROR' || st.status_code === 'EXPIRED') return { state: 'FALHA', error: `O Instagram recusou o vídeo (${st.status ?? st.status_code}).` }
+    if (st.status_code !== 'FINISHED') return r
+    return igPublish(ctx, r.pendingToken)
+  }
+  if (channel === 'META_PAGE' && r.remoteId) {
+    const v = await graph<{ permalink_url?: string; status?: { video_status?: string } }>(ctx, 'GET', `/${r.remoteId}`, { fields: 'permalink_url,status' }, 'Vídeo')
+    const s = v.status?.video_status
+    if (s === 'error') return { state: 'FALHA', remoteId: r.remoteId, error: 'O Facebook não conseguiu processar o vídeo.' }
+    if (s === 'ready' || s === 'published') return { state: 'PUBLICADO', remoteId: r.remoteId, remoteUrl: v.permalink_url ? (v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`) : null }
+    return r
+  }
+  return r
+}
+
+const TRANSIENT = new Set(['RATE_LIMIT', 'UNAVAILABLE', 'TIMEOUT'])
+
+/** Rotina agendada: publica os avulsos vencidos e confere os que estão processando. */
+export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()): Promise<{ processed: number }> {
+  const due = await prisma.socialPost.findMany({
+    where: { status: { in: ['AGENDADO', 'ENVIANDO'] }, scheduledAt: { lte: now }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },
+    orderBy: { scheduledAt: 'asc' }, take: 5,
+  })
+  let processed = 0
+  for (const post of due) {
+    const lock = await prisma.socialPost.updateMany({ where: { id: post.id, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] }, data: { lockedUntil: new Date(now.getTime() + 5 * 60_000) } })
+    if (!lock.count) continue
+    processed++
+    const connIds = (post.connectionIds as string[]) ?? []
+    const results = { ...((post.results as Record<string, AvulsaResult> | null) ?? {}) }
+    const media = sanitizeMedia(post.media)
+    const origin = (deps.origin ?? process.env.NEXTAUTH_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
+    let videoCache: Promise<Uint8Array> | null = null
+    const prepared: Prepared = {
+      images: media.flatMap((m) => (m.type === 'image' ? [mediaUrlFor(origin, post.tenantId, `/api/site/assets/${m.assetId}`, { now })] : [])),
+      video: () => (videoCache ??= (async () => { const v = media.find((m) => m.type === 'video'); if (!v || v.type !== 'video') throw new ConnectorError('VALIDATION', 'Sem vídeo.'); return assembleVideo(post.tenantId, v) })()),
+    }
+    let lastError: string | null = null
+    let transient = false
+    const conns = await prisma.publicationConnection.findMany({ where: { tenantId: post.tenantId, id: { in: connIds } } })
+    for (const id of connIds) {
+      const prev = results[id]
+      if (prev?.state === 'PUBLICADO' || prev?.state === 'FALHA') continue
+      const conn = conns.find((c) => c.id === id)
+      if (!conn || conn.status !== 'CONECTADO') { results[id] = { state: 'FALHA', error: 'Conta desconectada: reconecte em Canais conectados.', at: now.toISOString() }; continue }
+      try {
+        const ctx = await connectorContext(conn, deps)
+        results[id] = { ...(prev?.state === 'EM_ANALISE' ? await checkPending(conn.channel, ctx, prev) : await publishTo(conn.channel, ctx, post.format as AvulsaFormat, post.caption ?? '', prepared)), at: now.toISOString() }
+      } catch (e) {
+        const ce = isConnectorError(e) ? e : null
+        lastError = `${conn.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}: ${(e as Error).message}`
+        if (ce && TRANSIENT.has(ce.kind) && post.attempts < 3) transient = true
+        else results[id] = { state: 'FALHA', error: (e as Error).message.slice(0, 400), at: now.toISOString() }
+      }
+    }
+    const pendingOrRetry = transient || connIds.some((c) => results[c]?.state === 'EM_ANALISE')
+    const status = transient ? 'ENVIANDO' : overallStatus(connIds, results)
+    await prisma.socialPost.update({
+      where: { id: post.id },
+      data: {
+        results: results as unknown as object, status, lastError, lockedUntil: null, attempts: { increment: transient ? 1 : 0 },
+        // Processando/tentando de novo: volta em 1 minuto (a rotina roda a cada minuto).
+        ...(pendingOrRetry ? { scheduledAt: new Date(now.getTime() + 60_000) } : {}),
+        ...(status === 'PUBLICADO' || status === 'PARCIAL' ? { publishedAt: now } : {}),
+      },
+    })
+  }
+  return { processed }
+}
+
+/** Pedaços de vídeo com mais de 3 dias que não pertencem a post ainda pendente (rascunho, agendado, enviando). */
+export async function pruneVideoParts(): Promise<number> {
+  const old = await prisma.siteAsset.findMany({ where: { kind: VIDEO_PART_KIND, createdAt: { lt: new Date(Date.now() - 3 * 86_400_000) } }, select: { id: true, sha256: true }, take: 500 })
+  if (!old.length) return 0
+  const active = await prisma.socialPost.findMany({ where: { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } }, select: { media: true } })
+  const keep = new Set(active.flatMap((p) => sanitizeMedia(p.media).flatMap((m) => (m.type === 'video' && 'uploadId' in m ? [m.uploadId] : []))))
+  const ids = old.filter((a) => !keep.has(a.sha256.split(':')[0])).map((a) => a.id)
+  if (!ids.length) return 0
+  return (await prisma.siteAsset.deleteMany({ where: { id: { in: ids } } })).count
+}

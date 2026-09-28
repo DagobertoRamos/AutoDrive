@@ -11,13 +11,14 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ArrowRight, CalendarClock, Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Rocket, Save, Search, Star, Wand2, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarClock, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, Loader2, Rocket, Save, Search, Star, Wand2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, ErrorNote, inputCls, money, PubTabs, Thumb } from '@/components/publications/ui'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { ListingProfileStep } from '@/components/publications/ListingProfileStep'
 import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/publications/SocialStudio'
 import { TextAssist } from '@/components/publications/TextAssist'
+import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
 import { campaignKeyFor, planLocal } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
@@ -344,7 +345,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
       </ul>
       {!usable.length && <p className="text-sm text-gray-500">Nenhuma conta conectada.</p>}
       <Link href="/marketing/canais" className="inline-block text-xs font-medium text-brand-700 hover:underline">Conectar mais canais</Link>
-      {hasSocial && <SocialStudio vehicles={vehicles} value={social} onChange={setSocial} hasInstagram={[...targets].some((id) => conns.find((c) => c.id === id)?.channel === 'INSTAGRAM')} />}
+      {hasSocial && <SocialStudio vehicles={vehicles} value={social} onChange={setSocial} hasInstagram={[...targets].some((id) => conns.find((c) => c.id === id)?.channel === 'INSTAGRAM')} targets={conns.filter((c) => targets.has(c.id) && (c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE'))} />}
       {hasSocial && !social.formats.length && (
         <label className="block max-w-sm text-xs font-medium text-gray-600">Nome da campanha (redes sociais)
           <input className={inputCls} value={campaign} onChange={(e) => setCampaign(e.target.value.slice(0, 60))} />
@@ -363,6 +364,8 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
   const [when, setWhen] = useState('')
   const [sending, setSending] = useState(false)
   const [results, setResults] = useState<any[] | null>(null)
+  const [previewOf, setPreviewOf] = useState<string | null>(null)
+  const socialTargets = conns.filter((c) => connectionIds.includes(c.id) && (c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE'))
   const requestKey = useRef<string>(crypto.randomUUID())
   const load = useCallback(() => {
     setItems(null)
@@ -452,6 +455,13 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
             {!can.publish && <p className="w-full text-xs text-gray-500">Publicar e agendar: permissão de gestor. Salve como rascunho para aprovação.</p>}
           </div>
           {blocked > 0 && <p className="text-xs text-gray-500">Destinos com pendência não são enviados; os demais seguem normalmente.</p>}
+          {social.formats.length > 0 && socialTargets.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50/30 p-3">
+              <span className="flex items-center gap-1 text-xs font-semibold text-gray-800"><Eye size={14} className="text-brand-700" />Ver como fica no Instagram/Facebook antes de enviar:</span>
+              {vehicleIds.map((v) => <button key={v} type="button" onClick={() => setPreviewOf(v)} className="btn-secondary px-2 py-1 text-xs">{vehicles[v]?.title ?? 'Veículo'}</button>)}
+            </div>
+          )}
+          {previewOf && <SocialPreviewModal vehicleId={previewOf} vehicleTitle={vehicles[previewOf]?.title ?? ''} targets={socialTargets} formats={social.formats} template={social.template} music={social.music} captions={social.captions} onClose={() => setPreviewOf(null)} />}
         </>
       )}
     </section>

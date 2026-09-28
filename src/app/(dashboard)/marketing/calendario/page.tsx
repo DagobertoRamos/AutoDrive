@@ -13,7 +13,7 @@ import { PublicationDetail } from '@/components/publications/PublicationDetail'
 import { api, Empty, PubTabs } from '@/components/publications/ui'
 import { AutoProgramPanel } from '@/components/publications/AutoProgramPanel'
 
-interface Item { day: string; at: string; kind: 'AGENDADO' | 'PUBLICADO' | 'REMOVIDO'; id: string; title: string; plate: string | null; channel: string; account: string | null; statusLabel: string }
+interface Item { day: string; at: string; kind: 'AGENDADO' | 'PUBLICADO' | 'REMOVIDO'; id: string; title: string; plate: string | null; channel: string; account: string | null; statusLabel: string; avulsa?: boolean }
 
 const KIND: Record<Item['kind'], { label: string; cls: string }> = {
   AGENDADO: { label: 'Agendado', cls: 'border-sky-200 bg-sky-50 text-sky-800' },
@@ -82,7 +82,7 @@ export default function CalendarPage() {
               <div key={key} className={cn('min-h-28 border-b border-r border-gray-100 p-1', key === today && 'bg-brand-50/40')}>
                 <p className={cn('text-right text-[11px]', key === today ? 'font-bold text-brand-800' : 'text-gray-400')}>{i + 1}</p>
                 <ul className="space-y-0.5">
-                  {list.slice(0, 4).map((it) => <li key={`${it.id}${it.kind}`}><button onClick={() => setDetail(it.id)} className={cn('w-full truncate rounded border px-1 py-0.5 text-left text-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600', KIND[it.kind].cls)} title={`${it.title} · ${it.channel}`}>{time(it.at)} {it.channel} · {it.title}</button></li>)}
+                  {list.slice(0, 4).map((it) => <li key={`${it.id}${it.kind}`}><button onClick={() => (it.avulsa ? window.location.assign('/marketing/avulsa') : setDetail(it.id))} className={cn('w-full truncate rounded border px-1 py-0.5 text-left text-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600', KIND[it.kind].cls)} title={`${it.title} · ${it.channel}`}>{time(it.at)} {it.channel} · {it.title}</button></li>)}
                   {list.length > 4 && <li className="text-[10px] text-gray-500">+{list.length - 4}</li>}
                 </ul>
               </div>
@@ -96,7 +96,7 @@ export default function CalendarPage() {
         {!shown.length && !loading ? <Empty>Nada neste mês.</Empty> : [...byDay.entries()].map(([day, list]) => (
           <section key={day}>
             <h2 className="mb-1 text-xs font-semibold text-gray-600">{cap(new Date(`${day}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }))}</h2>
-            <ul className="space-y-1">{list.map((it) => <li key={`${it.id}${it.kind}`}><button onClick={() => setDetail(it.id)} className="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-left text-xs"><span className={cn('rounded border px-1 text-[10px]', KIND[it.kind].cls)}>{KIND[it.kind].label}</span><span className="text-gray-500">{time(it.at)}</span><span className="min-w-0 flex-1 truncate">{it.title}</span><span className="text-gray-500">{it.channel}</span></button></li>)}</ul>
+            <ul className="space-y-1">{list.map((it) => <li key={`${it.id}${it.kind}`}><button onClick={() => (it.avulsa ? window.location.assign('/marketing/avulsa') : setDetail(it.id))} className="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-left text-xs"><span className={cn('rounded border px-1 text-[10px]', KIND[it.kind].cls)}>{KIND[it.kind].label}</span><span className="text-gray-500">{time(it.at)}</span><span className="min-w-0 flex-1 truncate">{it.title}</span><span className="text-gray-500">{it.channel}</span></button></li>)}</ul>
           </section>
         ))}
       </div>

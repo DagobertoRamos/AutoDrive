@@ -9,13 +9,14 @@
 // =============================================================================
 
 import { useState } from 'react'
-import { Clapperboard, Images, Loader2, Smartphone, Sparkles, Square, Video } from 'lucide-react'
+import { Clapperboard, Eye, Images, Loader2, Smartphone, Sparkles, Square, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, inputCls } from '@/components/publications/ui'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type ArtTemplate, type SocialFormat } from '@/lib/publications/social/formats'
 import { CAPTION_TONES, TONE_LABEL, type CaptionTone } from '@/lib/publications/social/caption-core'
 import type { MusicChoice } from '@/lib/publications/social/music-core'
 import { MusicPicker } from '@/components/publications/MusicPicker'
+import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 
 export interface SocialChoice {
   formats: SocialFormat[]
@@ -32,7 +33,8 @@ export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], templa
 
 const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard, VIDEO: Video }
 
-export function SocialStudio({ vehicles, value, onChange, hasInstagram = true }: { vehicles: Array<{ id: string; title: string }>; value: SocialChoice; onChange: (v: SocialChoice) => void; hasInstagram?: boolean }) {
+export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, targets = [] }: { vehicles: Array<{ id: string; title: string }>; value: SocialChoice; onChange: (v: SocialChoice) => void; hasInstagram?: boolean; targets?: Array<{ id: string; channel: string; label: string }> }) {
+  const [preview, setPreview] = useState(false)
   const [current, setCurrent] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -123,6 +125,10 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true }:
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar nos horários de pico (12 h e 19 h)</label>
           </div>
           <MusicPicker value={value.music} onChange={(music) => set({ music })} hasInstagram={hasInstagram} />
+          {vid && targets.length > 0 && (
+            <button type="button" onClick={() => setPreview(true)} className="btn-primary px-3 py-1.5 text-xs"><Eye size={14} />Pré-visualizar como fica no celular</button>
+          )}
+          {preview && vid && <SocialPreviewModal vehicleId={vid} vehicleTitle={vehicles.find((v) => v.id === vid)?.title ?? ''} targets={targets} formats={value.formats} template={value.template} music={value.music} captions={value.captions} onClose={() => setPreview(false)} />}
           {note && <p role="status" className={cn('text-xs', note.ok ? 'text-green-700' : 'text-red-700')}>{note.text}</p>}
         </>
       )}

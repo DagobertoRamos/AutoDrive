@@ -261,3 +261,26 @@ describe('condições comerciais (bloco completo)', () => {
     expect(t.sanitizeTerms({ financingMax: 500, cardsMax: 12 })).toMatchObject({ financingMax: null, cardsMax: 12 })
   })
 })
+
+describe('posts avulsos (regras)', () => {
+  it('formatos e mídias', async () => {
+    const a = await import('./avulsa-core')
+    const img = { type: 'image' as const, assetId: 'abcdefghij12' }
+    const vid = { type: 'video' as const, uploadId: 'up-12345678', parts: 3, size: 9_000_000 }
+    expect(a.validateAvulsa('POST', [img, img], '')).toBeNull()
+    expect(a.validateAvulsa('POST', [vid], '')).toMatch(/só fotos/)
+    expect(a.validateAvulsa('STORY', [vid], '')).toBeNull()
+    expect(a.validateAvulsa('STORY', [img, img], '')).toMatch(/1 foto ou 1 vídeo/)
+    expect(a.validateAvulsa('REELS', [img], '')).toMatch(/1 vídeo/)
+    expect(a.sanitizeMedia([img, { type: 'video', link: 'https://youtu.be/abcdefghi' }, { type: 'video', link: 'https://www.dropbox.com/s/x/v.mp4?dl=0' }, { type: 'x' }]))
+      .toEqual([img, { type: 'video', link: 'https://www.dropbox.com/s/x/v.mp4?dl=0' }])
+    expect(a.sanitizeMedia([{ type: 'video', uploadId: 'up-12345678', parts: 999, size: 1 }])).toEqual([])
+  })
+  it('situação geral pelo resultado de cada conta', async () => {
+    const a = await import('./avulsa-core')
+    expect(a.overallStatus(['a', 'b'], { a: { state: 'PUBLICADO' }, b: { state: 'PUBLICADO' } })).toBe('PUBLICADO')
+    expect(a.overallStatus(['a', 'b'], { a: { state: 'PUBLICADO' }, b: { state: 'FALHA' } })).toBe('PARCIAL')
+    expect(a.overallStatus(['a', 'b'], { a: { state: 'PUBLICADO' }, b: { state: 'EM_ANALISE' } })).toBe('ENVIANDO')
+    expect(a.overallStatus(['a'], { a: { state: 'FALHA' } })).toBe('FALHA')
+  })
+})

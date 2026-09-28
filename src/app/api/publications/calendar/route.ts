@@ -25,12 +25,23 @@ export async function GET(req: Request) {
     select: { id: true, channel: true, status: true, scheduledAt: true, publishedAt: true, removedAt: true, archiveReason: true, remoteUrl: true, connection: { select: { label: true } }, vehicle: { select: { id: true, brand: true, model: true, version: true, year: true, modelYear: true, plate: true, mainPhotoUrl: true } } },
     take: 1000,
   })
-  const items: Array<{ day: string; at: string; kind: 'AGENDADO' | 'PUBLICADO' | 'REMOVIDO'; id: string; vehicleId: string; title: string; plate: string | null; cover: string | null; channel: string; account: string | null; status: string; statusLabel: string; url: string | null }> = []
+  const items: Array<{ day: string; at: string; kind: 'AGENDADO' | 'PUBLICADO' | 'REMOVIDO'; id: string; vehicleId: string; title: string; plate: string | null; cover: string | null; channel: string; account: string | null; status: string; statusLabel: string; url: string | null; avulsa?: boolean }> = []
   for (const p of pubs) {
     const base = { id: p.id, vehicleId: p.vehicle.id, title: vehicleTitle(p.vehicle), plate: p.vehicle.plate, cover: p.vehicle.mainPhotoUrl, channel: channelSpec(p.channel)?.name ?? p.channel, account: p.connection?.label ?? null, status: p.status, statusLabel: STATUS_LABEL[p.status as PubStatus] ?? p.status, url: p.remoteUrl }
     if (p.scheduledAt && p.scheduledAt >= from && p.scheduledAt <= to && p.status === 'AGENDADO') items.push({ ...base, day: dayKey(p.scheduledAt, tz), at: p.scheduledAt.toISOString(), kind: 'AGENDADO' })
     if (p.publishedAt && p.publishedAt >= from && p.publishedAt <= to) items.push({ ...base, day: dayKey(p.publishedAt, tz), at: p.publishedAt.toISOString(), kind: 'PUBLICADO' })
     if (p.removedAt && p.removedAt >= from && p.removedAt <= to) items.push({ ...base, day: dayKey(p.removedAt, tz), at: p.removedAt.toISOString(), kind: 'REMOVIDO' })
+  }
+  // Posts avulsos (fotos/vídeos da loja).
+  const avulsos = await prisma.socialPost.findMany({
+    where: { tenantId: a.tenantId, status: { not: 'CANCELADO' }, OR: [{ scheduledAt: { gte: from, lte: to } }, { publishedAt: { gte: from, lte: to } }] },
+    select: { id: true, title: true, format: true, status: true, scheduledAt: true, publishedAt: true, connectionIds: true }, take: 300,
+  })
+  const FMT: Record<string, string> = { POST: 'Post avulso', STORY: 'Story avulso', REELS: 'Reels avulso' }
+  for (const p of avulsos) {
+    const base = { id: p.id, vehicleId: '', title: p.title || FMT[p.format] || 'Post avulso', plate: null, cover: null, channel: 'Instagram/Facebook', account: null, status: p.status, statusLabel: p.status === 'AGENDADO' ? 'Agendado' : p.status === 'PUBLICADO' ? 'Publicado' : p.status.toLowerCase(), url: null, avulsa: true }
+    if (p.scheduledAt && p.status === 'AGENDADO' && p.scheduledAt >= from && p.scheduledAt <= to) items.push({ ...base, day: dayKey(p.scheduledAt, tz), at: p.scheduledAt.toISOString(), kind: 'AGENDADO' })
+    if (p.publishedAt && p.publishedAt >= from && p.publishedAt <= to) items.push({ ...base, day: dayKey(p.publishedAt, tz), at: p.publishedAt.toISOString(), kind: 'PUBLICADO' })
   }
   items.sort((x, y) => x.at.localeCompare(y.at))
   return NextResponse.json({ success: true, data: items, timezone: tz, can: await permissions(a.user) })

@@ -6213,3 +6213,30 @@ model AutoconfProductMap {
   @@index([tenantId, sourceSystem])
   @@map("autoconf_product_map")
 }
+
+// ── Central de Publicações: posts avulsos (fotos/vídeos da loja) ─────────────
+// Fora do estoque: a loja sobe as mídias, escreve a legenda e publica ou agenda
+// no Instagram/Facebook. Processado pela mesma rotina agendada da fila.
+model SocialPost {
+  id            String    @id @default(cuid())
+  tenantId      String
+  title         String?
+  format        String // POST | STORY | REELS
+  caption       String?
+  media         Json // [{ type: 'image'|'video', assetId?, uploadId?, parts?, size?, link? }]
+  connectionIds Json // ids das contas IG/FB
+  status        String    @default("RASCUNHO") // RASCUNHO | AGENDADO | ENVIANDO | PUBLICADO | PARCIAL | FALHA | CANCELADO
+  scheduledAt   DateTime?
+  results       Json? // { [connectionId]: { state, remoteId, remoteUrl, pendingToken, error } }
+  attempts      Int       @default(0)
+  lockedUntil   DateTime?
+  lastError     String?
+  createdById   String?
+  createdByName String?
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, status, scheduledAt])
+  @@map("social_posts")
+}
