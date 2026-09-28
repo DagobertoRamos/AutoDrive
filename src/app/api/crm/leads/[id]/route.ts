@@ -9,7 +9,14 @@ import { readTemperature } from '@/lib/crm/config'
 import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
 import { fireAutomations } from '@/lib/crm/automations'
 import { validateStageTransition } from '@/lib/crm/transitions'
+import { clearsReturn, unseenReturn } from '@/lib/crm/lead-return'
 import { isMaterialized, loadPipelines, loadPlacement, planLeadMove, resolveLeadPipeline, resolveLeadStage, savePlacement, type MovePlan } from '@/lib/crm/pipelines'
+
+/** Situação da atribuição no histórico (em português). */
+const ASSIGNMENT_LABEL: Record<string, string> = {
+  ASSIGNED: 'Lead atribuído', ACCEPTED: 'Atribuição aceita', REFUSED: 'Atribuição recusada',
+  REDISTRIBUTED: 'Lead redistribuído', EXPIRED: 'Atribuição expirou (sem resposta)', CONVERTED: 'Lead convertido',
+}
 
 const UPDATABLE_STATUSES = new Set(['NEW', 'ASSIGNED', 'WORKING', 'QUALIFIED', 'CONVERTED', 'LOST', 'DISCARDED', 'RECYCLED'])
 
@@ -72,6 +79,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     })
     if (!lead) return NextResponse.json({ success: false, error: 'Lead não encontrado.' }, { status: 404 })
     if (!canAccessLeadByScope(scope, user, lead)) return forbiddenResponse('Sem acesso a este lead.')
+    // Responsável abriu o lead: o selo "Voltou a pedir" sai.
+    if (unseenReturn(lead.metadata) && clearsReturn(lead, user.id)) {
+      await prisma.marketingLead.update({ where: { id: lead.id }, data: { metadata: { ...(lead.metadata as Record<string, unknown>), returnSeenAt: new Date().toISOString() } as never } }).catch(() => {})
+    }
 
     const userIds = [...new Set([
       lead.assignedToUserId,
@@ -180,7 +191,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         id: `assignment-${item.id}`,
         at: item.respondedAt ?? item.createdAt,
         type: 'ASSIGNMENT',
-        title: `Atribuição ${item.status.toLowerCase()}`,
+        title: ASSIGNMENT_LABEL[item.status] ?? `Atribuição (${item.status.toLowerCase()})`,
         detail: item.reason ?? null,
         actorName: item.assignedByUserId ? userNames.get(item.assignedByUserId) ?? null : null,
         ownerName: item.assignedToUserId ? userNames.get(item.assignedToUserId) ?? null : null,

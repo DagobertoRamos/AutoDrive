@@ -15,7 +15,7 @@ import { assignLeadNumber } from '@/lib/crm/lead-number'
 import { fireAutomations } from '@/lib/crm/automations'
 import { savePlacement } from '@/lib/crm/pipelines'
 import { distributeLeadById } from '@/lib/marketing/distribution'
-import { notifyByRole } from '@/services/notification.service'
+import { notify, notifyByRole } from '@/services/notification.service'
 
 const MANAGER_ROLES = ['ADM', 'GERENTE_GERAL', 'GERENTE']
 
@@ -73,7 +73,7 @@ export async function createInboundLead(i: InboundLeadInput): Promise<InboundLea
   const candidates = or.length
     ? await prisma.marketingLead.findMany({
       where: { tenantId, deletedAt: null, status: { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] }, OR: or },
-      select: { id: true, leadNumber: true, vehicleId: true, phone: true, email: true },
+      select: { id: true, leadNumber: true, vehicleId: true, phone: true, email: true, name: true, assignedToUserId: true, metadata: true },
       orderBy: { updatedAt: 'desc' },
       take: 50,
     })
@@ -83,12 +83,25 @@ export async function createInboundLead(i: InboundLeadInput): Promise<InboundLea
     ?? (i.email ? candidates.find((c) => c.email?.toLowerCase() === i.email!.toLowerCase()) : undefined)
   if (existing) {
     await prisma.crmLeadInteraction.create({
-      data: { tenantId, leadId: existing.id, type: 'NOTE', channel: i.interactionChannel, summary: `${i.repeatPrefix}\n${i.notes}`, discussedVehicle: i.vehicleTitle ?? null, authorId: i.authorId ?? 'system', authorName: i.authorName, occurredAt: now },
+      data: { tenantId, leadId: existing.id, type: 'NOTE', channel: i.interactionChannel, summary: `🔁 Cliente em atendimento abriu um novo pedido — ${i.repeatPrefix}\n${i.notes}`, discussedVehicle: i.vehicleTitle ?? null, authorId: i.authorId ?? 'system', authorName: i.authorName, occurredAt: now },
     }).catch(() => {})
+    // Marca o retorno no lead (selo "Voltou a pedir" no CRM até alguém abrir o lead).
+    const meta = (existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata) ? existing.metadata : {}) as Record<string, unknown>
+    const returns = (typeof meta.returnCount === 'number' ? meta.returnCount : 0) + 1
     await prisma.marketingLead.update({
       where: { id: existing.id },
-      data: { lastContactAt: now, ...(i.vehicleId && !existing.vehicleId ? { vehicleId: i.vehicleId } : {}) },
+      data: {
+        lastContactAt: now, ...(i.vehicleId && !existing.vehicleId ? { vehicleId: i.vehicleId } : {}),
+        metadata: JSON.parse(JSON.stringify({ ...meta, returnCount: returns, lastReturnAt: now.toISOString(), lastReturnFrom: i.authorName, lastReturnVehicle: i.vehicleTitle ?? null, returnSeenAt: null })) as Prisma.InputJsonValue,
+      },
     })
+    // Avisa quem está atendendo (sem responsável: os gestores).
+    const who = existing.name || i.name
+    const title = 'Cliente em atendimento abriu novo pedido'
+    const message = `${who}${existing.leadNumber ? ` (lead #${existing.leadNumber})` : ''} pediu de novo pelo ${i.authorName}${i.vehicleTitle ? `: ${i.vehicleTitle}` : ''}.${returns > 1 ? ` É o ${returns}º pedido.` : ''}`
+    const base = { tenantId, type: 'SISTEMA', title, message, actionUrl: `/crm/leads/${existing.id}`, metadata: { kind: 'inbound_lead_return', leadId: existing.id, source: i.source, returns }, channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'] as ('APP_WEB' | 'APP_MOBILE' | 'PUSH')[] }
+    if (existing.assignedToUserId) await notify({ ...base, userId: existing.assignedToUserId }).catch(() => {})
+    else await notifyByRole({ ...base, roles: MANAGER_ROLES }).catch(() => {})
     return { leadId: existing.id, leadNumber: existing.leadNumber, created: false, outcome: 'existing' }
   }
 

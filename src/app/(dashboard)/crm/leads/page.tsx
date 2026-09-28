@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Clock, Filter, Loader2,
   Phone, Plus, RefreshCw, Search, Sliders, X, XCircle,
+  BellRing,
 } from 'lucide-react'
 import { CRM_STAGE_OPTIONS, crmPriorityLabel, crmPriorityTone } from '@/lib/crm/shared'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
@@ -27,6 +28,7 @@ interface LeadRow {
   lastContactAt: string | null; priority: 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW'
   temperature: string | null; leadType: string | null; tags: LeadTag[]; vehicleLabel: string | null
   createdAt: string
+  returned: { at: string; count: number; from: string | null; vehicle: string | null } | null
 }
 interface Meta { total: number; page: number; perPage: number; totalPages: number; scope: string }
 interface CrmCtx {
@@ -452,6 +454,12 @@ export default function CrmLeadsPage() {
                           className="block font-medium text-gray-900 hover:text-brand-600 dark:text-white dark:hover:text-brand-400">
                           {row.name ?? row.phone ?? row.email ?? '—'}
                         </Link>
+                        {row.returned && (
+                          <span title={`Cliente em atendimento abriu novo pedido${row.returned.from ? ` pelo ${row.returned.from}` : ''}${row.returned.vehicle ? `: ${row.returned.vehicle}` : ''}`}
+                            className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                            <BellRing size={10} />Voltou a pedir{row.returned.count > 1 ? ` (${row.returned.count}x)` : ''}
+                          </span>
+                        )}
                         {/* Tags */}
                         {row.tags?.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">

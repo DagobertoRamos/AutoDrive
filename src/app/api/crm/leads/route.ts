@@ -5,6 +5,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import { applyCrmScope, normalizePhone, resolveCrmScope } from '@/lib/crm/shared'
+import { unseenReturn } from '@/lib/crm/lead-return'
 import { readTemperature } from '@/lib/crm/config'
 import { fieldLabels, loadCrmSettings, missingLeadFields, readLeadType } from '@/lib/crm/settings'
 import { distributeLeadById } from '@/lib/marketing/distribution'
@@ -222,6 +223,7 @@ export async function GET(req: Request) {
       ...rest,
       temperature: readTemperature(metadata),
       leadType: readLeadType(metadata),
+      returned: unseenReturn(metadata),
     }))
 
     return NextResponse.json({

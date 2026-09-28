@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowRightLeft, Calendar, Car, ChevronLeft, ChevronRight, Loader2, MoreVertical, RefreshCw, Search, Trash2, User, X } from 'lucide-react'
+import { ArrowRightLeft, BellRing, Calendar, Car, ChevronLeft, ChevronRight, Loader2, MoreVertical, RefreshCw, Search, Trash2, User, X } from 'lucide-react'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { evaluateLeadSla, sourceLabelOf, temperatureOf, type CloseOutcome, type CrmSettings } from '@/lib/crm/settings-core'
 import CloseReasonModal from '@/components/crm/CloseReasonModal'
@@ -21,6 +21,7 @@ interface LeadRow {
   temperature: string | null; tags: LeadTag[]; vehicle: LeadVehicle | null; vehicleLabel: string | null
   deal: LeadDeal | null; nextTask: LeadNextTask | null; createdAt: string
   pipelineId: string | null; stageId: string | null; lastContactAt: string | null
+  returned?: { at: string; count: number; from: string | null; vehicle: string | null } | null
 }
 interface CrmCtx {
   scope: string; sellers: { id: string; name: string | null }[]; units: { id: string; name: string }[]
@@ -242,6 +243,7 @@ function LeadCard({ row, settings, canDelete, onRefresh, moving, moveTargets, on
           {row.leadNumber ? `#${row.leadNumber}` : `…${row.id.slice(-6)}`}
         </span>
         <div className="flex items-center gap-1">
+          {row.returned && <span title={`Cliente em atendimento abriu novo pedido${row.returned.from ? ` pelo ${row.returned.from}` : ''}${row.returned.vehicle ? `: ${row.returned.vehicle}` : ''}`} className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"><BellRing size={9} />Voltou a pedir</span>}
           <TempBadge value={row.temperature} settings={settings} />
           {moving && <Loader2 size={12} className="animate-spin text-gray-400" />}
           <CardMenu lead={row} canDelete={canDelete} onDelete={() => setDeleting(true)} moveTargets={moveTargets} onMove={onMove} />
