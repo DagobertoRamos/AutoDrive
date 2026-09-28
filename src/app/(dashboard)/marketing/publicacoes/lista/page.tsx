@@ -69,6 +69,9 @@ export default function PublicationsPage() {
   const runBulk = async (action: string) => {
     if (!sel.size) return
     if (action === 'RETIRAR' && !confirm(`Retirar ${sel.size} anúncio(s) dos canais?`)) return
+    if (action === 'APAGAR_REGISTRO' && !confirm(`Apagar ${sel.size} registro(s) da Central, com histórico e fila?
+
+Isto NÃO apaga nada no Instagram/Facebook/portais: o que ainda estiver no ar precisa ser apagado na própria rede. Não dá para desfazer.`)) return
     setBulk({ busy: true })
     try {
       const j = await api<{ results: Array<{ id: string; ok: boolean; message: string }>; summary: string }>('/api/publications/actions', { method: 'POST', json: { ids: [...sel], action } })
@@ -124,6 +127,13 @@ export default function PublicationsPage() {
         </div>
       )}
 
+      {can?.publish && allPubIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button type="button" onClick={() => setSel(new Set(allPubIds))} className="btn-secondary px-2.5 py-1 text-xs">Selecionar todos desta página ({allPubIds.length})</button>
+          {sel.size > 0 && <button type="button" onClick={() => setSel(new Set())} className="text-gray-500 underline">Limpar seleção</button>}
+          <span className="text-gray-400">Dica: filtre pelo canal (Filtros › Canal) para selecionar só Instagram ou Facebook.</span>
+        </div>
+      )}
       {sel.size > 0 && can?.publish && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs shadow-sm" role="toolbar" aria-label="Ações em lote">
           <b className="text-brand-900">{sel.size} selecionada(s)</b>
@@ -133,6 +143,7 @@ export default function PublicationsPage() {
           <button onClick={() => runBulk('RETOMAR')} className="btn-secondary px-2.5 py-1 text-xs"><Play size={13} />Reativar</button>
           <button onClick={() => runBulk('REENVIAR')} className="btn-secondary px-2.5 py-1 text-xs"><RotateCcw size={13} />Tentar de novo (com erro)</button>
           <button onClick={() => runBulk('RETIRAR')} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 hover:bg-red-50"><Trash2 size={13} />Retirar</button>
+          <button onClick={() => runBulk('APAGAR_REGISTRO')} className="inline-flex items-center gap-1 rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 font-medium text-red-800 hover:bg-red-100"><Trash2 size={13} />Apagar registro (começar do zero)</button>
           <button onClick={() => setSel(new Set())} className="ml-auto text-gray-500 hover:text-gray-800">Limpar</button>
         </div>
       )}

@@ -5,6 +5,7 @@
 //   MANUAL_PUBLICADO (loja confirma que postou; informa o link)
 //   MANUAL_REMOVIDO  (loja confirma que removeu à mão)
 //   EXCLUIR (nunca publicado: apaga; já publicado: retira do canal)
+//   APAGAR_REGISTRO (só o registro na Central; a rede não é tocada)
 // Gate: .publish
 // =============================================================================
 
@@ -47,6 +48,19 @@ export async function POST(req: Request) {
         })
         await logEvent(prisma, { tenantId: a.tenantId, publicationId: id, vehicleId: pub.vehicleId, channel: pub.channel, type: action, message: action === 'MANUAL_PUBLICADO' ? `Publicação manual confirmada pela loja: ${url}` : 'Remoção manual confirmada pela loja.', fromStatus: pub.status, toStatus: status, actor: a.actor })
         results.push({ id, ok: true, message: 'Registrado.', status })
+        continue
+      }
+      if (action === 'APAGAR_REGISTRO') {
+        // "Começar do zero": apaga o registro da Central (e a fila) SEM mexer na rede —
+        // para posts que a loja já apagou (ou vai apagar) no próprio Instagram/Facebook.
+        const pub = await prisma.publication.findFirst({ where: { id, tenantId: a.tenantId }, select: { id: true } })
+        if (!pub) { results.push({ id, ok: false, message: 'Publicação não encontrada.' }); continue }
+        await prisma.$transaction([
+          prisma.publicationJob.deleteMany({ where: { publicationId: id } }),
+          prisma.publicationEvent.deleteMany({ where: { publicationId: id } }),
+          prisma.publication.delete({ where: { id } }),
+        ])
+        results.push({ id, ok: true, message: 'Registro apagado da Central.' })
         continue
       }
       if (action === 'EXCLUIR') {
