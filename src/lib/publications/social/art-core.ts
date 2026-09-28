@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { canvasSize, FORMAT_INFO, TEMPLATE_INFO, type ArtTemplate, type SocialFormat } from './formats'
+import { vehicleName } from '../content-core'
 
 export interface ArtInput {
   format: SocialFormat
@@ -96,7 +97,7 @@ export function artLayout(i: ArtInput): ArtLayout {
   const inner = w - margin * 2
   const shapes: Shape[] = []
   const texts: TextBlock[] = []
-  const title = clean([i.brand, i.model].filter(Boolean).join(' ')) || 'Seminovo'
+  const title = vehicleName(i.brand, i.model) || 'Seminovo'
   const version = clean(i.version)
   const facts = factsLine(i)
   const contact = contactLine(i)

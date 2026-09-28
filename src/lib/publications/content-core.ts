@@ -87,10 +87,24 @@ export const fuelLabel = (f?: string | null) => (f ? FUEL[f.toUpperCase()] ?? f 
 export const gearLabel = (g?: string | null) => (g ? GEAR[g.toUpperCase()] ?? g : null)
 
 const clean = (s?: string | null) => String(s ?? '').replace(/\s+/g, ' ').trim()
+
+/**
+ * Marca + modelo (+ versão) sem repetir: cadastros vindos de importação trazem
+ * "HONDA" + "HONDA ADV" + "HONDA ADV". Resultado: "HONDA ADV".
+ */
+export function vehicleName(brand?: string | null, model?: string | null, version?: string | null): string {
+  const lo = (x: string) => x.toLocaleLowerCase('pt-BR')
+  const b = clean(brand); const m = clean(model)
+  let n = m ? (b && !lo(m).startsWith(lo(b)) ? `${b} ${m}` : m) : b
+  let v = clean(version)
+  for (const part of [b, m]) if (part && lo(v).startsWith(lo(part))) v = clean(v.slice(part.length))
+  if (v && !lo(n).includes(lo(v))) n = `${n} ${v}`
+  return n.trim()
+}
 const money = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 
 export function baseTitle(v: VehicleFacts): string {
-  const t = [v.brand, v.model, v.version].map(clean).filter(Boolean).join(' ')
+  const t = vehicleName(v.brand, v.model, v.version)
   const yr = v.modelYear ?? v.year
   return [t || 'Veículo', yr ? String(yr) : ''].filter(Boolean).join(' ')
 }

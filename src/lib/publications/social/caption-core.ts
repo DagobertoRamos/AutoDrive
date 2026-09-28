@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type { SocialFormat } from './formats'
+import { vehicleName } from '../content-core'
 
 export const CAPTION_TONES = ['VENDEDOR', 'DESCONTRAIDO', 'SOFISTICADO'] as const
 export type CaptionTone = (typeof CAPTION_TONES)[number]
@@ -54,7 +55,7 @@ export function contactBlock(i: CaptionInput): string {
   ].filter(Boolean).join('\n')
 }
 
-const title = (i: CaptionInput) => clean([i.brand, i.model, i.version].filter(Boolean).join(' ')) || 'Seminovo'
+const title = (i: CaptionInput) => vehicleName(i.brand, i.model, i.version) || 'Seminovo'
 const yearText = (i: CaptionInput) => (i.year && i.modelYear && i.year !== i.modelYear ? `${i.year}/${i.modelYear}` : i.modelYear ?? i.year ? String(i.modelYear ?? i.year) : '')
 
 /** Pedido à IA. Só fatos da ficha; nada de inventar. */
@@ -85,6 +86,7 @@ export function captionPrompt(i: CaptionInput): string {
     'Regras: use SOMENTE os fatos abaixo; não invente opcionais, garantia, revisões, financiamento, laudo ou dono único;',
     'não coloque telefone, @ nem site (eu acrescento depois); não use hashtags (eu acrescento); não use markdown nem aspas;',
     'termine convidando a chamar no WhatsApp. Responda só com a legenda.',
+    ...(i.format === 'STORY' ? [] : ['Estrutura que funciona (siga): 1) título em MAIÚSCULAS com emoji, nome e ano + uma chamada curta; 2) um parágrafo "Imagine..." que coloque a pessoa usando o veículo no dia a dia; 3) um parágrafo de personalidade que termine com o orgulho de pensar "esse é meu"/"essa é minha"; 4) lista de benefícios, uma por linha com emoji, explicando para que serve cada item (só itens informados); 5) uma linha de confiança na loja (atendimento próximo e transparente); 6) pergunta final "Já se imaginou..." convidando a chamar no WhatsApp e agendar a visita.',]),
     '',
     facts,
   ].join('\n')

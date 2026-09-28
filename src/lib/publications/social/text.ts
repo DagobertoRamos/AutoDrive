@@ -7,7 +7,8 @@ import { runAiWithFailover } from '@/lib/ai/resolve-ai-provider'
 import { effectiveOrigin } from '@/lib/stock/origin-core'
 import { fuelLabel, gearLabel } from '../content-core'
 import { buildFor, loadVehicle, payloadContext } from '../service'
-import { descriptionPrompt, descriptionTemplate, finishDescription, termsText, type DescStyle, type TextInput } from './text-core'
+import { descriptionPrompt, descriptionTemplate, finishDescription, hasTerms, sanitizeTerms, SUGGESTED_TERMS, termsBlock, type DescStyle, type StoreTerms, type TextInput } from './text-core'
+export { sanitizeTerms }
 
 export async function textInput(tenantId: string, vehicleId: string): Promise<TextInput> {
   const v = await loadVehicle(tenantId, vehicleId)
@@ -20,6 +21,7 @@ export async function textInput(tenantId: string, vehicleId: string): Promise<Te
     price: p.price, oldPrice: p.oldPrice, options: p.options,
     origin: effectiveOrigin(v), inspected: v.cautelarStatus === 'APROVADA', isNew: p.isNew,
     storeName: p.storeName, city: p.location.city, terms: ctx.settings.terms,
+    vehicleType: v.vehicleType, bodyType: v.bodyType, seed: v.id,
   }
 }
 
@@ -37,8 +39,9 @@ export async function generateDescription(tenantId: string, vehicleId: string, s
   return { text: descriptionTemplate(i, style), ai: false, source: 'modelo pronto' }
 }
 
-export async function generateConditions(tenantId: string, vehicleId: string): Promise<{ text: string; empty: boolean }> {
+export async function generateConditions(tenantId: string, vehicleId: string, override?: StoreTerms): Promise<{ text: string; empty: boolean; configured: boolean; terms: StoreTerms }> {
   const i = await textInput(tenantId, vehicleId)
-  const text = termsText(i, 'LISTA')
-  return { text, empty: !text }
+  const terms = override ?? i.terms
+  const text = termsBlock({ terms, inspected: i.inspected, storeName: i.storeName })
+  return { text, empty: !text, configured: hasTerms(i.terms), terms: hasTerms(i.terms) ? i.terms : SUGGESTED_TERMS }
 }

@@ -12,14 +12,16 @@
 // =============================================================================
 
 import { campaignKeyFor, formatsFor, planLocal, socialOf } from './social/formats'
-import { termsText } from './social/text-core'
+import { descriptionTemplate, termsBlock } from './social/text-core'
+import { finishCaption } from './social/caption-core'
+import { effectiveOrigin } from '@/lib/stock/origin-core'
 import { localToUtc, utcToLocalInput } from './schedule-core'
 import { Prisma } from '@prisma/client'
 import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { decrypt, encrypt } from '@/lib/crypto'
 import { channelSpec, isPublishable, type ChannelSpec } from './channels'
-import { buildPayload, payloadHash, shortRef, type ContentSource, type ListingPayload, type VehicleFacts } from './content-core'
+import { buildPayload, fuelLabel, gearLabel, payloadHash, shortRef, type ContentSource, type ListingPayload, type VehicleFacts } from './content-core'
 import { priorityOf, statusWhileQueued, type DesiredState, type JobOp, type PubStatus } from './states'
 import { isPublishableStock, saleAction, type SaleReason } from './sale-rules-core'
 import { loadPublicationSettings, type PublicationSettings } from './settings'
@@ -79,7 +81,7 @@ const vehicleSelect = {
   id: true, tenantId: true, unitId: true, plate: true, chassi: true, brand: true, model: true, version: true, year: true, modelYear: true, km: true,
   color: true, fuel: true, transmission: true, doors: true, bodyType: true, engine: true, salePrice: true, promoPrice: true, isPromo: true,
   promoStartsAt: true, promoEndsAt: true, conditionType: true, active: true, stockStatus: true, mainPhotoUrl: true,
-  cautelarStatus: true, originType: true, partnerStoreId: true, stockType: true,
+  cautelarStatus: true, originType: true, partnerStoreId: true, stockType: true, vehicleType: true,
   photos: { select: { url: true }, orderBy: [{ order: 'asc' as const }, { createdAt: 'asc' as const }] },
   siteListing: { select: { title: true, description: true, options: true, hidden: true, photosStatus: true, originalPhotos: true, videoUrl: true } },
 } satisfies Prisma.VehicleSelect
@@ -143,10 +145,28 @@ export async function buildFor(tenantId: string, v: VehicleRow, externalRef: str
   const ov = overridesSource(overrides)
   if (src?.photos) src.photos = src.photos.filter((u) => allowed.has(u))
   if (ov?.photos) ov.photos = ov.photos.filter((u) => allowed.has(u))
-  return buildPayload({
+  const p = buildPayload({
     reference: externalRef, vehicle: factsOf(v), siteListing: v.siteListing, gallery: v.photos.map((p) => p.url),
     draft: src, overrides: ov, contacts: c.settings.contacts, location: c.loc.location, storeName: c.loc.storeName,
-    defaultConditions: termsText({ terms: c.settings.terms, inspected: v.cautelarStatus === 'APROVADA' }, 'FRASE'),
+    defaultConditions: termsBlock({ terms: c.settings.terms, inspected: v.cautelarStatus === 'APROVADA', storeName: c.loc.storeName }),
+  })
+  // Estúdio social sem legenda escrita: legenda automática que desperta o desejo
+  // (modelo emocional com os dados do sistema) + contatos e hashtags da loja.
+  if (p.social && !ov?.caption?.trim() && p.social.format !== 'STORY') p.caption = autoSocialCaption(v, p, c)
+  return p
+}
+
+export function autoSocialCaption(v: VehicleRow, p: ListingPayload, c: PayloadContext): string {
+  const gear = gearLabel(v.transmission); const fuel = fuelLabel(v.fuel)
+  const text = descriptionTemplate({
+    brand: v.brand, model: v.model, version: v.version, year: v.year, modelYear: v.modelYear, km: v.km, gear, fuel, color: v.color, doors: v.doors, engine: v.engine,
+    price: p.price, oldPrice: p.oldPrice, options: p.options, origin: effectiveOrigin(v), inspected: v.cautelarStatus === 'APROVADA', isNew: p.isNew,
+    storeName: p.storeName, city: p.location.city, terms: c.settings.terms, vehicleType: v.vehicleType, bodyType: v.bodyType, seed: v.id,
+  }, 'EMOCIONAL')
+  return finishCaption(text, {
+    format: p.social?.format ?? 'POST', tone: 'VENDEDOR', brand: v.brand, model: v.model, version: v.version, year: v.year, modelYear: v.modelYear, km: v.km,
+    gear, fuel, color: v.color, price: p.price, oldPrice: p.oldPrice, options: p.options, storeName: p.storeName, city: p.location.city,
+    whatsapp: c.settings.contacts.whatsapp, instagram: c.settings.contacts.instagram, site: c.settings.contacts.site,
   })
 }
 

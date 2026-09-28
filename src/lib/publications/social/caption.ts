@@ -5,7 +5,7 @@
 
 import { runAiWithFailover } from '@/lib/ai/resolve-ai-provider'
 import { fuelLabel, gearLabel } from '../content-core'
-import { buildFor, loadVehicle, payloadContext } from '../service'
+import { autoSocialCaption, buildFor, loadVehicle, payloadContext } from '../service'
 import { captionPrompt, fallbackCaption, finishCaption, type CaptionInput, type CaptionTone } from './caption-core'
 import type { SocialFormat } from './formats'
 
@@ -28,5 +28,6 @@ export async function generateCaption(tenantId: string, vehicleId: string, forma
     return { text: out.text, name: ai.providerName }
   })
   if (r.ok) return { text: finishCaption(r.result.text, input), source: r.result.name, ai: true }
-  return { text: fallbackCaption(input), source: 'modelo automático (sem IA configurada)', ai: false }
+  if (format === 'STORY') return { text: fallbackCaption(input), source: 'modelo automático (sem IA configurada)', ai: false }
+  return { text: autoSocialCaption(v, { ...p, social: { format, template: 'OFERTA' } }, ctx), source: 'modelo pronto (sem IA configurada)', ai: false }
 }

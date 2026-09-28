@@ -149,7 +149,7 @@ describe('textos do anúncio (modelos e condições)', () => {
   const i = {
     brand: 'Volkswagen', model: 'Tiguan', version: '2.0 TSI', year: 2020, modelYear: 2021, km: 30000, gear: 'Automático', fuel: 'Flex', color: 'Prata', doors: 4, engine: null,
     price: 99900, oldPrice: 104900, options: ['Teto solar', 'Couro'], origin: 'OWN' as const, inspected: true, isNew: false, storeName: 'AutoDrive', city: 'Barueri',
-    terms: { acceptsTrade: true, financing: true, cards: false, transferIncluded: false, ipvaPaid: true, warrantyMonths: 3, extra: '' },
+    terms: { cash: false, financingMax: 60, cardsMax: null, consortium: false, acceptsTrade: true, financing: true, cards: false, transferIncluded: false, ipvaPaid: true, warrantyMonths: 3, extra: '' },
   }
   it('destaques só com o que dá para afirmar pelos dados', async () => {
     const t = await import('./text-core')
@@ -158,7 +158,7 @@ describe('textos do anúncio (modelos e condições)', () => {
   })
   it('condições saem da configuração da loja + laudo da ficha; nada configurado = vazio', async () => {
     const t = await import('./text-core')
-    expect(t.termsText(i, 'LISTA').split('\n')).toEqual(['✔ Aceitamos seu usado na troca', '✔ Financiamento com as principais financeiras (sujeito à aprovação de crédito)', '✔ IPVA pago', '✔ Garantia de 3 meses (conforme termo da loja)', '✔ Laudo cautelar aprovado'])
+    expect(t.termsText(i, 'LISTA').split('\n')).toEqual(['✔ Financiamento em até 60x (sujeito à aprovação de crédito)', '✔ Aceitamos seu veículo na troca', '✔ IPVA pago', '✔ Garantia de 3 meses (conforme termo da loja)', '✔ Laudo cautelar aprovado'])
     expect(t.termsText({ terms: t.EMPTY_TERMS, inspected: false })).toBe('')
   })
   it('3 modelos prontos; opcionais só os cadastrados; sem opcional, não cita', async () => {
@@ -176,7 +176,7 @@ describe('textos do anúncio (modelos e condições)', () => {
     const t = await import('./text-core')
     const p = t.descriptionPrompt(i, 'EMOCIONAL', now)
     expect(p).toContain('Opcionais (use só estes): Teto solar, Couro')
-    expect(p).toContain('Condições da loja (use exatamente): Aceitamos seu usado na troca.')
+    expect(p).toContain('Condições da loja (use exatamente): Financiamento em até 60x')
     expect(t.descriptionPrompt({ ...i, terms: t.EMPTY_TERMS, inspected: false }, 'DIRETO', now)).toContain('não informadas (não cite nenhuma)')
     expect(t.finishDescription('**Linda** Tiguan\nLigue (11) 93471-8276')).toBe('Linda Tiguan\nLigue')
   })
@@ -246,5 +246,18 @@ describe('rodízio com vídeo do carro', () => {
     const cands = [{ id: 'sem', lastPostedAt: null, promo: false, createdAt: d }, { id: 'com', lastPostedAt: null, promo: false, createdAt: d, hasVideo: true }]
     expect(a.assign([{ local: '2026-09-28T19:00', format: 'VIDEO' }], cands, { promoFirst: false, minDaysBetween: 0, now: d }).map((x) => x.vehicleId)).toEqual(['com'])
     expect(a.assign([{ local: '2026-09-28T19:00', format: 'VIDEO' }], [cands[0]], { promoFirst: false, minDaysBetween: 0, now: d })).toEqual([])
+  })
+})
+
+describe('condições comerciais (bloco completo)', () => {
+  it('só as formas marcadas, com avisos obrigatórios; nada marcado e sem laudo = vazio', async () => {
+    const t = await import('./text-core')
+    const b = t.termsBlock({ terms: { ...t.EMPTY_TERMS, cash: true, financing: true, financingMax: 60, cards: true, cardsMax: 24, consortium: true, acceptsTrade: true }, inspected: false, storeName: 'AutoDrive Veículos' })
+    for (const x of ['💰 À VISTA', '🏦 FINANCIAMENTO EM ATÉ 60X', 'Sujeito à análise e aprovação de crédito', '💳 CARTÃO DE CRÉDITO EM ATÉ 24X', '🎯 CONSÓRCIO', 'sem garantia de prazo', '🔄 ACEITAMOS SEU VEÍCULO NA TROCA', '📌 Prazos e condições variam', 'Na AutoDrive Veículos']) expect(b).toContain(x)
+    expect(b).not.toMatch(/whatsapp|@/i)
+    const so = t.termsBlock({ terms: { ...t.EMPTY_TERMS, cash: true }, inspected: false, storeName: 'Loja' })
+    expect(so).not.toContain('FINANCIAMENTO'); expect(so).not.toContain('📌')
+    expect(t.termsBlock({ terms: t.EMPTY_TERMS, inspected: false, storeName: 'Loja' })).toBe('')
+    expect(t.sanitizeTerms({ financingMax: 500, cardsMax: 12 })).toMatchObject({ financingMax: null, cardsMax: 12 })
   })
 })

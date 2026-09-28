@@ -291,7 +291,7 @@ function StepContent({ vehicleId }: { vehicleId: string }) {
     <section className="grid gap-4 lg:grid-cols-[1fr,18rem]">
       <div className="space-y-3">
         <label className="block text-xs font-medium text-gray-600">Título<input className={inputCls} value={c.title} placeholder={data.suggestions.title} onChange={(e) => set({ title: e.target.value })} maxLength={150} /></label>
-        <TextAssist vehicleId={vehicleId} onDescription={(t) => set({ description: t })} onConditions={(t) => set({ conditions: t })} />
+        <TextAssist vehicleId={vehicleId} conditionsEmpty={!c.conditions.trim()} onDescription={(t) => set({ description: t })} onConditions={(t) => set({ conditions: t })} />
         <label className="block text-xs font-medium text-gray-600">
           <span className="flex items-center justify-between">Descrição<button type="button" onClick={() => set({ description: data.suggestions.description })} className="inline-flex items-center gap-1 text-brand-700 hover:underline"><Wand2 size={12} />Usar texto sugerido</button></span>
           <textarea rows={8} className={inputCls} value={c.description} placeholder={data.suggestions.description} onChange={(e) => set({ description: e.target.value })} />
