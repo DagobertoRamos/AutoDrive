@@ -3,6 +3,7 @@
 
 // Detalhe de uma publicação: situação no canal, o que foi enviado, ajuste
 // específico do canal (com histórico), ações e diagnóstico técnico.
+import { PublishedPreview } from '@/components/publications/PublishedPreview'
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, ExternalLink, Loader2, Pause, Play, RefreshCw, Save, Trash2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -65,6 +66,7 @@ export function PublicationDetail({ id, onClose, onChanged }: { id: string | nul
           </section>
 
           {p.scheduledAt && p.status === 'AGENDADO' && <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">Agendado para {when(p.scheduledAt)}.</p>}
+          {(p.channel === 'INSTAGRAM' || p.channel === 'META_PAGE') && d.vehicle?.id && <PublishedPreview vehicleId={d.vehicle.id} connectionId={p.connectionId} overrides={p.overrides} published={p.status === 'PUBLICADO'} />}
           {p.manualAction && <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><p className="flex items-center gap-1 font-semibold"><AlertTriangle size={13} />Ação manual</p><p className="mt-0.5">{p.manualAction}</p></div>}
           {p.lastError && p.status !== 'PUBLICADO' && <ErrorNote message={p.lastError} hint={p.lastErrorHint} />}
           {msg && <p role="status" className={cn('rounded-lg px-3 py-2 text-xs', msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>{msg.text}</p>}

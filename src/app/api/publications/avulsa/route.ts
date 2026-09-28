@@ -7,15 +7,18 @@ import { audit, bad, permissions, pubAuth } from '@/lib/publications/api'
 import { localToUtc, validateSchedule } from '@/lib/publications/schedule-core'
 import { loadPublicationSettings } from '@/lib/publications/settings'
 import { AVULSA_FORMATS, type AvulsaFormat } from '@/lib/publications/social/avulsa-core'
-import { createAvulsa } from '@/lib/publications/social/avulsa'
+import { createAvulsa, socialStorage } from '@/lib/publications/social/avulsa'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
   const a = await pubAuth(req)
   if (a instanceof NextResponse) return a
-  const posts = await prisma.socialPost.findMany({ where: { tenantId: a.tenantId }, orderBy: { createdAt: 'desc' }, take: 50 })
-  return NextResponse.json({ success: true, data: posts, can: await permissions(a.user) })
+  const [posts, storage] = await Promise.all([
+    prisma.socialPost.findMany({ where: { tenantId: a.tenantId }, orderBy: { createdAt: 'desc' }, take: 200 }),
+    socialStorage(a.tenantId),
+  ])
+  return NextResponse.json({ success: true, data: posts, storage, can: await permissions(a.user) })
 }
 
 export async function POST(req: Request) {

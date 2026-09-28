@@ -131,21 +131,26 @@ export async function completeOAuth(claims: StateClaims, code: string, actor: Ac
   throwForStatus(pages, 'Meta (Páginas)')
   const list = pages.json<{ data?: MetaPage[] }>()?.data ?? []
   if (!list.length) throw new ConnectorError('CONFIG', 'Nenhuma Página foi autorizada.', 'Ao conectar, selecione a Página da loja e confirme as permissões.')
-  return { connected: await saveMetaPages(claims.t, list, null, actor) }
+  return { connected: await saveMetaPages(claims.t, list, null, actor, lt) }
 }
 
 const PAGE_FIELDS = 'id,name,access_token,instagram_business_account{id,username}'
 type MetaPage = { id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string } }
 
 /** Grava Página (+ Instagram profissional vinculado) como conexões da loja. */
-async function saveMetaPages(tenantId: string, list: MetaPage[], expiresAt: Date | null, actor: Actor): Promise<string[]> {
+/**
+ * `userToken`: token de USUÁRIO (longo prazo ou usuário do sistema) — a Audio
+ * API do Instagram (biblioteca de músicas) exige token de usuário, não de Página.
+ */
+async function saveMetaPages(tenantId: string, list: MetaPage[], expiresAt: Date | null, actor: Actor, userToken?: string): Promise<string[]> {
   const connected: string[] = []
+  const user: Record<string, string> = userToken ? { user_access_token: userToken } : {}
   for (const p of list) {
-    const c = await upsertConnection(tenantId, 'META_PAGE', p.id, p.name, { page_access_token: p.access_token }, { pagina: p.name }, expiresAt, actor)
+    const c = await upsertConnection(tenantId, 'META_PAGE', p.id, p.name, { page_access_token: p.access_token, ...user }, { pagina: p.name }, expiresAt, actor)
     connected.push(c.label)
     if (p.instagram_business_account?.id) {
       const ig = p.instagram_business_account
-      const ci = await upsertConnection(tenantId, 'INSTAGRAM', ig.id, ig.username ? `@${ig.username}` : `Instagram de ${p.name}`, { page_access_token: p.access_token, page_id: p.id }, { conta: ig.username ? `@${ig.username}` : ig.id, pagina: p.name }, expiresAt, actor)
+      const ci = await upsertConnection(tenantId, 'INSTAGRAM', ig.id, ig.username ? `@${ig.username}` : `Instagram de ${p.name}`, { page_access_token: p.access_token, page_id: p.id, ...user }, { conta: ig.username ? `@${ig.username}` : ig.id, pagina: p.name }, expiresAt, actor)
       connected.push(ci.label)
     }
   }
@@ -170,6 +175,7 @@ export async function connectMetaByToken(tenantId: string, input: { token: strin
   // Token de usuário: lista as Páginas que ele administra.
   const acc = await http.request({ url: `${base}/me/accounts?${new URLSearchParams({ fields: PAGE_FIELDS, access_token: token })}` })
   let list: MetaPage[] = acc.status < 300 ? acc.json<{ data?: MetaPage[] }>()?.data ?? [] : []
+  const userToken = list.length ? token : undefined // listou Páginas = é token de usuário
   if (!list.length) {
     // Token de Página: /me é a própria Página.
     const me = await http.request({ url: `${base}/me?${new URLSearchParams({ fields: 'id,name,instagram_business_account{id,username}', access_token: token })}` })
@@ -186,5 +192,5 @@ export async function connectMetaByToken(tenantId: string, input: { token: strin
   const dbg = await http.request({ url: `${base}/debug_token?${new URLSearchParams({ input_token: list[0].access_token, access_token: list[0].access_token })}` }).catch(() => null)
   const exp = dbg && dbg.status < 300 ? dbg.json<{ data?: { expires_at?: number } }>()?.data?.expires_at : undefined
   if (exp && exp > 0) expiresAt = new Date(exp * 1000)
-  return { connected: await saveMetaPages(tenantId, list, expiresAt, actor), expiresAt }
+  return { connected: await saveMetaPages(tenantId, list, expiresAt, actor, userToken), expiresAt }
 }

@@ -58,8 +58,9 @@ export async function testFreesound(sealedKey: string | null): Promise<{ ok: boo
 export async function searchIgLibrary(tenantId: string, q: string, http: HttpClient = createHttpClient()): Promise<MusicTrack[]> {
   const conn = await prisma.publicationConnection.findFirst({ where: { tenantId, channel: 'INSTAGRAM', status: 'CONECTADO' }, orderBy: { updatedAt: 'desc' } })
   if (!conn) return []
-  const token = readSecrets(conn.secretsEncrypted).page_access_token
-  if (!token) return []
+  // A Audio API exige token de USUÁRIO (o de Página é recusado).
+  const token = readSecrets(conn.secretsEncrypted).user_access_token
+  if (!token) throw new Error('A biblioteca de músicas do Instagram precisa de uma nova conexão: em Canais conectados › Facebook — Página › Conectar, cole de novo o token (de usuário do sistema ou de usuário). Enquanto isso, use as músicas livres')
   const params = new URLSearchParams({ audio_type: 'music', user_id: conn.externalAccountId, access_token: token, ...(q.trim() ? { search_query: q.trim().slice(0, 80) } : {}) })
   const res = await http.request({ url: `${graphBase()}/ig_audio?${params}` })
   if (res.status >= 300) {

@@ -284,3 +284,15 @@ describe('posts avulsos (regras)', () => {
     expect(a.overallStatus(['a'], { a: { state: 'FALHA' } })).toBe('FALHA')
   })
 })
+
+describe('post avulso com link de vídeo', () => {
+  it('link do YouTube é formato próprio; YouTube não vira vídeo baixável', async () => {
+    const a = await import('./avulsa-core')
+    const link = { type: 'link' as const, url: 'https://youtu.be/dQw4w9WgXcQ' }
+    expect(a.sanitizeMedia([{ type: 'link', url: 'https://youtu.be/dQw4w9WgXcQ' }, { type: 'link', url: 'https://site.com/x' }])).toEqual([link])
+    expect(a.validateAvulsa('LINK', [link], 'texto')).toBeNull()
+    expect(a.validateAvulsa('LINK', [], '')).toMatch(/Cole 1 link/)
+    expect(a.validateAvulsa('REELS', [link], '')).toMatch(/formato próprio/)
+    expect(a.FACEBOOK_ONLY).toEqual(['LINK'])
+  })
+})

@@ -21,7 +21,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!/^[a-z0-9]{10,40}$/i.test(id)) return new NextResponse('Não encontrado', { status: 404 })
   const asset = await readSiteAsset(id).catch((e) => { console.error('[site/assets] falha ao ler', id, e); return null })
   // Fotos enviadas por clientes (podem mostrar placa/dados) não são públicas.
-  if (!asset || asset.kind === 'LEAD_PHOTO') return new NextResponse('Não encontrado', { status: 404 })
+  if (!asset || asset.kind === 'LEAD_PHOTO' || asset.kind === 'SOCIAL_VPART' || asset.kind === 'SOCIAL_VIDEO') return new NextResponse('Não encontrado', { status: 404 })
   let body = new Uint8Array(asset.data)
   let type = asset.mimeType
   const wantJpeg = new URL(req.url).searchParams.get('format') === 'jpg'

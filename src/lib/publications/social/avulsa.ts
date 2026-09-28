@@ -13,7 +13,7 @@ import { graph, graphBase, graphError, rupload, waitContainer } from '../connect
 import type { ConnectorContext } from '../connectors/types'
 import { mediaUrlFor } from '../media-token'
 import { connectorContext, type WorkerDeps } from '../worker'
-import { overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult } from './avulsa-core'
+import { FACEBOOK_ONLY, overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult } from './avulsa-core'
 import { carVideoForReels, toReels } from './video'
 
 export const VIDEO_PART_KIND = 'SOCIAL_VPART'
@@ -58,9 +58,10 @@ export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id
   const media = sanitizeMedia(i.media)
   const err = validateAvulsa(i.format, media, i.caption)
   if (err) throw new Error(err)
-  const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: i.connectionIds }, channel: { in: ['INSTAGRAM', 'META_PAGE'] } }, select: { id: true } })
-  if (!conns.length) throw new Error('Escolha ao menos uma conta do Instagram ou do Facebook.')
-  const imgs = media.flatMap((m) => (m.type === 'image' ? [m.assetId] : []))
+  const channels = FACEBOOK_ONLY.includes(i.format) ? ['META_PAGE'] : ['INSTAGRAM', 'META_PAGE']
+  const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: i.connectionIds }, channel: { in: channels } }, select: { id: true } })
+  if (!conns.length) throw new Error(FACEBOOK_ONLY.includes(i.format) ? 'Link só pode ser publicado na Página do Facebook (o Instagram não aceita links em posts).' : 'Escolha ao menos uma conta do Instagram ou do Facebook.')
+  const imgs = media.flatMap((m) => (m.type === 'image' ? [m.assetId] : m.type === 'video' && 'posterAssetId' in m && m.posterAssetId ? [m.posterAssetId] : []))
   if (imgs.length && (await prisma.siteAsset.count({ where: { tenantId, id: { in: imgs }, kind: 'SOCIAL_UPLOAD' } })) !== imgs.length) throw new Error('Alguma foto não foi encontrada. Envie de novo.')
   for (const m of media) if (m.type === 'video' && 'uploadId' in m && !(await partsReady(tenantId, m))) throw new Error('O vídeo ainda não terminou de subir. Aguarde e tente de novo.')
   return prisma.socialPost.create({
@@ -86,7 +87,7 @@ async function igPublish(ctx: ConnectorContext, creation: string): Promise<Avuls
   return { state: 'PUBLICADO', remoteId: media.id, remoteUrl: j.permalink ?? null }
 }
 
-interface Prepared { images: string[]; video: () => Promise<Uint8Array> }
+interface Prepared { images: string[]; link: string | null; video: () => Promise<Uint8Array> }
 
 async function publishTo(channel: string, ctx: ConnectorContext, format: AvulsaFormat, caption: string, m: Prepared): Promise<AvulsaResult> {
   const acc = ctx.connection.externalAccountId
@@ -111,6 +112,12 @@ async function publishTo(channel: string, ctx: ConnectorContext, format: AvulsaF
     return { state: 'EM_ANALISE', pendingToken: c }
   }
   // Página do Facebook
+  if (format === 'LINK') {
+    if (!m.link) throw new ConnectorError('VALIDATION', 'Sem link de vídeo.')
+    const post = await graph<{ id: string }>(ctx, 'POST', `/${acc}/feed`, { message: caption, link: m.link }, 'Post com link', true)
+    const j = await graph<{ permalink_url?: string }>(ctx, 'GET', `/${post.id}`, { fields: 'permalink_url' }, 'Post').catch(() => ({ permalink_url: undefined }))
+    return { state: 'PUBLICADO', remoteId: post.id, remoteUrl: j.permalink_url ?? null }
+  }
   if (format === 'POST') {
     const ids: string[] = []
     for (const u of m.images) ids.push((await graph<{ id: string }>(ctx, 'POST', `/${acc}/photos`, { url: u, published: 'false' }, 'Foto')).id)
@@ -171,6 +178,7 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
     let videoCache: Promise<Uint8Array> | null = null
     const prepared: Prepared = {
       images: media.flatMap((m) => (m.type === 'image' ? [mediaUrlFor(origin, post.tenantId, `/api/site/assets/${m.assetId}`, { now })] : [])),
+      link: media.find((m) => m.type === 'link')?.type === 'link' ? (media.find((m) => m.type === 'link') as { url: string }).url : null,
       video: () => (videoCache ??= (async () => { const v = media.find((m) => m.type === 'video'); if (!v || v.type !== 'video') throw new ConnectorError('VALIDATION', 'Sem vídeo.'); return assembleVideo(post.tenantId, v) })()),
     }
     let lastError: string | null = null
@@ -202,8 +210,47 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
         ...(status === 'PUBLICADO' || status === 'PARCIAL' ? { publishedAt: now } : {}),
       },
     })
+    // Terminou (sem nada processando): os pedaços do vídeo não servem mais.
+    if (!pendingOrRetry) await deleteVideoParts(post.tenantId, media)
   }
   return { processed }
+}
+
+/** Apaga os pedaços de vídeo de um post (publicado, com erro ou cancelado). */
+export async function deleteVideoParts(tenantId: string, media: AvulsaMedia[]): Promise<void> {
+  for (const m of media) if (m.type === 'video' && 'uploadId' in m) {
+    await prisma.siteAsset.deleteMany({ where: { tenantId, kind: VIDEO_PART_KIND, sha256: { startsWith: `${m.uploadId}:` } } }).catch(() => undefined)
+  }
+}
+
+/**
+ * Limpeza do espaço (rotina de 15 min): fotos enviadas que nenhum post usa
+ * (1 dia) e fotos/capas de posts encerrados há mais de 30 dias.
+ */
+export async function pruneSocialUploads(now = new Date()): Promise<number> {
+  const uploads = await prisma.siteAsset.findMany({ where: { kind: 'SOCIAL_UPLOAD', createdAt: { lt: new Date(now.getTime() - 86_400_000) } }, select: { id: true }, take: 1000 })
+  if (!uploads.length) return 0
+  const posts = await prisma.socialPost.findMany({ where: { media: { not: undefined } }, select: { status: true, updatedAt: true, media: true } })
+  const keep = new Set<string>()
+  const limit = now.getTime() - 30 * 86_400_000
+  for (const p of posts) {
+    const final = ['PUBLICADO', 'PARCIAL', 'FALHA', 'CANCELADO'].includes(p.status)
+    if (final && p.updatedAt.getTime() < limit) continue
+    for (const m of sanitizeMedia(p.media)) {
+      if (m.type === 'image') keep.add(m.assetId)
+      if (m.type === 'video' && 'posterAssetId' in m && m.posterAssetId) keep.add(m.posterAssetId)
+    }
+  }
+  const ids = uploads.map((u) => u.id).filter((id) => !keep.has(id))
+  return ids.length ? (await prisma.siteAsset.deleteMany({ where: { id: { in: ids } } })).count : 0
+}
+
+/** Espaço usado pela Central de Publicações da loja (bytes por tipo). */
+export async function socialStorage(tenantId: string): Promise<{ fotos: number; pedacosVideo: number; videosGerados: number; total: number }> {
+  const rows = await prisma.siteAsset.groupBy({ by: ['kind'], where: { tenantId, kind: { in: ['SOCIAL_UPLOAD', VIDEO_PART_KIND, 'SOCIAL_VIDEO'] } }, _sum: { fileSize: true } })
+  const get = (k: string) => rows.find((r) => r.kind === k)?._sum.fileSize ?? 0
+  const fotos = get('SOCIAL_UPLOAD'); const pedacosVideo = get(VIDEO_PART_KIND); const videosGerados = get('SOCIAL_VIDEO')
+  return { fotos, pedacosVideo, videosGerados, total: fotos + pedacosVideo + videosGerados }
 }
 
 /** Pedaços de vídeo com mais de 3 dias que não pertencem a post ainda pendente (rascunho, agendado, enviando). */

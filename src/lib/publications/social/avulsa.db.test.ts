@@ -8,7 +8,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'crypto'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import ffmpegStatic from 'ffmpeg-static'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createHttpClient, type FetchLike } from '../connectors/http'
@@ -45,14 +46,18 @@ const meta: FetchLike = async (url, init) => {
   if (/\/M-/.test(u.pathname)) return json(200, { permalink: 'https://www.instagram.com/p/x/' })
   // Página
   if (u.pathname.endsWith('/PGA/photos')) return json(200, { id: `F${calls.length}` })
-  if (u.pathname.endsWith('/PGA/feed')) return json(200, { id: 'PG_POST' })
+  if (u.pathname.endsWith('/PGA/feed')) return json(200, { id: p.get('link') ? 'PG_LINK' : 'PG_POST' })
+  if (u.pathname.endsWith('/PG_LINK')) return json(200, { permalink_url: 'https://www.facebook.com/p/link' })
+  if (u.pathname.endsWith('/ig_audio')) return u.searchParams.get('access_token') === 'UT' ? json(200, { data: [{ audio_id: '42', title: 'Hit', display_artist: 'Banda', duration_in_ms: 30000, download_url: 'https://x/p.mp3' }] }) : json(400, { error: { code: 100, message: 'Page access token not supported' } })
+  if (u.pathname.endsWith('/me/accounts')) return json(200, { data: [{ id: 'PGX', name: 'Pagina X', access_token: 'PAGE_TOKEN', instagram_business_account: { id: 'IGX', username: 'loja_x' } }] })
+  if (u.pathname.endsWith('/debug_token')) return json(200, { data: { expires_at: 0 } })
   if (u.pathname.endsWith('/PG_POST')) return json(200, { permalink_url: 'https://www.facebook.com/p/1' })
   if (u.pathname.endsWith('/PGA/video_reels')) return json(200, p.get('upload_phase') === 'start' ? { video_id: 'FBV' } : { success: true })
   if (u.pathname.endsWith('/FBV')) return json(200, { permalink_url: '/reel/9', status: { video_status: fbVideo } })
   return json(404, { error: { code: 100, message: `rota não simulada ${u.pathname}` } })
 }
 const http = createHttpClient(meta)
-const ffmpeg = () => (require('ffmpeg-static') as string)
+const ffmpeg = () => ffmpegStatic as unknown as string
 
 describe.skipIf(!RUN)('Posts avulsos — banco local + Meta simulada', () => {
   beforeAll(async () => {
@@ -109,7 +114,7 @@ describe.skipIf(!RUN)('Posts avulsos — banco local + Meta simulada', () => {
     const up = calls.filter((c) => c.url.includes('rupload') && c.bytes)
     expect(up.length).toBe(2)
     for (const c of up) expect(Buffer.from(c.bytes!).subarray(4, 8).toString('ascii')).toBe('ftyp')
-    const f = path.join(mkdtempSync(path.join(tmpdir(), 'avu-out-')), 'o.mp4'); require('node:fs').writeFileSync(f, up[0].bytes!)
+    const f = path.join(mkdtempSync(path.join(tmpdir(), 'avu-out-')), 'o.mp4'); writeFileSync(f, up[0].bytes!)
     expect(spawnSync(ffmpeg(), ['-hide_banner', '-i', f], { encoding: 'utf8' }).stderr).toMatch(/1080x1920/)
 
     igStatus = 'FINISHED'; fbVideo = 'ready'
@@ -119,4 +124,46 @@ describe.skipIf(!RUN)('Posts avulsos — banco local + Meta simulada', () => {
     expect(r1.status).toBe('PUBLICADO')
     expect(r1.results[T.fb.id].remoteUrl).toBe('https://www.facebook.com/reel/9')
   }, 180_000)
+
+  it('link de vídeo (YouTube): só na Página do Facebook, com o link no post; Instagram sozinho é recusado', async () => {
+    const actor = { id: null, name: 'Teste' }
+    await expect(av.createAvulsa(T.t.id, { format: 'LINK', caption: 'Vídeo novo!', media: [{ type: 'link', url: 'https://youtu.be/dQw4w9WgXcQ' }], connectionIds: [T.ig.id], scheduledAt: null, draft: false }, actor)).rejects.toThrow(/Instagram não aceita links/)
+    const post = await av.createAvulsa(T.t.id, { format: 'LINK', caption: 'Vídeo novo!', media: [{ type: 'link', url: 'https://youtu.be/dQw4w9WgXcQ' }], connectionIds: [T.ig.id, T.fb.id], scheduledAt: null, draft: false }, actor)
+    expect(post.connectionIds).toEqual([T.fb.id])
+    await av.processSocialPosts({ http, origin: 'https://app.test' })
+    const p1 = await prisma.socialPost.findUnique({ where: { id: post.id } })
+    expect(p1.status).toBe('PUBLICADO')
+    const feed = calls.find((c) => c.url.endsWith('/PGA/feed') && c.body.includes('link='))!
+    expect(new URLSearchParams(feed.body).get('link')).toBe('https://youtu.be/dQw4w9WgXcQ')
+  }, 60_000)
+
+  it('espaço: pedaços do vídeo somem ao publicar; fotos órfãs e de posts antigos são limpas; contador por tipo', async () => {
+    expect(await prisma.siteAsset.count({ where: { tenantId: T.t.id, kind: 'SOCIAL_VPART' } })).toBe(0)
+    const sharp = (await import('sharp')).default
+    const jpg = await sharp({ create: { width: 10, height: 10, channels: 3, background: '#000' } }).jpeg().toBuffer()
+    const old = new Date(Date.now() - 2 * 86_400_000)
+    const orphan = await prisma.siteAsset.create({ data: { tenantId: T.t.id, kind: 'SOCIAL_UPLOAD', mimeType: 'image/jpeg', fileSize: jpg.length, sha256: `orf${tag}`, data: jpg, createdAt: old } })
+    await prisma.siteAsset.updateMany({ where: { id: { in: T.imgs } }, data: { createdAt: old } })
+    const st = await av.socialStorage(T.t.id)
+    expect(st.fotos).toBeGreaterThan(0)
+    await av.pruneSocialUploads()
+    expect(await prisma.siteAsset.count({ where: { id: orphan.id } })).toBe(0)
+    // Fotos de post publicado há pouco ficam (prévia de "como ficou").
+    expect(await prisma.siteAsset.count({ where: { id: { in: T.imgs } } })).toBe(2)
+    await prisma.socialPost.updateMany({ where: { tenantId: T.t.id }, data: { updatedAt: new Date(Date.now() - 31 * 86_400_000) } })
+    await av.pruneSocialUploads()
+    expect(await prisma.siteAsset.count({ where: { id: { in: T.imgs } } })).toBe(0)
+  }, 60_000)
+
+  it('músicas do Instagram: conexão por token guarda o token de USUÁRIO e a busca usa ele; sem ele, explica', async () => {
+    const { connectMetaByToken } = await import('../oauth')
+    const { searchIgLibrary } = await import('./music')
+    await expect(searchIgLibrary(T.t.id, '', http)).rejects.toThrow(/nova conexão/)
+    await connectMetaByToken(T.t.id, { token: 'UT' }, { id: null, name: 'Teste' }, http)
+    const ig = await prisma.publicationConnection.findFirst({ where: { tenantId: T.t.id, externalAccountId: 'IGX' } })
+    expect(svc.readSecrets(ig.secretsEncrypted)).toMatchObject({ page_access_token: 'PAGE_TOKEN', user_access_token: 'UT' })
+    await prisma.publicationConnection.updateMany({ where: { tenantId: T.t.id, externalAccountId: { in: ['IGA'] } }, data: { status: 'RECONECTAR' } })
+    const tracks = await searchIgLibrary(T.t.id, '', http)
+    expect(tracks[0]).toMatchObject({ source: 'IG', id: '42', title: 'Hit' })
+  }, 60_000)
 })

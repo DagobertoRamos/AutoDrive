@@ -12,7 +12,7 @@ import { Bookmark, ChevronLeft, ChevronRight, Globe, Heart, MessageCircle, MoreH
 import { cn } from '@/lib/utils'
 
 export interface PreviewMedia { type: 'image' | 'video'; url: string; note?: string }
-export type PreviewFormat = 'POST' | 'CARROSSEL' | 'STORY' | 'REELS' | 'VIDEO'
+export type PreviewFormat = 'POST' | 'CARROSSEL' | 'STORY' | 'REELS' | 'VIDEO' | 'LINK'
 
 const initial = (s: string) => (s.replace(/^@/, '').trim()[0] ?? 'A').toUpperCase()
 
@@ -46,8 +46,35 @@ function Phone({ children, dark }: { children: React.ReactNode; dark?: boolean }
   )
 }
 
-export function PostPreview({ network, format, account, media, caption, music }: { network: 'INSTAGRAM' | 'FACEBOOK'; format: PreviewFormat; account: string; media: PreviewMedia[]; caption: string; music?: string | null }) {
+/** Miniatura pública do YouTube (a mesma que o Facebook mostra no cartão do link). */
+function linkThumb(url: string): string | null {
+  const id = /(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{6,})/.exec(url)?.[1]
+  return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null
+}
+
+export function PostPreview({ network, format, account, media, caption, music, link }: { network: 'INSTAGRAM' | 'FACEBOOK'; format: PreviewFormat; account: string; media: PreviewMedia[]; caption: string; music?: string | null; link?: string }) {
   const [i, setI] = useState(0)
+  const name0 = account || 'sua loja'
+
+  // ── Link de vídeo (só Facebook) ───────────────────────────────────────────
+  if (format === 'LINK') {
+    if (network === 'INSTAGRAM') return <p className="rounded-lg bg-amber-50 p-3 text-center text-xs text-amber-800">O Instagram não publica links em posts (regra da rede). Este formato vai só para a Página do Facebook.</p>
+    if (!link) return <p className="text-center text-xs text-gray-500">Cole o link do vídeo para ver a prévia.</p>
+    const thumb = linkThumb(link)
+    let host = ''; try { host = new URL(link).hostname.replace(/^www\./, '') } catch { /* link inválido */ }
+    return (
+      <Phone>
+        <div className="flex items-center gap-2 px-3 py-2"><Avatar name={name0} /><div className="flex-1 leading-tight"><p className="text-[12px] font-semibold">{name0}</p><p className="flex items-center gap-1 text-[10px] text-gray-500">Agora · <Globe size={9} /></p></div><MoreHorizontal size={16} /></div>
+        <p className="line-clamp-4 whitespace-pre-line px-3 pb-2 text-[12px] leading-snug text-gray-900">{caption}</p>
+        <div className="border-y border-gray-200 bg-gray-50">
+          <div className="relative aspect-video w-full bg-gray-200">{thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full items-center justify-center text-xs text-gray-500">Vídeo</span>}<span className="absolute inset-0 m-auto flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white">▶</span></div>
+          <p className="px-3 pt-1 text-[10px] uppercase text-gray-500">{host}</p><p className="px-3 pb-2 text-[12px] font-semibold text-gray-900">Assista ao vídeo</p>
+        </div>
+        <div className="flex justify-around py-2 text-[11px] text-gray-600"><span className="flex items-center gap-1"><ThumbsUp size={13} />Curtir</span><span className="flex items-center gap-1"><MessageCircle size={13} />Comentar</span><span className="flex items-center gap-1"><Share2 size={13} />Compartilhar</span></div>
+      </Phone>
+    )
+  }
+
   const cur = media[Math.min(i, media.length - 1)]
   const vertical = format === 'STORY' || format === 'REELS' || format === 'VIDEO'
   const name = account || 'sua loja'

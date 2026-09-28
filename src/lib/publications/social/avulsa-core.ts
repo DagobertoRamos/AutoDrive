@@ -2,19 +2,25 @@
 // Posts avulsos (fotos/vídeos da loja) — regras. PURO (testado).
 //   Post: 1 a 10 fotos (2+ = carrossel no Instagram / álbum no Facebook).
 //   Story: 1 foto ou 1 vídeo.   Reels: 1 vídeo.
+//   Link: link de vídeo (YouTube, Vimeo, TikTok…) como post da Página do
+//   Facebook com cartão do vídeo. O Instagram não publica link (regra da rede)
+//   e vídeo do YouTube/TikTok não é baixado (termos dos serviços).
 // Vídeo: enviado em pedaços (até 120 MB) ou por link (Drive, Dropbox, .mp4).
 // =============================================================================
 
 import { classifyVideo } from './video-core'
 
-export const AVULSA_FORMATS = ['POST', 'STORY', 'REELS'] as const
+export const AVULSA_FORMATS = ['POST', 'STORY', 'REELS', 'LINK'] as const
 export type AvulsaFormat = (typeof AVULSA_FORMATS)[number]
-export const AVULSA_LABEL: Record<AvulsaFormat, string> = { POST: 'Post / Carrossel (fotos)', STORY: 'Story (foto ou vídeo)', REELS: 'Reels (vídeo)' }
+export const AVULSA_LABEL: Record<AvulsaFormat, string> = { POST: 'Post / Carrossel (fotos)', STORY: 'Story (foto ou vídeo)', REELS: 'Reels (vídeo)', LINK: 'Link de vídeo (YouTube, Vimeo, TikTok)' }
+/** Formato que só a Página do Facebook aceita. */
+export const FACEBOOK_ONLY: AvulsaFormat[] = ['LINK']
 
 export type AvulsaMedia =
   | { type: 'image'; assetId: string }
-  | { type: 'video'; uploadId: string; parts: number; size: number; name?: string }
+  | { type: 'video'; uploadId: string; parts: number; size: number; name?: string; posterAssetId?: string }
   | { type: 'video'; link: string }
+  | { type: 'link'; url: string }
 
 export const PART_BYTES = 3_500_000
 export const MAX_VIDEO_BYTES = 120 * 1024 * 1024
@@ -30,8 +36,12 @@ export function sanitizeMedia(x: unknown): AvulsaMedia[] {
     if (o.type === 'video' && typeof o.uploadId === 'string' && UP.test(o.uploadId)) {
       const parts = Number(o.parts); const size = Number(o.size)
       if (Number.isInteger(parts) && parts >= 1 && parts <= Math.ceil(MAX_VIDEO_BYTES / PART_BYTES) && size > 0 && size <= MAX_VIDEO_BYTES) {
-        return [{ type: 'video', uploadId: o.uploadId, parts, size, name: typeof o.name === 'string' ? o.name.slice(0, 120) : undefined }]
+        return [{ type: 'video', uploadId: o.uploadId, parts, size, name: typeof o.name === 'string' ? o.name.slice(0, 120) : undefined, ...(typeof o.posterAssetId === 'string' && ID.test(o.posterAssetId) ? { posterAssetId: o.posterAssetId } : {}) }]
       }
+    }
+    if (o.type === 'link' && typeof o.url === 'string') {
+      const v = classifyVideo(o.url)
+      if (v) return [{ type: 'link', url: v.url }]
     }
     if (o.type === 'video' && typeof o.link === 'string') {
       const v = classifyVideo(o.link)
@@ -45,6 +55,9 @@ export function sanitizeMedia(x: unknown): AvulsaMedia[] {
 export function validateAvulsa(format: AvulsaFormat, media: AvulsaMedia[], caption: string): string | null {
   const imgs = media.filter((m) => m.type === 'image').length
   const vids = media.filter((m) => m.type === 'video').length
+  const links = media.filter((m) => m.type === 'link').length
+  if (format === 'LINK') return links === 1 && media.length === 1 ? (caption.length > 5000 ? 'Texto longo demais.' : null) : 'Cole 1 link de vídeo (YouTube, Vimeo, TikTok…).'
+  if (links) return 'Link de vídeo tem formato próprio: escolha "Link de vídeo".'
   if (format === 'POST') {
     if (vids) return 'Post leva só fotos. Para vídeo, escolha Reels ou Story.'
     if (!imgs) return 'Envie ao menos uma foto.'

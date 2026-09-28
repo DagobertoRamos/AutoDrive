@@ -116,8 +116,8 @@ export async function renderAndStoreReel(tenantId: string, p: ListingPayload, te
   return renderAndStoreVideo(tenantId, p, 'REELS', 'REELS', template, null)
 }
 
-/** Vídeos de Reels com mais de 15 dias: a rede já baixou; libera espaço. */
-export async function pruneSocialVideos(days = 15): Promise<number> {
+/** Vídeos gerados com mais de 2 dias: a rede já baixou (leva minutos); libera espaço. */
+export async function pruneSocialVideos(days = 2): Promise<number> {
   const r = await prisma.siteAsset.deleteMany({ where: { kind: SOCIAL_VIDEO_KIND, createdAt: { lt: new Date(Date.now() - days * 86_400_000) } } }).catch(() => ({ count: 0 }))
   return r.count
 }
