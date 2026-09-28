@@ -61,6 +61,7 @@ function Wizard() {
   const [autosave, setAutosave] = useState(false)
 
   useEffect(() => {
+    if (params.get('rascunho')) return undefined // tratado abaixo (Retomar do Painel)
     if (params.get('veiculos')) { const t = setTimeout(() => setAutosave(true), 0); return () => clearTimeout(t) }
     api('/api/publications/wizard').then((j) => { if (j.data?.selected?.length) setResume({ data: j.data, savedAt: j.savedAt }); else setAutosave(true) }).catch(() => setAutosave(true))
     return undefined
@@ -72,13 +73,13 @@ function Wizard() {
     return () => clearTimeout(t)
   }, [autosave, step, selected, targets, campaign, social])
 
-  const continueSaved = () => {
-    const d = resume!.data
+  function applySaved(d: any) {  
     setSelected(d.selected); setTargets(new Set(d.targets ?? [])); setCampaign(d.campaign ?? 'principal')
     if (d.social) setSocial({ ...DEFAULT_SOCIAL, ...d.social })
     setStep(Math.max(0, Math.min(STEPS.length - 1, Number(d.step) || 0)))
     setResume(null); setAutosave(true)
   }
+  const continueSaved = () => applySaved(resume!.data)
   const startOver = () => { void api('/api/publications/wizard', { method: 'DELETE' }).catch(() => undefined); setResume(null); setAutosave(true) }
 
   useEffect(() => {
@@ -97,6 +98,13 @@ function Wizard() {
   }, [])
   useEffect(() => { const t = setTimeout(() => void loadVehicles(selected).catch(() => undefined), 0); return () => clearTimeout(t) }, [selected, loadVehicles])
   const cur = current && selected.includes(current) ? current : selected[0] ?? null
+
+  // "Retomar" do Painel: remonta tudo dos rascunhos e abre na etapa em que parou.
+  useEffect(() => {
+    const rascunho = params.get('rascunho')
+    if (!rascunho) return
+    api(`/api/publications/resume?ids=${encodeURIComponent(rascunho)}`).then((j) => applySaved(j.data)).catch((e) => { setErr((e as Error).message); setAutosave(true) })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (n: number) => { setErr(null); setStep(Math.max(0, Math.min(STEPS.length - 1, n))) }
   const canNext = step === 0 ? selected.length > 0 : step === 4 ? targets.size > 0 : true

@@ -1,7 +1,7 @@
 // =============================================================================
-// Estúdio social — Reels (vídeo vertical) a partir das fotos do carro.
-// Cada foto vira um quadro com a arte (preço, modelo, WhatsApp), zoom suave e
-// transição em fade; termina num quadro com a chamada para o WhatsApp.
+// Estúdio social — Reels (vídeo vertical) a partir das fotos do carro, no
+// roteiro dos anúncios que engajam (reel-core.ts): gancho, até 12 fotos em
+// cortes rápidos com movimento e uma informação por cena, preço e chamada.
 // MP4 H.264 720×1280 30 fps com trilha de áudio muda (aceito por Instagram e
 // Facebook; a rede converte). Arquivo leve (~2–4 MB) para caber na resposta.
 // =============================================================================
@@ -10,7 +10,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { renderArt, type RenderArtInput } from './art'
+import { type RenderArtInput } from './art'
+import { TEMPLATE_INFO } from './formats'
+import { endCardOf, sceneBase, sceneOverlay } from './reel-art'
+import { REEL_TIMING, reelGraph, reelPlan, type ReelFacts } from './reel-core'
 import { audioFilter } from './music-core'
 
 export const REEL = { secondsPerPhoto: 2.6, endSeconds: 3.2, fade: 0.5, maxPhotos: 7, fps: 30 } as const
@@ -54,7 +57,7 @@ function run(bin: string, args: string[], timeoutMs: number): Promise<void> {
   })
 }
 
-export type ReelInput = Omit<RenderArtInput, 'photo' | 'format' | 'forVideo' | 'endCard'> & { photos: Buffer[]; audio?: Buffer | null }
+export type ReelInput = Omit<RenderArtInput, 'photo' | 'format' | 'forVideo' | 'endCard'> & { photos: Buffer[]; audio?: Buffer | null; fuel?: string | null; options?: string[]; conditions?: string | null }
 
 /** Monta o MP4 a partir de quadros prontos (JPEG 720×1280); com `audio`, a trilha entra com fade. */
 export async function framesToVideo(frames: Buffer[], durations: number[], audio: Buffer | null | undefined, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
@@ -91,17 +94,63 @@ export async function framesToVideo(frames: Buffer[], durations: number[], audio
   }
 }
 
-/** Gera o MP4 do Reels. Lança erro se não houver foto. */
+/**
+ * Gera o MP4 do Reels no roteiro que prende a atenção (reel-core.ts): gancho,
+ * muitas fotos em cortes rápidos com movimento e uma informação por cena,
+ * preço revelado e chamada final. Lança erro se não houver foto.
+ */
 export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
-  const photos = i.photos.slice(0, REEL.maxPhotos)
+  const photos = i.photos.slice(0, REEL_TIMING.maxPhotos)
   if (!photos.length) throw new Error('O Reels precisa de pelo menos uma foto.')
-  const frames: Buffer[] = []
-  for (const [n, photo] of photos.entries()) {
-    // Selo só no primeiro quadro; os demais mostram o carro com preço e contato.
-    frames.push(await renderArt({ ...i, template: n === 0 ? i.template : 'LIMPA', photo, format: 'REELS', forVideo: true }, { quality: 90 }))
+  const facts = reelFactsOf(i)
+  const segs = reelPlan(photos.length, facts)
+  let endCache: Promise<Buffer> | null = null
+  const end = () => (endCache ??= endCardOf({ ...i, photo: photos[0] })())
+  const ctx = { facts, price: i.price ?? null, oldPrice: i.oldPrice ?? null, primaryColor: i.primaryColor, darkColor: i.darkColor, logo: i.logo ?? null, storeName: i.storeName }
+  const dir = await mkdtemp(path.join(tmpdir(), 'reel-'))
+  try {
+    const inputs: string[] = []
+    for (const [n, seg] of segs.entries()) {
+      const base = path.join(dir, `b${n}.jpg`); const over = path.join(dir, `o${n}.png`)
+      await writeFile(base, await sceneBase(seg, photos[seg.photo] ?? photos[0], end))
+      await writeFile(over, await sceneOverlay(seg, ctx))
+      const t = seg.seconds.toFixed(2)
+      inputs.push('-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', base, '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', over)
+    }
+    const g = reelGraph(segs, REEL.fps)
+    return await encode(dir, inputs, segs.length * 2, g.filter, g.out, g.total, i.audio, opts.timeoutMs ?? 180_000)
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
-  frames.push(await renderArt({ ...i, photo: photos[0], format: 'REELS', forVideo: true, endCard: true }, { quality: 90 }))
-  return framesToVideo(frames, [...photos.map(() => REEL.secondsPerPhoto), REEL.endSeconds], i.audio, opts)
+}
+
+/** Dados do carro para o roteiro (gancho, cenas e preço). */
+export function reelFactsOf(i: Pick<ReelInput, 'brand' | 'model' | 'version' | 'year' | 'modelYear' | 'km' | 'gear' | 'template'> & { fuel?: string | null; options?: string[]; conditions?: string | null }): ReelFacts {
+  return { brand: i.brand, model: i.model, version: i.version, year: i.year, modelYear: i.modelYear, km: i.km, gear: i.gear, fuel: i.fuel ?? null, options: i.options ?? [], conditions: i.conditions ?? null, badge: TEMPLATE_INFO[i.template].badge ?? 'CONFIRA' }
+}
+
+/** Codifica o MP4 (H.264 + AAC) a partir das entradas e do filtro montados. */
+async function encode(dir: string, inputs: string[], inputCount: number, filter: string, out: string, total: number, audio: Buffer | null | undefined, timeoutMs: number): Promise<{ mp4: Buffer; seconds: number }> {
+  let audioIn: string[]
+  let audioMap: string
+  let filterAll = filter
+  if (audio?.length) {
+    const a = path.join(dir, 'music'); await writeFile(a, audio)
+    audioIn = ['-stream_loop', '-1', '-i', a]
+    filterAll = `${filter};[${inputCount}:a]${audioFilter(total)},atrim=0:${total.toFixed(2)}[aout]`
+    audioMap = '[aout]'
+  } else {
+    audioIn = ['-f', 'lavfi', '-t', total.toFixed(2), '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100']
+    audioMap = `${inputCount}:a`
+  }
+  const mp4 = path.join(dir, 'out.mp4')
+  await run(await ffmpegPath(), [
+    '-hide_banner', '-loglevel', 'error', '-y', ...inputs, ...audioIn,
+    '-filter_complex', filterAll, '-map', `[${out}]`, '-map', audioMap,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high', '-crf', '23', '-maxrate', '2500k', '-bufsize', '5000k', '-pix_fmt', 'yuv420p', '-r', String(REEL.fps),
+    '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-t', total.toFixed(2), '-movflags', '+faststart', mp4,
+  ], timeoutMs)
+  return { mp4: await readFile(mp4), seconds: Math.round(total * 10) / 10 }
 }
 
 /**

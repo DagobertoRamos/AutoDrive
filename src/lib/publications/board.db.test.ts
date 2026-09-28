@@ -95,6 +95,13 @@ describe.skipIf(!RUN)('Painel — banco local', () => {
     expect(j.kpis.proximo.title).toBe('HONDA ADV 160')
   })
 
+  it('Retomar remonta o rascunho exatamente (veículo, contas, formato, modelo, música e legenda) na Revisão', async () => {
+    await prisma.publication.update({ where: { id: T.draft.id }, data: { overrides: { social: { format: 'POST', template: 'CHEGOU', music: { mode: 'AUTO', mood: 'ROCK' } }, caption: 'Legenda que eu escrevi' } } })
+    const resume = await import('@/app/api/publications/resume/route')
+    const j = await (await resume.GET(new Request(`http://x/api/publications/resume?ids=${T.draft.id}`))).json()
+    expect(j.data).toMatchObject({ step: 5, selected: [T.biz.id], targets: [T.ig.id], social: { formats: ['POST'], template: 'CHEGOU', music: { mode: 'AUTO', mood: 'ROCK' }, captions: { [`${T.biz.id}:POST`]: 'Legenda que eu escrevi' } } })
+  })
+
   it('Tentar de novo tira o post da atenção; Excluir apaga rascunho e retira o que está no ar', async () => {
     const post = (json: unknown) => actions.POST(new Request('http://x/api/publications/actions', { method: 'POST', body: JSON.stringify(json) }))
     const r1 = await (await post({ ids: [T.reelsBad[1].id], action: 'REENVIAR' })).json()

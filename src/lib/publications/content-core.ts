@@ -13,6 +13,7 @@ import { classifyVideo } from './social/video-core'
 import { createHash } from 'crypto'
 import { effectivePrice } from '@/lib/site/listing-core'
 import type { ChannelSpec } from './channels'
+import { inferOptions } from '@/lib/stock/options-catalog'
 
 export interface ContactSettings {
   whatsapp?: string | null
@@ -157,7 +158,9 @@ export interface BuildInput {
 export function buildPayload(i: BuildInput): ListingPayload {
   const o = i.overrides ?? {}
   const d = i.draft ?? {}
-  const options = Array.isArray(i.siteListing?.options) ? (i.siteListing!.options as unknown[]).filter((x): x is string => typeof x === 'string' && !!x.trim()).map(clean) : []
+  const listed = Array.isArray(i.siteListing?.options) ? (i.siteListing!.options as unknown[]).filter((x): x is string => typeof x === 'string' && !!x.trim()).map(clean) : []
+  // Sem opcionais marcados: usa os que estão escritos no cadastro (versão/descrição).
+  const options = listed.length ? listed : inferOptions([i.vehicle.version, i.siteListing?.description])
   const conditions = clean(o.conditions ?? d.conditions) || (i.defaultConditions ?? '').trim()
   const title = clean(o.title) || clean(d.title) || clean(i.siteListing?.title) || baseTitle(i.vehicle)
   const description = (o.description ?? '').trim() || (d.description ?? '').trim() || (i.siteListing?.description ?? '').trim() || autoDescription(i.vehicle, options, conditions)

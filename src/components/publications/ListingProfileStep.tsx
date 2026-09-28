@@ -15,7 +15,7 @@ import { ORIGIN_LABEL, type OriginType } from '@/lib/stock/origin-core'
 
 interface Profile {
   originType: OriginType; originDefined: boolean; partnerStoreId: string | null
-  options: string[]; suggested: string[]
+  options: string[]; suggested: string[]; prefilled?: boolean
   partners: Array<{ id: string; name: string; city: string | null; active: boolean }>
 }
 
@@ -43,6 +43,8 @@ export function ListingProfileStep({ vehicleId, canEdit }: { vehicleId: string; 
     fetch(`/api/publications/profile/${vehicleId}`, { cache: 'no-store' }).then((r) => r.json()).then((j) => {
       if (!j.success) throw new Error(j.error ?? 'Falha ao carregar a ficha.')
       setP(j.data); setOrigin(j.data.originType); setPartnerId(j.data.partnerStoreId ?? ''); setPicked(j.data.options)
+      // Opcionais vindos do cadastro: ficam marcados e são gravados ao sair da etapa.
+      if (j.data.prefilled) { dirty.current = true; setState('idle'); setMsg('') }
     }).catch((e) => { setState('error'); setMsg((e as Error).message) })
   }, [vehicleId])
 
@@ -120,6 +122,11 @@ export function ListingProfileStep({ vehicleId, canEdit }: { vehicleId: string; 
           </div>
         </div>
 
+        {p.prefilled && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-900">
+            <Sparkles size={13} /> {picked.length} opcional(is) já marcados a partir do cadastro do carro (avaliação, versão e descrição). Confira e ajuste — são gravados ao continuar.
+          </div>
+        )}
         {suggestedNew.length > 0 && canEdit && (
           <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
             <Sparkles size={13} /> A avaliação registrou {suggestedNew.length} opcional(is): {suggestedNew.slice(0, 6).join(', ')}{suggestedNew.length > 6 ? '…' : ''}

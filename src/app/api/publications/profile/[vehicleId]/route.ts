@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { audit, bad, pubAuth } from '@/lib/publications/api'
 import { effectiveOrigin, stockTypeForOrigin, validateOriginInput } from '@/lib/stock/origin-core'
-import { cleanOptions } from '@/lib/stock/options-catalog'
+import { cleanOptions, inferOptions } from '@/lib/stock/options-catalog'
 import { parseOpcionais } from '@/lib/evaluation/rules'
 import { notifyStockChanged } from '@/lib/publications/service'
 
@@ -25,7 +25,7 @@ export async function GET(req: Request, ctx: Ctx) {
     const { vehicleId } = await ctx.params
     const v = await prisma.vehicle.findFirst({
       where:  { id: vehicleId, tenantId: a.tenantId },
-      select: { id: true, originType: true, partnerStoreId: true, stockType: true, originEvaluationId: true, siteListing: { select: { options: true } } },
+      select: { id: true, originType: true, partnerStoreId: true, stockType: true, originEvaluationId: true, version: true, notes: true, siteListing: { select: { options: true, description: true } } },
     })
     if (!v) return bad('Veículo não encontrado nesta loja.', 404)
     const evalRow = v.originEvaluationId
@@ -35,13 +35,18 @@ export async function GET(req: Request, ctx: Ctx) {
       where: { tenantId: a.tenantId, OR: [{ active: true }, ...(v.partnerStoreId ? [{ id: v.partnerStoreId }] : [])] },
       orderBy: { name: 'asc' }, select: { id: true, name: true, city: true, active: true },
     })
+    // Sem opcionais marcados: já vêm do cadastro (avaliação + o que está escrito
+    // na versão/descrição/observações). A loja confere e ajusta.
+    const saved = cleanOptions(v.siteListing?.options ?? [])
+    const fromRecord = saved.length ? [] : cleanOptions([...parseOpcionais(evalRow?.evaluationNotes), ...inferOptions([v.version, v.siteListing?.description, v.notes, evalRow?.evaluationNotes])])
     return NextResponse.json({
       success: true,
       data: {
         originType:     effectiveOrigin(v),
         originDefined:  !!v.originType,
         partnerStoreId: v.partnerStoreId,
-        options:        cleanOptions(v.siteListing?.options ?? []),
+        options:        saved.length ? saved : fromRecord,
+        prefilled:      !saved.length && fromRecord.length > 0,
         suggested:      cleanOptions(parseOpcionais(evalRow?.evaluationNotes)),
         partners,
       },

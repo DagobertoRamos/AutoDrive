@@ -81,11 +81,8 @@ export default function PainelPage() {
   const resume = (c: BoardCard) => {
     if (c.kind === 'ASSISTENTE') return router.push('/marketing/publicacoes/nova')
     if (c.kind === 'AVULSO') return router.push(`/marketing/avulsa?editar=${c.postId}`)
-    const s = (c.overrides as any)?.social
-    const q = new URLSearchParams({ veiculos: c.vehicleId!, contas: c.channels.map((x) => x.connectionId).filter(Boolean).join(',') })
-    if (s?.format) q.set('formato', s.format)
-    if (s?.template) q.set('modelo', s.template)
-    if (!s?.format && c.campaignKey && c.campaignKey !== 'principal') q.set('campanha', c.campaignKey)
+    // Abre a Nova publicação já montada com o rascunho (etapa Revisão), sem refazer nada.
+    const q = new URLSearchParams({ rascunho: c.channels.map((x) => x.pubId).filter(Boolean).join(',') })
     router.push(`/marketing/publicacoes/nova?${q}`)
   }
 

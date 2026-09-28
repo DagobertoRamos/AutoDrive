@@ -103,7 +103,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
                       <img src={src} alt={`Prévia ${FORMAT_INFO[f].label}`} className="h-full w-full object-cover" loading="lazy" />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1.5">
-                      <p className="text-xs font-semibold text-gray-800">{FORMAT_INFO[f].label}{f === 'REELS' && <span className="font-normal text-gray-500"> · 1º quadro do vídeo (≈ 20 s com todas as fotos)</span>}</p>
+                      <p className="text-xs font-semibold text-gray-800">{FORMAT_INFO[f].label}{f === 'REELS' && <span className="font-normal text-gray-500"> · 1ª cena do vídeo (≈ 15–20 s: gancho, até 12 fotos com as informações do carro, preço e chamada)</span>}</p>
                       {f === 'STORY' ? (
                         <p className="text-[11px] text-gray-500">Story não leva legenda: a arte já traz preço e WhatsApp.</p>
                       ) : (

@@ -33,3 +33,14 @@ describe('catálogo de opcionais', () => {
     ])
   })
 })
+
+describe('Opcionais a partir do cadastro', () => {
+  it('marca o que está escrito na versão, descrição e avaliação — e só isso', async () => {
+    const { inferOptions } = await import('./options-catalog')
+    const got = inferOptions(['Evolut. Flex 1.0 Tb 12v 5p Aut.', 'Carro com ar condicionado, dir. hidráulica, vidros elétricos, travas elétricas, rodas de liga leve e câmera de ré. Único dono, IPVA pago. Veículo periciado.', null])
+    expect(got).toEqual(expect.arrayContaining(['Ar-condicionado', 'Direção hidráulica', 'Vidros elétricos dianteiros', 'Travas elétricas', 'Rodas de liga leve', 'Câmera de ré', 'Único dono', 'IPVA pago', 'Laudo cautelar aprovado']))
+    expect(got).not.toContain('Direção')
+    expect(inferOptions(['Palio 1.0 Celebr. ECONOMY F.Flex 8V 2p · Cor Branco · Câmbio Manual'])).toEqual([])
+    expect(inferOptions(['Teto solar panorâmico, Apple CarPlay e Android Auto, bancos de couro'])).toEqual(expect.arrayContaining(['Teto solar panorâmico', 'Apple CarPlay', 'Android Auto', 'Bancos em couro']))
+  })
+})

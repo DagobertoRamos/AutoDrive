@@ -11,7 +11,7 @@ import { buildFor, loadVehicle } from '@/lib/publications/service'
 import { isArtTemplate, isSocialFormat } from '@/lib/publications/social/formats'
 import { musicOf, musicPlan, MOOD_LABEL } from '@/lib/publications/social/music-core'
 import { previewAudio } from '@/lib/publications/social/music'
-import { REEL } from '@/lib/publications/social/reel'
+import { reelPlanFor } from '@/lib/publications/social/studio'
 import { classifyVideo } from '@/lib/publications/social/video-core'
 
 export const dynamic = 'force-dynamic'
@@ -41,13 +41,10 @@ export async function POST(req: Request) {
   let slides: number[] | null = null
   let media: Array<{ type: 'image' | 'video'; url: string; note?: string }>
   if (format === 'REELS') {
-    // Os mesmos quadros do vídeo: 1ª foto com o selo, demais limpas e a chamada final.
-    const n = Math.max(1, Math.min(REEL.maxPhotos, p.photos.length))
-    media = [
-      ...Array.from({ length: n }, (_, k) => ({ type: 'image' as const, url: art('REELS', { photo: String(k), video: '1' }, k === 0 ? template : 'LIMPA') })),
-      { type: 'image', url: art('REELS', { photo: '0', video: '1', end: '1' }) },
-    ]
-    slides = [...media.slice(0, -1).map(() => REEL.secondsPerPhoto), REEL.endSeconds]
+    // As mesmas cenas do vídeo (gancho, fotos com a informação, preço, chamada), no mesmo tempo.
+    const segs = reelPlanFor(p, template)
+    media = segs.map((_, k) => ({ type: 'image' as const, url: `/api/publications/social/reel-frame?${new URLSearchParams({ vehicleId: v.id, template, i: String(k) })}` }))
+    slides = segs.map((sg) => sg.seconds)
   } else if (format === 'POST') {
     media = [{ type: 'image', url: art('POST') }]
     if (clip) slides = [12]

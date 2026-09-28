@@ -76,3 +76,50 @@ export function groupOptions(options: string[]): Array<{ group: string; items: s
   }
   return [...order, 'Outros'].filter((g) => buckets.has(g)).map((g) => ({ group: g, items: buckets.get(g)! }))
 }
+
+// ── Opcionais a partir do cadastro (PURO, testado) ───────────────────────────
+
+const plain = (s: string) => ` ${foldText(s).replace(/[^a-z0-9]+/g, ' ').trim()} `
+/** Como as lojas escrevem → nome do catálogo (ou item de estado conhecido). */
+const SYNONYMS: Array<[string[], string]> = [
+  [['ar condicionado', 'ar cond', 'ar condic', 'arcondicionado'], 'Ar-condicionado'],
+  [['dir hidraulica', 'direcao hidraulica'], 'Direção hidráulica'],
+  [['dir eletrica', 'direcao eletrica'], 'Direção elétrica'],
+  [['vidros eletricos', 'vidro eletrico', 'vidros eletr'], 'Vidros elétricos dianteiros'],
+  [['travas eletricas', 'trava eletrica', 'travas eletr'], 'Travas elétricas'],
+  [['sensor de re', 'sensor de estacionamento', 'sensor estacionamento'], 'Sensor de estacionamento traseiro'],
+  [['camera de re', 'camera re'], 'Câmera de ré'],
+  [['rodas de liga', 'roda de liga', 'rodas liga'], 'Rodas de liga leve'],
+  [['bancos de couro', 'banco de couro', 'bancos couro'], 'Bancos em couro'],
+  [['central multimidia', 'multimidia'], 'Central multimídia'],
+  [['piloto automatico'], 'Piloto automático'],
+  [['farol de neblina', 'farois de neblina', 'milha'], 'Faróis de neblina'],
+  [['periciado', 'laudo cautelar aprovado', 'cautelar aprovad'], 'Laudo cautelar aprovado'],
+  [['ipva pago', 'ipva quitado', 'ipva 20'], 'IPVA pago'],
+  [['unico dono'], 'Único dono'],
+  [['revisoes em dia', 'revisado', 'revisoes feitas'], 'Revisões em dia'],
+]
+// Dados que já estão na ficha (câmbio, combustível): não viram opcional.
+const FACT = /^(cambio|transmissao|flex|gasolina|etanol|alcool|diesel|gnv|eletrico|hibrido|manual|automatico)/
+// Itens que também são nome de seção/grupo (genéricos demais para marcar sozinhos).
+const GENERIC = new Set([...OPTION_CATALOG.flatMap((g) => [g.group, ...g.sections.map((s) => s.section)])].map(foldText))
+
+/**
+ * Opcionais citados no cadastro do carro (versão, descrição, observações,
+ * avaliação): nomes do catálogo encontrados no texto + jeitos comuns de
+ * escrever. Só marca o que está escrito — não inventa equipamento.
+ */
+export function inferOptions(texts: Array<string | null | undefined>): string[] {
+  const hay = plain(texts.filter(Boolean).join(' • '))
+  if (hay.trim().length < 2) return []
+  const found: string[] = []
+  for (const info of INDEX.values()) {
+    if (GENERIC.has(foldText(info.name)) || FACT.test(foldText(info.name))) continue
+    const variants = [info.name, ...info.name.split(/\s+[–-]\s+/).slice(1).flatMap((x) => x.split('/'))]
+    if (variants.some((v) => { const p = plain(v); return p.trim().length >= 3 && hay.includes(p) })) found.push(info.name)
+  }
+  for (const [words, target] of SYNONYMS) if (words.some((w) => hay.includes(plain(w)))) found.push(optionInfo(target)?.name ?? target)
+  // Remove o genérico quando o específico também bateu ("Direção" × "Direção hidráulica").
+  const uniq = cleanOptions(found).filter((n) => !FACT.test(foldText(n)) && !GENERIC.has(foldText(n)))
+  return uniq.filter((n) => !uniq.some((m) => m !== n && plain(m).includes(plain(n))))
+}

@@ -21,7 +21,7 @@ async function fitPhoto(photo: Buffer, box: Box) {
   return { input: img.data, left: box.x + Math.round((box.w - img.info.width) / 2), top: box.y + Math.round((box.h - img.info.height) / 2) }
 }
 
-async function textImage(t: { text: string; bold: boolean; size: number; color: string; maxWidth: number; strike?: boolean }) {
+export async function textImage(t: { text: string; bold: boolean; size: number; color: string; maxWidth: number; strike?: boolean }) {
   const sharp = await sharpLib()
   const markup = `<span foreground="${t.color}"${t.strike ? ' strikethrough="true"' : ''}>${pangoEscape(t.text)}</span>`
   return sharp({ text: { text: markup, font: `Liberation Sans ${t.bold ? 'Bold ' : ''}${t.size}`, fontfile: t.bold ? FONT.bold : FONT.regular, rgba: true, width: Math.max(1, Math.round(t.maxWidth)), dpi: 72, wrap: 'none' } })
