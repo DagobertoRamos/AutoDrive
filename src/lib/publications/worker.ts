@@ -30,7 +30,8 @@ import { buildFor, enqueue, loadVehicle, logEvent, onVehicleStockChanged, readSe
 import { loadPublicationSettings } from './settings'
 import { artUrlFor, mediaUrlFor, videoUrlFor } from './media-token'
 import { socialOf } from './social/formats'
-import { renderAndStoreReel } from './social/studio'
+import { renderAndStoreVideo } from './social/studio'
+import { audioToEmbed } from './social/music'
 import { exactMatch, rankCandidates } from './mapping-core'
 
 const LOCK_MS = 5 * 60_000
@@ -132,8 +133,9 @@ export async function connectorContext(conn: { id: string; tenantId: string; cha
     mediaUrl: (u) => mediaUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { now: now() }),
     social: {
       artUrl: (u, p, format, template) => artUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { v: p.vehicle.id, f: format, k: template, p: p.price, o: p.oldPrice }, { now: now() }),
-      async reelUrl(p, template) {
-        const { assetId } = await renderAndStoreReel(conn.tenantId, p, template)
+      async videoUrl(p, kind, o) {
+        const music = o.embedMusic && p.social?.music ? await audioToEmbed(p.social.music, p.vehicle.id, deps.http).catch((e) => { console.error('[publications] música', (e as Error).message); return null }) : null
+        const { assetId } = await renderAndStoreVideo(conn.tenantId, p, kind, o.format, o.template, music?.bytes ?? null)
         return videoUrlFor(deps.origin ?? appOrigin(), conn.tenantId, assetId, { now: now() })
       },
     },
@@ -164,9 +166,10 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
   const op = job.op as JobOp
   const ev = (type: string, message: string, toStatus?: string | null, data?: unknown) => logEvent(prisma, { tenantId: pub.tenantId, publicationId: pub.id, vehicleId: pub.vehicleId, channel: pub.channel, type, message, fromStatus: pub.status, toStatus: toStatus ?? null, data, actor: SYSTEM_ACTOR })
   const makesLive = op === 'PUBLICAR' || op === 'ATUALIZAR' || op === 'RETOMAR'
-  if (!deps.heavy && (op === 'PUBLICAR' || op === 'RETOMAR') && socialOf(pub.overrides)?.format === 'REELS') {
+  const soc = socialOf(pub.overrides)
+  if (!deps.heavy && (op === 'PUBLICAR' || op === 'RETOMAR') && soc && (soc.format === 'REELS' || !!soc.music)) {
     await prisma.publicationJob.update({ where: { id: job.id }, data: { status: 'PENDENTE', runAt: new Date(now.getTime() + 20_000), attempts: { decrement: 1 }, lockedBy: null, lockedUntil: null } })
-    return out('REPETIR', { message: 'O vídeo do Reels é gerado pela rotina de publicação (em até 1 minuto).' })
+    return out('REPETIR', { message: 'O vídeo (Reels/trilha) é gerado pela rotina de publicação (em até 1 minuto).' })
   }
 
   // 1) Tarefa velha? (a intenção mudou depois que ela foi criada)
@@ -214,7 +217,8 @@ export async function executeJob(job: JobRow, deps: WorkerDeps = {}): Promise<Jo
 
   const ctx = await connectorContext(conn, deps)
   const format = socialOf(pub.overrides)?.format ?? null
-  const ref = { vehicleId: pub.vehicleId, remoteId: pub.remoteId, externalRef: pub.externalRef, remoteUrl: pub.remoteUrl, pendingToken: pub.pendingToken, format }
+  const video = format === 'REELS' || (format === 'POST' && !!soc?.music && pub.channel === 'META_PAGE')
+  const ref = { vehicleId: pub.vehicleId, remoteId: pub.remoteId, externalRef: pub.externalRef, remoteUrl: pub.remoteUrl, pendingToken: pub.pendingToken, format, video }
   const ephemeral = format === 'STORY' || format === 'REELS'
   const payload = makesLive || op === 'PAUSAR' ? await buildFor(pub.tenantId, vehicle, pub.externalRef, pub.overrides) : null
   const hash = payload ? payloadHash(payload) : null

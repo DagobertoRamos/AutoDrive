@@ -337,7 +337,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
       </ul>
       {!usable.length && <p className="text-sm text-gray-500">Nenhuma conta conectada.</p>}
       <Link href="/marketing/canais" className="inline-block text-xs font-medium text-brand-700 hover:underline">Conectar mais canais</Link>
-      {hasSocial && <SocialStudio vehicles={vehicles} value={social} onChange={setSocial} />}
+      {hasSocial && <SocialStudio vehicles={vehicles} value={social} onChange={setSocial} hasInstagram={[...targets].some((id) => conns.find((c) => c.id === id)?.channel === 'INSTAGRAM')} />}
       {hasSocial && !social.formats.length && (
         <label className="block max-w-sm text-xs font-medium text-gray-600">Nome da campanha (redes sociais)
           <input className={inputCls} value={campaign} onChange={(e) => setCampaign(e.target.value.slice(0, 60))} />
@@ -374,7 +374,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
       const nowLocal = utcToLocalInput(new Date(), tz)
       const socialTargets = (local: string, formats = social.formats) => vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => formats.map((f) => ({
         vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f, local),
-        overrides: { social: { format: f, template: social.template }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) },
+        overrides: { social: { format: f, template: social.template, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) },
       }))))
       const calls: Array<{ targets: unknown[]; mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO'; scheduledLocal?: string }> = []
       if (social.spread && mode !== 'RASCUNHO') {

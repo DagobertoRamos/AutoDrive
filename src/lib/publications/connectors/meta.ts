@@ -19,6 +19,7 @@ import { channelText, type ListingPayload } from '../content-core'
 import type { HttpResponse } from './http'
 import type { Connector, ConnectorContext, RemoteRef, RemoteResult } from './types'
 import type { SocialSpec } from '../social/formats'
+import { musicPlan } from '../social/music-core'
 
 const pageSpec = channelSpec('META_PAGE')!
 const igSpec = channelSpec('INSTAGRAM')!
@@ -69,6 +70,14 @@ function needStudio(ctx: ConnectorContext, s: SocialSpec) {
 
 const STORY_OK: RemoteResult['state'] = 'PUBLICADO'
 
+/** Envio de vídeo hospedado (file_url) para a Página: fase "upload" do rupload. */
+async function rupload(ctx: ConnectorContext, videoId: string, fileUrl: string, what: string) {
+  const version = graphBase().split('/').pop()
+  const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/video-upload/${version}/${videoId}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, file_url: fileUrl } })
+  const err = graphError(up, what)
+  if (err) throw err
+}
+
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export const metaPageConnector: Connector = {
@@ -80,6 +89,21 @@ export const metaPageConnector: Connector = {
   async publish(p, ctx) {
     const page = ctx.connection.externalAccountId
     const s = p.social
+    const music = s ? musicPlan(s.music ?? null, 'META_PAGE', s.format) : null
+    if (s?.format === 'STORY' && music) {
+      // Story com música = story em vídeo (a trilha vai embutida).
+      const url = await needStudio(ctx, s).videoUrl(p, 'CLIP', { format: 'STORY', template: s.template, embedMusic: true })
+      const start = await graph<{ video_id: string }>(ctx, 'POST', `/${page}/video_stories`, { upload_phase: 'start' }, 'Story em vídeo (início)')
+      await rupload(ctx, start.video_id, url, 'Story em vídeo (envio)')
+      const st = await graph<{ post_id?: string }>(ctx, 'POST', `/${page}/video_stories`, { upload_phase: 'finish', video_id: start.video_id }, 'Story em vídeo', true)
+      return { state: STORY_OK, remoteId: st.post_id ?? start.video_id, remoteStatus: 'story com música (some em 24 h)', message: 'Story com música publicado na Página.' }
+    }
+    if (s?.format === 'POST' && music) {
+      // Post com música = vídeo curto da arte no feed da Página.
+      const url = await needStudio(ctx, s).videoUrl(p, 'CLIP', { format: 'POST', template: s.template, embedMusic: true })
+      const v = await graph<{ id: string }>(ctx, 'POST', `/${page}/videos`, { file_url: url, description: channelText(p, pageSpec).description, published: 'true' }, 'Post em vídeo', true)
+      return { state: 'EM_ANALISE', remoteId: v.id, message: 'Post com música enviado; o Facebook está processando o vídeo.' }
+    }
     if (s?.format === 'STORY') {
       const art = needStudio(ctx, s).artUrl(p.photos[0], p, 'STORY', s.template)
       const photo = await graph<{ id: string }>(ctx, 'POST', `/${page}/photos`, { url: art, published: 'false' }, 'Story (foto)')
@@ -87,12 +111,9 @@ export const metaPageConnector: Connector = {
       return { state: STORY_OK, remoteId: st.post_id ?? st.id ?? photo.id, remoteStatus: 'story (some em 24 h)', message: 'Story publicado na Página.' }
     }
     if (s?.format === 'REELS') {
-      const url = await needStudio(ctx, s).reelUrl(p, s.template)
+      const url = await needStudio(ctx, s).videoUrl(p, 'REELS', { format: 'REELS', template: s.template, embedMusic: music === 'EMBED' })
       const start = await graph<{ video_id: string }>(ctx, 'POST', `/${page}/video_reels`, { upload_phase: 'start' }, 'Reels (início)')
-      const version = graphBase().split('/').pop()
-      const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/video-upload/${version}/${start.video_id}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, file_url: url } })
-      const upErr = graphError(up, 'Reels (envio do vídeo)')
-      if (upErr) throw upErr
+      await rupload(ctx, start.video_id, url, 'Reels (envio do vídeo)')
       await graph(ctx, 'POST', `/${page}/video_reels`, { upload_phase: 'finish', video_id: start.video_id, video_state: 'PUBLISHED', description: channelText(p, pageSpec).description }, 'Reels (publicar)', true)
       return { state: 'EM_ANALISE', remoteId: start.video_id, message: 'Reels enviado; o Facebook está processando o vídeo.' }
     }
@@ -111,13 +132,13 @@ export const metaPageConnector: Connector = {
     if (!ref.remoteId) return { state: 'NAO_ENCONTRADO' }
     // Story some sozinho em 24 h: publicado é publicado (não vira "falha").
     if (ref.format === 'STORY') return { state: STORY_OK, remoteId: ref.remoteId, remoteStatus: 'story (some em 24 h)' }
-    if (ref.format === 'REELS') {
+    if (ref.format === 'REELS' || ref.video) {
       try {
         const v = await graph<{ id: string; permalink_url?: string; status?: { video_status?: string; processing_phase?: { errors?: Array<{ message?: string }> } } }>(ctx, 'GET', `/${ref.remoteId}`, { fields: 'id,permalink_url,status' }, 'Reels')
         const st = v.status?.video_status
         const link = v.permalink_url ? (v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`) : null
         if (st === 'error') return { state: 'REJEITADO', remoteId: v.id, remoteStatus: 'erro no processamento', message: v.status?.processing_phase?.errors?.[0]?.message ?? 'O Facebook não conseguiu processar o vídeo.' }
-        if (st === 'ready' || st === 'published') return { state: 'PUBLICADO', remoteId: v.id, remoteUrl: link, remoteStatus: 'Reels no ar' }
+        if (st === 'ready' || st === 'published') return { state: 'PUBLICADO', remoteId: v.id, remoteUrl: link, remoteStatus: ref.format === 'REELS' ? 'Reels no ar' : 'vídeo no ar' }
         return { state: 'EM_ANALISE', remoteId: v.id, remoteUrl: link, remoteStatus: `processando (${st ?? 'aguardando'})` }
       } catch (e) {
         if (e instanceof ConnectorError && e.kind === 'NOT_FOUND') return { state: 'NAO_ENCONTRADO', remoteId: ref.remoteId }
@@ -133,7 +154,7 @@ export const metaPageConnector: Connector = {
     }
   },
   async update(ref, p, ctx) {
-    if (ref.format === 'STORY' || ref.format === 'REELS') return { ...(await this.get!(ref, ctx)), message: 'Story e Reels não são editáveis: o preço novo entra nas próximas publicações.' }
+    if (ref.format === 'STORY' || ref.format === 'REELS' || ref.video) return { ...(await this.get!(ref, ctx)), message: 'Story, Reels e vídeos não são editáveis: o preço novo entra nas próximas publicações.' }
     // Só o texto pode ser editado (e só de posts criados pelo app). Fotos não.
     await graph(ctx, 'POST', `/${ref.remoteId}`, { message: channelText(p, pageSpec).description }, 'Editar post')
     const r = await this.get!(ref, ctx)
@@ -160,7 +181,17 @@ async function waitContainer(ctx: ConnectorContext, id: string, tries = 6, waitM
     if (s.status_code === 'ERROR' || s.status_code === 'EXPIRED') throw new ConnectorError('VALIDATION', `Instagram recusou a mídia (${s.status_code}).`, 'Confira se as fotos são JPEG acessíveis e com proporção aceita.')
     await sleep(waitMs)
   }
-  throw new ConnectorError('UNAVAILABLE', 'Instagram ainda processando as fotos; nova tentativa em instantes.')
+  throw new ConnectorError('UNAVAILABLE', 'Instagram ainda processando a mídia; nova tentativa em instantes.')
+}
+
+/** Vídeo leva mais tempo para processar (a rotina tem até 5 min). */
+const waitVideo = (ctx: ConnectorContext, id: string) => waitContainer(ctx, id, 30, 5_000)
+
+/** Parâmetro oficial para anexar música da biblioteca do Instagram ao Reels (vídeo nosso vai mudo). */
+function igAudio(s: SocialSpec): Record<string, string> {
+  const m = s.music
+  if (!m || m.mode !== 'TRACK' || m.source !== 'IG') return {}
+  return { audio_configuration: JSON.stringify({ audio_id: m.id, audio_volume: 100, video_volume: 0 }) }
 }
 
 export const instagramConnector: Connector = {
@@ -181,6 +212,22 @@ export const instagramConnector: Connector = {
     if (lim.total != null && lim.usado != null && lim.usado >= lim.total) throw new ConnectorError('QUOTA', `Limite de ${lim.total} posts por API em 24 h atingido.`, 'Aguarde a janela de 24 h do Instagram.')
     const caption = channelText(p, igSpec).description
     const s = p.social
+    const music = s ? musicPlan(s.music ?? null, 'INSTAGRAM', s.format) : null
+    if (s?.format === 'STORY' && music) {
+      // Story com música = story em vídeo (a Audio API não anexa música a story).
+      const url = await needStudio(ctx, s).videoUrl(p, 'CLIP', { format: 'STORY', template: s.template, embedMusic: true })
+      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { video_url: url, media_type: 'STORIES' }, 'Instagram (story em vídeo)')).id
+      await waitVideo(ctx, c)
+      const media = await graph<{ id: string }>(ctx, 'POST', `/${ig}/media_publish`, { creation_id: c }, 'Instagram (publicar story)', true)
+      return { state: STORY_OK, remoteId: media.id, remoteStatus: 'story com música (some em 24 h)', message: 'Story com música publicado no Instagram.' }
+    }
+    if (s && (s.format === 'REELS' || (s.format === 'POST' && music))) {
+      // Post com música sai como vídeo curto (Reels que também aparece no feed).
+      const url = await needStudio(ctx, s).videoUrl(p, s.format === 'REELS' ? 'REELS' : 'CLIP', { format: s.format, template: s.template, embedMusic: music === 'EMBED' })
+      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'REELS', video_url: url, caption, share_to_feed: 'true', ...(music === 'IG_LIBRARY' ? igAudio(s) : {}) }, 'Instagram (Reels)')).id
+      // O Instagram processa o vídeo em segundo plano: a conferência publica quando ficar pronto.
+      return { state: 'EM_ANALISE', pendingToken: c, message: s.format === 'REELS' ? 'Reels enviado; o Instagram está processando o vídeo.' : 'Post com música enviado como vídeo; o Instagram está processando.' }
+    }
     if (s?.format === 'STORY') {
       const art = needStudio(ctx, s).artUrl(p.photos[0], p, 'STORY', s.template)
       const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: art, media_type: 'STORIES' }, 'Instagram (story)')).id
@@ -188,18 +235,20 @@ export const instagramConnector: Connector = {
       const media = await graph<{ id: string }>(ctx, 'POST', `/${ig}/media_publish`, { creation_id: c }, 'Instagram (publicar story)', true)
       return { state: STORY_OK, remoteId: media.id, remoteStatus: 'story (some em 24 h)', message: 'Story publicado no Instagram.' }
     }
-    if (s?.format === 'REELS') {
-      const url = await needStudio(ctx, s).reelUrl(p, s.template)
-      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'REELS', video_url: url, caption, share_to_feed: 'true' }, 'Instagram (Reels)')).id
-      // O Instagram processa o vídeo em segundo plano: a conferência publica quando ficar pronto.
-      return { state: 'EM_ANALISE', pendingToken: c, message: 'Reels enviado; o Instagram está processando o vídeo.' }
-    }
     const photos = feedPhotos(p, ctx, igSpec.media.max)
     let creation: string
     if (photos.length === 1) {
       creation = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: photos[0], caption }, 'Instagram (mídia)')).id
     } else {
       const children: string[] = []
+      if (s?.format === 'CARROSSEL' && music) {
+        // Carrossel com música: a capa vira um vídeo curto da arte com a trilha embutida.
+        const url = await needStudio(ctx, s).videoUrl(p, 'CLIP', { format: 'CARROSSEL', template: s.template, embedMusic: true })
+        const v = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'VIDEO', video_url: url, is_carousel_item: 'true' }, 'Instagram (capa em vídeo)')).id
+        await waitVideo(ctx, v)
+        children.push(v)
+        photos.shift()
+      }
       for (const u of photos) children.push((await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { image_url: u, is_carousel_item: 'true' }, 'Instagram (item)')).id)
       for (const c of children) await waitContainer(ctx, c)
       creation = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'CAROUSEL', children: children.join(','), caption }, 'Instagram (carrossel)')).id
@@ -216,7 +265,7 @@ export const instagramConnector: Connector = {
       if (st.status_code !== 'FINISHED') return { state: 'EM_ANALISE', remoteStatus: 'processando o vídeo' }
       const media = await graph<{ id: string }>(ctx, 'POST', `/${ctx.connection.externalAccountId}/media_publish`, { creation_id: ref.pendingToken }, 'Instagram (publicar Reels)', true)
       const j = await graph<{ id: string; permalink?: string }>(ctx, 'GET', `/${media.id}`, { fields: 'id,permalink' }, 'Instagram').catch(() => ({ id: media.id, permalink: undefined }))
-      return { state: 'PUBLICADO', remoteId: media.id, remoteUrl: j.permalink ?? null, pendingToken: null, remoteStatus: 'Reels no ar' }
+      return { state: 'PUBLICADO', remoteId: media.id, remoteUrl: j.permalink ?? null, pendingToken: null, remoteStatus: ref.format === 'REELS' ? 'Reels no ar' : 'vídeo no ar' }
     }
     if (!ref.remoteId) return { state: 'NAO_ENCONTRADO' }
     if (ref.format === 'STORY') return { state: STORY_OK, remoteId: ref.remoteId, remoteStatus: 'story (some em 24 h)' }

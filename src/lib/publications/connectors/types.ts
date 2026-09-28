@@ -44,14 +44,19 @@ export interface ConnectorContext {
 export interface SocialMedia {
   /** URL pública da arte do formato sobre a foto (preço do anúncio já aplicado). */
   artUrl(photoUrl: string, p: ListingPayload, format: SocialFormat, template: ArtTemplate): string
-  /** Gera e guarda o vídeo do Reels; devolve a URL pública do MP4. */
-  reelUrl(p: ListingPayload, template: ArtTemplate): Promise<string>
+  /**
+   * Gera e guarda o vídeo (REELS = todas as fotos; CLIP = uma arte com zoom)
+   * e devolve a URL pública do MP4. `embedMusic`: embute a trilha CC0 escolhida.
+   */
+  videoUrl(p: ListingPayload, kind: 'REELS' | 'CLIP', opts: { format: SocialFormat; template: ArtTemplate; embedMusic: boolean }): Promise<string>
 }
 
 export interface RemoteRef {
   vehicleId: string
   /** Formato social da publicação (Story/Reels mudam a consulta e a remoção). */
   format?: SocialFormat | null
+  /** A publicação é um vídeo (Reels ou Post com música na Página): consulta pelo status do vídeo. */
+  video?: boolean
   remoteId: string | null
   externalRef: string
   remoteUrl?: string | null

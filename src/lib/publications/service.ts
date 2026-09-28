@@ -554,7 +554,7 @@ export async function approveMedia(tenantId: string, vehicleId: string, photos: 
       const taken = new Set(pubs.map((p) => `${p.connectionId}:${p.campaignKey}`))
       for (const slot of planLocal(utcToLocalInput(new Date(), settings.timezone), social.formats)) {
         const key = campaignKeyFor(slot.format, slot.local)
-        const t = socialConns.filter((c) => !taken.has(`${c.id}:${key}`)).map((c) => ({ vehicleId, connectionId: c.id, campaignKey: key, overrides: { social: { format: slot.format, template: social.template } } }))
+        const t = socialConns.filter((c) => !taken.has(`${c.id}:${key}`)).map((c) => ({ vehicleId, connectionId: c.id, campaignKey: key, overrides: { social: { format: slot.format, template: social.template, ...(social.music ? { music: social.music } : {}) } } }))
         const at = localToUtc(slot.local, settings.timezone)
         if (t.length && at) autoPublished.push(...await createPublications(tenantId, t, { mode: 'AGENDAR', scheduledAt: at, actor }))
       }

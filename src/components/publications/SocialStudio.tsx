@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils'
 import { api, inputCls } from '@/components/publications/ui'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type ArtTemplate, type SocialFormat } from '@/lib/publications/social/formats'
 import { CAPTION_TONES, TONE_LABEL, type CaptionTone } from '@/lib/publications/social/caption-core'
+import type { MusicChoice } from '@/lib/publications/social/music-core'
+import { MusicPicker } from '@/components/publications/MusicPicker'
 
 export interface SocialChoice {
   formats: SocialFormat[]
@@ -22,13 +24,15 @@ export interface SocialChoice {
   /** Legenda por `${vehicleId}:${formato}`; vazio = legenda automática. */
   captions: Record<string, string>
   spread: boolean
+  /** Trilha dos vídeos (null = sem música). */
+  music: MusicChoice | null
 }
 
-export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: false }
+export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: false, music: { mode: 'AUTO', mood: 'ANIMADA' } }
 
 const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard }
 
-export function SocialStudio({ vehicles, value, onChange }: { vehicles: Array<{ id: string; title: string }>; value: SocialChoice; onChange: (v: SocialChoice) => void }) {
+export function SocialStudio({ vehicles, value, onChange, hasInstagram = true }: { vehicles: Array<{ id: string; title: string }>; value: SocialChoice; onChange: (v: SocialChoice) => void; hasInstagram?: boolean }) {
   const [current, setCurrent] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -118,6 +122,7 @@ export function SocialStudio({ vehicles, value, onChange }: { vehicles: Array<{ 
             </label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar nos horários de pico (12 h e 19 h)</label>
           </div>
+          <MusicPicker value={value.music} onChange={(music) => set({ music })} hasInstagram={hasInstagram} />
           {note && <p role="status" className={cn('text-xs', note.ok ? 'text-green-700' : 'text-red-700')}>{note.text}</p>}
         </>
       )}

@@ -15,6 +15,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Plug, 
 import { cn } from '@/lib/utils'
 import { api, ago, ChannelMark, Drawer, ErrorNote, inputCls, PubTabs, StatusPill, type Tone } from '@/components/publications/ui'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO } from '@/lib/publications/social/formats'
+import { MOOD_LABEL, MUSIC_MOODS } from '@/lib/publications/social/music-core'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Channel = any
@@ -353,11 +354,17 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
               <p className="text-[11px] font-semibold text-gray-700">Instagram e Facebook no piloto automático</p>
               <div className="flex flex-wrap gap-x-3 gap-y-1">
                 {SOCIAL_FORMATS.map((f) => (
-                  <label key={f} className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={s.autoPublish.social?.formats?.includes(f) ?? false} onChange={(e) => { const cur: string[] = s.autoPublish.social?.formats ?? []; set('autoPublish.social', { template: s.autoPublish.social?.template ?? 'CHEGOU', formats: e.target.checked ? [...cur, f] : cur.filter((x) => x !== f) }) }} />{FORMAT_INFO[f].label}</label>
+                  <label key={f} className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={s.autoPublish.social?.formats?.includes(f) ?? false} onChange={(e) => { const cur: string[] = s.autoPublish.social?.formats ?? []; set('autoPublish.social', { ...s.autoPublish.social, template: s.autoPublish.social?.template ?? 'CHEGOU', formats: e.target.checked ? [...cur, f] : cur.filter((x) => x !== f) }) }} />{FORMAT_INFO[f].label}</label>
                 ))}
               </div>
               <label className="block text-xs text-gray-600">Modelo da arte
-                <select className={inputCls} value={s.autoPublish.social?.template ?? 'CHEGOU'} onChange={(e) => set('autoPublish.social', { formats: s.autoPublish.social?.formats ?? [], template: e.target.value })}>{ART_TEMPLATES.map((t) => <option key={t} value={t}>{TEMPLATE_INFO[t].label}</option>)}</select>
+                <select className={inputCls} value={s.autoPublish.social?.template ?? 'CHEGOU'} onChange={(e) => set('autoPublish.social', { ...s.autoPublish.social, formats: s.autoPublish.social?.formats ?? [], template: e.target.value })}>{ART_TEMPLATES.map((t) => <option key={t} value={t}>{TEMPLATE_INFO[t].label}</option>)}</select>
+              </label>
+              <label className="block text-xs text-gray-600">Música dos vídeos
+                <select className={inputCls} value={s.autoPublish.social?.music ? s.autoPublish.social.music.mood ?? 'ANIMADA' : 'NONE'} onChange={(e) => set('autoPublish.social', { ...s.autoPublish.social, music: e.target.value === 'NONE' ? null : { mode: 'AUTO', mood: e.target.value } })}>
+                  <option value="NONE">Sem música</option>
+                  {MUSIC_MOODS.map((m) => <option key={m} value={m}>Automática — {MOOD_LABEL[m]}</option>)}
+                </select>
               </label>
               <p className="text-[11px] text-gray-500">Com formatos marcados, cada carro aprovado ganha arte e legenda prontas, agendadas nos horários de pico (12 h e 19 h). Sem formato: post comum com as fotos.</p>
             </div>

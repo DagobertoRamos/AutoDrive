@@ -26,6 +26,7 @@ export type ServiceKey =
   | 'PUB_OLX'           // app registrado com a OLX (autoupload)
   | 'PUB_META'          // app Meta (Página + Instagram)
   | 'PUB_MOBIAUTO'      // app OAuth da Mobiauto Open API
+  | 'PUB_FREESOUND'     // músicas CC0 (domínio público) para Reels/Stories
   | 'OTHER'
 
 export type FieldKey =
@@ -197,6 +198,16 @@ export const SERVICES: ServiceDef[] = [
     fieldLabels: { apiKey: 'client_id', apiSecret: 'client_secret' },
     fieldRequired: { apiKey: true, apiSecret: true },
     badgeColor:  'bg-indigo-50 text-indigo-700 border-indigo-200',
+  },
+  {
+    key:         'PUB_FREESOUND',
+    label:       'Publicações — Músicas livres (Freesound)',
+    defaultUrl:  'https://freesound.org/apiv2',
+    description: 'Músicas de domínio público (licença CC0: uso comercial livre, sem atribuição) para os vídeos do Instagram/Facebook. Chave gratuita em freesound.org/apiv2/apply (use a "Client secret/Api key").',
+    fields:      ['apiSecret'],
+    fieldLabels: { apiSecret: 'Chave da API (token)' },
+    fieldRequired: { apiSecret: true },
+    badgeColor:  'bg-pink-50 text-pink-700 border-pink-200',
   },
   {
     key:         'OTHER',

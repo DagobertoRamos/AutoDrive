@@ -8,7 +8,7 @@
 // Com SOCIAL_ART_OUT=<pasta> grava o que a rede baixou, para conferência.
 // =============================================================================
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -39,6 +39,8 @@ const metaFetch: FetchLike = async (url, init) => {
   const u = new URL(url); const method = String(init.method ?? 'GET')
   const json = (s: number, b: unknown) => new Response(JSON.stringify(b), { status: s })
   const body = new URLSearchParams(init.body instanceof URLSearchParams ? init.body.toString() : String(init.body ?? ''))
+  // Freesound SIMULADO: uma faixa CC0 (o conteúdo é servido pelo fetch simulado abaixo).
+  if (u.hostname === 'freesound.org') return json(200, { results: [{ id: 777, name: 'Trilha teste.mp3', username: 'tester', duration: 30, license: 'http://creativecommons.org/publicdomain/zero/1.0/', previews: { 'preview-hq-mp3': 'https://cdn.freesound.test/777.mp3' } }] })
   if (u.pathname.endsWith('/content_publishing_limit')) return json(200, { data: [{ quota_usage: 0, config: { quota_total: 100 } }] })
   if (u.pathname.endsWith('/IGT/media') && method === 'POST') {
     const type = body.get('media_type') ?? (body.get('is_carousel_item') ? 'ITEM' : 'IMAGE')
@@ -72,8 +74,22 @@ async function carPhoto(): Promise<Buffer> {
   return sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#8899aa' } }).jpeg().toBuffer()
 }
 
+async function ffmpegRun(args: string[]) {
+  const { spawnSync } = await import('node:child_process')
+  return spawnSync((await import('ffmpeg-static')).default as unknown as string, args, { encoding: 'utf8' })
+}
+
 describe.skipIf(!RUN)('Estúdio social — banco local + Instagram simulado', () => {
   beforeAll(async () => {
+    // Trilha de teste (tom de 440 Hz) servida no lugar da prévia do Freesound.
+    const { mkdtempSync, readFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const tone = path.join(mkdtempSync(path.join(tmpdir(), 'tone-')), 't.mp3')
+    await ffmpegRun(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-c:a', 'libmp3lame', tone])
+    const toneBytes = readFileSync(tone)
+    const realFetch = globalThis.fetch
+    vi.stubGlobal('fetch', (url: string | URL | Request, init?: RequestInit) => String(url).startsWith('https://cdn.freesound.test/') ? Promise.resolve(new Response(toneBytes)) : realFetch(url, init))
+    process.env.FREESOUND_API_KEY = 'CHAVE-TESTE'
     ;({ prisma } = await import('@/lib/prisma'))
     svc = await import('../service'); worker = await import('../worker')
     mediaRoute = await import('@/app/api/integrations/publications/media/[file]/route')
@@ -98,6 +114,7 @@ describe.skipIf(!RUN)('Estúdio social — banco local + Instagram simulado', ()
   }, 90_000)
 
   afterAll(async () => {
+    vi.unstubAllGlobals()
     if (!prisma || !T.t) return
     const where = { tenantId: T.t.id }
     await prisma.publicationEvent.deleteMany({ where }); await prisma.publicationJob.deleteMany({ where }); await prisma.publication.deleteMany({ where })
@@ -167,4 +184,18 @@ describe.skipIf(!RUN)('Estúdio social — banco local + Instagram simulado', ()
     const r2 = await svc.approveMedia(T.t.id, T.v.id, photos, T.actor)
     expect(r2.autoPublished.filter((x: any) => x.status === 'AGENDADO')).toHaveLength(0)
   }, 60_000)
+  it('Reels com música automática: o MP4 que a rede baixa tem a trilha CC0 audível', async () => {
+    const res = await svc.createPublications(T.t.id, [{ vehicleId: T.v.id, connectionId: T.ig.id, campaignKey: 'reels-2026-02-02', overrides: { social: { format: 'REELS', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } } } }], { mode: 'AGORA', actor: T.actor })
+    expect(res[0].status).toBe('ENFILEIRADO')
+    const before = downloads.length
+    await run(true)
+    const reel = downloads.slice(before).find((d) => d.kind === 'REELS')!
+    expect(reel?.type).toBe('video/mp4')
+    const f = path.join((await import('node:os')).tmpdir(), `reel-${tag}.mp4`)
+    writeFileSync(f, reel.bytes)
+    const r = await ffmpegRun(['-hide_banner', '-i', f, '-af', 'volumedetect', '-vn', '-f', 'null', '-'])
+    const mean = Number(/mean_volume:\s*(-?[\d.]+) dB/.exec(r.stderr)?.[1] ?? '-999')
+    expect(mean).toBeGreaterThan(-40)
+    if (OUT) writeFileSync(path.join(OUT, 'db-reel-musica.mp4'), reel.bytes)
+  }, 240_000)
 })

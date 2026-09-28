@@ -14,6 +14,7 @@ import type { ContactSettings } from './content-core'
 import { DEFAULT_SALE_RULES, type SaleRules } from './sale-rules-core'
 import { DEFAULT_TIMEZONE, isValidTimeZone } from './schedule-core'
 import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './social/formats'
+import { musicOf, type MusicChoice } from './social/music-core'
 
 export interface AutoPublishRule {
   enabled: boolean
@@ -23,7 +24,7 @@ export interface AutoPublishRule {
   enabledByName: string | null
   enabledAt: string | null
   /** Instagram/Facebook: formatos criados sozinhos (espalhados nos horários de pico) e modelo de arte. */
-  social: { formats: SocialFormat[]; template: ArtTemplate }
+  social: { formats: SocialFormat[]; template: ArtTemplate; music: MusicChoice | null }
 }
 
 export interface PublicationSettings {
@@ -70,6 +71,7 @@ export function sanitizeSettings(input: unknown, fallback: PublicationSettings):
       social: {
         formats: Array.isArray(soc.formats) ? [...new Set((soc.formats as unknown[]).filter(isSocialFormat))] : fallback.autoPublish.social.formats,
         template: isArtTemplate(soc.template) ? soc.template : fallback.autoPublish.social.template,
+        music: 'music' in soc ? musicOf(soc.music) : fallback.autoPublish.social.music,
       },
     },
     perConnectionPerMinute: Number.isFinite(per) && per >= 1 && per <= 120 ? Math.round(per) : fallback.perConnectionPerMinute,
@@ -93,7 +95,7 @@ async function defaults(tenantId: string): Promise<PublicationSettings> {
       contactName: t?.nomeFantasia || t?.name || '',
     },
     sale: DEFAULT_SALE_RULES,
-    autoPublish: { enabled: false, connectionIds: [], enabledById: null, enabledByName: null, enabledAt: null, social: { formats: [], template: 'CHEGOU' } },
+    autoPublish: { enabled: false, connectionIds: [], enabledById: null, enabledByName: null, enabledAt: null, social: { formats: [], template: 'CHEGOU', music: { mode: 'AUTO', mood: 'ANIMADA' } } },
     perConnectionPerMinute: 20,
   }
 }

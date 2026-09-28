@@ -300,6 +300,12 @@ export async function POST(
             ok = r.ok; message = r.message
             break
           }
+          case 'PUB_FREESOUND': {
+            const { testFreesound } = await import('@/lib/publications/social/music')
+            const r = await testFreesound(cred.apiSecret)
+            ok = r.ok; message = r.message
+            break
+          }
           default:
             ok      = false
             message = `Teste de conexão para "${cred.service}" ainda não implementado.`

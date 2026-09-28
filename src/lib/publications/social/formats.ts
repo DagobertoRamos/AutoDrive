@@ -7,13 +7,15 @@
 //     faixa com modelo, ano/km, preço e contato, nas cores da loja.
 // =============================================================================
 
+import { musicOf, type MusicChoice } from './music-core'
+
 export const SOCIAL_FORMATS = ['POST', 'CARROSSEL', 'STORY', 'REELS'] as const
 export type SocialFormat = (typeof SOCIAL_FORMATS)[number]
 
 export const ART_TEMPLATES = ['OFERTA', 'CHEGOU', 'DESTAQUE', 'LIMPA'] as const
 export type ArtTemplate = (typeof ART_TEMPLATES)[number]
 
-export interface SocialSpec { format: SocialFormat; template: ArtTemplate }
+export interface SocialSpec { format: SocialFormat; template: ArtTemplate; music?: MusicChoice | null }
 
 export const FORMAT_INFO: Record<SocialFormat, { label: string; hint: string; canvas: 'FEED' | 'VERTICAL' }> = {
   POST: { label: 'Post', hint: 'Arte com preço no feed (4:5).', canvas: 'FEED' },
@@ -43,9 +45,10 @@ export function socialOf(overrides: unknown): SocialSpec | null {
   if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return null
   const s = (overrides as Record<string, unknown>).social
   if (!s || typeof s !== 'object') return null
-  const { format, template } = s as Record<string, unknown>
+  const { format, template, music } = s as Record<string, unknown>
   if (!isSocialFormat(format)) return null
-  return { format, template: isArtTemplate(template) ? template : 'OFERTA' }
+  const m = musicOf(music)
+  return { format, template: isArtTemplate(template) ? template : 'OFERTA', ...(m ? { music: m } : {}) }
 }
 
 /**

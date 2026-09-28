@@ -38,7 +38,7 @@ function ctxWith(http: ReturnType<typeof simulated>['http'], account: string): C
     mediaUrl: (u) => `https://app.test/m/${encodeURIComponent(u)}.jpg`,
     social: {
       artUrl: (u, p, f, k) => `https://app.test/art/${f}-${k}-${p.price}-${encodeURIComponent(u)}.jpg`,
-      async reelUrl(p, k) { reels.push(`${p.reference}:${k}`); return 'https://app.test/reel.mp4' },
+      async videoUrl(p, kind, o) { reels.push(`${kind}:${o.format}:${o.template}:${o.embedMusic ? 'com-trilha' : 'mudo'}`); return kind === 'REELS' ? 'https://app.test/reel.mp4' : 'https://app.test/clip.mp4' },
     },
     async saveSecrets() {},
     now: () => new Date('2026-09-27T12:00:00Z'),
@@ -115,7 +115,7 @@ describe('Estúdio social — Instagram — SIMULAÇÃO', () => {
     const ctx = ctxWith(s.http, 'IG')
     const r = await instagramConnector.publish!(payload({ format: 'REELS', template: 'DESTAQUE' }), ctx)
     expect(r).toMatchObject({ state: 'EM_ANALISE', pendingToken: 'RC1' })
-    expect(reels).toEqual(['adrefsocial000001:DESTAQUE'])
+    expect(reels).toEqual(['REELS:REELS:DESTAQUE:mudo'])
     const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST')!.body)
     expect(create.get('media_type')).toBe('REELS')
     expect(create.get('video_url')).toBe('https://app.test/reel.mp4')
@@ -200,5 +200,101 @@ describe('Estúdio social — Página do Facebook — SIMULAÇÃO', () => {
     const photos = s.calls.filter((c) => c.url.includes('/PAGE/photos')).map((c) => new URLSearchParams(c.body).get('url')!)
     expect(photos).toHaveLength(3)
     expect(photos.every((u) => u.includes('/m/'))).toBe(true)
+  })
+})
+
+describe('Estúdio social — música — SIMULAÇÃO', () => {
+  const okIg = (id: string): Route[] => [IG_LIMIT,
+    (c) => c.url.includes('/IG/media_publish') ? { status: 200, body: { id } } : null,
+    (c) => c.url.includes('/IG/media') && c.method === 'POST' ? { status: 200, body: { id: `C${c.body.length}` } } : null,
+    (c) => c.url.includes('status_code') ? { status: 200, body: { status_code: 'FINISHED' } } : null,
+    (c) => c.url.includes(`/${id}?`) ? { status: 200, body: { id } } : null,
+  ]
+
+  it('Reels do Instagram com faixa da BIBLIOTECA: anexa audio_configuration e manda o vídeo mudo', async () => {
+    reels.length = 0
+    const s = simulated(okIg('R1'))
+    await instagramConnector.publish!(payload({ format: 'REELS', template: 'OFERTA', music: { mode: 'TRACK', source: 'IG', id: '987654', title: 'Hit' } }), ctxWith(s.http, 'IG'))
+    const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST')!.body)
+    expect(JSON.parse(create.get('audio_configuration')!)).toEqual({ audio_id: '987654', audio_volume: 100, video_volume: 0 })
+    expect(reels).toEqual(['REELS:REELS:OFERTA:mudo'])
+  })
+
+  it('Reels do Instagram com trilha CC0: embute no vídeo, sem audio_configuration', async () => {
+    reels.length = 0
+    const s = simulated(okIg('R2'))
+    await instagramConnector.publish!(payload({ format: 'REELS', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } }), ctxWith(s.http, 'IG'))
+    const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST')!.body)
+    expect(create.get('audio_configuration')).toBeNull()
+    expect(reels).toEqual(['REELS:REELS:OFERTA:com-trilha'])
+  })
+
+  it('Post do Instagram com música vira vídeo curto (REELS no feed), com a faixa da biblioteca', async () => {
+    reels.length = 0
+    const s = simulated(okIg('R3'))
+    const r = await instagramConnector.publish!(payload({ format: 'POST', template: 'OFERTA', music: { mode: 'TRACK', source: 'IG', id: '111' } }), ctxWith(s.http, 'IG'))
+    expect(r.state).toBe('EM_ANALISE')
+    const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST')!.body)
+    expect(create.get('media_type')).toBe('REELS')
+    expect(create.get('share_to_feed')).toBe('true')
+    expect(create.get('video_url')).toBe('https://app.test/clip.mp4')
+    expect(create.get('audio_configuration')).toContain('111')
+    expect(reels).toEqual(['CLIP:POST:OFERTA:mudo'])
+  })
+
+  it('Story do Instagram com música: story em VÍDEO com trilha CC0 (faixa da biblioteca não se aplica a story)', async () => {
+    reels.length = 0
+    const s = simulated(okIg('ST9'))
+    const r = await instagramConnector.publish!(payload({ format: 'STORY', template: 'CHEGOU', music: { mode: 'TRACK', source: 'IG', id: '222', mood: 'TRANQUILA' } }), ctxWith(s.http, 'IG'))
+    expect(r).toMatchObject({ state: 'PUBLICADO', remoteId: 'ST9' })
+    const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST' && !c.url.includes('publish'))!.body)
+    expect(create.get('media_type')).toBe('STORIES')
+    expect(create.get('video_url')).toBe('https://app.test/clip.mp4')
+    expect(create.get('audio_configuration')).toBeNull()
+    expect(reels).toEqual(['CLIP:STORY:CHEGOU:com-trilha'])
+  })
+
+  it('Carrossel do Instagram com música: capa em VÍDEO com trilha + fotos', async () => {
+    reels.length = 0
+    const s = simulated(okIg('CR1'))
+    await instagramConnector.publish!(payload({ format: 'CARROSSEL', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ROCK' } }), ctxWith(s.http, 'IG'))
+    const items = s.calls.filter((c) => c.body.includes('is_carousel_item=true')).map((c) => new URLSearchParams(c.body))
+    expect(items[0].get('media_type')).toBe('VIDEO')
+    expect(items[0].get('video_url')).toBe('https://app.test/clip.mp4')
+    expect(items.slice(1).every((i) => i.get('image_url')?.includes('/m/'))).toBe(true)
+    expect(items).toHaveLength(3)
+  })
+
+  it('Página: Story com música = /video_stories em 3 fases; Post com música = /videos com file_url', async () => {
+    reels.length = 0
+    const s = simulated([
+      (c) => c.url.includes('/PAGE/video_stories') && c.body.includes('upload_phase=start') ? { status: 200, body: { video_id: 'VS1' } } : null,
+      (c) => c.url.startsWith('https://rupload.facebook.com/') ? { status: 200, body: { success: true } } : null,
+      (c) => c.url.includes('/PAGE/video_stories') && c.body.includes('upload_phase=finish') ? { status: 200, body: { success: true, post_id: 'PS1' } } : null,
+      (c) => c.url.includes('/PAGE/videos') ? { status: 200, body: { id: 'PV1' } } : null,
+    ])
+    const ctx = ctxWith(s.http, 'PAGE')
+    expect(await metaPageConnector.publish!(payload({ format: 'STORY', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } }), ctx)).toMatchObject({ state: 'PUBLICADO', remoteId: 'PS1' })
+    expect(s.calls.find((c) => c.url.includes('rupload'))!.headers).toMatchObject({ file_url: 'https://app.test/clip.mp4' })
+    expect(await metaPageConnector.publish!(payload({ format: 'POST', template: 'OFERTA', music: { mode: 'TRACK', source: 'IG', id: '5' } }), ctx)).toMatchObject({ state: 'EM_ANALISE', remoteId: 'PV1' })
+    const v = new URLSearchParams(s.calls.find((c) => c.url.includes('/PAGE/videos'))!.body)
+    expect(v.get('file_url')).toBe('https://app.test/clip.mp4')
+    expect(reels).toEqual(['CLIP:STORY:OFERTA:com-trilha', 'CLIP:POST:OFERTA:com-trilha'])
+  })
+
+  it('Página: carrossel com música segue álbum de fotos (Facebook não toca música em álbum)', async () => {
+    reels.length = 0
+    const s = simulated([
+      (c) => c.url.includes('/PAGE/photos') ? { status: 200, body: { id: `P${c.body.length}` } } : null,
+      (c) => c.url.includes('/PAGE/feed') ? { status: 200, body: { id: 'PP9' } } : null,
+    ])
+    await metaPageConnector.publish!(payload({ format: 'CARROSSEL', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } }), ctxWith(s.http, 'PAGE'))
+    expect(reels).toEqual([])
+    expect(s.calls.some((c) => c.url.includes('/PAGE/feed'))).toBe(true)
+  })
+
+  it('Post em vídeo da Página é conferido pelo status do vídeo', async () => {
+    const s = simulated([(c) => c.url.includes('/PV1?') ? { status: 200, body: { id: 'PV1', permalink_url: '/v/1', status: { video_status: 'ready' } } } : null])
+    expect(await metaPageConnector.get!({ vehicleId: 'v1', remoteId: 'PV1', externalRef: 'x', format: 'POST', video: true }, ctxWith(s.http, 'PAGE'))).toMatchObject({ state: 'PUBLICADO', remoteStatus: 'vídeo no ar' })
   })
 })

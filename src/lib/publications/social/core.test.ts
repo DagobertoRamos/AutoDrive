@@ -3,6 +3,7 @@ import { artLayout, ellipsize, factsLine, fitSize, safeColor } from './art-core'
 import { captionPrompt, fallbackCaption, finishCaption, hashtags, type CaptionInput } from './caption-core'
 import { autoPlan, campaignKeyFor, canvasSize, formatsFor, planLocal, socialOf } from './formats'
 import { reelFilter } from './reel'
+import * as m from './music-core'
 
 describe('formatos e piloto automático', () => {
   it('lê o formato gravado na publicação e ignora lixo', () => {
@@ -97,5 +98,48 @@ describe('legendas', () => {
     const story = fallbackCaption({ ...i, format: 'STORY' })
     expect(story).not.toContain('#')
     expect(hashtags(i).length).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('trilha sonora (regras)', () => {
+  it('busca no Freesound: só CC0, só música, 20 s a 4 min', () => {
+    const q = m.freesoundQuery({ mood: 'TRANQUILA' })
+    expect(q.get('filter')).toBe('license:"Creative Commons 0" duration:[20 TO 240] tag:music')
+    expect(q.get('query')).toBe('chill ambient music')
+    expect(m.freesoundQuery({ q: 'piano' }).get('sort')).toBe('score')
+  })
+  it('descarta faixa que não for CC0 mesmo se a busca devolver', () => {
+    const tracks = m.parseFreesound({ results: [
+      { id: 1, name: 'Loop.wav', username: 'a', duration: 30, license: 'http://creativecommons.org/publicdomain/zero/1.0/', previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/1.mp3' } },
+      { id: 2, name: 'Outra', username: 'b', duration: 30, license: 'http://creativecommons.org/licenses/by/4.0/', previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/2.mp3' } },
+    ] })
+    expect(tracks.map((t) => t.id)).toEqual(['1'])
+    expect(tracks[0].title).toBe('Loop')
+  })
+  it('biblioteca do Instagram: lê audio_id, artista e duração', () => {
+    expect(m.parseIgAudio({ data: [{ audio_id: '99', title: 'Hit', display_artist: 'Banda', duration_in_ms: 31000, download_url: 'https://x/p.mp3' }] })[0]).toMatchObject({ source: 'IG', id: '99', seconds: 31, artist: 'Banda' })
+  })
+  it('automática: mesmo carro = mesma faixa; lista vazia = sem faixa', () => {
+    const list = [1, 2, 3, 4].map((n) => ({ source: 'FREESOUND' as const, id: String(n), title: '', artist: '', seconds: 30, previewUrl: '', license: '' }))
+    expect(m.pickTrack(list, 'carro-a')).toEqual(m.pickTrack(list, 'carro-a'))
+    expect(m.pickTrack([], 'x')).toBeNull()
+  })
+  it('onde a música entra: biblioteca só em Reels/Post do Instagram; carrossel do Facebook sem música', () => {
+    const ig = { mode: 'TRACK' as const, source: 'IG' as const, id: '1' }
+    const auto = { mode: 'AUTO' as const, mood: 'ANIMADA' as const }
+    expect(m.musicPlan(ig, 'INSTAGRAM', 'REELS')).toBe('IG_LIBRARY')
+    expect(m.musicPlan(ig, 'INSTAGRAM', 'POST')).toBe('IG_LIBRARY')
+    expect(m.musicPlan(ig, 'INSTAGRAM', 'STORY')).toBe('EMBED')
+    expect(m.musicPlan(ig, 'META_PAGE', 'REELS')).toBe('EMBED')
+    expect(m.musicPlan(auto, 'META_PAGE', 'CARROSSEL')).toBeNull()
+    expect(m.musicPlan(null, 'INSTAGRAM', 'REELS')).toBeNull()
+  })
+  it('lê a escolha gravada e recusa id estranho', () => {
+    expect(m.musicOf({ mode: 'AUTO', mood: 'ROCK' })).toEqual({ mode: 'AUTO', mood: 'ROCK' })
+    expect(m.musicOf({ mode: 'TRACK', source: 'IG', id: '1;DROP' })).toBeNull()
+    expect(socialOf({ social: { format: 'REELS', template: 'OFERTA', music: { mode: 'AUTO', mood: 'X' } } })?.music).toEqual({ mode: 'AUTO', mood: 'ANIMADA' })
+  })
+  it('fade de saída termina junto com o vídeo', () => {
+    expect(m.audioFilter(10)).toBe('volume=0.85,afade=t=in:st=0:d=0.6,afade=t=out:st=8.50:d=1.5')
   })
 })

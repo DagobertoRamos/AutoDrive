@@ -14,7 +14,7 @@ import { fetchImageSafely } from '../safe-fetch'
 import { loadPublicationSettings } from '../settings'
 import { renderArt } from './art'
 import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './formats'
-import { renderReel } from './reel'
+import { renderArtClip, renderReel } from './reel'
 
 export const SOCIAL_VIDEO_KIND = 'SOCIAL_VIDEO'
 
@@ -81,23 +81,39 @@ export async function previewArt(tenantId: string, vehicleId: string, photoUrl: 
   return renderArt({ ...artFacts(v), ...brand, logo: brand.logo, format, template, price, oldPrice, photo }, { quality: 80 })
 }
 
-/**
- * Gera o Reels do anúncio e guarda o MP4 (site_assets) para a rede baixar.
- * Mesmo conteúdo = mesmo arquivo (reaproveita pelo hash).
- */
-export async function renderAndStoreReel(tenantId: string, p: ListingPayload, template: ArtTemplate): Promise<{ assetId: string; seconds: number }> {
-  const brand = await loadBrand(tenantId)
-  const photos: Buffer[] = []
-  for (const url of p.photos.slice(0, 7)) {
-    try { photos.push(await originalBytes(photoRef(tenantId, url))) } catch { /* foto inacessível: pula */ }
-  }
-  if (!photos.length) throw new Error('Nenhuma foto do veículo pôde ser aberta para montar o Reels.')
-  const { mp4, seconds } = await renderReel({ ...artFacts({ ...p.vehicle, brand: p.vehicle.brand ?? null, model: p.vehicle.model ?? null, version: p.vehicle.version ?? null, year: p.vehicle.year ?? null, modelYear: p.vehicle.modelYear ?? null, km: p.vehicle.km ?? null, transmission: p.vehicle.transmission ?? null }), ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice, photos })
+async function storeVideo(tenantId: string, mp4: Buffer): Promise<string> {
   const sha256 = createHash('sha256').update(mp4).digest('hex')
   const existing = await prisma.siteAsset.findFirst({ where: { tenantId, kind: SOCIAL_VIDEO_KIND, sha256 }, select: { id: true } })
-  if (existing) return { assetId: existing.id, seconds }
+  if (existing) return existing.id
   const a = await prisma.siteAsset.create({ data: { tenantId, kind: SOCIAL_VIDEO_KIND, mimeType: 'video/mp4', fileSize: mp4.length, width: 720, height: 1280, sha256, data: new Uint8Array(mp4) }, select: { id: true } })
-  return { assetId: a.id, seconds }
+  return a.id
+}
+
+const factsOfPayload = (p: ListingPayload) => artFacts({ brand: p.vehicle.brand ?? null, model: p.vehicle.model ?? null, version: p.vehicle.version ?? null, year: p.vehicle.year ?? null, modelYear: p.vehicle.modelYear ?? null, km: p.vehicle.km ?? null, transmission: p.vehicle.transmission ?? null })
+
+/**
+ * Gera o vídeo do anúncio e guarda o MP4 (site_assets) para a rede baixar.
+ *   REELS: todas as fotos + quadro final.  CLIP: uma arte com zoom (Story,
+ *   capa de Carrossel, Post com música). `audio` = trilha CC0 embutida.
+ * Mesmo conteúdo = mesmo arquivo (reaproveita pelo hash).
+ */
+export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audio: Buffer | null): Promise<{ assetId: string; seconds: number }> {
+  const brand = await loadBrand(tenantId)
+  const photos: Buffer[] = []
+  for (const url of p.photos.slice(0, kind === 'REELS' ? 7 : 1)) {
+    try { photos.push(await originalBytes(photoRef(tenantId, url))) } catch { /* foto inacessível: pula */ }
+  }
+  if (!photos.length) throw new Error('Nenhuma foto do veículo pôde ser aberta para montar o vídeo.')
+  const base = { ...factsOfPayload(p), ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice }
+  const out = kind === 'REELS'
+    ? await renderReel({ ...base, photos, audio })
+    : await renderArtClip(await renderArt({ ...base, photo: photos[0], format: format === 'STORY' ? 'STORY' : 'POST' }, { quality: 90 }), format === 'STORY' ? 10 : 12, audio)
+  return { assetId: await storeVideo(tenantId, out.mp4), seconds: out.seconds }
+}
+
+/** Compat: Reels sem trilha. */
+export async function renderAndStoreReel(tenantId: string, p: ListingPayload, template: ArtTemplate): Promise<{ assetId: string; seconds: number }> {
+  return renderAndStoreVideo(tenantId, p, 'REELS', 'REELS', template, null)
 }
 
 /** Vídeos de Reels com mais de 15 dias: a rede já baixou; libera espaço. */

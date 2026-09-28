@@ -60,3 +60,50 @@ describe('Reels (vídeo real com ffmpeg)', () => {
     console.log(`reel: ${seconds}s, ${(mp4.length / 1e6).toFixed(2)} MB, gerado em ${ms} ms`)
   }, 120_000)
 })
+
+describe('trilha sonora embutida (ffmpeg real)', () => {
+  const run = async (args: string[]) => {
+    const { spawnSync } = await import('node:child_process')
+    const bin = (await import('ffmpeg-static')).default as unknown as string
+    return spawnSync(bin, args, { encoding: 'utf8' })
+  }
+  /** Trilha de teste: tom de 440 Hz em MP3 (5 s — o vídeo repete a trilha até o fim). */
+  async function toneMp3(): Promise<Buffer> {
+    const { mkdtempSync, readFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const f = path.join(mkdtempSync(path.join(tmpdir(), 'tone-')), 't.mp3')
+    await run(['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=5', '-c:a', 'libmp3lame', '-b:a', '128k', f])
+    return readFileSync(f)
+  }
+  async function meanVolume(mp4: Buffer): Promise<number> {
+    const { mkdtempSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const f = path.join(mkdtempSync(path.join(tmpdir(), 'vol-')), 'v.mp4')
+    writeFileSync(f, mp4)
+    const r = await run(['-hide_banner', '-i', f, '-af', 'volumedetect', '-vn', '-f', 'null', '-'])
+    return Number(/mean_volume:\s*(-?[\d.]+) dB/.exec(r.stderr)?.[1] ?? '-999')
+  }
+
+  it('Reels com trilha: áudio audível do começo ao fim (trilha curta repete)', async () => {
+    const { renderReel } = await import('./reel')
+    const { mp4, seconds } = await renderReel({ ...base, template: 'OFERTA', photos: [await fakePhoto(), await fakePhoto()], audio: await toneMp3() })
+    expect(seconds).toBeGreaterThan(6)
+    expect(await meanVolume(mp4)).toBeGreaterThan(-40)
+    if (process.env.SOCIAL_ART_OUT) writeFileSync(path.join(process.env.SOCIAL_ART_OUT, 'reel-musica.mp4'), mp4)
+  }, 120_000)
+
+  it('sem trilha: áudio mudo (compatível com as redes)', async () => {
+    const { renderReel } = await import('./reel')
+    const { mp4 } = await renderReel({ ...base, template: 'OFERTA', photos: [await fakePhoto()] })
+    expect(await meanVolume(mp4)).toBeLessThan(-80)
+  }, 120_000)
+
+  it('clipe de uma arte (Story/Post com música): 9:16 com trilha', async () => {
+    const { renderArtClip } = await import('./reel')
+    const art = await renderArt({ ...base, format: 'POST', template: 'OFERTA', photo: await fakePhoto() })
+    const { mp4, seconds } = await renderArtClip(art, 8, await toneMp3())
+    expect(seconds).toBe(8)
+    expect(await meanVolume(mp4)).toBeGreaterThan(-40)
+    if (process.env.SOCIAL_ART_OUT) writeFileSync(path.join(process.env.SOCIAL_ART_OUT, 'clip-post-musica.mp4'), mp4)
+  }, 120_000)
+})

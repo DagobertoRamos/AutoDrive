@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { renderArt, type RenderArtInput } from './art'
+import { audioFilter } from './music-core'
 
 export const REEL = { secondsPerPhoto: 2.6, endSeconds: 3.2, fade: 0.5, maxPhotos: 7, fps: 30 } as const
 
@@ -53,37 +54,71 @@ function run(bin: string, args: string[], timeoutMs: number): Promise<void> {
   })
 }
 
-export type ReelInput = Omit<RenderArtInput, 'photo' | 'format' | 'forVideo' | 'endCard'> & { photos: Buffer[] }
+export type ReelInput = Omit<RenderArtInput, 'photo' | 'format' | 'forVideo' | 'endCard'> & { photos: Buffer[]; audio?: Buffer | null }
 
-/** Gera o MP4 do Reels. Lança erro se não houver foto. */
-export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
-  const photos = i.photos.slice(0, REEL.maxPhotos)
-  if (!photos.length) throw new Error('O Reels precisa de pelo menos uma foto.')
-  const dir = await mkdtemp(path.join(tmpdir(), 'reel-'))
+/** Monta o MP4 a partir de quadros prontos (JPEG 720×1280); com `audio`, a trilha entra com fade. */
+export async function framesToVideo(frames: Buffer[], durations: number[], audio: Buffer | null | undefined, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'vid-'))
   try {
-    const frames: string[] = []
-    for (const [n, photo] of photos.entries()) {
-      // Selo só no primeiro quadro; os demais mostram o carro com preço e contato.
-      const jpg = await renderArt({ ...i, template: n === 0 ? i.template : 'LIMPA', photo, format: 'REELS', forVideo: true }, { quality: 90 })
-      const f = path.join(dir, `f${n}.jpg`); await writeFile(f, jpg); frames.push(f)
-    }
-    const end = await renderArt({ ...i, photo: photos[0], format: 'REELS', forVideo: true, endCard: true }, { quality: 90 })
-    const fe = path.join(dir, 'end.jpg'); await writeFile(fe, end); frames.push(fe)
-
-    const durations = [...photos.map(() => REEL.secondsPerPhoto), REEL.endSeconds]
+    const files: string[] = []
+    for (const [n, f] of frames.entries()) { const p = path.join(dir, `f${n}.jpg`); await writeFile(p, f); files.push(p) }
     const { filter, out, total } = reelFilter(durations)
-    const mp4 = path.join(dir, 'reel.mp4')
+    let audioIn: string[]
+    let audioMap: string
+    let filterAll = filter
+    if (audio?.length) {
+      const a = path.join(dir, 'music'); await writeFile(a, audio)
+      audioIn = ['-stream_loop', '-1', '-i', a]
+      filterAll = `${filter};[${files.length}:a]${audioFilter(total)},atrim=0:${total.toFixed(2)}[aout]`
+      audioMap = '[aout]'
+    } else {
+      audioIn = ['-f', 'lavfi', '-t', total.toFixed(2), '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100']
+      audioMap = `${files.length}:a`
+    }
+    const mp4 = path.join(dir, 'out.mp4')
     const args = [
       '-hide_banner', '-loglevel', 'error', '-y',
-      ...frames.flatMap((f, n) => ['-loop', '1', '-t', String(durations[n]), '-i', f]),
-      '-f', 'lavfi', '-t', total.toFixed(2), '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-      '-filter_complex', filter, '-map', `[${out}]`, '-map', `${frames.length}:a`,
+      ...files.flatMap((f, n) => ['-loop', '1', '-t', String(durations[n]), '-i', f]),
+      ...audioIn,
+      '-filter_complex', filterAll, '-map', `[${out}]`, '-map', audioMap,
       '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high', '-crf', '24', '-maxrate', '1800k', '-bufsize', '3600k', '-pix_fmt', 'yuv420p', '-r', String(REEL.fps),
-      '-c:a', 'aac', '-b:a', '64k', '-shortest', '-movflags', '+faststart', mp4,
+      '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-t', total.toFixed(2), '-movflags', '+faststart', mp4,
     ]
     await run(await ffmpegPath(), args, opts.timeoutMs ?? 120_000)
     return { mp4: await readFile(mp4), seconds: Math.round(total * 10) / 10 }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
+}
+
+/** Gera o MP4 do Reels. Lança erro se não houver foto. */
+export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
+  const photos = i.photos.slice(0, REEL.maxPhotos)
+  if (!photos.length) throw new Error('O Reels precisa de pelo menos uma foto.')
+  const frames: Buffer[] = []
+  for (const [n, photo] of photos.entries()) {
+    // Selo só no primeiro quadro; os demais mostram o carro com preço e contato.
+    frames.push(await renderArt({ ...i, template: n === 0 ? i.template : 'LIMPA', photo, format: 'REELS', forVideo: true }, { quality: 90 }))
+  }
+  frames.push(await renderArt({ ...i, photo: photos[0], format: 'REELS', forVideo: true, endCard: true }, { quality: 90 }))
+  return framesToVideo(frames, [...photos.map(() => REEL.secondsPerPhoto), REEL.endSeconds], i.audio, opts)
+}
+
+/**
+ * Vídeo curto com UMA arte (zoom suave) — Story, capa de Carrossel e Post
+ * com música. Formato do quadro: vertical (Story) ou 4:5 ampliado para 9:16.
+ */
+export async function renderArtClip(art: Buffer, seconds: number, audio: Buffer | null | undefined, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
+  const sharp = (await import('sharp')).default
+  // Arte de feed (4:5) vai centralizada num quadro 9:16 com fundo desfocado dela mesma.
+  const meta = await sharp(art).metadata()
+  let frame = art
+  if ((meta.height ?? 0) / (meta.width ?? 1) < 1.7) {
+    const bg = await sharp(art).resize(720, 1280, { fit: 'cover' }).blur(30).modulate({ brightness: 0.5 }).toBuffer()
+    const fg = await sharp(art).resize(720, 1280, { fit: 'inside' }).toBuffer({ resolveWithObject: true })
+    frame = await sharp(bg).composite([{ input: fg.data, left: Math.round((720 - fg.info.width) / 2), top: Math.round((1280 - fg.info.height) / 2) }]).jpeg({ quality: 90 }).toBuffer()
+  } else {
+    frame = await sharp(art).resize(720, 1280, { fit: 'cover' }).jpeg({ quality: 90 }).toBuffer()
+  }
+  return framesToVideo([frame], [seconds], audio, opts)
 }
