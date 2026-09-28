@@ -118,6 +118,8 @@ describe('trilha sonora (regras)', () => {
   })
   it('biblioteca do Instagram: lê audio_id, artista e duração', () => {
     expect(m.parseIgAudio({ data: [{ audio_id: '99', title: 'Hit', display_artist: 'Banda', duration_in_ms: 31000, download_url: 'https://x/p.mp3' }] })[0]).toMatchObject({ source: 'IG', id: '99', seconds: 31, artist: 'Banda' })
+    // Resposta real da Audio API (2026): a lista vem em "audio".
+    expect(m.parseIgAudio({ audio: [{ audio_id: '7922415871205451', title: 'Island Time', display_artist: 'The K Club', duration_in_ms: 128620, audio_type: 'music', download_url: 'https://video.xx.fbcdn.net/a.mp4' }] })[0]).toMatchObject({ id: '7922415871205451', title: 'Island Time', seconds: 129, previewUrl: 'https://video.xx.fbcdn.net/a.mp4' })
   })
   it('automática: mesmo carro = mesma faixa; lista vazia = sem faixa', () => {
     const list = [1, 2, 3, 4].map((n) => ({ source: 'FREESOUND' as const, id: String(n), title: '', artist: '', seconds: 30, previewUrl: '', license: '' }))

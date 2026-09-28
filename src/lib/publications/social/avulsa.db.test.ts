@@ -48,7 +48,7 @@ const meta: FetchLike = async (url, init) => {
   if (u.pathname.endsWith('/PGA/photos')) return json(200, { id: `F${calls.length}` })
   if (u.pathname.endsWith('/PGA/feed')) return json(200, { id: p.get('link') ? 'PG_LINK' : 'PG_POST' })
   if (u.pathname.endsWith('/PG_LINK')) return json(200, { permalink_url: 'https://www.facebook.com/p/link' })
-  if (u.pathname.endsWith('/ig_audio')) return u.searchParams.get('access_token') === 'UT' ? json(200, { data: [{ audio_id: '42', title: 'Hit', display_artist: 'Banda', duration_in_ms: 30000, download_url: 'https://x/p.mp3' }] }) : json(400, { error: { code: 100, message: 'Page access token not supported' } })
+  if (u.pathname.endsWith('/ig_audio')) return u.searchParams.get('access_token') === 'UT' ? json(200, { audio: [{ audio_id: '42', title: 'Hit', display_artist: 'Banda', duration_in_ms: 30000, download_url: 'https://x/p.mp3' }] }) : json(400, { error: { code: 100, message: 'Page access token not supported' } })
   if (u.pathname.endsWith('/me/accounts')) return json(200, { data: [{ id: 'PGX', name: 'Pagina X', access_token: 'PAGE_TOKEN', instagram_business_account: { id: 'IGX', username: 'loja_x' } }] })
   if (u.pathname.endsWith('/debug_token')) return json(200, { data: { expires_at: 0 } })
   if (u.pathname.endsWith('/PG_POST')) return json(200, { permalink_url: 'https://www.facebook.com/p/1' })

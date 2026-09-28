@@ -59,7 +59,9 @@ export function parseFreesound(j: unknown): MusicTrack[] {
 
 /** Converte a busca da biblioteca do Instagram (GET /ig_audio?audio_type=music). */
 export function parseIgAudio(j: unknown): MusicTrack[] {
-  const data = (j as { data?: unknown[] })?.data
+  // A Audio API devolve { audio: [...] } (a documentação antiga citava { data }).
+  const o = j as { audio?: unknown[]; data?: unknown[] }
+  const data = Array.isArray(o?.audio) ? o.audio : o?.data
   if (!Array.isArray(data)) return []
   return data.flatMap((r) => {
     const x = r as { audio_id?: string; id?: string; title?: string; display_artist?: string; duration_in_ms?: number; download_url?: string }
