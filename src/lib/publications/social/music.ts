@@ -87,6 +87,21 @@ export async function diagIgLibrary(tenantId: string): Promise<Record<string, un
   }
   out.debugToken = await get('/debug_token', { input_token: token })
   out.me = await get('/me', { fields: 'id,name' })
+  // Token da Página (publicar/apagar posts): tipo, validade e o que consegue ler.
+  const page = await prisma.publicationConnection.findFirst({ where: { tenantId, channel: 'META_PAGE' }, orderBy: { updatedAt: 'desc' } })
+  const ps = page ? readSecrets(page.secretsEncrypted) : {}
+  if (page && ps.page_access_token) {
+    const pt = ps.page_access_token
+    const getP = async (path: string, params: Record<string, string>) => {
+      const r = await fetch(`${graphBase()}${path}?${new URLSearchParams({ ...params, access_token: pt })}`, { signal: AbortSignal.timeout(15_000) })
+      return { status: r.status, body: (await r.text()).split(pt).join('***').split(token).join('***').slice(0, 600) }
+    }
+    out.pagina = { id: page.externalAccountId, status: page.status }
+    out.pageDebug = await getP('/debug_token', { input_token: pt })
+    out.pageInfo = await getP(`/${page.externalAccountId}`, { fields: 'id,name' })
+    out.pageFeed = await getP(`/${page.externalAccountId}/feed`, { limit: '1', fields: 'id,created_time' })
+    out.pagePublished = await getP(`/${page.externalAccountId}/published_posts`, { limit: '1', fields: 'id' })
+  }
   for (const [k, p] of [['music', { audio_type: 'music' }], ['musicPop', { audio_type: 'music', search_query: 'pop' }], ['originalSound', { audio_type: 'original_sound' }]] as const) out[k] = await get('/ig_audio', { ...p, user_id: conn.externalAccountId })
   return out
 }
