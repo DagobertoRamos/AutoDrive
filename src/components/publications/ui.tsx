@@ -4,7 +4,7 @@
 // Peças visuais da Central de Publicações (padrão AutoDrive: discreto, textos curtos).
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarDays, Car, ImagePlus, PlugZap, Rocket } from 'lucide-react'
+import { CalendarDays, Car, History, ImagePlus, PlugZap, Rocket } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export type Tone = 'neutral' | 'info' | 'progress' | 'success' | 'warning' | 'danger' | 'muted'
@@ -47,6 +47,7 @@ const TABS = [
   { href: '/marketing/publicacoes', label: 'Publicações', icon: Rocket },
   { href: '/marketing/avulsa', label: 'Post avulso', icon: ImagePlus },
   { href: '/marketing/calendario', label: 'Calendário', icon: CalendarDays },
+  { href: '/marketing/historico', label: 'Histórico', icon: History },
   { href: '/marketing/canais', label: 'Canais conectados', icon: PlugZap },
 ]
 

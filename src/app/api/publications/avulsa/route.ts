@@ -37,6 +37,7 @@ export async function POST(req: Request) {
   }
   try {
     const post = await createAvulsa(a.tenantId, {
+      id: typeof b.id === 'string' && b.id ? b.id : undefined,
       title: typeof b.title === 'string' ? b.title : undefined, format, caption: typeof b.caption === 'string' ? b.caption : '', media: b.media,
       connectionIds: Array.isArray(b.connectionIds) ? b.connectionIds.filter((x): x is string => typeof x === 'string').slice(0, 10) : [],
       scheduledAt, draft: mode === 'RASCUNHO',

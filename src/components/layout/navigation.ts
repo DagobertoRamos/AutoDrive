@@ -82,6 +82,7 @@ import {
   // Comercial / Fila de Atendimento (Vendedor da Vez)
   UserCheck,
   ListOrdered,
+  History,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -276,6 +277,7 @@ export const NAV_GROUPS: NavItem[] = [
       // Central de Publicações (anúncios nos canais)
       { label: 'Publicações',      href: '/marketing/publicacoes',            icon: Rocket,       module: 'marketing.publications' },
       { label: 'Calendário',       href: '/marketing/calendario',             icon: CalendarDays, module: 'marketing.publications' },
+      { label: 'Histórico',        href: '/marketing/historico',              icon: History,      module: 'marketing.publications' },
       { label: 'Canais conectados', href: '/marketing/canais',                 icon: PlugZap,      module: 'marketing.publications' },
       // Mesa de Pré-Vendas / SDR
       { label: 'Caixa de Leads',  href: '/marketing/sdr/inbox',     icon: Inbox,      module: 'marketing.sdr' },

@@ -52,7 +52,7 @@ async function assembleVideo(tenantId: string, m: Extract<AvulsaMedia, { type: '
 
 // ── Criação ──────────────────────────────────────────────────────────────────
 
-export interface AvulsaInput { title?: string; format: AvulsaFormat; caption: string; media: unknown; connectionIds: string[]; scheduledAt: Date | null; draft: boolean }
+export interface AvulsaInput { id?: string; title?: string; format: AvulsaFormat; caption: string; media: unknown; connectionIds: string[]; scheduledAt: Date | null; draft: boolean }
 
 export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id: string | null; name: string | null }) {
   const media = sanitizeMedia(i.media)
@@ -64,12 +64,19 @@ export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id
   const imgs = media.flatMap((m) => (m.type === 'image' ? [m.assetId] : m.type === 'video' && 'posterAssetId' in m && m.posterAssetId ? [m.posterAssetId] : []))
   if (imgs.length && (await prisma.siteAsset.count({ where: { tenantId, id: { in: imgs }, kind: 'SOCIAL_UPLOAD' } })) !== imgs.length) throw new Error('Alguma foto não foi encontrada. Envie de novo.')
   for (const m of media) if (m.type === 'video' && 'uploadId' in m && !(await partsReady(tenantId, m))) throw new Error('O vídeo ainda não terminou de subir. Aguarde e tente de novo.')
-  return prisma.socialPost.create({
-    data: {
-      tenantId, title: i.title?.trim().slice(0, 120) || null, format: i.format, caption: i.caption.trim() || null, media: media as unknown as object, connectionIds: conns.map((c) => c.id),
-      status: i.draft ? 'RASCUNHO' : 'AGENDADO', scheduledAt: i.draft ? i.scheduledAt : i.scheduledAt ?? new Date(), createdById: actor.id, createdByName: actor.name,
-    },
-  })
+  const data = {
+    title: i.title?.trim().slice(0, 120) || null, format: i.format, caption: i.caption.trim() || null, media: media as unknown as object, connectionIds: conns.map((c) => c.id),
+    status: i.draft ? 'RASCUNHO' : 'AGENDADO', scheduledAt: i.draft ? i.scheduledAt : i.scheduledAt ?? new Date(),
+  } as const
+  if (i.id) {
+    // Continuando um rascunho: atualiza o mesmo registro (e solta vídeos que saíram).
+    const old = await prisma.socialPost.findFirst({ where: { id: i.id, tenantId, status: 'RASCUNHO' }, select: { media: true } })
+    if (!old) throw new Error('Este rascunho não existe mais (rascunhos são apagados após 2 dias). Salve de novo.')
+    const keep = new Set(media.flatMap((m) => ('uploadId' in m ? [m.uploadId] : [])))
+    await deleteVideoParts(tenantId, sanitizeMedia(old.media).filter((m) => !('uploadId' in m) || !keep.has(m.uploadId)))
+    return prisma.socialPost.update({ where: { id: i.id }, data })
+  }
+  return prisma.socialPost.create({ data: { tenantId, ...data, createdById: actor.id, createdByName: actor.name } })
 }
 
 // ── Publicação ───────────────────────────────────────────────────────────────

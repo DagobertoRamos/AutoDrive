@@ -22,6 +22,7 @@ import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
 import { campaignKeyFor, planLocal } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
+import { RETENTION_DAYS } from '@/lib/publications/retention-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -51,6 +52,30 @@ function Wizard() {
   const [can, setCan] = useState({ prepare: false, approve: false, publish: false, connections: false })
   const [err, setErr] = useState<string | null>(null)
   const [tz, setTz] = useState('America/Sao_Paulo')
+  // Progresso salvo (retoma de onde parou). Autosalvar só depois de decidir.
+  const [resume, setResume] = useState<{ data: any; savedAt: string } | null>(null)
+  const [autosave, setAutosave] = useState(false)
+
+  useEffect(() => {
+    if (params.get('veiculos')) { const t = setTimeout(() => setAutosave(true), 0); return () => clearTimeout(t) }
+    api('/api/publications/wizard').then((j) => { if (j.data?.selected?.length) setResume({ data: j.data, savedAt: j.savedAt }); else setAutosave(true) }).catch(() => setAutosave(true))
+    return undefined
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!autosave || !selected.length) return
+    const t = setTimeout(() => { void api('/api/publications/wizard', { method: 'PUT', json: { step, selected, targets: [...targets], campaign, social } }).catch(() => undefined) }, 1200)
+    return () => clearTimeout(t)
+  }, [autosave, step, selected, targets, campaign, social])
+
+  const continueSaved = () => {
+    const d = resume!.data
+    setSelected(d.selected); setTargets(new Set(d.targets ?? [])); setCampaign(d.campaign ?? 'principal')
+    if (d.social) setSocial({ ...DEFAULT_SOCIAL, ...d.social })
+    setStep(Math.max(0, Math.min(STEPS.length - 1, Number(d.step) || 0)))
+    setResume(null); setAutosave(true)
+  }
+  const startOver = () => { void api('/api/publications/wizard', { method: 'DELETE' }).catch(() => undefined); setResume(null); setAutosave(true) }
 
   useEffect(() => {
     api('/api/publications/connections').then((j) => {
@@ -82,6 +107,15 @@ function Wizard() {
       </div>
       <PubTabs />
 
+      {resume && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50/40 p-3 text-xs text-gray-700">
+          <span className="flex-1">Você tem uma publicação em andamento ({resume.data.selected.length} veículo(s), etapa “{STEPS[Math.min(STEPS.length - 1, Number(resume.data.step) || 0)]}”), salva em {new Date(resume.savedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.</span>
+          <button type="button" onClick={continueSaved} className="btn-primary px-3 py-1.5 text-xs">Continuar de onde parei</button>
+          <button type="button" onClick={startOver} className="btn-secondary px-3 py-1.5 text-xs">Começar do zero</button>
+        </div>
+      )}
+      <p className="text-[11px] text-gray-500">O progresso é salvo sozinho e fica guardado por {RETENTION_DAYS} dias. Rascunhos não enviados são apagados após {RETENTION_DAYS} dias.</p>
+
       <ol className="flex flex-wrap gap-1.5" aria-label="Etapas">
         {STEPS.map((s, i) => (
           <li key={s}>
@@ -105,7 +139,7 @@ function Wizard() {
       {step === 2 && cur && <ListingProfileStep key={cur} vehicleId={cur} canEdit={can.prepare} />}
       {step === 3 && cur && <StepContent key={cur} vehicleId={cur} />}
       {step === 4 && <StepChannels conns={conns} channels={channels} targets={targets} setTargets={setTargets} campaign={campaign} setCampaign={setCampaign} social={social} setSocial={setSocial} vehicles={selected.map((id) => ({ id, title: vehicles[id]?.title ?? '…' }))} />}
-      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} social={social} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} />}
+      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} social={social} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} onSubmitted={() => { setAutosave(false); void api('/api/publications/wizard', { method: 'DELETE' }).catch(() => undefined) }} />}
 
       {step < 5 && (
         <div className="sticky bottom-2 z-10 flex items-center justify-between rounded-xl border border-gray-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
@@ -357,7 +391,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
 }
 
 // ── 5. Revisão + publicar ───────────────────────────────────────────────────
-function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, channels, conns, can, tz, goTo, onDone }: { vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; social: SocialChoice; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
+function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, channels, conns, can, tz, goTo, onDone, onSubmitted }: { onSubmitted: () => void; vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; social: SocialChoice; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
   const [items, setItems] = useState<any[] | null>(null)
   const [checks, setChecks] = useState<Record<string, any[]>>({})
   const [err, setErr] = useState<string | null>(null)
@@ -402,6 +436,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
         all.push(...j.results)
       }
       setResults(all)
+      onSubmitted()
     } catch (e) { setErr((e as Error).message); requestKey.current = crypto.randomUUID() } finally { setSending(false) }
   }
   const fixStep = (field: string) => (field === 'photos' || field === 'media' ? 1 : field === 'connection' ? 4 : field === 'options' ? 2 : 3)

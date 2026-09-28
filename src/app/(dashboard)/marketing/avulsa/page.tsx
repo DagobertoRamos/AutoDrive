@@ -10,7 +10,8 @@
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarClock, Eye, ExternalLink, HardDrive, ImagePlus, Link2, Loader2, Rocket, Save, Trash2, Upload, X } from 'lucide-react'
+import { CalendarClock, Eye, ExternalLink, HardDrive, ImagePlus, Link2, Loader2, Pencil, Rocket, Save, Trash2, Upload, X } from 'lucide-react'
+import { RETENTION_NOTICE } from '@/lib/publications/retention-core'
 import { cn } from '@/lib/utils'
 import { api, Drawer, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
 import { PostPreview, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
@@ -82,6 +83,17 @@ function storedPreview(media: AvulsaMedia[]): { items: PreviewMedia[]; link?: st
   return { items: items.filter((i) => i.url), link }
 }
 
+/** Rascunho salvo → itens do editor (com miniatura de volta). */
+function itemsFromMedia(media: AvulsaMedia[]): Item[] {
+  return media.flatMap((m): Item[] => {
+    if (m.type === 'link') return []
+    if (m.type === 'image') return [{ key: crypto.randomUUID(), media: m, preview: `/api/site/assets/${m.assetId}`, kind: 'image', name: 'Foto', progress: 100 }]
+    if ('link' in m) return [{ key: crypto.randomUUID(), media: m, preview: classifyVideo(m.link)?.siteUrl ?? '', kind: 'video', name: `Vídeo (${classifyVideo(m.link)?.label ?? 'link'})`, progress: 100 }]
+    return [{ key: crypto.randomUUID(), media: m, preview: 'posterAssetId' in m && m.posterAssetId ? `/api/site/assets/${m.posterAssetId}` : '', kind: 'image', name: m.name ?? 'Vídeo', progress: 100 }]
+  })
+}
+const DRAFT_KEY = 'autodrive:avulsa:editor:v1'
+
 export default function PostAvulsoPage() {
   const [conns, setConns] = useState<Conn[]>([])
   const [sel, setSel] = useState<string[]>([])
@@ -101,12 +113,54 @@ export default function PostAvulsoPage() {
   const [tab, setTab] = useState('agendados')
   const [net, setNet] = useState<'INSTAGRAM' | 'FACEBOOK'>('INSTAGRAM')
   const [viewing, setViewing] = useState<any | null>(null)
+  // Rascunho do servidor sendo continuado (salvar/publicar atualiza o mesmo).
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [restored, setRestored] = useState(false)
+
+  const loadIntoEditor = useCallback((d: { id?: string | null; format: AvulsaFormat; title?: string | null; caption?: string | null; media: AvulsaMedia[]; connectionIds?: string[] }) => {
+    setFormat(d.format); setTitle(d.title ?? ''); setCaption(d.caption ?? '')
+    setItems(itemsFromMedia(d.media)); setLinkMedia(d.media.find((m) => m.type === 'link')?.url ?? '')
+    if (d.connectionIds?.length) setSel(d.connectionIds)
+    setEditingId(d.id ?? null)
+  }, [])
+
+  // O editor não se perde ao sair da página: guardado neste navegador.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY)
+        const d = raw ? JSON.parse(raw) : null
+        if (d && Date.now() - d.at < 2 * 86_400_000 && (d.media?.length || d.caption)) { loadIntoEditor(d); setMsg({ ok: true, text: 'Continuando de onde você parou.' }) }
+      } catch { /* sem armazenamento local */ }
+      setRestored(true)
+    }, 0)
+    return () => clearTimeout(t)
+  }, [loadIntoEditor])
+  const savedMedia = JSON.stringify(format === 'LINK' ? [{ type: 'link', url: linkMedia }] : items.flatMap((i) => (i.media ? [i.media] : [])))
+  useEffect(() => {
+    if (!restored) return
+    const t = setTimeout(() => {
+      try {
+        const m = JSON.parse(savedMedia) as AvulsaMedia[]
+        if (!m.some((x) => x.type !== 'link' || x.url) && !caption.trim()) localStorage.removeItem(DRAFT_KEY)
+        else localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), id: editingId, format, title, caption, media: m, connectionIds: sel }))
+      } catch { /* sem armazenamento local */ }
+    }, 800)
+    return () => clearTimeout(t)
+  }, [restored, savedMedia, format, title, caption, sel, editingId])
+
+  const continueDraft = (p: any) => {
+    loadIntoEditor({ id: p.id, format: p.format, title: p.title, caption: p.caption, media: p.media ?? [], connectionIds: p.connectionIds })
+    setMsg({ ok: true, text: 'Rascunho aberto no editor: ajuste e publique, agende ou salve de novo.' })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const clearEditor = () => { setItems([]); setLinkMedia(''); setCaption(''); setTitle(''); setWhen(''); setEditingId(null); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ok */ } }
 
   const loadPosts = useCallback(() => { api('/api/publications/avulsa').then((j) => { setPosts(j.data); setStorage(j.storage) }).catch(() => setPosts([])) }, [])
   useEffect(() => {
     api('/api/publications/connections').then((j) => {
       const list = (j.data.connections as Conn[]).filter((c) => (c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE') && c.status === 'CONECTADO')
-      setConns(list); setSel(list.map((c) => c.id))
+      setConns(list); setSel((cur) => (cur.length ? cur : list.map((c) => c.id)))
     }).catch(() => undefined)
     api('/api/publications/settings').then((j) => { setTz(j.data.timezone); setContacts(j.data.contacts ?? {}) }).catch(() => undefined)
     const t = setTimeout(loadPosts, 0); return () => clearTimeout(t)
@@ -172,8 +226,8 @@ export default function PostAvulsoPage() {
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     setBusy(mode); setMsg(null)
     try {
-      const j = await api('/api/publications/avulsa', { method: 'POST', json: { title, format, caption, media, connectionIds: selConns.map((c) => c.id), mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined } })
-      setMsg({ ok: true, text: j.message }); setItems([]); setLinkMedia(''); setCaption(''); setTitle(''); setWhen('')
+      const j = await api('/api/publications/avulsa', { method: 'POST', json: { id: editingId, title, format, caption, media, connectionIds: selConns.map((c) => c.id), mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined } })
+      setMsg({ ok: true, text: j.message }); clearEditor()
       setTab(mode === 'RASCUNHO' ? 'rascunhos' : mode === 'AGENDAR' ? 'agendados' : 'enviando'); loadPosts()
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
   }
@@ -193,6 +247,8 @@ export default function PostAvulsoPage() {
         <p className="text-sm text-gray-500">Fotos, vídeos prontos e links de vídeo da loja (bastidores, entregas, eventos, promoções) no Instagram e no Facebook — publique agora ou agende.</p>
       </div>
       <PubTabs />
+      <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">{RETENTION_NOTICE} O que você está montando fica salvo neste navegador enquanto isso.</p>
+      {editingId && <p className="flex flex-wrap items-center gap-2 rounded-lg bg-brand-50/60 px-3 py-2 text-xs text-brand-800">Editando um rascunho salvo — ao salvar ou publicar, ele é atualizado (não cria outro).<button type="button" onClick={clearEditor} className="underline">Começar um post novo</button></p>}
       {msg && <p role="status" className={cn('rounded-lg px-3 py-2 text-xs', msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>{msg.text}</p>}
 
       <div className="grid gap-5 lg:grid-cols-[1fr,320px]">
@@ -297,6 +353,7 @@ export default function PostAvulsoPage() {
                     <span className="text-gray-500">{p.status === 'AGENDADO' && p.scheduledAt ? `para ${new Date(p.scheduledAt).toLocaleString('pt-BR', { timeZone: tz, dateStyle: 'short', timeStyle: 'short' })}` : p.publishedAt ? `publicado ${new Date(p.publishedAt).toLocaleString('pt-BR', { timeZone: tz, dateStyle: 'short', timeStyle: 'short' })}` : new Date(p.createdAt).toLocaleString('pt-BR', { timeZone: tz, dateStyle: 'short', timeStyle: 'short' })}</span>
                     <span className="ml-auto flex items-center gap-3">
                       <button type="button" onClick={() => setViewing(p)} className="inline-flex items-center gap-1 text-brand-700 hover:underline"><Eye size={12} />Ver como {p.status === 'PUBLICADO' || p.status === 'PARCIAL' ? 'ficou' : 'vai ficar'}</button>
+                      {p.status === 'RASCUNHO' && <button type="button" onClick={() => continueDraft(p)} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Pencil size={12} />Continuar editando</button>}
                       {(p.status === 'AGENDADO' || p.status === 'RASCUNHO') && <button type="button" onClick={() => cancel(p.id)} className="inline-flex items-center gap-1 text-red-700 hover:underline"><Trash2 size={12} />Cancelar</button>}
                     </span>
                   </div>
