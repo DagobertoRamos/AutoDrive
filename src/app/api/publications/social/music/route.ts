@@ -3,7 +3,7 @@
 // e a biblioteca oficial do Instagram (Audio API, autorizada para terceiros).
 import { NextResponse } from 'next/server'
 import { pubAuth } from '@/lib/publications/api'
-import { freesoundKey, searchFreesound, searchIgLibrary } from '@/lib/publications/social/music'
+import { diagIgLibrary, freesoundKey, searchFreesound, searchIgLibrary } from '@/lib/publications/social/music'
 import { MUSIC_MOODS, type MusicMood } from '@/lib/publications/social/music-core'
 
 export const dynamic = 'force-dynamic'
@@ -17,6 +17,11 @@ export async function GET(req: Request) {
   const mood = (MUSIC_MOODS as readonly string[]).includes(sp.get('mood') ?? '') ? (sp.get('mood') as MusicMood) : 'ANIMADA'
   const q = (sp.get('q') ?? '').slice(0, 80)
   const freesoundConfigured = !!(await freesoundKey())
+  if (sp.get('diag') === '1') {
+    const b = await pubAuth(req, 'marketing.publications.connections')
+    if (b instanceof NextResponse) return b
+    return NextResponse.json({ success: true, diag: await diagIgLibrary(a.tenantId) })
+  }
   if (sp.get('check') === '1') return NextResponse.json({ success: true, freesoundConfigured, tracks: [] })
   try {
     const tracks = source === 'IG' ? await searchIgLibrary(a.tenantId, q) : freesoundConfigured ? await searchFreesound({ mood, q }) : []

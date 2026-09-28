@@ -67,7 +67,28 @@ export async function searchIgLibrary(tenantId: string, q: string, http: HttpCli
     const msg = res.json<{ error?: { message?: string } }>()?.error?.message
     throw new Error(`Biblioteca do Instagram indisponível${msg ? `: ${msg}` : ''}.`)
   }
-  return parseIgAudio(res.json())
+  const tracks = parseIgAudio(res.json())
+  if (!tracks.length) throw new Error(q.trim() ? `O Instagram não encontrou músicas para "${q.trim()}". Tente outra palavra (em inglês funciona melhor) ou use as músicas livres.` : 'O Instagram não liberou músicas da biblioteca para esta conta pela API. Busque por uma palavra (ex.: pop, funk) ou use as músicas livres.')
+  return tracks
+}
+
+/** Diagnóstico da biblioteca do Instagram (Master/gestor): tipo do token, permissões e resposta crua — nunca o token. */
+export async function diagIgLibrary(tenantId: string): Promise<Record<string, unknown>> {
+  const conn = await prisma.publicationConnection.findFirst({ where: { tenantId, channel: 'INSTAGRAM', status: 'CONECTADO' }, orderBy: { updatedAt: 'desc' } })
+  if (!conn) return { erro: 'sem conexão do Instagram' }
+  const s = readSecrets(conn.secretsEncrypted)
+  const token = s.user_access_token
+  const out: Record<string, unknown> = { conta: conn.label, igUserId: conn.externalAccountId, temTokenUsuario: !!token, chaves: Object.keys(s) }
+  if (!token) return out
+  const hide = (t: string) => t.split(token).join('***').slice(0, 800)
+  const get = async (path: string, params: Record<string, string>) => {
+    const r = await fetch(`${graphBase()}${path}?${new URLSearchParams({ ...params, access_token: token })}`, { signal: AbortSignal.timeout(15_000) })
+    return { status: r.status, body: hide(await r.text()) }
+  }
+  out.debugToken = await get('/debug_token', { input_token: token })
+  out.me = await get('/me', { fields: 'id,name' })
+  for (const [k, p] of [['music', { audio_type: 'music' }], ['musicPop', { audio_type: 'music', search_query: 'pop' }], ['originalSound', { audio_type: 'original_sound' }]] as const) out[k] = await get('/ig_audio', { ...p, user_id: conn.externalAccountId })
+  return out
 }
 
 /**
