@@ -246,12 +246,16 @@ describe('Estúdio social — música — SIMULAÇÃO', () => {
 
   it('Story do Instagram com música: story em VÍDEO com trilha CC0 (faixa da biblioteca não se aplica a story)', async () => {
     reels.length = 0
-    const s = simulated(okIg('ST9'))
+    const s = simulated([(c) => c.url.startsWith('https://rupload.facebook.com/ig-api-upload/') ? { status: 200, body: { success: true } } : null, ...okIg('ST9')])
     const r = await instagramConnector.publish!(payload({ format: 'STORY', template: 'CHEGOU', music: { mode: 'TRACK', source: 'IG', id: '222', mood: 'TRANQUILA' } }), ctxWith(s.http, 'IG'))
     expect(r).toMatchObject({ state: 'PUBLICADO', remoteId: 'ST9' })
     const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST' && !c.url.includes('publish'))!.body)
     expect(create.get('media_type')).toBe('STORIES')
-    expect(create.get('video_url')).toBe('https://app.test/clip.mp4')
+    // O arquivo vai direto (envio retomável), sem o Instagram baixar o nosso link.
+    expect(create.get('upload_type')).toBe('resumable')
+    expect(create.get('video_url')).toBeNull()
+    const up = s.calls.find((c) => c.url.includes('rupload.facebook.com/ig-api-upload/'))!
+    expect(up.headers).toMatchObject({ offset: '0', file_size: '8', Authorization: 'OAuth PT' })
     expect(create.get('audio_configuration')).toBeNull()
     expect(reels).toEqual(['CLIP:STORY:CHEGOU:com-trilha'])
   })
@@ -304,14 +308,26 @@ describe('Estúdio social — música — SIMULAÇÃO', () => {
 describe('Estúdio social — recusas — SIMULAÇÃO', () => {
   it('Story em vídeo recusado pelo Instagram: publica o story com a arte e explica o motivo', async () => {
     const s = simulated([IG_LIMIT,
+      (c) => c.url.startsWith('https://rupload.facebook.com/ig-api-upload/') ? { status: 200, body: { success: true } } : null,
       (c) => c.url.includes('/IG/media_publish') ? { status: 200, body: { id: 'STX' } } : null,
-      (c) => c.url.includes('/IG/media') && c.method === 'POST' ? { status: 200, body: { id: c.body.includes('video_url') ? 'VIDC' : 'IMGC' } } : null,
+      (c) => c.url.includes('/IG/media') && c.method === 'POST' ? { status: 200, body: { id: c.body.includes('upload_type=resumable') ? 'VIDC' : 'IMGC' } } : null,
       (c) => c.url.includes('/VIDC?') ? { status: 200, body: { status_code: 'ERROR', status: 'Error: 2207026 formato de vídeo' } } : null,
       (c) => c.url.includes('/IMGC?') ? { status: 200, body: { status_code: 'FINISHED' } } : null,
     ])
     const r = await instagramConnector.publish!(payload({ format: 'STORY', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } }), ctxWith(s.http, 'IG'))
     expect(r).toMatchObject({ state: 'PUBLICADO', remoteId: 'STX', remoteStatus: 'story sem música (some em 24 h)' })
     expect(r.message).toContain('2207026')
+  })
+  it('Story em vídeo com envio recusado (422) no Instagram: também publica com a arte', async () => {
+    const s = simulated([IG_LIMIT,
+      (c) => c.url.startsWith('https://rupload.facebook.com/ig-api-upload/') ? { status: 422, body: { debug_info: { message: 'Invalid video' } } } : null,
+      (c) => c.url.includes('/IG/media_publish') ? { status: 200, body: { id: 'STY' } } : null,
+      (c) => c.url.includes('/IG/media') && c.method === 'POST' ? { status: 200, body: { id: c.body.includes('upload_type=resumable') ? 'VIDC' : 'IMGC' } } : null,
+      (c) => c.url.includes('/IMGC?') ? { status: 200, body: { status_code: 'FINISHED' } } : null,
+    ])
+    const r = await instagramConnector.publish!(payload({ format: 'STORY', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } }), ctxWith(s.http, 'IG'))
+    expect(r).toMatchObject({ state: 'PUBLICADO', remoteId: 'STY', remoteStatus: 'story sem música (some em 24 h)' })
+    expect(r.message).toContain('Invalid video')
   })
   it('rupload recusado: o erro traz a mensagem do debug_info', async () => {
     const s = simulated([

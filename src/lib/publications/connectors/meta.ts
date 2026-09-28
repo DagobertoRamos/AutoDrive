@@ -80,7 +80,8 @@ export async function rupload(ctx: ConnectorContext, videoId: string, bytes: Uin
   const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/video-upload/${version}/${videoId}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, offset: '0', file_size: String(bytes.length), 'Content-Type': 'application/octet-stream' }, body: bytes, timeoutMs: 120_000 })
   if (up.status >= 200 && up.status < 300) return
   const dbg = up.json<{ debug_info?: { message?: string; type?: string } }>()?.debug_info
-  throw graphError(up, dbg?.message ? `${what}: ${dbg.message}${dbg.type ? ` (${dbg.type})` : ''}` : what) ?? new ConnectorError('UNAVAILABLE', `${what}: HTTP ${up.status}`)
+  const e = graphError(up, dbg?.message ? `${what}: ${dbg.message}${dbg.type ? ` (${dbg.type})` : ''}` : what) ?? new ConnectorError('UNAVAILABLE', `${what}: HTTP ${up.status}`)
+  throw e.kind === 'VALIDATION' && !e.hint ? new ConnectorError('VALIDATION', e.message, VIDEO_HINT, e.opts) : e
 }
 
 // ── Página ──────────────────────────────────────────────────────────────────
@@ -187,18 +188,30 @@ export const metaPageConnector: Connector = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-export async function waitContainer(ctx: ConnectorContext, id: string, tries = 6, waitMs = 4_000): Promise<void> {
+export async function waitContainer(ctx: ConnectorContext, id: string, tries = 6, waitMs = 4_000, hint = 'Confira se as fotos são JPEG acessíveis e com proporção aceita.'): Promise<void> {
   for (let i = 0; i < tries; i++) {
     const s = await graph<{ status_code?: string; status?: string }>(ctx, 'GET', `/${id}`, { fields: 'status_code,status' }, 'Instagram (processamento)')
     if (s.status_code === 'FINISHED') return
-    if (s.status_code === 'ERROR' || s.status_code === 'EXPIRED') throw new ConnectorError('VALIDATION', `Instagram recusou a mídia (${s.status_code}${s.status && s.status !== s.status_code ? `: ${s.status}` : ''}).`, 'Confira se as fotos são JPEG acessíveis e com proporção aceita.')
+    if (s.status_code === 'ERROR' || s.status_code === 'EXPIRED') throw new ConnectorError('VALIDATION', `Instagram recusou a mídia (${s.status_code}${s.status && s.status !== s.status_code ? `: ${s.status}` : ''}).`, hint)
     await sleep(waitMs)
   }
   throw new ConnectorError('UNAVAILABLE', 'Instagram ainda processando a mídia; nova tentativa em instantes.')
 }
 
 /** Vídeo leva mais tempo para processar (a rotina tem até 5 min). */
-export const waitVideo = (ctx: ConnectorContext, id: string) => waitContainer(ctx, id, 30, 5_000)
+export const waitVideo = (ctx: ConnectorContext, id: string) => waitContainer(ctx, id, 30, 5_000, 'Vídeo precisa ser MP4 (H.264/AAC), vertical 9:16, de 3 a 60 s.')
+
+const VIDEO_HINT = 'A rede recusou o arquivo de vídeo (não é problema nos dados do carro). Use "Tentar de novo"; se repetir, publique como Post ou Story com foto.'
+
+/** Envio retomável do Instagram: o arquivo inteiro no corpo (offset 0). */
+async function igRupload(ctx: ConnectorContext, containerId: string, bytes: Uint8Array): Promise<void> {
+  const version = graphBase().split('/').pop()
+  const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/ig-api-upload/${version}/${containerId}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, offset: '0', file_size: String(bytes.length), 'Content-Type': 'application/octet-stream' }, body: bytes, timeoutMs: 180_000 })
+  if (up.status >= 200 && up.status < 300) return
+  const dbg = up.json<{ debug_info?: { message?: string } }>()?.debug_info?.message
+  const e = graphError(up, dbg ? `Instagram (envio do vídeo): ${dbg}` : 'Instagram (envio do vídeo)') ?? new ConnectorError('UNAVAILABLE', `Instagram (envio do vídeo): HTTP ${up.status}`)
+  throw e.kind === 'VALIDATION' && !e.hint ? new ConnectorError('VALIDATION', e.message, VIDEO_HINT, e.opts) : e
+}
 
 /** Parâmetro oficial para anexar música da biblioteca do Instagram ao Reels (vídeo nosso vai mudo). */
 function igAudio(s: SocialSpec): Record<string, string> {
@@ -228,9 +241,11 @@ export const instagramConnector: Connector = {
     const music = s ? musicPlan(s.music ?? null, 'INSTAGRAM', s.format) : null
     if (s?.format === 'STORY' && music) {
       // Story com música = story em vídeo (a Audio API não anexa música a story).
-      const { url } = await needStudio(ctx, s).video(p, 'CLIP', { format: 'STORY', template: s.template, embedMusic: true })
-      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { video_url: url, media_type: 'STORIES' }, 'Instagram (story em vídeo)')).id
+      // O arquivo vai direto ao Instagram (envio retomável), sem depender de ele baixar o nosso link.
+      const { bytes } = await needStudio(ctx, s).video(p, 'CLIP', { format: 'STORY', template: s.template, embedMusic: true })
       try {
+        const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'STORIES', upload_type: 'resumable' }, 'Instagram (story em vídeo)')).id
+        await igRupload(ctx, c, bytes)
         await waitVideo(ctx, c)
         const media = await graph<{ id: string }>(ctx, 'POST', `/${ig}/media_publish`, { creation_id: c }, 'Instagram (publicar story)', true)
         return { state: STORY_OK, remoteId: media.id, remoteStatus: 'story com música (some em 24 h)', message: 'Story com música publicado no Instagram.' }
@@ -248,12 +263,7 @@ export const instagramConnector: Connector = {
       // Vídeo gravado do carro: envio retomável (o arquivo vai direto ao Instagram, sem limite do nosso link).
       const bytes = await needStudio(ctx, s).carVideo(p)
       const c = await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'REELS', upload_type: 'resumable', caption, share_to_feed: 'true' }, 'Instagram (vídeo do carro)')
-      const version = graphBase().split('/').pop()
-      const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/ig-api-upload/${version}/${c.id}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, offset: '0', file_size: String(bytes.length), 'Content-Type': 'application/octet-stream' }, body: bytes, timeoutMs: 180_000 })
-      if (up.status < 200 || up.status >= 300) {
-        const dbg = up.json<{ debug_info?: { message?: string } }>()?.debug_info?.message
-        throw graphError(up, dbg ? `Instagram (envio do vídeo): ${dbg}` : 'Instagram (envio do vídeo)') ?? new ConnectorError('UNAVAILABLE', `Instagram (envio do vídeo): HTTP ${up.status}`)
-      }
+      await igRupload(ctx, c.id, bytes)
       return { state: 'EM_ANALISE', pendingToken: c.id, message: 'Vídeo do carro enviado; o Instagram está processando.' }
     }
     if (s && (s.format === 'REELS' || (s.format === 'POST' && music))) {
