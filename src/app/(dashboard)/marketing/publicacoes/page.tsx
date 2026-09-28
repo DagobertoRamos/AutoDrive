@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ExternalLink, Filter, Loader2, Pause, Play, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, ExternalLink, Filter, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
 import { MappingReview } from '@/components/publications/MappingReview'
@@ -124,6 +124,7 @@ export default function PublicationsPage() {
           <button onClick={() => runBulk('SINCRONIZAR')} className="btn-secondary px-2.5 py-1 text-xs"><RefreshCw size={13} />Sincronizar</button>
           <button onClick={() => runBulk('PAUSAR')} className="btn-secondary px-2.5 py-1 text-xs"><Pause size={13} />Pausar</button>
           <button onClick={() => runBulk('RETOMAR')} className="btn-secondary px-2.5 py-1 text-xs"><Play size={13} />Reativar</button>
+          <button onClick={() => runBulk('REENVIAR')} className="btn-secondary px-2.5 py-1 text-xs"><RotateCcw size={13} />Tentar de novo (com erro)</button>
           <button onClick={() => runBulk('RETIRAR')} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 hover:bg-red-50"><Trash2 size={13} />Retirar</button>
           <button onClick={() => setSel(new Set())} className="ml-auto text-gray-500 hover:text-gray-800">Limpar</button>
         </div>

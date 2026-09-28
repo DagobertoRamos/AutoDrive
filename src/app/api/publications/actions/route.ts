@@ -14,7 +14,7 @@ import { applyIntent, logEvent, type Intent } from '@/lib/publications/service'
 import { audit, bad, kickWorker, pubAuth } from '@/lib/publications/api'
 
 export const dynamic = 'force-dynamic'
-const INTENTS: Intent[] = ['PAUSAR', 'RETOMAR', 'RETIRAR', 'VERIFICAR', 'SINCRONIZAR', 'CANCELAR_AGENDAMENTO']
+const INTENTS: Intent[] = ['PAUSAR', 'RETOMAR', 'RETIRAR', 'VERIFICAR', 'SINCRONIZAR', 'CANCELAR_AGENDAMENTO', 'REENVIAR']
 
 export async function POST(req: Request) {
   const a = await pubAuth(req, 'marketing.publications.publish')

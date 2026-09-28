@@ -5,7 +5,7 @@
 // específico do canal (com histórico), ações e diagnóstico técnico.
 import { PublishedPreview } from '@/components/publications/PublishedPreview'
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, Download, ExternalLink, Loader2, Pause, Play, RefreshCw, Save, Trash2, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, Download, ExternalLink, Loader2, Pause, Play, RefreshCw, RotateCcw, Save, Trash2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { api, ago, ChannelMark, Drawer, ErrorNote, inputCls, money, StatusPill, STATUS_TONE, when } from './ui'
@@ -75,6 +75,7 @@ export function PublicationDetail({ id, onClose, onChanged }: { id: string | nul
             <section className="flex flex-wrap gap-2">
               {p.status === 'AGENDADO' && <button onClick={() => act('CANCELAR_AGENDAMENTO')} disabled={!!busy} className="btn-secondary px-3 py-1.5 text-xs"><XCircle size={14} />Cancelar agendamento</button>}
               {live && caps.pause === 'SIM' && <button onClick={() => act('PAUSAR')} disabled={!!busy} className="btn-secondary px-3 py-1.5 text-xs"><Pause size={14} />Pausar</button>}
+              {(p.status === 'REJEITADO' || p.status === 'FALHA') && <button onClick={() => act('REENVIAR')} disabled={!!busy} className="btn-primary px-3 py-1.5 text-xs"><RotateCcw size={14} />Tentar de novo</button>}
               {(p.status === 'PAUSADO' || (p.desiredState !== 'PUBLICADO' && !p.archivedAt)) && <button onClick={() => act('RETOMAR')} disabled={!!busy} className="btn-secondary px-3 py-1.5 text-xs"><Play size={14} />Reativar</button>}
               {p.remoteId && caps.get === 'SIM' && <button onClick={() => act('VERIFICAR')} disabled={!!busy} className="btn-secondary px-3 py-1.5 text-xs"><RefreshCw size={14} className={cn(busy === 'VERIFICAR' && 'animate-spin')} />Conferir no canal</button>}
               {live && caps.update === 'SIM' && <button onClick={() => act('SINCRONIZAR')} disabled={!!busy} className="btn-secondary px-3 py-1.5 text-xs"><RefreshCw size={14} />Sincronizar</button>}

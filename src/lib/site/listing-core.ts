@@ -27,8 +27,19 @@ export function siteVehicleState(v: StockLike, listing: ListingLike | null | und
 
 export interface TitleLike { id: string; brand: string | null; model: string | null; version: string | null; modelYear: number | null; year: number | null }
 
+/**
+ * "Marca Modelo Versão" sem repetir: cadastros importados trazem "HONDA" +
+ * "HONDA BIZ 125" + "HONDA BIZ 125" → "HONDA BIZ 125".
+ */
 export function vehicleTitle(v: TitleLike): string {
-  return [v.brand, v.model, v.version].map((x) => String(x ?? '').trim()).filter(Boolean).join(' ') || 'Veículo'
+  const t = (x: unknown) => String(x ?? '').replace(/\s+/g, ' ').trim()
+  const lo = (x: string) => x.toLocaleLowerCase('pt-BR')
+  const b = t(v.brand); const m = t(v.model)
+  let n = m ? (b && !lo(m).startsWith(lo(b)) ? `${b} ${m}` : m) : b
+  let ver = t(v.version)
+  for (const part of [b, m]) if (part && lo(ver).startsWith(lo(part))) ver = t(ver.slice(part.length))
+  if (ver && !lo(n).includes(lo(ver))) n = `${n} ${ver}`
+  return n.trim() || 'Veículo'
 }
 
 /** Slug estável do anúncio: "<marca-modelo-versao-ano>--<id>". O id garante unicidade. */

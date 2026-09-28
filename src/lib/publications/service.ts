@@ -341,7 +341,7 @@ export async function createPublications(tenantId: string, targets: TargetInput[
 
 // ── Mudar intenção (pausar, retomar, retirar) ─────────────────────────────────
 
-export type Intent = 'PAUSAR' | 'RETOMAR' | 'RETIRAR' | 'VERIFICAR' | 'SINCRONIZAR' | 'CANCELAR_AGENDAMENTO'
+export type Intent = 'PAUSAR' | 'RETOMAR' | 'RETIRAR' | 'VERIFICAR' | 'SINCRONIZAR' | 'CANCELAR_AGENDAMENTO' | 'REENVIAR'
 
 export async function applyIntent(tenantId: string, publicationId: string, intent: Intent, actor: Actor, opts: { reason?: SaleReason | 'MANUAL'; archive?: 'VENDIDO' | 'RETIRADO' | null; sold?: boolean } = {}): Promise<{ ok: boolean; message: string; status?: string }> {
   return prisma.$transaction(async (tx) => {
@@ -352,6 +352,19 @@ export async function applyIntent(tenantId: string, publicationId: string, inten
     const alreadyGone = pub.confirmedState === 'REMOVIDO' || pub.confirmedState === 'NAO_ENCONTRADO'
     const hasRemote = !alreadyGone && (!!pub.remoteId || pub.confirmedState === 'PUBLICADO' || pub.confirmedState === 'PAUSADO' || pub.confirmedState === 'EM_ANALISE' || !!pub.pendingToken)
     const ev = (type: string, message: string, toStatus?: string) => logEvent(tx, { tenantId, publicationId: pub.id, vehicleId: pub.vehicleId, channel: pub.channel, type, message, fromStatus: pub.status, toStatus: toStatus ?? null, actor, data: opts.reason ? { motivo: opts.reason } : undefined })
+
+    // Rejeitado/falhou: envia de novo do zero (com o conteúdo e o código atuais).
+    if (intent === 'REENVIAR') {
+      if (!['REJEITADO', 'FALHA'].includes(pub.status)) return { ok: false, message: 'Só publicações com erro podem ser enviadas de novo.' }
+      if (pub.confirmedState === 'PUBLICADO') return { ok: false, message: 'Esta publicação já está no ar.' }
+      const v = await tx.vehicle.findFirst({ where: { id: pub.vehicleId, tenantId }, select: { stockStatus: true, active: true } })
+      if (!isPublishableStock(v?.stockStatus, v?.active ?? false)) return { ok: false, message: 'O veículo não está disponível no estoque.' }
+      await cancelPending(tx, pub.id, 'ALL', 'Substituída: reenvio.')
+      const upd = await tx.publication.update({ where: { id: pub.id }, data: { desiredState: 'PUBLICADO', generation: pub.generation + 1, status: 'NA_FILA', confirmedState: null, remoteId: null, pendingToken: null, remoteStatus: null, lastError: null, lastErrorCode: null, lastErrorHint: null, manualAction: null, archivedAt: null, archiveReason: null, updatedById: actor.id } })
+      await enqueue(tx, upd, 'PUBLICAR', { actorId: actor.id })
+      await ev('REENVIAR', 'Enviada de novo depois do erro.', 'NA_FILA')
+      return { ok: true, message: 'Na fila de novo.', status: 'NA_FILA' }
+    }
 
     if (intent === 'CANCELAR_AGENDAMENTO') {
       if (pub.status !== 'AGENDADO') return { ok: false, message: 'Esta publicação não está agendada.' }

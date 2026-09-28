@@ -205,6 +205,19 @@ describe.skipIf(!RUN)('Estúdio social — banco local + Instagram simulado', ()
     await prisma.systemSetting.update({ where: { key }, data: { value: JSON.stringify(cur) } })
   }, 60_000)
 
+  it('rejeitado: "Tentar de novo" volta para a fila do zero (antes "Reativar" dizia "nada a mudar")', async () => {
+    const pub = await prisma.publication.findFirst({ where: { tenantId: T.t.id, connectionId: T.ig.id } })
+    await prisma.publication.update({ where: { id: pub.id }, data: { status: 'REJEITADO', confirmedState: 'REJEITADO', lastError: 'Instagram recusou a mídia (ERROR).', remoteId: null, pendingToken: 'X' } })
+    expect((await svc.applyIntent(T.t.id, pub.id, 'RETOMAR', T.actor)).message).toBe('Nada a mudar.')
+    const r = await svc.applyIntent(T.t.id, pub.id, 'REENVIAR', T.actor)
+    expect(r).toMatchObject({ ok: true, status: 'NA_FILA' })
+    const after = await prisma.publication.findUnique({ where: { id: pub.id } })
+    expect(after).toMatchObject({ status: 'NA_FILA', lastError: null, pendingToken: null, confirmedState: null })
+    expect(await prisma.publicationJob.count({ where: { publicationId: pub.id, op: 'PUBLICAR', status: 'PENDENTE' } })).toBe(1)
+    expect((await svc.applyIntent(T.t.id, pub.id, 'REENVIAR', T.actor)).ok).toBe(false)
+    await prisma.publicationJob.deleteMany({ where: { publicationId: pub.id, status: 'PENDENTE' } })
+  }, 60_000)
+
   it('Reels com música automática: o MP4 que a rede baixa tem a trilha CC0 audível', async () => {
     const res = await svc.createPublications(T.t.id, [{ vehicleId: T.v.id, connectionId: T.ig.id, campaignKey: 'reels-2026-02-02', overrides: { social: { format: 'REELS', template: 'OFERTA', music: { mode: 'AUTO', mood: 'ANIMADA' } } } }], { mode: 'AGORA', actor: T.actor })
     expect(res[0].status).toBe('ENFILEIRADO')
