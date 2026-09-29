@@ -1,8 +1,8 @@
 'use client'
 
 // =============================================================================
-// Nova publicação › Conteúdo: escreve a descrição (IA ou modelo pronto, em 3
-// estilos) e as condições comerciais com os dados do sistema. Condições vazias
+// Nova publicação › Conteúdo: escreve a descrição (IA ou modelo pronto, em 6
+// estilos) e as condições em 5 modelos e as condições comerciais com os dados do sistema. Condições vazias
 // são preenchidas sozinhas com o padrão da loja; se a loja ainda não
 // configurou, aparece o quadro rápido (com sugestão) para confirmar.
 // =============================================================================
@@ -11,17 +11,18 @@ import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Save, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, inputCls } from '@/components/publications/ui'
-import { DESC_STYLES, DESC_STYLE_LABEL, type DescStyle, type StoreTerms } from '@/lib/publications/social/text-core'
+import { DESC_STYLES, DESC_STYLE_LABEL, TERMS_STYLES, TERMS_STYLE_LABEL, type DescStyle, type StoreTerms, type TermsStyle } from '@/lib/publications/social/text-core'
 
 export function TextAssist({ vehicleId, conditionsEmpty, onDescription, onConditions }: { vehicleId: string; conditionsEmpty: boolean; onDescription: (t: string) => void; onConditions: (t: string) => void }) {
   const [style, setStyle] = useState<DescStyle>('EMOCIONAL')
+  const [termsStyle, setTermsStyle] = useState<TermsStyle>('CONSULTIVO')
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
   const [setup, setSetup] = useState<StoreTerms | null>(null)
   const auto = useRef(false)
 
   const conditions = async (terms?: StoreTerms, silent = false) => {
-    const j = await api('/api/publications/social/text', { method: 'POST', json: { vehicleId, kind: 'CONDICOES', ...(terms ? { terms } : {}) } })
+    const j = await api('/api/publications/social/text', { method: 'POST', json: { vehicleId, kind: 'CONDICOES', termsStyle, ...(terms ? { terms } : {}) } })
     if (!terms && !j.configured) { setSetup(j.terms); if (!silent) setNote({ ok: false, text: 'A loja ainda não configurou as condições. Confira a sugestão abaixo.' }); return }
     if (j.text) { onConditions(j.text); setNote({ ok: true, text: silent ? 'Condições comerciais preenchidas com o padrão da loja.' : 'Condições comerciais preenchidas.' }) }
   }
@@ -65,6 +66,9 @@ export function TextAssist({ vehicleId, conditionsEmpty, onDescription, onCondit
         </select>
         <button type="button" onClick={() => run('IA')} disabled={!!busy} className="btn-primary px-2.5 py-1 text-xs">{busy === 'IA' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}Descrição com IA</button>
         <button type="button" onClick={() => run('MODELO')} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs">{busy === 'MODELO' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}Modelo pronto</button>
+        <select aria-label="Modelo das condições" className={cn(inputCls, 'w-auto py-1 text-xs')} value={termsStyle} onChange={(e) => setTermsStyle(e.target.value as TermsStyle)}>
+          {TERMS_STYLES.map((s) => <option key={s} value={s}>Condições: {TERMS_STYLE_LABEL[s]}</option>)}
+        </select>
         <button type="button" onClick={() => run('CONDICOES')} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs">{busy === 'CONDICOES' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}Condições da loja</button>
       </div>
       <p className="text-[11px] text-gray-500">Usa só o que está no sistema: ficha, opcionais, origem, laudo cautelar e as condições configuradas pela loja. Nada é inventado.</p>

@@ -169,12 +169,16 @@ describe.skipIf(!RUN)('Estúdio social — banco local + Instagram simulado', ()
     expect(bad.status).toBe(404)
   }, 240_000)
 
-  it('piloto automático: aprovar fotos agenda os formatos nos horários de pico, sem duplicar', async () => {
+  it('piloto automático: aprovar fotos agenda os formatos pela agenda inteligente, sem duplicar', async () => {
     await prisma.systemSetting.update({ where: { key: `t:${T.t.id}:publications:v1` }, data: { value: JSON.stringify({ contacts: { whatsapp: '(11) 93471-8276' }, autoPublish: { enabled: true, connectionIds: [T.ig.id], enabledById: null, enabledByName: 'Teste', social: { formats: ['STORY', 'CARROSSEL'], template: 'CHEGOU' } } }) } })
     const photos = (await prisma.vehiclePhoto.findMany({ where: { vehicleId: T.v.id }, orderBy: { order: 'asc' } })).map((p: any) => p.url)
     const r1 = await svc.approveMedia(T.t.id, T.v.id, photos, T.actor)
     const scheduled = r1.autoPublished.filter((x: any) => x.status === 'AGENDADO')
-    expect(scheduled.length).toBe(2)
+    // O Story deste carro já saiu hoje (teste anterior): não repete em 24 h (anti-spam); o Carrossel é agendado.
+    expect(scheduled.length).toBe(1)
+    const car = await prisma.publication.findFirst({ where: { tenantId: T.t.id, status: 'AGENDADO', campaignKey: 'carrossel' } })
+    const h = Number(new Date(car.scheduledAt.getTime() - 3 * 3_600_000).toISOString().slice(11, 13))
+    expect(h).toBeGreaterThanOrEqual(7); expect(h).toBeLessThanOrEqual(20)
     const pubs = await prisma.publication.findMany({ where: { tenantId: T.t.id, status: 'AGENDADO' } })
     for (const p of pubs) {
       expect(['carrossel', expect.stringMatching(/^story-\d{4}-\d{2}-\d{2}$/)]).toContainEqual(p.campaignKey)

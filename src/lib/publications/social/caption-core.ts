@@ -10,9 +10,9 @@
 import type { SocialFormat } from './formats'
 import { vehicleName } from '../content-core'
 
-export const CAPTION_TONES = ['VENDEDOR', 'DESCONTRAIDO', 'SOFISTICADO'] as const
+export const CAPTION_TONES = ['VENDEDOR', 'DESCONTRAIDO', 'SOFISTICADO', 'OPORTUNIDADE', 'CURIOSIDADE'] as const
 export type CaptionTone = (typeof CAPTION_TONES)[number]
-export const TONE_LABEL: Record<CaptionTone, string> = { VENDEDOR: 'Vendedor e direto', DESCONTRAIDO: 'Descontraído', SOFISTICADO: 'Sofisticado' }
+export const TONE_LABEL: Record<CaptionTone, string> = { VENDEDOR: 'Vendedor e direto', DESCONTRAIDO: 'Descontraído', SOFISTICADO: 'Sofisticado', OPORTUNIDADE: 'Oportunidade (urgência)', CURIOSIDADE: 'Curiosidade (pergunta que prende)' }
 
 export interface CaptionInput {
   format: SocialFormat
@@ -79,7 +79,7 @@ export function captionPrompt(i: CaptionInput): string {
     REELS: 'legenda de Reels: gancho forte na 1ª linha, 2 a 4 linhas curtas e chamada final',
     VIDEO: 'legenda de vídeo (Reels) do carro filmado: gancho forte na 1ª linha, 2 a 4 linhas curtas e chamada final',
   }
-  const tone: Record<CaptionTone, string> = { VENDEDOR: 'vendedor, direto e confiante', DESCONTRAIDO: 'descontraído e próximo', SOFISTICADO: 'sofisticado e elegante' }
+  const tone: Record<CaptionTone, string> = { VENDEDOR: 'vendedor, direto e confiante', DESCONTRAIDO: 'descontraído e próximo', SOFISTICADO: 'sofisticado e elegante', OPORTUNIDADE: 'de oportunidade e urgência (sem exagero, sem inventar prazo)', CURIOSIDADE: 'que abre com uma pergunta ou curiosidade que prende e responde com o veículo' }
   return [
     'Você é redator de uma loja de carros seminovos no Brasil e escreve para Instagram e Facebook.',
     `Escreva uma ${how[i.format]}, em português do Brasil, tom ${tone[i.tone]}.`,
@@ -108,12 +108,21 @@ export function finishCaption(raw: string, i: CaptionInput): string {
 /** Legenda de reserva (sem IA): modelo pronto por formato. */
 export function fallbackCaption(i: CaptionInput): string {
   const t = title(i)
-  const hook: Record<SocialFormat, string> = {
-    POST: `🚗 ${t}${yearText(i) ? ` ${yearText(i)}` : ''} esperando por você!`,
-    CARROSSEL: `👉 Arrasta para o lado e confere cada detalhe deste ${t}!`,
-    STORY: `🔥 ${t} disponível agora!`,
-    REELS: `🔥 Olha só o que acabou de chegar: ${t}!`,
-    VIDEO: `🎬 Dá o play e confere cada detalhe deste ${t}!`,
+  const yr = yearText(i) ? ` ${yearText(i)}` : ''
+  const byTone: Record<CaptionTone, Record<SocialFormat, string>> = {
+    VENDEDOR: { POST: `🚗 ${t}${yr} esperando por você!`, CARROSSEL: `👉 Arrasta para o lado e confere cada detalhe deste ${t}!`, STORY: `🔥 ${t} disponível agora!`, REELS: `🔥 Olha só o que acabou de chegar: ${t}!`, VIDEO: `🎬 Dá o play e confere cada detalhe deste ${t}!` },
+    DESCONTRAIDO: { POST: `😍 Bora de ${t}${yr}?`, CARROSSEL: `📸 Separamos as melhores fotos do ${t} pra você. Arrasta aí! 👉`, STORY: `😎 Esse aqui tá chamando você: ${t}`, REELS: `🎶 Aumenta o som e vem ver esse ${t}!`, VIDEO: `🎥 Bora dar uma volta no ${t}? Dá o play!` },
+    SOFISTICADO: { POST: `✨ ${t}${yr}. Presença em cada detalhe.`, CARROSSEL: `✨ ${t}${yr} — conheça cada detalhe.`, STORY: `✨ ${t}${yr}`, REELS: `✨ ${t}${yr}. Elegância em movimento.`, VIDEO: `✨ ${t}${yr} em detalhes.` },
+    OPORTUNIDADE: { POST: `⚡ Oportunidade: ${t}${yr}!`, CARROSSEL: `⚡ Oportunidade real: ${t}${yr}. Confere tudo 👉`, STORY: `⚡ Oportunidade: ${t}`, REELS: `⚡ Corre que esse não fica muito tempo: ${t}!`, VIDEO: `⚡ Veja antes que alguém leve: ${t}!` },
+    CURIOSIDADE: { POST: `🤔 Procurando um ${t}${yr}? Então para tudo!`, CARROSSEL: `🤔 Adivinha o que tem na última foto? Arrasta e confere o ${t} 👉`, STORY: `🤔 Adivinha qual chegou? ${t}`, REELS: `🤔 Você sabia que dá pra sair de ${t} ainda esta semana?`, VIDEO: `🤔 Quer ver o ${t} por dentro? Dá o play!` },
+  }
+  const hook = byTone[i.tone] ?? byTone.VENDEDOR
+  const closing: Record<CaptionTone, string> = {
+    VENDEDOR: '💬 Chama no WhatsApp e agende sua visita!',
+    DESCONTRAIDO: '💬 Manda um oi no WhatsApp que a gente te conta tudo!',
+    SOFISTICADO: 'Agende uma visita reservada pelo WhatsApp.',
+    OPORTUNIDADE: '⏳ Chama agora no WhatsApp e garanta o seu!',
+    CURIOSIDADE: '💬 Ficou curioso? Chama no WhatsApp e tire suas dúvidas!',
   }
   const lines = [
     yearText(i) && `📅 Ano ${yearText(i)}`,
@@ -125,6 +134,6 @@ export function fallbackCaption(i: CaptionInput): string {
   const price = i.price != null ? (i.oldPrice && i.oldPrice > i.price ? `💰 De ${money(i.oldPrice)} por ${money(i.price)}` : `💰 ${money(i.price)}`) : ''
   const body = i.format === 'STORY'
     ? [hook.STORY, price].filter(Boolean).join('\n')
-    : [hook[i.format], lines.join('\n'), price, clean(i.conditions), '💬 Chama no WhatsApp e agende sua visita!'].filter(Boolean).join('\n\n')
+    : [hook[i.format], lines.join('\n'), price, clean(i.conditions), closing[i.tone] ?? closing.VENDEDOR].filter(Boolean).join('\n\n')
   return finishCaption(body, i)
 }

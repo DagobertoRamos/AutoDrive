@@ -10,8 +10,9 @@
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarClock, Eye, ExternalLink, HardDrive, ImagePlus, Link2, Loader2, Pencil, Rocket, Save, Trash2, Upload, X } from 'lucide-react'
+import { CalendarClock, ExternalLink, Eye, HardDrive, ImagePlus, Layers, Link2, Loader2, Pencil, Rocket, Save, Trash2, Upload, X } from 'lucide-react'
 import { RETENTION_NOTICE } from '@/lib/publications/retention-core'
+import { CADENCE_NOTICE } from '@/lib/publications/social/cadence-core'
 import { partsUrl, StoredPreview } from '@/components/publications/AvulsaPreview'
 import { cn } from '@/lib/utils'
 import { api, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
@@ -103,6 +104,11 @@ export default function PostAvulsoPage() {
   const [tab, setTab] = useState('agendados')
   const [net, setNet] = useState<'INSTAGRAM' | 'FACEBOOK'>('INSTAGRAM')
   const [viewing, setViewing] = useState<any | null>(null)
+  // Lote: vários posts variados, agendados de uma vez em horários diferentes.
+  type BatchItem = { id: string; title: string; format: AvulsaFormat; caption: string; media: AvulsaMedia[]; thumb: string | null; kind: 'image' | 'video' | 'link' }
+  const [batch, setBatch] = useState<BatchItem[]>([])
+  const [batchStart, setBatchStart] = useState('')
+  const [batchResult, setBatchResult] = useState<{ message: string; results: Array<{ n: number; ok: boolean; message: string; local?: string }>; items: BatchItem[] } | null>(null)
   // Rascunho do servidor sendo continuado (salvar/publicar atualiza o mesmo).
   const [editingId, setEditingId] = useState<string | null>(null)
   const [restored, setRestored] = useState(false)
@@ -158,6 +164,37 @@ export default function PostAvulsoPage() {
     }, 0)
     return () => clearTimeout(t)
   }, [posts, linked]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // O lote fica guardado neste navegador (recarregar a página não perde).
+  const [batchLoaded, setBatchLoaded] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => { try { const raw = localStorage.getItem('autodrive:avulsa:lote:v1'); if (raw) setBatch(JSON.parse(raw)) } catch { /* sem armazenamento */ } setBatchLoaded(true) }, 0)
+    return () => clearTimeout(t)
+  }, [])
+  useEffect(() => {
+    if (!batchLoaded) return
+    try { if (batch.length) localStorage.setItem('autodrive:avulsa:lote:v1', JSON.stringify(batch)); else localStorage.removeItem('autodrive:avulsa:lote:v1') } catch { /* sem armazenamento */ }
+  }, [batch, batchLoaded])
+
+  const addToBatch = () => {
+    // Miniatura pelo arquivo já enviado ao servidor (sobrevive a recarregar a página).
+    const img = media.find((m) => m.type === 'image') as { assetId: string } | undefined
+    const poster = media.find((m) => m.type === 'video' && 'posterAssetId' in m && m.posterAssetId) as { posterAssetId?: string } | undefined
+    const thumb = img ? `/api/site/assets/${img.assetId}` : poster?.posterAssetId ? `/api/site/assets/${poster.posterAssetId}` : null
+    setBatch((b) => [...b, { id: crypto.randomUUID(), title, format, caption, media, thumb, kind: format === 'LINK' ? 'link' : media.some((m) => m.type === 'video') ? 'video' : 'image' }])
+    setMsg({ ok: true, text: `Post ${batch.length + 1} adicionado ao lote. Monte o próximo ou agende o lote.` })
+    clearEditor()
+  }
+  const runBatch = async () => {
+    if (!batch.length || !selConns.length) return
+    setBusy('LOTE'); setMsg(null)
+    try {
+      const j = await api('/api/publications/avulsa/batch', { method: 'POST', json: { items: batch.map(({ title, format, caption, media }) => ({ title, format, caption, media })), connectionIds: selConns.map((c) => c.id), startLocal: batchStart || undefined } })
+      setBatchResult({ message: j.message, results: j.results, items: batch })
+      setBatch((b) => b.filter((_, n) => !j.results.find((r: { n: number; ok: boolean }) => r.n === n && r.ok)))
+      setTab('agendados'); loadPosts()
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+  }
 
   const clearEditor = () => { setItems([]); setLinkMedia(''); setCaption(''); setTitle(''); setWhen(''); setEditingId(null); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ok */ } }
 
@@ -324,6 +361,7 @@ export default function PostAvulsoPage() {
             <button type="button" onClick={() => submit('AGORA')} disabled={!!busy || uploading || !!problem || !selConns.length} className="btn-primary px-4 py-2 text-sm">{busy === 'AGORA' ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />}Publicar agora</button>
             <label className="text-xs text-gray-600">Agendar ({tz.replace('_', ' ')})<input type="datetime-local" className={inputCls} value={when} onChange={(e) => setWhen(e.target.value)} /></label>
             <button type="button" onClick={() => submit('AGENDAR')} disabled={!!busy || uploading || !!problem || !when || !selConns.length} className="btn-secondary px-3 py-2 text-sm"><CalendarClock size={15} />Agendar</button>
+            <button type="button" onClick={addToBatch} disabled={!!busy || uploading || !!problem || !!editingId} title={editingId ? 'Termine o rascunho aberto antes de montar um lote' : undefined} className="btn-secondary px-3 py-2 text-sm"><Layers size={15} />Adicionar ao lote{batch.length ? ` (${batch.length})` : ''}</button>
             <button type="button" onClick={() => submit('RASCUNHO')} disabled={!!busy || uploading || !media.length} className="btn-secondary ml-auto px-3 py-2 text-sm"><Save size={15} />Salvar rascunho</button>
             {uploading && <p className="w-full text-xs text-amber-700">Aguarde terminar o envio das mídias…</p>}
           </div>
@@ -337,6 +375,41 @@ export default function PostAvulsoPage() {
           <p className="text-center text-[11px] text-gray-500">Prévia de como aparece no celular. Vídeo é ajustado para 9:16 (vertical) sem cortar.</p>
         </aside>
       </div>
+
+      {(batch.length > 0 || batchResult) && (
+        <section className="space-y-3 rounded-xl border border-brand-200 bg-brand-50/30 p-4" aria-label="Lote de posts">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900"><Layers size={15} className="text-brand-700" />Lote de posts {batch.length > 0 && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[11px] text-white">{batch.length}</span>}</h2>
+            <span className="text-[11px] text-gray-500">Contas: {selConns.map((c) => (c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook')).join(' + ') || 'escolha acima'}</span>
+          </div>
+          {batch.length > 0 && (
+            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {batch.map((b, n) => (
+                <li key={b.id} className="flex gap-2 rounded-lg border border-gray-200 bg-white p-2 text-xs">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-gray-500">{b.thumb ? <img src={b.thumb} alt="" className="h-full w-full object-cover" /> : b.kind === 'link' ? <Link2 size={16} /> : <Upload size={16} />}</span>
+                  <span className="min-w-0 flex-1"><b className="block truncate text-gray-800">{n + 1}. {b.title || AVULSA_LABEL[b.format]}</b><span className="block text-gray-500">{AVULSA_LABEL[b.format]} · {b.media.length} mídia(s)</span>{b.caption && <span className="line-clamp-1 text-gray-500">{b.caption}</span>}</span>
+                  <button type="button" onClick={() => setBatch((l) => l.filter((x) => x.id !== b.id))} aria-label="Tirar do lote" className="self-start text-gray-400 hover:text-red-600"><X size={14} /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {batch.length > 0 && (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs text-gray-600">A partir de (opcional)<input type="datetime-local" className={inputCls} value={batchStart} onChange={(e) => setBatchStart(e.target.value)} /></label>
+              <button type="button" onClick={() => void runBatch()} disabled={!!busy || !selConns.length} className="btn-primary px-4 py-2 text-sm">{busy === 'LOTE' ? <Loader2 size={15} className="animate-spin" /> : <CalendarClock size={15} />}Agendar os {batch.length} em horários diferentes</button>
+              <button type="button" onClick={() => { if (confirm('Esvaziar o lote?')) setBatch([]) }} className="text-xs text-gray-500 underline">Esvaziar</button>
+            </div>
+          )}
+          <p className="text-[11px] text-gray-600">O sistema escolhe o horário de cada post entre 07:00 e 20:00, sem repetir horário com nada que já está na agenda (anúncios e outros posts) e respeitando o limite seguro por dia — o que passar vai para o dia seguinte. {CADENCE_NOTICE}</p>
+          {batchResult && (
+            <div role="status" className="rounded-lg border border-gray-200 bg-white p-3 text-xs">
+              <p className="font-semibold text-gray-800">{batchResult.message}</p>
+              <ul className="mt-1 space-y-0.5">{batchResult.results.map((r) => <li key={r.n} className={r.ok ? 'text-green-700' : 'text-red-700'}>{r.n + 1}. {batchResult.items[r.n]?.title || AVULSA_LABEL[batchResult.items[r.n]?.format ?? 'POST']}: {r.ok && r.local ? new Date(`${r.local}:00`).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : r.message}</li>)}</ul>
+              <button type="button" onClick={() => setBatchResult(null)} className="mt-1 text-gray-500 underline">Fechar</button>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">

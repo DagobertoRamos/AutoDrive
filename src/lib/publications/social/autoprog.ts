@@ -8,11 +8,12 @@
 import { prisma } from '@/lib/prisma'
 import { effectivePrice } from '@/lib/site/listing-core'
 import { PUBLISHABLE_STOCK } from '../sale-rules-core'
-import { localToUtc, utcToLocalInput } from '../schedule-core'
+import { utcToLocalInput } from '../schedule-core'
 import { createPublications, ensureMediaApproved, type CreateResult } from '../service'
 import { loadPublicationSettings } from '../settings'
 import { assign, autoKey, upcoming, type Candidate } from './autoprog-core'
 import { classifyVideo } from './video-core'
+import { allocateSlots } from './cadence'
 
 const ACTOR = { id: null, name: 'Programação automática' }
 
@@ -52,15 +53,20 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
   await ensureMediaApproved(tenantId, plan.map((p) => p.vehicleId), ACTOR)
 
   const results: CreateResult[] = []
+  // Cada conta ganha o seu horário (a partir do horário da grade), sem repetir
+  // horário, dentro de 07:00–20:00 e da quantidade segura por dia.
+  const reqs = plan.flatMap((slot) => conns.filter((c) => !taken.has(`${c.id}:${autoKey(slot.format, slot.local)}`)).map((c) => ({ key: `${slot.vehicleId}|${c.id}|${slot.format}|${slot.local}`, connectionId: c.id, format: slot.format, notBeforeLocal: slot.local })))
+  const slots = await allocateSlots(tenantId, reqs)
   for (const slot of plan) {
     const key = autoKey(slot.format, slot.local)
-    const at = localToUtc(slot.local, settings.timezone)
-    if (!at) continue
-    const targets = conns.filter((c) => !taken.has(`${c.id}:${key}`)).map((c) => ({
-      vehicleId: slot.vehicleId, connectionId: c.id, campaignKey: key,
-      overrides: { auto: true, social: { format: slot.format, template: prog.template, ...(prog.music ? { music: prog.music } : {}) } },
-    }))
-    if (targets.length) results.push(...await createPublications(tenantId, targets, { mode: 'AGENDAR', scheduledAt: at, actor: ACTOR }))
+    for (const c of conns) {
+      const s = slots[`${slot.vehicleId}|${c.id}|${slot.format}|${slot.local}`]
+      if (!s) continue
+      results.push(...await createPublications(tenantId, [{
+        vehicleId: slot.vehicleId, connectionId: c.id, campaignKey: key,
+        overrides: { auto: true, social: { format: slot.format, template: prog.template, ...(prog.music ? { music: prog.music } : {}) } },
+      }], { mode: 'AGENDAR', scheduledAt: s.at, actor: ACTOR }))
+    }
   }
   const ok = results.filter((r) => r.status === 'AGENDADO').length
   return { planned: ok, results, message: `${ok} envio(s) programado(s) para as próximas 48 h.` }

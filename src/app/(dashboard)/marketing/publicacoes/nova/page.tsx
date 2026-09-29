@@ -20,9 +20,10 @@ import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/pu
 import { TextAssist } from '@/components/publications/TextAssist'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
-import { campaignKeyFor, isArtTemplate, isSocialFormat, planLocal } from '@/lib/publications/social/formats'
+import { campaignKeyFor, isArtTemplate, isSocialFormat, type SocialFormat } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { RETENTION_DAYS } from '@/lib/publications/retention-core'
+import { DAILY_IDEAL, KIND_LABEL, kindOf } from '@/lib/publications/social/cadence-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -420,6 +421,12 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
   useEffect(() => { const t = setTimeout(load, 0); return () => clearTimeout(t) }, [load])
 
   const blocked = items?.filter((i) => i.blocked).length ?? 0
+  // Anti-spam: sem "Espalhar", quantos saem de uma vez por conta (por tipo) × o seguro por dia.
+  const socialConnIds = connectionIds.filter((c) => ['INSTAGRAM', 'META_PAGE'].includes(conns.find((x) => x.id === c)?.channel ?? ''))
+  const perKind = (['FEED', 'REELS', 'STORY'] as const).map((k) => ({ k, n: vehicleIds.length * social.formats.filter((f) => kindOf(f) === k).length })).filter((x) => x.n > DAILY_IDEAL[x.k])
+  const overload = !social.spread && socialConnIds.length > 0 && perKind.length > 0
+    ? `Isto publica de uma vez, em cada conta: ${perKind.map((x) => `${x.n} ${KIND_LABEL[x.k]} (seguro: até ${DAILY_IDEAL[x.k]} por dia)`).join('; ')}. Acima disso o Instagram/Facebook pode tratar como spam e limitar ou bloquear a conta. Ligue “Espalhar automaticamente” na etapa Canais.`
+    : null
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     if (sending) return // clique duplo
     setSending(true); setErr(null)
@@ -434,10 +441,21 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
       }))))
       const calls: Array<{ targets: unknown[]; mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO'; scheduledLocal?: string }> = []
       if (social.spread && mode !== 'RASCUNHO') {
-        // Espalha a partir de agora (ou do horário escolhido) nos picos 12 h / 19 h.
+        // Agenda inteligente: cada carro × conta × formato no seu horário, entre 07:00 e 20:00,
+        // sem repetir horário (considera o que já está agendado) e no limite seguro por dia.
         const start = mode === 'AGENDAR' && when ? when : nowLocal
         if (plain.length) calls.push({ targets: plain, mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined })
-        for (const slot of planLocal(start, social.formats)) calls.push({ targets: socialTargets(slot.local, [slot.format]), mode: 'AGENDAR', scheduledLocal: slot.local })
+        const reqs = vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => social.formats.map((f) => ({ key: `${v}|${c}|${f}`, connectionId: c, format: f }))))
+        const { slots } = await api<{ slots: Record<string, string> }>('/api/publications/social/slots', { method: 'POST', json: { requests: reqs, startLocal: start } })
+        const byTime = new Map<string, unknown[]>()
+        for (const r of reqs) {
+          const local = slots[r.key]
+          if (!local) continue
+          const [v, c, f] = r.key.split('|')
+          const t = { vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f as SocialFormat, local), overrides: { social: { format: f, template: social.template, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) } }
+          byTime.set(local, [...(byTime.get(local) ?? []), t])
+        }
+        for (const [local, targets] of byTime) calls.push({ targets, mode: 'AGENDAR', scheduledLocal: local })
       } else {
         calls.push({ targets: [...plain, ...socialTargets(mode === 'AGENDAR' && when ? when : nowLocal)], mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined })
       }
@@ -490,8 +508,11 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
           {Object.entries(checks).map(([vid, list]) => list.some((c: any) => !c.ok) && (
             <div key={vid} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><p className="font-semibold">Fotos de {vehicles[vid]?.title ?? vid}</p><ul>{list.filter((c: any) => !c.ok).map((c: any, i: number) => <li key={i}>• {c.problem}</li>)}</ul><button onClick={() => goTo(1)} className="mt-1 font-medium underline">Revisar fotos</button></div>
           ))}
+          {overload && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"><b>Risco de bloqueio:</b> {overload} <button type="button" onClick={() => goTo(4)} className="ml-1 font-medium underline">Ir para Canais</button></div>}
           <div className="flex flex-wrap items-end gap-2 rounded-xl border border-gray-200 bg-white p-3">
-            {can.publish && <button onClick={() => submit('AGORA')} disabled={sending || items.length === blocked} className="btn-primary px-4 py-2 text-sm">{sending ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />}Publicar agora</button>}
+            {can.publish && <button onClick={() => { if (overload && !confirm(`${overload}
+
+Publicar assim mesmo?`)) return; void submit('AGORA') }} disabled={sending || items.length === blocked} className="btn-primary px-4 py-2 text-sm">{sending ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />}Publicar agora</button>}
             {can.publish && (
               <div className="flex items-end gap-2">
                 <label className="text-xs text-gray-600">Agendar ({tz.replace('_', ' ')})<input type="datetime-local" className={inputCls} value={when} onChange={(e) => setWhen(e.target.value)} /></label>

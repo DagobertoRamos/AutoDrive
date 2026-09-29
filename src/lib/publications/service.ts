@@ -11,11 +11,10 @@
 //   • venda tem prioridade 0 na fila e cancela agendamentos.
 // =============================================================================
 
-import { campaignKeyFor, formatsFor, planLocal, socialOf } from './social/formats'
+import { campaignKeyFor, formatsFor, socialOf } from './social/formats'
 import { descriptionTemplate, termsBlock } from './social/text-core'
 import { finishCaption } from './social/caption-core'
 import { effectiveOrigin } from '@/lib/stock/origin-core'
-import { localToUtc, utcToLocalInput } from './schedule-core'
 import { Prisma } from '@prisma/client'
 import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -576,7 +575,7 @@ export async function approveMedia(tenantId: string, vehicleId: string, photos: 
   let autoPublished: CreateResult[] = []
   if (settings.autoPublish.enabled && settings.autoPublish.connectionIds.length && isPublishableStock(v.stockStatus, v.active)) {
     const actor = { id: settings.autoPublish.enabledById, name: `Regra automática (ativada por ${settings.autoPublish.enabledByName ?? 'gestor'})` }
-    const pubs = await prisma.publication.findMany({ where: { tenantId, vehicleId, archivedAt: null }, select: { connectionId: true, campaignKey: true } })
+    const pubs = await prisma.publication.findMany({ where: { tenantId, vehicleId, archivedAt: null }, select: { connectionId: true, campaignKey: true, createdAt: true } })
     const existing = new Set(pubs.map((p) => p.connectionId))
     const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: settings.autoPublish.connectionIds } }, select: { id: true, channel: true } })
     const social = settings.autoPublish.social
@@ -587,12 +586,17 @@ export async function approveMedia(tenantId: string, vehicleId: string, photos: 
     // Instagram/Facebook: um envio por formato, espalhado nos horários de pico.
     const socialConns = conns.filter((c) => isSocial(c.channel))
     if (socialConns.length) {
-      const taken = new Set(pubs.map((p) => `${p.connectionId}:${p.campaignKey}`))
-      for (const slot of planLocal(utcToLocalInput(new Date(), settings.timezone), social.formats)) {
-        const key = campaignKeyFor(slot.format, slot.local)
-        const t = socialConns.filter((c) => !taken.has(`${c.id}:${key}`)).map((c) => ({ vehicleId, connectionId: c.id, campaignKey: key, overrides: { social: { format: slot.format, template: social.template, ...(social.music ? { music: social.music } : {}) } } }))
-        const at = localToUtc(slot.local, settings.timezone)
-        if (t.length && at) autoPublished.push(...await createPublications(tenantId, t, { mode: 'AGENDAR', scheduledAt: at, actor }))
+      // Agenda inteligente: 07:00–20:00, sem repetir horário, dentro do limite seguro por dia.
+      // Sem duplicar: Post/Carrossel uma vez por conta; Story/Reels/Vídeo uma vez por dia.
+      const dayAgo = Date.now() - 86_400_000
+      const has = (connId: string, f: string) => pubs.some((p) => p.connectionId === connId && (p.campaignKey === f.toLowerCase() || (p.campaignKey.startsWith(`${f.toLowerCase()}-`) && p.createdAt.getTime() > dayAgo)))
+      const reqs = socialConns.flatMap((c) => social.formats.filter((f) => !has(c.id, f)).map((f) => ({ key: `${c.id}|${f}`, connectionId: c.id, format: f })))
+      const { allocateSlots } = await import('./social/cadence')
+      const slots = reqs.length ? await allocateSlots(tenantId, reqs) : {}
+      for (const r of reqs) {
+        const s = slots[r.key]
+        if (!s) continue
+        autoPublished.push(...await createPublications(tenantId, [{ vehicleId, connectionId: r.connectionId, campaignKey: campaignKeyFor(r.format, s.local), overrides: { social: { format: r.format, template: social.template, ...(social.music ? { music: social.music } : {}) } } }], { mode: 'AGENDAR', scheduledAt: s.at, actor }))
       }
     }
   }

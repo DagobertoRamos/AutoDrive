@@ -377,7 +377,7 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
                   {MUSIC_MOODS.map((m) => <option key={m} value={m}>Automática — {MOOD_LABEL[m]}</option>)}
                 </select>
               </label>
-              <p className="text-[11px] text-gray-500">Com formatos marcados, cada carro aprovado ganha arte e legenda prontas, agendadas nos horários de pico (12 h e 19 h). Sem formato: post comum com as fotos.</p>
+              <p className="text-[11px] text-gray-500">Com formatos marcados, cada carro aprovado ganha arte e legenda prontas, agendadas pela agenda inteligente: entre 07:00 e 20:00, sem repetir horário e dentro da quantidade segura por dia. Sem formato: post comum com as fotos.</p>
             </div>
           )}
         </div>

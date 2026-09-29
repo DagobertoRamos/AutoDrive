@@ -9,13 +9,14 @@
 // =============================================================================
 
 import { useState } from 'react'
-import { Clapperboard, Eye, Images, Loader2, Smartphone, Sparkles, Square, Video } from 'lucide-react'
+import { Clapperboard, Eye, Images, Loader2, ShieldAlert, Smartphone, Sparkles, Square, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, inputCls } from '@/components/publications/ui'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type ArtTemplate, type SocialFormat } from '@/lib/publications/social/formats'
 import { CAPTION_TONES, TONE_LABEL, type CaptionTone } from '@/lib/publications/social/caption-core'
 import type { MusicChoice } from '@/lib/publications/social/music-core'
 import { MusicPicker } from '@/components/publications/MusicPicker'
+import { CADENCE_NOTICE } from '@/lib/publications/social/cadence-core'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { PhotoEnhanceToggle } from '@/components/publications/PhotoEnhanceToggle'
 
@@ -30,7 +31,7 @@ export interface SocialChoice {
   music: MusicChoice | null
 }
 
-export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: false, music: { mode: 'AUTO', mood: 'ANIMADA' } }
+export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: true, music: { mode: 'AUTO', mood: 'ANIMADA' } }
 
 const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard, VIDEO: Video }
 
@@ -125,9 +126,10 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
                 {CAPTION_TONES.map((t) => <option key={t} value={t}>{TONE_LABEL[t]}</option>)}
               </select>
             </label>
-            <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar nos horários de pico (12 h e 19 h)</label>
+            <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar automaticamente entre 07:00 e 20:00 (sem horários repetidos)</label>
             <PhotoEnhanceToggle onChanged={() => setArtRev((n) => n + 1)} />
           </div>
+          <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900"><ShieldAlert size={14} className="mt-0.5 shrink-0" /><span><b>Anti-spam:</b> {CADENCE_NOTICE} {value.spread ? 'Com “Espalhar” ligado, o sistema já agenda dentro desse limite, a partir de 07:00 até 20:00, sem repetir horário com o que já está na agenda.' : 'Sem “Espalhar”, tudo sai de uma vez — use só para poucos posts.'}</span></p>
           <MusicPicker value={value.music} onChange={(music) => set({ music })} hasInstagram={hasInstagram} />
           {vid && targets.length > 0 && (
             <button type="button" onClick={() => setPreview(true)} className="btn-primary px-3 py-1.5 text-xs"><Eye size={14} />Pré-visualizar como fica no celular</button>

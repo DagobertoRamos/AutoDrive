@@ -5,9 +5,20 @@
 // Nunca inventa opcional, garantia, financiamento, revisão ou dono único.
 // =============================================================================
 
-export const DESC_STYLES = ['COMPLETO', 'DIRETO', 'EMOCIONAL'] as const
+export const DESC_STYLES = ['EMOCIONAL', 'COMPLETO', 'DIRETO', 'OPORTUNIDADE', 'PERGUNTA', 'PREMIUM'] as const
 export type DescStyle = (typeof DESC_STYLES)[number]
-export const DESC_STYLE_LABEL: Record<DescStyle, string> = { COMPLETO: 'Completo (ficha + opcionais)', DIRETO: 'Direto e curto', EMOCIONAL: 'Emocional (vende o sonho)' }
+export const DESC_STYLE_LABEL: Record<DescStyle, string> = {
+  EMOCIONAL: 'Emocional (vende o sonho)', COMPLETO: 'Completo (ficha + opcionais)', DIRETO: 'Direto e curto',
+  OPORTUNIDADE: 'Oportunidade (urgência e preço)', PERGUNTA: 'Pergunta que prende (conversa)', PREMIUM: 'Premium (sofisticado)',
+}
+
+// ── Condições comerciais: 5 modelos ──────────────────────────────────────────
+export const TERMS_STYLES = ['CONSULTIVO', 'DIRETO', 'FACILIDADE', 'CONFIANCA', 'OPORTUNIDADE'] as const
+export type TermsStyle = (typeof TERMS_STYLES)[number]
+export const TERMS_STYLE_LABEL: Record<TermsStyle, string> = {
+  CONSULTIVO: 'Consultivo (completo, com avisos)', DIRETO: 'Direto (lista curta)', FACILIDADE: 'Facilidade de pagamento',
+  CONFIANCA: 'Confiança e transparência', OPORTUNIDADE: 'Oportunidade (chamada para agir)',
+}
 
 /** Condições comerciais padrão da loja (Canais conectados › Contatos e regras). */
 export interface StoreTerms {
@@ -252,6 +263,47 @@ export function descriptionTemplate(i: TextInput, style: DescStyle, now = new Da
     ].filter(Boolean).join('\n\n')
   }
 
+  if (style === 'OPORTUNIDADE') {
+    return [
+      `⚡ OPORTUNIDADE: ${full(i)}${yr}`,
+      i.oldPrice && i.price && i.oldPrice > i.price ? `💥 Preço reduzido: de ${money(i.oldPrice)} por ${money(i.price)}. Diferença de ${money(i.oldPrice - i.price)} no seu bolso.` : priceLine,
+      `Esse é ${k === 'MOTO' || k === 'PICAPE' ? 'daquelas' : 'daqueles'} que não costumam ficar muito tempo no pátio. Motivos não faltam:`,
+      [...h.filter((x) => !x.startsWith('preço')).map((x) => `✔ ${x[0].toUpperCase()}${x.slice(1)}`), ...opts.slice(0, 5).map((o) => `✔ ${o}`)].slice(0, 8).join('\n'),
+      terms ? `Para facilitar:\n${terms}` : '',
+      `⏳ Garanta antes que outra pessoa leve. Chame agora no WhatsApp e reserve seu horário para ver ${k === 'MOTO' || k === 'PICAPE' ? 'a' : 'o'} ${N.n} na ${i.storeName}${local}.`,
+    ].filter(Boolean).join('\n\n')
+  }
+
+  if (style === 'PERGUNTA') {
+    const fem = k === 'MOTO' || k === 'PICAPE'
+    const q = pick(k === 'MOTO'
+      ? ['Cansado de perder tempo no trânsito?', 'Procurando economia sem abrir mão de estilo?', 'Que tal chegar mais rápido e gastar menos?']
+      : k === 'SUV' ? ['Procurando espaço, conforto e segurança para a família?', 'Quer um carro que encare cidade e estrada com o mesmo conforto?']
+      : ['Procurando um carro confiável para o dia a dia?', 'Quer trocar de carro sem dor de cabeça?', 'Que tal dirigir com mais conforto a partir desta semana?'], seed + 'q')
+    return [
+      `🤔 ${q}`,
+      `Então conheça ${fem ? 'a' : 'o'} ${full(i)}${yr}. 👇`,
+      [...specLines(i).slice(0, 4).map((l) => `• ${l}`), ...h.filter((x) => !x.startsWith('preço')).slice(0, 3).map((x) => `• ${x[0].toUpperCase()}${x.slice(1)}`)].join('\n'),
+      opts.length ? `E ainda vem com: ${opts.slice(0, 6).join(', ')}${opts.length > 6 ? ' e mais' : ''}.` : '',
+      priceLine,
+      terms ? `Como você prefere pagar?\n${terms}` : '',
+      `💬 Ficou com alguma dúvida? Pergunta pra gente! Chame no WhatsApp e agende seu ${N.test} na ${i.storeName}${local}.`,
+    ].filter(Boolean).join('\n\n')
+  }
+
+  if (style === 'PREMIUM') {
+    return [
+      `${full(i)}${yr}`,
+      pick(['Elegância, conforto e procedência reunidos em um só veículo.', 'Para quem valoriza cada detalhe — e não abre mão de qualidade.', 'Um veículo à altura das suas escolhas.'], seed + 'p'),
+      specLines(i).join(' · '),
+      opts.length ? `Destaques de equipamento: ${opts.slice(0, 10).join(', ')}${opts.length > 10 ? ', entre outros' : ''}.` : '',
+      h.filter((x) => !x.startsWith('preço')).length ? `Diferenciais: ${h.filter((x) => !x.startsWith('preço')).join(', ')}.` : '',
+      i.price != null ? `Valor: ${money(i.price)}${i.oldPrice && i.oldPrice > i.price ? ` (anteriormente ${money(i.oldPrice)})` : ''}.` : '',
+      terms ? `Condições:\n${terms}` : '',
+      `${ORIGIN_TEXT[i.origin]}. Atendimento personalizado na ${i.storeName}${local} — agende uma visita reservada.`,
+    ].filter(Boolean).join('\n\n')
+  }
+
   // COMPLETO
   return [
     `🚗 ${full(i)}${yr}`.replace('🚗', k === 'MOTO' ? '🏍️' : '🚗'),
@@ -274,6 +326,9 @@ export function descriptionPrompt(i: TextInput, style: DescStyle, now = new Date
     COMPLETO: 'completo e organizado em blocos curtos com emojis de título (destaques, ficha, opcionais, condições), abrindo com uma frase que valorize o veículo',
     DIRETO: 'direto e curto (até 7 linhas), com emojis no início das linhas',
     EMOCIONAL: 'emocional e envolvente, que desperte o sonho e a vontade de ter o veículo: abra com um gancho que faça a pessoa se imaginar usando-o, descreva a experiência (conforto, liberdade, família, viagens), traga os destaques como provas, crie senso de oportunidade e feche com chamada para visita',
+    OPORTUNIDADE: 'de oportunidade e urgência: destaque o preço (e a redução, se houver), liste os motivos em tópicos curtos com ✔ e feche pedindo para chamar agora antes que outra pessoa leve',
+    PERGUNTA: 'conversado, abrindo com uma pergunta que toque numa dor ou desejo do comprador, respondendo com o veículo e fechando com convite para tirar dúvidas no WhatsApp',
+    PREMIUM: 'sofisticado e elegante, frases curtas, poucos ou nenhum emoji, valorizando procedência, detalhes e atendimento personalizado',
   }
   const k = vehicleKind(i)
   return [
@@ -311,10 +366,11 @@ export function finishDescription(raw: string): string {
  * forma de pagamento marcada pela loja, com os avisos obrigatórios (crédito,
  * taxas, consórcio). Contatos ficam de fora — cada canal acrescenta os seus.
  */
-export function termsBlock(i: { terms: StoreTerms; inspected: boolean; storeName: string }): string {
+export function termsBlock(i: { terms: StoreTerms; inspected: boolean; storeName: string }, style: TermsStyle = 'CONSULTIVO'): string {
   const t = i.terms
   if (!hasTerms(t) && !i.inspected) return ''
   const store = clean(i.storeName) || 'nossa loja'
+  if (style !== 'CONSULTIVO') return termsVariant(i, style, store)
   const blocks: string[] = [
     '💎 SUA PRÓXIMA CONQUISTA MERECE UM ATENDIMENTO À ALTURA.',
     `Na ${store}, unimos experiência no mercado, atendimento personalizado e transparência para ajudar você a escolher a melhor forma de comprar. Nosso compromisso é acompanhar cada etapa da negociação. 🤝`,
@@ -336,4 +392,52 @@ export function termsBlock(i: { terms: StoreTerms; inspected: boolean; storeName
   if (t.financing || t.cards || t.consortium) blocks.push('📌 Prazos e condições variam conforme o veículo, a instituição financeira, a administradora ou a operadora do cartão. Consulte disponibilidade, taxas e custo total da operação.')
   blocks.push('📲 Qual opção combina mais com você? Fale conosco e receba uma proposta personalizada!')
   return blocks.join('\n\n')
+}
+
+/** Os outros 4 modelos de condições comerciais (mesmos fatos, jeitos diferentes de dizer). */
+function termsVariant(i: { terms: StoreTerms; inspected: boolean }, style: Exclude<TermsStyle, 'CONSULTIVO'>, store: string): string {
+  const t = i.terms
+  const fin = t.financing ? `Financiamento${t.financingMax ? ` em até ${t.financingMax}x` : ''}` : ''
+  const card = t.cards ? `Cartão de crédito${t.cardsMax ? ` em até ${t.cardsMax}x` : ''}` : ''
+  const extras = [
+    t.transferIncluded && 'Transferência inclusa',
+    t.ipvaPaid && 'IPVA pago',
+    t.warrantyMonths && `Garantia de ${t.warrantyMonths} ${t.warrantyMonths === 1 ? 'mês' : 'meses'} (conforme termo da loja)`,
+    i.inspected && 'Laudo cautelar aprovado',
+    clean(t.extra),
+  ].filter(Boolean) as string[]
+  const legal = t.financing || t.cards || t.consortium ? 'Crédito sujeito a análise e aprovação. Consulte taxas, prazos e custo total.' : ''
+  if (style === 'DIRETO') {
+    return [
+      '💳 FORMAS DE PAGAMENTO',
+      [t.cash && '✔ À vista', fin && `✔ ${fin}`, card && `✔ ${card}`, t.consortium && '✔ Consórcio', t.acceptsTrade && '✔ Aceitamos seu veículo na troca', ...extras.map((x) => `✔ ${x}`)].filter(Boolean).join('\n'),
+      legal,
+    ].filter(Boolean).join('\n\n')
+  }
+  if (style === 'FACILIDADE') {
+    return [
+      '🙌 A GENTE FACILITA PARA VOCÊ SAIR DE CHAVE NA MÃO',
+      [t.acceptsTrade && '🔄 Aceitamos seu usado na troca, como parte do pagamento (mediante avaliação).', fin && `🏦 ${fin}: simulação rápida e sem compromisso, com entrada e parcelas que cabem no seu bolso.`, card && `💳 ${card}: use o limite para a entrada ou para o valor todo.`, t.consortium && '🎯 Consórcio: planeje sua próxima conquista (contemplação por sorteio ou lance).', t.cash && '💰 À vista: condição especial — pergunte!'].filter(Boolean).join('\n'),
+      extras.length ? extras.map((x) => `✅ ${x}`).join('\n') : '',
+      legal,
+      '📲 Mande uma mensagem e receba a simulação na hora.',
+    ].filter(Boolean).join('\n\n')
+  }
+  if (style === 'CONFIANCA') {
+    return [
+      `🤝 NA ${store.toLocaleUpperCase('pt-BR')}, TUDO É EXPLICADO ANTES DE FECHAR`,
+      'Sem letra miúda: você conhece as condições, as taxas e o valor total antes de decidir.',
+      [t.cash && '• À vista', fin && `• ${fin}`, card && `• ${card}`, t.consortium && '• Consórcio', t.acceptsTrade && '• Seu veículo na troca, com avaliação justa'].filter(Boolean).join('\n'),
+      extras.length ? `Garantias de uma compra tranquila:\n${extras.map((x) => `• ${x}`).join('\n')}` : '',
+      legal,
+    ].filter(Boolean).join('\n\n')
+  }
+  // OPORTUNIDADE
+  return [
+    '⚡ CONDIÇÕES PARA FECHAR AINDA HOJE',
+    [fin && `🔥 ${fin}`, card && `🔥 ${card}`, t.acceptsTrade && '🔥 Pegamos seu usado na troca', t.cash && '🔥 Condição especial à vista', t.consortium && '🔥 Consórcio'].filter(Boolean).join('\n'),
+    extras.length ? extras.map((x) => `✅ ${x}`).join('\n') : '',
+    legal,
+    '⏳ Condições sujeitas à disponibilidade do veículo. Chame agora e garanta a sua!',
+  ].filter(Boolean).join('\n\n')
 }
