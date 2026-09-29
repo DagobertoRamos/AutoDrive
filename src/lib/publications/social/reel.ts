@@ -13,7 +13,7 @@ import { spawn } from 'node:child_process'
 import { type RenderArtInput } from './art'
 import { TEMPLATE_INFO } from './formats'
 import { endCardOf, sceneBase, sceneOverlay } from './reel-art'
-import { REEL_TIMING, reelGraph, reelPlan, type ReelFacts } from './reel-core'
+import { chainFilter, REEL_TIMING, reelPlan, sceneFilter, type ReelFacts } from './reel-core'
 import { audioFilter } from './music-core'
 
 export const REEL = { secondsPerPhoto: 2.6, endSeconds: 3.2, fade: 0.5, maxPhotos: 7, fps: 30 } as const
@@ -114,16 +114,25 @@ export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}
   const ctx = { facts, price: i.price ?? null, oldPrice: i.oldPrice ?? null, primaryColor: i.primaryColor, darkColor: i.darkColor, logo: i.logo ?? null, storeName: i.storeName }
   const dir = await mkdtemp(path.join(tmpdir(), 'reel-'))
   try {
-    const inputs: string[] = []
+    // 1) Cada cena vira um vídeo curto (2 entradas por vez: pouca memória).
+    const clips: string[] = []
+    const bin = await ffmpegPath()
     for (const [n, seg] of segs.entries()) {
-      const base = path.join(dir, `b${n}.jpg`); const over = path.join(dir, `o${n}.png`)
+      const base = path.join(dir, `b${n}.jpg`); const over = path.join(dir, `o${n}.png`); const clip = path.join(dir, `c${n}.mp4`)
       await writeFile(base, await sceneBase(seg, photos[seg.photo] ?? photos[0], end))
       await writeFile(over, await sceneOverlay(seg, ctx))
       const t = seg.seconds.toFixed(2)
-      inputs.push('-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', base, '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', over)
+      await run(bin, [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', base, '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', over,
+        '-filter_complex', sceneFilter(seg, REEL.fps), '-map', '[v]', '-an',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(REEL.fps), '-t', t, clip,
+      ], 90_000)
+      clips.push(clip)
     }
-    const g = reelGraph(segs, REEL.fps)
-    return await encode(dir, inputs, segs.length * 2, g.filter, g.out, g.total, i.audio, opts.timeoutMs ?? 180_000)
+    // 2) Junta as cenas com as transições e a música.
+    const g = chainFilter(segs, REEL.fps)
+    return await encode(dir, clips.flatMap((c) => ['-i', c]), clips.length, g.filter, g.out, g.total, i.audio, opts.timeoutMs ?? 180_000)
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }

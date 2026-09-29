@@ -64,32 +64,40 @@ export const reelTotal = (segs: ReelSegment[]) => segs.reduce((a, s) => a + s.se
 /** Título curto do gancho ("HONDA ADV 160"), sem repetir a marca. */
 export const hookTitle = (f: ReelFacts) => up(vehicleName(f.brand, f.model, null) || 'CONFIRA')
 
-/** Filtro do ffmpeg (PURO): movimento de cada cena + transições encadeadas. Entradas: [2i]=imagem, [2i+1]=texto (PNG). */
-export function reelGraph(segs: ReelSegment[], fps = 30): { filter: string; out: string; total: number } {
-  const parts: string[] = []
-  segs.forEach((s, i) => {
-    const n = Math.round(s.seconds * fps)
-    const img = `[${2 * i}:v]`
-    // Imagem já preparada: 1440×2560 (zoom) ou altura 1280 com sobra lateral (panorâmica).
-    const motion = s.motion === 'panleft' || s.motion === 'panright'
-      ? `${img}crop=720:1280:x='(iw-720)*${s.motion === 'panright' ? '' : '(1-'}min(1,t/${s.seconds.toFixed(2)})${s.motion === 'panright' ? '' : ')'}':y=(ih-1280)/2,fps=${fps}`
-      : `${img}zoompan=z='${s.motion === 'zoomin' ? `1+0.14*on/${n}` : `1.14-0.14*on/${n}`}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=${fps}`
-    parts.push(`${motion},setsar=1,trim=duration=${s.seconds.toFixed(2)},setpts=PTS-STARTPTS[m${i}]`)
-    parts.push(`[${2 * i + 1}:v]format=rgba,fps=${fps},fade=in:st=0.12:d=0.28:alpha=1,trim=duration=${s.seconds.toFixed(2)},setpts=PTS-STARTPTS[o${i}]`)
-    // Taxa de quadros constante e explícita em cada cena: o xfade do ffmpeg de
-    // produção (Linux) recusa entrada sem ela ("current rate of 1/0 is invalid").
-    parts.push(`[m${i}][o${i}]overlay=0:0:format=auto:shortest=1,format=yuv420p,fps=${fps},settb=1/${fps}[v${i}]`)
-  })
-  let last = 'v0'
+/**
+ * Filtro de UMA cena (PURO): entradas [0:v]=imagem preparada, [1:v]=texto (PNG).
+ * Gerar cena por cena mantém a memória baixa (o servidor de produção tem pouca).
+ */
+export function sceneFilter(s: ReelSegment, fps = 30): string {
+  const n = Math.round(s.seconds * fps)
+  const d = s.seconds.toFixed(2)
+  // Imagem já preparada: 1080×1920 (zoom) ou altura 1280 com sobra lateral (panorâmica).
+  const motion = s.motion === 'panleft' || s.motion === 'panright'
+    ? `[0:v]crop=720:1280:x='(iw-720)*${s.motion === 'panright' ? '' : '(1-'}min(1,t/${d})${s.motion === 'panright' ? '' : ')'}':y=(ih-1280)/2,fps=${fps}`
+    : `[0:v]zoompan=z='${s.motion === 'zoomin' ? `1+0.14*on/${n}` : `1.14-0.14*on/${n}`}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=${fps}`
+  return [
+    `${motion},setsar=1,trim=duration=${d},setpts=PTS-STARTPTS[m]`,
+    `[1:v]format=rgba,fps=${fps},fade=in:st=0.12:d=0.28:alpha=1,trim=duration=${d},setpts=PTS-STARTPTS[o]`,
+    `[m][o]overlay=0:0:format=auto:shortest=1,format=yuv420p,fps=${fps},settb=1/${fps}[v]`,
+  ].join(';')
+}
+
+/**
+ * Junta as cenas prontas (PURO): entradas [i:v] = vídeo de cada cena. Taxa de
+ * quadros e base de tempo explícitas (o xfade do ffmpeg de produção exige).
+ */
+export function chainFilter(segs: ReelSegment[], fps = 30): { filter: string; out: string; total: number } {
+  const parts = segs.map((_, i) => `[${i}:v]fps=${fps},settb=1/${fps},format=yuv420p,setsar=1[s${i}]`)
+  let last = 's0'
   let offset = segs[0].seconds
   const tr = REEL_TIMING.transition
   for (let i = 1; i < segs.length; i++) {
     offset -= tr
     const out = i === segs.length - 1 ? 'vout' : `x${i}`
-    parts.push(`[${last}][v${i}]xfade=transition=${segs[i - 1].transition}:duration=${tr}:offset=${offset.toFixed(3)}[${out}]`)
+    parts.push(`[${last}][s${i}]xfade=transition=${segs[i - 1].transition}:duration=${tr}:offset=${offset.toFixed(3)}[${out}]`)
     last = out
     offset += segs[i].seconds
   }
-  if (segs.length === 1) parts.push('[v0]null[vout]')
+  if (segs.length === 1) parts.push('[s0]null[vout]')
   return { filter: parts.join(';'), out: 'vout', total: reelTotal(segs) }
 }

@@ -19,25 +19,25 @@ async function sharpLib() {
 
 const money = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v).replace(/ /g, ' ')
 
-/** Quadro 1440×2560: fundo = a foto desfocada; o carro inteiro por cima (maior no gancho). */
+/** Quadro 1080×1920: fundo = a foto desfocada; o carro inteiro por cima (maior no gancho). */
 async function composition(photo: Buffer, opts: { scale?: number; dim?: number; top?: number; fgDim?: number } = {}): Promise<Buffer> {
   const sharp = await sharpLib()
-  const bg = await sharp(photo, { failOn: 'none' }).rotate().resize(1440, 2560, { fit: 'cover' }).blur(40).modulate({ brightness: opts.dim ?? 0.55 }).toBuffer()
-  const fgW = Math.round(1440 * (opts.scale ?? 1))
-  const fg = await sharp(photo, { failOn: 'none' }).rotate().resize({ width: fgW, height: 2300, fit: 'inside' }).modulate({ brightness: opts.fgDim ?? 1 }).toBuffer({ resolveWithObject: true })
-  const left = Math.round((1440 - fg.info.width) / 2)
-  const top = opts.top ?? Math.round((2560 - fg.info.height) / 2) - 120
+  const bg = await sharp(photo, { failOn: 'none' }).rotate().resize(1080, 1920, { fit: 'cover' }).blur(30).modulate({ brightness: opts.dim ?? 0.55 }).toBuffer()
+  const fgW = Math.round(1080 * (opts.scale ?? 1))
+  const fg = await sharp(photo, { failOn: 'none' }).rotate().resize({ width: fgW, height: 1725, fit: 'inside' }).modulate({ brightness: opts.fgDim ?? 1 }).toBuffer({ resolveWithObject: true })
+  const left = Math.round((1080 - fg.info.width) / 2)
+  const top = opts.top ?? Math.round((1920 - fg.info.height) / 2) - 90
   // Foto maior que o quadro (gancho): recorta as sobras laterais.
-  const piece = left < 0 ? await sharp(fg.data).extract({ left: -left, top: 0, width: 1440, height: fg.info.height }).toBuffer() : fg.data
+  const piece = left < 0 ? await sharp(fg.data).extract({ left: -left, top: 0, width: 1080, height: fg.info.height }).toBuffer() : fg.data
   return sharp(bg).composite([{ input: piece, left: Math.max(0, left), top: Math.max(0, top) }]).jpeg({ quality: 88 }).toBuffer()
 }
 
 /** Base de cada cena, pronta para o filtro de movimento. */
 export async function sceneBase(seg: ReelSegment, photo: Buffer, end: () => Promise<Buffer>): Promise<Buffer> {
   const sharp = await sharpLib()
-  if (seg.kind === 'cta') return sharp(await end()).resize(1440, 2560, { fit: 'cover' }).jpeg({ quality: 88 }).toBuffer()
+  if (seg.kind === 'cta') return sharp(await end()).resize(1080, 1920, { fit: 'cover' }).jpeg({ quality: 88 }).toBuffer()
   if (seg.kind === 'hook') return composition(photo, { scale: 1.35, dim: 0.5 })
-  if (seg.kind === 'price') return composition(photo, { scale: 0.9, dim: 0.3, top: 300, fgDim: 0.85 })
+  if (seg.kind === 'price') return composition(photo, { scale: 0.9, dim: 0.3, top: 225, fgDim: 0.85 })
   if (seg.motion === 'panleft' || seg.motion === 'panright') {
     // Panorâmica: foto deitada ocupando a altura toda; o movimento percorre o carro.
     const meta = await sharp(photo, { failOn: 'none' }).rotate().metadata()
@@ -46,7 +46,7 @@ export async function sceneBase(seg: ReelSegment, photo: Buffer, end: () => Prom
     if (width >= W + 160) return sharp(photo, { failOn: 'none' }).rotate().resize(width, H, { fit: 'fill' }).jpeg({ quality: 88 }).toBuffer()
   }
   // Zoom: o carro ocupa a tela toda, enquadrado automaticamente no que importa.
-  return sharp(photo, { failOn: 'none' }).rotate().resize(1440, 2560, { fit: 'cover', position: sharp.strategy.attention }).jpeg({ quality: 88 }).toBuffer()
+  return sharp(photo, { failOn: 'none' }).rotate().resize(1080, 1920, { fit: 'cover', position: sharp.strategy.attention }).jpeg({ quality: 88 }).toBuffer()
 }
 
 type Layer = { input: Buffer; left: number; top: number }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { REEL_TIMING, reelChips, reelGraph, reelPlan, reelTotal } from './reel-core'
+import { chainFilter, REEL_TIMING, reelChips, reelPlan, reelTotal, sceneFilter } from './reel-core'
 
 const facts = { brand: 'HONDA', model: 'HONDA ADV', version: '160', year: 2024, modelYear: 2024, km: 500, gear: 'Automático', fuel: 'Flex', options: ['ABS', 'Chave presencial', 'Painel digital'], conditions: '✅ Financiamento em até 48x\n✅ Aceita troca', badge: 'OFERTA' }
 
@@ -24,13 +24,15 @@ describe('Reels que prendem a atenção — roteiro', () => {
     expect(segs.filter((s) => s.kind === 'photo').length).toBeGreaterThanOrEqual(3)
     expect(reelTotal(segs)).toBeGreaterThan(9)
   })
-  it('filtro do ffmpeg: 2 entradas por cena (imagem + texto), transições encadeadas', () => {
+  it('ffmpeg em duas etapas: cada cena sozinha (pouca memória) e a junção com taxa de quadros explícita', () => {
     const segs = reelPlan(4, facts)
-    const g = reelGraph(segs)
+    const pan = segs.find((x) => x.motion === 'panright')!
+    expect(sceneFilter(pan)).toContain("crop=720:1280:x='(iw-720)*min(1,t/")
+    expect(sceneFilter(segs[0])).toContain('zoompan=')
+    for (const x of segs) expect(sceneFilter(x)).toMatch(/fps=30,settb=1\/30\[v\]$/)
+    const g = chainFilter(segs)
     expect(g.filter.match(/xfade=/g)).toHaveLength(segs.length - 1)
-    expect(g.filter).toContain(`[${2 * (segs.length - 1) + 1}:v]`)
-    expect(g.filter).toContain("crop=720:1280:x='(iw-720)*min(1,t/")
-    expect(g.filter).toContain('zoompan=')
+    expect(g.filter.match(/settb=1\/30/g)).toHaveLength(segs.length)
     expect(g.total).toBeCloseTo(reelTotal(segs))
   })
 })
