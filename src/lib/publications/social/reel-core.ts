@@ -75,8 +75,10 @@ export function reelGraph(segs: ReelSegment[], fps = 30): { filter: string; out:
       ? `${img}crop=720:1280:x='(iw-720)*${s.motion === 'panright' ? '' : '(1-'}min(1,t/${s.seconds.toFixed(2)})${s.motion === 'panright' ? '' : ')'}':y=(ih-1280)/2,fps=${fps}`
       : `${img}zoompan=z='${s.motion === 'zoomin' ? `1+0.14*on/${n}` : `1.14-0.14*on/${n}`}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=${fps}`
     parts.push(`${motion},setsar=1,trim=duration=${s.seconds.toFixed(2)},setpts=PTS-STARTPTS[m${i}]`)
-    parts.push(`[${2 * i + 1}:v]format=rgba,fade=in:st=0.12:d=0.28:alpha=1,trim=duration=${s.seconds.toFixed(2)},setpts=PTS-STARTPTS[o${i}]`)
-    parts.push(`[m${i}][o${i}]overlay=0:0:format=auto,format=yuv420p[v${i}]`)
+    parts.push(`[${2 * i + 1}:v]format=rgba,fps=${fps},fade=in:st=0.12:d=0.28:alpha=1,trim=duration=${s.seconds.toFixed(2)},setpts=PTS-STARTPTS[o${i}]`)
+    // Taxa de quadros constante e explícita em cada cena: o xfade do ffmpeg de
+    // produção (Linux) recusa entrada sem ela ("current rate of 1/0 is invalid").
+    parts.push(`[m${i}][o${i}]overlay=0:0:format=auto:shortest=1,format=yuv420p,fps=${fps},settb=1/${fps}[v${i}]`)
   })
   let last = 'v0'
   let offset = segs[0].seconds
