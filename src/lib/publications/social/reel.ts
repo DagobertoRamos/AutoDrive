@@ -50,10 +50,15 @@ function run(bin: string, args: string[], timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let err = ''
-    child.stderr.on('data', (d) => { err = (err + String(d)).slice(-4000) })
+    child.stderr.on('data', (d) => { err = (err + String(d)).slice(-8000) })
     const t = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Tempo esgotado ao gerar o vídeo.')) }, timeoutMs)
     child.on('error', (e) => { clearTimeout(t); reject(e) })
-    child.on('close', (code) => { clearTimeout(t); if (code === 0) resolve(); else reject(new Error(`ffmpeg saiu com código ${code}: ${err.split('\n').slice(-4).join(' ')}`)) })
+    child.on('close', (code) => {
+      clearTimeout(t)
+      if (code === 0) return resolve()
+      console.error('[reel] ffmpeg', code, err)
+      reject(new Error(`ffmpeg saiu com código ${code}: ${err.split('\n').filter((l) => l.trim()).slice(-12).join(' | ')}`))
+    })
   })
 }
 
