@@ -77,4 +77,13 @@ describe.skipIf(!RUN)('Agenda inteligente — banco local', () => {
     expect(new Set(vals).size).toBe(8)
     expect(j.notice).toMatch(/bloquear/)
   })
+
+  it('Post avulso "Automático": um horário livre que serve para as duas contas ao mesmo tempo', async () => {
+    const j = await (await slots.POST(new Request('http://x', { method: 'POST', body: JSON.stringify({ requests: [{ key: 'post', connectionId: T.ig.id, also: [T.fb.id], format: 'POST' }], startLocal: T.startLocal }) }))).json()
+    const h = Number(j.slots.post.slice(11, 13))
+    expect(h).toBeGreaterThanOrEqual(7); expect(h).toBeLessThanOrEqual(20)
+    const busy = await prisma.socialPost.findMany({ where: { tenantId: T.t.id, status: 'AGENDADO' }, select: { scheduledAt: true } })
+    const at = new Date(`${j.slots.post}:00-03:00`).getTime()
+    for (const b of busy) expect(Math.abs(b.scheduledAt.getTime() - at)).toBeGreaterThanOrEqual(15 * 60_000)
+  })
 })

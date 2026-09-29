@@ -1,5 +1,5 @@
 // POST /api/publications/social/slots — agenda inteligente das redes:
-// { requests: [{ key, connectionId, format }], startLocal? } → { slots: { key: "AAAA-MM-DDTHH:MM" }, notice }
+// { requests: [{ key, connectionId, format, also? }], startLocal? }  (also = outras contas do mesmo post) → { slots: { key: "AAAA-MM-DDTHH:MM" }, notice }
 // Entre 07:00 e 20:00, sem repetir horário (considera tudo o que já está
 // agendado) e dentro da quantidade segura por conta/dia.
 import { NextResponse } from 'next/server'
@@ -18,9 +18,10 @@ export async function POST(req: Request) {
   const raw = Array.isArray(b.requests) ? b.requests.slice(0, 300) : []
   const own = new Set((await prisma.publicationConnection.findMany({ where: { tenantId: a.tenantId }, select: { id: true } })).map((c) => c.id))
   const requests = raw.flatMap((r) => {
-    const x = r as { key?: unknown; connectionId?: unknown; format?: unknown }
+    const x = r as { key?: unknown; connectionId?: unknown; format?: unknown; also?: unknown }
     const format = x.format === 'LINK' ? 'POST' : x.format
-    return typeof x.key === 'string' && typeof x.connectionId === 'string' && own.has(x.connectionId) && isSocialFormat(format) ? [{ key: x.key.slice(0, 200), connectionId: x.connectionId, format }] : []
+    const also = Array.isArray(x.also) ? x.also.filter((c): c is string => typeof c === 'string' && own.has(c)) : []
+    return typeof x.key === 'string' && typeof x.connectionId === 'string' && own.has(x.connectionId) && isSocialFormat(format) ? [{ key: x.key.slice(0, 200), connectionId: x.connectionId, format, also }] : []
   })
   if (!requests.length) return bad('Nada para agendar.')
   const out = await allocateSlots(a.tenantId, requests, typeof b.startLocal === 'string' ? b.startLocal : undefined)

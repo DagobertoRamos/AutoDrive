@@ -151,7 +151,7 @@ function Wizard() {
       {step === 2 && cur && <ListingProfileStep key={cur} vehicleId={cur} canEdit={can.prepare} />}
       {step === 3 && cur && <StepContent key={cur} vehicleId={cur} />}
       {step === 4 && <StepChannels conns={conns} channels={channels} targets={targets} setTargets={setTargets} campaign={campaign} setCampaign={setCampaign} social={social} setSocial={setSocial} vehicles={selected.map((id) => ({ id, title: vehicles[id]?.title ?? '…' }))} />}
-      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} social={social} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} onSubmitted={() => { setAutosave(false); void api('/api/publications/wizard', { method: 'DELETE' }).catch(() => undefined) }} />}
+      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} social={social} setSocial={setSocial} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} onSubmitted={() => { setAutosave(false); void api('/api/publications/wizard', { method: 'DELETE' }).catch(() => undefined) }} />}
 
       {step < 5 && (
         <div className="sticky bottom-2 z-10 flex items-center justify-between rounded-xl border border-gray-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
@@ -403,7 +403,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
 }
 
 // ── 5. Revisão + publicar ───────────────────────────────────────────────────
-function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, channels, conns, can, tz, goTo, onDone, onSubmitted }: { onSubmitted: () => void; vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; social: SocialChoice; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
+function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, setSocial, channels, conns, can, tz, goTo, onDone, onSubmitted }: { setSocial: (s: SocialChoice) => void; onSubmitted: () => void; vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; social: SocialChoice; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
   const [items, setItems] = useState<any[] | null>(null)
   const [checks, setChecks] = useState<Record<string, any[]>>({})
   const [err, setErr] = useState<string | null>(null)
@@ -507,11 +507,17 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, cha
           {Object.entries(checks).map(([vid, list]) => list.some((c: any) => !c.ok) && (
             <div key={vid} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><p className="font-semibold">Fotos de {vehicles[vid]?.title ?? vid}</p><ul>{list.filter((c: any) => !c.ok).map((c: any, i: number) => <li key={i}>• {c.problem}</li>)}</ul><button onClick={() => goTo(1)} className="mt-1 font-medium underline">Revisar fotos</button></div>
           ))}
+          {socialConnIds.length > 0 && social.formats.length > 0 && (
+            <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3 text-xs text-gray-700">
+              <label className="flex items-center gap-2 font-medium text-gray-900"><input type="checkbox" checked={social.spread} onChange={(e) => setSocial({ ...social, spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Instagram/Facebook: espalhar automaticamente entre 07:00 e 20:00</label>
+              <p className="mt-1 text-[11px] text-gray-600">{social.spread ? `Cada carro × formato × conta ganha o seu horário, sem repetir com o que já está na agenda e no limite seguro por dia (${vehicleIds.length * social.formats.length * socialConnIds.length} envio(s) nas redes). Site e portais saem na hora.` : 'Desligado: tudo sai de uma vez (ou no horário escolhido). Use só para poucos posts.'}</p>
+            </div>
+          )}
           {overload && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"><b>Risco de bloqueio:</b> {overload} <button type="button" onClick={() => goTo(4)} className="ml-1 font-medium underline">Ir para Canais</button></div>}
           <div className="flex flex-wrap items-end gap-2 rounded-xl border border-gray-200 bg-white p-3">
             {can.publish && <button onClick={() => { if (overload && !confirm(`${overload}
 
-Publicar assim mesmo?`)) return; void submit('AGORA') }} disabled={sending || items.length === blocked} className="btn-primary px-4 py-2 text-sm">{sending ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />}Publicar agora</button>}
+Publicar assim mesmo?`)) return; void submit('AGORA') }} disabled={sending || items.length === blocked} className="btn-primary px-4 py-2 text-sm">{sending ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />}{social.spread && socialConnIds.length > 0 && social.formats.length > 0 ? 'Publicar (redes no melhor horário)' : 'Publicar agora'}</button>}
             {can.publish && (
               <div className="flex items-end gap-2">
                 <label className="text-xs text-gray-600">Agendar ({tz.replace('_', ' ')})<input type="datetime-local" className={inputCls} value={when} onChange={(e) => setWhen(e.target.value)} /></label>

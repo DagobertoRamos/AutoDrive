@@ -289,11 +289,20 @@ export default function PostAvulsoPage() {
     if (lines.length) setCaption((c) => `${c.trimEnd()}\n\n${lines.join('\n')}`.trimStart())
   }
 
+  // Agendamento: automático (melhor horário livre 07:00–20:00, sem repetir) ou dia/hora escolhidos.
+  const [whenMode, setWhenMode] = useState<'AUTO' | 'MANUAL'>('AUTO')
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     setBusy(mode); setMsg(null)
     try {
-      const j = await api('/api/publications/avulsa', { method: 'POST', json: { id: editingId, title, format, caption, media, connectionIds: selConns.map((c) => c.id), mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined, brand } })
-      setMsg({ ok: true, text: j.message }); clearEditor()
+      let chosen = when
+      if (mode === 'AGENDAR' && whenMode === 'AUTO') {
+        const ids = selConns.map((c) => c.id)
+        const sl = await api<{ slots: Record<string, string> }>('/api/publications/social/slots', { method: 'POST', json: { requests: [{ key: 'post', connectionId: ids[0], also: ids.slice(1), format: format === 'LINK' ? 'POST' : format }] } })
+        chosen = sl.slots.post
+        if (!chosen) throw new Error('Não encontrei horário livre. Escolha o dia e a hora.')
+      }
+      const j = await api('/api/publications/avulsa', { method: 'POST', json: { id: editingId, title, format, caption, media, connectionIds: selConns.map((c) => c.id), mode, scheduledLocal: mode === 'AGENDAR' ? chosen : undefined, brand } })
+      setMsg({ ok: true, text: mode === 'AGENDAR' && whenMode === 'AUTO' ? `Agendado automaticamente para ${new Date(`${chosen}:00`).toLocaleString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — horário livre, sem repetir com a agenda.` : j.message }); clearEditor()
       setTab(mode === 'RASCUNHO' ? 'rascunhos' : mode === 'AGENDAR' ? 'agendados' : 'enviando'); loadPosts()
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
   }
@@ -408,8 +417,15 @@ export default function PostAvulsoPage() {
           {problem && (media.length > 0 || linkMedia) && <ErrorNote message={problem} />}
           <div className="flex flex-wrap items-end gap-2 rounded-xl border border-gray-200 bg-white p-3">
             <button type="button" onClick={() => submit('AGORA')} disabled={!!busy || uploading || !!problem || !selConns.length} className="btn-primary px-4 py-2 text-sm">{busy === 'AGORA' ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />}Publicar agora</button>
-            <label className="text-xs text-gray-600">Agendar ({tz.replace('_', ' ')})<input type="datetime-local" className={inputCls} value={when} onChange={(e) => setWhen(e.target.value)} /></label>
-            <button type="button" onClick={() => submit('AGENDAR')} disabled={!!busy || uploading || !!problem || !when || !selConns.length} className="btn-secondary px-3 py-2 text-sm"><CalendarClock size={15} />Agendar</button>
+            <div className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-200 px-2 py-1.5">
+              <fieldset className="space-y-0.5 text-xs text-gray-700">
+                <legend className="sr-only">Quando agendar</legend>
+                <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'AUTO'} onChange={() => setWhenMode('AUTO')} /><b>Automático</b> — melhor horário livre entre 07:00 e 20:00</label>
+                <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'MANUAL'} onChange={() => setWhenMode('MANUAL')} />Escolher dia e hora</label>
+              </fieldset>
+              {whenMode === 'MANUAL' && <input type="datetime-local" aria-label={`Dia e hora (${tz.replace('_', ' ')})`} className={cn(inputCls, 'w-auto')} value={when} onChange={(e) => setWhen(e.target.value)} />}
+              <button type="button" onClick={() => submit('AGENDAR')} disabled={!!busy || uploading || !!problem || (whenMode === 'MANUAL' && !when) || !selConns.length} className="btn-secondary px-3 py-2 text-sm">{busy === 'AGENDAR' ? <Loader2 size={15} className="animate-spin" /> : <CalendarClock size={15} />}Agendar</button>
+            </div>
             <button type="button" onClick={addToBatch} disabled={!!busy || uploading || !!problem || !!editingId} title={editingId ? 'Termine o rascunho aberto antes de montar um lote' : undefined} className="btn-secondary px-3 py-2 text-sm"><Layers size={15} />Adicionar ao lote{batch.length ? ` (${batch.length})` : ''}</button>
             <button type="button" onClick={() => submit('RASCUNHO')} disabled={!!busy || uploading || !media.length} className="btn-secondary ml-auto px-3 py-2 text-sm"><Save size={15} />Salvar rascunho</button>
             {uploading && <p className="w-full text-xs text-amber-700">Aguarde terminar o envio das mídias…</p>}
