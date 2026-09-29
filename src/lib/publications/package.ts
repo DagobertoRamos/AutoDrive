@@ -54,10 +54,8 @@ export async function packagePhoto(tenantId: string, vehicleId: string, n: numbe
 export async function packageVideo(tenantId: string, vehicleId: string, opts: { template: ArtTemplate; music: MusicChoice | null; design?: DesignStyle; seconds?: VideoSeconds }) {
   const { v, p: base } = await load(tenantId, vehicleId)
   const p = { ...base, social: { format: 'REELS' as const, template: opts.template, design: opts.design ?? 'CLASSICO', seconds: opts.seconds ?? 30 } }
-  let audio: Buffer | null = null
-  const t0 = Date.now()
-  if (opts.music) { try { audio = (await audioToEmbed(opts.music, v.id)).bytes } catch { audio = null } }
-  const musicMs = Date.now() - t0
-  const r = await renderAndStoreVideo(tenantId, p, 'REELS', 'REELS', opts.template, audio)
-  return { assetId: r.assetId, seconds: r.seconds, size: r.mp4.length, music: !!audio, timing: `música ${musicMs} ms; ${r.timing ?? ''}` }
+  // A música baixa enquanto as fotos são preparadas.
+  const music = opts.music ? audioToEmbed(opts.music, v.id).then((m) => m.bytes).catch(() => null) : Promise.resolve(null)
+  const r = await renderAndStoreVideo(tenantId, p, 'REELS', 'REELS', opts.template, music)
+  return { assetId: r.assetId, seconds: r.seconds, size: r.mp4.length, music: !!(await music), timing: r.timing }
 }

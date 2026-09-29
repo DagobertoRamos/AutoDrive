@@ -107,21 +107,27 @@ async function storeVideo(tenantId: string, mp4: Buffer): Promise<string> {
 
 const factsOfPayload = (p: ListingPayload) => artFacts({ brand: p.vehicle.brand ?? null, model: p.vehicle.model ?? null, version: p.vehicle.version ?? null, year: p.vehicle.year ?? null, modelYear: p.vehicle.modelYear ?? null, km: p.vehicle.km ?? null, transmission: p.vehicle.transmission ?? null })
 
+/** Foto reduzida para o vídeo (1600 px bastam para 1080×1920): tratar a original custa muito tempo. */
+async function forVideo(b: Buffer): Promise<Buffer> {
+  const sharp = (await import('sharp')).default
+  return sharp(b, { failOn: 'none' }).rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer()
+}
+
 /**
  * Gera o vídeo do anúncio e guarda o MP4 (site_assets) para a rede baixar.
  *   REELS: todas as fotos + quadro final.  CLIP: uma arte com zoom (Story,
  *   capa de Carrossel, Post com música). `audio` = trilha CC0 embutida.
  * Mesmo conteúdo = mesmo arquivo (reaproveita pelo hash).
  */
-export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audio: Buffer | null): Promise<{ assetId: string; seconds: number; mp4: Buffer; timing?: string }> {
+export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audioIn: Buffer | null | Promise<Buffer | null>): Promise<{ assetId: string; seconds: number; mp4: Buffer; timing?: string }> {
   const t0 = Date.now()
   const brand = await loadBrand(tenantId)
-  const photos: Buffer[] = []
   // Só as fotos que o vídeo usa (tratar foto custa tempo no servidor).
   const need = kind === 'REELS' ? Math.min(REEL_TIMING.maxPhotos, photoScenes(p.social?.seconds ?? 30, DESIGNS[p.social?.design ?? 'CLASSICO'].motion === 'dinamico') + 1) : 1
-  for (const url of p.photos.slice(0, need)) {
-    try { photos.push(await maybeEnhance(tenantId, await originalBytes(photoRef(tenantId, url)))) } catch { /* foto inacessível: pula */ }
-  }
+  // Em paralelo (leitura do banco + tratamento), mantendo a ordem; foto inacessível é pulada.
+  const loadedPhotos = await Promise.all(p.photos.slice(0, need).map((url) => originalBytes(photoRef(tenantId, url)).then(forVideo).then((b) => maybeEnhance(tenantId, b)).catch(() => null)))
+  const photos = loadedPhotos.filter((x): x is Buffer => !!x)
+  const audio = await audioIn
   if (!photos.length) throw new Error('Nenhuma foto do veículo pôde ser aberta para montar o vídeo.')
   const loaded = Date.now() - t0
   const base = { ...factsOfPayload(p), ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice }
