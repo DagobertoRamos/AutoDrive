@@ -58,7 +58,7 @@ export function StoredPreview({ post, conns, onClose }: { post: any; conns: Conn
             <PostPreview key={realKey} network={shown.network} format={format === 'POST' && shown.media.length > 1 ? 'CARROSSEL' : format} account={shown.account} media={shown.media} caption={post.format === 'STORY' ? '' : shown.caption} link={link} />
           </>
         ) : <PostPreview key={realKey} network={c?.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'} format={format} account={c?.label ?? ''} media={items} caption={post.format === 'STORY' ? '' : post.caption ?? ''} link={link} />}
-        {!shown && !items.length && post.format !== 'LINK' && <p className="text-center text-[11px] text-gray-500">As mídias deste post já foram limpas do servidor para economizar espaço. Abra o post na rede para ver.</p>}
+        {!shown && !items.length && post.format !== 'LINK' && <p className="text-center text-[11px] text-gray-500">Abra o post na rede para ver as mídias.</p>}
       </div>
     </Drawer>
   )

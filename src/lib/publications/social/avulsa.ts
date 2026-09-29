@@ -7,13 +7,14 @@
 import { writeFile, appendFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { ConnectorError, isConnectorError } from '../errors'
 import { graph, graphBase, graphError, rupload, waitContainer } from '../connectors/meta'
 import type { ConnectorContext } from '../connectors/types'
 import { mediaUrlFor } from '../media-token'
 import { connectorContext, type WorkerDeps } from '../worker'
-import { FACEBOOK_ONLY, overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult } from './avulsa-core'
+import { FACEBOOK_ONLY, overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
 import { carVideoForReels, toReels } from './video'
 
 export const VIDEO_PART_KIND = 'SOCIAL_VPART'
@@ -33,9 +34,16 @@ async function partsReady(tenantId: string, m: Extract<AvulsaMedia, { uploadId: 
 
 /** Junta os pedaços num arquivo e ajusta para vertical 9:16 (Reels/Story). */
 async function assembleVideo(tenantId: string, m: Extract<AvulsaMedia, { type: 'video' }>): Promise<Uint8Array> {
-  if ('link' in m) return carVideoForReels(m.link)
   const dir = await mkdtemp(path.join(tmpdir(), 'avulsa-'))
   try {
+    // Identidade da loja por cima do vídeo (quando marcada no post).
+    let overlay: string | undefined
+    if (m.brand) {
+      const { brandOverlay, tenantBrand } = await import('./brand-frame')
+      overlay = path.join(dir, 'marca.png')
+      await writeFile(overlay, await brandOverlay(1080, 1920, await tenantBrand(tenantId), m.brand))
+    }
+    if ('link' in m) return await carVideoForReels(m.link, overlay)
     const src = path.join(dir, 'in'); const out = path.join(dir, 'out.mp4')
     await writeFile(src, new Uint8Array())
     for (let i = 0; i < m.parts; i++) {
@@ -43,19 +51,44 @@ async function assembleVideo(tenantId: string, m: Extract<AvulsaMedia, { type: '
       if (!rows[0]) throw new ConnectorError('VALIDATION', 'O vídeo não foi enviado por completo. Envie de novo.')
       await appendFile(src, Buffer.from(rows[0].b64, 'base64'))
     }
-    await toReels(src, out)
+    await toReels(src, out, undefined, overlay)
     return new Uint8Array(await readFile(out))
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 
+// ── Identidade da loja ───────────────────────────────────────────────────────
+
+/**
+ * Fotos: gera a versão com a identidade da loja (nova imagem guardada; a
+ * original fica). Vídeos: marca para aplicar ao montar o vídeo na publicação.
+ */
+async function applyBrand(tenantId: string, media: AvulsaMedia[], style: BrandMark): Promise<AvulsaMedia[]> {
+  const { brandPhoto, tenantBrand } = await import('./brand-frame')
+  const brand = await tenantBrand(tenantId)
+  const out: AvulsaMedia[] = []
+  for (const m of media) {
+    if (m.type === 'image' && !m.branded) {
+      const a = await prisma.siteAsset.findFirst({ where: { id: m.assetId, tenantId, kind: 'SOCIAL_UPLOAD' }, select: { data: true } })
+      if (!a) { out.push(m); continue }
+      const jpg = await brandPhoto(Buffer.from(a.data), brand, style)
+      const meta = await (await import('sharp')).default(jpg).metadata()
+      const b = await prisma.siteAsset.create({ data: { tenantId, kind: 'SOCIAL_UPLOAD', mimeType: 'image/jpeg', fileSize: jpg.length, width: meta.width ?? null, height: meta.height ?? null, sha256: createHash('sha256').update(jpg).digest('hex'), data: new Uint8Array(jpg) }, select: { id: true } })
+      out.push({ type: 'image', assetId: b.id, branded: style })
+    } else if (m.type === 'video') out.push({ ...m, brand: style })
+    else out.push(m)
+  }
+  return out
+}
+
 // ── Criação ──────────────────────────────────────────────────────────────────
 
-export interface AvulsaInput { id?: string; title?: string; format: AvulsaFormat; caption: string; media: unknown; connectionIds: string[]; scheduledAt: Date | null; draft: boolean }
+export interface AvulsaInput { /** Aplicar a identidade da loja nas fotos e vídeos. */ brand?: BrandMark | null; id?: string; title?: string; format: AvulsaFormat; caption: string; media: unknown; connectionIds: string[]; scheduledAt: Date | null; draft: boolean }
 
 export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id: string | null; name: string | null }) {
-  const media = sanitizeMedia(i.media)
+  let media = sanitizeMedia(i.media)
+  if (i.brand) media = await applyBrand(tenantId, media, i.brand)
   const err = validateAvulsa(i.format, media, i.caption)
   if (err) throw new Error(err)
   const channels = FACEBOOK_ONLY.includes(i.format) ? ['META_PAGE'] : ['INSTAGRAM', 'META_PAGE']

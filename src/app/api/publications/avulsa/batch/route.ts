@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { audit, bad, pubAuth } from '@/lib/publications/api'
-import { AVULSA_FORMATS, FACEBOOK_ONLY, type AvulsaFormat } from '@/lib/publications/social/avulsa-core'
+import { AVULSA_FORMATS, FACEBOOK_ONLY, isBrandMark, type AvulsaFormat } from '@/lib/publications/social/avulsa-core'
 import { createAvulsa } from '@/lib/publications/social/avulsa'
 import { allocateSlots } from '@/lib/publications/social/cadence'
 import type { SocialFormat } from '@/lib/publications/social/formats'
@@ -17,7 +17,7 @@ export const maxDuration = 60
 export async function POST(req: Request) {
   const a = await pubAuth(req, 'marketing.publications.publish')
   if (a instanceof NextResponse) return a
-  const b = (await req.json().catch(() => ({}))) as { items?: unknown; connectionIds?: unknown; startLocal?: unknown }
+  const b = (await req.json().catch(() => ({}))) as { items?: unknown; connectionIds?: unknown; startLocal?: unknown; brand?: unknown }
   const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30) as Array<Record<string, unknown>>
   if (!items.length) return bad('Adicione ao menos um post ao lote.')
   const ids = Array.isArray(b.connectionIds) ? b.connectionIds.filter((x): x is string => typeof x === 'string').slice(0, 10) : []
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
       const post = await createAvulsa(a.tenantId, {
         title: typeof p.it.title === 'string' ? p.it.title : undefined, format: p.format!, caption: typeof p.it.caption === 'string' ? p.it.caption : '',
         media: p.it.media, connectionIds: p.accounts, scheduledAt: s.at, draft: false,
+        brand: isBrandMark(p.it.brand) ? p.it.brand : isBrandMark(b.brand) ? b.brand : null,
       }, { id: a.user.id, name: a.user.name ?? null })
       await audit(a, 'SCHEDULE', 'SocialPost', post.id, { format: p.format, scheduledAt: s.at, batch: true })
       results.push({ n: p.n, ok: true, message: 'Agendado.', local: s.local })

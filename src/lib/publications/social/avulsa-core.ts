@@ -16,10 +16,14 @@ export const AVULSA_LABEL: Record<AvulsaFormat, string> = { POST: 'Post / Carros
 /** Formato que só a Página do Facebook aceita. */
 export const FACEBOOK_ONLY: AvulsaFormat[] = ['LINK']
 
+/** Identidade da loja aplicada na mídia (logo / faixa com nome e contato). */
+export type BrandMark = 'DISCRETO' | 'COMPLETO'
+export const isBrandMark = (x: unknown): x is BrandMark => x === 'DISCRETO' || x === 'COMPLETO'
+
 export type AvulsaMedia =
-  | { type: 'image'; assetId: string }
-  | { type: 'video'; uploadId: string; parts: number; size: number; name?: string; posterAssetId?: string }
-  | { type: 'video'; link: string }
+  | { type: 'image'; assetId: string; branded?: BrandMark }
+  | { type: 'video'; uploadId: string; parts: number; size: number; name?: string; posterAssetId?: string; brand?: BrandMark }
+  | { type: 'video'; link: string; brand?: BrandMark }
   | { type: 'link'; url: string }
 
 export const PART_BYTES = 3_500_000
@@ -32,11 +36,11 @@ export function sanitizeMedia(x: unknown): AvulsaMedia[] {
   if (!Array.isArray(x)) return []
   return x.slice(0, 10).flatMap((m): AvulsaMedia[] => {
     const o = (m ?? {}) as Record<string, unknown>
-    if (o.type === 'image' && typeof o.assetId === 'string' && ID.test(o.assetId)) return [{ type: 'image', assetId: o.assetId }]
+    if (o.type === 'image' && typeof o.assetId === 'string' && ID.test(o.assetId)) return [{ type: 'image', assetId: o.assetId, ...(isBrandMark(o.branded) ? { branded: o.branded } : {}) }]
     if (o.type === 'video' && typeof o.uploadId === 'string' && UP.test(o.uploadId)) {
       const parts = Number(o.parts); const size = Number(o.size)
       if (Number.isInteger(parts) && parts >= 1 && parts <= Math.ceil(MAX_VIDEO_BYTES / PART_BYTES) && size > 0 && size <= MAX_VIDEO_BYTES) {
-        return [{ type: 'video', uploadId: o.uploadId, parts, size, name: typeof o.name === 'string' ? o.name.slice(0, 120) : undefined, ...(typeof o.posterAssetId === 'string' && ID.test(o.posterAssetId) ? { posterAssetId: o.posterAssetId } : {}) }]
+        return [{ type: 'video', uploadId: o.uploadId, parts, size, name: typeof o.name === 'string' ? o.name.slice(0, 120) : undefined, ...(typeof o.posterAssetId === 'string' && ID.test(o.posterAssetId) ? { posterAssetId: o.posterAssetId } : {}), ...(isBrandMark(o.brand) ? { brand: o.brand } : {}) }]
       }
     }
     if (o.type === 'link' && typeof o.url === 'string') {
@@ -45,7 +49,7 @@ export function sanitizeMedia(x: unknown): AvulsaMedia[] {
     }
     if (o.type === 'video' && typeof o.link === 'string') {
       const v = classifyVideo(o.link)
-      if (v?.downloadUrl) return [{ type: 'video', link: v.url }]
+      if (v?.downloadUrl) return [{ type: 'video', link: v.url, ...(isBrandMark(o.brand) ? { brand: o.brand } : {}) }]
     }
     return []
   })

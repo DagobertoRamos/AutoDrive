@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bookmark, ChevronLeft, ChevronRight, Globe, Heart, MessageCircle, MoreHorizontal, Music2, Pause, Play, Send, Share2, ThumbsUp, Volume2, VolumeX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export interface PreviewMedia { type: 'image' | 'video'; url: string; note?: string }
+export interface PreviewMedia { type: 'image' | 'video'; url: string; note?: string; /** Camada por cima (ex.: identidade da loja no vídeo). */ overlay?: string }
 export interface PreviewAudio { url: string; title: string; artist?: string }
 
 /**
@@ -63,6 +63,7 @@ export type PreviewFormat = 'POST' | 'CARROSSEL' | 'STORY' | 'REELS' | 'VIDEO' |
 const initial = (s: string) => (s.replace(/^@/, '').trim()[0] ?? 'A').toUpperCase()
 
 function Media({ m, className, kb }: { m: PreviewMedia; className?: string; kb?: number }) {
+  if (m.overlay) return <div className="relative h-full w-full"><Media m={{ ...m, overlay: undefined }} className={className} kb={kb} /><img src={m.overlay} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover" /></div>
   return m.type === 'video'
     ? <video src={m.url} className={cn('h-full w-full object-cover', className)} loop autoPlay playsInline controls />
     : <img src={m.url} alt="" className={cn('h-full w-full object-cover', className)} style={kb ? { animation: `pp-kb ${kb}s linear both` } : undefined} />

@@ -65,11 +65,14 @@ function ffmpeg(args: string[], timeoutMs: number): Promise<void> {
 }
 
 /** Ajusta um arquivo de vídeo para Reels: 1080×1920, 30 fps, até 90 s, áudio AAC (mudo se não tiver). */
-export async function toReels(input: string, output: string, timeoutMs = 200_000): Promise<void> {
+export async function toReels(input: string, output: string, timeoutMs = 200_000, overlayPng?: string): Promise<void> {
+  // Identidade da loja (PNG 1080×1920 transparente) por cima do vídeo já em 9:16.
+  const video = overlayPng ? `${VERTICAL_FILTER.replace(/\[v\]$/, '[v0]')};[v0][2:v]overlay=0:0:format=auto,format=yuv420p[v]` : VERTICAL_FILTER
+  const over = overlayPng ? ['-i', overlayPng] : []
   await ffmpeg([
     '-hide_banner', '-loglevel', 'error', '-y', '-i', input,
-    '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-    '-filter_complex', `${VERTICAL_FILTER};[0:a]aresample=44100[a0];[1:a][a0]amix=inputs=2:duration=longest:normalize=0[a]`,
+    '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100', ...over,
+    '-filter_complex', `${video};[0:a]aresample=44100[a0];[1:a][a0]amix=inputs=2:duration=longest:normalize=0[a]`,
     '-map', '[v]', '-map', '[a]',
     '-t', '90', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '6M', '-bufsize', '12M', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-shortest', '-movflags', '+faststart', output,
@@ -77,8 +80,8 @@ export async function toReels(input: string, output: string, timeoutMs = 200_000
     // Vídeo sem faixa de áudio: [0:a] não existe — refaz só com áudio mudo.
     if (!/0:a|Stream specifier|matches no streams/i.test(String((e as Error).message))) throw e
     await ffmpeg([
-      '-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-      '-filter_complex', VERTICAL_FILTER, '-map', '[v]', '-map', '1:a',
+      '-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100', ...over,
+      '-filter_complex', video, '-map', '[v]', '-map', '1:a',
       '-t', '90', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '6M', '-bufsize', '12M', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', output,
     ], timeoutMs)
@@ -86,7 +89,7 @@ export async function toReels(input: string, output: string, timeoutMs = 200_000
 }
 
 /** Vídeo do carro pronto para Reels (bytes do MP4). */
-export async function carVideoForReels(link: string): Promise<Uint8Array> {
+export async function carVideoForReels(link: string, overlayPng?: string): Promise<Uint8Array> {
   const v = classifyVideo(link)
   if (!v) throw new Error('Link de vídeo inválido.')
   if (!v.downloadUrl) throw new Error(`Vídeo do ${v.label} não pode ser baixado (termos do serviço). Use Google Drive, Dropbox ou .mp4 para publicar como Reels.`)
@@ -95,7 +98,7 @@ export async function carVideoForReels(link: string): Promise<Uint8Array> {
     const src = path.join(dir, 'in'); const out = path.join(dir, 'out.mp4')
     await download(v.downloadUrl, src)
     if ((await stat(src)).size < 10_000) throw new Error('O arquivo do vídeo veio vazio.')
-    await toReels(src, out)
+    await toReels(src, out, undefined, overlayPng)
     return new Uint8Array(await readFile(out))
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)

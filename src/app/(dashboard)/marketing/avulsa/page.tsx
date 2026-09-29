@@ -6,18 +6,18 @@
 // (fora do estoque) no Instagram e no Facebook: sobe as mídias, escreve a
 // legenda, vê a prévia no celular e publica agora, agenda ou salva rascunho.
 // Lista separada por situação (agendados, publicados, com erro…), cada um com
-// "Ver como ficou". Espaço usado à vista, com limpeza automática.
+// "Ver como ficou".
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarClock, ExternalLink, Eye, HardDrive, ImagePlus, Layers, Link2, Loader2, Pencil, Rocket, Save, Trash2, Upload, X } from 'lucide-react'
-import { RETENTION_NOTICE } from '@/lib/publications/retention-core'
+import { CalendarClock, ExternalLink, Eye, FileText, ImagePlus, Layers, Link2, Loader2, Pencil, Rocket, Save, Sparkles, Stamp, Trash2, Upload, X } from 'lucide-react'
 import { CADENCE_NOTICE } from '@/lib/publications/social/cadence-core'
+import { OCCASION_LABEL, OCCASIONS, type Occasion } from '@/lib/publications/social/avulsa-text-core'
 import { partsUrl, StoredPreview } from '@/components/publications/AvulsaPreview'
 import { cn } from '@/lib/utils'
 import { api, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
 import { PostPreview, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
-import { AVULSA_FORMATS, AVULSA_LABEL, FACEBOOK_ONLY, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia } from '@/lib/publications/social/avulsa-core'
+import { AVULSA_FORMATS, AVULSA_LABEL, FACEBOOK_ONLY, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia, isBrandMark, type BrandMark } from '@/lib/publications/social/avulsa-core'
 import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
 
 interface Conn { id: string; channel: string; label: string; status: string }
@@ -37,7 +37,6 @@ const TABS: Array<{ key: string; label: string; statuses: string[] }> = [
   { key: 'rascunhos', label: 'Rascunhos', statuses: ['RASCUNHO'] },
   { key: 'cancelados', label: 'Cancelados', statuses: ['CANCELADO'] },
 ]
-const mb = (n: number) => `${(n / 1_048_576).toFixed(n > 10_485_760 ? 0 : 1)} MB`
 
 /** Reduz a foto no navegador (lado maior 1440 px = o máximo que o Instagram usa). */
 async function shrink(file: Blob, max = 1440): Promise<Blob> {
@@ -100,15 +99,36 @@ export default function PostAvulsoPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [posts, setPosts] = useState<any[] | null>(null)
-  const [storage, setStorage] = useState<{ total: number; fotos: number; pedacosVideo: number; videosGerados: number } | null>(null)
   const [tab, setTab] = useState('agendados')
   const [net, setNet] = useState<'INSTAGRAM' | 'FACEBOOK'>('INSTAGRAM')
   const [viewing, setViewing] = useState<any | null>(null)
   // Lote: vários posts variados, agendados de uma vez em horários diferentes.
-  type BatchItem = { id: string; title: string; format: AvulsaFormat; caption: string; media: AvulsaMedia[]; thumb: string | null; kind: 'image' | 'video' | 'link' }
+  type BatchItem = { id: string; title: string; format: AvulsaFormat; caption: string; media: AvulsaMedia[]; thumb: string | null; kind: 'image' | 'video' | 'link'; brand?: BrandMark | null }
   const [batch, setBatch] = useState<BatchItem[]>([])
   const [batchStart, setBatchStart] = useState('')
   const [batchResult, setBatchResult] = useState<{ message: string; results: Array<{ n: number; ok: boolean; message: string; local?: string }>; items: BatchItem[] } | null>(null)
+  // Identidade da loja nas fotos e vídeos (só com a caixa marcada; preferência lembrada).
+  const [brandOn, setBrandOn] = useState(false)
+  const [brandStyle, setBrandStyle] = useState<BrandMark>('DISCRETO')
+  useEffect(() => {
+    const t = setTimeout(() => { try { const p = JSON.parse(localStorage.getItem('autodrive:avulsa:marca:v1') ?? 'null'); if (p) { setBrandOn(!!p.on); if (isBrandMark(p.style)) setBrandStyle(p.style) } } catch { /* sem armazenamento */ } }, 0)
+    return () => clearTimeout(t)
+  }, [])
+  const setBrand = (on: boolean, style: BrandMark) => { setBrandOn(on); setBrandStyle(style); try { localStorage.setItem('autodrive:avulsa:marca:v1', JSON.stringify({ on, style })) } catch { /* ok */ } }
+  const brand: BrandMark | null = brandOn ? brandStyle : null
+  // Assistente de texto: modelo pronto por ocasião (com o nome da loja) ou IA.
+  const [occasion, setOccasion] = useState<Occasion>('ENTREGA')
+  const [notes, setNotes] = useState('')
+  const writeText = async (useAi: boolean) => {
+    if (caption.trim() && !confirm('Substituir o texto que já está escrito?')) return
+    setBusy(useAi ? 'IA' : 'MODELO'); setMsg(null)
+    try {
+      const j = await api('/api/publications/avulsa/caption', { method: 'POST', json: { occasion, notes, format, useAi } })
+      setCaption(j.text)
+      setMsg({ ok: true, text: j.ai ? `Texto escrito pela IA (${j.source}). Revise antes de publicar.` : useAi ? 'Nenhuma IA configurada: usei o modelo pronto com os dados da loja.' : 'Modelo pronto preenchido com o nome e os contatos da loja — ajuste à vontade.' })
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+  }
+
   // Rascunho do servidor sendo continuado (salvar/publicar atualiza o mesmo).
   const [editingId, setEditingId] = useState<string | null>(null)
   const [restored, setRestored] = useState(false)
@@ -181,7 +201,7 @@ export default function PostAvulsoPage() {
     const img = media.find((m) => m.type === 'image') as { assetId: string } | undefined
     const poster = media.find((m) => m.type === 'video' && 'posterAssetId' in m && m.posterAssetId) as { posterAssetId?: string } | undefined
     const thumb = img ? `/api/site/assets/${img.assetId}` : poster?.posterAssetId ? `/api/site/assets/${poster.posterAssetId}` : null
-    setBatch((b) => [...b, { id: crypto.randomUUID(), title, format, caption, media, thumb, kind: format === 'LINK' ? 'link' : media.some((m) => m.type === 'video') ? 'video' : 'image' }])
+    setBatch((b) => [...b, { id: crypto.randomUUID(), title, format, caption, media, thumb, brand, kind: format === 'LINK' ? 'link' : media.some((m) => m.type === 'video') ? 'video' : 'image' }])
     setMsg({ ok: true, text: `Post ${batch.length + 1} adicionado ao lote. Monte o próximo ou agende o lote.` })
     clearEditor()
   }
@@ -189,7 +209,7 @@ export default function PostAvulsoPage() {
     if (!batch.length || !selConns.length) return
     setBusy('LOTE'); setMsg(null)
     try {
-      const j = await api('/api/publications/avulsa/batch', { method: 'POST', json: { items: batch.map(({ title, format, caption, media }) => ({ title, format, caption, media })), connectionIds: selConns.map((c) => c.id), startLocal: batchStart || undefined } })
+      const j = await api('/api/publications/avulsa/batch', { method: 'POST', json: { items: batch.map(({ title, format, caption, media, brand: bm }) => ({ title, format, caption, media, brand: bm })), connectionIds: selConns.map((c) => c.id), startLocal: batchStart || undefined } })
       setBatchResult({ message: j.message, results: j.results, items: batch })
       setBatch((b) => b.filter((_, n) => !j.results.find((r: { n: number; ok: boolean }) => r.n === n && r.ok)))
       setTab('agendados'); loadPosts()
@@ -198,7 +218,7 @@ export default function PostAvulsoPage() {
 
   const clearEditor = () => { setItems([]); setLinkMedia(''); setCaption(''); setTitle(''); setWhen(''); setEditingId(null); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ok */ } }
 
-  const loadPosts = useCallback(() => { api('/api/publications/avulsa').then((j) => { setPosts(j.data); setStorage(j.storage) }).catch(() => setPosts([])) }, [])
+  const loadPosts = useCallback(() => { api('/api/publications/avulsa').then((j) => { setPosts(j.data) }).catch(() => setPosts([])) }, [])
   useEffect(() => {
     api('/api/publications/connections').then((j) => {
       const list = (j.data.connections as Conn[]).filter((c) => (c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE') && c.status === 'CONECTADO')
@@ -257,7 +277,11 @@ export default function PostAvulsoPage() {
   const selConns = conns.filter((c) => sel.includes(c.id) && allowed(c))
   const previewNet = format === 'LINK' ? 'FACEBOOK' : selConns.some((c) => (net === 'INSTAGRAM' ? c.channel === 'INSTAGRAM' : c.channel === 'META_PAGE')) ? net : selConns[0]?.channel === 'META_PAGE' ? 'FACEBOOK' : 'INSTAGRAM'
   const account = selConns.find((c) => (previewNet === 'INSTAGRAM' ? c.channel === 'INSTAGRAM' : c.channel === 'META_PAGE'))?.label ?? 'sua loja'
-  const previewMedia: PreviewMedia[] = useMemo(() => items.filter((i) => i.preview).map((i) => ({ type: i.kind, url: i.preview })), [items])
+  const previewMedia: PreviewMedia[] = useMemo(() => items.filter((i) => i.preview).map((i): PreviewMedia => {
+    if (!brand) return { type: i.kind, url: i.preview }
+    if (i.media?.type === 'image') return { type: 'image', url: i.media.branded ? i.preview : `/api/publications/avulsa/brand?${new URLSearchParams({ style: brand, assetId: i.media.assetId })}` }
+    return { type: i.kind, url: i.preview, overlay: `/api/publications/avulsa/brand?${new URLSearchParams({ style: brand, w: '1080', h: '1920' })}` }
+  }), [items, brand])
   const pf = (f: AvulsaFormat, n: number): PreviewFormat => (f === 'POST' ? (n > 1 ? 'CARROSSEL' : 'POST') : f)
 
   const insertContacts = () => {
@@ -268,7 +292,7 @@ export default function PostAvulsoPage() {
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     setBusy(mode); setMsg(null)
     try {
-      const j = await api('/api/publications/avulsa', { method: 'POST', json: { id: editingId, title, format, caption, media, connectionIds: selConns.map((c) => c.id), mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined } })
+      const j = await api('/api/publications/avulsa', { method: 'POST', json: { id: editingId, title, format, caption, media, connectionIds: selConns.map((c) => c.id), mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined, brand } })
       setMsg({ ok: true, text: j.message }); clearEditor()
       setTab(mode === 'RASCUNHO' ? 'rascunhos' : mode === 'AGENDAR' ? 'agendados' : 'enviando'); loadPosts()
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
@@ -289,7 +313,6 @@ export default function PostAvulsoPage() {
         <p className="text-sm text-gray-500">Fotos, vídeos prontos e links de vídeo da loja (bastidores, entregas, eventos, promoções) no Instagram e no Facebook — publique agora ou agende.</p>
       </div>
       <PubTabs />
-      <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">{RETENTION_NOTICE} O que você está montando fica salvo neste navegador enquanto isso.</p>
       {editingId && <p className="flex flex-wrap items-center gap-2 rounded-lg bg-brand-50/60 px-3 py-2 text-xs text-brand-800">Editando um rascunho salvo — ao salvar ou publicar, ele é atualizado (não cria outro).<button type="button" onClick={clearEditor} className="underline">Começar um post novo</button></p>}
       {msg && <p role="status" className={cn('rounded-lg px-3 py-2 text-xs', msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>{msg.text}</p>}
 
@@ -347,6 +370,32 @@ export default function PostAvulsoPage() {
               </ul>
             </div>
           )}
+
+          {format !== 'LINK' && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-xs">
+              <label className="flex items-center gap-2 font-medium text-gray-800"><input type="checkbox" checked={brandOn} onChange={(e) => setBrand(e.target.checked, brandStyle)} className="rounded border-gray-300 text-brand-600" /><Stamp size={14} className="text-brand-700" />Aplicar a identidade da loja nas fotos e vídeos</label>
+              {brandOn && (
+                <select aria-label="Estilo da identidade" className={cn(inputCls, 'w-auto py-1 text-xs')} value={brandStyle} onChange={(e) => setBrand(true, e.target.value as BrandMark)}>
+                  <option value="DISCRETO">Discreto — só o logo no canto</option>
+                  <option value="COMPLETO">Completo — logo + faixa com nome e WhatsApp</option>
+                </select>
+              )}
+              <span className="w-full text-[11px] text-gray-500">{brandOn ? 'Usa o logo, as cores, o nome, o WhatsApp e o @ da loja. A prévia ao lado já mostra como fica; nos vídeos a marca fica fora da área coberta pelos botões do Instagram.' : 'Desmarcado: as fotos e vídeos vão exatamente como foram enviados.'}</span>
+            </div>
+          )}
+
+          <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50/30 p-3 text-xs">
+            <p className="flex items-center gap-1.5 font-semibold text-gray-800"><Sparkles size={13} className="text-brand-700" />Texto do post</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select aria-label="Ocasião" className={cn(inputCls, 'w-auto py-1 text-xs')} value={occasion} onChange={(e) => setOccasion(e.target.value as Occasion)}>
+                {OCCASIONS.map((o) => <option key={o} value={o}>{OCCASION_LABEL[o]}</option>)}
+              </select>
+              <input className={cn(inputCls, 'min-w-[200px] flex-1 py-1 text-xs')} value={notes} maxLength={600} onChange={(e) => setNotes(e.target.value)} placeholder="Detalhe (opcional): ex. entrega do Compass para a família Souza" />
+              <button type="button" onClick={() => void writeText(false)} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs">{busy === 'MODELO' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}Modelo pronto</button>
+              <button type="button" onClick={() => void writeText(true)} disabled={!!busy} className="btn-primary px-2.5 py-1 text-xs">{busy === 'IA' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}Escrever com IA</button>
+            </div>
+            <p className="text-[11px] text-gray-500">O modelo já sai com o nome, a cidade e os contatos da loja. Ou escreva/cole o seu próprio texto abaixo.</p>
+          </div>
 
           {format !== 'STORY' && (
             <label className="block text-xs font-medium text-gray-600">
@@ -414,7 +463,6 @@ export default function PostAvulsoPage() {
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-gray-800">Seus posts avulsos</h2>
-          {storage && <span className="inline-flex items-center gap-1 text-[11px] text-gray-500" title={`Fotos ${mb(storage.fotos)} · vídeos em envio ${mb(storage.pedacosVideo)} · vídeos gerados ${mb(storage.videosGerados)}`}><HardDrive size={12} />Espaço usado: {mb(storage.total)} · limpeza automática (vídeos saem ao publicar; fotos após 30 dias)</span>}
         </div>
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Situação">
           {TABS.map((t) => <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)} className={cn('rounded-full border px-3 py-1 text-xs', tab === t.key ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600', t.key === 'erro' && counts.erro && tab !== t.key && 'border-red-200 text-red-700')}>{t.label} ({counts[t.key] ?? 0})</button>)}

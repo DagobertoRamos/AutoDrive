@@ -11,7 +11,6 @@ import { Download, ExternalLink, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, ErrorNote, inputCls, PubTabs, STATUS_LABEL, STATUS_TONE, StatusPill } from '@/components/publications/ui'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
-import { RETENTION_NOTICE } from '@/lib/publications/retention-core'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const AVULSO_LABEL: Record<string, string> = { RASCUNHO: 'Rascunho', AGENDADO: 'Agendado', ENVIANDO: 'Enviando', PUBLICADO: 'Publicado', FALHA: 'Com erro', CANCELADO: 'Cancelado' }
@@ -55,7 +54,6 @@ export default function HistoricoPage() {
         <p className="text-sm text-gray-500">Controle do que foi anunciado e postado: por veículo, placa, canal e unidade da loja.</p>
       </div>
       <PubTabs />
-      <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">{RETENTION_NOTICE} Este histórico continua disponível.</p>
 
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Tipo">
         {([['veiculos', 'Anúncios de veículos'], ['avulsos', 'Posts avulsos']] as const).map(([k, l]) => (

@@ -22,7 +22,6 @@ import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
 import { campaignKeyFor, isArtTemplate, isSocialFormat, type SocialFormat } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
-import { RETENTION_DAYS } from '@/lib/publications/retention-core'
 import { DAILY_IDEAL, KIND_LABEL, kindOf } from '@/lib/publications/social/cadence-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 
@@ -127,7 +126,7 @@ function Wizard() {
           <button type="button" onClick={startOver} className="btn-secondary px-3 py-1.5 text-xs">Começar do zero</button>
         </div>
       )}
-      <p className="text-[11px] text-gray-500">O progresso é salvo sozinho e fica guardado por {RETENTION_DAYS} dias. Rascunhos não enviados são apagados após {RETENTION_DAYS} dias.</p>
+      <p className="text-[11px] text-gray-500">O progresso é salvo sozinho — dá para continuar depois de onde parou.</p>
 
       <ol className="flex flex-wrap gap-1.5" aria-label="Etapas">
         {STEPS.map((s, i) => (
