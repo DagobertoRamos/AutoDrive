@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { bad, pubAuth } from '@/lib/publications/api'
 import { buildFor, loadVehicle } from '@/lib/publications/service'
 import { isArtTemplate, isSocialFormat } from '@/lib/publications/social/formats'
+import { isDesignStyle } from '@/lib/publications/social/design-styles'
 import { previewArt } from '@/lib/publications/social/studio'
 
 export const runtime = 'nodejs'
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
     const p = await buildFor(a.tenantId, v, 'previa', null)
     if (!p.photos.length) return bad('O veículo não tem fotos.')
     const n = Math.max(0, Math.min(p.photos.length - 1, Number(sp.get('photo') ?? 0) || 0))
-    const jpg = await previewArt(a.tenantId, vehicleId, p.photos[n], format, template, p.price, p.oldPrice, { forVideo: sp.get('video') === '1', endCard: sp.get('end') === '1' })
+    const jpg = await previewArt(a.tenantId, vehicleId, p.photos[n], format, template, p.price, p.oldPrice, { forVideo: sp.get('video') === '1', endCard: sp.get('end') === '1', design: isDesignStyle(sp.get('design')) ? (sp.get('design') as never) : null })
     return new NextResponse(new Uint8Array(jpg), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=60' } })
   } catch (e) {
     console.error('[social/preview]', e)

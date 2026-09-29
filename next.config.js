@@ -72,6 +72,8 @@ const nextConfig = {
     '/api/internal/publications/run': ['./node_modules/ffmpeg-static/ffmpeg', './src/lib/publications/social/fonts/**'],
     '/api/integrations/publications/media/[file]': ['./src/lib/publications/social/fonts/**'],
     '/api/publications/social/preview': ['./src/lib/publications/social/fonts/**'],
+    '/api/publications/**': ['./src/lib/publications/social/fonts/**'],
+    '/api/publications/package/**': ['./node_modules/ffmpeg-static/ffmpeg', './src/lib/publications/social/fonts/**'],
   },
 
   // Webpack: fallback de módulos Node em código client + alias para canvas

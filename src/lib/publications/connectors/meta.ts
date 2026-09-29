@@ -272,8 +272,10 @@ export const instagramConnector: Connector = {
     }
     if (s && (s.format === 'REELS' || (s.format === 'POST' && music))) {
       // Post com música sai como vídeo curto (Reels que também aparece no feed).
-      const { url } = await needStudio(ctx, s).video(p, s.format === 'REELS' ? 'REELS' : 'CLIP', { format: s.format, template: s.template, embedMusic: music === 'EMBED' })
-      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'REELS', video_url: url, caption, share_to_feed: 'true', ...(music === 'IG_LIBRARY' ? igAudio(s) : {}) }, 'Instagram (Reels)')).id
+      // Envio do arquivo (resumable): vídeos de 30–60 s passam do limite de resposta do nosso link.
+      const { bytes } = await needStudio(ctx, s).video(p, s.format === 'REELS' ? 'REELS' : 'CLIP', { format: s.format, template: s.template, embedMusic: music === 'EMBED' })
+      const c = (await graph<{ id: string }>(ctx, 'POST', `/${ig}/media`, { media_type: 'REELS', upload_type: 'resumable', caption, share_to_feed: 'true', ...(music === 'IG_LIBRARY' ? igAudio(s) : {}) }, 'Instagram (Reels)')).id
+      await igRupload(ctx, c, bytes)
       // O Instagram processa o vídeo em segundo plano: a conferência publica quando ficar pronto.
       return { state: 'EM_ANALISE', pendingToken: c, message: s.format === 'REELS' ? 'Reels enviado; o Instagram está processando o vídeo.' : 'Post com música enviado como vídeo; o Instagram está processando.' }
     }

@@ -133,3 +133,23 @@ describe('vídeo do carro → Reels (ffmpeg real)', () => {
     }
   }, 180_000)
 })
+
+describe('12 modelos visuais (renderização real)', () => {
+  it('todas as cenas do vídeo e as artes saem no tamanho certo, com textos longos e sem logo', async () => {
+    const { DESIGN_STYLES, DESIGNS } = await import('./design-styles')
+    const { designArt, designBase, designOverlay } = await import('./design-render')
+    const photo = await fakePhoto()
+    const logo = await sharp({ create: { width: 400, height: 120, channels: 4, background: '#111111' } }).png().toBuffer()
+    const long = 'CENTRAL MULTIMÍDIA COM ESPELHAMENTO E CÂMERA DE RÉ'
+    for (const st of DESIGN_STYLES) {
+      const c = { brandColor: '#16a34a', darkColor: '#061b29', storeName: base.storeName, whatsapp: base.whatsapp, instagram: base.instagram, logo: st === 'LUXO' ? null : logo, title: 'Volkswagen Tiguan 1.4 TSI 16V 150cv 2.0 TSI Highline', year: '2011', km: 160276, gear: 'Automático', price: 43000, oldPrice: 46900, chips: [long], condition: 'Financiamento em até 60x sem entrada' }
+      expect((await sharp(await designBase(st, photo, 1080, 1920, c.brandColor)).metadata()).width).toBe(1080)
+      for (const k of ['hook', 'info', 'price', 'cta'] as const) {
+        const m = await sharp(await designOverlay(k, { ...c, spec: DESIGNS[st] }, long, 1)).metadata()
+        expect([m.width, m.height]).toEqual([720, 1280])
+      }
+      expect((await sharp(await designArt(st, c, photo, 'POST')).metadata()).height).toBe(1350)
+      expect((await sharp(await designArt(st, c, photo, 'STORY')).metadata()).height).toBe(1920)
+    }
+  }, 180_000)
+})

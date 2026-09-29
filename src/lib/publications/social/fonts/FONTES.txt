@@ -1,0 +1,4 @@
+Fontes da Google Fonts embutidas para as artes/vídeos:
+- SIL Open Font License 1.1 (LICENSE_OFL.txt): Anton, Bebas Neue, Abril Fatface, Press Start 2P, Monoton, Bangers, Russo One, Righteous, Marcellus, VT323, Pacifico
+- Apache 2.0 (LICENSE_APACHE_PermanentMarker.txt): Permanent Marker
+Origem: github.com/google/fonts

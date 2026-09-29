@@ -12,8 +12,8 @@ import { PostPreview, type PreviewAudio, type PreviewMedia } from '@/components/
 
 interface Target { id: string; channel: string; label: string }
 
-export function SocialPreviewModal({ vehicleId, vehicleTitle, targets, formats, template, music, captions, onClose }: {
-  vehicleId: string; vehicleTitle: string; targets: Target[]; formats: SocialFormat[]; template: ArtTemplate; music: MusicChoice | null; captions: Record<string, string>; onClose: () => void
+export function SocialPreviewModal({ vehicleId, vehicleTitle, targets, formats, template, design, seconds, music, captions, onClose }: {
+  vehicleId: string; vehicleTitle: string; targets: Target[]; formats: SocialFormat[]; template: ArtTemplate; design?: string; seconds?: number; music: MusicChoice | null; captions: Record<string, string>; onClose: () => void
 }) {
   const [format, setFormat] = useState<SocialFormat>(formats[0])
   const [conn, setConn] = useState<string>(targets[0]?.id ?? '')
@@ -26,9 +26,9 @@ export function SocialPreviewModal({ vehicleId, vehicleTitle, targets, formats, 
 
   useEffect(() => {
     if (!conn) return
-    api('/api/publications/social/post-preview', { method: 'POST', json: { vehicleId, connectionId: conn, format, template, music, caption: captions[`${vehicleId}:${format}`] ?? '' } })
+    api('/api/publications/social/post-preview', { method: 'POST', json: { vehicleId, connectionId: conn, format, template, design, seconds, music, caption: captions[`${vehicleId}:${format}`] ?? '' } })
       .then((j) => setRes({ key, data: j })).catch((e) => setRes({ key, err: (e as Error).message }))
-  }, [key, vehicleId, conn, format, template, music, captions])
+  }, [key, vehicleId, conn, format, template, design, seconds, music, captions])
 
   return (
     <Drawer open onClose={onClose} title="Pré-visualização" subtitle={`${vehicleTitle} · como vai aparecer no celular`}>

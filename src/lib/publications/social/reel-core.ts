@@ -1,18 +1,18 @@
 // =============================================================================
-// Reels que prendem a atenção — ROTEIRO (PURO, testado).
+// Reels profissionais — ROTEIRO (PURO, testado).
 // Estrutura dos anúncios de carro que mais engajam em vídeo curto:
-//   1. GANCHO (≈2 s): o carro grande na tela, zoom entrando, selo + nome + ano.
-//   2. RITMO: muitas fotos em cortes rápidos (≈1,3 s), cada uma com movimento
-//      (panorâmica que percorre o carro inteiro ou zoom) e UMA informação por
-//      cena — ano, km, câmbio, combustível, opcionais do cadastro, condições.
+//   1. GANCHO (≈3,5 s): o carro inteiro na tela, chamada do modelo visual.
+//   2. FOTOS (≈3 s cada): uma informação por cena — ano, km, câmbio,
+//      combustível, opcionais do cadastro, condições. Movimento SUAVE
+//      (zoom leve ou deslize curto); o carro aparece sempre inteiro.
 //   3. PREÇO revelado no fim (gera expectativa e retenção).
-//   4. CHAMADA para o WhatsApp.
-// Transições curtas e variadas; total entre ~12 e ~25 s (faixa ideal do Reels).
+//   4. CHAMADA para o WhatsApp com o logo da loja.
+// Duração escolhida pela loja: 30 (padrão), 40, 50 ou 60 s.
 // =============================================================================
 
 import { vehicleName } from '../content-core'
 
-export type Motion = 'zoomin' | 'zoomout' | 'panleft' | 'panright'
+export type Motion = 'zoomin' | 'zoomout' | 'panleft' | 'panright' | 'shake'
 export type SegmentKind = 'hook' | 'photo' | 'price' | 'cta'
 export interface ReelSegment { kind: SegmentKind; photo: number; seconds: number; motion: Motion; transition: string; chip?: string }
 export interface ReelFacts {
@@ -21,9 +21,20 @@ export interface ReelFacts {
   options?: string[]; conditions?: string | null; badge?: string | null
 }
 
-export const REEL_TIMING = { hook: 2.1, photo: 1.35, price: 2.6, cta: 3.0, transition: 0.3, maxPhotos: 12 } as const
-const TRANSITIONS = ['slideleft', 'smoothleft', 'fade', 'slideup', 'circleopen', 'wipeleft', 'smoothup', 'fadeblack']
-const MOTIONS: Motion[] = ['panright', 'zoomin', 'panleft', 'zoomout']
+/** Tempos fixos das cenas (s) e o ritmo alvo das fotos por jeito de vídeo. */
+export const REEL_TIMING = { hook: 3.5, price: 4.5, cta: 4.5, transition: 0.5, maxPhotos: 20, photoCalm: 3.2, photoFast: 2.6 } as const
+/** Onde o carro fica no quadro do vídeo (frações): sobra margem para o zoom não cortar. */
+export const VIDEO_CAR_BOX = { x: 0.06, y: 0.2, w: 0.88, h: 0.46 } as const
+const DEFAULT_TRANSITIONS = ['fade', 'smoothleft', 'fade', 'circleopen']
+
+export interface ReelOptions {
+  /** Duração total do vídeo em segundos (30, 40, 50 ou 60; padrão 30). */
+  seconds?: number
+  /** Ritmo: suave (padrão), dinamico (TikTok) ou tremido (celular). */
+  motion?: 'suave' | 'dinamico' | 'tremido'
+  /** Transições do modelo visual, usadas em sequência. */
+  transitions?: string[]
+}
 
 const up = (s: string) => s.toLocaleUpperCase('pt-BR')
 const km = (v: number) => `${new Intl.NumberFormat('pt-BR').format(v)} KM`
@@ -42,20 +53,39 @@ export function reelChips(f: ReelFacts): string[] {
   return [...new Set(out)]
 }
 
-/** Roteiro do vídeo a partir do número de fotos e dos dados do carro. */
-export function reelPlan(photoCount: number, f: ReelFacts): ReelSegment[] {
-  const n = Math.max(1, Math.min(REEL_TIMING.maxPhotos, photoCount))
+/** Quantas cenas de foto cabem na duração pedida, no ritmo do modelo. */
+export function photoScenes(seconds: number, fast = false): number {
+  const T = REEL_TIMING
+  const fixed = T.hook + T.price + T.cta
+  const per = (fast ? T.photoFast : T.photoCalm) - T.transition
+  return Math.max(3, Math.min(24, Math.round((seconds - fixed + 2 * T.transition) / per)))
+}
+
+/**
+ * Roteiro do vídeo a partir do número de fotos, dos dados do carro e da
+ * duração pedida. O tempo de cada foto é ajustado para fechar a duração.
+ */
+export function reelPlan(photoCount: number, f: ReelFacts, o: ReelOptions = {}): ReelSegment[] {
+  const T = REEL_TIMING
+  const total = [30, 40, 50, 60].includes(Number(o.seconds)) ? Number(o.seconds) : 30
+  const style = o.motion ?? 'suave'
+  const trs = o.transitions?.length ? o.transitions : DEFAULT_TRANSITIONS
+  const t = (i: number) => trs[i % trs.length]
+  const n = Math.max(1, Math.min(T.maxPhotos, photoCount))
   const chips = reelChips(f)
-  const t = (i: number) => TRANSITIONS[i % TRANSITIONS.length]
-  const segs: ReelSegment[] = [{ kind: 'hook', photo: 0, seconds: REEL_TIMING.hook, motion: 'zoomin', transition: t(0) }]
-  // Com poucas fotos, reaproveita (com outro movimento) para manter o ritmo.
-  const scenes = Math.max(n - 1, Math.min(chips.length, 6), 3)
+  const scenes = photoScenes(total, style === 'dinamico')
+  // Tempo por foto que fecha a duração: total = soma das cenas − transições.
+  const photoSec = Math.round(((total - T.hook - T.price - T.cta + T.transition * (scenes + 2)) / scenes) * 100) / 100
+  const motions: Motion[] = style === 'tremido' ? ['shake', 'zoomin', 'shake', 'panright'] : ['zoomin', 'panright', 'zoomout', 'panleft']
+  const segs: ReelSegment[] = [{ kind: 'hook', photo: 0, seconds: T.hook, motion: style === 'tremido' ? 'shake' : 'zoomin', transition: t(0) }]
   for (let k = 0; k < scenes; k++) {
+    // Percorre as fotos; com poucas, repete com outro movimento.
     const photo = n > 1 ? 1 + (k % (n - 1)) : 0
-    segs.push({ kind: 'photo', photo, seconds: REEL_TIMING.photo, motion: MOTIONS[(k + (photo === 0 ? 1 : 0)) % MOTIONS.length], transition: t(k + 1), chip: chips[k] })
+    const chip = chips.length ? chips[k % Math.max(chips.length, scenes)] : undefined
+    segs.push({ kind: 'photo', photo, seconds: photoSec, motion: motions[(k + ((n - 1) % motions.length === 0 ? Math.floor(k / Math.max(1, n - 1)) : 0)) % motions.length], transition: t(k + 1), ...(chip ? { chip } : {}) })
   }
-  segs.push({ kind: 'price', photo: 0, seconds: REEL_TIMING.price, motion: 'zoomout', transition: t(scenes + 1) })
-  segs.push({ kind: 'cta', photo: 0, seconds: REEL_TIMING.cta, motion: 'zoomin', transition: 'fade' })
+  segs.push({ kind: 'price', photo: 0, seconds: T.price, motion: 'zoomout', transition: t(scenes + 1) })
+  segs.push({ kind: 'cta', photo: 0, seconds: T.cta, motion: 'zoomin', transition: 'fade' })
   return segs
 }
 
@@ -65,19 +95,21 @@ export const reelTotal = (segs: ReelSegment[]) => segs.reduce((a, s) => a + s.se
 export const hookTitle = (f: ReelFacts) => up(vehicleName(f.brand, f.model, null) || 'CONFIRA')
 
 /**
- * Filtro de UMA cena (PURO): entradas [0:v]=imagem preparada, [1:v]=texto (PNG).
- * Gerar cena por cena mantém a memória baixa (o servidor de produção tem pouca).
+ * Filtro de UMA cena (PURO): entradas [0:v]=quadro 1080×1920 com o carro
+ * inteiro, [1:v]=texto (PNG 720×1280). Movimento suave (zoom até 6% ou
+ * deslize curto), sem cortar o carro. Cena por cena = pouca memória.
  */
 export function sceneFilter(s: ReelSegment, fps = 30): string {
-  const n = Math.round(s.seconds * fps)
+  const n = Math.max(1, Math.round(s.seconds * fps))
   const d = s.seconds.toFixed(2)
-  // Imagem já preparada: 1080×1920 (zoom) ou altura 1280 com sobra lateral (panorâmica).
-  const motion = s.motion === 'panleft' || s.motion === 'panright'
-    ? `[0:v]crop=720:1280:x='(iw-720)*${s.motion === 'panright' ? '' : '(1-'}min(1,t/${d})${s.motion === 'panright' ? '' : ')'}':y=(ih-1280)/2,fps=${fps}`
-    : `[0:v]zoompan=z='${s.motion === 'zoomin' ? `1+0.14*on/${n}` : `1.14-0.14*on/${n}`}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=${fps}`
+  const Z = 0.06
+  const cx = "iw/2-(iw/zoom/2)"; const cy = "ih/2-(ih/zoom/2)"
+  const z = s.motion === 'zoomin' ? `1+${Z}*on/${n}` : s.motion === 'zoomout' ? `${1 + Z}-${Z}*on/${n}` : `${1 + Z / 2 + 0.01}`
+  const x = s.motion === 'panright' ? `(iw-iw/zoom)*on/${n}` : s.motion === 'panleft' ? `(iw-iw/zoom)*(1-on/${n})` : s.motion === 'shake' ? `${cx}+7*sin(on*0.9)+4*sin(on*2.3)` : cx
+  const y = s.motion === 'shake' ? `${cy}+6*cos(on*0.7)+3*sin(on*1.9)` : cy
   return [
-    `${motion},setsar=1,trim=duration=${d},setpts=PTS-STARTPTS[m]`,
-    `[1:v]format=rgba,fps=${fps},fade=in:st=0.12:d=0.28:alpha=1,trim=duration=${d},setpts=PTS-STARTPTS[o]`,
+    `[0:v]zoompan=z='${z}':x='${x}':y='${y}':d=1:s=720x1280:fps=${fps},setsar=1,trim=duration=${d},setpts=PTS-STARTPTS[m]`,
+    `[1:v]format=rgba,fps=${fps},fade=in:st=0.15:d=0.45:alpha=1,trim=duration=${d},setpts=PTS-STARTPTS[o]`,
     `[m][o]overlay=0:0:format=auto:shortest=1,format=yuv420p,fps=${fps},settb=1/${fps}[v]`,
   ].join(';')
 }

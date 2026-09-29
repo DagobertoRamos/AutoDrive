@@ -133,7 +133,7 @@ export async function connectorContext(conn: { id: string; tenantId: string; cha
     mapping: mappingResolver(conn.tenantId, conn.channel),
     mediaUrl: (u) => mediaUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { now: now() }),
     social: {
-      artUrl: (u, p, format, template) => artUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { v: p.vehicle.id, f: format, k: template, p: p.price, o: p.oldPrice }, { now: now() }),
+      artUrl: (u, p, format, template) => artUrlFor(deps.origin ?? appOrigin(), conn.tenantId, u.startsWith('http') || u.startsWith('/') ? u : `/${u}`, { v: p.vehicle.id, f: format, k: template, p: p.price, o: p.oldPrice, ...(p.social?.design ? { d: p.social.design } : {}) }, { now: now() }),
       async video(p, kind, o) {
         let audio: Buffer | null = null
         if (o.embedMusic && p.social?.music) {

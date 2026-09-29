@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { musicOf, type MusicChoice } from './music-core'
+import { isDesignStyle, isVideoSeconds, type DesignStyle, type VideoSeconds } from './design-styles'
 
 export const SOCIAL_FORMATS = ['POST', 'CARROSSEL', 'STORY', 'REELS', 'VIDEO'] as const
 export type SocialFormat = (typeof SOCIAL_FORMATS)[number]
@@ -15,7 +16,13 @@ export type SocialFormat = (typeof SOCIAL_FORMATS)[number]
 export const ART_TEMPLATES = ['OFERTA', 'CHEGOU', 'DESTAQUE', 'LIMPA'] as const
 export type ArtTemplate = (typeof ART_TEMPLATES)[number]
 
-export interface SocialSpec { format: SocialFormat; template: ArtTemplate; music?: MusicChoice | null }
+export interface SocialSpec {
+  format: SocialFormat; template: ArtTemplate; music?: MusicChoice | null
+  /** Modelo visual (12 estilos) da arte e do vídeo; sem ele, a arte clássica. */
+  design?: DesignStyle
+  /** Duração do Reels em segundos (30 padrão, 40, 50, 60). */
+  seconds?: VideoSeconds
+}
 
 export const FORMAT_INFO: Record<SocialFormat, { label: string; hint: string; canvas: 'FEED' | 'VERTICAL' }> = {
   POST: { label: 'Post', hint: 'Arte com preço no feed (4:5).', canvas: 'FEED' },
@@ -46,10 +53,10 @@ export function socialOf(overrides: unknown): SocialSpec | null {
   if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return null
   const s = (overrides as Record<string, unknown>).social
   if (!s || typeof s !== 'object') return null
-  const { format, template, music } = s as Record<string, unknown>
+  const { format, template, music, design, seconds } = s as Record<string, unknown>
   if (!isSocialFormat(format)) return null
   const m = musicOf(music)
-  return { format, template: isArtTemplate(template) ? template : 'OFERTA', ...(m ? { music: m } : {}) }
+  return { format, template: isArtTemplate(template) ? template : 'OFERTA', ...(m ? { music: m } : {}), ...(isDesignStyle(design) ? { design } : {}), ...(isVideoSeconds(seconds) ? { seconds: Number(seconds) as VideoSeconds } : {}) }
 }
 
 /**

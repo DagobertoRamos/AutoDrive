@@ -1,9 +1,10 @@
-// GET /api/publications/social/reel-frame?vehicleId=&template=&i=N — quadro
+// GET /api/publications/social/reel-frame?vehicleId=&template=&design=&seconds=&i=N — quadro
 // parado da N-ª cena do Reels (o mesmo roteiro do vídeo), para a prévia tocável.
 import { NextResponse } from 'next/server'
 import { bad, pubAuth } from '@/lib/publications/api'
 import { buildFor, loadVehicle } from '@/lib/publications/service'
 import { isArtTemplate } from '@/lib/publications/social/formats'
+import { isDesignStyle, isVideoSeconds } from '@/lib/publications/social/design-styles'
 import { reelPreviewFrame } from '@/lib/publications/social/studio'
 
 export const runtime = 'nodejs'
@@ -18,7 +19,8 @@ export async function GET(req: Request) {
   const v = await loadVehicle(a.tenantId, sp.get('vehicleId') ?? '')
   if (!v || !isArtTemplate(template)) return bad('Parâmetros inválidos.', 400)
   try {
-    const p = await buildFor(a.tenantId, v, 'previa', null)
+    const design = sp.get('design'); const seconds = sp.get('seconds')
+    const p = await buildFor(a.tenantId, v, 'previa', { social: { format: 'REELS', template, ...(isDesignStyle(design) ? { design } : {}), ...(isVideoSeconds(seconds) ? { seconds: Number(seconds) } : {}) } })
     const jpg = await reelPreviewFrame(a.tenantId, p, template, Number(sp.get('i') ?? 0) || 0)
     return new NextResponse(new Uint8Array(jpg), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=120' } })
   } catch (e) {

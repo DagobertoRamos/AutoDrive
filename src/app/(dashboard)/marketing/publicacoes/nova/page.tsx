@@ -436,7 +436,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
       const nowLocal = utcToLocalInput(new Date(), tz)
       const socialTargets = (local: string, formats = social.formats) => vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => formats.map((f) => ({
         vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f, local),
-        overrides: { social: { format: f, template: social.template, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) },
+        overrides: { social: { format: f, template: social.template, design: social.design, seconds: social.seconds, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) },
       }))))
       const calls: Array<{ targets: unknown[]; mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO'; scheduledLocal?: string }> = []
       if (social.spread && mode !== 'RASCUNHO') {
@@ -451,7 +451,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
           const local = slots[r.key]
           if (!local) continue
           const [v, c, f] = r.key.split('|')
-          const t = { vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f as SocialFormat, local), overrides: { social: { format: f, template: social.template, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) } }
+          const t = { vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f as SocialFormat, local), overrides: { social: { format: f, template: social.template, design: social.design, seconds: social.seconds, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) } }
           byTime.set(local, [...(byTime.get(local) ?? []), t])
         }
         for (const [local, targets] of byTime) calls.push({ targets, mode: 'AGENDAR', scheduledLocal: local })
@@ -534,7 +534,7 @@ Publicar assim mesmo?`)) return; void submit('AGORA') }} disabled={sending || it
               {vehicleIds.map((v) => <button key={v} type="button" onClick={() => setPreviewOf(v)} className="btn-secondary px-2 py-1 text-xs">{vehicles[v]?.title ?? 'Veículo'}</button>)}
             </div>
           )}
-          {previewOf && <SocialPreviewModal vehicleId={previewOf} vehicleTitle={vehicles[previewOf]?.title ?? ''} targets={socialTargets} formats={social.formats} template={social.template} music={social.music} captions={social.captions} onClose={() => setPreviewOf(null)} />}
+          {previewOf && <SocialPreviewModal vehicleId={previewOf} vehicleTitle={vehicles[previewOf]?.title ?? ''} targets={socialTargets} formats={social.formats} template={social.template} design={social.design} seconds={social.seconds} music={social.music} captions={social.captions} onClose={() => setPreviewOf(null)} />}
         </>
       )}
     </section>

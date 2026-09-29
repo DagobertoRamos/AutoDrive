@@ -15,9 +15,10 @@ import { loadPublicationSettings } from '../settings'
 import { renderArt } from './art'
 import { maybeEnhance } from './enhance'
 import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './formats'
-import { reelFactsOf, renderArtClip, renderReel } from './reel'
-import { endCardOf, sceneStill } from './reel-art'
-import { REEL_TIMING, reelPlan, type ReelSegment } from './reel-core'
+import { designCtxOf, planFor, renderArtClip, renderReel, sceneBases, sceneStillOf, type ReelInput } from './reel'
+import { REEL_TIMING, type ReelSegment } from './reel-core'
+import { isDesignStyle, type DesignStyle } from './design-styles'
+import { designArt } from './design-render'
 
 export const SOCIAL_VIDEO_KIND = 'SOCIAL_VIDEO'
 
@@ -70,18 +71,30 @@ export async function artFromClaims(c: MediaClaims): Promise<Buffer> {
     prisma.vehicle.findFirst({ where: { id: x.v, tenantId: c.t }, select: { brand: true, model: true, version: true, year: true, modelYear: true, km: true, transmission: true } }),
   ])
   if (!v) throw new Error('Veículo não encontrado.')
-  return renderArt({ ...artFacts(v), ...brand, logo: brand.logo, format, template, price: x.p ?? null, oldPrice: x.o ?? null, photo: await maybeEnhance(c.t, photo) })
+  const input = { ...artFacts(v), ...brand, logo: brand.logo, format, template, price: x.p ?? null, oldPrice: x.o ?? null, photo: await maybeEnhance(c.t, photo) }
+  return isDesignStyle(x.d) ? designArtOf(x.d, input) : renderArt(input)
+}
+
+/** Arte no modelo visual escolhido (Post/Carrossel 4:5, Story/Reels 9:16). */
+async function designArtOf(style: DesignStyle, i: Parameters<typeof renderArt>[0]): Promise<Buffer> {
+  const ctx = designCtxOf({ ...i, template: i.template }, style)
+  const { spec: _spec, ...c } = ctx
+  void _spec
+  return designArt(style, c, i.photo, i.format === 'STORY' || i.format === 'REELS' ? 'STORY' : 'POST')
 }
 
 /** Prévia na tela (usuário logado da loja): mesma arte que vai para a rede. */
-export async function previewArt(tenantId: string, vehicleId: string, photoUrl: string, format: SocialFormat, template: ArtTemplate, price: number | null, oldPrice: number | null, opts: { forVideo?: boolean; endCard?: boolean } = {}): Promise<Buffer> {
+export async function previewArt(tenantId: string, vehicleId: string, photoUrl: string, format: SocialFormat, template: ArtTemplate, price: number | null, oldPrice: number | null, opts: { forVideo?: boolean; endCard?: boolean; design?: DesignStyle | null } = {}): Promise<Buffer> {
   const [photo, brand, v] = await Promise.all([
     originalBytes(photoRef(tenantId, photoUrl)),
     loadBrand(tenantId),
     prisma.vehicle.findFirst({ where: { id: vehicleId, tenantId }, select: { brand: true, model: true, version: true, year: true, modelYear: true, km: true, transmission: true } }),
   ])
   if (!v) throw new Error('Veículo não encontrado.')
-  return renderArt({ ...artFacts(v), ...brand, logo: brand.logo, format, template, price, oldPrice, photo: await maybeEnhance(tenantId, photo), ...opts }, { quality: 80 })
+  const { design, ...rest } = opts
+  const input = { ...artFacts(v), ...brand, logo: brand.logo, format, template, price, oldPrice, photo: await maybeEnhance(tenantId, photo), ...rest }
+  if (design) return designArtOf(design, input)
+  return renderArt(input, { quality: 80 })
 }
 
 async function storeVideo(tenantId: string, mp4: Buffer): Promise<string> {
@@ -108,30 +121,38 @@ export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, k
   }
   if (!photos.length) throw new Error('Nenhuma foto do veículo pôde ser aberta para montar o vídeo.')
   const base = { ...factsOfPayload(p), ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice }
+  const design = p.social?.design ?? null
+  const still = { ...base, photo: photos[0], format: (format === 'STORY' ? 'STORY' : 'POST') as SocialFormat }
   const out = kind === 'REELS'
-    ? await renderReel({ ...base, photos, audio, fuel: fuelLabel(p.vehicle.fuel), options: p.options, conditions: p.conditions })
-    : await renderArtClip(await renderArt({ ...base, photo: photos[0], format: format === 'STORY' ? 'STORY' : 'POST' }, { quality: 90 }), format === 'STORY' ? 10 : 12, audio)
+    ? await renderReel({ ...reelInputOf(p, base), photos, audio })
+    : await renderArtClip(design ? await designArtOf(design, still) : await renderArt(still, { quality: 90 }), format === 'STORY' ? 10 : 12, audio)
   return { assetId: await storeVideo(tenantId, out.mp4), seconds: out.seconds, mp4: out.mp4 }
+}
+
+/** Dados do Reels deste anúncio (modelo visual e duração vêm de `p.social`). */
+function reelInputOf(p: ListingPayload, base: Omit<ReelInput, 'photos' | 'fuel' | 'options' | 'conditions' | 'design' | 'seconds'>): Omit<ReelInput, 'photos'> {
+  return { ...base, fuel: fuelLabel(p.vehicle.fuel), options: p.options, conditions: p.conditions, design: p.social?.design ?? 'CLASSICO', seconds: p.social?.seconds ?? 30 }
 }
 
 /** Roteiro do Reels deste anúncio (o mesmo do vídeo gerado). */
 export function reelPlanFor(p: ListingPayload, template: ArtTemplate): ReelSegment[] {
-  const f = factsOfPayload(p)
-  return reelPlan(Math.min(REEL_TIMING.maxPhotos, p.photos.length), reelFactsOf({ ...f, template, fuel: fuelLabel(p.vehicle.fuel), options: p.options, conditions: p.conditions }))
+  const base = { ...factsOfPayload(p), storeName: '', template, price: p.price, oldPrice: p.oldPrice }
+  return planFor(Math.min(REEL_TIMING.maxPhotos, p.photos.length), reelInputOf(p, base))
 }
 
-/** Quadro parado de uma cena do Reels (prévia na tela). */
+/** Quadro parado de uma cena do Reels (prévia na tela), igual ao vídeo. */
 export async function reelPreviewFrame(tenantId: string, p: ListingPayload, template: ArtTemplate, index: number): Promise<Buffer> {
   const segs = reelPlanFor(p, template)
-  const seg = segs[Math.max(0, Math.min(segs.length - 1, index))]
+  const k = Math.max(0, Math.min(segs.length - 1, index))
+  const seg = segs[k]
   const brand = await loadBrand(tenantId)
   const url = p.photos[seg.photo] ?? p.photos[0]
   if (!url) throw new Error('O veículo não tem fotos.')
   const photo = await maybeEnhance(tenantId, await originalBytes(photoRef(tenantId, url)))
-  const f = factsOfPayload(p)
-  const base = { ...f, ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice }
-  const facts = reelFactsOf({ ...f, template, fuel: fuelLabel(p.vehicle.fuel), options: p.options, conditions: p.conditions })
-  return sceneStill(seg, photo, endCardOf({ ...base, photo }), { facts, price: p.price, oldPrice: p.oldPrice, primaryColor: brand.primaryColor, darkColor: brand.darkColor, logo: brand.logo, storeName: brand.storeName })
+  const input = reelInputOf(p, { ...factsOfPayload(p), ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice })
+  const style = input.design ?? 'CLASSICO'
+  const ctx = designCtxOf(input, style)
+  return sceneStillOf(seg, await sceneBases([photo], style, ctx.brandColor)(0), ctx, k)
 }
 
 /** Compat: Reels sem trilha. */

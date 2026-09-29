@@ -5,6 +5,7 @@
 // fechado no navegador.
 // =============================================================================
 
+import type { DesignStyle, VideoSeconds } from './social/design-styles'
 import { fuelLabel, gearLabel } from './content-core'
 import { originalBytes } from './media'
 import { buildFor, loadVehicle, payloadContext } from './service'
@@ -50,8 +51,9 @@ export async function packagePhoto(tenantId: string, vehicleId: string, n: numbe
 }
 
 /** Vídeo vertical (Reels) do carro, com música livre opcional. Guardado para baixar em partes. */
-export async function packageVideo(tenantId: string, vehicleId: string, opts: { template: ArtTemplate; music: MusicChoice | null }) {
-  const { v, p } = await load(tenantId, vehicleId)
+export async function packageVideo(tenantId: string, vehicleId: string, opts: { template: ArtTemplate; music: MusicChoice | null; design?: DesignStyle; seconds?: VideoSeconds }) {
+  const { v, p: base } = await load(tenantId, vehicleId)
+  const p = { ...base, social: { format: 'REELS' as const, template: opts.template, design: opts.design ?? 'CLASSICO', seconds: opts.seconds ?? 30 } }
   let audio: Buffer | null = null
   if (opts.music) { try { audio = (await audioToEmbed(opts.music, v.id)).bytes } catch { audio = null } }
   const r = await renderAndStoreVideo(tenantId, p, 'REELS', 'REELS', opts.template, audio)

@@ -19,6 +19,8 @@ import { MusicPicker } from '@/components/publications/MusicPicker'
 import { CADENCE_NOTICE } from '@/lib/publications/social/cadence-core'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { PhotoEnhanceToggle } from '@/components/publications/PhotoEnhanceToggle'
+import { DesignPicker, VideoSecondsPicker } from '@/components/publications/DesignPicker'
+import type { DesignStyle, VideoSeconds } from '@/lib/publications/social/design-styles'
 
 export interface SocialChoice {
   formats: SocialFormat[]
@@ -29,9 +31,13 @@ export interface SocialChoice {
   spread: boolean
   /** Trilha dos vídeos (null = sem música). */
   music: MusicChoice | null
+  /** Modelo visual (12 estilos) do vídeo e das artes. */
+  design: DesignStyle
+  /** Duração do Reels (30 s já marcado). */
+  seconds: VideoSeconds
 }
 
-export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: true, music: { mode: 'AUTO', mood: 'ANIMADA' } }
+export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: true, music: { mode: 'AUTO', mood: 'ANIMADA' }, design: 'CLASSICO', seconds: 30 }
 
 const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard, VIDEO: Video }
 
@@ -79,8 +85,10 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
 
       {value.formats.length > 0 && (
         <>
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Modelo da arte">
-            <span className="mr-1 text-xs font-medium text-gray-600">Modelo da arte:</span>
+          <DesignPicker value={value.design} onChange={(design) => set({ design })} />
+          {value.formats.includes('REELS') && <VideoSecondsPicker value={value.seconds} onChange={(seconds) => set({ seconds })} />}
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Chamada da arte">
+            <span className="mr-1 text-xs font-medium text-gray-600">Chamada:</span>
             {ART_TEMPLATES.map((t) => (
               <button key={t} type="button" aria-pressed={value.template === t} onClick={() => set({ template: t })}
                 className={cn('rounded-full border px-2.5 py-0.5 text-xs', value.template === t ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}>{TEMPLATE_INFO[t].label}</button>
@@ -97,14 +105,14 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
             <div className="grid gap-3 lg:grid-cols-2">
               {value.formats.map((f) => {
                 const key = `${vid}:${f}`
-                const src = `/api/publications/social/preview?vehicleId=${encodeURIComponent(vid)}&format=${f}&template=${value.template}&r=${artRev}`
+                const src = `/api/publications/social/preview?vehicleId=${encodeURIComponent(vid)}&format=${f}&template=${value.template}&design=${value.design}&r=${artRev}`
                 return (
                   <div key={f} className="flex gap-3 rounded-xl border border-gray-200 bg-white p-3">
                     <div className={cn('shrink-0 overflow-hidden rounded-lg bg-gray-100', FORMAT_INFO[f].canvas === 'FEED' ? 'h-40 w-32' : 'h-44 w-[99px]')}>
                       <img src={src} alt={`Prévia ${FORMAT_INFO[f].label}`} className="h-full w-full object-cover" loading="lazy" />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1.5">
-                      <p className="text-xs font-semibold text-gray-800">{FORMAT_INFO[f].label}{f === 'REELS' && <span className="font-normal text-gray-500"> · 1ª cena do vídeo (≈ 15–20 s: gancho, até 12 fotos com as informações do carro, preço e chamada)</span>}</p>
+                      <p className="text-xs font-semibold text-gray-800">{FORMAT_INFO[f].label}{f === 'REELS' && <span className="font-normal text-gray-500"> · capa do vídeo ({value.seconds} s: gancho, fotos com as informações do carro, preço e chamada)</span>}</p>
                       {f === 'STORY' ? (
                         <p className="text-[11px] text-gray-500">Story não leva legenda: a arte já traz preço e WhatsApp.</p>
                       ) : (
@@ -134,7 +142,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
           {vid && targets.length > 0 && (
             <button type="button" onClick={() => setPreview(true)} className="btn-primary px-3 py-1.5 text-xs"><Eye size={14} />Pré-visualizar como fica no celular</button>
           )}
-          {preview && vid && <SocialPreviewModal vehicleId={vid} vehicleTitle={vehicles.find((v) => v.id === vid)?.title ?? ''} targets={targets} formats={value.formats} template={value.template} music={value.music} captions={value.captions} onClose={() => setPreview(false)} />}
+          {preview && vid && <SocialPreviewModal vehicleId={vid} vehicleTitle={vehicles.find((v) => v.id === vid)?.title ?? ''} targets={targets} formats={value.formats} template={value.template} design={value.design} seconds={value.seconds} music={value.music} captions={value.captions} onClose={() => setPreview(false)} />}
           {note && <p role="status" className={cn('text-xs', note.ok ? 'text-green-700' : 'text-red-700')}>{note.text}</p>}
         </>
       )}

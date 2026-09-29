@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils'
 import { api, Drawer, inputCls } from '@/components/publications/ui'
 import { buildZipBrowser, type BrowserZipEntry } from '@/lib/publications/zip-browser'
 import { MOOD_LABEL, MUSIC_MOODS, type MusicMood } from '@/lib/publications/social/music-core'
+import { DesignPicker, VideoSecondsPicker } from '@/components/publications/DesignPicker'
+import type { DesignStyle, VideoSeconds } from '@/lib/publications/social/design-styles'
 
 type Step = { label: string; state: 'wait' | 'run' | 'ok' | 'err'; note?: string }
 
@@ -55,13 +57,15 @@ export function AdPackageDialog({ vehicleId, title, onClose }: { vehicleId: stri
   const [video, setVideo] = useState(true)
   const [music, setMusic] = useState(true)
   const [mood, setMood] = useState<MusicMood>('ANIMADA')
+  const [design, setDesign] = useState<DesignStyle>('CLASSICO')
+  const [seconds, setSeconds] = useState<VideoSeconds>(30)
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
 
   const run = async () => {
     setBusy(true); setDone(null)
-    const list: Step[] = [{ label: 'Textos (Marketplace, grupos, WhatsApp, Instagram)', state: 'run' }, { label: 'Fotos', state: 'wait' }, ...(video ? [{ label: 'Vídeo vertical (pode levar até 1 minuto)', state: 'wait' as const }] : []), { label: 'Montando o .zip', state: 'wait' }]
+    const list: Step[] = [{ label: 'Textos (Marketplace, grupos, WhatsApp, Instagram)', state: 'run' }, { label: 'Fotos', state: 'wait' }, ...(video ? [{ label: `Vídeo vertical de ${seconds} s (pode levar alguns minutos)`, state: 'wait' as const }] : []), { label: 'Montando o .zip', state: 'wait' }]
     const set = (i: number, x: Partial<Step>) => { list[i] = { ...list[i], ...x }; setSteps([...list]) }
     setSteps([...list])
     try {
@@ -79,7 +83,7 @@ export function AdPackageDialog({ vehicleId, title, onClose }: { vehicleId: stri
       let k = 2
       if (video) {
         set(k, { state: 'run', note: 'gerando…' })
-        const v = await api(`/api/publications/package/${vehicleId}/video`, { method: 'POST', json: { template: 'OFERTA', music: music ? { mode: 'AUTO', mood } : null } })
+        const v = await api(`/api/publications/package/${vehicleId}/video`, { method: 'POST', json: { template: 'OFERTA', design, seconds, music: music ? { mode: 'AUTO', mood } : null } })
         files.push({ name: `${m.base}/video/${m.base}.mp4`, data: await getVideo(v.assetId, v.size, (p) => set(k, { note: `baixando ${p}%` })) })
         set(k, { state: 'ok', note: `${v.seconds} s${v.music ? ' · com música livre' : ''}` })
         k++
@@ -116,6 +120,8 @@ export function AdPackageDialog({ vehicleId, title, onClose }: { vehicleId: stri
         <fieldset className="space-y-2 rounded-xl border border-gray-200 p-3" disabled={busy}>
           <legend className="px-1 text-xs font-semibold text-gray-700">Vídeo</legend>
           <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={video} onChange={(e) => setVideo(e.target.checked)} />Incluir o vídeo vertical (gancho, fotos com as informações, preço e WhatsApp)</label>
+          {video && <VideoSecondsPicker value={seconds} onChange={setSeconds} />}
+          {video && <DesignPicker value={design} onChange={setDesign} />}
           {video && (
             <label className="flex flex-wrap items-center gap-2 text-xs"><input type="checkbox" checked={music} onChange={(e) => setMusic(e.target.checked)} />Com música livre (sem direito autoral)
               {music && <select className={cn(inputCls, 'w-auto py-1 text-xs')} value={mood} onChange={(e) => setMood(e.target.value as MusicMood)}>{MUSIC_MOODS.map((x) => <option key={x} value={x}>{MOOD_LABEL[x]}</option>)}</select>}

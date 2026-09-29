@@ -17,7 +17,7 @@ export interface MediaClaims {
   w: number // largura máxima da variante
   e: number // expira (epoch s)
   /** Arte do estúdio social desenhada sobre a foto: veículo, formato, modelo e preço anunciado. */
-  x?: { v: string; f: string; k: string; p?: number | null; o?: number | null }
+  x?: { v: string; f: string; k: string; p?: number | null; o?: number | null; d?: string }
   /** Arquivo pronto servido como está (vídeo do Reels guardado em site_assets). */
   m?: 'mp4'
 }

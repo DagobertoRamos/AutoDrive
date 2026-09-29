@@ -9,6 +9,7 @@ import { channelSpec } from '@/lib/publications/channels'
 import { channelText } from '@/lib/publications/content-core'
 import { buildFor, loadVehicle } from '@/lib/publications/service'
 import { isArtTemplate, isSocialFormat } from '@/lib/publications/social/formats'
+import { isDesignStyle, isVideoSeconds } from '@/lib/publications/social/design-styles'
 import { musicOf, musicPlan, MOOD_LABEL } from '@/lib/publications/social/music-core'
 import { previewAudio } from '@/lib/publications/social/music'
 import { reelPlanFor } from '@/lib/publications/social/studio'
@@ -30,9 +31,11 @@ export async function POST(req: Request) {
   if (!v || !conn) return bad('Veículo ou conta não encontrados nesta loja.', 404)
   const spec = channelSpec(conn.channel)
   if (!spec) return bad('Canal desconhecido.')
-  const overrides = { social: { format: b.format, template, ...(music ? { music } : {}) }, ...(typeof b.caption === 'string' && b.caption.trim() ? { caption: b.caption.trim().slice(0, 2200) } : {}) }
+  const design = isDesignStyle(b.design) ? b.design : null
+  const seconds = isVideoSeconds(b.seconds) ? Number(b.seconds) : 30
+  const overrides = { social: { format: b.format, template, ...(music ? { music } : {}), ...(design ? { design } : {}), seconds }, ...(typeof b.caption === 'string' && b.caption.trim() ? { caption: b.caption.trim().slice(0, 2200) } : {}) }
   const p = await buildFor(a.tenantId, v, 'previa', overrides)
-  const art = (format: string, extra: Record<string, string> = {}, tpl: string = template) => `/api/publications/social/preview?${new URLSearchParams({ vehicleId: v.id, format, template: tpl, ...extra })}`
+  const art = (format: string, extra: Record<string, string> = {}, tpl: string = template) => `/api/publications/social/preview?${new URLSearchParams({ vehicleId: v.id, format, template: tpl, ...(design ? { design } : {}), ...extra })}`
   const format = b.format
   const network = conn.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'
   const plan = musicPlan(music, conn.channel, format)
@@ -43,7 +46,7 @@ export async function POST(req: Request) {
   if (format === 'REELS') {
     // As mesmas cenas do vídeo (gancho, fotos com a informação, preço, chamada), no mesmo tempo.
     const segs = reelPlanFor(p, template)
-    media = segs.map((_, k) => ({ type: 'image' as const, url: `/api/publications/social/reel-frame?${new URLSearchParams({ vehicleId: v.id, template, i: String(k) })}` }))
+    media = segs.map((_, k) => ({ type: 'image' as const, url: `/api/publications/social/reel-frame?${new URLSearchParams({ vehicleId: v.id, template, ...(design ? { design } : {}), seconds: String(seconds), i: String(k) })}` }))
     slides = segs.map((sg) => sg.seconds)
   } else if (format === 'POST') {
     media = [{ type: 'image', url: art('POST') }]

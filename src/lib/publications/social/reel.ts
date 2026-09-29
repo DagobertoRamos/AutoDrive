@@ -1,9 +1,10 @@
 // =============================================================================
 // Estúdio social — Reels (vídeo vertical) a partir das fotos do carro, no
-// roteiro dos anúncios que engajam (reel-core.ts): gancho, até 12 fotos em
-// cortes rápidos com movimento e uma informação por cena, preço e chamada.
-// MP4 H.264 720×1280 30 fps com trilha de áudio muda (aceito por Instagram e
-// Facebook; a rede converte). Arquivo leve (~2–4 MB) para caber na resposta.
+// roteiro dos anúncios que engajam (reel-core.ts): gancho, fotos com uma
+// informação por cena, preço e chamada — no modelo visual escolhido
+// (design-styles.ts) e na duração pedida (30/40/50/60 s). O carro aparece
+// sempre inteiro; o logo vai sobre placa que contrasta.
+// MP4 H.264 720×1280 30 fps (aceito por Instagram e Facebook).
 // =============================================================================
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -12,8 +13,10 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { type RenderArtInput } from './art'
 import { TEMPLATE_INFO } from './formats'
-import { endCardOf, sceneBase, sceneOverlay } from './reel-art'
-import { chainFilter, REEL_TIMING, reelPlan, sceneFilter, type ReelFacts } from './reel-core'
+import { chainFilter, REEL_TIMING, reelChips, reelPlan, sceneFilter, VIDEO_CAR_BOX, type ReelFacts, type ReelSegment } from './reel-core'
+import { DESIGNS, type DesignStyle } from './design-styles'
+import { designBase, designOverlay, type DesignCtx } from './design-render'
+import { vehicleName } from '../content-core'
 import { audioFilter } from './music-core'
 
 export const REEL = { secondsPerPhoto: 2.6, endSeconds: 3.2, fade: 0.5, maxPhotos: 7, fps: 30 } as const
@@ -62,7 +65,51 @@ function run(bin: string, args: string[], timeoutMs: number): Promise<void> {
   })
 }
 
-export type ReelInput = Omit<RenderArtInput, 'photo' | 'format' | 'forVideo' | 'endCard'> & { photos: Buffer[]; audio?: Buffer | null; fuel?: string | null; options?: string[]; conditions?: string | null }
+export type ReelInput = Omit<RenderArtInput, 'photo' | 'format' | 'forVideo' | 'endCard'> & {
+  photos: Buffer[]; audio?: Buffer | null; fuel?: string | null; options?: string[]; conditions?: string | null
+  /** Modelo visual (padrão: Clássico premium). */
+  design?: DesignStyle | null
+  /** Duração em segundos: 30 (padrão), 40, 50 ou 60. */
+  seconds?: number | null
+}
+
+/** Dados que o motor de design usa nas cenas (título, preço, contatos...). */
+export function designCtxOf(i: Omit<ReelInput, 'photos'>, style: DesignStyle): DesignCtx {
+  const facts = reelFactsOf(i)
+  const y = i.year && i.modelYear && i.year !== i.modelYear ? `${i.year}/${i.modelYear}` : String(i.modelYear ?? i.year ?? '')
+  const condition = String(i.conditions ?? '').split(/\n|•|;/).map((x) => x.replace(/^[-–✅✔️\s]+/u, '').trim()).find((x) => x && x.length <= 40) ?? null
+  return {
+    spec: DESIGNS[style], brandColor: i.primaryColor || '#16a34a', darkColor: i.darkColor || '#061b29', storeName: i.storeName,
+    whatsapp: i.whatsapp ?? '', instagram: i.instagram ?? '', logo: i.logo ?? null,
+    title: vehicleName(i.brand, i.model, i.version) || 'Confira', year: y, km: i.km ?? null, gear: i.gear ?? null,
+    price: i.price ?? null, oldPrice: i.oldPrice ?? null, chips: reelChips(facts), condition,
+  }
+}
+
+/** Roteiro do vídeo para estes dados, no modelo e na duração pedidos. */
+export function planFor(photoCount: number, i: Omit<ReelInput, 'photos'>): ReelSegment[] {
+  const spec = DESIGNS[i.design ?? 'CLASSICO']
+  return reelPlan(photoCount, reelFactsOf(i), { seconds: i.seconds ?? 30, motion: spec.motion, transitions: spec.transitions })
+}
+
+/** Quadro da cena: fundo do modelo + carro inteiro (1080×1920) — um por foto. */
+export function sceneBases(photos: Buffer[], style: DesignStyle, brandColor: string) {
+  const cache = new Map<number, Promise<Buffer>>()
+  return (k: number) => {
+    const idx = photos[k] ? k : 0
+    if (!cache.has(idx)) cache.set(idx, designBase(style, photos[idx], 1080, 1920, brandColor, { ...VIDEO_CAR_BOX }))
+    return cache.get(idx)!
+  }
+}
+
+const overlayKind = (s: ReelSegment) => (s.kind === 'photo' ? 'info' : s.kind)
+
+/** Quadro parado de uma cena (prévia na tela), igual ao vídeo. */
+export async function sceneStillOf(seg: ReelSegment, base: Buffer, ctx: DesignCtx, index: number): Promise<Buffer> {
+  const sharp = (await import('sharp')).default
+  const frame = await sharp(base).resize(720, 1280).png().toBuffer()
+  return sharp(frame).composite([{ input: await designOverlay(overlayKind(seg), ctx, seg.chip, index), left: 0, top: 0 }]).jpeg({ quality: 82 }).toBuffer()
+}
 
 /** Monta o MP4 a partir de quadros prontos (JPEG 720×1280); com `audio`, a trilha entra com fade. */
 export async function framesToVideo(frames: Buffer[], durations: number[], audio: Buffer | null | undefined, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
@@ -100,39 +147,38 @@ export async function framesToVideo(frames: Buffer[], durations: number[], audio
 }
 
 /**
- * Gera o MP4 do Reels no roteiro que prende a atenção (reel-core.ts): gancho,
- * muitas fotos em cortes rápidos com movimento e uma informação por cena,
- * preço revelado e chamada final. Lança erro se não houver foto.
+ * Gera o MP4 do Reels: gancho, fotos com uma informação por cena, preço e
+ * chamada, no modelo visual e na duração pedidos. Lança erro se não houver foto.
  */
 export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
   const photos = i.photos.slice(0, REEL_TIMING.maxPhotos)
   if (!photos.length) throw new Error('O Reels precisa de pelo menos uma foto.')
-  const facts = reelFactsOf(i)
-  const segs = reelPlan(photos.length, facts)
-  let endCache: Promise<Buffer> | null = null
-  const end = () => (endCache ??= endCardOf({ ...i, photo: photos[0] })())
-  const ctx = { facts, price: i.price ?? null, oldPrice: i.oldPrice ?? null, primaryColor: i.primaryColor, darkColor: i.darkColor, logo: i.logo ?? null, storeName: i.storeName }
+  const style: DesignStyle = i.design ?? 'CLASSICO'
+  const segs = planFor(photos.length, i)
+  const ctx = designCtxOf(i, style)
+  const baseOf = sceneBases(photos, style, ctx.brandColor)
   const dir = await mkdtemp(path.join(tmpdir(), 'reel-'))
   try {
     // 1) Cada cena vira um vídeo curto (2 entradas por vez: pouca memória).
     const clips: string[] = []
     const bin = await ffmpegPath()
+    const written = new Set<number>()
     for (const [n, seg] of segs.entries()) {
-      const base = path.join(dir, `b${n}.jpg`); const over = path.join(dir, `o${n}.png`); const clip = path.join(dir, `c${n}.mp4`)
-      await writeFile(base, await sceneBase(seg, photos[seg.photo] ?? photos[0], end))
-      await writeFile(over, await sceneOverlay(seg, ctx))
+      const base = path.join(dir, `b${seg.photo}.jpg`); const over = path.join(dir, `o${n}.png`); const clip = path.join(dir, `c${n}.mp4`)
+      if (!written.has(seg.photo)) { await writeFile(base, await baseOf(seg.photo)); written.add(seg.photo) }
+      await writeFile(over, await designOverlay(overlayKind(seg), ctx, seg.chip, n))
       const t = seg.seconds.toFixed(2)
       await run(bin, [
         '-hide_banner', '-loglevel', 'error', '-y',
         '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', base, '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', over,
         '-filter_complex', sceneFilter(seg, REEL.fps), '-map', '[v]', '-an',
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(REEL.fps), '-t', t, clip,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '16', '-pix_fmt', 'yuv420p', '-r', String(REEL.fps), '-t', t, clip,
       ], 90_000)
       clips.push(clip)
     }
     // 2) Junta as cenas com as transições e a música.
     const g = chainFilter(segs, REEL.fps)
-    return await encode(dir, clips.flatMap((c) => ['-i', c]), clips.length, g.filter, g.out, g.total, i.audio, opts.timeoutMs ?? 180_000)
+    return await encode(dir, clips.flatMap((c) => ['-i', c]), clips.length, g.filter, g.out, g.total, i.audio, opts.timeoutMs ?? 240_000)
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }

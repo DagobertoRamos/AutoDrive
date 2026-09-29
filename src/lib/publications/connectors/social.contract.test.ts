@@ -108,6 +108,7 @@ describe('Estúdio social — Instagram — SIMULAÇÃO', () => {
     reels.length = 0
     let status = 'IN_PROGRESS'
     const s = simulated([IG_LIMIT,
+      (c) => c.url.startsWith('https://rupload.facebook.com/ig-api-upload/') ? { status: 200, body: { success: true } } : null,
       (c) => c.url.includes('/IG/media_publish') ? { status: 200, body: { id: 'RL1' } } : null,
       (c) => c.url.includes('/IG/media') && c.method === 'POST' ? { status: 200, body: { id: 'RC1' } } : null,
       (c) => c.url.includes('/RC1?') ? { status: 200, body: { status_code: status } } : null,
@@ -119,7 +120,10 @@ describe('Estúdio social — Instagram — SIMULAÇÃO', () => {
     expect(reels).toEqual(['REELS:REELS:DESTAQUE:mudo'])
     const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST')!.body)
     expect(create.get('media_type')).toBe('REELS')
-    expect(create.get('video_url')).toBe('https://app.test/reel.mp4')
+    // O arquivo vai direto (envio retomável): vídeo de 30–60 s passa do limite do nosso link.
+    expect(create.get('upload_type')).toBe('resumable')
+    expect(create.get('video_url')).toBeNull()
+    expect(s.calls.find((c) => c.url.includes('rupload.facebook.com/ig-api-upload/') && c.url.endsWith('/RC1'))!.headers).toMatchObject({ offset: '0' })
     expect(create.get('share_to_feed')).toBe('true')
     expect(s.calls.some((c) => c.url.includes('media_publish'))).toBe(false)
 
@@ -207,6 +211,7 @@ describe('Estúdio social — Página do Facebook — SIMULAÇÃO', () => {
 
 describe('Estúdio social — música — SIMULAÇÃO', () => {
   const okIg = (id: string): Route[] => [IG_LIMIT,
+    (c) => c.url.startsWith('https://rupload.facebook.com/ig-api-upload/') ? { status: 200, body: { success: true } } : null,
     (c) => c.url.includes('/IG/media_publish') ? { status: 200, body: { id } } : null,
     (c) => c.url.includes('/IG/media') && c.method === 'POST' ? { status: 200, body: { id: `C${c.body.length}` } } : null,
     (c) => c.url.includes('status_code') ? { status: 200, body: { status_code: 'FINISHED' } } : null,
@@ -239,7 +244,7 @@ describe('Estúdio social — música — SIMULAÇÃO', () => {
     const create = new URLSearchParams(s.calls.find((c) => c.url.includes('/IG/media') && c.method === 'POST')!.body)
     expect(create.get('media_type')).toBe('REELS')
     expect(create.get('share_to_feed')).toBe('true')
-    expect(create.get('video_url')).toBe('https://app.test/clip.mp4')
+    expect(create.get('upload_type')).toBe('resumable')
     expect(create.get('audio_configuration')).toContain('111')
     expect(reels).toEqual(['CLIP:POST:OFERTA:mudo'])
   })
