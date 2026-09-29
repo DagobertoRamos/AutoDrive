@@ -170,7 +170,7 @@ export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}
       const t = seg.seconds.toFixed(2)
       await run(bin, [
         '-hide_banner', '-loglevel', 'error', '-y',
-        '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', base, '-loop', '1', '-framerate', String(REEL.fps), '-t', t, '-i', over,
+        '-i', base, '-i', over,
         '-filter_complex', sceneFilter(seg, REEL.fps), '-map', '[v]', '-an',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '16', '-pix_fmt', 'yuv420p', '-r', String(REEL.fps), '-t', t, clip,
       ], 90_000)

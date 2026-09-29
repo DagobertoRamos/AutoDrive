@@ -16,8 +16,8 @@ import { renderArt } from './art'
 import { maybeEnhance } from './enhance'
 import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } from './formats'
 import { designCtxOf, planFor, renderArtClip, renderReel, sceneBases, sceneStillOf, type ReelInput } from './reel'
-import { REEL_TIMING, type ReelSegment } from './reel-core'
-import { isDesignStyle, type DesignStyle } from './design-styles'
+import { photoScenes, REEL_TIMING, type ReelSegment } from './reel-core'
+import { DESIGNS, isDesignStyle, type DesignStyle } from './design-styles'
 import { designArt } from './design-render'
 
 export const SOCIAL_VIDEO_KIND = 'SOCIAL_VIDEO'
@@ -116,7 +116,9 @@ const factsOfPayload = (p: ListingPayload) => artFacts({ brand: p.vehicle.brand 
 export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audio: Buffer | null): Promise<{ assetId: string; seconds: number; mp4: Buffer }> {
   const brand = await loadBrand(tenantId)
   const photos: Buffer[] = []
-  for (const url of p.photos.slice(0, kind === 'REELS' ? REEL_TIMING.maxPhotos : 1)) {
+  // Só as fotos que o vídeo usa (tratar foto custa tempo no servidor).
+  const need = kind === 'REELS' ? Math.min(REEL_TIMING.maxPhotos, photoScenes(p.social?.seconds ?? 30, DESIGNS[p.social?.design ?? 'CLASSICO'].motion === 'dinamico') + 1) : 1
+  for (const url of p.photos.slice(0, need)) {
     try { photos.push(await maybeEnhance(tenantId, await originalBytes(photoRef(tenantId, url)))) } catch { /* foto inacessível: pula */ }
   }
   if (!photos.length) throw new Error('Nenhuma foto do veículo pôde ser aberta para montar o vídeo.')

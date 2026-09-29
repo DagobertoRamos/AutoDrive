@@ -95,7 +95,7 @@ export const reelTotal = (segs: ReelSegment[]) => segs.reduce((a, s) => a + s.se
 export const hookTitle = (f: ReelFacts) => up(vehicleName(f.brand, f.model, null) || 'CONFIRA')
 
 /**
- * Filtro de UMA cena (PURO): entradas [0:v]=quadro 1080×1920 com o carro
+ * Filtro de UMA cena (PURO): entradas [0:v]=quadro 1080×1920 (imagem única) com o carro
  * inteiro, [1:v]=texto (PNG 720×1280). Movimento suave (zoom até 6% ou
  * deslize curto), sem cortar o carro. Cena por cena = pouca memória.
  */
@@ -107,9 +107,11 @@ export function sceneFilter(s: ReelSegment, fps = 30): string {
   const z = s.motion === 'zoomin' ? `1+${Z}*on/${n}` : s.motion === 'zoomout' ? `${1 + Z}-${Z}*on/${n}` : `${1 + Z / 2 + 0.01}`
   const x = s.motion === 'panright' ? `(iw-iw/zoom)*on/${n}` : s.motion === 'panleft' ? `(iw-iw/zoom)*(1-on/${n})` : s.motion === 'shake' ? `${cx}+7*sin(on*0.9)+4*sin(on*2.3)` : cx
   const y = s.motion === 'shake' ? `${cy}+6*cos(on*0.7)+3*sin(on*1.9)` : cy
+  // Cada imagem é lida UMA vez e repetida (loop): 3× mais rápido que reler a cada quadro.
+  const rep = `loop=loop=${n + fps}:size=1:start=0,setpts=N/${fps}/TB`
   return [
-    `[0:v]zoompan=z='${z}':x='${x}':y='${y}':d=1:s=720x1280:fps=${fps},setsar=1,trim=duration=${d},setpts=PTS-STARTPTS[m]`,
-    `[1:v]format=rgba,fps=${fps},fade=in:st=0.15:d=0.45:alpha=1,trim=duration=${d},setpts=PTS-STARTPTS[o]`,
+    `[0:v]${rep},zoompan=z='${z}':x='${x}':y='${y}':d=1:s=720x1280:fps=${fps},setsar=1,trim=duration=${d},setpts=PTS-STARTPTS[m]`,
+    `[1:v]${rep},format=rgba,fps=${fps},fade=in:st=0.15:d=0.45:alpha=1,trim=duration=${d},setpts=PTS-STARTPTS[o]`,
     `[m][o]overlay=0:0:format=auto:shortest=1,format=yuv420p,fps=${fps},settb=1/${fps}[v]`,
   ].join(';')
 }
