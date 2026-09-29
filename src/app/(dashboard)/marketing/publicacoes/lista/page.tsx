@@ -13,6 +13,7 @@ import { AlertTriangle, ExternalLink, Filter, Loader2, Pause, Play, Plus, Refres
 import { cn } from '@/lib/utils'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
 import { MappingReview } from '@/components/publications/MappingReview'
+import { AdPackageButton } from '@/components/publications/AdPackage'
 import { api, ago, ChannelMark, Empty, inputCls, money, PubTabs, StatusPill, STATUS_LABEL, STATUS_TONE, Thumb, type Tone } from '@/components/publications/ui'
 
 interface PubItem { id: string; channel: string; channelName: string; account: string | null; campaign: string | null; status: string; statusLabel: string; tone: Tone; remoteUrl: string | null; lastVerifiedAt: string | null; lastError: string | null; hint: string | null; manualAction: string | null; scheduledAt: string | null; archiveReason: string | null }
@@ -177,6 +178,7 @@ Isto NÃO apaga nada no Instagram/Facebook/portais: o que ainda estiver no ar pr
                       <p className="font-medium text-gray-700">{r.summary || '—'}</p>
                       <p className="text-gray-400">Sincronizado {ago(r.lastSync)}</p>
                       {can?.prepare && <Link href={`/marketing/publicacoes/nova?veiculos=${r.vehicle.id}`} className="mt-1 inline-block font-medium text-brand-700 hover:underline">Editar / mais canais</Link>}
+                      <div className="mt-1"><AdPackageButton vehicleId={r.vehicle.id} title={r.vehicle.title} /></div>
                     </div>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">

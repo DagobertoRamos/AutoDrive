@@ -24,7 +24,7 @@ export const SOCIAL_VIDEO_KIND = 'SOCIAL_VIDEO'
 export interface Brand { storeName: string; primaryColor: string; darkColor: string; whatsapp: string; instagram: string; logo: Buffer | null }
 
 const ASSET = /\/api\/site\/assets\/([a-z0-9]{10,40})/i
-const photoRef = (tenantId: string, url: string) => { const m = ASSET.exec(url); return m ? { t: tenantId, a: m[1] } : { t: tenantId, u: url } }
+export const photoRef = (tenantId: string, url: string) => { const m = ASSET.exec(url); return m ? { t: tenantId, a: m[1] } : { t: tenantId, u: url } }
 
 async function logoBytes(url: string): Promise<Buffer | null> {
   if (!url) return null

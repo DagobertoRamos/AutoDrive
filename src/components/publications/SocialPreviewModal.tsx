@@ -17,7 +17,7 @@ export function SocialPreviewModal({ vehicleId, vehicleTitle, targets, formats, 
 }) {
   const [format, setFormat] = useState<SocialFormat>(formats[0])
   const [conn, setConn] = useState<string>(targets[0]?.id ?? '')
-  type Data = { network: 'INSTAGRAM' | 'FACEBOOK'; account: string; media: PreviewMedia[]; caption: string; music: string | null; audio: PreviewAudio | null; slides: number[] | null }
+  type Data = { network: 'INSTAGRAM' | 'FACEBOOK'; account: string; media: PreviewMedia[]; caption: string; music: string | null; audio: PreviewAudio | null; slides: number[] | null; musicNote?: string | null }
   const key = `${vehicleId}|${conn}|${format}`
   const [res, setRes] = useState<{ key: string; data?: Data; err?: string } | null>(null)
   const current = res?.key === key ? res : null
@@ -41,7 +41,7 @@ export function SocialPreviewModal({ vehicleId, vehicleTitle, targets, formats, 
         </div>
         {err && <ErrorNote message={err} />}
         {!data && !err ? <div className="flex h-96 items-center justify-center"><Loader2 className="animate-spin text-gray-400" /></div>
-          : data && <PostPreview key={key} network={data.network} format={format} account={data.account} media={data.media} caption={data.caption} music={data.music} audio={data.audio} slides={data.slides} />}
+          : data && <>{data.musicNote && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">🎵 {data.musicNote}</p>}<PostPreview key={key} network={data.network} format={format} account={data.account} media={data.media} caption={data.caption} music={data.music} audio={data.audio} slides={data.slides} /></>}
         <p className="text-center text-[11px] text-gray-500">A legenda mostrada é a final (com contatos e hashtags). Aperte ▶ para ver como vídeo, com a música que vai no post. Reels: passa todas as fotos e termina com a chamada para o WhatsApp.</p>
       </div>
     </Drawer>

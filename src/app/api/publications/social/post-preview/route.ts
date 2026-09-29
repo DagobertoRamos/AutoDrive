@@ -61,5 +61,5 @@ export async function POST(req: Request) {
   const musicLabel = !music || format === 'VIDEO' ? null : music.mode === 'TRACK' ? `${music.title ?? 'Faixa escolhida'}${music.artist ? ` · ${music.artist}` : ''}` : `Música automática · ${MOOD_LABEL[music.mood]}`
   // Carrossel no Facebook é álbum de fotos: sem música.
   const audio = format === 'CARROSSEL' && network === 'FACEBOOK' ? null : await previewAudio(music, conn.channel, format, v.id)
-  return NextResponse.json({ success: true, network, account: conn.label, format, media, caption, music: audio ? `${audio.title}${audio.artist ? ` · ${audio.artist}` : ''}` : musicLabel, audio, slides })
+  return NextResponse.json({ success: true, network, account: conn.label, format, media, caption, music: audio ? `${audio.title}${audio.artist ? ` · ${audio.artist}` : ''}` : musicLabel, audio, slides, musicNote: audio?.note ?? null })
 }

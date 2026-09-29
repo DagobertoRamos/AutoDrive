@@ -10,7 +10,7 @@ import { api, ErrorNote } from '@/components/publications/ui'
 import { PostPreview, type PreviewAudio, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type Data = { network: 'INSTAGRAM' | 'FACEBOOK'; account: string; media: PreviewMedia[]; caption: string; music: string | null; audio?: PreviewAudio | null; slides?: number[] | null; real?: boolean; permalink?: string | null; note?: string | null }
+type Data = { network: 'INSTAGRAM' | 'FACEBOOK'; account: string; media: PreviewMedia[]; caption: string; music: string | null; audio?: PreviewAudio | null; slides?: number[] | null; real?: boolean; permalink?: string | null; note?: string | null; musicNote?: string | null }
 
 /** Busca a mídia real (se publicada) e, sem ela, a prévia remontada. */
 export async function loadPreview(opts: { publicationId?: string; socialPostId?: string; connectionId: string; vehicleId?: string; overrides?: any; published: boolean }): Promise<Data> {
@@ -31,6 +31,7 @@ export function PreviewView({ data, format }: { data: Data; format: PreviewForma
   return (
     <div className="space-y-2">
       {data.real && <p className="text-center text-[11px] font-medium text-green-700">Como está na rede agora (mídia real publicada)</p>}
+      {!data.real && data.musicNote && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">🎵 {data.musicNote}</p>}
       <PostPreview network={data.network} format={realFormat} account={data.account} media={data.media} caption={data.caption} music={data.music} audio={data.audio} slides={data.slides} />
       {data.permalink && <p className="text-center text-[11px]"><a href={data.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-700 underline">Abrir na rede<ExternalLink size={11} /></a></p>}
       {!data.real && <p className="text-center text-[11px] text-gray-500">{data.note ? `${data.note} ` : ''}Prévia montada com os dados atuais do carro — aperte ▶ para tocar.</p>}

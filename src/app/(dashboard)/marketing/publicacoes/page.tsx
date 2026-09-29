@@ -19,6 +19,7 @@ import { api, ChannelMark, DOT, Drawer, ErrorNote, PubTabs, STATUS_LABEL, STATUS
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
 import { loadPreview, PreviewView } from '@/components/publications/PublishedPreview'
 import { StoredPreview } from '@/components/publications/AvulsaPreview'
+import { AdPackageButton } from '@/components/publications/AdPackage'
 import type { PreviewFormat } from '@/components/publications/PostPreview'
 import { BOARD_COLUMNS, COLUMN_INFO, type BoardColumn } from '@/lib/publications/board-core'
 import type { BoardCard, BoardChannel } from '@/app/api/publications/board/route'
@@ -236,6 +237,7 @@ function Card({ c, col, tz, can, busy, onView, onResume, onRetry, onDelete, onDe
             {c.kind !== 'ASSISTENTE' && <button type="button" onClick={onView} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Eye size={12} />Visualizar</button>}
             {col === 'rascunhos' && can.prepare && <button type="button" onClick={onResume} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Play size={12} />Retomar</button>}
             {failing && can.publish && <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><RotateCcw size={12} />Tentar de novo</button>}
+            {c.kind === 'VEICULO' && c.vehicleId && <AdPackageButton vehicleId={c.vehicleId} title={c.title} className="font-medium" />}
             {manual && <button type="button" onClick={() => onDetail(manual.pubId!)} className="inline-flex items-center gap-1 font-medium text-amber-700 hover:underline"><AlertTriangle size={12} />Resolver</button>}
             {(can.publish || (c.kind === 'ASSISTENTE' && can.prepare)) && <button type="button" onClick={onDelete} className="ml-auto inline-flex items-center gap-1 text-gray-500 hover:text-red-700"><Trash2 size={12} />Excluir</button>}
           </>

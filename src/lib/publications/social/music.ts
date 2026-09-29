@@ -130,12 +130,36 @@ export async function embedTrack(choice: MusicChoice, seed: string, http: HttpCl
   return track
 }
 
-/** Música para OUVIR na pré-visualização (a mesma que vai no post). */
-export async function previewAudio(choice: MusicChoice | null, channel: string, format: string, seed: string): Promise<{ url: string; title: string; artist: string } | null> {
+/**
+ * Música para OUVIR na pré-visualização — a MESMA que vai no post.
+ * Faixa da biblioteca do Instagram: toca pelo nosso servidor (link sempre novo).
+ * Onde a Meta não permite a faixa do Instagram (Facebook, Story, Carrossel),
+ * vai uma música livre do mesmo clima — e a prévia avisa (`note`).
+ */
+export async function previewAudio(choice: MusicChoice | null, channel: string, format: string, seed: string): Promise<{ url: string; title: string; artist: string; note?: string } | null> {
   const plan = musicPlan(choice, channel, format)
   if (!plan || !choice) return null
-  if (plan === 'IG_LIBRARY') return choice.mode === 'TRACK' && choice.previewUrl ? { url: choice.previewUrl, title: choice.title ?? 'Faixa do Instagram', artist: choice.artist ?? '' } : null
-  try { const t = await embedTrack(choice, seed); return { url: t.previewUrl, title: t.title, artist: t.artist } } catch { return null }
+  if (plan === 'IG_LIBRARY' && choice.mode === 'TRACK') {
+    return { url: `/api/publications/social/audio?${new URLSearchParams({ id: choice.id, t: choice.title ?? '' })}`, title: choice.title ?? 'Faixa do Instagram', artist: choice.artist ?? '' }
+  }
+  try {
+    const t = await embedTrack(choice, seed)
+    const swapped = choice.mode === 'TRACK' && choice.source === 'IG'
+    const where = channel === 'INSTAGRAM' ? `no ${format === 'STORY' ? 'Story' : 'Carrossel'} do Instagram` : 'no Facebook'
+    return { url: t.previewUrl, title: t.title, artist: t.artist, ...(swapped ? { note: `A faixa "${choice.title ?? 'do Instagram'}" é da biblioteca do Instagram e a Meta só permite usá-la em Reels/Post do Instagram. ${where[0].toUpperCase()}${where.slice(1)} vai a música livre "${t.title}" (mesmo clima). Para a MESMA música em todas as redes, escolha uma em "Músicas livres".` } : {}) }
+  } catch { return null }
+}
+
+/** Áudio de uma faixa da biblioteca do Instagram (link novo, buscado pelo servidor). */
+export async function igTrackAudio(tenantId: string, id: string, title: string): Promise<{ bytes: Buffer; type: string } | null> {
+  const find = async (q: string) => (await searchIgLibrary(tenantId, q).catch(() => [] as MusicTrack[])).find((t) => t.id === id)
+  const track = (title ? await find(title) : undefined) ?? await find('')
+  if (!track?.previewUrl) return null
+  const res = await fetch(track.previewUrl, { signal: AbortSignal.timeout(20_000) })
+  if (!res.ok) return null
+  const bytes = Buffer.from(await res.arrayBuffer())
+  if (bytes.length < 1000 || bytes.length > 12_000_000) return null
+  return { bytes, type: res.headers.get('content-type') || 'audio/mp4' }
 }
 
 export async function audioToEmbed(choice: MusicChoice, seed: string, http: HttpClient = createHttpClient()): Promise<{ bytes: Buffer; track: MusicTrack }> {

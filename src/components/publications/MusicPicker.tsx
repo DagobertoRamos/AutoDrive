@@ -39,7 +39,8 @@ export function MusicPicker({ value, onChange, hasInstagram }: { value: MusicCho
     if (!t.previewUrl) return
     if (playing === t.id) { audio.current?.pause(); setPlaying(null); return }
     audio.current?.pause()
-    audio.current = new Audio(t.previewUrl)
+    // Instagram: o link da Meta não abre no navegador — toca pelo nosso servidor.
+    audio.current = new Audio(t.source === 'IG' ? `/api/publications/social/audio?${new URLSearchParams({ id: t.id, t: t.title })}` : t.previewUrl)
     audio.current.onended = () => setPlaying(null)
     void audio.current.play().then(() => setPlaying(t.id)).catch(() => setPlaying(null))
   }
@@ -64,7 +65,8 @@ export function MusicPicker({ value, onChange, hasInstagram }: { value: MusicCho
         </div>
       )}
 
-      {value?.mode === 'TRACK' && <p className="text-xs text-gray-700">Escolhida: <b>{value.title ?? value.id}</b>{value.artist ? ` · ${value.artist}` : ''} <span className="text-gray-500">({value.source === 'IG' ? 'biblioteca do Instagram' : 'livre CC0'})</span></p>}
+      {value?.mode === 'TRACK' && <p className="text-xs text-gray-700">Escolhida: <b>{value.title ?? value.id}</b>{value.artist ? ` · ${value.artist}` : ''} <span className="text-gray-500">({value.source === 'IG' ? 'biblioteca do Instagram' : 'livre CC0 — vale em todas as redes'})</span></p>}
+      {value?.mode === 'TRACK' && value.source === 'IG' && <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">Faixa da biblioteca do Instagram: a Meta só permite nos <b>Reels e Posts do Instagram</b>. No Facebook, no Story e no Carrossel vai uma música livre do mesmo clima (a prévia mostra qual). Quer a <b>mesma música em todas as redes</b>? Escolha em “Músicas livres (CC0)”.</p>}
 
       {tracks && (
         <div className="space-y-2 border-t border-gray-100 pt-2">
