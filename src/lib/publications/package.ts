@@ -55,7 +55,9 @@ export async function packageVideo(tenantId: string, vehicleId: string, opts: { 
   const { v, p: base } = await load(tenantId, vehicleId)
   const p = { ...base, social: { format: 'REELS' as const, template: opts.template, design: opts.design ?? 'CLASSICO', seconds: opts.seconds ?? 30 } }
   let audio: Buffer | null = null
+  const t0 = Date.now()
   if (opts.music) { try { audio = (await audioToEmbed(opts.music, v.id)).bytes } catch { audio = null } }
+  const musicMs = Date.now() - t0
   const r = await renderAndStoreVideo(tenantId, p, 'REELS', 'REELS', opts.template, audio)
-  return { assetId: r.assetId, seconds: r.seconds, size: r.mp4.length, music: !!audio }
+  return { assetId: r.assetId, seconds: r.seconds, size: r.mp4.length, music: !!audio, timing: `música ${musicMs} ms; ${r.timing ?? ''}` }
 }

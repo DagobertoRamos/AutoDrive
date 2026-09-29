@@ -150,7 +150,7 @@ export async function framesToVideo(frames: Buffer[], durations: number[], audio
  * Gera o MP4 do Reels: gancho, fotos com uma informação por cena, preço e
  * chamada, no modelo visual e na duração pedidos. Lança erro se não houver foto.
  */
-export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number }> {
+export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}): Promise<{ mp4: Buffer; seconds: number; timing?: string }> {
   const photos = i.photos.slice(0, REEL_TIMING.maxPhotos)
   if (!photos.length) throw new Error('O Reels precisa de pelo menos uma foto.')
   const style: DesignStyle = i.design ?? 'CLASSICO'
@@ -158,6 +158,7 @@ export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}
   const ctx = designCtxOf(i, style)
   const baseOf = sceneBases(photos, style, ctx.brandColor)
   const dir = await mkdtemp(path.join(tmpdir(), 'reel-'))
+  const t0 = Date.now()
   try {
     // 1) Cada cena vira um vídeo curto (2 entradas por vez: pouca memória).
     const clips: string[] = []
@@ -178,7 +179,11 @@ export async function renderReel(i: ReelInput, opts: { timeoutMs?: number } = {}
     }
     // 2) Junta as cenas com as transições e a música.
     const g = chainFilter(segs, REEL.fps)
-    return await encode(dir, clips.flatMap((c) => ['-i', c]), clips.length, g.filter, g.out, g.total, i.audio, opts.timeoutMs ?? 240_000)
+    const t1 = Date.now()
+    const r = await encode(dir, clips.flatMap((c) => ['-i', c]), clips.length, g.filter, g.out, g.total, i.audio, opts.timeoutMs ?? 240_000)
+    const timing = `${segs.length} cenas ${t1 - t0} ms, junção ${Date.now() - t1} ms`
+    console.log(`[reel] ${style} ${r.seconds}s: ${timing}`)
+    return { ...r, timing }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }

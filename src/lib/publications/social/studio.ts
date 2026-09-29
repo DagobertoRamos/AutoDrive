@@ -113,7 +113,8 @@ const factsOfPayload = (p: ListingPayload) => artFacts({ brand: p.vehicle.brand 
  *   capa de Carrossel, Post com música). `audio` = trilha CC0 embutida.
  * Mesmo conteúdo = mesmo arquivo (reaproveita pelo hash).
  */
-export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audio: Buffer | null): Promise<{ assetId: string; seconds: number; mp4: Buffer }> {
+export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, kind: 'REELS' | 'CLIP', format: SocialFormat, template: ArtTemplate, audio: Buffer | null): Promise<{ assetId: string; seconds: number; mp4: Buffer; timing?: string }> {
+  const t0 = Date.now()
   const brand = await loadBrand(tenantId)
   const photos: Buffer[] = []
   // Só as fotos que o vídeo usa (tratar foto custa tempo no servidor).
@@ -122,13 +123,17 @@ export async function renderAndStoreVideo(tenantId: string, p: ListingPayload, k
     try { photos.push(await maybeEnhance(tenantId, await originalBytes(photoRef(tenantId, url)))) } catch { /* foto inacessível: pula */ }
   }
   if (!photos.length) throw new Error('Nenhuma foto do veículo pôde ser aberta para montar o vídeo.')
+  const loaded = Date.now() - t0
   const base = { ...factsOfPayload(p), ...brand, logo: brand.logo, template, price: p.price, oldPrice: p.oldPrice }
   const design = p.social?.design ?? null
   const still = { ...base, photo: photos[0], format: (format === 'STORY' ? 'STORY' : 'POST') as SocialFormat }
   const out = kind === 'REELS'
     ? await renderReel({ ...reelInputOf(p, base), photos, audio })
     : await renderArtClip(design ? await designArtOf(design, still) : await renderArt(still, { quality: 90 }), format === 'STORY' ? 10 : 12, audio)
-  return { assetId: await storeVideo(tenantId, out.mp4), seconds: out.seconds, mp4: out.mp4 }
+  const t1 = Date.now()
+  const assetId = await storeVideo(tenantId, out.mp4)
+  const timing = `fotos ${loaded} ms; ${'timing' in out && out.timing ? out.timing : 'vídeo'}; gravação ${Date.now() - t1} ms`
+  return { assetId, seconds: out.seconds, mp4: out.mp4, timing }
 }
 
 /** Dados do Reels deste anúncio (modelo visual e duração vêm de `p.social`). */
