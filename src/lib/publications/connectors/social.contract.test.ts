@@ -329,6 +329,13 @@ describe('Estúdio social — recusas — SIMULAÇÃO', () => {
     expect(r).toMatchObject({ state: 'PUBLICADO', remoteId: 'STY', remoteStatus: 'story sem música (some em 24 h)' })
     expect(r.message).toContain('Invalid video')
   })
+  it('Facebook responde #10 "does not exist" ao apagar/conferir post já apagado: conta como removido e NÃO trava a conexão', async () => {
+    const gone = { status: 400, body: { error: { message: '(#10) Object does not exist, cannot be loaded due to missing permission or reviewable feature', type: 'OAuthException', code: 10 } } }
+    const s = simulated([(c) => c.url.includes('/PAGE_1') ? gone : null])
+    expect(await metaPageConnector.remove!({ vehicleId: 'v1', remoteId: 'PAGE_1', externalRef: 'x', format: 'POST' }, 'MANUAL' as never, ctxWith(s.http, 'PAGE'))).toMatchObject({ state: 'REMOVIDO' })
+    const s2 = simulated([(c) => c.url.includes('/PAGE/photos') ? { status: 400, body: { error: { message: '(#10) This endpoint requires the pages_read_engagement permission', type: 'OAuthException', code: 10 } } } : null])
+    await expect(metaPageConnector.publish!(payload(null), ctxWith(s2.http, 'PAGE'))).rejects.toMatchObject({ kind: 'VALIDATION' })
+  })
   it('rupload recusado: o erro traz a mensagem do debug_info', async () => {
     const s = simulated([
       (c) => c.url.includes('/PAGE/video_reels') && c.body.includes('upload_phase=start') ? { status: 200, body: { video_id: 'V9' } } : null,

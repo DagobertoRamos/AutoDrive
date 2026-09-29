@@ -31,13 +31,17 @@ export function graphError(res: HttpResponse, what: string): ConnectorError | nu
   const e = res.json<{ error?: { message?: string; code?: number; error_subcode?: number; type?: string } }>()?.error
   const code = e?.code
   const msg = `${what}: ${e?.message ?? `HTTP ${res.status}`}`.slice(0, 400)
-  if (code === 190 || code === 102 || e?.type === 'OAuthException' && (code === 10 || code === 200)) {
+  // Post apagado/inexistente: o Facebook às vezes responde #10 ("does not exist ... missing permission").
+  // Não é login vencido — o post simplesmente não está mais lá.
+  if ((code === 10 || code === 100) && /does not exist|nonexisting|Unsupported get request/i.test(e?.message ?? '')) return new ConnectorError('NOT_FOUND', msg, undefined, { code: String(code) })
+  // Só token vencido/revogado trava a conta inteira; permissão num item isolado não.
+  if (code === 190 || code === 102) {
     return new ConnectorError('AUTH', msg, 'Reconecte a Página/Instagram em Canais conectados (token expirado ou permissão removida).', { code: String(code) })
   }
   if (code === 4 || code === 17 || code === 32 || code === 613 || res.status === 429) return new ConnectorError('RATE_LIMIT', msg, undefined, { code: String(code ?? 429), retryAfterMs: 15 * 60_000 })
   if (code === 9 || code === 36003) return new ConnectorError('QUOTA', msg, undefined, { code: String(code) })
   if (code === 1 || code === 2 || res.status >= 500) return new ConnectorError('UNAVAILABLE', msg, undefined, { code: String(code ?? res.status) })
-  if (code === 100 && /does not exist|nonexisting|Unsupported get request/i.test(e?.message ?? '')) return new ConnectorError('NOT_FOUND', msg, undefined, { code: '100' })
+  if ((code === 10 || code === 200) && e?.type === 'OAuthException') return new ConnectorError('VALIDATION', msg, 'A conta conectada não tem permissão para este item. Se repetir em todos os envios, reconecte em Canais conectados.', { code: String(code) })
   return new ConnectorError('VALIDATION', msg, undefined, { code: String(code ?? res.status) })
 }
 
