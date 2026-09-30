@@ -1,10 +1,41 @@
 {
   "manifest_version": 3,
   "name": "AutoConf → AutoDrive (importador de negociações)",
-  "version": "0.6.0",
-  "description": "Busca negociações filtradas do AutoConf (sessão logada) e importa no AutoDrive para gerar comissão. Atualização automática por minutos + auto-login.",
-  "permissions": ["storage", "activeTab", "downloads", "alarms", "scripting", "tabs"],
-  "host_permissions": ["https://app.autoconf.com.br/*", "https://auto-drive-mocha.vercel.app/*"],
+  "version": "0.31.5",
+  "description": "Busca negociações filtradas do AutoConf (sessão logada) e importa no AutoDrive para gerar comissão. Inclui a Campanha Feirão, o envio automático dos documentos do Jotform para a aba Contratos do AutoConf e o tratamento das fotos dos veículos (baixa por parceiro e veículo, trata no chat configurado e publica no site).",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "downloads",
+    "alarms",
+    "scripting",
+    "tabs",
+    "tabGroups",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://app.autoconf.com.br/*",
+    "https://www.appautodrive.online/*",
+    "https://appautodrive.online/*",
+    "https://auto-drive-mocha.vercel.app/*",
+    "https://www.dagobertoeasycar.com.br/*",
+    "https://www.appautodrive.com.br/*",
+    "https://sitedagobertoeasycar.vercel.app/*",
+    "https://appautodrive.com.br/*",
+    "https://web.whatsapp.com/*",
+    "https://www.jotform.com/*",
+    "https://people.googleapis.com/*",
+    "https://oauth2.googleapis.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://*.oaiusercontent.com/*",
+    "https://autoconf-production.s3.amazonaws.com/*",
+    "https://resized-images.autoconf.com.br/*",
+    "https://static.autoconf.com.br/*",
+    "https://*.bndv.com.br/*",
+    "https://*.blob.core.windows.net/*",
+    "https://*.supabase.co/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -13,8 +44,46 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://app.autoconf.com.br/*"],
-      "js": ["snapshot.js", "scanner.js"],
+      "matches": [
+        "https://app.autoconf.com.br/*"
+      ],
+      "js": [
+        "snapshot.js",
+        "scanner.js",
+        "checklist-core.js",
+        "contrato-anexar.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.jotform.com/*"
+      ],
+      "js": [
+        "checklist-core.js",
+        "jotform-checklist.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "feirao-core.js",
+        "feirao-resgate.js",
+        "wa-panel.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "fotos-chat.js"
+      ],
       "run_at": "document_idle"
     }
   ]

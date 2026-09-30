@@ -215,7 +215,7 @@ A importação definitiva envia o mesmo corpo com `dryRun: false`.
 O endpoint atual do AutoDrive continua sendo:
 
 ```txt
-POST https://auto-drive-mocha.vercel.app/api/integrations/autoconf/deals
+POST https://www.appautodrive.online/api/integrations/autoconf/deals
 ```
 
 Headers:
@@ -274,7 +274,7 @@ As permissões do Manifest V3 permanecem as mesmas:
 Host permissions:
 
 - `https://app.autoconf.com.br/*`
-- `https://auto-drive-mocha.vercel.app/*`
+- `https://www.appautodrive.online/*`
 
 ## Changelog
 

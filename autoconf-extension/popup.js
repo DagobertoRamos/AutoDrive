@@ -4,7 +4,7 @@
 
 const $ = (id) => document.getElementById(id)
 
-const AUTODRIVE = 'https://auto-drive-mocha.vercel.app'
+const AUTODRIVE = 'https://www.appautodrive.online'
 const FILTER_KEY = 'autoconfFilters'
 const AUTO_KEY = 'autoconfAutoRefresh'
 const CREDS_KEY = 'autoconfCreds'
@@ -384,6 +384,63 @@ $('saveToken').addEventListener('click', () => {
   chrome.storage.local.set({ autoconfToken: $('token').value.trim() }, () => log('Token salvo.'))
 })
 
+// ---------------------------------------------------------------------------
+// Token: ver, copiar e testar.
+//
+// O campo é type="password", então um token JÁ SALVO aparece como bolinhas e
+// dá a impressão de estar perdido. Na prática ele está aqui, no armazenamento
+// da extensão — só faltava um jeito de olhar.
+// ---------------------------------------------------------------------------
+const tokenMsg = (txt, cor) => {
+  const el = $('tokenStatus')
+  if (!el) return
+  el.textContent = txt
+  el.style.color = cor || ''
+}
+
+$('verToken') && $('verToken').addEventListener('click', () => {
+  const campo = $('token')
+  const escondido = campo.type === 'password'
+  campo.type = escondido ? 'text' : 'password'
+  $('verToken').textContent = escondido ? 'Ocultar' : 'Ver'
+  if (escondido && !campo.value) {
+    tokenMsg('Não há token guardado neste navegador. Gere um novo pelo AutoDrive '
+      + '(scripts/autoconf-token.ts) e cole aqui.', '#b45309')
+  }
+})
+
+$('copiarToken') && $('copiarToken').addEventListener('click', async () => {
+  const v = $('token').value.trim()
+  if (!v) { tokenMsg('Nada para copiar — o campo está vazio.', '#b45309'); return }
+  try { await navigator.clipboard.writeText(v); tokenMsg('Token copiado.', '#047857') }
+  catch (e) { tokenMsg('O navegador não deixou copiar. Clique em Ver e copie à mão.', '#b45309') }
+})
+
+// Teste sem efeito colateral: manda uma requisição SEM linhas.
+// A rota confere o token primeiro (401 se for inválido) e só depois reclama de
+// não ter recebido linhas (400). Ou seja: 400 = token bom. Nada é gravado.
+$('testarToken') && $('testarToken').addEventListener('click', async () => {
+  const v = $('token').value.trim()
+  if (!v) { tokenMsg('Cole o token antes de testar.', '#b45309'); return }
+  tokenMsg('Testando...')
+  try {
+    const res = await fetch(`${AUTODRIVE}/api/integrations/autoconf/deals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-autoconf-token': v },
+      body: JSON.stringify({ rows: [], dryRun: true }),
+    })
+    if (res.status === 401) {
+      tokenMsg('Token recusado pelo AutoDrive (401). Ele não confere com nenhuma loja cadastrada.', '#b91c1c')
+    } else if (res.status === 400) {
+      tokenMsg('Token válido ✓ — o AutoDrive reconheceu a loja. A importação automática volta a funcionar.', '#047857')
+    } else {
+      tokenMsg(`Resposta inesperada do AutoDrive (HTTP ${res.status}). O servidor pode estar fora do ar.`, '#b45309')
+    }
+  } catch (e) {
+    tokenMsg('Não deu para falar com o AutoDrive. Confira sua internet e se o site está no ar.', '#b91c1c')
+  }
+})
+
 // Botão LIGAR/DESLIGAR a atualização automática (dirige o checkbox oculto).
 $('autoToggle').addEventListener('click', () => {
   $('autoRefresh').checked = !$('autoRefresh').checked
@@ -469,6 +526,31 @@ async function runScan({ source = 'manual' } = {}) {
     })
     if (!resp?.ok) throw new Error(resp?.error || 'Falha na varredura.')
     lastResult = resp.res
+    // Campanha Feirão: guarda uma versão enxuta do resultado para a tela de
+    // campanha montar a fila sem precisar refazer a busca no AutoConf.
+    try {
+      chrome.storage.local.set({
+        autoconfLastResult: {
+          at: Date.now(),
+          period: resp.res.period || null,
+          rows: (resp.res.rows || []).map((r) => ({
+            externalId: r.externalId,
+            cliente: r.cliente,
+            clienteContato: r.clienteContato,
+            clienteDetalhes: r.clienteDetalhes || null,
+            vendedor: r.vendedor,
+            loja: r.loja,
+            tipo: r.tipo,
+            criadoEm: r.criadoEm,
+            dataNegociacao: r.dataNegociacao,
+            finalizadoEm: r.finalizadoEm,
+            veiculosSaida: (r.veiculosSaida || []).map((v) => ({
+              descricao: v.descricao, modelo: v.modelo, marca: v.marca, ano: v.ano, placa: v.placa,
+            })),
+          })),
+        },
+      })
+    } catch (_) { /* fila é opcional — nunca derruba a busca */ }
     render(resp.res)
     if (source === 'auto') log('Atualização automática concluída.')
     return true
@@ -650,3 +732,326 @@ $('import').addEventListener('click', () => {
   const msg = `Importar ${lastResult.rows.length} negociações filtradas para o AutoDrive?\n\nPeríodo: ${period}\n\nIsso cria/atualiza as negociações e pode gerar comissões conforme regras do AutoDrive.`
   if (confirm(msg)) sendToAutodrive(false)
 })
+
+// =============================================================================
+// CAMPANHA FEIRÃO — atalho para a tela de campanha (convite de troca por WhatsApp)
+// =============================================================================
+const btnCampanha = document.getElementById('abrirCampanha')
+if (btnCampanha) {
+  btnCampanha.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'abrirCampanha' })
+  })
+}
+
+// =============================================================================
+// CHECKLIST DE ENTREGA TÉCNICA — atalho para o painel (Jotform → Contratos)
+// =============================================================================
+const btnChecklist = document.getElementById('abrirChecklist')
+if (btnChecklist) {
+  btnChecklist.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'abrirChecklist' })
+  })
+}
+
+// =============================================================================
+// TRATAMENTO DE FOTOS DOS VEÍCULOS
+//
+// Baixa as fotos da origem, separa em <parceiro>/<veículo>/nao tratadas, manda
+// para o chat configurado, guarda o resultado em .../tratadas e publica no
+// site apagando as antigas e travando o veículo.
+//
+// A trava é o que evita o ciclo infinito: sem ela, a sincronização devolveria
+// as fotos do parceiro a cada 15 minutos.
+//
+// O trabalho roda no service worker, não aqui: fechar o popup não interrompe
+// nada. Esta tela só manda começar e acompanha o registro em storage.
+// =============================================================================
+  const fotoEls = {
+    site: $('fotoSiteUrl'),
+    token: $('fotoToken'),
+    chat: $('fotoChatUrl'),
+    pasta: $('fotoPastaRaiz'),
+    limite: $('fotoLimite'),
+    espera: $('fotoEspera'),
+    comando: $('fotoComando'),
+    abrirChat: $('fotoAbrirChat'),
+    automatico: $('fotoAutomatico'),
+    loteZip: $('fotoLoteZip'),
+    status: $('fotoStatus'),
+    fila: $('fotoFila'),
+    log: $('fotoLog'),
+  }
+
+  function fotoAviso(texto, erro) {
+    if (!fotoEls.status) return
+    fotoEls.status.textContent = texto
+    fotoEls.status.style.color = erro ? '#b42318' : ''
+  }
+
+  function fotoPedir(msg) {
+    return new Promise((resolve) => chrome.runtime.sendMessage(msg, (r) => resolve(r || { ok: false, erro: 'sem resposta' })))
+  }
+
+  async function fotoCarregarConfig() {
+    const r = await fotoPedir({ type: 'fotoConfig' })
+    if (!r.ok) { fotoAviso(r.erro || 'não foi possível ler a configuração', true); return }
+    const c = r.config
+    if (fotoEls.site) fotoEls.site.value = c.siteUrl || ''
+    if (fotoEls.token) fotoEls.token.value = c.token || ''
+    if (fotoEls.chat) fotoEls.chat.value = c.chatUrl || ''
+    if (fotoEls.pasta) fotoEls.pasta.value = c.pastaRaiz || ''
+    if (fotoEls.limite) fotoEls.limite.value = c.limitePorRodada || 5
+    if (fotoEls.espera) fotoEls.espera.value = c.esperaMinutos || 5
+    if (fotoEls.comando) fotoEls.comando.value = c.comando || ''
+    if (fotoEls.abrirChat) fotoEls.abrirChat.checked = c.abrirChat !== false
+    if (fotoEls.automatico) fotoEls.automatico.checked = c.automatico !== false
+    if (fotoEls.loteZip) fotoEls.loteZip.checked = c.loteZip === true
+  }
+
+  /** Escapa texto que vem do banco antes de virar HTML na lista. */
+  function fotoTexto(valor) {
+    return String(valor ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+  }
+
+  function fotoMostrarFila(veiculos) {
+    if (!fotoEls.fila) return
+    if (!veiculos || !veiculos.length) { fotoEls.fila.innerHTML = '<div class="sub">Nenhum veículo pendente.</div>'; return }
+    fotoEls.fila.innerHTML = veiculos
+      .map((v) => {
+        const pasta = [v.pastaParceiro, v.pastaVeiculo].filter(Boolean).join(' / ')
+        const arte = v.artesDaLoja?.length ? ` · ${v.artesDaLoja.length} arte(s) da loja ignorada(s)` : ''
+        return `<div class="sub" style="padding:4px 0;border-top:1px solid #e2e8f0">
+          <strong>${fotoTexto(v.titulo)}</strong>${v.placa ? ` · ${fotoTexto(v.placa)}` : ''}
+          ${v.parceiro ? ` · ${fotoTexto(v.parceiro)}` : ' · particular'}
+          <br>${v.fotos.length} foto(s)${arte}${pasta ? `<br><code>${fotoTexto(pasta)}</code>` : ''}
+        </div>`
+      })
+      .join('')
+  }
+
+  if (fotoEls.site) {
+    async function fotoSalvarConfig() {
+      return fotoPedir({
+        type: 'fotoSalvarConfig',
+        config: {
+          siteUrl: fotoEls.site.value,
+          token: fotoEls.token ? fotoEls.token.value : '',
+          chatUrl: fotoEls.chat.value,
+          pastaRaiz: fotoEls.pasta.value,
+          limitePorRodada: fotoEls.limite.value,
+          esperaMinutos: fotoEls.espera.value,
+          comando: fotoEls.comando.value,
+          abrirChat: fotoEls.abrirChat.checked,
+          automatico: fotoEls.automatico.checked,
+          loteZip: fotoEls.loteZip.checked,
+        },
+      })
+    }
+
+  $('fotoSalvar').addEventListener('click', async () => {
+    const r = await fotoSalvarConfig()
+    fotoAviso(r.ok ? 'Configuração salva.' : (r.erro || 'falhou'), !r.ok)
+  })
+
+  $('fotoVerFila').addEventListener('click', async () => {
+    fotoAviso('Lendo a fila…')
+    const r = await fotoPedir({ type: 'fotoFila', limite: Number(fotoEls.limite.value) || 5 })
+    if (!r.ok) { fotoAviso(r.erro || 'falhou', true); return }
+    const sobra = r.fila.semFotoPropria
+      ? ` ${r.fila.semFotoPropria} ficaram de fora por só terem arte da loja.`
+      : ''
+    const presos = r.fila.emTratamento
+      ? ` ${r.fila.emTratamento} ficaram no meio do tratamento e serão retomados primeiro.`
+      : ''
+    fotoAviso(`${r.fila.total} veículo(s) aguardando tratamento.${presos}${sobra}`)
+    fotoMostrarFila(r.fila.veiculos)
+  })
+
+  $('fotoTratar').addEventListener('click', async () => {
+    if (!fotoEls.chat.value.trim() && fotoEls.automatico.checked) {
+      fotoAviso('Preencha o endereço do chat, ou desligue "tratar e publicar sozinho".', true)
+      return
+    }
+    // Salvar antes de rodar evita o clássico "mudei o comando e ele usou o
+    // antigo": o service worker lê a configuração do storage, não da tela.
+    await fotoSalvarConfig()
+    fotoAviso('Rodada iniciada. Pode fechar esta janela.')
+    const r = await fotoPedir({ type: 'fotoTratar', limite: Number(fotoEls.limite.value) || 5 })
+    if (!r.ok) { fotoAviso(r.erro || 'falhou', true); return }
+    fotoAcompanhar()
+  })
+
+  $('fotoAuditar').addEventListener('click', async () => {
+    await fotoSalvarConfig()
+    fotoAviso('Iniciando auditoria da frota publicada...')
+    const r = await fotoPedir({ type: 'fotoAuditar' })
+    if (!r.ok) { fotoAviso(r.erro || 'A auditoria falhou.', true); return }
+    fotoAcompanhar()
+  })
+
+  // Publica no AutoDrive as fotos de uma pasta "tratadas" do disco — para
+  // quando o chat tratou tudo mas a rodada caiu antes de publicar. A pasta do
+  // carro (PLACA - Marca Modelo…) é a mesma que a fila usa, e é por ela que
+  // cada pasta encontra o veículo certo.
+  $('fotoCorrigirPasta').addEventListener('change', async (e) => {
+    const input = e.target
+    const files = [...(input.files || [])]
+    if (!files.length) return
+    await fotoSalvarConfig()
+    fotoAviso('Lendo as pastas "tratadas"…')
+
+    const porPasta = {}
+    for (const f of files) {
+      const partes = f.webkitRelativePath.split('/')
+      const t = partes.indexOf('tratadas')
+      if (t < 1 || !/\.(png|jpe?g|webp)$/i.test(f.name)) continue
+      ;(porPasta[partes[t - 1]] ||= []).push(f)
+    }
+    const pastas = Object.keys(porPasta)
+    if (!pastas.length) { fotoAviso('Nenhuma pasta "tratadas" com fotos foi encontrada.', true); input.value = ''; return }
+
+    const mapa = await fotoPedir({ type: 'fotoMapaPastas' })
+    if (!mapa.ok) { fotoAviso(mapa.erro || 'Não consegui ler o estoque do AutoDrive.', true); input.value = ''; return }
+
+    let publicados = 0
+    let ignorados = 0
+    let erros = 0
+    const anotar = (texto) => {
+      if (!fotoEls.log) return
+      fotoEls.log.textContent += `\n${texto}`
+      fotoEls.log.scrollTop = fotoEls.log.scrollHeight
+    }
+    for (const pasta of pastas) {
+      const alvo = mapa.mapa[pasta]
+      if (!alvo) { ignorados++; anotar(`Ignorada: "${pasta}" não corresponde a nenhum carro do AutoDrive.`); continue }
+      if (alvo.situacao === 'TRATADA') { ignorados++; anotar(`Já tratado no AutoDrive: ${pasta}.`); continue }
+      const arquivos = porPasta[pasta].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }))
+      fotoAviso(`Publicando ${arquivos.length} foto(s) de ${pasta}…`)
+      try {
+        const lidos = await Promise.all(arquivos.map((f) => new Promise((ok, erro) => {
+          const leitor = new FileReader()
+          leitor.onload = () => ok({ nome: f.name, dataUrl: leitor.result })
+          leitor.onerror = () => erro(leitor.error)
+          leitor.readAsDataURL(f)
+        })))
+        const r = await fotoPedir({ type: 'fotoPublicarArquivos', veiculoId: alvo.id, arquivos: lidos })
+        if (!r.ok) throw new Error(r.erro || 'falhou')
+        publicados++
+        anotar(`Publicado: ${pasta} (${lidos.length} fotos).`)
+      } catch (err) {
+        erros++
+        anotar(`Erro em ${pasta}: ${err.message}`)
+      }
+    }
+    fotoAviso(`Pastas locais: ${publicados} publicada(s), ${ignorados} ignorada(s), ${erros} com erro.`, erros > 0)
+    input.value = ''
+  })
+
+  $('fotoPreparar').addEventListener('click', async () => {
+    await fotoSalvarConfig()
+    fotoAviso('Abrindo o grupo de abas e baixando as fotos…')
+    const r = await fotoPedir({ type: 'fotoPreparar', limite: Number(fotoEls.limite.value) || 5 })
+    if (!r.ok) { fotoAviso(r.erro || 'falhou', true); return }
+    fotoAcompanhar()
+  })
+
+  $('fotoParar').addEventListener('click', async () => {
+    const r = await fotoPedir({ type: 'fotoParar' })
+    fotoAviso(r.ok ? 'Vai parar ao terminar a foto atual.' : (r.erro || 'falhou'), !r.ok)
+  })
+
+  // Destrava quando a rodada morreu com "rodando" gravado. Preserva o que já
+  // foi tratado de cada carro — é isso que faz o próximo "Tratar agora"
+  // continuar de onde parou em vez de refazer tudo.
+  $('fotoZerar').addEventListener('click', async () => {
+    const apagar = window.confirm(
+      'Reiniciar a função de tratamento.\n\n' +
+        'OK = recomeça a fila, MAS mantém o que já foi tratado de cada carro\n' +
+        '     (o carro que parou na foto 18 retoma na 18).\n\n' +
+        'Cancelar = também apaga o progresso e refaz tudo do zero.',
+    )
+    const r = await fotoPedir({ type: 'fotoZerar', apagarProgresso: !apagar })
+    if (!r.ok) { fotoAviso(r.erro || 'falhou', true); return }
+    const apagados = r.resultado?.progressoApagado || 0
+    fotoAviso(
+      apagados
+        ? `Reiniciado do zero. Progresso de ${apagados} veículo(s) apagado.`
+        : 'Reiniciado. O progresso de cada carro foi mantido — retoma de onde parou.',
+    )
+    if (fotoEls.fila) fotoEls.fila.innerHTML = ''
+    if (fotoEls.log) fotoEls.log.textContent = ''
+  })
+
+  $('fotoCopiarComando').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(fotoEls.comando.value || '')
+      fotoAviso('Comando copiado. Cole no chat junto com as fotos.')
+    } catch {
+      fotoAviso('Não foi possível copiar; selecione o texto e copie na mão.', true)
+    }
+  })
+
+  // Acompanha a rodada pelo estado em storage, igual ao checklist faz.
+  let fotoTimer = null
+  function fotoAcompanhar() {
+    if (fotoTimer) clearInterval(fotoTimer)
+    fotoTimer = setInterval(async () => {
+      const r = await fotoPedir({ type: 'fotoEstado' })
+      if (!r.ok) return
+      const e = r.estado
+      const ultima = (e.log || []).slice(-1)[0]
+      if (ultima) fotoAviso(ultima)
+      if (fotoEls.log) {
+        fotoEls.log.textContent = (e.log || []).join('\n')
+        fotoEls.log.scrollTop = fotoEls.log.scrollHeight
+      }
+      if (e.fila && e.fila.length) fotoMostrarFila(e.fila)
+      if (!e.rodando) { clearInterval(fotoTimer); fotoTimer = null }
+    }, 1200)
+  }
+
+  // ── Imagem de exemplo do estúdio ──────────────────────────────────────
+  async function fotoMostrarExemplo() {
+    const r = await fotoPedir({ type: 'fotoExemplo' })
+    const alvo = $('fotoExemploInfo')
+    if (!alvo) return
+    if (!r.ok || !r.exemplo) {
+      alvo.innerHTML = '<span style="color:#b42318">Nenhuma imagem de exemplo anexada.</span>'
+      return
+    }
+    const mb = (r.exemplo.bytes / 1024 / 1024).toFixed(1)
+    alvo.innerHTML =
+      `Anexada: <code>${fotoTexto(r.exemplo.nome)}</code> · ${mb} MB` +
+      `<br><img src="${r.exemplo.dataUrl}" alt="exemplo do estúdio" style="max-width:150px;border-radius:6px;margin-top:4px">`
+  }
+
+  $('fotoExemplo').addEventListener('change', async (evento) => {
+    const input = evento.currentTarget
+    const arquivo = input.files?.[0]
+    if (!arquivo) return
+    fotoAviso('Lendo a imagem de exemplo…')
+    const dataUrl = await new Promise((resolve, reject) => {
+      const leitor = new FileReader()
+      leitor.onload = () => resolve(leitor.result)
+      leitor.onerror = () => reject(new Error('não consegui ler o arquivo'))
+      leitor.readAsDataURL(arquivo)
+    }).catch((e) => { fotoAviso(e.message, true); return null })
+    if (!dataUrl) return
+
+    const r = await fotoPedir({ type: 'fotoSalvarExemplo', dataUrl, nome: arquivo.name })
+    fotoAviso(r.ok ? 'Exemplo do estúdio salvo.' : (r.erro || 'falhou'), !r.ok)
+    input.value = ''
+    await fotoMostrarExemplo()
+  })
+
+  $('fotoExemploRemover').addEventListener('click', async () => {
+    const r = await fotoPedir({ type: 'fotoSalvarExemplo', dataUrl: null })
+    fotoAviso(r.ok ? 'Exemplo removido.' : (r.erro || 'falhou'), !r.ok)
+    await fotoMostrarExemplo()
+  })
+
+  fotoCarregarConfig()
+  fotoMostrarExemplo()
+  // Rodada iniciada antes e ainda viva: reabrir o popup volta a acompanhar.
+  fotoPedir({ type: 'fotoEstado' }).then((r) => { if (r.ok && r.estado?.rodando) fotoAcompanhar() })
+}

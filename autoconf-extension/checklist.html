@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Documentos do Jotform → AutoConf</title>
+  <style>
+    :root {
+      --brand: #1e40af; --brand-soft: #eff6ff; --ink: #1f2937; --muted: #6b7280;
+      --line: #e5e7eb; --warn: #b45309; --warn-soft: #fffbeb; --ok: #047857;
+      --ok-soft: #ecfdf5; --erro: #b91c1c; --erro-soft: #fef2f2; --bg: #f9fafb;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { margin: 0; padding: 20px; color: var(--ink); background: var(--bg); }
+    .wrap { max-width: 1180px; margin: 0 auto; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p.sub { font-size: 12px; color: var(--muted); margin: 0 0 16px; line-height: 1.45; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+    h2 { font-size: 13px; margin: 0 0 10px; }
+    button { border: 0; border-radius: 8px; padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: default; }
+    .primary { background: var(--brand); color: #fff; }
+    .ghost { background: #f3f4f6; color: var(--ink); }
+    .danger { background: var(--erro-soft); color: var(--erro); }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    label { font-size: 11px; font-weight: 600; color: var(--muted); }
+    input[type="date"], input[type="number"] { border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; font-size: 12px; }
+    .mini { font-size: 11px; color: var(--muted); line-height: 1.45; }
+    .barra { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+    .barra > div { height: 100%; background: var(--brand); width: 0; transition: width .25s; }
+    .cifras { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 4px; }
+    .cifra { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; }
+    .cifra b { display: block; font-size: 20px; }
+    .cifra span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: #fff; }
+    td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .tabela { max-height: 62vh; overflow: auto; }
+    .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
+    .t-ANEXADO, .t-JA_TINHA { background: var(--ok-soft); color: var(--ok); }
+    .t-VAI_SUBIR { background: var(--brand-soft); color: var(--brand); }
+    .t-REVISAR { background: var(--warn-soft); color: var(--warn); }
+    .t-ERRO { background: var(--erro-soft); color: var(--erro); }
+    .t-JA_PROCESSADO { background: #f3f4f6; color: var(--muted); }
+    .t-NAO_ENCONTRADA { background: #f3f4f6; color: #7c3aed; }
+    a { color: var(--brand); }
+    .filtros button { font-size: 11px; padding: 5px 10px; background: #f3f4f6; color: var(--ink); }
+    .filtros button.on { background: var(--brand); color: #fff; }
+    .abas button { background: #fff; border: 1px solid var(--line); color: var(--muted); }
+    .abas button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .aviso { background: var(--warn-soft); border: 1px solid #fde68a; color: #92400e; border-radius: 8px; padding: 10px; font-size: 12px; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Documentos do Jotform → AutoConf</h1>
+    <p class="sub" id="descricao">
+      Lê os envios do Jotform, acha a negociação certa pela placa e anexa o PDF assinado na aba Contratos, como documento do tipo
+      <strong>Outros</strong>. O que não bate com segurança não é anexado: vai para a fila de revisão.
+    </p>
+
+    <div class="row abas" style="margin-bottom:14px">
+      <button data-form="entrega" class="on">Check-list de entrega técnica</button>
+      <button data-form="laudo">Protocolo de laudo</button>
+    </div>
+
+    <div class="aviso">Deixe abertas (e logadas) as abas do <strong>Jotform</strong> e do <strong>AutoConf</strong>. Se não estiverem, a extensão abre em segundo plano e fecha no fim.</div>
+
+    <div class="card">
+      <h2>Rodada</h2>
+      <div class="row">
+        <button id="simular" class="ghost">Simular (não anexa nada)</button>
+        <button id="subir" class="primary">Subir os pendentes</button>
+        <button id="parar" class="danger" disabled>Parar</button>
+        <span style="flex:1"></span>
+        <label>a partir de</label>
+        <input id="desde" type="date" />
+        <label>limite</label>
+        <input id="limite" type="number" min="0" placeholder="0 = todos" style="width:110px" />
+      </div>
+      <div class="barra"><div id="progresso"></div></div>
+      <p class="mini" id="estado" style="margin-top:8px">Pronto.</p>
+    </div>
+
+    <div class="card">
+      <h2>Rotina automática</h2>
+      <div class="row">
+        <label class="mini"><input id="auto" type="checkbox" /> rodar sozinho a cada</label>
+        <input id="horas" type="number" min="1" max="168" value="24" style="width:80px" />
+        <span class="mini">hora(s), anexando o que for novo</span>
+        <span style="flex:1"></span>
+        <button id="salvarAuto" class="ghost">Salvar</button>
+      </div>
+      <p class="mini" id="ultimaAuto" style="margin-top:8px"></p>
+    </div>
+
+    <div class="card">
+      <h2>Resultado</h2>
+      <div class="cifras">
+        <div class="cifra"><b id="c-total">0</b><span>envios</span></div>
+        <div class="cifra"><b id="c-anexados">0</b><span>anexados</span></div>
+        <div class="cifra"><b id="c-vaisubir">0</b><span>a subir</span></div>
+        <div class="cifra"><b id="c-jatinha">0</b><span>já tinham</span></div>
+        <div class="cifra"><b id="c-revisar">0</b><span>revisar</span></div>
+        <div class="cifra"><b id="c-erros">0</b><span>erros</span></div>
+        <div class="cifra"><b id="c-naoencontradas">0</b><span>placa não achada</span></div>
+        <div class="cifra"><b id="c-pulados">0</b><span>já resolvidos</span></div>
+      </div>
+      <div class="row filtros" style="margin-top:12px">
+        <button data-f="TODOS" class="on">Todos</button>
+        <button data-f="VAI_SUBIR">A subir</button>
+        <button data-f="ANEXADO">Anexados</button>
+        <button data-f="REVISAR">Revisar</button>
+        <button data-f="NAO_ENCONTRADA">Placa não achada</button>
+        <button data-f="ERRO">Erros</button>
+        <button data-f="JA_TINHA">Já tinham</button>
+        <button data-f="JA_PROCESSADO">Já resolvidos</button>
+        <span style="flex:1"></span>
+        <button id="csv" class="ghost">Baixar CSV</button>
+        <button id="limpar" class="ghost" title="Esquece o que já foi processado e reavalia tudo do zero">Limpar histórico</button>
+      </div>
+      <div class="tabela" style="margin-top:10px">
+        <table>
+          <thead>
+            <tr><th>Placa</th><th>Data</th><th>Cliente</th><th>Situação</th><th>Negociação</th><th>Detalhe</th><th>Jotform</th></tr>
+          </thead>
+          <tbody id="linhas"><tr><td colspan="7" class="mini">Rode uma simulação para ver o que está pendente.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script src="checklist.js"></script>
+</body>
+</html>

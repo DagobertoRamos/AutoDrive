@@ -2,6 +2,20 @@
 // background.js — abre a interface em uma aba no mesmo navegador do AutoConf.
 // =============================================================================
 
+// A gravação no Google Contatos mora aqui porque `chrome.identity` não existe
+// em content script — o painel do WhatsApp Web precisa pedir por mensagem.
+// Também precisamos de feirao-core para normalizar telefone e montar o nome.
+try { importScripts('feirao-core.js', 'feirao-resgate.js', 'google-contatos.js') }
+catch (e) { console.warn('[feirão] módulos do Google não carregaram:', e) }
+
+// Checklist de entrega técnica (Jotform → aba Contratos do AutoConf).
+try { importScripts('checklist-core.js', 'checklist-fluxo.js') }
+catch (e) { console.warn('[checklist] módulos não carregaram:', e) }
+
+// Tratamento das fotos dos veículos (site Autodrive → fundo de estúdio).
+try { importScripts('fflate.js', 'fotos-core.js') }
+catch (e) { console.warn('[fotos] módulo não carregou:', e) }
+
 const PANEL_PATH = 'popup.html'
 const TARGET_TAB_KEY = 'autoconfTargetTabId'
 const TARGET_WINDOW_KEY = 'autoconfTargetWindowId'
@@ -91,7 +105,7 @@ const CREDS_KEY = 'autoconfCreds'
 const TOKEN_KEY = 'autoconfToken'
 const LASTRUN_KEY = 'autoconfLastRun'
 const ALARM = 'autoconfAutoUpdate'
-const AUTODRIVE = 'https://auto-drive-mocha.vercel.app'
+const AUTODRIVE = 'https://www.appautodrive.online'
 const BATCH_SIZE = 5
 const CHECKPOINT_KEY = 'autoconfSyncCheckpoint'
 const BACKOFF_KEY = 'autoconfBackoff'
@@ -254,12 +268,244 @@ async function runAutoUpdate(opts) {
   }
 }
 
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === ALARM) runAutoUpdate() })
-chrome.runtime.onStartup.addListener(() => { setupAutoAlarm().catch(() => {}) })
-chrome.runtime.onInstalled.addListener(() => { setupAutoAlarm().catch(() => {}) })
-setupAutoAlarm().catch(() => {})
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === ALARM) runAutoUpdate()
+  if (typeof CHECKLIST !== 'undefined' && a.name === CHECKLIST.ALARME) CHECKLIST.rodadaAutomatica().catch(() => {})
+})
+const prepararAlarmes = () => {
+  setupAutoAlarm().catch(() => {})
+  if (typeof CHECKLIST !== 'undefined') CHECKLIST.configurarAlarme().catch(() => {})
+}
+chrome.runtime.onStartup.addListener(prepararAlarmes)
+chrome.runtime.onInstalled.addListener(prepararAlarmes)
+prepararAlarmes()
 
 chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
   if (req?.type === 'autoConfigChanged') { setupAutoAlarm().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false })); return true }
   if (req?.type === 'runAutoNow') { runAutoUpdate({ force: true }).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false })); return true }
+  // Campanha Feirão: o painel do WhatsApp Web pede a tela de campanha.
+  if (req?.type === 'abrirCampanha') {
+    abrirCampanha(req.hash).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }))
+    return true
+  }
+  // Campanha Feirão: o painel do WhatsApp Web pede para baixar um .vcf.
+  // O service worker do MV3 não tem DOM (logo, não tem URL.createObjectURL),
+  // por isso o arquivo vai como data: URL — que a API de downloads aceita.
+  if (req?.type === 'googleStatus') {
+    GOOGLE_CONTATOS.status().then(sendResponse).catch((e) => sendResponse({ conectado: false, motivo: String(e) }))
+    return true
+  }
+  if (req?.type === 'googleConectar') {
+    (async () => {
+      if (req.clientId) await GOOGLE_CONTATOS.saveCfg({ clientId: String(req.clientId).trim() })
+      const a = await GOOGLE_CONTATOS.autorizar({ interativa: true })
+      sendResponse(a.ok ? await GOOGLE_CONTATOS.status() : { conectado: false, motivo: a.motivo })
+    })().catch((e) => sendResponse({ conectado: false, motivo: String(e) }))
+    return true
+  }
+  if (req?.type === 'googleDesconectar') {
+    GOOGLE_CONTATOS.desconectar().then(sendResponse).catch((e) => sendResponse({ ok: false, motivo: String(e) }))
+    return true
+  }
+  if (req?.type === 'googleGravar') {
+    gravarNoGoogle({ limite: req.limite || 0, todos: !!req.todos, ids: req.ids || null })
+      .then(sendResponse).catch((e) => sendResponse({ ok: false, motivo: String(e && e.message || e) }))
+    return true
+  }
+  if (req?.type === 'pedirAuditoria') {
+    pedirAuditoria().then(sendResponse).catch((e) => sendResponse({ ok: false, motivo: String(e) }))
+    return true
+  }
+  // --- Tratamento de fotos dos veículos ---------------------------------------
+  if (req?.type && req.type.startsWith('foto')) {
+    if (typeof FOTOS === 'undefined') { sendResponse({ ok: false, erro: 'módulo de fotos não carregou' }); return true }
+    ;(async () => {
+      switch (req.type) {
+        case 'fotoConfig': return { ok: true, config: await FOTOS.lerCfg() }
+        case 'fotoSalvarConfig': return { ok: true, config: await FOTOS.salvarCfg(req.config || {}) }
+        case 'fotoEstado': return { ok: true, estado: await FOTOS.lerEstado() }
+        case 'fotoFila': return { ok: true, fila: await FOTOS.lerFila(req.limite) }
+        case 'fotoAbrirGrupo': return { ok: true, grupoId: await FOTOS.abrirGrupo() }
+        case 'fotoPreparar': {
+          // Baixar as fotos de vários veículos leva tempo; o painel acompanha
+          // pelo estado em storage, igual ao checklist.
+          FOTOS.prepararRodada({ limite: req.limite }).catch(() => {})
+          return { ok: true, iniciado: true }
+        }
+        case 'fotoTratar': {
+          // Rodada completa: baixar, tratar no chat e publicar. Pode levar
+          // muitos minutos, então também responde na hora e reporta pelo log.
+          // A recusa precisa chegar ao painel: antes ela voltava "iniciado" e
+          // nada abria, sem aviso nenhum.
+          const estado = await FOTOS.lerEstado()
+          if (estado.rodando && !FOTOS.rodadaMorta(estado)) {
+            return {
+              ok: false,
+              erro: estado.parar
+                ? 'A rodada anterior ainda está parando. Aguarde 1 minuto ou clique em Reiniciar.'
+                : 'Já existe uma rodada em andamento. Use Parar, ou Reiniciar se ela travou.',
+            }
+          }
+          FOTOS.rodarTratamento({ limite: req.limite }).catch(() => {})
+          return { ok: true, iniciado: true }
+        }
+        case 'fotoAuditar': {
+          FOTOS.rodarAuditoria().catch(() => {})
+          return { ok: true, iniciado: true }
+        }
+        case 'fotoParar': return { ok: true, parado: await FOTOS.pedirParada() }
+        case 'fotoExemplo': return { ok: true, exemplo: await FOTOS.lerExemplo() }
+        case 'fotoSalvarExemplo':
+          return { ok: true, resultado: await FOTOS.salvarExemplo(req.dataUrl, req.nome) }
+        // Destrava a extensão quando a rodada morreu com `rodando` gravado.
+        // Por padrão preserva o progresso de cada carro, para retomar de onde
+        // parou; só apaga se o operador pedir explicitamente.
+        case 'fotoZerar': return { ok: true, resultado: await FOTOS.zerar(req.apagarProgresso === true) }
+        case 'fotoEnviarTratadas':
+          return { ok: true, resultado: await FOTOS.enviarTratadas(req.veiculoId, req.urls, { travar: req.travar }) }
+        case 'fotoTravar': return { ok: true, resultado: await FOTOS.travar(req.veiculoId, req.travar !== false) }
+        case 'fotoRestaurar': return { ok: true, resultado: await FOTOS.restaurar(req.veiculoId) }
+        case 'fotoMapaPastas': return { ok: true, mapa: await FOTOS.mapaDePastas() }
+        case 'fotoPublicarArquivos': return { ok: true, resultado: await FOTOS.publicarArquivos(req.veiculoId, req.arquivos) }
+        default: return { ok: false, erro: `tipo desconhecido: ${req.type}` }
+      }
+    })()
+      .then(sendResponse)
+      .catch((e) => sendResponse({ ok: false, erro: String((e && e.message) || e) }))
+    return true
+  }
+
+  // --- Checklist de entrega técnica ------------------------------------------
+  if (req?.type === 'abrirChecklist') { abrirChecklist().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false })); return true }
+  if (req?.type && req.type.startsWith('chk')) {
+    if (typeof CHECKLIST === 'undefined') { sendResponse({ ok: false, erro: 'módulo do checklist não carregou' }); return true }
+    ;(async () => {
+      switch (req.type) {
+        case 'chkRodar': {
+          // Não esperamos terminar: a rodada pode levar minutos e o painel
+          // acompanha pelo estado gravado no storage.
+          CHECKLIST.rodar({ form: req.form || 'entrega', dryRun: req.dryRun !== false, desde: req.desde || '', limite: req.limite || 0 }).catch(() => {})
+          return { ok: true, iniciado: true }
+        }
+        case 'chkEstado': return { ok: true, estado: await CHECKLIST.lerEstado() }
+        case 'chkRelatorio': return { ok: true, relatorio: await CHECKLIST.relatorio(req.form || 'entrega') }
+        case 'chkParar': return await CHECKLIST.parar()
+        case 'chkLimparHistorico': return await CHECKLIST.limparHistorico(req.form || null)
+        case 'chkSalvarConfig': return await CHECKLIST.salvarConfig(req.config || {})
+        case 'chkFormularios': return { ok: true, formularios: Object.values(CHK_CORE.FORMULARIOS).map((f) => ({ chave: f.chave, rotulo: f.rotulo })) }
+        case 'chkConfig': {
+          const st = await new Promise((r) => chrome.storage.local.get('checklistUltimaAuto', r))
+          return { ok: true, config: await CHECKLIST.config(), ultimaAuto: st.checklistUltimaAuto || null }
+        }
+        default: return { ok: false, erro: 'ação desconhecida: ' + req.type }
+      }
+    })().then(sendResponse).catch((e) => sendResponse({ ok: false, erro: String(e && e.message || e) }))
+    return true
+  }
+  if (req?.type === 'baixarVcf') {
+    baixarTexto(req.conteudo, req.nome, 'text/vcard')
+      .then((id) => sendResponse({ ok: true, id }))
+      .catch((e) => sendResponse({ ok: false, erro: String(e && e.message || e) }))
+    return true
+  }
 })
+
+// A tela de campanha não enxerga o WhatsApp Web. O service worker faz a ponte:
+// acha a aba, pede a varredura ao content script e devolve o resultado.
+async function pedirAuditoria() {
+  const abas = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })
+  if (!abas.length) return { ok: false, motivo: 'WhatsApp Web não está aberto' }
+  try {
+    return await chrome.tabs.sendMessage(abas[0].id, { type: 'auditarAgora' })
+  } catch (e) {
+    return { ok: false, motivo: 'a aba do WhatsApp Web precisa ser recarregada (F5)' }
+  }
+}
+
+// =============================================================================
+// GOOGLE CONTATOS — gravação de ponta a ponta
+//
+// Fluxo: pega quem já foi chamado e ainda não está na agenda → grava pela
+// People API → guarda o resourceName em cada contato para nunca duplicar.
+// O .vcf continua existindo como caminho alternativo; este é o automático.
+// =============================================================================
+
+async function gravarNoGoogle({ limite = 0, todos = false, ids = null } = {}) {
+  if (typeof GOOGLE_CONTATOS === 'undefined' || typeof FEIRAO === 'undefined') {
+    return { ok: false, motivo: 'módulos não carregados no service worker' }
+  }
+  const config = await FEIRAO.getConfig()
+  // pendentesGoogle (e NÃO vcardPendentes): quem já baixou um .vcf tem
+  // `contatoSalvo = true` sem estar na agenda, e ficava fora para sempre.
+  let pendentes = await FEIRAO.pendentesGoogle({ todos })
+  if (ids && ids.length) {
+    const alvo = new Set(ids)
+    pendentes = pendentes.filter((c) => alvo.has(c.id))
+  }
+  if (limite > 0) pendentes = pendentes.slice(0, limite)
+  if (!pendentes.length) return { ok: true, criados: 0, erros: [], nada: true }
+
+  const entradas = pendentes.map((c) => {
+    const tel = FEIRAO.normalizarTelefone(c.telefone)
+    return { id: c.id, e164: tel.e164, nome: FEIRAO.nomeContato(c, config), contato: c }
+  }).filter((e) => e.e164 && e.nome)
+
+  if (!entradas.length) return { ok: true, criados: 0, erros: [], nada: true }
+
+  const r = await GOOGLE_CONTATOS.salvarContatos(entradas, config, (c) => FEIRAO.nomeContato(c, config))
+  if (r.motivo === 'sem_client_id' || r.motivo) {
+    if (!r.criados.length) return { ok: false, motivo: r.motivo, criados: 0, erros: r.erros || [] }
+  }
+
+  // marca no armazenamento o que realmente entrou no Google
+  if (r.criados.length) {
+    const q = await FEIRAO.getQueue()
+    const porId = new Map(r.criados.map((x) => [x.id, x.resourceName]))
+    q.forEach((c) => {
+      if (porId.has(c.id)) {
+        c.googleResourceName = porId.get(c.id)
+        c.contatoSalvo = true
+        c.vcardPendente = false
+      }
+    })
+    await FEIRAO.saveQueue(q)
+    await FEIRAO.registrarGravacaoAgenda([])   // só carimba a hora da última gravação
+  }
+  return { ok: !r.erros.length, criados: r.criados.length, erros: r.erros, restantes: pendentes.length - r.criados.length }
+}
+
+async function baixarTexto(conteudo, nome, mime) {
+  const url = `data:${mime};charset=utf-8,` + encodeURIComponent(String(conteudo || ''))
+  return chrome.downloads.download({ url, filename: nome, saveAs: false })
+}
+
+// =============================================================================
+// CAMPANHA FEIRÃO — abertura da tela de campanha (reaproveita a aba se já existe)
+// =============================================================================
+const CAMPANHA_PATH = 'campanha.html'
+const CHECKLIST_PATH = 'checklist.html'
+
+// Painel do checklist de entrega: reaproveita a aba se já estiver aberta.
+async function abrirChecklist() {
+  const url = chrome.runtime.getURL(CHECKLIST_PATH)
+  const abertas = await chrome.tabs.query({ url: url + '*' })
+  if (abertas[0]?.id) {
+    await chrome.tabs.update(abertas[0].id, { active: true })
+    if (abertas[0].windowId) await chrome.windows.update(abertas[0].windowId, { focused: true })
+    return
+  }
+  await chrome.tabs.create({ url, active: true })
+}
+
+async function abrirCampanha(hash) {
+  const base = chrome.runtime.getURL(CAMPANHA_PATH)
+  const url = hash ? `${base}#${hash}` : base
+  // reaproveita a aba já aberta; com hash, navega para a visão pedida
+  const abertas = await chrome.tabs.query({ url: base + '*' })
+  if (abertas[0]?.id) {
+    await chrome.tabs.update(abertas[0].id, { active: true, ...(hash ? { url } : {}) })
+    if (abertas[0].windowId) await chrome.windows.update(abertas[0].windowId, { focused: true })
+    return
+  }
+  await chrome.tabs.create({ url, active: true })
+}

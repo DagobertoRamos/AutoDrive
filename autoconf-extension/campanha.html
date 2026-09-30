@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Campanha Feirão — convite de troca</title>
+<style>
+  :root{--brand:#1e40af;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--ok:#16a34a;--warn:#b45309;--bad:#b91c1c}
+  *{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  body{margin:0;background:var(--bg);color:var(--ink);padding:22px;max-width:1120px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 3px}
+  h2{font-size:13px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.5px;color:#334155}
+  p.sub{font-size:12px;color:var(--muted);margin:0 0 18px;line-height:1.5;max-width:760px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+  label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin:0 0 4px}
+  input,select,textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:12.5px;color:var(--ink);background:#fff;font-family:inherit}
+  textarea{min-height:130px;line-height:1.5;resize:vertical}
+  input[type=checkbox]{width:auto}
+  button{border:0;border-radius:9px;padding:10px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
+  .primary{background:var(--brand);color:#fff}
+  .ok{background:var(--ok);color:#fff}
+  .ghost{background:#f1f5f9;color:#334155;border:1px solid var(--line)}
+  .danger{background:#fef2f2;color:var(--bad);border:1px solid #fecaca}
+  .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .field{margin-top:10px}
+  .mini{font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border-bottom:1px solid var(--line);padding:6px 5px}
+  td{padding:6px 5px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+  .tag{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;border-radius:999px;padding:2px 7px}
+  .t-pendente{background:#eff6ff;color:#1d4ed8}
+  .t-aguardando_resposta{background:#fefce8;color:#a16207}
+  .t-concluido{background:#f1f5f9;color:#475569}
+  .t-respondeu{background:#f0fdf4;color:#15803d}
+  .t-optout{background:#fef2f2;color:#b91c1c}
+  .t-sem_whatsapp{background:#fdf4ff;color:#a21caf}
+  .t-pulado{background:#f8fafc;color:#64748b}
+  .t-invalido{background:#fef2f2;color:#b91c1c}
+  .t-agendado{background:#1e40af;color:#fff}
+  .t-compareceu{background:#dcfce7;color:#15803d}
+  .t-faltou{background:#fef3c7;color:#92400e}
+  .t-bloqueou{background:#fef2f2;color:#b91c1c}
+  .t-aceita_promocoes{background:#ecfccb;color:#3f6212}
+  .t-trocar_futuro{background:#ede9fe;color:#6d28d9}
+  .t-sem_interesse{background:#fef3c7;color:#92400e}
+  .t-vendeu{background:#16a34a;color:#fff}
+  .t-negociando{background:#e0e7ff;color:#4338ca}
+  .t-em_atendimento{background:#dbeafe;color:#1e40af}
+  .t-nao_respondeu{background:#f1f5f9;color:#475569}
+  .metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:14px}
+  /* card = botão: clicar leva a tabela para o grupo que o número representa */
+  .metric{background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px;text-align:center;
+    font:inherit;cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .12s;width:100%}
+  .metric:hover{border-color:var(--brand);box-shadow:0 2px 8px rgba(37,99,235,.13);transform:translateY(-1px)}
+  .metric:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .metric-on{border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
+  .metric-on span{color:var(--brand)}
+  .metric b{display:block;font-size:22px;color:var(--brand);line-height:1.15}
+  .metric span{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .alert{border-radius:9px;padding:10px 12px;font-size:12px;line-height:1.5;margin-bottom:12px}
+  .alert.info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+  .alert.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+  .alert.stop{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+  .scroll{max-height:340px;overflow:auto}
+  .preview{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:9px;padding:10px;font-size:12px;line-height:1.55;white-space:pre-wrap;min-height:120px}
+  .tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  .tab{background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;color:#475569;cursor:pointer}
+  .tab.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<h1>Campanha Feirão — convite de troca</h1>
+<p class="sub">
+  Monta a fila de clientes da carteira, escreve a mensagem personalizada de cada um e controla o ritmo.
+  O envio em si acontece no painel dentro do WhatsApp Web — <strong>você aperta Enter, nunca a extensão</strong>.
+  É essa separação que mantém o número fora do padrão que a Meta pune.
+</p>
+
+<div class="metrics" id="metrics"></div>
+<div id="alerts"></div>
+
+<div class="tabs">
+  <button class="tab on" data-tab="fila">1 · Fila</button>
+  <button class="tab" data-tab="importar">2 · Importar clientes</button>
+  <button class="tab" data-tab="mensagens">3 · Mensagens</button>
+  <button class="tab" data-tab="agenda">4 · Agenda</button>
+  <button class="tab" data-tab="relatorios">5 · Relatórios</button>
+  <button class="tab" data-tab="ritmo">6 · Ritmo e segurança</button>
+  <button class="tab" data-tab="conformidade">7 · Conformidade e log</button>
+</div>
+
+<!-- ======================= FILA ======================= -->
+<section id="tab-fila">
+  <div class="card">
+    <h2>Fila da campanha</h2>
+    <div class="row" style="margin-top:0">
+      <button id="abrirWhats" class="ok">Abrir WhatsApp Web e começar</button>
+      <button id="reordenar" class="ghost">Embaralhar ordem</button>
+      <button id="corrigirTrocados" class="ghost">Corrigir nome ↔ veículo</button>
+      <button id="limparConcluidos" class="ghost">Remover concluídos</button>
+      <button id="recomecarZero" class="danger">Recomeçar do zero (mantém os contatos)</button>
+      <button id="limparTudo" class="danger">Zerar fila</button>
+    </div>
+    <div class="mini">
+      Embaralhar não é enfeite: ordem alfabética ou por data cria um padrão de disparo reconhecível.
+      Ordem aleatória, intervalo aleatório e texto variável são as três coisas que fazem a operação parecer o que ela é — uma pessoa trabalhando.
+    </div>
+    <div class="field">
+      <input id="busca" placeholder="filtrar por nome, telefone, veículo ou placa" />
+    </div>
+    <div class="scroll field">
+      <table id="tabela"><thead><tr>
+        <th>Cliente</th><th>Telefone</th><th>Veículo</th><th>Compra / contato</th><th>Status</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="mini">
+      A coluna <strong>Status</strong> é editável. Mudar aqui é <em>correção de cadastro</em>: não conta toque,
+      não mexe no cooldown e não alimenta o freio automático — o log registra que a mudança foi manual.
+      Marcar como "não perturbe" também entra na lista de bloqueio; tirar de lá, sai.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Auditoria da campanha</h2>
+    <p class="mini" style="margin-top:0">
+      Onde cada cliente está agora. Clique num grupo para filtrar a tabela acima.
+    </p>
+    <div id="auditoria"></div>
+    <div class="row">
+      <button id="auditarWhats" class="primary">Auditar agora pelo WhatsApp Web</button>
+    </div>
+    <div class="mini">
+      Lê a lista de conversas aberta no WhatsApp Web e marca quem respondeu desde a última verificação.
+      Precisa da aba do WhatsApp Web aberta.
+    </div>
+    <div id="auditoriaResultado" style="margin-top:10px"></div>
+    <div class="row">
+      <button id="reverterAuto" class="danger">Desfazer respostas marcadas automaticamente</button>
+    </div>
+    <div class="mini">
+      Use se o detector marcou como "respondeu" gente que não respondeu. Volta todo mundo que <strong>ele</strong>
+      marcou para "aguardando cliente responder" — o que <strong>você</strong> ajustou na mão fica intacto.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Agendar atendimento</h2>
+    <p class="mini" style="margin-top:0">
+      Marque visita, ligação ou retorno para qualquer cliente da fila, sem precisar estar no WhatsApp.
+      O compromisso aparece na aba Agenda e vira lembrete de véspera no painel.
+    </p>
+
+    <div class="field">
+      <label>Cliente</label>
+      <input id="agBusca" placeholder="digite nome ou telefone para procurar" />
+      <div id="agResultados" style="max-height:150px;overflow:auto"></div>
+    </div>
+
+    <div id="agSelecionado" class="alert info hidden" style="margin-top:10px"></div>
+
+    <div class="g4 field">
+      <div><label>Dia</label><input type="date" id="agData" /></div>
+      <div><label>Hora</label><input type="time" id="agHora" value="10:00" /></div>
+      <div>
+        <label>Como</label>
+        <select id="agCanal">
+          <option value="loja">Visita à loja (avaliação)</option>
+          <option value="telefone">Ligação</option>
+          <option value="whatsapp">Retorno pelo WhatsApp</option>
+        </select>
+      </div>
+      <div><label>Vendedor</label><input id="agVendedor" placeholder="quem atende" /></div>
+    </div>
+    <div class="field">
+      <label>Observação (fica no cadastro e no relatório)</label>
+      <input id="agObs" placeholder="ex.: quer avaliar o Kwid e ver SUV até 800/mês" />
+    </div>
+    <div class="row">
+      <button id="agSalvar" class="ok">Agendar</button>
+      <button id="agLimpar" class="ghost">Limpar</button>
+    </div>
+    <div id="agResultado" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Google Contatos — gravação automática de verdade</h2>
+    <p class="mini" style="margin-top:0">
+      Conectado aqui, a extensão escreve os clientes <strong>direto na sua conta do Google</strong> e o celular
+      sincroniza sozinho. Sem baixar arquivo, sem importar nada. É o único caminho em que "salvar automático
+      na agenda" acontece de ponta a ponta — e continua sendo o Google, não a extensão, quem fala com o telefone.
+    </p>
+
+    <div id="googleStatus"></div>
+
+    <div class="field">
+      <label>ID do cliente OAuth (do seu projeto no Google Cloud)</label>
+      <input id="googleClientId" placeholder="000000000000-xxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" />
+    </div>
+    <div class="row">
+      <button id="googleConectar" class="ok">Conectar minha conta Google</button>
+      <button id="googleGravar" class="primary">Gravar agora no Google</button>
+      <button id="googleGravarTudo" class="ok">Gravar a fila inteira no Google</button>
+      <button id="googleDesconectar" class="ghost">Desconectar</button>
+    </div>
+    <div id="googleResultado" style="margin-top:10px"></div>
+
+    <div class="alert info" style="margin-top:12px">
+      <strong>Depois de gravar, o nome não aparece na hora no WhatsApp.</strong>
+      A corrente é esta: extensão → Google Contatos → seu celular sincroniza → o WhatsApp lê a agenda do aparelho →
+      o nome aparece (inclusive aqui no WhatsApp Web, que espelha o celular).
+      <br><br>
+      Costuma levar de alguns minutos a algumas horas. Para forçar no Android:
+      <em>Configurações → Contas → sua conta Google → Sincronizar agora</em>, e depois abra e feche o WhatsApp.
+      Se mesmo assim não aparecer, confira em <code>contacts.google.com</code> se o contato está lá —
+      se estiver, o que falta é sincronização do aparelho, não a extensão.
+    </div>
+
+    <div class="mini">
+      A gravação vai em lotes grandes de propósito: a People API cobra a mesma cota diária por um lote de 5
+      e por um de 200. Por isso o gatilho automático espera juntar 40 contatos (ajustável no card abaixo) —
+      mandar de 5 em 5 seria o jeito mais rápido de estourar a cota do seu projeto no Google.
+    </div>
+
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#334155">
+        Como criar o ID do cliente (uma vez só, ~10 minutos)
+      </summary>
+      <div class="mini" style="margin-top:8px">
+        <p><strong>1.</strong> Abra <code>console.cloud.google.com</code> e crie um projeto (ou use um existente).</p>
+        <p><strong>2.</strong> Menu → <em>APIs e serviços</em> → <em>Biblioteca</em> → procure <strong>People API</strong> → <em>Ativar</em>.
+           Sem isso a gravação falha com "permissão negada".</p>
+        <p><strong>3.</strong> <em>APIs e serviços</em> → <em>Tela de consentimento OAuth</em>. Tipo <strong>Externo</strong>,
+           preencha nome do app e seu e-mail. Em <em>Usuários de teste</em>, adicione o seu próprio e-mail —
+           enquanto o app estiver "Em teste", só quem está nessa lista consegue conectar. Não precisa publicar
+           nem passar por verificação: é uso interno seu.</p>
+        <p><strong>4.</strong> <em>Credenciais</em> → <em>Criar credenciais</em> → <em>ID do cliente OAuth</em> →
+           tipo <strong>Aplicativo da Web</strong>.</p>
+        <p><strong>5.</strong> Em <em>URIs de redirecionamento autorizados</em>, cole exatamente o endereço que
+           aparece no quadro de status aqui em cima (termina em <code>.chromiumapp.org/</code>).</p>
+        <p><strong>6.</strong> Copie o <em>ID do cliente</em> gerado, cole no campo acima e clique em Conectar.</p>
+        <p><strong>7. Publique a tela de consentimento.</strong> Ainda em <em>Tela de consentimento OAuth</em>,
+           clique em <strong>Publicar app</strong>. Isso parece contraintuitivo, mas é o passo que evita o maior
+           atrito: enquanto o app fica <em>Em teste</em>, o Google <strong>expira sua autorização a cada 7 dias</strong>
+           e você teria que reconectar toda semana. Publicado (mesmo sem verificação), a autorização não expira.
+           Você vai ver uma tela dizendo "O Google não verificou este app" — clique em
+           <em>Avançado</em> → <em>Acessar (não seguro)</em>. É seguro porque o app é seu, roda na sua máquina e
+           só pede acesso aos seus próprios contatos. Não precisa passar por verificação: ela só é exigida para
+           distribuir o app a terceiros.</p>
+        <p style="margin-top:10px"><strong>Escopo pedido:</strong> só <code>contacts</code> — ler e escrever contatos.
+           Nada de e-mail, agenda ou arquivos. Você pode revogar quando quiser em
+           <code>myaccount.google.com/permissions</code> ou no botão Desconectar.</p>
+        <p><strong>Atenção ao mover a pasta:</strong> o ID desta extensão vem do caminho em que ela está.
+           Se você mover <code>autoconf-extension</code> de lugar, o ID muda, o endereço de redirecionamento
+           deixa de bater e a conexão para de funcionar — e, pior, a fila e o histórico somem junto,
+           porque o armazenamento também é por ID.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>Agenda — arquivo .vcf (alternativa)</h2>
+    <p class="mini" style="margin-top:0">
+      Extensão nenhuma escreve na agenda do telefone. O caminho que sincroniza de verdade é o padrão da indústria:
+      a extensão gera um <strong>.vcf</strong>, você importa no <strong>Google Contatos</strong> (ou iCloud), e o celular sincroniza sozinho.
+      Como o WhatsApp lê a agenda do aparelho, o cliente passa a aparecer com o nome salvo — inclusive aqui no WhatsApp Web.
+    </p>
+
+    <div class="g2 field">
+      <div>
+        <label>Como gravar o nome</label>
+        <input id="cfgPadraoContato" placeholder="{nomeCurto} · {campanha} {mesAnoCampanha} · {modelo}" />
+      </div>
+      <div>
+        <label>Etiqueta curta da campanha</label>
+        <input id="cfgCampanhaCurta" placeholder="Feirão" />
+      </div>
+    </div>
+    <div class="mini">
+      Campos: <code>{nome}</code> <code>{nomeCurto}</code> <code>{primeiroNome}</code> <code>{campanha}</code>
+      <code>{campanhaLonga}</code> <code>{mesAnoCampanha}</code> <code>{modelo}</code> <code>{veiculo}</code>
+      <code>{placa}</code> <code>{vendedor}</code>
+      <br><b>{mesAnoCampanha}</b> é o mês em que você chamou o cliente — é o que identifica a campanha
+      na agenda (<code>Feirão 08/2026</code>). Já <code>{mesAno}</code>, <code>{mesAnoCurto}</code> e
+      <code>{ano}</code> são a data da <b>compra</b> dele; só use se for isso mesmo que você quer no nome.
+    </div>
+    <div class="alert info" id="previewContato" style="margin-top:10px"></div>
+
+    <div class="g2 field">
+      <div>
+        <label>Gravação automática</label>
+        <select id="cfgSalvarContatoAuto">
+          <option value="auto">Automática — baixa sozinho, juntando os novos</option>
+          <option value="lote">Em lote — só quando eu clicar em exportar</option>
+          <option value="imediato">Imediato — um arquivo por cliente</option>
+          <option value="nao">Desligada</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button id="exportarPendentes" class="primary" style="width:100%">Exportar novos contatos</button>
+      </div>
+    </div>
+
+    <div class="g2 field">
+      <div><label>No automático, juntar até</label><input id="cfgSalvarContatoLote" inputmode="numeric" placeholder="10" /></div>
+      <div><label>...ou baixar a cada (minutos)</label><input id="cfgSalvarContatoMinutos" inputmode="numeric" placeholder="30" /></div>
+    </div>
+    <div class="mini">
+      No modo automático o arquivo baixa sozinho enquanto você trabalha — o que vier primeiro, o lote cheio ou o tempo.
+      É o meio-termo entre um arquivo por cliente, que entope a pasta de Downloads, e você ter que lembrar de exportar.
+      <strong>A importação no Google Contatos continua sendo sua</strong>: extensão de navegador não escreve na agenda do
+      telefone, e não existe API que permita isso. Se quiser gravação de ponta a ponta, o caminho é a API do Google
+      Contatos — me peça que eu monto, mas exige você criar um cliente OAuth no Google Cloud.
+    </div>
+
+    <div class="row">
+      <button id="exportarContatados" class="ghost">Exportar todos os já contatados</button>
+      <button id="exportarFila" class="ghost">Exportar a fila inteira</button>
+      <button id="exportarAgendados" class="ghost">Exportar só os agendados</button>
+      <button id="gravarAtraso" class="ok">Gravar agora os que faltam</button>
+    </div>
+    <div class="mini">
+      <strong>Gravar agora os que faltam</strong> pega todo mundo que você já chamou e ainda não está na agenda —
+      inclusive os contatados antes desta função existir. Use uma vez para acertar o atraso; depois disso o
+      modo automático cuida sozinho.
+    </div>
+
+    <div class="alert warn" style="margin-top:12px">
+      <strong>Dois avisos antes de importar em massa.</strong>
+      O nome gravado é só seu — o cliente nunca vê como você o salvou.
+      Mas salvar centenas de pessoas na agenda faz com que elas passem a enxergar seu
+      <strong>status do WhatsApp</strong>, se a sua privacidade estiver em "Meus contatos". Vale conferir isso antes.
+      E use a etiqueta da campanha: no Google Contatos ela vira um rótulo, e é por ela que você apaga o lote inteiro depois, de uma vez.
+    </div>
+    <div class="mini">
+      <strong>Como importar:</strong> Google Contatos → <em>Importar</em> → selecione o .vcf → o Android sincroniza sozinho.
+      No iPhone: iCloud.com → Contatos → engrenagem → <em>Importar vCard</em>.
+    </div>
+  </div>
+</section>
+
+<!-- ======================= IMPORTAR ======================= -->
+<section id="tab-importar" class="hidden">
+  <div class="alert info">
+    Três formas de trazer a carteira. Todas passam pelo mesmo filtro: telefone normalizado para o padrão brasileiro,
+    fixo separado de celular, duplicado eliminado e blocklist respeitada.
+  </div>
+
+  <div class="card">
+    <h2>A · Colar texto (do PDF, do relatório, de qualquer lugar)</h2>
+    <p class="mini" style="margin-top:0">
+      Copie as páginas do PDF (Ctrl+A, Ctrl+C no leitor) e cole aqui. O importador varre linha a linha
+      procurando telefone brasileiro e usa o texto ao redor como nome e veículo. Depois você confere na prévia.
+    </p>
+    <textarea id="colar" placeholder="Ex.:&#10;JOÃO DA SILVA SANTOS   (11) 98765-4321   FIAT ARGO DRIVE 1.3 2021  ABC1D23  15/03/2023&#10;MARIA OLIVEIRA  11 91234-5678  VW POLO 2022"></textarea>
+    <div class="row">
+      <button id="parseColar" class="primary">Analisar texto colado</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>B · CSV / planilha</h2>
+    <p class="mini" style="margin-top:0">Cabeçalho na primeira linha. Reconhece automaticamente: nome, telefone/celular/contato, veículo/modelo, ano, placa, data (compra/negociação), vendedor.</p>
+    <input type="file" id="arquivoCsv" accept=".csv,.txt,.tsv" />
+  </div>
+
+  <div class="card">
+    <h2>C · Última busca do AutoConf</h2>
+    <p class="mini" style="margin-top:0">Usa o resultado da última busca feita na tela principal da extensão (nome, contato, veículo de saída, data e vendedor já vêm estruturados).</p>
+    <div class="g3">
+      <div><label>Comprou de (meses atrás)</label><input id="mesesMin" inputmode="numeric" value="10" /></div>
+      <div><label>até (meses atrás)</label><input id="mesesMax" inputmode="numeric" value="48" /></div>
+      <div style="display:flex;align-items:flex-end"><button id="importAutoconf" class="primary" style="width:100%">Importar do AutoConf</button></div>
+    </div>
+    <div class="mini">Faixa padrão 10–48 meses: antes disso o cliente ainda está pagando e a troca raramente fecha; depois disso o carro já perdeu o valor que torna a conversa interessante.</div>
+  </div>
+
+  <div class="card hidden" id="mapeamento">
+    <h2>De qual coluna veio cada campo</h2>
+    <p class="mini" style="margin-top:0">
+      O importador adivinha pelo cabeçalho. Se ele errou — o caso clássico é
+      <strong>nome e veículo trocados</strong> — corrija aqui antes de adicionar à fila.
+    </p>
+  </div>
+
+  <div class="card hidden" id="previaCard">
+    <h2>Prévia da importação</h2>
+    <div id="previaResumo" class="alert info"></div>
+    <div class="scroll">
+      <table id="previaTabela"><thead><tr>
+        <th>Nome</th><th>Telefone</th><th>Veículo</th><th>Compra</th><th>Situação</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="row">
+      <button id="confirmarImport" class="ok">Adicionar os válidos à fila</button>
+      <button id="cancelarImport" class="ghost">Cancelar</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= MENSAGENS ======================= -->
+<section id="tab-mensagens" class="hidden">
+  <div class="alert info">
+    São 6 aberturas diferentes que giram sozinhas, cada uma com variações internas de palavra.
+    Dois clientes seguidos nunca recebem o mesmo texto — nem a mesma frase.
+  </div>
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Textos do 1º contato</h2>
+        <select id="tplSelect"></select>
+        <div class="field"><textarea id="tplTexto" style="min-height:180px"></textarea></div>
+        <div class="row">
+          <button id="salvarTpl" class="primary">Salvar este texto</button>
+          <button id="restaurarTpl" class="ghost">Restaurar original</button>
+        </div>
+        <div class="mini">
+          Campos: <code>{primeiroNome}</code> <code>{veiculo}</code> <code>{modelo}</code> <code>{ano}</code>
+          <code>{tempo}</code> <code>{mesAno}</code> <code>{vendedor}</code> <code>{loja}</code> <code>{cidade}</code> <code>{saudacao}</code>.
+          Alternativas: <code>{Oi|Olá}</code> sorteia uma a cada envio.
+        </div>
+      </div>
+      <div class="card">
+        <h2>Respostas prontas (para copiar no atendimento)</h2>
+        <div id="respostas"></div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Prévia com um cliente real da fila</h2>
+        <select id="previewContato"></select>
+        <div class="field preview" id="previewTexto"></div>
+        <div id="previewAudit"></div>
+        <div class="row"><button id="reroll" class="ghost">Sortear outra variação</button></div>
+      </div>
+      <div class="card">
+        <h2>O que essas mensagens fazem de propósito</h2>
+        <ul class="mini" style="padding-left:16px;margin:0">
+          <li><strong>Sem link, sem imagem, sem tabela de preço no 1º contato.</strong> Link em mensagem fria é o gatilho nº 1 de denúncia — e derruba a resposta.</li>
+          <li><strong>Se identifica na primeira linha.</strong> O cliente não tem seu número salvo; mensagem sem rosto é bloqueada por reflexo.</li>
+          <li><strong>Cita um dado só dele</strong> — o carro, o mês da compra, o tempo de posse. É o que separa "mensagem pra mim" de "disparo".</li>
+          <li><strong>Uma pergunta só</strong>, fácil de responder com "sim" ou "quanto?".</li>
+          <li><strong>Saída elegante</strong> ("me avisa que eu paro por aqui") em vez de "responda SAIR" — cumpre o opt-out da LGPD sem soar robô.</li>
+          <li><strong>Máximo 2 toques.</strong> O terceiro é o que vira denúncia.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+<div class="card">
+  <h2>Política comercial — verificador</h2>
+  <p class="mini" style="margin-top:0">
+    O SDR vende a <strong>oportunidade de negociar</strong>, não o resultado da negociação. Nenhuma mensagem sai daqui
+    prometendo valor, FIPE, taxa, aprovação, entrada ou parcela — a trava vale para os textos padrão, para os que você
+    editar e para o playbook. Cole abaixo qualquer mensagem para conferir antes de mandar.
+  </p>
+  <div id="politicaBox"></div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Regras aplicadas</h2>
+    <div class="scroll">
+      <table><thead><tr><th></th><th>Regra</th><th>Por quê</th><th>Em vez disso</th></tr></thead>
+      <tbody id="politicaRegras"></tbody></table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Frases seguras</h2>
+    <p class="mini" style="margin-top:0">Linguagem de possibilidade: abre a conversa sem comprometer a loja.</p>
+    <ul id="politicaAprovadas" class="mini" style="padding-left:16px;line-height:1.8"></ul>
+  </div>
+</div>
+
+</section>
+
+<!-- ======================= AGENDA ======================= -->
+<section id="tab-agenda" class="hidden">
+  <div class="alert info">
+    Quem respondeu e marcou hora aparece aqui. O agendamento é o único desfecho que importa numa operação de SDR —
+    mensagem enviada não é resultado; horário na agenda é.
+  </div>
+  <div class="card">
+    <h2>Compromissos marcados</h2>
+    <div class="scroll">
+      <table id="tabelaAgenda"><thead><tr>
+        <th>Quando</th><th>Cliente</th><th>Canal</th><th>Telefone</th><th>Veículo</th><th>Situação</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h2>Funil da campanha</h2>
+      <div id="funil"></div>
+    </div>
+    <div class="card">
+      <h2>Como o SDR trabalha aqui</h2>
+      <ol class="mini" style="padding-left:16px;margin:0">
+        <li><strong>Abertura</strong> — apresenta, dá o motivo e pergunta o canal (WhatsApp ou ligação). Nada de preço nem link.</li>
+        <li><strong>Escolha do canal</strong> — se for ligação, marca o horário na hora. Se for WhatsApp, manda as 4 condições e pede km, detalhes e situação de quitação.</li>
+        <li><strong>Qualificação</strong> — com os dados, dá a faixa de avaliação. Nunca o valor fechado: esse sai na avaliação presencial.</li>
+        <li><strong>Agendamento</strong> — o objetivo real. Horário com dia e hora, confirmado, com lembrete na véspera.</li>
+        <li><strong>Recuperação</strong> — quem não apareceu recebe uma mensagem sem cobrança e uma nova oferta de horário.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= RELATÓRIOS ======================= -->
+<section id="tab-relatorios" class="hidden">
+  <div class="row" style="margin-top:0;margin-bottom:12px">
+    <button id="copiarResumo" class="primary">Copiar resumo para o grupo</button>
+    <button id="baixarCsvRel" class="ghost">Baixar CSV da campanha</button>
+    <button id="atualizarRel" class="ghost">Atualizar números</button>
+  </div>
+
+  <div class="card">
+    <h2>Funil</h2>
+    <div id="relFunil"></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Desempenho por abertura</h2>
+      <p class="mini" style="margin-top:0">
+        Qual dos 6 textos realmente puxa resposta. Com menos de 5 envios a taxa não diz nada —
+        a coluna fica cinza até lá, de propósito.
+      </p>
+      <div class="scroll">
+        <table id="relVariantes"><thead><tr>
+          <th>Abertura</th><th>Env.</th><th>Resp.</th><th>Taxa</th><th>Agend.</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Por dia</h2>
+      <div class="scroll">
+        <table id="relDias"><thead><tr>
+          <th>Dia</th><th>Enviados</th><th>Respostas</th><th>Agend.</th><th>Opt-out</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Resumo</h2>
+    <div class="preview" id="relResumo"></div>
+  </div>
+</section>
+
+<!-- ======================= RITMO ======================= -->
+<section id="tab-ritmo" class="hidden">
+  <div class="card" style="border-color:#fecaca;background:#fef2f2">
+    <h2 style="color:#991b1b">Conta restrita pela Meta</h2>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#991b1b;font-weight:700">
+      <input type="checkbox" id="cfgContaRestrita" />
+      Meu número está restrito — travar a campanha inteira
+    </label>
+    <div class="mini" style="color:#991b1b">
+      Com isto ligado, nenhuma mensagem sai por este número. Enviar durante uma restrição é
+      o caminho mais curto para ela virar banimento definitivo.
+    </div>
+    <div id="avisoRestrita" class="alert stop" style="margin-top:10px;display:none">
+      <b>Campanha travada</b> — restrição marcada <span id="avisoRestritaDias">hoje</span>.
+      <div style="margin-top:7px">O que fazer, nesta ordem:</div>
+      <ol style="margin:6px 0 0;padding-left:18px;line-height:1.6">
+        <li><b>Pare tudo.</b> Nada de mensagem, nem no celular, nem por aqui.</li>
+        <li>No app: <b>Configurações → Ajuda → Fale conosco</b> e peça a revisão. Explique que
+            são clientes da própria carteira, que compraram na loja, e que você tem o cadastro deles.</li>
+        <li><b>Responda</b> quem te escrever. Conversa recebida conta a seu favor; mensagem sua
+            para quem nunca respondeu conta contra.</li>
+        <li>Espere a restrição sair sozinha. Não crie outro número para continuar a campanha —
+            é o padrão que a Meta associa a spam e derruba os dois.</li>
+        <li>Ao voltar: retome devagar. Nos primeiros dias, um terço do volume, e priorize
+            quem já respondeu alguma vez.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Identificação</h2>
+      <div class="g2">
+        <div><label>Loja</label><input id="cfgLoja" /></div>
+        <div><label>Cidade</label><input id="cfgCidade" /></div>
+      </div>
+      <div class="g2 field">
+        <div><label>Seu nome (aparece na mensagem)</label><input id="cfgVendedor" placeholder="Beto" /></div>
+        <div><label>Ano mínimo da melhor oferta</label><input id="cfgAnoMinimo" inputmode="numeric" placeholder="2018" /></div>
+      </div>
+      <div class="g2 field">
+        <div><label>Nome da campanha</label><input id="cfgFeiraoNome" placeholder="Feirão 10 Dias Easy" /></div>
+        <div><label>Período (como você fala)</label><input id="cfgFeiraoPeriodo" placeholder="20 a 30 de agosto" /></div>
+      </div>
+      <div class="field"><label>Vai até (data citada no follow-up)</label><input id="cfgFeiraoAte" placeholder="30/08" /></div>
+
+      <div class="field" style="border:1px solid var(--line);border-radius:9px;padding:10px;background:#f8fafc">
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink);text-transform:none;letter-spacing:0">
+          <input type="checkbox" id="cfgDetectarRespostas" />
+          Detectar automaticamente quem respondeu
+        </label>
+        <div class="g2 field">
+          <div><label>Verificar a cada (segundos)</label><input id="cfgDetectarIntervaloSeg" inputmode="numeric" placeholder="20" /></div>
+          <div><label>Retomar quem esfriou após (dias)</label><input id="cfgRetomarDias" inputmode="numeric" placeholder="3" /></div>
+        </div>
+        <div class="mini">
+          O painel <strong>lê</strong> a lista de conversas que já está na sua tela — título, prévia e o balãozinho de não lidas —
+          e casa com a fila. Quem tem mensagem nova vira <strong>respondeu</strong> sozinho.
+          Nada é enviado, nada é clicado, nada sai do navegador.
+          <br><br>
+          Duas ressalvas honestas: <strong>(1)</strong> não existe recurso oficial que avise "este contato respondeu" no WhatsApp Web —
+          o caminho sancionado para isso é o webhook da Cloud API; ler a própria tela não gera sinal nenhum no servidor da Meta,
+          mas também não é um recurso apoiado por eles. <strong>(2)</strong> O WhatsApp muda a tela sem avisar, e quando muda o leitor
+          para de enxergar — por isso o painel mostra no rodapé quantas conversas ele está lendo, para você perceber na hora.
+          <br><br>
+          O casamento fica <strong>muito</strong> mais confiável depois que você importa os contatos pelo .vcf: aí o título da conversa
+          é o nome que a extensão gravou, e não um número solto.
+        </div>
+      </div>
+
+      <div class="field" style="border:1px solid var(--line);border-radius:9px;padding:10px;background:#f8fafc">
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink);text-transform:none;letter-spacing:0">
+          <input type="checkbox" id="cfgAbrirSemRecarregar" />
+          Abrir a conversa sem recarregar o WhatsApp Web (recomendado)
+        </label>
+        <div class="mini">
+          O link oficial (<code>send?phone=</code>) recarrega a página inteira a cada cliente — com a fila
+          cheia isso vira minutos de tela branca. Ligado, o painel acha a conversa na lista que já está
+          carregada (ou pesquisa o número), abre e escreve o texto no campo de mensagem, sem recarregar nada.
+          <br><br>
+          <strong>O envio continua sendo seu</strong>: o texto fica escrito e esperando o seu Enter.
+          Antes de escrever, a extensão confere o cabeçalho da conversa aberta — se não bater com o cliente,
+          ela desiste e usa o link oficial, que recarrega mas nunca erra de contato.
+        </div>
+      </div>
+
+      <div class="field" style="border:1px solid var(--line);border-radius:9px;padding:10px;background:#f8fafc">
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink);text-transform:none;letter-spacing:0">
+          <input type="checkbox" id="cfgAutoAbrir" />
+          Abrir a conversa automaticamente quando o cronômetro zerar
+        </label>
+        <div class="g2 field">
+          <div><label>Carência para cancelar (segundos)</label><input id="cfgAutoAbrirSegundos" inputmode="numeric" placeholder="4" /></div>
+        </div>
+        <div class="mini">
+          Tira o trabalho de ficar olhando o relógio: a conversa abre sozinha com o texto pronto e
+          <strong>você só aperta Enter</strong>. Se estiver digitando em outra conversa, o contador pausa e espera você terminar.
+          <br><br>
+          O <strong>envio</strong> continua sendo seu, e não é preciosismo: automatizar o Enter dentro do WhatsApp Web viola
+          os Termos Comerciais (§5g — "usar aplicações que interajam com nossos serviços sem consentimento prévio por escrito")
+          e a detecção roda <strong>no servidor da Meta</strong>, não no navegador — atraso aleatório no cliente não esconde nada.
+          A Meta remove mais de 2 milhões de contas por mês por comportamento automatizado, 75% delas sem nenhuma denúncia,
+          e recurso reverte entre 1% e 3%. Para disparo realmente automático existe o caminho oficial: Cloud API com template aprovado.
+        </div>
+      </div>
+      <div class="field">
+        <label>Benefícios autorizados da campanha (entram nas mensagens)</label>
+        <input id="cfgBeneficios" placeholder="condições especiais de financiamento, jantar e a primeira parcela do seguro, conforme as regras da campanha" />
+        <div class="mini">Escreva <strong>apenas o que está efetivamente aprovado</strong>. A extensão não inventa benefício: ela só repete o que estiver escrito aqui.</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Ritmo</h2>
+      <div class="g2">
+        <div><label>Máximo por dia</label><input id="cfgMaxDia" inputmode="numeric" /></div>
+        <div><label>Máx. toques por cliente</label><input id="cfgMaxToques" inputmode="numeric" /></div>
+      </div>
+      <div class="g2 field">
+        <div><label>Intervalo mínimo (seg)</label><input id="cfgMin" inputmode="numeric" /></div>
+        <div><label>Intervalo máximo (seg)</label><input id="cfgMax" inputmode="numeric" /></div>
+      </div>
+      <div class="g3 field">
+        <div><label>Pausa longa a cada</label><input id="cfgPausaACada" inputmode="numeric" /></div>
+        <div><label>Pausa de (min)</label><input id="cfgPausaMin" inputmode="numeric" /></div>
+        <div><label>até (min)</label><input id="cfgPausaMax" inputmode="numeric" /></div>
+      </div>
+      <div class="mini">Intervalo fixo é assinatura de robô. O sorteio dentro da faixa é o que quebra o padrão.</div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h2>Janela de contato</h2>
+      <div class="g3">
+        <div><label>Começa às</label><input id="cfgHoraIni" inputmode="numeric" /></div>
+        <div><label>Termina às</label><input id="cfgHoraFim" inputmode="numeric" /></div>
+        <div><label>Sábado até</label><input id="cfgSabado" inputmode="numeric" /></div>
+      </div>
+      <label class="field" style="display:flex;gap:7px;align-items:center;font-size:12px;color:var(--ink)">
+        <input type="checkbox" id="cfgDomingo" /> Permitir domingo (não recomendado)
+      </label>
+    </div>
+    <div class="card">
+      <h2>Freios de segurança</h2>
+      <div class="g2">
+        <div><label>Não repetir o mesmo número por (dias)</label><input id="cfgCooldown" inputmode="numeric" /></div>
+        <div><label>Follow-up depois de (dias)</label><input id="cfgFollowUp" inputmode="numeric" /></div>
+      </div>
+      <div class="field"><label>Travar campanha se rejeição passar de (%)</label><input id="cfgRejeicao" inputmode="numeric" /></div>
+      <div class="mini">Rejeição = "pediu para não receber" + "sem WhatsApp" nos últimos 20 contatos. Passando disso, a campanha trava sozinha — porque essa é a curva que antecede o banimento.</div>
+    </div>
+  </div>
+  <div class="row"><button id="salvarCfg" class="primary">Salvar configuração</button></div>
+</section>
+
+<!-- ======================= CONFORMIDADE ======================= -->
+<section id="tab-conformidade" class="hidden">
+  <div class="alert warn" id="capacidade"></div>
+  <div class="grid">
+    <div class="card">
+      <h2>Lista de não perturbe (opt-out)</h2>
+      <p class="mini" style="margin-top:0">Permanente. Quem entra aqui nunca mais recebe, em nenhuma campanha futura. Esse registro é a sua defesa se um cliente reclamar na ANPD ou no Procon.</p>
+      <textarea id="blocklist" style="min-height:150px" placeholder="um telefone por linha"></textarea>
+      <div class="row">
+        <button id="salvarBlock" class="primary">Salvar lista</button>
+        <button id="exportBlock" class="ghost">Exportar</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Trilha de auditoria</h2>
+      <p class="mini" style="margin-top:0">Quem foi contatado, quando, com qual variação e de onde veio o dado. A LGPD exige demonstrar a origem do contato e o atendimento ao pedido de exclusão em até 15 dias.</p>
+      <div id="logResumo" class="mini"></div>
+      <div class="row">
+        <button id="exportLog" class="ghost">Exportar log (CSV)</button>
+        <button id="exportFila" class="ghost">Exportar fila (CSV)</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Base legal desta campanha</h2>
+    <ul class="mini" style="padding-left:16px;margin:0">
+      <li><strong>Quem pode entrar na lista:</strong> só quem já comprou da loja. Relacionamento prévio sustenta o <em>legítimo interesse</em> (LGPD art. 7º, IX) para oferta de produto correlato ao que a pessoa comprou — troca de veículo é exatamente isso.</li>
+      <li><strong>Quem não pode:</strong> lista comprada, lista de terceiro, número raspado de anúncio, contato de quem só cotou e nunca comprou. Sem consentimento nem relacionamento, não há base legal — e é a causa nº 1 de autuação.</li>
+      <li><strong>Opt-out imediato:</strong> pediu para parar, para na hora e entra na blocklist. Prazo legal de resposta ao titular: 15 dias.</li>
+      <li><strong>Descarte:</strong> cliente sem interação há mais de 24 meses sai da base ativa.</li>
+      <li><strong>Nada disso substitui advogado.</strong> É orientação prática, não parecer jurídico — se a operação escalar, vale validar com o jurídico da loja.</li>
+    </ul>
+  </div>
+</section>
+
+<script src="feirao-core.js"></script>
+  <script src="feirao-resgate.js"></script>
+<script src="campanha.js"></script>
+</body>
+</html>
