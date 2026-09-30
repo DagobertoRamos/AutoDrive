@@ -14,7 +14,9 @@ import { compressPhoto } from '@/lib/stock/photo-compress'
 import {
   activeSteps, DAMAGE_SHOT, PRE_EVAL_STEPS, TIRE_CONDITIONS, type PreEvalStep, type TireCondition,
 } from '@/lib/evaluation/site-pre-evaluation'
+import { formatKm } from '@/lib/site/fipe-picker-core'
 import { submitSiteLead } from './lead-utils'
+import { SiteFipeVehicleFields } from './SiteFipeVehicleFields'
 import { Chips, ContactFields, DonePanel, FormCard, FormFooter, MultiChips, onMoney, Section } from './SiteFormKit'
 
 type Photo = { blob: Blob; url: string }
@@ -49,6 +51,7 @@ function ShotSlot({ label, photo, busy, touch, onPick }: { label: string; photo?
 
 export function SiteSellCarForm({ apiUrl, privacyHref, whatsappHref }: { apiUrl: string; privacyHref: string; whatsappHref: string }) {
   const [phase, setPhase] = useState<Phase>('dados')
+  const [formKey, setFormKey] = useState(0)
   const [goal, setGoal] = useState('')
   const [stepIdx, setStepIdx] = useState(0)
   const [photos, setPhotos] = useState<Record<string, Photo>>({})
@@ -184,7 +187,7 @@ export function SiteSellCarForm({ apiUrl, privacyHref, whatsappHref }: { apiUrl:
     Object.values(photos).forEach((p) => URL.revokeObjectURL(p.url))
     setPhotos({}); setSunroof(null); setTires({ RIGHT: null, LEFT: null }); setDamage({}); setGoal('')
     setStepIdx(0); setProtocol(null); setUpload({ done: 0, total: 0, failed: 0, error: '' }); setError('')
-    dadosRef.current?.reset(); setPhase('dados')
+    dadosRef.current?.reset(); setFormKey((k) => k + 1); setPhase('dados')
   }
 
   const head = { eyebrow: 'Pré-avaliação', title: 'Avalie seu carro', subtitle: 'Venda ou use como entrada na troca.' }
@@ -243,11 +246,9 @@ export function SiteSellCarForm({ apiUrl, privacyHref, whatsappHref }: { apiUrl:
           <Chips name="goal" label="Objetivo" options={['Vender', 'Trocar por outro carro', 'Ainda não sei']} value={goal} onChange={setGoal} />
         </Section>
         <Section legend="Seu carro">
-          <label>Marca *<input name="brand" required maxLength={80} /></label>
-          <label>Modelo *<input name="model" required maxLength={100} /></label>
-          <label className="vlead-full">Versão<input name="version" maxLength={140} /></label>
-          <label>Ano *<input name="year" required inputMode="numeric" maxLength={9} placeholder="Ex.: 2020/2021" /></label>
-          <label>Quilometragem *<input name="mileage" required inputMode="numeric" maxLength={20} /></label>
+          <SiteFipeVehicleFields key={formKey} fipeUrl={apiUrl.replace(/\/leads$/, '/fipe')} />
+          <label>Quilometragem *<input name="mileage" required inputMode="numeric" maxLength={9} placeholder="Ex.: 50.000"
+            onInput={(e) => { const el = e.currentTarget; el.value = formatKm(el.value) }} /></label>
           <label>Câmbio<select name="transmission" defaultValue=""><option value="">Selecione</option><option>Manual</option><option>Automático</option><option>CVT</option><option>Automatizado</option></select></label>
           <label>Combustível<select name="fuel" defaultValue=""><option value="">Selecione</option><option>Flex</option><option>Gasolina</option><option>Etanol</option><option>Diesel</option><option>Híbrido</option><option>Elétrico</option></select></label>
           <label>Placa<input name="plate" maxLength={8} autoCapitalize="characters" /></label>

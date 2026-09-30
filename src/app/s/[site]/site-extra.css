@@ -268,3 +268,8 @@
   .autodrive-site .pe-phases li { justify-content: center; padding: 7px 6px; font-size: .72rem; }
   .autodrive-site .pe-shots-2 { grid-template-columns: 1fr; }
 }
+
+/* Venda seu carro — seletor FIPE */
+.autodrive-site .fipe-hint { margin: -4px 0 0; color: #64737b; font-size: .8rem; }
+.autodrive-site .fipe-link { padding: 0; border: 0; background: none; color: var(--brand-hover); font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
+.autodrive-site .vlead-form select:disabled { opacity: .6; cursor: not-allowed; }
