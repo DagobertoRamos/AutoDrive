@@ -19,6 +19,7 @@ import {
   type EvaluationRuleContext, type PendingRequirement,
 } from '@/lib/evaluation/rules'
 import { FieldLabel, FieldError } from '@/components/ui/field'
+import { PhotoLightbox } from './PhotoLightbox'
 
 interface Seller {
   id:       string
@@ -87,6 +88,7 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
   const [items,    setItems]    = useState<EvalItem[]>([])
   const [services, setServices] = useState<EvalService[]>([])
   const [attachs,  setAttachs]  = useState<EvalAttachment[]>([])
+  const [viewer,   setViewer]   = useState<{ title: string; photos: EvalAttachment[] } | null>(null)
   const [sellers,  setSellers]  = useState<Seller[]>([])
   const [sellerId, setSellerId] = useState('')
   const [loading,  setLoading]  = useState(true)
@@ -271,12 +273,24 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
               if (!byStatus[k]) byStatus[k] = []
               byStatus[k].push(it)
             }
-            const photoCount = attachs.filter((a) => a.section === sec && a.fileType === 'image').length
+            const secPhotos  = attachs.filter((a) => a.section === sec && a.fileType === 'image')
+            const photoCount = secPhotos.length
             return (
               <div key={sec} className="rounded-lg border border-gray-100 bg-gray-50/40 px-3 py-2">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold text-gray-700">{secDef?.label ?? sec}</span>
-                  <span className="text-[10px] text-gray-500 flex items-center gap-1"><Camera className="h-3 w-3" /> {photoCount}</span>
+                  {photoCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setViewer({ title: secDef?.label ?? sec, photos: secPhotos })}
+                      className="flex items-center gap-1 rounded px-1 text-[10px] text-brand-700 hover:bg-brand-50 hover:underline"
+                      title="Ver fotos"
+                    >
+                      <Camera className="h-3 w-3" /> {photoCount}
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1"><Camera className="h-3 w-3" /> 0</span>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(byStatus).map(([st, list]) => {
@@ -367,6 +381,8 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
           {isFinalized ? 'Avaliação já finalizada' : 'Finalizar avaliação'}
         </button>
       </div>
+
+      {viewer && <PhotoLightbox photos={viewer.photos} title={viewer.title} onClose={() => setViewer(null)} />}
     </div>
   )
 }

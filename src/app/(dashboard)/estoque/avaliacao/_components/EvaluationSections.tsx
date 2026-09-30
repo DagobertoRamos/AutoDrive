@@ -28,6 +28,7 @@ import {
 import { FieldLabel, RequiredTag } from '@/components/ui/field'
 import { ItemDrawer, type DrawerItem } from './ItemDrawer'
 import { ServicesSection } from './ServicesSection'
+import { PhotoLightbox, type LightboxPhoto } from './PhotoLightbox'
 import { SummarySection } from './SummarySection'
 
 type EvalItem = EvaluationItemLike & {
@@ -109,6 +110,7 @@ function SectionPhotoWidget({
   const cameraRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [err,  setErr]  = useState('')
+  const [view, setView] = useState<number | null>(null)
 
   async function upload(files: FileList | null) {
     if (!files || files.length === 0) return
@@ -225,11 +227,11 @@ function SectionPhotoWidget({
 
       {hasPhotos && (
         <ul className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-          {photos.map((a) => (
+          {photos.map((a, idx) => (
             <li key={a.id} className="group relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
               {a.publicUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={a.publicUrl} alt={a.fileName} className="h-full w-full object-cover" />
+                <img src={a.publicUrl} alt={a.fileName} className="h-full w-full cursor-zoom-in object-cover" onClick={() => setView(idx)} />
               ) : (
                 <div className="h-full w-full flex items-center justify-center text-gray-400 text-[10px]">{a.fileName}</div>
               )}
@@ -245,6 +247,9 @@ function SectionPhotoWidget({
             </li>
           ))}
         </ul>
+      )}
+      {view != null && (
+        <PhotoLightbox photos={photos} startIndex={view} title="Foto geral da seção" onClose={() => setView(null)} />
       )}
     </div>
   )
@@ -292,6 +297,7 @@ export function EvaluationSections({
   const [attachments, setAttachments] = useState<EvalAttachment[]>([])
   const [loading,     setLoading]     = useState(true)
   const [drawer,      setDrawer]      = useState<DrawerItem | null>(null)
+  const [viewer,      setViewer]      = useState<{ title: string; photos: LightboxPhoto[] } | null>(null)
   const [err,         setErr]         = useState('')
   // O painel de pendências só aparece DEPOIS que o usuário tenta avançar.
   // Antes, ao entrar em qualquer seção o aviso vermelho já surgia (toda seção
@@ -555,21 +561,26 @@ export function EvaluationSections({
                         </span>
                       )}
                       {photos.length > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500">
+                        <button
+                          type="button"
+                          onClick={() => setViewer({ title: displayName(it), photos: photos as EvalAttachment[] })}
+                          className="inline-flex items-center gap-0.5 rounded px-1 text-[10px] text-brand-700 hover:bg-brand-50 hover:underline"
+                          title="Ver fotos"
+                        >
                           <Camera className="h-2.5 w-2.5" /> {photos.length}
-                        </span>
+                        </button>
                       )}
                     </div>
                     {cat?.hint && <p className="mt-0.5 text-[10px] text-gray-400 truncate">{cat.hint}</p>}
                   </div>
                   <button
                     type="button"
-                    disabled={isPlaceholder || readOnly}
+                    disabled={isPlaceholder}
                     onClick={() => openDrawer(it)}
                     className="inline-flex items-center gap-1 rounded-lg border border-brand-300 bg-white px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={isPlaceholder ? 'Itens ainda não inicializados. Salve a avaliação antes.' : ''}
                   >
-                    {buttonLabel(it.status ?? '')}
+                    {readOnly ? 'Ver item' : buttonLabel(it.status ?? '')}
                     <ChevronRight className="h-3 w-3" />
                   </button>
                 </li>
@@ -639,6 +650,8 @@ export function EvaluationSections({
           onSave={() => { setDrawer(null); void load({ silent: true }) }}
         />
       )}
+
+      {viewer && <PhotoLightbox photos={viewer.photos} title={viewer.title} onClose={() => setViewer(null)} />}
     </div>
   )
 }

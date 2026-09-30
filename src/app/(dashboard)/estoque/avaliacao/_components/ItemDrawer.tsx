@@ -27,6 +27,7 @@ import {
 } from '@/lib/evaluation/catalog'
 import { isItemAnswered } from '@/lib/evaluation/rules'
 import { FieldLabel, FieldError, RequiredTag, FIELD_ERROR_CLASS } from '@/components/ui/field'
+import { PhotoLightbox } from './PhotoLightbox'
 
 export interface DrawerItem {
   id:           string
@@ -65,6 +66,7 @@ const SELECTABLE_STATUS = ITEM_STATUS.filter((s) => s.value !== 'PENDING')
 export function ItemDrawer({
   item, isReopen, readOnly, photoRequired = false, existingPhotos = [], onSave, onClose,
 }: ItemDrawerProps) {
+  const [viewIdx, setViewIdx] = useState<number | null>(null)
   // Descobre o positionGroup do item a partir do catalogKey — se o item foi
   // criado com base no catálogo, exibe checkboxes de posições ("aplica-se
   // também a"). Se não achar, nada aparece — não quebra nada.
@@ -443,11 +445,11 @@ export function ItemDrawer({
               </p>
             ) : (
               <ul className="grid grid-cols-3 gap-2">
-                {photos.map((p) => (
+                {photos.map((p, idx) => (
                   <li key={p.id} className="group relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
                     {p.publicUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.publicUrl} alt={p.fileName} className="h-full w-full object-cover" />
+                      <img src={p.publicUrl} alt={p.fileName} className="h-full w-full cursor-zoom-in object-cover" onClick={() => setViewIdx(idx)} />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-[10px] text-gray-400">{p.fileName}</div>
                     )}
@@ -487,6 +489,7 @@ export function ItemDrawer({
           )}
         </footer>
       </aside>
+      {viewIdx != null && <PhotoLightbox photos={photos} startIndex={viewIdx} title={item.name} onClose={() => setViewIdx(null)} />}
     </>
   )
 }
