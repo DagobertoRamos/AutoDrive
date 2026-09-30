@@ -667,7 +667,7 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
               <p className="text-[13px] font-medium text-gray-900 dark:text-white">{[ev.brand,ev.model].filter(Boolean).join(' ')||ev.plate||'Avaliação'}</p>
               <p className="text-[10px] tabular-nums text-gray-400">{fmtDT(ev.createdAt)} · {ev.status}</p>
             </div>
-            <Link href={`/estoque/avaliacoes/${ev.id}`} className="ml-3 shrink-0 text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>
+            <Link href={`/estoque/avaliacao/${ev.id}/inspecao`} className="ml-3 shrink-0 text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">Abrir →</Link>
           </div>
         ))}
       </div>
