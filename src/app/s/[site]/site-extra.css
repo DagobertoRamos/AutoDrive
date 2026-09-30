@@ -216,3 +216,55 @@
   .autodrive-site .site-footer .footer-contact li { min-height: 28px; }
   .autodrive-site .site-footer .footer-bottom { flex-direction: column; align-items: flex-start; }
 }
+
+/* Venda seu carro: passo a passo de fotos (SiteSellCarWizard) */
+.autodrive-site .pe-top { padding: 14px 22px 0; }
+.autodrive-site .pe-phases { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.autodrive-site .pe-phases li { flex: 1; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 8px 10px; border-radius: 10px; background: var(--soft); color: #64737b; font-size: .78rem; font-weight: 800; }
+.autodrive-site .pe-phases li b { display: grid; place-items: center; flex: 0 0 22px; height: 22px; border-radius: 50%; background: #fff; color: #64737b; font-size: .75rem; }
+.autodrive-site .pe-phases li.active { background: var(--brand); color: #fff; }
+.autodrive-site .pe-phases li.active b { color: var(--brand); }
+.autodrive-site .pe-phases li.done { color: var(--brand-hover); }
+.autodrive-site .pe-phases li.done b { background: var(--brand); color: #fff; }
+.autodrive-site .pe-step-head { display: grid; gap: 6px; }
+.autodrive-site .pe-step-head > span { color: var(--brand-hover); font-size: .78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.autodrive-site .pe-progress { height: 6px; overflow: hidden; border-radius: 999px; background: #e3ecee; }
+.autodrive-site .pe-progress span { display: block; height: 100%; border-radius: inherit; background: var(--brand); transition: width .25s ease; }
+.autodrive-site .pe-progress-wide { width: min(320px, 100%); margin-top: 8px; }
+.autodrive-site .pe-question { display: grid; gap: 8px; }
+.autodrive-site .pe-question p { margin: 0; color: #344b56; font-size: .88rem; font-weight: 800; }
+.autodrive-site .pe-shots { display: grid; gap: 12px; }
+.autodrive-site .pe-shots-2 { grid-template-columns: 1fr 1fr; }
+.autodrive-site .pe-shot { display: grid; gap: 8px; min-width: 0; padding: 10px; border: 2px dashed #cbd9dd; border-radius: 12px; background: #fbfdfd; }
+.autodrive-site .pe-shot.has-photo { border-style: solid; border-color: var(--brand); }
+.autodrive-site .pe-shot-label { display: flex; align-items: center; gap: 5px; color: #344b56; font-size: .84rem; font-weight: 800; }
+.autodrive-site .pe-shot.has-photo .pe-shot-label { color: var(--brand-hover); }
+.autodrive-site .pe-shot-frame { display: grid; place-items: center; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 9px; background: var(--soft); color: #8aa0a8; font-size: .85rem; }
+.autodrive-site .pe-shot-frame img { width: 100%; height: 100%; object-fit: cover; }
+.autodrive-site .pe-shot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.autodrive-site .pe-shot-actions .button { position: relative; flex: 1 1 130px; overflow: hidden; min-height: 46px; padding: 10px 12px; }
+.autodrive-site .vlead-form .pe-shot-actions label { display: inline-flex; color: #fff; font-size: .88rem; }
+.autodrive-site .vlead-form .pe-shot-actions label.button-outline { color: var(--blue); }
+.autodrive-site .pe-shot-actions input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.autodrive-site .vlead-form .pe-damage-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid #f1c27d; border-radius: 10px; background: #fff8ec; color: #6b4a12; font-weight: 400; cursor: pointer; }
+.autodrive-site .vlead-form .pe-damage-toggle input { width: 20px; height: 20px; flex: 0 0 auto; margin: 1px 0 0; accent-color: #d97706; }
+.autodrive-site .vlead-form .pe-damage-toggle.active { border-color: #d97706; background: #fdefd6; }
+.autodrive-site .pe-damage { display: grid; gap: 10px; padding: 12px; border: 1px solid #f1c27d; border-radius: 12px; background: #fffaf2; }
+.autodrive-site .pe-nav { display: flex; gap: 10px; }
+.autodrive-site .pe-nav .button { flex: 1; min-height: 48px; }
+.autodrive-site .pe-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.autodrive-site .pe-dots button { width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%; background: #d4e1e4; cursor: pointer; }
+.autodrive-site .pe-dots button.ok { background: var(--brand); opacity: .55; }
+.autodrive-site .pe-dots button.current { background: var(--brand); opacity: 1; transform: scale(1.3); }
+.autodrive-site .pe-dots button:disabled { cursor: default; }
+.autodrive-site .pe-review { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.autodrive-site .pe-review-item { position: relative; display: grid; gap: 4px; padding: 0 0 6px; overflow: hidden; border: 1px solid #e3ecee; border-radius: 10px; background: #fff; color: #344b56; font-size: .75rem; font-weight: 800; text-align: center; cursor: pointer; }
+.autodrive-site .pe-review-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.autodrive-site .pe-review-item em { position: absolute; top: 5px; left: 5px; padding: 2px 7px; border-radius: 6px; background: #d97706; color: #fff; font-size: .68rem; font-style: normal; }
+.autodrive-site .pe-review-item:hover { border-color: var(--brand); }
+.autodrive-site .pe-warn { display: flex; align-items: flex-start; gap: 6px; padding: 10px 12px; border-radius: 8px; background: #fff8ec; color: #6b4a12 !important; text-align: left; }
+@media (max-width: 520px) {
+  .autodrive-site .pe-top { padding: 12px 14px 0; }
+  .autodrive-site .pe-phases li { justify-content: center; padding: 7px 6px; font-size: .72rem; }
+  .autodrive-site .pe-shots-2 { grid-template-columns: 1fr; }
+}

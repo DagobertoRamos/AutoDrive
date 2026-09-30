@@ -130,6 +130,8 @@ export async function GET(req: NextRequest) {
           proposalValidUntil:  true,
           vehicleId:           true,
           cancelledAt:         true,
+          lookupSource:        true,
+          releasedByUserId:    true,
           // Carro que já entrou no estoque pela esteira (aguardando a negociação de entrada)
           vehicle:        { select: { id: true, stockStatus: true, active: true, salePrice: true, purchasePrice: true } },
           evaluatedBy:    { select: { id: true, name: true } },

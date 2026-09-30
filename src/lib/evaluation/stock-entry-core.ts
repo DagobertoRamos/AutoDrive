@@ -9,6 +9,7 @@
 // `status` da avaliação é String no banco: os valores novos não pedem migration.
 // =============================================================================
 
+import { MANAGER_REVIEW_REASON, needsManagerReview } from './site-pre-evaluation'
 import { GATE_EVALUATION, GATE_INSPECTION, GATE_NEGOTIATION, GATE_RECEIVE, INFO_NOTES, inspectionOk, STAGE_SERVICES } from '@/lib/stock/intake-core'
 
 export const EVAL_AWAITING_STOCK = 'AGUARDANDO_ENTRADA'
@@ -20,6 +21,8 @@ export interface StockEntryState {
   status?:           string | null
   customerDecision?: string | null
   vehicleId?:        string | null
+  lookupSource?:     string | null
+  releasedByUserId?: string | null
 }
 
 const up = (v: string | null | undefined) => (v ?? '').toUpperCase()
@@ -29,6 +32,7 @@ export function blockRequestStockEntry(e: StockEntryState): string | null {
   if (e.vehicleId) return 'Esta avaliação já gerou um veículo no estoque.'
   if (up(e.status) === EVAL_AWAITING_STOCK) return 'A avaliação já está com o gestor aguardando a entrada no estoque.'
   if (!RELEASED.has(up(e.status))) return 'A avaliação precisa estar liberada pelo gerente.'
+  if (needsManagerReview(e)) return MANAGER_REVIEW_REASON
   if (up(e.customerDecision) !== 'ACEITA') return 'Registre primeiro que o cliente aceitou a proposta.'
   return null
 }
@@ -38,6 +42,7 @@ export function blockConfirmStockEntry(e: StockEntryState): string | null {
   if (e.vehicleId) return 'Esta avaliação já gerou um veículo no estoque.'
   if (up(e.status) === EVAL_AWAITING_STOCK) return null
   if (!RELEASED.has(up(e.status))) return 'A avaliação precisa estar liberada pelo gerente.'
+  if (needsManagerReview(e)) return MANAGER_REVIEW_REASON
   if (up(e.customerDecision) !== 'ACEITA') return 'O cliente ainda não aceitou a proposta.'
   return null
 }

@@ -7,11 +7,12 @@
 // lead no CRM da loja.
 import { useState, type FormEvent } from 'react'
 import { formatCnpj } from '@/lib/site/leads-core'
-import { compressPhoto } from '@/lib/stock/photo-compress'
 import { submitSiteLead } from './lead-utils'
-import { Chips, ContactFields, DonePanel, FormCard, FormFooter, MultiChips, onMoney, Section } from './SiteFormKit'
+import { Chips, ContactFields, DonePanel, FormCard, FormFooter, onMoney, Section } from './SiteFormKit'
 
-const SELL_PHOTOS_MAX = 10
+// Venda seu carro: passo a passo de fotos (arquivo próprio).
+export { SiteSellCarForm } from './SiteSellCarWizard'
+
 const TERMS = ['12x', '24x', '36x', '48x', '60x']
 
 type State = 'idle' | 'sending' | 'uploading' | 'done' | 'error'
@@ -52,106 +53,6 @@ function TradeFields() {
         </>
       )}
     </Section>
-  )
-}
-
-export function SiteSellCarForm({ apiUrl, privacyHref, whatsappHref }: { apiUrl: string; privacyHref: string; whatsappHref: string }) {
-  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([])
-  const [upload, setUpload] = useState({ sent: 0, failed: 0, current: 0, error: '' })
-  const [goal, setGoal] = useState('')
-
-  async function uploadPhotos(token: string | undefined) {
-    if (!photos.length || !token) return
-    const photoUrl = apiUrl.replace(/\/leads$/, '/leads/photos')
-    let sent = 0, failed = 0, error = ''
-    for (let i = 0; i < photos.length; i++) {
-      setUpload({ sent, failed, current: i + 1, error })
-      try {
-        const blob = await compressPhoto(photos[i].file)
-        const fd = new FormData(); fd.append('token', token); fd.append('file', blob, 'foto.webp')
-        const r = await fetch(photoUrl, { method: 'POST', body: fd })
-        if (r.ok) sent++
-        else { failed++; error = ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Falha no envio.' }
-        if (r.status === 403 || r.status === 409 || r.status === 429) break
-      } catch (e) { failed++; error = e instanceof Error ? e.message : 'Falha no envio.' }
-    }
-    setUpload({ sent, failed, current: 0, error })
-    photos.forEach((p) => URL.revokeObjectURL(p.url))
-    setPhotos([])
-  }
-
-  const { state, msg, protocol, submit, reset, sending } = useSubmit(apiUrl, 'sell_car', undefined, uploadPhotos)
-  const pick = (files: FileList | null) => {
-    const room = SELL_PHOTOS_MAX - photos.length
-    const added = Array.from(files ?? []).filter((f) => f.type.startsWith('image/')).slice(0, room).map((file) => ({ file, url: URL.createObjectURL(file) }))
-    setPhotos((p) => [...p, ...added])
-  }
-  const remove = (i: number) => setPhotos((p) => { URL.revokeObjectURL(p[i].url); return p.filter((_, j) => j !== i) })
-  const head = { eyebrow: 'Pré-avaliação', title: 'Avalie seu carro', subtitle: 'Venda ou use como entrada na troca.' }
-
-  if (state === 'uploading') {
-    return <FormCard {...head}><div className="vlead-done"><h2>Enviando fotos…</h2><p>Foto {upload.current} de {photos.length}. Não feche esta página.</p></div></FormCard>
-  }
-  if (state === 'done') {
-    const needPhotos = upload.sent === 0 || upload.failed > 0
-    return (
-      <FormCard {...head}>
-        <DonePanel protocol={protocol} text="Nossa equipe vai analisar os dados e chamar você pelo WhatsApp."
-          whatsappHref={whatsappHref} whatsappText={`Olá! Enviei pelo site a pré-avaliação do meu carro${protocol ? ` (protocolo ${protocol})` : ''}.${needPhotos ? ' Seguem as fotos:' : ''}`}
-          onAgain={() => { setUpload({ sent: 0, failed: 0, current: 0, error: '' }); setGoal(''); reset() }}>
-          {upload.sent > 0 && <p><strong>{upload.sent} foto(s) enviada(s).</strong>{upload.failed ? ` ${upload.failed} não foram (${upload.error}).` : ''}</p>}
-          {needPhotos && <p>Adiante a avaliação: mande fotos reais do carro (frente, traseira, laterais, painel ligado, interior, motor, pneus e avarias).</p>}
-        </DonePanel>
-      </FormCard>
-    )
-  }
-  return (
-    <FormCard {...head}>
-      <form className="vlead-form" method="post" onSubmit={submit}>
-        <h2>Dados do seu carro</h2>
-        <p className="vlead-lead">Campos com * são obrigatórios. A avaliação final depende de vistoria.</p>
-        <Section legend="Seus dados">
-          <ContactFields />
-          <label className="vlead-full">Cidade *<input name="city" required maxLength={100} autoComplete="address-level2" /></label>
-        </Section>
-        <Section legend="O que você quer fazer?">
-          <Chips name="goal" label="Objetivo" options={['Vender', 'Trocar por outro carro', 'Ainda não sei']} value={goal} onChange={setGoal} />
-        </Section>
-        <Section legend="Seu carro">
-          <label>Marca *<input name="brand" required maxLength={80} /></label>
-          <label>Modelo *<input name="model" required maxLength={100} /></label>
-          <label className="vlead-full">Versão<input name="version" maxLength={140} /></label>
-          <label>Ano *<input name="year" required inputMode="numeric" maxLength={9} placeholder="Ex.: 2020/2021" /></label>
-          <label>Quilometragem *<input name="mileage" required inputMode="numeric" maxLength={20} /></label>
-          <label>Câmbio<select name="transmission" defaultValue=""><option value="">Selecione</option><option>Manual</option><option>Automático</option><option>CVT</option><option>Automatizado</option></select></label>
-          <label>Combustível<select name="fuel" defaultValue=""><option value="">Selecione</option><option>Flex</option><option>Gasolina</option><option>Etanol</option><option>Diesel</option><option>Híbrido</option><option>Elétrico</option></select></label>
-          <label>Placa<input name="plate" maxLength={8} autoCapitalize="characters" /></label>
-          <label>Cor<input name="color" maxLength={60} /></label>
-          <label className="vlead-full">Valor pretendido *<input name="targetPrice" required inputMode="numeric" placeholder="R$ 0,00" onInput={onMoney} /></label>
-        </Section>
-        <Section legend="Situação do carro">
-          <MultiChips name="vehicleStatus" label="Situação" options={['Quitado', 'Financiado', 'Possui débitos', 'Possui sinistro', 'Possui leilão']} />
-        </Section>
-        <Section legend="Fotos (opcional)">
-          <p className="vlead-hint vlead-full">Até {SELL_PHOTOS_MAX} fotos reais: frente, traseira, laterais, painel ligado, interior, motor, pneus e avarias.</p>
-          {photos.length > 0 && (
-            <div className="sell-photo-grid vlead-full">
-              {photos.map((p, i) => (
-                <div key={p.url} className="sell-photo">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- prévia local (blob:) */}
-                  <img src={p.url} alt={`Foto ${i + 1}`} />
-                  <button type="button" onClick={() => remove(i)} aria-label={`Remover foto ${i + 1}`}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-          {photos.length < SELL_PHOTOS_MAX && (
-            <label className="photo-upload-card vlead-full"><span>{photos.length ? 'Adicionar mais fotos' : 'Escolher fotos'}</span><input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(e) => { pick(e.target.files); e.currentTarget.value = '' }} /></label>
-          )}
-        </Section>
-        <FormFooter privacyHref={privacyHref} button="Enviar pré-avaliação" sending={sending} error={state === 'error' ? msg : ''} notesPlaceholder="Revisões, avarias, opcionais..." />
-      </form>
-    </FormCard>
   )
 }
 

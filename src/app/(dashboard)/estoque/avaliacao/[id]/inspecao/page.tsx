@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { AwaitingReleaseBanner } from '../../_components/AwaitingReleaseBanner'
 import { EvaluationSections } from '../../_components/EvaluationSections'
 import { parseOpcionais } from '@/lib/evaluation/rules'
+import { needsManagerReview, SITE_PRE_EVAL_SOURCE } from '@/lib/evaluation/site-pre-evaluation'
 import { StockEntryPanel } from '../../_components/StockEntryPanel'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
 import { getStatusDef } from '@/components/estoque/avaliacoes/status'
@@ -25,7 +26,7 @@ import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
   Gauge, Wrench, FileText, CheckCircle2, AlertTriangle, Plus,
   Camera, Upload, ImageIcon, FileIcon, Trash2, RefreshCcw, Lock,
-  ChevronRight,
+  ChevronRight, Globe,
 } from 'lucide-react'
 import {
   SECTIONS, ITEM_STATUS, SERVICE_TYPES, SERVICE_TYPE_LABELS,
@@ -83,6 +84,9 @@ interface Evaluation {
   evaluatorFeedback?: string | null
   estimatedDays?: number | null
   releasedAt?:   string | null
+  releasedByUserId?: string | null
+  lookupSource?: string | null
+  desiredValue?: number | string | null
   reopenCount?:  number | null
   evaluationNotes?: string | null
   _pricingHidden?: boolean | null
@@ -197,6 +201,9 @@ export default function InspecaoPage() {
   const total    = data?.totalExpenses != null ? Number(data.totalExpenses) : 0
   const isManagerPlus = role ? ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'].includes(role) : false
   const isAwaitingApproval = status === 'AGUARDANDO_APROVACAO'
+  // Pré-avaliação do site: liberada pelo sistema; gerência confere antes de negociar.
+  const fromSite = data?.lookupSource === SITE_PRE_EVAL_SOURCE
+  const siteReview = needsManagerReview(data) && status === 'LIBERADA'
 
   // ── Agrupa itens/services por seção ────────────────────────────────────────
   const itemsBySection = useMemo(() => {
@@ -355,11 +362,27 @@ export default function InspecaoPage() {
         role={role}
       />
 
+      {fromSite && (
+        <div className={`flex items-start gap-3 rounded-xl border-2 px-4 py-3 ${siteReview ? 'border-sky-300 bg-sky-50' : 'border-emerald-300 bg-emerald-50'}`}>
+          <Globe size={18} className={`mt-0.5 shrink-0 ${siteReview ? 'text-sky-700' : 'text-emerald-700'}`} />
+          <div className="text-sm">
+            <p className={`font-bold ${siteReview ? 'text-sky-900' : 'text-emerald-900'}`}>
+              {siteReview ? 'Pré-avaliação enviada pelo cliente no site — liberada automaticamente pelo sistema' : 'Pré-avaliação do site conferida pela gerência'}
+            </p>
+            <p className={`mt-0.5 text-xs ${siteReview ? 'text-sky-800' : 'text-emerald-800'}`}>
+              {siteReview
+                ? 'As fotos e respostas vieram do cliente. Antes de usar este carro em compra, troca ou consignação, a gerência precisa conferir as fotos e informar os valores.'
+                : 'Valores definidos pela gerência. O carro já pode seguir para a negociação quando o cliente aceitar.'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Carro que já passou pela loja (troca que volta): histórico e fotos para comparar */}
       <VehicleHistoryPanel evaluationId={data.id} mode="banner" />
 
       {/* Entrada no estoque — vendedor devolve ao gestor; gestor confirma */}
-      <StockEntryPanel evaluation={data} isManagerPlus={isManagerPlus} onChanged={load} showToast={showToast} />
+      {!siteReview && <StockEntryPanel evaluation={data} isManagerPlus={isManagerPlus} onChanged={load} showToast={showToast} />}
 
       {/* Totalizador sticky */}
       <div className="sticky top-0 z-20 grid grid-cols-2 gap-2 rounded-xl border border-brand-200 bg-white/95 p-3 shadow-sm backdrop-blur sm:grid-cols-4">
@@ -370,10 +393,11 @@ export default function InspecaoPage() {
       </div>
 
       {/* Painel de precificação — gerente+ quando aguardando aprovação */}
-      {isManagerPlus && isAwaitingApproval && (
+      {isManagerPlus && (isAwaitingApproval || siteReview) && (
         <PrecificarPanel
           evalId={evalId}
           data={data}
+          siteReview={siteReview}
           onReleased={() => { showToast('Avaliação liberada para o vendedor.', true); load() }}
           showToast={showToast}
         />
@@ -868,10 +892,11 @@ function AttachmentCard({ a, evalId, onDeleted, canDelete }: { a: EvalAttachment
 // ── Componente: Painel Precificar (gerente+) ──────────────────────────────
 
 function PrecificarPanel({
-  evalId, data, onReleased, showToast,
+  evalId, data, siteReview, onReleased, showToast,
 }: {
   evalId: string
   data: Evaluation
+  siteReview?: boolean
   onReleased: () => void
   showToast: (msg: string, ok?: boolean) => void
 }) {
@@ -882,7 +907,7 @@ function PrecificarPanel({
     return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
   const [avaliado,  setAvaliado]  = useState(initial(data.evaluatedValue))
-  const [desejado,  setDesejado]  = useState('')
+  const [desejado,  setDesejado]  = useState(initial(data.desiredValue))
   const [minimo,    setMinimo]    = useState('')
   const [sugerido,  setSugerido]  = useState(initial(data.suggestedSalePrice))
   const [feedback,  setFeedback]  = useState(data.evaluatorFeedback ?? '')
@@ -920,11 +945,12 @@ function PrecificarPanel({
     <div className="rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-3">
         <AlertTriangle size={16} className="text-amber-600" />
-        <p className="text-sm font-bold text-amber-900">Precificar e liberar para o vendedor</p>
+        <p className="text-sm font-bold text-amber-900">{siteReview ? 'Conferência da gerência — pré-avaliação do site' : 'Precificar e liberar para o vendedor'}</p>
       </div>
       <p className="text-xs text-amber-800 mb-3">
-        Defina os valores de avaliação. Ao liberar, o vendedor é notificado e pode prosseguir
-        com a negociação.
+        {siteReview
+          ? 'Confira as fotos e respostas do cliente nas abas de Inspeção e defina os valores. Sem esta conferência o carro não entra em negociação.'
+          : 'Defina os valores de avaliação. Ao liberar, o vendedor é notificado e pode prosseguir com a negociação.'}
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
@@ -956,7 +982,7 @@ function PrecificarPanel({
           className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-          Salvar precificação e liberar
+          {siteReview ? 'Conferir e liberar para negociação' : 'Salvar precificação e liberar'}
         </button>
       </div>
     </div>

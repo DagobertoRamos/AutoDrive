@@ -9,6 +9,8 @@
 // Decide se uma avaliação pode aparecer no botão "Adicionar veículo avaliado".
 // =============================================================================
 
+import { MANAGER_REVIEW_REASON, needsManagerReview } from './site-pre-evaluation'
+
 export type Operation = 'COMPRA' | 'TROCA' | 'CONSIGNACAO'
 
 export interface EvaluationAvailabilityInput {
@@ -20,6 +22,10 @@ export interface EvaluationAvailabilityInput {
   proposalValidUntil?:   Date | string | null
   vehicleId?:            string | null   // se tem vehicle vinculado (já comprado)
   cancelledAt?:          Date | string | null
+  /** Origem (SITE_PRE_AVALIACAO = pré-avaliação do site, liberada pelo sistema). */
+  lookupSource?:         string | null
+  /** Gerente que liberou/conferiu. Vazio em pré-avaliação do site = falta conferir. */
+  releasedByUserId?:     string | null
   /** Carregue os DealVehicle vinculados (com deal.status) pra detectar conflito. */
   dealVehicles?: Array<{
     deal?: { status?: string | null } | null
@@ -64,6 +70,10 @@ export function canEvaluationVehicleBeUsed(
   const released = RELEASED_STATUSES.has(status) || LEGACY_RELEASED.has(result)
   if (!released)
     return { canUse: false, reason: 'Proposta ainda não liberada pelo gerente.' }
+
+  // 1b) Pré-avaliação do site: liberada pelo sistema, falta a conferência da gerência.
+  if (needsManagerReview(evaluation))
+    return { canUse: false, reason: MANAGER_REVIEW_REASON }
 
   // 2) Valor precificado?
   const value = Number(evaluation.evaluatedValue ?? 0)

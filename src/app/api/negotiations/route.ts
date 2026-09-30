@@ -16,6 +16,7 @@ import {
 } from '@/lib/negotiation-filters'
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
+import { MANAGER_REVIEW_REASON, needsManagerReview } from '@/lib/evaluation/site-pre-evaluation'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
 
@@ -565,6 +566,7 @@ export async function POST(req: NextRequest) {
               id: true, status: true, result: true,
               customerDecision: true, availableFor: true,
               cancelledAt: true, proposalValidUntil: true,
+              lookupSource: true, releasedByUserId: true,
             },
           })
           if (!ev) {
@@ -579,6 +581,8 @@ export async function POST(req: NextRequest) {
           ) || (ev.result ?? '').toUpperCase() === 'APROVADO'
           if (!releasedOk)
             throw new Error('Este veículo avaliado não está disponível para troca. Proposta ainda não liberada pelo gerente.')
+          if (needsManagerReview(ev))
+            throw new Error(`Este veículo avaliado não está disponível para troca. ${MANAGER_REVIEW_REASON}`)
           const decision = (ev.customerDecision ?? 'PENDENTE').toUpperCase()
           if (decision !== 'ACEITA')
             throw new Error('Este veículo avaliado não está disponível para troca. Cliente ainda não aceitou a proposta.')

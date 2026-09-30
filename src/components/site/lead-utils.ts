@@ -30,16 +30,16 @@ function tracking() {
   }
 }
 
-export type SubmitResult = { ok: true; protocol: string | null; uploadToken?: string } | { ok: false; error: string }
+export type SubmitResult = { ok: true; protocol: string | null; uploadToken?: string; evaluationToken?: string } | { ok: false; error: string }
 
 export async function submitSiteLead(apiUrl: string, payload: Record<string, unknown>): Promise<SubmitResult> {
   try {
     const res = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, ...tracking() }) })
-    const j = await res.json().catch(() => ({})) as { error?: string; protocol?: string | null; uploadToken?: string }
+    const j = await res.json().catch(() => ({})) as { error?: string; protocol?: string | null; uploadToken?: string; evaluationToken?: string }
     if (!res.ok) return { ok: false, error: j.error ?? 'Não foi possível enviar agora.' }
     // Conversão para Meta/Google (só com consentimento; sem dados do cliente).
     siteTrack('Lead', { lead_type: String(payload.kind ?? ''), content_ids: payload.vehicleId ? [String(payload.vehicleId)] : undefined, content_type: payload.vehicleId ? 'vehicle' : undefined })
-    return { ok: true, protocol: j.protocol ?? null, uploadToken: j.uploadToken }
+    return { ok: true, protocol: j.protocol ?? null, uploadToken: j.uploadToken, evaluationToken: j.evaluationToken }
   } catch {
     return { ok: false, error: 'Sem conexão. Tente novamente ou fale pelo WhatsApp.' }
   }

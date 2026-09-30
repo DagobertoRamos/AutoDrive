@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { getSiteContext } from '@/lib/site/context'
 import { SiteSellCarForm } from '@/components/site/SiteServiceForms'
 
-export const metadata: Metadata = { title: 'Venda seu carro', description: 'Envie os dados do seu carro para uma pré-avaliação.' }
+export const metadata: Metadata = { title: 'Venda seu carro', description: 'Envie os dados e as fotos do seu carro para uma pré-avaliação.' }
 
 export default async function SiteSellCar({ params }: { params: Promise<{ site: string }> }) {
   const { site } = await params
@@ -18,11 +18,12 @@ export default async function SiteSellCar({ params }: { params: Promise<{ site: 
           <h2>Como funciona</h2>
           <ol>
             <li>Preencha os dados principais do veículo.</li>
-            <li>Depois do envio, mande fotos reais pelo WhatsApp: frente, traseira, laterais, painel ligado, interior, motor e pneus.</li>
-            <li>Nossa equipe faz a pré-análise e chama você para combinar os próximos passos.</li>
+            <li>Siga o passo a passo das fotos: painel ligado, interior, frente, motor, laterais, pneus, traseira, placa, porta-malas e estepe. Tire na hora pelo celular ou escolha da galeria/computador.</li>
+            <li>Em cada etapa, marque se tem avaria e mande uma foto de perto com a descrição.</li>
+            <li>A {ctx.config.identity.name} confere a avaliação e chama você para combinar os próximos passos.</li>
           </ol>
           <p>A avaliação final depende de vistoria presencial e da análise dos documentos.</p>
-          <div className="notice"><strong>Fotos ajudam na avaliação</strong><p>Mostre também riscos, amassados e detalhes importantes. Quanto mais claro, mais precisa a pré-avaliação.</p></div>
+          <div className="notice"><strong>Leva uns 5 minutos</strong><p>Faça com o carro em local claro. Mostrar os riscos e amassados agora deixa a proposta mais precisa e evita surpresas na vistoria.</p></div>
         </div>
         <SiteSellCarForm apiUrl={ctx.apiUrl} privacyHref={ctx.href('/privacidade')} whatsappHref={ctx.whatsapp()} />
       </section>
