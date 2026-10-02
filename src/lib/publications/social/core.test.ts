@@ -312,3 +312,10 @@ describe('post avulso com link de vídeo', () => {
     expect(a.FACEBOOK_ONLY).toEqual(['LINK'])
   })
 })
+
+describe('legenda limpa para a rede', () => {
+  it('tira **negrito** e # título do ChatGPT, mantém hashtags', async () => {
+    const a = await import('./avulsa-core')
+    expect(a.plainCaption('**PARA TUDO 🔊**\n\nIsso é um **Dodge Demon**.\n\n## Detalhes\n- motor V8\n\n#carros #demon')).toBe('PARA TUDO 🔊\n\nIsso é um Dodge Demon.\n\nDetalhes\n• motor V8\n\n#carros #demon')
+  })
+})

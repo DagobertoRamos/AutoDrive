@@ -95,6 +95,19 @@ export function validateAvulsa(format: AvulsaFormat, media: AvulsaMedia[], capti
 export type AvulsaStatus = 'RASCUNHO' | 'AGENDADO' | 'ENVIANDO' | 'PUBLICADO' | 'PARCIAL' | 'FALHA' | 'CANCELADO'
 export interface AvulsaResult { state: 'PUBLICADO' | 'EM_ANALISE' | 'FALHA'; remoteId?: string | null; remoteUrl?: string | null; pendingToken?: string | null; video?: boolean; error?: string | null; at?: string }
 
+/**
+ * Legenda pronta para a rede: tira a marcação de texto do ChatGPT/Markdown
+ * (**negrito**, __sublinhado__, # títulos), que o Instagram/Facebook mostram
+ * como asteriscos e cerquilhas soltos. Hashtags (#carros) ficam.
+ */
+export function plainCaption(t: string): string {
+  return String(t ?? '')
+    .replace(/\*\*([\s\S]+?)\*\*/g, '$1').replace(/__([\s\S]+?)__/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[*-]\s+/gm, '• ')
+    .replace(/\n{3,}/g, '\n\n').trim()
+}
+
 /** Situação geral a partir do resultado de cada conta. */
 export function overallStatus(connectionIds: string[], results: Record<string, AvulsaResult>): AvulsaStatus {
   const r = connectionIds.map((c) => results[c])

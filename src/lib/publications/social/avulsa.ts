@@ -14,7 +14,7 @@ import { graph, graphBase, graphError, rupload, waitContainer } from '../connect
 import type { ConnectorContext } from '../connectors/types'
 import { mediaUrlFor } from '../media-token'
 import { connectorContext, type WorkerDeps } from '../worker'
-import { blobBelongsTo, FACEBOOK_ONLY, overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
+import { blobBelongsTo, FACEBOOK_ONLY, overallStatus, plainCaption, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
 import { downloadToFile, downloadVideoLink, probeVideo, toReels, type ReelsExtras } from './video'
 
 export const VIDEO_PART_KIND = 'SOCIAL_VPART'
@@ -242,7 +242,7 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
       if (!conn || conn.status !== 'CONECTADO') { results[id] = { state: 'FALHA', error: 'Conta desconectada: reconecte em Canais conectados.', at: now.toISOString() }; continue }
       try {
         const ctx = await connectorContext(conn, deps)
-        results[id] = { ...(prev?.state === 'EM_ANALISE' ? await checkPending(conn.channel, ctx, prev) : await publishTo(conn.channel, ctx, post.format as AvulsaFormat, post.caption ?? '', prepared)), at: now.toISOString() }
+        results[id] = { ...(prev?.state === 'EM_ANALISE' ? await checkPending(conn.channel, ctx, prev) : await publishTo(conn.channel, ctx, post.format as AvulsaFormat, plainCaption(post.caption ?? ''), prepared)), at: now.toISOString() }
       } catch (e) {
         const ce = isConnectorError(e) ? e : null
         lastError = `${conn.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}: ${(e as Error).message}`
