@@ -86,7 +86,7 @@ export function ListingProfileStep({ vehicleId, canEdit }: { vehicleId: string; 
       {/* Origem */}
       <div className="rounded-xl border border-gray-200 bg-white p-3">
         <p className="mb-2 text-sm font-semibold text-gray-900">Origem do carro <span className="font-normal text-gray-500">— vira a tag no site</span></p>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {(['OWN', 'PARTNER', 'PRIVATE'] as OriginType[]).map((o) => (
             <label key={o} className={cn('cursor-pointer rounded-lg border p-2.5 text-xs', origin === o ? 'border-brand-500 bg-brand-50/50' : 'border-gray-200 hover:border-gray-300', !canEdit && 'cursor-default')}>
               <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
@@ -200,7 +200,7 @@ export function ListingProfileStep({ vehicleId, canEdit }: { vehicleId: string; 
 
 function OptionGrid({ items, has, toggle, disabled }: { items: Array<{ name: string; kind: OptionKind; hint?: string }>; has: (n: string) => boolean; toggle: (n: string) => void; disabled: boolean }) {
   return (
-    <ul className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((o) => {
         const on = has(o.name)
         return (

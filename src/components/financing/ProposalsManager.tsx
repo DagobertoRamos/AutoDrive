@@ -115,13 +115,13 @@ export default function ProposalsManager({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">{title}</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} ${subtitle ?? 'fichas'}`}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <SearchBox value={q} onChange={setQ} placeholder="Buscar proponente, CPF, veículo..." className="w-64" />
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <SearchBox value={q} onChange={setQ} placeholder="Buscar proponente, CPF, veículo..." className="w-full sm:w-64" />
           {allowCreate && <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova ficha</button>}
         </div>
       </div>

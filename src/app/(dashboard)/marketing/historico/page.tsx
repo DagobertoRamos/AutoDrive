@@ -61,7 +61,7 @@ export default function HistoricoPage() {
         ))}
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[2fr,1fr,1fr,1fr,1fr,auto]">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[2fr,1fr,1fr,1fr,1fr,auto]">
         <label className="relative block text-xs text-gray-600">
           <span className="sr-only">Buscar</span>
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

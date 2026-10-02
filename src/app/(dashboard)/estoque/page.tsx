@@ -274,7 +274,7 @@ export default function EstoquePage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canEvaluate && (
             <Link
               href="/estoque/avaliacao"
@@ -535,12 +535,12 @@ export default function EstoquePage() {
 
       {/* Paginação */}
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:justify-between">
           <p className="text-sm text-gray-600">
             Página {pagination.page} de {pagination.totalPages} —{' '}
             {pagination.total} veículo{pagination.total !== 1 ? 's' : ''}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={pagination.page <= 1}

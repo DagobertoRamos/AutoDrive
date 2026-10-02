@@ -573,7 +573,7 @@ export default function NegociacoesPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={load}
             className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
@@ -839,7 +839,7 @@ export default function NegociacoesPage() {
       </div>
 
       {/* Tabela */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         {loading ? (
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50">

@@ -118,7 +118,7 @@ Isto NÃO apaga nada no Instagram/Facebook/portais: o que ainda estiver no ar pr
       </div>
 
       {showFilters && (
-        <div className="grid gap-2 rounded-xl border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-2 rounded-xl border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-xs text-gray-600">Canal<select className={inputCls} value={f.channel} onChange={(e) => { setPage(1); setF((x) => ({ ...x, channel: e.target.value })) }}><option value="">Todos</option>{CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           <label className="text-xs text-gray-600">Situação<select className={inputCls} value={f.status} onChange={(e) => { setPage(1); setF((x) => ({ ...x, status: e.target.value })) }}><option value="">Todas</option>{Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           <label className="text-xs text-gray-600">Loja<select className={inputCls} value={f.unitId} onChange={(e) => { setPage(1); setF((x) => ({ ...x, unitId: e.target.value })) }}><option value="">Todas</option>{units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>

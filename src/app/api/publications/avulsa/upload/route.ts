@@ -8,6 +8,7 @@ import { storeVideoPart } from '@/lib/publications/social/avulsa'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   const a = await pubAuth(req, 'marketing.publications.prepare')
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
   } catch (e) {
     if (e instanceof ImageRejected) return bad(e.message)
     console.error('[avulsa/upload]', e)
-    return bad('Não foi possível guardar o arquivo.', 500)
+    // Motivo curto (sem dados da loja) para dar para entender o que houve.
+    const why = String((e as { code?: string }).code ?? (e as Error).message ?? '').replace(/\s+/g, ' ').slice(0, 140)
+    return bad(`Não foi possível guardar o arquivo${why ? ` (${why})` : ''}.`, 500)
   }
 }

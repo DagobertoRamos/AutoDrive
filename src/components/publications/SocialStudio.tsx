@@ -69,7 +69,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
         <p className="text-xs text-gray-600">A arte sai pronta com a foto do carro, o preço, o ano/km e o seu WhatsApp, nas cores da loja. Cada formato vira um envio próprio.</p>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" role="group" aria-label="Formatos">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" role="group" aria-label="Formatos">
         {SOCIAL_FORMATS.map((f) => {
           const Icon = ICON[f]; const on = value.formats.includes(f)
           return (
@@ -102,7 +102,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
           )}
 
           {vid && (
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {value.formats.map((f) => {
                 const key = `${vid}:${f}`
                 const src = `/api/publications/social/preview?vehicleId=${encodeURIComponent(vid)}&format=${f}&template=${value.template}&design=${value.design}&r=${artRev}`

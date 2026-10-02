@@ -90,7 +90,7 @@ function Channels() {
         <>
           <section className="space-y-2">
             <h2 className="text-sm font-semibold text-gray-800">Contas da loja</h2>
-            <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
               {data.connections.map((c) => {
                 const spec = specOf(c.channel); const st = CONN[c.status] ?? CONN.PENDENCIA
                 return (
@@ -132,7 +132,7 @@ function Channels() {
               <div className="flex gap-1.5" role="group" aria-label="Grupo">{[['', 'Todos'], ['PORTAL', 'Portais'], ['SOCIAL', 'Redes'], ['PROPRIO', 'Próprio'], ['MANUAL', 'Manual']].map(([k, l]) => <button key={k} aria-pressed={group === k} onClick={() => setGroup(k)} className={cn('rounded-full border px-2.5 py-0.5 text-xs', group === k ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600')}>{l}</button>)}</div>
             </div>
             <p className="text-xs text-gray-500">Estar no catálogo não significa que o conector já opera. “Aguardando homologação” = implementado pelo contrato oficial, falta credencial/homologação do portal.</p>
-            <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
               {catalog.map((ch) => {
                 const dev = DEV[ch.devStatus]; const connected = data.connections.filter((c) => c.channel === ch.id && c.status === 'CONECTADO').length
                 return (
@@ -321,7 +321,7 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
   return (
     <details className="group rounded-xl border border-gray-200 bg-white" open={false}>
       <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-gray-800">Contatos e regras da loja <ChevronDown size={16} className="transition-transform group-open:rotate-180" /></summary>
-      <fieldset disabled={!canEdit} className="grid gap-4 border-t border-gray-100 p-4 lg:grid-cols-3">
+      <fieldset disabled={!canEdit} className="grid grid-cols-1 gap-4 border-t border-gray-100 p-4 lg:grid-cols-3">
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-700">Contatos nos anúncios</p>
           {[['contacts.whatsapp', 'WhatsApp', '(11) 90000-0000'], ['contacts.phone', 'Telefone', ''], ['contacts.email', 'E-mail', ''], ['contacts.instagram', 'Instagram', '@sualoja'], ['contacts.site', 'Site', 'www.sualoja.com.br'], ['contacts.contactName', 'Nome de contato', '']].map(([k, l, ph]) => (

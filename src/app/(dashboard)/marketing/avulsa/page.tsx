@@ -93,11 +93,35 @@ async function photoSheet(file: Blob): Promise<string | null> {
 }
 
 async function postRaw(url: string, body: Blob): Promise<any> {
-  const r = await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/octet-stream' } })
+  let r: Response
+  try {
+    r = await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/octet-stream' } })
+  } catch {
+    throw new Error('sem conexão com o servidor (internet caiu ou oscilou)')
+  }
   const j = await r.json().catch(() => ({}))
-  if (!r.ok || j.success === false) throw new Error(j.error ?? `Erro ${r.status}`)
+  if (!r.ok || j.success === false) throw new Error(j.error ?? (r.status === 401 ? 'sessão expirada — entre de novo' : r.status === 413 ? 'pedaço grande demais para o servidor' : `erro ${r.status} do servidor`))
   return j
 }
+
+/** Envia com novas tentativas (rede do celular oscila): 3 tentativas, esperando 1,5 s, 4 s e 8 s. */
+async function postRetry(url: string, body: Blob, tries = 4): Promise<any> {
+  let last: Error = new Error('falha no envio')
+  for (let t = 0; t < tries; t++) {
+    try { return await postRaw(url, body) } catch (e) {
+      last = e as Error
+      if (/sessão expirada|grande demais/.test(last.message)) break
+      if (t < tries - 1) await new Promise((ok) => setTimeout(ok, [1500, 4000, 8000][t] ?? 8000))
+    }
+  }
+  throw last
+}
+
+/** Promessa com prazo (o navegador do celular às vezes não lê o vídeo e fica esperando). */
+const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => Promise.race([p, new Promise<T>((ok) => setTimeout(() => ok(fallback), ms))])
+
+/** Envios de vídeo em andamento (para retomar de onde parou). */
+const pendingUploads = new Map<string, { file: File; uploadId: string; parts: number; next: number; posterAssetId?: string }>()
 
 /** Mídias guardadas → prévia (fotos e capa do vídeo servidas pela loja). */
 
@@ -303,25 +327,39 @@ export default function PostAvulsoPage() {
     }
   }
 
+  /** Sobe os pedaços que faltam (do `next` em diante); em erro, guarda onde parou para "Continuar envio". */
+  const sendParts = async (key: string) => {
+    const u = pendingUploads.get(key)
+    if (!u) return
+    setItem(key, { error: undefined })
+    try {
+      for (let i = u.next; i < u.parts; i++) {
+        await postRetry(`/api/publications/avulsa/upload?kind=video&uploadId=${u.uploadId}&index=${i}`, u.file.slice(i * PART_BYTES, (i + 1) * PART_BYTES))
+        u.next = i + 1
+        setItem(key, { progress: Math.round(((i + 1) / u.parts) * 100) })
+      }
+      pendingUploads.delete(key)
+      setItem(key, { media: { type: 'video', uploadId: u.uploadId, parts: u.parts, size: u.file.size, name: u.file.name.slice(0, 120), ...(u.posterAssetId ? { posterAssetId: u.posterAssetId } : {}) } })
+    } catch (e) {
+      setItem(key, { error: `Envio parou em ${Math.round((u.next / u.parts) * 100)}% (parte ${u.next + 1} de ${u.parts}): ${(e as Error).message}` })
+    }
+  }
+
   const addVideo = async (f: File) => {
     if (f.size > MAX_VIDEO_BYTES) { setMsg({ ok: false, text: `Vídeo com mais de ${Math.round(MAX_VIDEO_BYTES / 1048576)} MB. Use um link do Google Drive ou Dropbox.` }); return }
+    if (!f.size) { setMsg({ ok: false, text: 'O celular entregou o vídeo vazio. Escolha de novo (se estiver na nuvem, baixe para o aparelho antes).' }); return }
     const key = crypto.randomUUID(); const uploadId = crypto.randomUUID()
     setItems([{ key, media: null, preview: URL.createObjectURL(f), kind: 'video', name: f.name, progress: 0 }])
-    const parts = Math.ceil(f.size / PART_BYTES)
-    try {
-      const fr = await videoFrames(f)
+    const u = { file: f, uploadId, parts: Math.ceil(f.size / PART_BYTES), next: 0 } as { file: File; uploadId: string; parts: number; next: number; posterAssetId?: string }
+    pendingUploads.set(key, u)
+    // Capa, tamanho e identificação do carro: em paralelo e com prazo (não seguram o envio).
+    void withTimeout(videoFrames(f), 12_000, { poster: null, sheet: null, w: 0, h: 0 }).then(async (fr) => {
       if (fr.w) setItem(key, { vw: fr.w, vh: fr.h })
-      // Identifica o carro enquanto o vídeo sobe (e escreve a legenda se estiver vazia).
       setLastSheet({ image: fr.sheet, hints: f.name })
       void detect(fr.sheet, f.name, !caption.trim())
-      const poster = fr.poster
-      const posterAssetId = poster ? (await postRaw('/api/publications/avulsa/upload?kind=image', poster).catch(() => null))?.assetId : undefined
-      for (let i = 0; i < parts; i++) {
-        await postRaw(`/api/publications/avulsa/upload?kind=video&uploadId=${uploadId}&index=${i}`, f.slice(i * PART_BYTES, (i + 1) * PART_BYTES))
-        setItem(key, { progress: Math.round(((i + 1) / parts) * 100) })
-      }
-      setItem(key, { media: { type: 'video', uploadId, parts, size: f.size, name: f.name.slice(0, 120), ...(posterAssetId ? { posterAssetId } : {}) } })
-    } catch (e) { setItem(key, { error: `Envio interrompido: ${(e as Error).message}` }) }
+      if (fr.poster) u.posterAssetId = (await postRaw('/api/publications/avulsa/upload?kind=image', fr.poster).catch(() => null))?.assetId
+    })
+    await sendParts(key)
   }
 
   const useVideoLink = () => {
@@ -396,8 +434,8 @@ export default function PostAvulsoPage() {
       {editingId && <p className="flex flex-wrap items-center gap-2 rounded-lg bg-brand-50/60 px-3 py-2 text-xs text-brand-800">Editando um rascunho salvo — ao salvar ou publicar, ele é atualizado (não cria outro).<button type="button" onClick={clearEditor} className="underline">Começar um post novo</button></p>}
       {msg && <p role="status" className={cn('rounded-lg px-3 py-2 text-xs', msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>{msg.text}</p>}
 
-      <div className="grid gap-5 lg:grid-cols-[1fr,320px]">
-        <section className="space-y-4">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr),320px]">
+        <section className="min-w-0 space-y-4">
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Formato">
             {AVULSA_FORMATS.map((f) => <button key={f} type="button" aria-pressed={format === f} onClick={() => { setFormat(f); setItems([]); setLinkMedia('') }} className={cn('rounded-full border px-3 py-1 text-xs', format === f ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600')}>{AVULSA_LABEL[f]}</button>)}
           </div>
@@ -441,12 +479,18 @@ export default function PostAvulsoPage() {
                   <button type="button" onClick={useVideoLink} className="btn-secondary px-2 py-1 text-xs"><Link2 size={14} />Usar link</button>
                 </div>
               )}
+              {items.filter((i) => i.error).map((i) => (
+                <div key={i.key} role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">
+                  <span className="min-w-0 flex-1">{i.kind === 'video' ? 'Vídeo' : 'Foto'} “{i.name}”: {i.error}</span>
+                  {i.kind === 'video' && pendingUploads.has(i.key) && <button type="button" onClick={() => void sendParts(i.key)} className="btn-primary px-2.5 py-1 text-xs"><RefreshCw size={13} />Continuar envio</button>}
+                </div>
+              ))}
               <ul className="flex flex-wrap gap-2">
                 {items.map((i) => (
                   <li key={i.key} className="relative h-24 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
                     {i.kind === 'image' ? <img src={i.preview} alt="" className="h-full w-full object-cover" /> : i.preview ? <video src={i.preview} className="h-full w-full object-cover" muted /> : <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-gray-500">{i.name}</span>}
                     {!i.media && !i.error && <span className="absolute inset-x-0 bottom-0 bg-black/60 text-center text-[10px] text-white">{i.progress}%</span>}
-                    {i.error && <span className="absolute inset-0 flex items-center bg-red-600/80 p-1 text-center text-[9px] text-white">{i.error}</span>}
+                    {i.error && <span className="absolute inset-0 flex items-center justify-center bg-red-600/85 p-1 text-center text-[10px] font-medium text-white">Envio parou</span>}
                     <button type="button" onClick={() => setItems((l) => l.filter((x) => x.key !== i.key))} aria-label="Remover" className="absolute right-0.5 top-0.5 rounded-full bg-white/90 p-0.5"><X size={12} /></button>
                   </li>
                 ))}
@@ -458,7 +502,7 @@ export default function PostAvulsoPage() {
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-xs">
               <label className="flex items-center gap-2 font-medium text-gray-800"><input type="checkbox" checked={brandOn} onChange={(e) => setBrand(e.target.checked, brandStyle)} className="rounded border-gray-300 text-brand-600" /><Stamp size={14} className="text-brand-700" />Colocar a marca da loja (logo e @){hasVideo ? ' no vídeo' : ''}</label>
               {brandOn && (
-                <select aria-label="Estilo da marca" className={cn(inputCls, 'w-auto py-1 text-xs')} value={brandStyle} onChange={(e) => setBrand(true, e.target.value as BrandMark)}>
+                <select aria-label="Estilo da marca" className={cn(inputCls, 'w-auto max-w-full py-1 text-xs')} value={brandStyle} onChange={(e) => setBrand(true, e.target.value as BrandMark)}>
                   <option value="ASSINATURA">Assinatura — logo e @ limpos, sem cobrir o vídeo (recomendado)</option>
                   <option value="DISCRETO">Discreto — só o logo no canto</option>
                   <option value="COMPLETO">Completo — logo + faixa com nome e WhatsApp</option>
@@ -489,15 +533,15 @@ export default function PostAvulsoPage() {
             )}
             <div className="flex flex-wrap items-center gap-2">
               {textMode === 'TIPO' ? (
-                <select aria-label="Tipo de carro" className={cn(inputCls, 'w-auto py-1 text-xs')} value={carKind} onChange={(e) => { setCarKind(e.target.value as CarKind); setVariant(null) }}>
+                <select aria-label="Tipo de carro" className={cn(inputCls, 'w-auto max-w-full py-1 text-xs')} value={carKind} onChange={(e) => { setCarKind(e.target.value as CarKind); setVariant(null) }}>
                   {CAR_KINDS.map((k) => <option key={k} value={k}>{CAR_KIND_LABEL[k]}</option>)}
                 </select>
               ) : (
-                <select aria-label="Ocasião" className={cn(inputCls, 'w-auto py-1 text-xs')} value={occasion} onChange={(e) => setOccasion(e.target.value as Occasion)}>
+                <select aria-label="Ocasião" className={cn(inputCls, 'w-auto max-w-full py-1 text-xs')} value={occasion} onChange={(e) => setOccasion(e.target.value as Occasion)}>
                   {OCCASIONS.map((o) => <option key={o} value={o}>{OCCASION_LABEL[o]}</option>)}
                 </select>
               )}
-              <input className={cn(inputCls, 'min-w-[200px] flex-1 py-1 text-xs')} value={notes} maxLength={600} onChange={(e) => setNotes(e.target.value)} placeholder={textMode === 'TIPO' ? 'Detalhe (opcional, para a IA): ex. Porsche 911 Carrera S, único dono' : 'Detalhe (opcional): ex. entrega do Compass para a família Souza'} />
+              <input className={cn(inputCls, 'min-w-0 basis-full flex-1 py-1 text-xs sm:basis-auto sm:min-w-[200px]')} value={notes} maxLength={600} onChange={(e) => setNotes(e.target.value)} placeholder={textMode === 'TIPO' ? 'Detalhe (opcional, para a IA): ex. Porsche 911 Carrera S, único dono' : 'Detalhe (opcional): ex. entrega do Compass para a família Souza'} />
               <button type="button" onClick={() => void writeText(false)} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs">{busy === 'MODELO' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}{textMode === 'TIPO' ? 'Legenda pronta' : 'Modelo pronto'}</button>
               {textMode === 'TIPO' && variant && <button type="button" onClick={() => void writeText(false, { next: true })} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs"><RefreshCw size={13} />Outra opção</button>}
               <button type="button" onClick={() => void writeText(true)} disabled={!!busy} className="btn-primary px-2.5 py-1 text-xs">{busy === 'IA' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}Escrever com IA</button>
@@ -531,7 +575,7 @@ export default function PostAvulsoPage() {
           </div>
         </section>
 
-        <aside className="space-y-2">
+        <aside className="min-w-0 space-y-2">
           <div className="flex justify-center gap-1.5" role="tablist" aria-label="Rede">
             {(['INSTAGRAM', 'FACEBOOK'] as const).map((n) => <button key={n} role="tab" aria-selected={previewNet === n} disabled={format === 'LINK' && n === 'INSTAGRAM'} onClick={() => setNet(n)} className={cn('rounded-full border px-3 py-0.5 text-xs disabled:opacity-40', previewNet === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600')}>{n === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}</button>)}
           </div>
@@ -547,7 +591,7 @@ export default function PostAvulsoPage() {
             <span className="text-[11px] text-gray-500">Contas: {selConns.map((c) => (c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook')).join(' + ') || 'escolha acima'}</span>
           </div>
           {batch.length > 0 && (
-            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {batch.map((b, n) => (
                 <li key={b.id} className="flex gap-2 rounded-lg border border-gray-200 bg-white p-2 text-xs">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 text-gray-500">{b.thumb ? <img src={b.thumb} alt="" className="h-full w-full object-cover" /> : b.kind === 'link' ? <Link2 size={16} /> : <Upload size={16} />}</span>

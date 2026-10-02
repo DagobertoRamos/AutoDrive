@@ -76,7 +76,7 @@ export function TextAssist({ vehicleId, conditionsEmpty, onDescription, onCondit
       {setup && (
         <div className="space-y-2 rounded-lg border border-amber-200 bg-white p-3">
           <p className="text-xs font-semibold text-gray-800">Condições comerciais da loja</p>
-          <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
             {([['cash', 'À vista'], ['acceptsTrade', 'Aceita veículo na troca'], ['consortium', 'Consórcio'], ['transferIncluded', 'Transferência inclusa'], ['ipvaPaid', 'IPVA pago']] as const).map(([k, l]) => (
               <label key={k} className="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" checked={setup[k]} onChange={(e) => setT({ [k]: e.target.checked })} />{l}</label>
             ))}

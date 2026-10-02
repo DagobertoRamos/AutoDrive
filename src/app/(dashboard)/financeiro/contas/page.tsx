@@ -68,18 +68,18 @@ export default function FinanceAccountsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Contas financeiras</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${filtered.length}${term ? ` de ${items.length}` : ''} contas`}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <SearchBox value={q} onChange={setQ} placeholder="Buscar conta..." className="w-56" />
           <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova conta</button>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-card">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50"><tr>{['Conta', 'Tipo', 'Saldo inicial', 'Status', ''].map((h) => (<th key={h} className={cn('px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Saldo inicial' ? 'text-right' : 'text-left')}>{h}</th>))}</tr></thead>
           <tbody className="divide-y divide-gray-100">

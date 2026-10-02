@@ -114,12 +114,12 @@ export default function FinanceEntriesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Lançamentos financeiros</h1>
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} lançamentos`}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={sync} disabled={syncing} className="btn-secondary text-sm" title="Gerar receitas de vendas finalizadas e despesas de comissões"><DownloadCloud size={15} className={cn(syncing && 'animate-pulse')} />{syncing ? 'Sincronizando...' : 'Sincronizar'}</button>
           <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Novo lançamento</button>
         </div>

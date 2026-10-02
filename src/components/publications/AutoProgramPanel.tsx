@@ -87,7 +87,7 @@ export function AutoProgramPanel({ onPlanned }: { onPlanned?: () => void }) {
           {p.slots.length < 12 && <button type="button" onClick={() => set({ slots: [...p.slots, { days: [1, 2, 3, 4, 5], time: '18:00', format: 'POST' }] })} className="btn-secondary px-2 py-1 text-xs"><Plus size={13} />Adicionar horário</button>}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-xs text-gray-600">Modelo da arte
             <select className={inputCls} value={p.template} onChange={(e) => set({ template: e.target.value as AutoProgram['template'] })}>{ART_TEMPLATES.map((t) => <option key={t} value={t}>{TEMPLATE_INFO[t].label}</option>)}</select>
           </label>

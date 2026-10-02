@@ -200,7 +200,7 @@ function StepVehicles({ selected, setSelected, vehicles, onLoaded }: { selected:
         </div>
       )}
       {!list ? <Loader2 className="animate-spin text-gray-400" /> : (
-        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {list.map((v) => {
             const on = selected.includes(v.id)
             return (
@@ -335,7 +335,7 @@ function StepContent({ vehicleId }: { vehicleId: string }) {
   const set = (p: Partial<Content>) => { dirty.current = true; setState('idle'); setC((x) => ({ ...x, ...p })) }
   if (!data) return msg ? <ErrorNote message={msg} /> : <Loader2 className="animate-spin text-gray-400" />
   return (
-    <section className="grid gap-4 lg:grid-cols-[1fr,18rem]">
+    <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr),18rem]">
       <div className="space-y-3">
         <label className="block text-xs font-medium text-gray-600">Título<input className={inputCls} value={c.title} placeholder={data.suggestions.title} onChange={(e) => set({ title: e.target.value })} maxLength={150} /></label>
         <TextAssist vehicleId={vehicleId} conditionsEmpty={!c.conditions.trim()} onDescription={(t) => set({ description: t })} onConditions={(t) => set({ conditions: t })} />
@@ -373,7 +373,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
   return (
     <section className="space-y-3">
       <p className="text-sm text-gray-600">Escolha os destinos. Só aparecem contas conectadas da sua loja.</p>
-      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {usable.map((c) => {
           const ch = channels[c.channel]
           const ok = c.status === 'CONECTADO'
