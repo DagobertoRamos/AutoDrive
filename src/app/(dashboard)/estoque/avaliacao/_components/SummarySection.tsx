@@ -111,13 +111,12 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
         setItems(d.data?.items ?? [])
         setServices(d.data?.services ?? [])
         setAttachs(d.data?.attachments ?? [])
-        // Carrega vendedores da unidade da avaliação
+        // Vendedores da unidade da avaliação; avaliação sem unidade (ex.: veio do
+        // "Venda seu carro" do site) → todos os vendedores ativos da loja.
         const unitId = d.data?.unitId
-        if (unitId) {
-          const rs = await fetch(`/api/sellers?unitId=${encodeURIComponent(unitId)}`, { cache: 'no-store' })
-          const ds = await rs.json()
-          if (rs.ok && alive) setSellers((ds.data ?? []).filter((s: Seller) => s.active))
-        }
+        const rs = await fetch(unitId ? `/api/sellers?unitId=${encodeURIComponent(unitId)}` : '/api/sellers', { cache: 'no-store' })
+        const ds = await rs.json().catch(() => ({}))
+        if (rs.ok && alive) setSellers((ds.data ?? []).filter((s: Seller) => s.active))
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : 'Erro')
       } finally {

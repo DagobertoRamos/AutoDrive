@@ -106,21 +106,24 @@ export async function POST(
     // Se veio vendedor no body, valida que o userId corresponde a um Seller
     // ativo da unidade da avaliação (defesa em profundidade — o dropdown
     // do frontend já filtra, mas API não pode confiar no cliente).
+    let sellerUnitId: string | null = null
     if (assignedSellerId) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const seller = await (prisma as any).seller.findFirst({
         where: {
           userId: assignedSellerId,
           active: true,
-          ...(ctx.unitId ? { unitId: ctx.unitId } : {}),
+          // Sempre da própria loja; com unidade definida, da mesma unidade.
+          ...(ctx.unitId ? { unitId: ctx.unitId } : { unit: { tenantId: ctx.tenantId ?? '__none__' } }),
         },
-        select: { id: true, fullName: true, userId: true },
+        select: { id: true, fullName: true, userId: true, unitId: true },
       })
       if (!seller) {
         return NextResponse.json({
           error: 'Vendedor selecionado não pertence à unidade da avaliação ou está inativo.',
         }, { status: 400 })
       }
+      sellerUnitId = seller.unitId ?? null
     }
 
     const updated = await prisma.vehicleEvaluation.update({
@@ -132,6 +135,8 @@ export async function POST(
         approvalRequestedById: session.user.id,
         // Persiste o vendedor atribuído no notes (sem migration)
         ...(assignedSellerId ? { evaluationNotes: withAssignedSeller(assignedSellerId, ev?.evaluationNotes ?? '') } : {}),
+        // Avaliação sem unidade (veio do site): fica na unidade do vendedor escolhido.
+        ...(!ctx.unitId && sellerUnitId ? { unitId: sellerUnitId } : {}),
       },
     })
 

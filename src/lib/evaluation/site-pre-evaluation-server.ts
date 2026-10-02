@@ -39,9 +39,13 @@ export async function createSitePreEvaluation(p: {
     p.input.message ? `Observações do cliente: ${p.input.message}` : '',
   ].filter(Boolean).join('\n')
 
+  // Unidade principal da loja (a mais antiga ativa): sem unidade a avaliação
+  // não acha vendedores nem entra nos filtros por unidade.
+  const mainUnit = await prisma.unit.findFirst({ where: { tenantId: p.tenantId, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }).catch(() => null)
   const evaluation = await prisma.vehicleEvaluation.create({
     data: {
       tenantId: p.tenantId,
+      unitId: mainUnit?.id ?? null,
       plate: d.plate || null,
       brand: d.brand || null,
       model: d.model || null,
