@@ -52,3 +52,18 @@ export function videoLine(v: VideoLink | null): string {
  */
 export const VERTICAL_FILTER =
   "[0:v]split=2[bg][fg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2,eq=brightness=-0.15[b];[fg]scale=1080:1920:force_original_aspect_ratio=decrease[f];[b][f]overlay=(W-w)/2:(H-h)/2,fps=30,format=yuv420p[v]"
+
+/**
+ * Lê largura, altura (como aparece: vídeo de celular gravado "em pé" vem
+ * girado 90°) e duração da saída de `ffmpeg -i`. Null se não achar o vídeo.
+ */
+export function parseProbe(out: string): { width: number; height: number; duration: number } | null {
+  const d = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(out)
+  const v = /Stream #\S+.*Video:.*?\b(\d{2,5})x(\d{2,5})\b/.exec(out)
+  if (!v) return null
+  let width = Number(v[1]); let height = Number(v[2])
+  const rot = /rotation of (-?\d+(?:\.\d+)?) degrees/.exec(out)?.[1] ?? /rotate\s*:\s*(-?\d+)/.exec(out)?.[1]
+  if (rot && Math.abs(Math.round(Number(rot))) % 180 === 90) [width, height] = [height, width]
+  const duration = d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : 0
+  return { width, height, duration }
+}

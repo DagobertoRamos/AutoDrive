@@ -10,9 +10,10 @@
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarClock, ExternalLink, Eye, FileText, ImagePlus, Layers, Link2, Loader2, Pencil, Rocket, Save, Sparkles, Stamp, Trash2, Upload, X } from 'lucide-react'
+import { CalendarClock, ExternalLink, Eye, FileText, ImagePlus, Layers, Link2, Loader2, Pencil, RefreshCw, Rocket, Save, ScanSearch, Sparkles, Stamp, Trash2, Upload, X } from 'lucide-react'
 import { CADENCE_NOTICE } from '@/lib/publications/social/cadence-core'
 import { OCCASION_LABEL, OCCASIONS, type Occasion } from '@/lib/publications/social/avulsa-text-core'
+import { CAR_KIND_LABEL, CAR_KINDS, type CarKind } from '@/lib/publications/social/caption-library-core'
 import { partsUrl, StoredPreview } from '@/components/publications/AvulsaPreview'
 import { cn } from '@/lib/utils'
 import { api, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
@@ -21,7 +22,8 @@ import { AVULSA_FORMATS, AVULSA_LABEL, FACEBOOK_ONLY, MAX_VIDEO_BYTES, PART_BYTE
 import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
 
 interface Conn { id: string; channel: string; label: string; status: string }
-interface Item { key: string; media: AvulsaMedia | null; preview: string; kind: 'image' | 'video'; name: string; progress: number; error?: string }
+interface Item { key: string; media: AvulsaMedia | null; preview: string; kind: 'image' | 'video'; name: string; progress: number; error?: string; /** Tamanho do vídeo (para a prévia da marca). */ vw?: number; vh?: number }
+interface Guess { kind: CarKind; model: string | null; brand: string | null; source: 'texto' | 'ia'; confidence: number; scene?: string | null }
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -48,19 +50,45 @@ async function shrink(file: Blob, max = 1440): Promise<Blob> {
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Não foi possível ler a foto.'))), 'image/jpeg', 0.85))
 }
 
-/** Capa do vídeo (quadro de 1 s), para a prévia dos posts já feitos. */
-async function videoPoster(file: File): Promise<Blob | null> {
+/**
+ * Do vídeo, no navegador: a capa (quadro de 1 s), o tamanho e uma folha com
+ * 3 quadros lado a lado (início, meio e fim) para identificar o carro.
+ */
+async function videoFrames(file: File): Promise<{ poster: Blob | null; sheet: string | null; w: number; h: number }> {
   try {
     const v = document.createElement('video')
     v.muted = true; v.preload = 'auto'; v.src = URL.createObjectURL(file)
     await new Promise<void>((res, rej) => { v.onloadeddata = () => res(); v.onerror = () => rej(new Error('vídeo')) })
-    v.currentTime = Math.min(1, (v.duration || 2) / 2)
-    await new Promise<void>((res) => { v.onseeked = () => res() })
+    const seek = async (t: number) => { v.currentTime = t; await new Promise<void>((res) => { v.onseeked = () => res() }) }
+    const d = v.duration || 2
+    const grab = (max: number) => {
+      const c = document.createElement('canvas')
+      const scale = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight))
+      c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale)
+      c.getContext('2d')!.drawImage(v, 0, 0, c.width, c.height)
+      return c
+    }
+    await seek(Math.min(1, d / 2))
+    const poster = await new Promise<Blob | null>((res) => grab(720).toBlob((b) => res(b), 'image/jpeg', 0.8))
+    const frames: HTMLCanvasElement[] = []
+    for (const t of [d * 0.2, d * 0.5, d * 0.8]) { await seek(t); frames.push(grab(480)) }
+    const sheet = document.createElement('canvas')
+    sheet.width = frames.reduce((a, c) => a + c.width, 0); sheet.height = Math.max(...frames.map((c) => c.height))
+    let x = 0
+    for (const c of frames) { sheet.getContext('2d')!.drawImage(c, x, 0); x += c.width }
+    return { poster, sheet: sheet.toDataURL('image/jpeg', 0.7), w: v.videoWidth, h: v.videoHeight }
+  } catch { return { poster: null, sheet: null, w: 0, h: 0 } }
+}
+
+/** Foto reduzida (para identificar o carro). */
+async function photoSheet(file: Blob): Promise<string | null> {
+  try {
+    const bmp = await createImageBitmap(file)
+    const scale = Math.min(1, 800 / Math.max(bmp.width, bmp.height))
     const c = document.createElement('canvas')
-    const scale = Math.min(1, 720 / Math.max(v.videoWidth, v.videoHeight))
-    c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale)
-    c.getContext('2d')!.drawImage(v, 0, 0, c.width, c.height)
-    return await new Promise((res) => c.toBlob((b) => res(b), 'image/jpeg', 0.8))
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale)
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height)
+    return c.toDataURL('image/jpeg', 0.75)
   } catch { return null }
 }
 
@@ -109,24 +137,48 @@ export default function PostAvulsoPage() {
   const [batchResult, setBatchResult] = useState<{ message: string; results: Array<{ n: number; ok: boolean; message: string; local?: string }>; items: BatchItem[] } | null>(null)
   // Identidade da loja nas fotos e vídeos (só com a caixa marcada; preferência lembrada).
   const [brandOn, setBrandOn] = useState(false)
-  const [brandStyle, setBrandStyle] = useState<BrandMark>('DISCRETO')
+  const [brandStyle, setBrandStyle] = useState<BrandMark>('ASSINATURA')
   useEffect(() => {
     const t = setTimeout(() => { try { const p = JSON.parse(localStorage.getItem('autodrive:avulsa:marca:v1') ?? 'null'); if (p) { setBrandOn(!!p.on); if (isBrandMark(p.style)) setBrandStyle(p.style) } } catch { /* sem armazenamento */ } }, 0)
     return () => clearTimeout(t)
   }, [])
   const setBrand = (on: boolean, style: BrandMark) => { setBrandOn(on); setBrandStyle(style); try { localStorage.setItem('autodrive:avulsa:marca:v1', JSON.stringify({ on, style })) } catch { /* ok */ } }
   const brand: BrandMark | null = brandOn ? brandStyle : null
-  // Assistente de texto: modelo pronto por ocasião (com o nome da loja) ou IA.
+  // Assistente de texto: biblioteca por TIPO DE CARRO (600 legendas por tipo,
+  // identificado sozinho pelo vídeo/foto) ou modelo por OCASIÃO; os dois com IA opcional.
+  const [textMode, setTextMode] = useState<'TIPO' | 'OCASIAO'>('TIPO')
   const [occasion, setOccasion] = useState<Occasion>('ENTREGA')
+  const [carKind, setCarKind] = useState<CarKind>('DIA_A_DIA')
+  const [guess, setGuess] = useState<Guess | null>(null)
+  const [detecting, setDetecting] = useState(false)
+  const [detectNote, setDetectNote] = useState<string | null>(null)
+  const [variant, setVariant] = useState<{ n: number; total: number } | null>(null)
   const [notes, setNotes] = useState('')
-  const writeText = async (useAi: boolean) => {
-    if (caption.trim() && !confirm('Substituir o texto que já está escrito?')) return
-    setBusy(useAi ? 'IA' : 'MODELO'); setMsg(null)
+  const [lastSheet, setLastSheet] = useState<{ image: string | null; hints: string } | null>(null)
+  const kindBody = (k: CarKind, g: Guess | null) => ({ kind: k, model: g?.kind === k ? g.model : null, brand: g?.kind === k ? g.brand : null })
+  const writeText = async (useAi: boolean, opts: { next?: boolean; kind?: CarKind; g?: Guess | null; quiet?: boolean } = {}) => {
+    if (!opts.quiet && !opts.next && caption.trim() && !confirm('Substituir o texto que já está escrito?')) return
+    setBusy(useAi ? 'IA' : 'MODELO'); if (!opts.quiet) setMsg(null)
+    const k = opts.kind ?? carKind
     try {
-      const j = await api('/api/publications/avulsa/caption', { method: 'POST', json: { occasion, notes, format, useAi } })
+      const body = textMode === 'TIPO' || opts.kind
+        ? { ...kindBody(k, opts.g !== undefined ? opts.g : guess), notes, format, useAi, ...(opts.next && variant ? { variant: variant.n + 1 } : {}) }
+        : { occasion, notes, format, useAi }
+      const j = await api('/api/publications/avulsa/caption', { method: 'POST', json: body })
       setCaption(j.text)
-      setMsg({ ok: true, text: j.ai ? `Texto escrito pela IA (${j.source}). Revise antes de publicar.` : useAi ? 'Nenhuma IA configurada: usei o modelo pronto com os dados da loja.' : 'Modelo pronto preenchido com o nome e os contatos da loja — ajuste à vontade.' })
+      setVariant(typeof j.variant === 'number' ? { n: j.variant, total: j.total } : null)
+      if (!opts.quiet) setMsg({ ok: true, text: j.ai ? `Texto escrito pela IA (${j.source}). Revise antes de publicar.` : useAi ? 'Nenhuma IA configurada: usei a legenda pronta com os dados da loja.' : 'Legenda pronta preenchida com o nome e os contatos da loja — ajuste à vontade.' })
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+  }
+  /** Identifica o tipo de carro (quadros do vídeo/foto + nome do arquivo) e, se a legenda está vazia, já escreve. */
+  const detect = async (image: string | null, hints: string, autoFill: boolean) => {
+    setDetecting(true)
+    try {
+      const j = await api<{ guess: Guess | null; note?: string }>('/api/publications/avulsa/detect', { method: 'POST', json: { image: image ?? undefined, hints: [hints, title, notes].filter(Boolean).join(' ') } })
+      if (!j.guess) { setGuess(null); setDetectNote(`Não consegui identificar o carro${j.note ? ` (${j.note.replace(/:.*$/, '').toLowerCase()})` : ''}. Escolha o tipo na lista — dica: o nome do arquivo com a marca/modelo (ex.: ferrari-sf90.mp4) já resolve.`); return }
+      setDetectNote(null); setGuess(j.guess); setCarKind(j.guess.kind); setTextMode('TIPO')
+      if (autoFill) await writeText(false, { kind: j.guess.kind, g: j.guess, quiet: true })
+    } catch { /* identificação é ajuda: sem ela, a pessoa escolhe */ } finally { setDetecting(false) }
   }
 
   // Rascunho do servidor sendo continuado (salvar/publicar atualiza o mesmo).
@@ -185,6 +237,14 @@ export default function PostAvulsoPage() {
     return () => clearTimeout(t)
   }, [posts, linked]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Vindo do botão "Subir vídeo" (?formato=REELS): já abre no formato certo.
+  useEffect(() => {
+    if (!restored) return
+    const f = new URLSearchParams(window.location.search).get('formato')
+    const t = setTimeout(() => { if (f && (AVULSA_FORMATS as readonly string[]).includes(f) && !items.length) setFormat(f as AvulsaFormat) }, 0)
+    return () => clearTimeout(t)
+  }, [restored]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // O lote fica guardado neste navegador (recarregar a página não perde).
   const [batchLoaded, setBatchLoaded] = useState(false)
   useEffect(() => {
@@ -216,7 +276,7 @@ export default function PostAvulsoPage() {
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
   }
 
-  const clearEditor = () => { setItems([]); setLinkMedia(''); setCaption(''); setTitle(''); setWhen(''); setEditingId(null); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ok */ } }
+  const clearEditor = () => { setItems([]); setLinkMedia(''); setCaption(''); setTitle(''); setWhen(''); setEditingId(null); setGuess(null); setDetectNote(null); setVariant(null); setLastSheet(null); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ok */ } }
 
   const loadPosts = useCallback(() => { api('/api/publications/avulsa').then((j) => { setPosts(j.data) }).catch(() => setPosts([])) }, [])
   useEffect(() => {
@@ -231,6 +291,8 @@ export default function PostAvulsoPage() {
   const setItem = (key: string, x: Partial<Item>) => setItems((l) => l.map((i) => (i.key === key ? { ...i, ...x } : i)))
 
   const addImages = async (files: FileList) => {
+    const first = !items.length ? files[0] : null
+    if (first) void photoSheet(first).then((image) => { setLastSheet({ image, hints: first.name }); return detect(image, first.name, !caption.trim()) })
     for (const f of Array.from(files).slice(0, 10 - items.length)) {
       const key = crypto.randomUUID()
       setItems((l) => [...l, { key, media: null, preview: URL.createObjectURL(f), kind: 'image', name: f.name, progress: 0 }])
@@ -247,7 +309,12 @@ export default function PostAvulsoPage() {
     setItems([{ key, media: null, preview: URL.createObjectURL(f), kind: 'video', name: f.name, progress: 0 }])
     const parts = Math.ceil(f.size / PART_BYTES)
     try {
-      const poster = await videoPoster(f)
+      const fr = await videoFrames(f)
+      if (fr.w) setItem(key, { vw: fr.w, vh: fr.h })
+      // Identifica o carro enquanto o vídeo sobe (e escreve a legenda se estiver vazia).
+      setLastSheet({ image: fr.sheet, hints: f.name })
+      void detect(fr.sheet, f.name, !caption.trim())
+      const poster = fr.poster
       const posterAssetId = poster ? (await postRaw('/api/publications/avulsa/upload?kind=image', poster).catch(() => null))?.assetId : undefined
       for (let i = 0; i < parts; i++) {
         await postRaw(`/api/publications/avulsa/upload?kind=video&uploadId=${uploadId}&index=${i}`, f.slice(i * PART_BYTES, (i + 1) * PART_BYTES))
@@ -268,6 +335,9 @@ export default function PostAvulsoPage() {
     }
     setItems([{ key: crypto.randomUUID(), media: { type: 'video', link: v.url }, preview: v.siteUrl ?? '', kind: 'video', name: `Vídeo (${v.label})`, progress: 100 }])
     setLink('')
+    // Link (Drive/Dropbox): o navegador não lê os quadros — identifica pelo título/observação.
+    setLastSheet({ image: null, hints: '' })
+    if (title || notes) void detect(null, '', !caption.trim())
   }
 
   const media: AvulsaMedia[] = format === 'LINK' ? (classifyVideo(linkMedia) ? [{ type: 'link', url: linkMedia.trim() }] : []) : items.flatMap((i) => (i.media ? [i.media] : []))
@@ -278,10 +348,11 @@ export default function PostAvulsoPage() {
   const previewNet = format === 'LINK' ? 'FACEBOOK' : selConns.some((c) => (net === 'INSTAGRAM' ? c.channel === 'INSTAGRAM' : c.channel === 'META_PAGE')) ? net : selConns[0]?.channel === 'META_PAGE' ? 'FACEBOOK' : 'INSTAGRAM'
   const account = selConns.find((c) => (previewNet === 'INSTAGRAM' ? c.channel === 'INSTAGRAM' : c.channel === 'META_PAGE'))?.label ?? 'sua loja'
   const previewMedia: PreviewMedia[] = useMemo(() => items.filter((i) => i.preview).map((i): PreviewMedia => {
-    if (!brand) return { type: i.kind, url: i.preview }
+    if (!brand) return { type: i.kind, url: i.preview, contain: i.kind === 'video' }
     if (i.media?.type === 'image') return { type: 'image', url: i.media.branded ? i.preview : `/api/publications/avulsa/brand?${new URLSearchParams({ style: brand, assetId: i.media.assetId })}` }
-    return { type: i.kind, url: i.preview, overlay: `/api/publications/avulsa/brand?${new URLSearchParams({ style: brand, w: '1080', h: '1920' })}` }
+    return { type: i.kind, url: i.preview, contain: true, overlay: `/api/publications/avulsa/brand?${new URLSearchParams({ style: brand, w: '1080', h: '1920', ...(i.vw && i.vh ? { vw: String(i.vw), vh: String(i.vh) } : {}) })}` }
   }), [items, brand])
+  const hasVideo = items.some((i) => i.kind === 'video')
   const pf = (f: AvulsaFormat, n: number): PreviewFormat => (f === 'POST' ? (n > 1 ? 'CARROSSEL' : 'POST') : f)
 
   const insertContacts = () => {
@@ -362,6 +433,9 @@ export default function PostAvulsoPage() {
                 )}
               </div>
               {(format === 'REELS' || format === 'STORY') && (
+                <p className="text-[11px] text-gray-500">O vídeo fica guardado no AutoDrive só até ser publicado — depois de postado, ele é apagado automaticamente (rascunho esquecido some em 3 dias).</p>
+              )}
+              {(format === 'REELS' || format === 'STORY') && (
                 <div className="flex gap-2">
                   <input className={cn(inputCls, 'text-xs')} value={link} onChange={(e) => setLink(e.target.value)} placeholder="…ou cole o link: Google Drive, Dropbox, .mp4 (YouTube vira post de link no Facebook)" />
                   <button type="button" onClick={useVideoLink} className="btn-secondary px-2 py-1 text-xs"><Link2 size={14} />Usar link</button>
@@ -382,28 +456,53 @@ export default function PostAvulsoPage() {
 
           {format !== 'LINK' && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-xs">
-              <label className="flex items-center gap-2 font-medium text-gray-800"><input type="checkbox" checked={brandOn} onChange={(e) => setBrand(e.target.checked, brandStyle)} className="rounded border-gray-300 text-brand-600" /><Stamp size={14} className="text-brand-700" />Aplicar a identidade da loja nas fotos e vídeos</label>
+              <label className="flex items-center gap-2 font-medium text-gray-800"><input type="checkbox" checked={brandOn} onChange={(e) => setBrand(e.target.checked, brandStyle)} className="rounded border-gray-300 text-brand-600" /><Stamp size={14} className="text-brand-700" />Colocar a marca da loja (logo e @){hasVideo ? ' no vídeo' : ''}</label>
               {brandOn && (
-                <select aria-label="Estilo da identidade" className={cn(inputCls, 'w-auto py-1 text-xs')} value={brandStyle} onChange={(e) => setBrand(true, e.target.value as BrandMark)}>
+                <select aria-label="Estilo da marca" className={cn(inputCls, 'w-auto py-1 text-xs')} value={brandStyle} onChange={(e) => setBrand(true, e.target.value as BrandMark)}>
+                  <option value="ASSINATURA">Assinatura — logo e @ limpos, sem cobrir o vídeo (recomendado)</option>
                   <option value="DISCRETO">Discreto — só o logo no canto</option>
                   <option value="COMPLETO">Completo — logo + faixa com nome e WhatsApp</option>
                 </select>
               )}
-              <span className="w-full text-[11px] text-gray-500">{brandOn ? 'Usa o logo, as cores, o nome, o WhatsApp e o @ da loja. A prévia ao lado já mostra como fica; nos vídeos a marca fica fora da área coberta pelos botões do Instagram.' : 'Desmarcado: as fotos e vídeos vão exatamente como foram enviados.'}</span>
+              {brandOn && brandStyle === 'ASSINATURA' && hasVideo && (
+                <span className="flex items-center gap-2 text-[11px] text-gray-600"><img src="/api/publications/avulsa/brand?end=1" alt="Encerramento do vídeo" className="h-16 w-9 rounded border border-gray-200 object-cover" />+ encerramento de 2,5 s com logo, @ e WhatsApp</span>
+              )}
+              <span className="w-full text-[11px] text-gray-500">{!brandOn ? 'Desmarcado: as fotos e vídeos vão exatamente como foram enviados.' : brandStyle === 'ASSINATURA' ? 'Logo e @ pequenos, sem caixa, com sombra suave (logo escuro vira branco para ler em cima da imagem). Vídeo deitado ou quadrado: o logo vai na faixa de cima e o @ na de baixo — nada cobre a imagem. Vídeo em pé: assinatura no canto livre dos botões do Instagram. A prévia ao lado mostra como fica.' : 'Usa o logo, as cores, o nome, o WhatsApp e o @ da loja. A prévia ao lado já mostra como fica; nos vídeos a marca fica fora da área coberta pelos botões do Instagram.'}</span>
             </div>
           )}
 
           <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50/30 p-3 text-xs">
-            <p className="flex items-center gap-1.5 font-semibold text-gray-800"><Sparkles size={13} className="text-brand-700" />Texto do post</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 font-semibold text-gray-800"><Sparkles size={13} className="text-brand-700" />Texto do post</p>
+              <div className="flex gap-1" role="tablist" aria-label="Tipo de legenda">
+                {([['TIPO', 'Por tipo de carro'], ['OCASIAO', 'Por ocasião']] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={textMode === k} onClick={() => setTextMode(k)} className={cn('rounded-full border px-2.5 py-0.5', textMode === k ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}>{l}</button>)}
+              </div>
+            </div>
+            {textMode === 'TIPO' && (
+              <p className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {detecting ? <span className="inline-flex items-center gap-1 text-gray-600"><Loader2 size={12} className="animate-spin" />Identificando o carro do {hasVideo ? 'vídeo' : 'conteúdo'}…</span>
+                  : guess ? <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-brand-800 ring-1 ring-brand-200"><ScanSearch size={12} />Identificado{guess.source === 'ia' ? ' pela IA' : ' pelo nome do arquivo'}: <b>{CAR_KIND_LABEL[guess.kind]}</b>{guess.model ? ` — ${guess.model}` : ''}{guess.scene ? ` · ${guess.scene}` : ''}</span>
+                  : detectNote ? <span className="text-amber-700">{detectNote}</span>
+                  : <span className="text-gray-500">Ao carregar o vídeo ou a foto, o sistema identifica o tipo de carro e escolhe a legenda que mais combina.</span>}
+                {lastSheet && !detecting && <button type="button" onClick={() => void detect(lastSheet!.image, lastSheet!.hints, false)} className="text-brand-700 underline">identificar de novo</button>}
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-2">
-              <select aria-label="Ocasião" className={cn(inputCls, 'w-auto py-1 text-xs')} value={occasion} onChange={(e) => setOccasion(e.target.value as Occasion)}>
-                {OCCASIONS.map((o) => <option key={o} value={o}>{OCCASION_LABEL[o]}</option>)}
-              </select>
-              <input className={cn(inputCls, 'min-w-[200px] flex-1 py-1 text-xs')} value={notes} maxLength={600} onChange={(e) => setNotes(e.target.value)} placeholder="Detalhe (opcional): ex. entrega do Compass para a família Souza" />
-              <button type="button" onClick={() => void writeText(false)} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs">{busy === 'MODELO' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}Modelo pronto</button>
+              {textMode === 'TIPO' ? (
+                <select aria-label="Tipo de carro" className={cn(inputCls, 'w-auto py-1 text-xs')} value={carKind} onChange={(e) => { setCarKind(e.target.value as CarKind); setVariant(null) }}>
+                  {CAR_KINDS.map((k) => <option key={k} value={k}>{CAR_KIND_LABEL[k]}</option>)}
+                </select>
+              ) : (
+                <select aria-label="Ocasião" className={cn(inputCls, 'w-auto py-1 text-xs')} value={occasion} onChange={(e) => setOccasion(e.target.value as Occasion)}>
+                  {OCCASIONS.map((o) => <option key={o} value={o}>{OCCASION_LABEL[o]}</option>)}
+                </select>
+              )}
+              <input className={cn(inputCls, 'min-w-[200px] flex-1 py-1 text-xs')} value={notes} maxLength={600} onChange={(e) => setNotes(e.target.value)} placeholder={textMode === 'TIPO' ? 'Detalhe (opcional, para a IA): ex. Porsche 911 Carrera S, único dono' : 'Detalhe (opcional): ex. entrega do Compass para a família Souza'} />
+              <button type="button" onClick={() => void writeText(false)} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs">{busy === 'MODELO' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}{textMode === 'TIPO' ? 'Legenda pronta' : 'Modelo pronto'}</button>
+              {textMode === 'TIPO' && variant && <button type="button" onClick={() => void writeText(false, { next: true })} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs"><RefreshCw size={13} />Outra opção</button>}
               <button type="button" onClick={() => void writeText(true)} disabled={!!busy} className="btn-primary px-2.5 py-1 text-xs">{busy === 'IA' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}Escrever com IA</button>
             </div>
-            <p className="text-[11px] text-gray-500">O modelo já sai com o nome, a cidade e os contatos da loja. Ou escreva/cole o seu próprio texto abaixo.</p>
+            <p className="text-[11px] text-gray-500">{textMode === 'TIPO' ? `600 legendas por tipo de carro — do dia a dia ao superluxo, cada uma no tom certo — já com o nome e os contatos da loja.${variant ? ` Opção ${variant.n + 1} de ${variant.total}.` : ''}` : 'O modelo já sai com o nome, a cidade e os contatos da loja.'} Ou escreva/cole o seu próprio texto abaixo.</p>
           </div>
 
           {format !== 'STORY' && (

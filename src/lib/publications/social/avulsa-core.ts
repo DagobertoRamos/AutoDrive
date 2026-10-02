@@ -16,9 +16,14 @@ export const AVULSA_LABEL: Record<AvulsaFormat, string> = { POST: 'Post / Carros
 /** Formato que só a Página do Facebook aceita. */
 export const FACEBOOK_ONLY: AvulsaFormat[] = ['LINK']
 
-/** Identidade da loja aplicada na mídia (logo / faixa com nome e contato). */
-export type BrandMark = 'DISCRETO' | 'COMPLETO'
-export const isBrandMark = (x: unknown): x is BrandMark => x === 'DISCRETO' || x === 'COMPLETO'
+/**
+ * Identidade da loja aplicada na mídia.
+ *   ASSINATURA: logo + @ pequenos e limpos (no vídeo, fora da imagem quando
+ *               sobra espaço) + encerramento de 2,5 s com o logo — padrão de agência.
+ *   DISCRETO:   só o logo no canto.   COMPLETO: logo + faixa com nome e WhatsApp.
+ */
+export type BrandMark = 'ASSINATURA' | 'DISCRETO' | 'COMPLETO'
+export const isBrandMark = (x: unknown): x is BrandMark => x === 'ASSINATURA' || x === 'DISCRETO' || x === 'COMPLETO'
 
 export type AvulsaMedia =
   | { type: 'image'; assetId: string; branded?: BrandMark }

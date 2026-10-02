@@ -15,7 +15,7 @@ import type { ConnectorContext } from '../connectors/types'
 import { mediaUrlFor } from '../media-token'
 import { connectorContext, type WorkerDeps } from '../worker'
 import { FACEBOOK_ONLY, overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
-import { carVideoForReels, toReels } from './video'
+import { downloadVideoLink, probeVideo, toReels, type ReelsExtras } from './video'
 
 export const VIDEO_PART_KIND = 'SOCIAL_VPART'
 const partKey = (uploadId: string, index: number) => `${uploadId}:${index}`
@@ -36,22 +36,31 @@ async function partsReady(tenantId: string, m: Extract<AvulsaMedia, { uploadId: 
 async function assembleVideo(tenantId: string, m: Extract<AvulsaMedia, { type: 'video' }>): Promise<Uint8Array> {
   const dir = await mkdtemp(path.join(tmpdir(), 'avulsa-'))
   try {
-    // Identidade da loja por cima do vídeo (quando marcada no post).
-    let overlay: string | undefined
-    if (m.brand) {
-      const { brandOverlay, tenantBrand } = await import('./brand-frame')
-      overlay = path.join(dir, 'marca.png')
-      await writeFile(overlay, await brandOverlay(1080, 1920, await tenantBrand(tenantId), m.brand))
-    }
-    if ('link' in m) return await carVideoForReels(m.link, overlay)
     const src = path.join(dir, 'in'); const out = path.join(dir, 'out.mp4')
-    await writeFile(src, new Uint8Array())
-    for (let i = 0; i < m.parts; i++) {
-      const rows = await prisma.$queryRaw<{ b64: string }[]>`SELECT encode(data, 'base64') AS b64 FROM site_assets WHERE "tenantId" = ${tenantId} AND kind = ${VIDEO_PART_KIND} AND sha256 = ${partKey(m.uploadId, i)} LIMIT 1`
-      if (!rows[0]) throw new ConnectorError('VALIDATION', 'O vídeo não foi enviado por completo. Envie de novo.')
-      await appendFile(src, Buffer.from(rows[0].b64, 'base64'))
+    if ('link' in m) await downloadVideoLink(m.link, src)
+    else {
+      await writeFile(src, new Uint8Array())
+      for (let i = 0; i < m.parts; i++) {
+        const rows = await prisma.$queryRaw<{ b64: string }[]>`SELECT encode(data, 'base64') AS b64 FROM site_assets WHERE "tenantId" = ${tenantId} AND kind = ${VIDEO_PART_KIND} AND sha256 = ${partKey(m.uploadId, i)} LIMIT 1`
+        if (!rows[0]) throw new ConnectorError('VALIDATION', 'O vídeo não foi enviado por completo. Envie de novo.')
+        await appendFile(src, Buffer.from(rows[0].b64, 'base64'))
+      }
     }
-    await toReels(src, out, undefined, overlay)
+    // Identidade da loja (quando marcada no post): a ASSINATURA usa as faixas
+    // livres ao redor da imagem e fecha com o encerramento de 2,5 s.
+    const extras: ReelsExtras = {}
+    if (m.brand) {
+      const { brandEndCard, brandOverlay, fitBox, tenantBrand } = await import('./brand-frame')
+      const brand = await tenantBrand(tenantId)
+      const info = await probeVideo(src)
+      extras.overlay = path.join(dir, 'marca.png')
+      await writeFile(extras.overlay, await brandOverlay(1080, 1920, brand, m.brand, info ? fitBox(info.width, info.height) : undefined))
+      if (m.brand === 'ASSINATURA' && info?.duration) {
+        extras.endCard = path.join(dir, 'fim.png'); extras.duration = info.duration
+        await writeFile(extras.endCard, await brandEndCard(brand))
+      }
+    }
+    await toReels(src, out, undefined, extras)
     return new Uint8Array(await readFile(out))
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)

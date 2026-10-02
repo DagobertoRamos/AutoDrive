@@ -81,12 +81,12 @@ export class AnthropicAdapter extends BaseAiAdapter {
     return { summary: 'Documento sem texto legível — precisa de OCR/conferência humana.', legible: false, needsHumanReview: true }
   }
 
-  async analyzeImage(input: { base64: string; mimeType: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
+  async analyzeImage(input: { base64: string; mimeType: string; prompt?: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
     const isPdf = input.mimeType === 'application/pdf'
     const fileBlock: Block = isPdf
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: input.base64 } }
       : { type: 'image', source: { type: 'base64', media_type: input.mimeType, data: input.base64 } }
-    const r = await this.message(ctx, [fileBlock, { type: 'text', text: this.DOC_PROMPT }])
+    const r = await this.message(ctx, [fileBlock, { type: 'text', text: input.prompt ?? this.DOC_PROMPT }])
     const summary = r.text?.trim()
     if (!summary) return { summary: 'Não foi possível ler o documento.', legible: false, needsHumanReview: true }
     return { summary, legible: true, needsHumanReview: false, note: 'Análise por IA (visão) — confira dados sensíveis.' }

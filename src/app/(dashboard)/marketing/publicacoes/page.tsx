@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, CheckCircle2, Eye, FileText, ImagePlus, Info, Loader2, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TrendingUp, Wand2, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Eye, FileText, ImagePlus, Info, Loader2, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TrendingUp, Wand2, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, DOT, Drawer, ErrorNote, PubTabs, STATUS_LABEL, STATUS_TONE } from '@/components/publications/ui'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
@@ -130,6 +130,7 @@ export default function PainelPage() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="hidden text-[11px] text-gray-400 sm:inline">{at ? `Atualizado ${Math.max(now, at) - at < 15_000 ? 'agora' : `há ${Math.round((now - at) / 1000)} s`}` : ''}</span>
           <button onClick={() => void load()} className="btn-secondary px-3 py-2 text-xs" aria-label="Atualizar"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
+          {can.prepare && <Link href="/marketing/avulsa?formato=REELS" className="btn-secondary px-3 py-2 text-xs"><Clapperboard size={14} />Subir vídeo</Link>}
           {can.prepare && <Link href="/marketing/avulsa" className="btn-secondary px-3 py-2 text-xs"><ImagePlus size={14} />Post avulso</Link>}
           {can.prepare && <Link href="/marketing/publicacoes/nova" className="btn-primary px-3 py-2 text-xs"><Plus size={14} />Nova publicação</Link>}
         </div>

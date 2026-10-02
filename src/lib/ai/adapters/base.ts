@@ -19,7 +19,7 @@ export abstract class BaseAiAdapter implements AiProviderAdapter {
   async generateText(_p: string, _ctx: AiAdapterContext): Promise<AiTextResult> { throw new AiNotSupportedError('generateText') }
   async summarizeText(_t: string, _ctx: AiAdapterContext): Promise<AiTextResult> { throw new AiNotSupportedError('summarizeText') }
   async analyzeDocument(_i: { text?: string; mimeType?: string; base64?: string }, _ctx: AiAdapterContext): Promise<AiDocAnalysis> { throw new AiNotSupportedError('analyzeDocument') }
-  async analyzeImage(_i: { base64: string; mimeType: string }, _ctx: AiAdapterContext): Promise<AiDocAnalysis> { throw new AiNotSupportedError('analyzeImage') }
+  async analyzeImage(_i: { base64: string; mimeType: string; prompt?: string }, _ctx: AiAdapterContext): Promise<AiDocAnalysis> { throw new AiNotSupportedError('analyzeImage') }
   async extractStructuredData(_t: string, _s: string, _ctx: AiAdapterContext): Promise<Record<string, unknown>> { throw new AiNotSupportedError('extractStructuredData') }
 
   // Estimativa simples (~4 chars/token) — substituída por contagem real no provedor.

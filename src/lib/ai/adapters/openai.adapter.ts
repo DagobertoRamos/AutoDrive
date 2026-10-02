@@ -80,10 +80,10 @@ export class OpenAIAdapter extends BaseAiAdapter {
     return { summary: 'Documento sem texto legível — precisa de OCR/conferência humana.', legible: false, needsHumanReview: true }
   }
 
-  async analyzeImage(input: { base64: string; mimeType: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
+  async analyzeImage(input: { base64: string; mimeType: string; prompt?: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
     if (!input.mimeType.startsWith('image/')) throw new AiNotConfiguredError('OpenAI: leitura de PDF por imagem não suportada neste adapter')
     const r = await this.chat(ctx, [
-      { type: 'text', text: this.DOC_PROMPT },
+      { type: 'text', text: input.prompt ?? this.DOC_PROMPT },
       { type: 'image_url', image_url: { url: `data:${input.mimeType};base64,${input.base64}` } },
     ])
     const summary = r.text?.trim()

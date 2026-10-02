@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bookmark, ChevronLeft, ChevronRight, Globe, Heart, MessageCircle, MoreHorizontal, Music2, Pause, Play, Send, Share2, ThumbsUp, Volume2, VolumeX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export interface PreviewMedia { type: 'image' | 'video'; url: string; note?: string; /** Camada por cima (ex.: identidade da loja no vídeo). */ overlay?: string }
+export interface PreviewMedia { type: 'image' | 'video'; url: string; note?: string; /** Camada por cima (ex.: identidade da loja no vídeo). */ overlay?: string; /** Vídeo inteiro sobre ele mesmo desfocado (como sai no Reels). */ contain?: boolean }
 export interface PreviewAudio { url: string; title: string; artist?: string }
 
 /**
@@ -64,6 +64,12 @@ const initial = (s: string) => (s.replace(/^@/, '').trim()[0] ?? 'A').toUpperCas
 
 function Media({ m, className, kb }: { m: PreviewMedia; className?: string; kb?: number }) {
   if (m.overlay) return <div className="relative h-full w-full"><Media m={{ ...m, overlay: undefined }} className={className} kb={kb} /><img src={m.overlay} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover" /></div>
+  if (m.type === 'video' && m.contain) return (
+    <div className="relative h-full w-full overflow-hidden bg-black">
+      <video src={m.url} aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl brightness-75" loop autoPlay muted playsInline />
+      <video src={m.url} className={cn('relative h-full w-full object-contain', className)} loop autoPlay playsInline controls />
+    </div>
+  )
   return m.type === 'video'
     ? <video src={m.url} className={cn('h-full w-full object-cover', className)} loop autoPlay playsInline controls />
     : <img src={m.url} alt="" className={cn('h-full w-full object-cover', className)} style={kb ? { animation: `pp-kb ${kb}s linear both` } : undefined} />

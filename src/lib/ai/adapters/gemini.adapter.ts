@@ -106,8 +106,8 @@ export class GeminiAdapter extends BaseAiAdapter {
   }
 
   // Multimodal: lê imagem/PDF escaneado direto (inlineData).
-  async analyzeImage(input: { base64: string; mimeType: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
-    const r = await this.generate(ctx, this.DOC_PROMPT, [{ inlineData: { mimeType: input.mimeType, data: input.base64 } }])
+  async analyzeImage(input: { base64: string; mimeType: string; prompt?: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis> {
+    const r = await this.generate(ctx, input.prompt ?? this.DOC_PROMPT, [{ inlineData: { mimeType: input.mimeType, data: input.base64 } }])
     const summary = r.text?.trim()
     if (!summary) return { summary: 'Não foi possível ler o documento (ilegível ou bloqueado).', legible: false, needsHumanReview: true }
     return { summary, legible: true, needsHumanReview: false, note: 'Análise por IA (visão) — confira dados sensíveis manualmente.' }

@@ -50,7 +50,8 @@ export interface AiProviderAdapter {
   generateText(prompt: string, ctx: AiAdapterContext): Promise<AiTextResult>
   summarizeText(text: string, ctx: AiAdapterContext): Promise<AiTextResult>
   analyzeDocument(input: { text?: string; mimeType?: string; base64?: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis>
-  analyzeImage(input: { base64: string; mimeType: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis>
+  /** `prompt` opcional substitui o pedido padrão (leitura de documento). */
+  analyzeImage(input: { base64: string; mimeType: string; prompt?: string }, ctx: AiAdapterContext): Promise<AiDocAnalysis>
   extractStructuredData(text: string, schemaHint: string, ctx: AiAdapterContext): Promise<Record<string, unknown>>
   countTokens(text: string): number
 }

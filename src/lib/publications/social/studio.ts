@@ -22,7 +22,7 @@ import { designArt } from './design-render'
 
 export const SOCIAL_VIDEO_KIND = 'SOCIAL_VIDEO'
 
-export interface Brand { storeName: string; primaryColor: string; darkColor: string; whatsapp: string; instagram: string; logo: Buffer | null }
+export interface Brand { storeName: string; primaryColor: string; darkColor: string; whatsapp: string; instagram: string; logo: Buffer | null; site?: string }
 
 const ASSET = /\/api\/site\/assets\/([a-z0-9]{10,40})/i
 export const photoRef = (tenantId: string, url: string) => { const m = ASSET.exec(url); return m ? { t: tenantId, a: m[1] } : { t: tenantId, u: url } }
@@ -50,6 +50,7 @@ export async function loadBrand(tenantId: string): Promise<Brand> {
     darkColor: id?.darkColor || '#061b29',
     whatsapp: settings.contacts.whatsapp || settings.contacts.phone || '',
     instagram: settings.contacts.instagram || '',
+    site: settings.contacts.site || '',
     logo: await logoBytes(id?.logoUrl || ''),
   }
 }
