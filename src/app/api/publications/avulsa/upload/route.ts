@@ -31,7 +31,8 @@ export async function POST(req: Request) {
     if (e instanceof ImageRejected) return bad(e.message)
     console.error('[avulsa/upload]', e)
     // Motivo curto (sem dados da loja) para dar para entender o que houve.
-    const why = String((e as { code?: string }).code ?? (e as Error).message ?? '').replace(/\s+/g, ' ').slice(0, 140)
+    const code = (e as { code?: string }).code
+    const why = [code, String((e as Error).message ?? '').replace(/\s+/g, ' ').replace(/^.*?Message: /, '')].filter(Boolean).join(' — ').slice(0, 300)
     return bad(`Não foi possível guardar o arquivo${why ? ` (${why})` : ''}.`, 500)
   }
 }

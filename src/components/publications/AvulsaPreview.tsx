@@ -25,6 +25,7 @@ export function storedPreview(media: AvulsaMedia[]): { items: PreviewMedia[]; li
     if (m.type === 'image') items.push({ type: 'image', url: `/api/site/assets/${m.assetId}` })
     else if (m.type === 'link') link = m.url
     else if ('uploadId' in m) items.push({ type: 'video', url: partsUrl(m) })
+    else if ('blobUrl' in m) items.push({ type: 'video', url: m.blobUrl })
     else items.push({ type: 'image', url: '', note: 'link' in m ? `Vídeo por link (${classifyVideo(m.link)?.label ?? 'link'})` : 'Vídeo' })
   }
   return { items: items.filter((i) => i.url), link }

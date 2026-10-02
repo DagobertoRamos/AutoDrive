@@ -29,10 +29,20 @@ export type AvulsaMedia =
   | { type: 'image'; assetId: string; branded?: BrandMark }
   | { type: 'video'; uploadId: string; parts: number; size: number; name?: string; posterAssetId?: string; brand?: BrandMark }
   | { type: 'video'; link: string; brand?: BrandMark }
+  /** Vídeo enviado direto do celular para o armazenamento de arquivos (fora do banco). */
+  | { type: 'video'; blobUrl: string; size: number; name?: string; posterAssetId?: string; brand?: BrandMark }
   | { type: 'link'; url: string }
 
 export const PART_BYTES = 3_500_000
 export const MAX_VIDEO_BYTES = 120 * 1024 * 1024
+/** Vídeo no armazenamento de arquivos: até 300 MB. */
+export const MAX_BLOB_VIDEO_BYTES = 300 * 1024 * 1024
+
+/** Endereço de vídeo no armazenamento (Vercel Blob), sempre na pasta avulsa/<loja>/. */
+export const BLOB_VIDEO_URL = /^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/avulsa\/[a-z0-9]{10,40}\/[\w.%-]{1,200}$/i
+/** Pasta da loja no armazenamento. */
+export const blobFolder = (tenantId: string) => `avulsa/${tenantId}/`
+export const blobBelongsTo = (url: string, tenantId: string) => BLOB_VIDEO_URL.test(url) && new URL(url).pathname.startsWith(`/${blobFolder(tenantId)}`)
 
 const ID = /^[a-z0-9]{10,40}$/i
 const UP = /^[a-zA-Z0-9-]{8,64}$/
@@ -47,6 +57,10 @@ export function sanitizeMedia(x: unknown): AvulsaMedia[] {
       if (Number.isInteger(parts) && parts >= 1 && parts <= Math.ceil(MAX_VIDEO_BYTES / PART_BYTES) && size > 0 && size <= MAX_VIDEO_BYTES) {
         return [{ type: 'video', uploadId: o.uploadId, parts, size, name: typeof o.name === 'string' ? o.name.slice(0, 120) : undefined, ...(typeof o.posterAssetId === 'string' && ID.test(o.posterAssetId) ? { posterAssetId: o.posterAssetId } : {}), ...(isBrandMark(o.brand) ? { brand: o.brand } : {}) }]
       }
+    }
+    if (o.type === 'video' && typeof o.blobUrl === 'string' && BLOB_VIDEO_URL.test(o.blobUrl)) {
+      const size = Number(o.size)
+      if (size > 0 && size <= MAX_BLOB_VIDEO_BYTES) return [{ type: 'video', blobUrl: o.blobUrl, size, name: typeof o.name === 'string' ? o.name.slice(0, 120) : undefined, ...(typeof o.posterAssetId === 'string' && ID.test(o.posterAssetId) ? { posterAssetId: o.posterAssetId } : {}), ...(isBrandMark(o.brand) ? { brand: o.brand } : {}) }]
     }
     if (o.type === 'link' && typeof o.url === 'string') {
       const v = classifyVideo(o.url)

@@ -18,7 +18,7 @@ import { partsUrl, StoredPreview } from '@/components/publications/AvulsaPreview
 import { cn } from '@/lib/utils'
 import { api, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
 import { PostPreview, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
-import { AVULSA_FORMATS, AVULSA_LABEL, FACEBOOK_ONLY, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia, isBrandMark, type BrandMark } from '@/lib/publications/social/avulsa-core'
+import { AVULSA_FORMATS, AVULSA_LABEL, FACEBOOK_ONLY, MAX_BLOB_VIDEO_BYTES, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia, isBrandMark, type BrandMark } from '@/lib/publications/social/avulsa-core'
 import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
 
 interface Conn { id: string; channel: string; label: string; status: string }
@@ -121,7 +121,11 @@ async function postRetry(url: string, body: Blob, tries = 4): Promise<any> {
 const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => Promise.race([p, new Promise<T>((ok) => setTimeout(() => ok(fallback), ms))])
 
 /** Envios de vídeo em andamento (para retomar de onde parou). */
-const pendingUploads = new Map<string, { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string }>()
+type PendingUpload = { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string; /** Pasta no armazenamento de arquivos (vídeo fora do banco); sem ela, envia em pedaços para o banco. */ blobFolder?: string }
+const pendingUploads = new Map<string, PendingUpload>()
+
+/** Nome seguro para o arquivo no armazenamento. */
+const safeName = (n: string) => (n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').slice(-80) || 'video.mp4')
 
 /** Mídias guardadas → prévia (fotos e capa do vídeo servidas pela loja). */
 
@@ -131,6 +135,7 @@ function itemsFromMedia(media: AvulsaMedia[]): Item[] {
     if (m.type === 'link') return []
     if (m.type === 'image') return [{ key: crypto.randomUUID(), media: m, preview: `/api/site/assets/${m.assetId}`, kind: 'image', name: 'Foto', progress: 100 }]
     if ('link' in m) return [{ key: crypto.randomUUID(), media: m, preview: classifyVideo(m.link)?.siteUrl ?? '', kind: 'video', name: `Vídeo (${classifyVideo(m.link)?.label ?? 'link'})`, progress: 100 }]
+    if ('blobUrl' in m) return [{ key: crypto.randomUUID(), media: m, preview: m.blobUrl, kind: 'video', name: m.name ?? 'Vídeo', progress: 100 }]
     return [{ key: crypto.randomUUID(), media: m, preview: partsUrl(m), kind: 'video', name: m.name ?? 'Vídeo', progress: 100 }]
   })
 }
@@ -312,6 +317,10 @@ export default function PostAvulsoPage() {
     const t = setTimeout(loadPosts, 0); return () => clearTimeout(t)
   }, [loadPosts])
 
+  // Armazenamento de arquivos para vídeos (fora do banco): ligado quando o servidor tem a chave.
+  const [blobCfg, setBlobCfg] = useState<{ enabled: boolean; folder: string } | null>(null)
+  useEffect(() => { api<{ enabled: boolean; folder: string }>('/api/publications/avulsa/blob').then((j) => setBlobCfg({ enabled: j.enabled, folder: j.folder })).catch(() => setBlobCfg({ enabled: false, folder: '' })) }, [])
+
   const setItem = (key: string, x: Partial<Item>) => setItems((l) => l.map((i) => (i.key === key ? { ...i, ...x } : i)))
 
   const addImages = async (files: FileList) => {
@@ -331,7 +340,24 @@ export default function PostAvulsoPage() {
   const sendParts = async (key: string) => {
     const u = pendingUploads.get(key)
     if (!u) return
-    setItem(key, { error: undefined })
+    setItem(key, { error: undefined, progress: u.blobFolder ? 0 : Math.round((u.next / u.parts) * 100) })
+    if (u.blobFolder) {
+      // Direto do celular para o armazenamento de arquivos (em partes, com novas tentativas).
+      try {
+        const { upload } = await import('@vercel/blob/client')
+        const r = await upload(`${u.blobFolder}${safeName(u.name)}`, u.file, {
+          access: 'public', handleUploadUrl: '/api/publications/avulsa/blob', contentType: u.file.type || 'video/mp4',
+          multipart: u.file.size > 8 * 1024 * 1024,
+          onUploadProgress: ({ percentage }) => setItem(key, { progress: Math.min(99, Math.round(percentage)) }),
+        })
+        pendingUploads.delete(key)
+        setItem(key, { progress: 100, media: { type: 'video', blobUrl: r.url, size: u.file.size, name: u.name.slice(0, 120), ...(u.posterAssetId ? { posterAssetId: u.posterAssetId } : {}) } })
+      } catch (e) {
+        const m = (e as Error).message || 'falha no envio'
+        setItem(key, { error: `Envio do vídeo parou: ${/fetch|network|Failed/i.test(m) ? 'sem conexão com o servidor (internet caiu ou oscilou)' : m}` })
+      }
+      return
+    }
     try {
       for (let i = u.next; i < u.parts; i++) {
         await postRetry(`/api/publications/avulsa/upload?kind=video&uploadId=${u.uploadId}&index=${i}`, u.file.slice(i * PART_BYTES, (i + 1) * PART_BYTES))
@@ -346,8 +372,9 @@ export default function PostAvulsoPage() {
   }
 
   const addVideo = async (f: File) => {
-    if (f.size > MAX_VIDEO_BYTES) { setMsg({ ok: false, text: `Vídeo com mais de ${Math.round(MAX_VIDEO_BYTES / 1048576)} MB. Use um link do Google Drive ou Dropbox.` }); return }
     if (!f.size) { setMsg({ ok: false, text: 'O celular entregou o vídeo vazio. Escolha de novo (se estiver na nuvem, baixe para o aparelho antes).' }); return }
+    const big = blobCfg?.enabled ? f.size > MAX_BLOB_VIDEO_BYTES : f.size > MAX_VIDEO_BYTES
+    if (big) { setMsg({ ok: false, text: `Vídeo com mais de ${Math.round((blobCfg?.enabled ? MAX_BLOB_VIDEO_BYTES : MAX_VIDEO_BYTES) / 1048576)} MB. Use um link do Google Drive ou Dropbox.` }); return }
     const key = crypto.randomUUID(); const uploadId = crypto.randomUUID()
     setItems([{ key, media: null, preview: '', kind: 'video', name: f.name, progress: 0 }])
     // Lê o vídeo inteiro AGORA: no celular (Android/Google Fotos) o acesso ao arquivo
@@ -361,7 +388,7 @@ export default function PostAvulsoPage() {
       return
     }
     setItem(key, { preview: URL.createObjectURL(data) })
-    const u = { file: data, name: f.name, uploadId, parts: Math.ceil(f.size / PART_BYTES), next: 0 } as { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string }
+    const u: PendingUpload = { file: data, name: f.name, uploadId, parts: Math.ceil(f.size / PART_BYTES), next: 0, ...(blobCfg?.enabled ? { blobFolder: blobCfg.folder } : {}) }
     pendingUploads.set(key, u)
     // Capa, tamanho e identificação do carro: em paralelo e com prazo (não seguram o envio).
     void withTimeout(videoFrames(new File([data], f.name, { type: data.type })), 12_000, { poster: null, sheet: null, w: 0, h: 0 }).then(async (fr) => {
@@ -476,7 +503,7 @@ export default function PostAvulsoPage() {
                   </label>
                 )}
                 {(format === 'REELS' || format === 'STORY') && (
-                  <label className="btn-secondary cursor-pointer px-3 py-1.5 text-xs"><Upload size={14} />Carregar vídeo pronto (até {Math.round(MAX_VIDEO_BYTES / 1048576)} MB)
+                  <label className="btn-secondary cursor-pointer px-3 py-1.5 text-xs"><Upload size={14} />Carregar vídeo pronto (até {Math.round((blobCfg?.enabled ? MAX_BLOB_VIDEO_BYTES : MAX_VIDEO_BYTES) / 1048576)} MB)
                     <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void addVideo(f); e.target.value = '' }} />
                   </label>
                 )}

@@ -14,8 +14,8 @@ import { graph, graphBase, graphError, rupload, waitContainer } from '../connect
 import type { ConnectorContext } from '../connectors/types'
 import { mediaUrlFor } from '../media-token'
 import { connectorContext, type WorkerDeps } from '../worker'
-import { FACEBOOK_ONLY, overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
-import { downloadVideoLink, probeVideo, toReels, type ReelsExtras } from './video'
+import { blobBelongsTo, FACEBOOK_ONLY, overallStatus, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
+import { downloadToFile, downloadVideoLink, probeVideo, toReels, type ReelsExtras } from './video'
 
 export const VIDEO_PART_KIND = 'SOCIAL_VPART'
 const partKey = (uploadId: string, index: number) => `${uploadId}:${index}`
@@ -38,6 +38,7 @@ async function assembleVideo(tenantId: string, m: Extract<AvulsaMedia, { type: '
   try {
     const src = path.join(dir, 'in'); const out = path.join(dir, 'out.mp4')
     if ('link' in m) await downloadVideoLink(m.link, src)
+    else if ('blobUrl' in m) await downloadToFile(m.blobUrl, src).catch((e) => { throw new ConnectorError('VALIDATION', `O vídeo não está mais no armazenamento (${(e as Error).message}). Envie de novo.`) })
     else {
       await writeFile(src, new Uint8Array())
       for (let i = 0; i < m.parts; i++) {
@@ -106,6 +107,7 @@ export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id
   const imgs = media.flatMap((m) => (m.type === 'image' ? [m.assetId] : m.type === 'video' && 'posterAssetId' in m && m.posterAssetId ? [m.posterAssetId] : []))
   if (imgs.length && (await prisma.siteAsset.count({ where: { tenantId, id: { in: imgs }, kind: 'SOCIAL_UPLOAD' } })) !== imgs.length) throw new Error('Alguma foto não foi encontrada. Envie de novo.')
   for (const m of media) if (m.type === 'video' && 'uploadId' in m && !(await partsReady(tenantId, m))) throw new Error('O vídeo ainda não terminou de subir. Aguarde e tente de novo.')
+  for (const m of media) if (m.type === 'video' && 'blobUrl' in m && !blobBelongsTo(m.blobUrl, tenantId)) throw new Error('Vídeo inválido. Envie de novo.')
   const data = {
     title: i.title?.trim().slice(0, 120) || null, format: i.format, caption: i.caption.trim() || null, media: media as unknown as object, connectionIds: conns.map((c) => c.id),
     status: i.draft ? 'RASCUNHO' : 'AGENDADO', scheduledAt: i.draft ? i.scheduledAt : i.scheduledAt ?? new Date(),
@@ -114,8 +116,8 @@ export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id
     // Continuando um rascunho: atualiza o mesmo registro (e solta vídeos que saíram).
     const old = await prisma.socialPost.findFirst({ where: { id: i.id, tenantId, status: 'RASCUNHO' }, select: { media: true } })
     if (!old) throw new Error('Este rascunho não existe mais (rascunhos são apagados após 2 dias). Salve de novo.')
-    const keep = new Set(media.flatMap((m) => ('uploadId' in m ? [m.uploadId] : [])))
-    await deleteVideoParts(tenantId, sanitizeMedia(old.media).filter((m) => !('uploadId' in m) || !keep.has(m.uploadId)))
+    const keep = new Set(media.flatMap((m) => ('uploadId' in m ? [m.uploadId] : 'blobUrl' in m ? [m.blobUrl] : [])))
+    await deleteVideoParts(tenantId, sanitizeMedia(old.media).filter((m) => ('uploadId' in m && !keep.has(m.uploadId)) || ('blobUrl' in m && !keep.has(m.blobUrl))))
     return prisma.socialPost.update({ where: { id: i.id }, data })
   }
   return prisma.socialPost.create({ data: { tenantId, ...data, createdById: actor.id, createdByName: actor.name } })
@@ -267,8 +269,10 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
 
 /** Apaga os pedaços de vídeo de um post (publicado, com erro ou cancelado). */
 export async function deleteVideoParts(tenantId: string, media: AvulsaMedia[]): Promise<void> {
-  for (const m of media) if (m.type === 'video' && 'uploadId' in m) {
-    await prisma.siteAsset.deleteMany({ where: { tenantId, kind: VIDEO_PART_KIND, sha256: { startsWith: `${m.uploadId}:` } } }).catch(() => undefined)
+  for (const m of media) {
+    if (m.type === 'video' && 'uploadId' in m) await prisma.siteAsset.deleteMany({ where: { tenantId, kind: VIDEO_PART_KIND, sha256: { startsWith: `${m.uploadId}:` } } }).catch(() => undefined)
+    // Vídeo no armazenamento: apagado depois de publicado/cancelado.
+    if (m.type === 'video' && 'blobUrl' in m && blobBelongsTo(m.blobUrl, tenantId)) await deleteBlob(m.blobUrl)
   }
 }
 
@@ -300,6 +304,28 @@ export async function socialStorage(tenantId: string): Promise<{ fotos: number; 
   const get = (k: string) => rows.find((r) => r.kind === k)?._sum.fileSize ?? 0
   const fotos = get('SOCIAL_UPLOAD'); const pedacosVideo = get(VIDEO_PART_KIND); const videosGerados = get('SOCIAL_VIDEO')
   return { fotos, pedacosVideo, videosGerados, total: fotos + pedacosVideo + videosGerados }
+}
+
+async function deleteBlob(url: string): Promise<void> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return
+  try { await (await import('@vercel/blob')).del(url) } catch (e) { console.error('[avulsa] apagar vídeo do armazenamento', (e as Error).message) }
+}
+
+/** Vídeos no armazenamento com mais de 3 dias que nenhum post pendente usa (envio abandonado). */
+export async function pruneVideoBlobs(now = new Date()): Promise<number> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return 0
+  const { list, del } = await import('@vercel/blob')
+  const active = await prisma.socialPost.findMany({ where: { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } }, select: { media: true } })
+  const keep = new Set(active.flatMap((p) => sanitizeMedia(p.media).flatMap((m) => (m.type === 'video' && 'blobUrl' in m ? [m.blobUrl] : []))))
+  const old: string[] = []
+  let cursor: string | undefined
+  do {
+    const r = await list({ prefix: 'avulsa/', cursor, limit: 1000 })
+    for (const b of r.blobs) if (b.uploadedAt.getTime() < now.getTime() - 3 * 86_400_000 && !keep.has(b.url)) old.push(b.url)
+    cursor = r.hasMore ? r.cursor : undefined
+  } while (cursor && old.length < 1000)
+  if (old.length) await del(old)
+  return old.length
 }
 
 /** Pedaços de vídeo com mais de 3 dias que não pertencem a post ainda pendente (rascunho, agendado, enviando). */

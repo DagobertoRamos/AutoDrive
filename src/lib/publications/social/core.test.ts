@@ -287,6 +287,20 @@ describe('posts avulsos (regras)', () => {
   })
 })
 
+describe('post avulso com vídeo no armazenamento (fora do banco)', () => {
+  it('só aceita endereço do armazenamento na pasta da própria loja', async () => {
+    const a = await import('./avulsa-core')
+    const url = 'https://abc123xyz.public.blob.vercel-storage.com/avulsa/cmpfxjs8q000151n87dlnf6rz/video-Ab12Cd.mp4'
+    const v = { type: 'video' as const, blobUrl: url, size: 50_000_000, name: 'v.mp4' }
+    expect(a.sanitizeMedia([v])).toEqual([v])
+    expect(a.validateAvulsa('REELS', [v], '')).toBeNull()
+    expect(a.sanitizeMedia([{ ...v, blobUrl: 'https://evil.com/avulsa/cmpfxjs8q000151n87dlnf6rz/x.mp4' }])).toEqual([])
+    expect(a.sanitizeMedia([{ ...v, size: 400 * 1024 * 1024 }])).toEqual([])
+    expect(a.blobBelongsTo(url, 'cmpfxjs8q000151n87dlnf6rz')).toBe(true)
+    expect(a.blobBelongsTo(url, 'outralojaxxxxxxxxxx1')).toBe(false)
+  })
+})
+
 describe('post avulso com link de vídeo', () => {
   it('link do YouTube é formato próprio; YouTube não vira vídeo baixável', async () => {
     const a = await import('./avulsa-core')

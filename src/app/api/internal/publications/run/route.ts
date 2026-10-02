@@ -10,7 +10,7 @@ import { runWorker } from '@/lib/publications/worker'
 import { reconcile } from '@/lib/publications/reconcile'
 import { pruneSocialVideos } from '@/lib/publications/social/studio'
 import { planAllAutoPrograms } from '@/lib/publications/social/autoprog'
-import { processSocialPosts, pruneSocialUploads, pruneVideoParts } from '@/lib/publications/social/avulsa'
+import { processSocialPosts, pruneSocialUploads, pruneVideoBlobs, pruneVideoParts } from '@/lib/publications/social/avulsa'
 import { applyRetention } from '@/lib/publications/retention'
 
 export const dynamic = 'force-dynamic'
@@ -30,7 +30,7 @@ async function handle(req: NextRequest) {
   const program = doReconcile ? await planAllAutoPrograms().catch((e) => [{ tenantId: '-', planned: 0, message: `Erro: ${(e as Error).message}` }]) : null
   const work = await runWorker({ maxJobs: 60, deadlineMs: 240_000, heavy: true })
   const avulsos = await processSocialPosts({ heavy: true }).catch((e) => { console.error('[avulsa]', e); return { processed: 0 } })
-  if (doReconcile) { await applyRetention().catch((e) => console.error('[retencao]', e)); await pruneVideoParts().catch(() => 0); await pruneSocialUploads().catch(() => 0) }
+  if (doReconcile) { await applyRetention().catch((e) => console.error('[retencao]', e)); await pruneVideoParts().catch(() => 0); await pruneVideoBlobs().catch((e) => { console.error("[avulsa] limpeza do armazenamento", e); return 0 }); await pruneSocialUploads().catch(() => 0) }
   return NextResponse.json({ success: true, reconcile: rec, program, avulsos, recovered: work.recovered, processed: work.processed.length, results: work.processed.map((p) => ({ op: p.op, channel: p.channel, result: p.result })) })
 }
 

@@ -130,6 +130,12 @@ export async function toReels(input: string, output: string, timeoutMs = 200_000
   })
 }
 
+/** Baixa um arquivo de vídeo (endereço https direto, ex.: armazenamento da loja) para `file`. */
+export async function downloadToFile(url: string, file: string): Promise<void> {
+  await download(url, file)
+  if ((await stat(file)).size < 10_000) throw new Error('O arquivo do vídeo veio vazio.')
+}
+
 /** Baixa o vídeo do link (Drive, Dropbox, .mp4) para `file`. */
 export async function downloadVideoLink(link: string, file: string): Promise<void> {
   const v = classifyVideo(link)
