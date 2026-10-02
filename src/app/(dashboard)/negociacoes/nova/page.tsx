@@ -2041,11 +2041,27 @@ function StepVeiculos({
     setTradeVehicleField('model', ev.model ?? '')
     setTradeVehicleField('year',  evalYear(ev) != null ? String(evalYear(ev)) : '')
     setTradeVehicleField('km',    ev.km   != null ? String(ev.km)   : '')
-    if (ev.evaluatedValue != null)
-      setTradeVehicleField('evaluatedValue', maskBRLInput(String(Math.round(Number(ev.evaluatedValue) * 100))))
+    if (ev.evaluatedValue != null) {
+      // Valor da avaliação (aprovado pelo gerente e aceito pelo cliente) = valor da troca.
+      const masked = maskBRLInput(String(Math.round(Number(ev.evaluatedValue) * 100)))
+      setTradeVehicleField('evaluatedValue', masked)
+      setTradeVehicleField('agreedValue', masked)
+      setField('tradeValue', masked)
+    }
     if (ev.fipeValue != null)
       setTradeVehicleField('fipeValue', maskBRLInput(String(Math.round(Number(ev.fipeValue) * 100))))
   }
+
+  // Rascunhos em que o carro da troca foi escolhido antes desta correção: o
+  // valor da avaliação estava guardado, mas não entrava como valor da troca.
+  useEffect(() => {
+    const ev = form.tradeVehicle.evaluatedValue
+    if (form.tradeVehicle.evaluationId && ev && !form.tradeValue) {
+      setField('tradeValue', ev)
+      if (!form.tradeVehicle.agreedValue) setTradeVehicleField('agreedValue', ev)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.tradeVehicle.evaluationId, form.tradeVehicle.evaluatedValue, form.tradeValue])
 
   const [showEvalModal, setShowEvalModal] = useState(false)
   // Modal separado pro fluxo COMPRA — preenche `form.vehicle` (não tradeVehicle)
