@@ -39,7 +39,7 @@ export const MAX_VIDEO_BYTES = 120 * 1024 * 1024
 export const MAX_BLOB_VIDEO_BYTES = 300 * 1024 * 1024
 
 /** Endereço de vídeo no armazenamento (Vercel Blob), sempre na pasta avulsa/<loja>/. */
-export const BLOB_VIDEO_URL = /^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/avulsa\/[a-z0-9]{10,40}\/[\w.%-]{1,200}$/i
+export const BLOB_VIDEO_URL = /^https:\/\/[a-z0-9]+\.(?:public|private)\.blob\.vercel-storage\.com\/avulsa\/[a-z0-9]{10,40}\/[\w.%-]{1,200}$/i
 /** Pasta da loja no armazenamento. */
 export const blobFolder = (tenantId: string) => `avulsa/${tenantId}/`
 export const blobBelongsTo = (url: string, tenantId: string) => BLOB_VIDEO_URL.test(url) && new URL(url).pathname.startsWith(`/${blobFolder(tenantId)}`)

@@ -123,6 +123,8 @@ const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => 
 /** Envios de vídeo em andamento (para retomar de onde parou). */
 type PendingUpload = { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string; /** Pasta no armazenamento de arquivos (vídeo fora do banco); sem ela, envia em pedaços para o banco. */ blobFolder?: string }
 const pendingUploads = new Map<string, PendingUpload>()
+/** Tipo do armazenamento (público por padrão; troca sozinho se for privado). */
+let blobAccess: 'public' | 'private' = 'public'
 
 /** Nome seguro para o arquivo no armazenamento. */
 const safeName = (n: string) => (n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').slice(-80) || 'video.mp4')
@@ -318,8 +320,8 @@ export default function PostAvulsoPage() {
   }, [loadPosts])
 
   // Armazenamento de arquivos para vídeos (fora do banco): ligado quando o servidor tem a chave.
-  const [blobCfg, setBlobCfg] = useState<{ enabled: boolean; folder: string } | null>(null)
-  useEffect(() => { api<{ enabled: boolean; folder: string }>('/api/publications/avulsa/blob').then((j) => setBlobCfg({ enabled: j.enabled, folder: j.folder })).catch(() => setBlobCfg({ enabled: false, folder: '' })) }, [])
+  const [blobCfg, setBlobCfg] = useState<{ enabled: boolean; folder: string; reason?: string } | null>(null)
+  useEffect(() => { api<{ enabled: boolean; folder: string; reason?: string }>('/api/publications/avulsa/blob').then((j) => setBlobCfg({ enabled: j.enabled, folder: j.folder, reason: j.reason })).catch((e) => setBlobCfg({ enabled: false, folder: '', reason: `Não consegui consultar o armazenamento de vídeos: ${(e as Error).message}` })) }, [])
 
   const setItem = (key: string, x: Partial<Item>) => setItems((l) => l.map((i) => (i.key === key ? { ...i, ...x } : i)))
 
@@ -345,11 +347,18 @@ export default function PostAvulsoPage() {
       // Direto do celular para o armazenamento de arquivos (em partes, com novas tentativas).
       try {
         const { upload } = await import('@vercel/blob/client')
-        const r = await upload(`${u.blobFolder}${safeName(u.name)}`, u.file, {
-          access: 'public', handleUploadUrl: '/api/publications/avulsa/blob', contentType: u.file.type || 'video/mp4',
+        const send = (access: 'public' | 'private') => upload(`${u.blobFolder}${safeName(u.name)}`, u.file, {
+          access, handleUploadUrl: '/api/publications/avulsa/blob', contentType: u.file.type || 'video/mp4',
           multipart: u.file.size > 8 * 1024 * 1024,
           onUploadProgress: ({ percentage }) => setItem(key, { progress: Math.min(99, Math.round(percentage)) }),
         })
+        // Armazenamento criado como privado recusa envio público (e vice-versa): tenta o outro.
+        let r
+        try { r = await send(blobAccess) } catch (e) {
+          if (!/private|public|access/i.test((e as Error).message)) throw e
+          blobAccess = blobAccess === 'public' ? 'private' : 'public'
+          r = await send(blobAccess)
+        }
         pendingUploads.delete(key)
         setItem(key, { progress: 100, media: { type: 'video', blobUrl: r.url, size: u.file.size, name: u.name.slice(0, 120), ...(u.posterAssetId ? { posterAssetId: u.posterAssetId } : {}) } })
       } catch (e) {
@@ -508,6 +517,9 @@ export default function PostAvulsoPage() {
                   </label>
                 )}
               </div>
+              {(format === 'REELS' || format === 'STORY') && (
+                <>{blobCfg && !blobCfg.enabled && blobCfg.reason && <p className="rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800">{blobCfg.reason}</p>}</>
+              )}
               {(format === 'REELS' || format === 'STORY') && (
                 <p className="text-[11px] text-gray-500">O vídeo fica guardado no AutoDrive só até ser publicado — depois de postado, ele é apagado automaticamente (rascunho esquecido some em 3 dias).</p>
               )}

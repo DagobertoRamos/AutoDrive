@@ -38,7 +38,7 @@ async function assembleVideo(tenantId: string, m: Extract<AvulsaMedia, { type: '
   try {
     const src = path.join(dir, 'in'); const out = path.join(dir, 'out.mp4')
     if ('link' in m) await downloadVideoLink(m.link, src)
-    else if ('blobUrl' in m) await downloadToFile(m.blobUrl, src).catch((e) => { throw new ConnectorError('VALIDATION', `O vídeo não está mais no armazenamento (${(e as Error).message}). Envie de novo.`) })
+    else if ('blobUrl' in m) await blobToFile(m.blobUrl, src).catch((e) => { throw new ConnectorError('VALIDATION', `O vídeo não está mais no armazenamento (${(e as Error).message}). Envie de novo.`) })
     else {
       await writeFile(src, new Uint8Array())
       for (let i = 0; i < m.parts; i++) {
@@ -306,25 +306,39 @@ export async function socialStorage(tenantId: string): Promise<{ fotos: number; 
   return { fotos, pedacosVideo, videosGerados, total: fotos + pedacosVideo + videosGerados }
 }
 
+/** Baixa o vídeo do armazenamento (público por link; privado com a chave). */
+async function blobToFile(url: string, file: string): Promise<void> {
+  if (!/\.private\.blob\./.test(url)) return downloadToFile(url, file)
+  const token = (await import('./blob-token')).blobToken()
+  const r = await (await import('@vercel/blob')).get(url, { access: 'private', token })
+  if (!r || r.statusCode !== 200) throw new Error('arquivo não encontrado')
+  const { Readable } = await import('node:stream')
+  const { pipeline } = await import('node:stream/promises')
+  const { createWriteStream } = await import('node:fs')
+  await pipeline(Readable.fromWeb(r.stream as unknown as import('node:stream/web').ReadableStream), createWriteStream(file))
+}
+
 async function deleteBlob(url: string): Promise<void> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return
-  try { await (await import('@vercel/blob')).del(url) } catch (e) { console.error('[avulsa] apagar vídeo do armazenamento', (e as Error).message) }
+  const token = (await import('./blob-token')).blobToken()
+  if (!token) return
+  try { await (await import('@vercel/blob')).del(url, { token }) } catch (e) { console.error('[avulsa] apagar vídeo do armazenamento', (e as Error).message) }
 }
 
 /** Vídeos no armazenamento com mais de 3 dias que nenhum post pendente usa (envio abandonado). */
 export async function pruneVideoBlobs(now = new Date()): Promise<number> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return 0
+  const token = (await import('./blob-token')).blobToken()
+  if (!token) return 0
   const { list, del } = await import('@vercel/blob')
   const active = await prisma.socialPost.findMany({ where: { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } }, select: { media: true } })
   const keep = new Set(active.flatMap((p) => sanitizeMedia(p.media).flatMap((m) => (m.type === 'video' && 'blobUrl' in m ? [m.blobUrl] : []))))
   const old: string[] = []
   let cursor: string | undefined
   do {
-    const r = await list({ prefix: 'avulsa/', cursor, limit: 1000 })
+    const r = await list({ prefix: 'avulsa/', cursor, limit: 1000, token })
     for (const b of r.blobs) if (b.uploadedAt.getTime() < now.getTime() - 3 * 86_400_000 && !keep.has(b.url)) old.push(b.url)
     cursor = r.hasMore ? r.cursor : undefined
   } while (cursor && old.length < 1000)
-  if (old.length) await del(old)
+  if (old.length) await del(old, { token })
   return old.length
 }
 
