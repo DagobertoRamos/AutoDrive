@@ -8,7 +8,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { isGate, sameLabel, STAGE_SERVICES } from '@/lib/stock/intake-core'
+import { GATE_NEGOTIATION, isGate, sameLabel, STAGE_SERVICES } from '@/lib/stock/intake-core'
 import { formatCPF, normalizeCPF, isValidCPF } from '@/lib/br-docs/cpf'
 import { formatCNPJ, normalizeCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
@@ -610,9 +610,13 @@ function VehicleCard({
 
 // ── VehicleInlineSearch — busca inline com cards ──────────────────────────────
 
+/** A loja ainda não concluiu a compra/troca deste carro (portão "Negociação de entrada" aberto). */
+const entryPending = (v: StockVehicle) => (v.stockPendencies ?? []).some((p) => p.option?.label && sameLabel(p.option.label, GATE_NEGOTIATION))
+
 /** Por que um carro encontrado na busca ainda não pode ser vendido. */
 function notSellableReasons(v: StockVehicle, requireSalePrice: boolean): string[] {
   const r: string[] = []
+  if (requireSalePrice && entryPending(v)) r.push('A compra/troca deste carro ainda não foi concluída (negociação de entrada pendente) — se é o carro que o cliente está entregando, adicione-o em "Veículo recebido na troca".')
   if (v.stockStatus === 'BLOQUEADO') r.push('Bloqueado no estoque.')
   if (v.stockStatus === 'EM_PRECIFICACAO') r.push('Em precificação: o gerente precisa definir o preço de venda no Estoque.')
   else if (requireSalePrice && !(v.salePrice != null && Number(v.salePrice) > 0)) r.push('Sem preço de venda: o gerente precisa precificar no Estoque.')
@@ -688,6 +692,8 @@ function VehicleInlineSearch({
         // Sem isso, o mesmo Gol aparece pra vender 2x. Selecionado atual continua
         // visível (não some quando o user já escolheu).
         .filter((v) => !requireSalePrice || !v.hasOpenNegotiation || v.id === selected?.id)
+        // Carro que a loja ainda não comprou (negociação de entrada aberta) não pode sair.
+        .filter((v) => !requireSalePrice || !entryPending(v) || v.id === selected?.id)
       visible.sort((a, b) => {
         const aLock = a.hasOpenNegotiation ? 1 : 0
         const bLock = b.hasOpenNegotiation ? 1 : 0
