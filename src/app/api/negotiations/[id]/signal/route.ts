@@ -9,6 +9,7 @@ import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { generateOnSignal } from '@/lib/negotiation/contracts/generate'
 
 const SIGNAL_ALLOWED_STATUSES = new Set([
   'APROVADA', 'LIBERADA', 'AGUARDANDO_SINAL', 'EM_ANDAMENTO', 'RESERVADA',
@@ -97,6 +98,9 @@ export async function POST(
 
       return d
     })
+
+    // Termo de sinal e reserva com os dados da venda (aba Contratos). Não bloqueia.
+    await generateOnSignal(params.id, session.user.id)
 
     return NextResponse.json({ data: updated })
   } catch (err) {

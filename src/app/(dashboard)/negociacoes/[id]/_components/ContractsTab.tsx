@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { useEffect, useState } from 'react'
-import { FileText, Plus, Loader2, Eye, CheckCircle2, Trash2, Download, X, Pencil } from 'lucide-react'
+import { FileText, Plus, Loader2, Eye, CheckCircle2, Trash2, Download, X, Pencil, Scale, Printer } from 'lucide-react'
 import AttachmentUploader, { type Attachment } from './AttachmentUploader'
 
 interface Template {
@@ -60,6 +60,29 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
   const [generating, setGenerating] = useState<string | null>(null)
   const [preview, setPreview]     = useState<DealDocument | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Documentos da venda montados com os dados do sistema (contrato, sinal, intermediação).
+  const [saleDocs, setSaleDocs] = useState<{ suggested: string[]; intermediated: boolean } | null>(null)
+  const [makingKind, setMakingKind] = useState<string | null>(null)
+  const printUrl = (docId: string) => `/api/negotiations/${dealId}/documents/${docId}/print`
+
+  async function makeSaleDoc(kind: 'VENDA' | 'SINAL' | 'INTERMEDIACAO') {
+    setMakingKind(kind)
+    // Abre a aba já no clique (o navegador bloqueia janela aberta depois do await).
+    const win = window.open('', '_blank')
+    try {
+      const res = await fetch(`/api/negotiations/${dealId}/contracts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }) })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? 'Falha ao gerar o documento')
+      onToast(data.regenerated ? 'Documento atualizado com os dados atuais da venda' : 'Documento gerado', true)
+      if (win) win.location.href = printUrl(data.data.id)
+      load()
+    } catch (e) {
+      win?.close()
+      onToast(e instanceof Error ? e.message : 'Erro', false)
+    } finally {
+      setMakingKind(null)
+    }
+  }
 
   async function load() {
     setLoading(true)
@@ -70,6 +93,7 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
       ])
       setTemplates(tplRes.data ?? [])
       setDocs(docRes.data ?? [])
+      fetch(`/api/negotiations/${dealId}/contracts`).then((r) => r.json()).then((j) => setSaleDocs(j.data ?? null)).catch(() => undefined)
     } catch {
       onToast('Erro ao carregar templates/documentos', false)
     } finally {
@@ -140,6 +164,26 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
 
   return (
     <div className="space-y-4">
+      {/* Documentos da venda com os dados do sistema */}
+      <div className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-brand-100 bg-brand-50/60 px-4 py-3">
+          <Scale size={15} className="text-brand-700" />
+          <h3 className="font-semibold text-gray-800">Documentos da venda</h3>
+        </div>
+        <div className="space-y-3 p-4">
+          <p className="text-xs text-gray-600">Montados com os dados cadastrados: loja (logo e qualificação), cliente, veículo vendido, troca, quadro de débitos (com cortesias e descontos) e de pagamentos, e as cláusulas legais (Código Civil, CDC, CTB e LGPD). O contrato sai sozinho ao finalizar a venda e o termo de sinal ao registrar o sinal; aqui você gera ou atualiza a qualquer momento.</p>
+          <div className="flex flex-wrap gap-2">
+            {([['VENDA', 'Contrato de compra e venda'], ['SINAL', 'Termo de sinal e reserva'], ['INTERMEDIACAO', 'Termo de intermediação']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => makeSaleDoc(k)} disabled={!!makingKind}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium disabled:opacity-50 ${saleDocs?.suggested.includes(k) ? 'bg-brand-600 text-white hover:bg-brand-700' : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+                {makingKind === k ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}{l}
+              </button>
+            ))}
+          </div>
+          {saleDocs && <p className="text-[11px] text-gray-500">{saleDocs.intermediated ? 'Veículo de parceiro/particular: a loja entra como INTERMEDIADORA e o dono do veículo como vendedor.' : 'Veículo próprio da loja: a loja entra como VENDEDORA. O termo de intermediação é para veículos de parceiros/particulares.'} Campos sem cadastro (ex.: estado civil, profissão) saem em branco para preencher à mão.</p>}
+        </div>
+      </div>
+
       {/* Templates disponíveis */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
@@ -267,7 +311,7 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
               <h3 className="font-semibold text-gray-900">{preview.name}</h3>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => window.open(printUrl(preview.id), '_blank')}
                   className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                 >
                   <Download size={11} /> Imprimir / PDF
@@ -277,13 +321,8 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto p-6">
-              <div
-                className="prose prose-sm max-w-none"
-                // O conteúdo vem do nosso template HTML cadastrado pelo MASTER; é controlado.
-                dangerouslySetInnerHTML={{ __html: preview.bodyHtml ?? '<p>(sem conteúdo)</p>' }}
-              />
-            </div>
+            {/* Página própria do documento: o estilo não se mistura com a tela e a impressão sai só do documento. */}
+            <iframe title={preview.name} src={printUrl(preview.id)} className="w-full flex-1 rounded-b-2xl border-0 bg-gray-100" />
           </div>
         </div>
       )}

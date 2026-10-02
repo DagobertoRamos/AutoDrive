@@ -16,6 +16,7 @@ import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
+import { generateOnFinalize } from '@/lib/negotiation/contracts/generate'
 
 export const dynamic = 'force-dynamic'
 
@@ -196,6 +197,10 @@ export async function POST(
     } catch (err) {
       console.error('[finalize] finance sync failed', err)
     }
+
+    // Contrato de compra e venda (e termo de intermediação, se a loja intermedeia)
+    // gerado com os dados da venda — aparece na aba Contratos. Não bloqueia.
+    await generateOnFinalize(params.id, session.user.id)
 
     return NextResponse.json({
       data: updated,
