@@ -595,6 +595,18 @@ function VehicleCard({
 
 // ── VehicleInlineSearch — busca inline com cards ──────────────────────────────
 
+/** Por que um carro encontrado na busca ainda não pode ser vendido. */
+function notSellableReasons(v: StockVehicle, requireSalePrice: boolean): string[] {
+  const r: string[] = []
+  if (v.stockStatus === 'BLOQUEADO') r.push('Bloqueado no estoque.')
+  if (v.stockStatus === 'EM_PRECIFICACAO') r.push('Em precificação: o gerente precisa definir o preço de venda no Estoque.')
+  else if (requireSalePrice && !(v.salePrice != null && Number(v.salePrice) > 0)) r.push('Sem preço de venda: o gerente precisa precificar no Estoque.')
+  if (requireSalePrice && v.hasOpenNegotiation) r.push(`Já está em outra negociação${v.openNegotiationNumber ? ` (nº ${v.openNegotiationNumber})` : ''}${v.openNegotiationSeller ? ` com ${v.openNegotiationSeller}` : ''}.`)
+  const pend = (v.stockPendencies ?? []).map((p) => p.option?.label).filter(Boolean)
+  if (pend.length) r.push(`Pendente na esteira: ${pend.join(', ')}.`)
+  return r
+}
+
 function VehicleInlineSearch({
   selected,
   onSelect,
@@ -612,10 +624,15 @@ function VehicleInlineSearch({
   const [query,    setQuery]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const [results,  setResults]  = useState<StockVehicle[]>([])
+  const [blocked,  setBlocked]  = useState<Array<{ v: StockVehicle; reasons: string[] }>>([])
   const [searched, setSearched] = useState(false)
   const [error,    setError]    = useState<string | null>(null)
+  // Cada letra dispara uma busca; só a resposta da ÚLTIMA vale (uma antiga,
+  // ex.: de "H", não pode sobrescrever a de "HB20").
+  const seq = useRef(0)
 
   const doSearch = useCallback(async (q: string) => {
+    const my = ++seq.current
     setLoading(true)
     setSearched(true)
     setError(null)
@@ -635,6 +652,7 @@ function VehicleInlineSearch({
       if (q) qs.set('search', q)
       const res  = await fetch(`/api/vehicles?${qs.toString()}`)
       const data = await res.json().catch(() => ({}))
+      if (my !== seq.current) return
       if (!res.ok || data?.success === false) {
         setError(data?.error || `Falha ao buscar veículos (HTTP ${res.status}).`)
         setResults([])
@@ -661,11 +679,21 @@ function VehicleInlineSearch({
       // Top-3 mais recentes quando vazio (search inicial)
       const final = isInitial ? visible.slice(0, 3) : visible
       setResults(final)
+      // Com busca: o que bateu mas ainda não pode ser vendido aparece com o motivo
+      // (em vez de sumir sem explicação) — ex.: carro recém-avaliado na esteira.
+      const shown = new Set(final.map((v) => v.id))
+      const GONE = new Set(['VENDIDO', 'CANCELADO', 'DEVOLVIDO'])
+      setBlocked(isInitial ? [] : list
+        .filter((v) => !shown.has(v.id) && !(v.stockStatus && GONE.has(v.stockStatus)))
+        .map((v) => ({ v, reasons: notSellableReasons(v, !!requireSalePrice) }))
+        .filter((x) => x.reasons.length > 0))
     } catch (e) {
+      if (my !== seq.current) return
       setError(e instanceof Error ? e.message : 'Erro de rede ao buscar veículos.')
       setResults([])
+      setBlocked([])
     } finally {
-      setLoading(false)
+      if (my === seq.current) setLoading(false)
     }
   }, [])
 
@@ -727,13 +755,27 @@ function VehicleInlineSearch({
           {!loading && !error && searched && results.length === 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <AlertTriangle size={14} className="shrink-0" />
-              Nenhum veículo disponível encontrado para esta busca.
+              {blocked.length ? 'Nenhum veículo liberado para venda nesta busca — veja abaixo o que falta.' : 'Nenhum veículo encontrado para esta busca.'}
             </div>
           )}
           {!loading && results.length > 0 && (
             <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
               {results.map((v) => (
                 <VehicleCard key={v.id} v={v} onSelect={() => onSelect(v)} />
+              ))}
+            </div>
+          )}
+          {!loading && blocked.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Encontrados, mas ainda não liberados para venda</p>
+              {blocked.map(({ v, reasons }) => (
+                <div key={v.id} className="rounded-xl border border-dashed border-amber-300 bg-amber-50/40 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-700">{[v.brand, v.model, v.version, v.modelYear ?? v.year].filter(Boolean).join(' ')}{v.plate && <span className="ml-2 font-mono text-xs text-gray-500">{v.plate}</span>}</p>
+                    <Link href={`/estoque/${v.id}`} target="_blank" className="text-xs font-medium text-brand-700 hover:underline">Abrir no estoque</Link>
+                  </div>
+                  <ul className="mt-1 space-y-0.5 text-xs text-amber-800">{reasons.map((r) => <li key={r}>• {r}</li>)}</ul>
+                </div>
               ))}
             </div>
           )}
@@ -769,7 +811,9 @@ function EvaluationSearchModal({
   const [results, setResults]   = useState<EvaluationItem[]>([])
   const [searched, setSearched] = useState(false)
 
+  const evalSeq = useRef(0)
   const doSearch = useCallback(async (q: string) => {
+    const my = ++evalSeq.current
     setLoading(true)
     setSearched(true)
     try {
@@ -782,11 +826,12 @@ function EvaluationSearchModal({
       const url = `/api/negotiations/evaluations?${params.toString()}`
       const res = await fetch(url)
       const data = await res.json()
+      if (my !== evalSeq.current) return
       setResults(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [])
     } catch {
-      setResults([])
+      if (my === evalSeq.current) setResults([])
     } finally {
-      setLoading(false)
+      if (my === evalSeq.current) setLoading(false)
     }
   }, [operation])
   void title; void emptyHint  // reservados para uso futuro de header customizado

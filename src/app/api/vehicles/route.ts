@@ -86,18 +86,29 @@ export async function GET(req: NextRequest) {
 
     // Busca textual
     if (search) {
-      where.OR = [
-        { plate:   { contains: search, mode: 'insensitive' } },
-        { brand:   { contains: search, mode: 'insensitive' } },
-        { model:   { contains: search, mode: 'insensitive' } },
-        { version: { contains: search, mode: 'insensitive' } },
-        { chassi:  { contains: search, mode: 'insensitive' } },
-        { renavam: { contains: search, mode: 'insensitive' } },
-        { color:   { contains: search, mode: 'insensitive' } },
-        { fuel:    { contains: search, mode: 'insensitive' } },
-        { customer: { name: { contains: search, mode: 'insensitive' } } },
-        { unit:     { name: { contains: search, mode: 'insensitive' } } },
-      ]
+      // Cada palavra precisa bater em algum campo ("hb20 2020 branco"); placa
+      // vale com ou sem traço; número de 4 dígitos também procura o ano.
+      const tokens = search.split(/\s+/).filter(Boolean).slice(0, 6)
+      const tokenOr = (t: string) => {
+        const plain = t.replace(/[^a-z0-9]/gi, '')
+        const plates = new Set([t, plain, plain.length === 7 ? `${plain.slice(0, 3)}-${plain.slice(3)}` : plain])
+        const year = /^(19|20)\d{2}$/.test(t) ? Number(t) : null
+        return [
+          ...[...plates].filter(Boolean).map((p) => ({ plate: { contains: p, mode: 'insensitive' } })),
+          { brand:   { contains: t, mode: 'insensitive' } },
+          { model:   { contains: t, mode: 'insensitive' } },
+          { version: { contains: t, mode: 'insensitive' } },
+          { chassi:  { contains: t, mode: 'insensitive' } },
+          { renavam: { contains: t, mode: 'insensitive' } },
+          { color:   { contains: t, mode: 'insensitive' } },
+          { fuel:    { contains: t, mode: 'insensitive' } },
+          { customer: { name: { contains: t, mode: 'insensitive' } } },
+          { unit:     { name: { contains: t, mode: 'insensitive' } } },
+          ...(year ? [{ year }, { modelYear: year }] : []),
+        ]
+      }
+      if (tokens.length === 1) where.OR = tokenOr(tokens[0])
+      else where.AND = [...((where.AND as unknown[]) ?? []), ...tokens.map((t) => ({ OR: tokenOr(t) }))]
     }
 
     const [total, vehicles] = await Promise.all([
