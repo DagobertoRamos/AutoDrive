@@ -22,14 +22,18 @@ export async function POST(req: Request) {
   let guess: KindGuess | null = null
   let note = ''
   if (image) {
+    // Erro de cada provedor (o último da fila é o simulado, que esconderia o motivo real).
+    const errs: string[] = []
     const r = await runAiWithFailover('social_caption', async (ai) => {
-      if (ai.mock) throw new Error('Sem IA real configurada.')
-      if (!ai.adapter.capabilities.image) throw new Error('A IA configurada não lê imagens.')
-      const out = await ai.adapter.analyzeImage({ base64: image, mimeType: 'image/jpeg', prompt: visionPrompt() }, { ...ai.ctx, maxTokens: 300 })
-      return parseVision(out.summary)
+      if (ai.mock) throw new Error('nenhuma IA real configurada no Master › IA')
+      try {
+        if (!ai.adapter.capabilities.image) throw new Error('não lê imagens')
+        const out = await ai.adapter.analyzeImage({ base64: image, mimeType: 'image/jpeg', prompt: visionPrompt() }, { ...ai.ctx, maxTokens: 300 })
+        return parseVision(out.summary)
+      } catch (e) { errs.push(`${ai.providerName}: ${(e as Error).message}`); throw e }
     })
     if (r.ok) guess = r.result
-    else note = 'Sem IA de imagem configurada: identifiquei pelo nome do arquivo.'
+    else note = `IA de imagem indisponível (${(errs.join(' | ') || r.error).slice(0, 220)})`
   }
   // O nome do arquivo/título com marca reconhecida vale mais que um palpite fraco da IA.
   if (byText && (!guess || (byText.model && guess.confidence < 0.6))) guess = byText

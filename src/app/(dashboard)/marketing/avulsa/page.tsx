@@ -121,7 +121,7 @@ async function postRetry(url: string, body: Blob, tries = 4): Promise<any> {
 const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => Promise.race([p, new Promise<T>((ok) => setTimeout(() => ok(fallback), ms))])
 
 /** Envios de vídeo em andamento (para retomar de onde parou). */
-const pendingUploads = new Map<string, { file: File; uploadId: string; parts: number; next: number; posterAssetId?: string }>()
+const pendingUploads = new Map<string, { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string }>()
 
 /** Mídias guardadas → prévia (fotos e capa do vídeo servidas pela loja). */
 
@@ -199,7 +199,7 @@ export default function PostAvulsoPage() {
     setDetecting(true)
     try {
       const j = await api<{ guess: Guess | null; note?: string }>('/api/publications/avulsa/detect', { method: 'POST', json: { image: image ?? undefined, hints: [hints, title, notes].filter(Boolean).join(' ') } })
-      if (!j.guess) { setGuess(null); setDetectNote(`Não consegui identificar o carro${j.note ? ` (${j.note.replace(/:.*$/, '').toLowerCase()})` : ''}. Escolha o tipo na lista — dica: o nome do arquivo com a marca/modelo (ex.: ferrari-sf90.mp4) já resolve.`); return }
+      if (!j.guess) { setGuess(null); setDetectNote(`Não consegui identificar o carro${j.note ? ` — ${j.note}` : ''}. Escolha o tipo na lista — dica: o nome do arquivo com a marca/modelo (ex.: ferrari-sf90.mp4) já resolve.`); return }
       setDetectNote(null); setGuess(j.guess); setCarKind(j.guess.kind); setTextMode('TIPO')
       if (autoFill) await writeText(false, { kind: j.guess.kind, g: j.guess, quiet: true })
     } catch { /* identificação é ajuda: sem ela, a pessoa escolhe */ } finally { setDetecting(false) }
@@ -339,7 +339,7 @@ export default function PostAvulsoPage() {
         setItem(key, { progress: Math.round(((i + 1) / u.parts) * 100) })
       }
       pendingUploads.delete(key)
-      setItem(key, { media: { type: 'video', uploadId: u.uploadId, parts: u.parts, size: u.file.size, name: u.file.name.slice(0, 120), ...(u.posterAssetId ? { posterAssetId: u.posterAssetId } : {}) } })
+      setItem(key, { media: { type: 'video', uploadId: u.uploadId, parts: u.parts, size: u.file.size, name: u.name.slice(0, 120), ...(u.posterAssetId ? { posterAssetId: u.posterAssetId } : {}) } })
     } catch (e) {
       setItem(key, { error: `Envio parou em ${Math.round((u.next / u.parts) * 100)}% (parte ${u.next + 1} de ${u.parts}): ${(e as Error).message}` })
     }
@@ -349,11 +349,22 @@ export default function PostAvulsoPage() {
     if (f.size > MAX_VIDEO_BYTES) { setMsg({ ok: false, text: `Vídeo com mais de ${Math.round(MAX_VIDEO_BYTES / 1048576)} MB. Use um link do Google Drive ou Dropbox.` }); return }
     if (!f.size) { setMsg({ ok: false, text: 'O celular entregou o vídeo vazio. Escolha de novo (se estiver na nuvem, baixe para o aparelho antes).' }); return }
     const key = crypto.randomUUID(); const uploadId = crypto.randomUUID()
-    setItems([{ key, media: null, preview: URL.createObjectURL(f), kind: 'video', name: f.name, progress: 0 }])
-    const u = { file: f, uploadId, parts: Math.ceil(f.size / PART_BYTES), next: 0 } as { file: File; uploadId: string; parts: number; next: number; posterAssetId?: string }
+    setItems([{ key, media: null, preview: '', kind: 'video', name: f.name, progress: 0 }])
+    // Lê o vídeo inteiro AGORA: no celular (Android/Google Fotos) o acesso ao arquivo
+    // escolhido pode cair no meio do envio, e aí cada parte falharia.
+    let data: Blob
+    try {
+      data = new Blob([await f.arrayBuffer()], { type: f.type || 'video/mp4' })
+      if (data.size !== f.size) throw new Error('leitura incompleta')
+    } catch {
+      setItem(key, { error: 'O celular não deixou ler este vídeo (ele pode estar só na nuvem, ex.: Google Fotos/Drive). Baixe o vídeo para o aparelho (galeria) e escolha de novo.' })
+      return
+    }
+    setItem(key, { preview: URL.createObjectURL(data) })
+    const u = { file: data, name: f.name, uploadId, parts: Math.ceil(f.size / PART_BYTES), next: 0 } as { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string }
     pendingUploads.set(key, u)
     // Capa, tamanho e identificação do carro: em paralelo e com prazo (não seguram o envio).
-    void withTimeout(videoFrames(f), 12_000, { poster: null, sheet: null, w: 0, h: 0 }).then(async (fr) => {
+    void withTimeout(videoFrames(new File([data], f.name, { type: data.type })), 12_000, { poster: null, sheet: null, w: 0, h: 0 }).then(async (fr) => {
       if (fr.w) setItem(key, { vw: fr.w, vh: fr.h })
       setLastSheet({ image: fr.sheet, hints: f.name })
       void detect(fr.sheet, f.name, !caption.trim())
@@ -479,22 +490,22 @@ export default function PostAvulsoPage() {
                   <button type="button" onClick={useVideoLink} className="btn-secondary px-2 py-1 text-xs"><Link2 size={14} />Usar link</button>
                 </div>
               )}
+              <ul className="flex flex-wrap gap-2">
+                {items.map((i) => (
+                  <li key={i.key} className="relative h-24 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                    {i.kind === 'image' ? <img src={i.preview} alt="" className="h-full w-full object-cover" /> : i.preview ? <video src={i.preview} className="h-full w-full object-cover" muted /> : <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-gray-500">{i.name}</span>}
+                    {!i.media && !i.error && <span className="absolute inset-x-0 bottom-0 bg-black/60 text-center text-[10px] text-white">{i.progress}%</span>}
+                    {i.error && <span className="absolute inset-0 flex items-center justify-center bg-red-600/85 p-1 text-center text-[10px] font-medium leading-tight text-white">{/não deixou ler/.test(i.error) ? 'Não deu para ler o vídeo' : 'Envio parou — veja abaixo'}</span>}
+                    <button type="button" onClick={() => setItems((l) => l.filter((x) => x.key !== i.key))} aria-label="Remover" className="absolute right-0.5 top-0.5 rounded-full bg-white/90 p-0.5"><X size={12} /></button>
+                  </li>
+                ))}
+              </ul>
               {items.filter((i) => i.error).map((i) => (
                 <div key={i.key} role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">
                   <span className="min-w-0 flex-1">{i.kind === 'video' ? 'Vídeo' : 'Foto'} “{i.name}”: {i.error}</span>
                   {i.kind === 'video' && pendingUploads.has(i.key) && <button type="button" onClick={() => void sendParts(i.key)} className="btn-primary px-2.5 py-1 text-xs"><RefreshCw size={13} />Continuar envio</button>}
                 </div>
               ))}
-              <ul className="flex flex-wrap gap-2">
-                {items.map((i) => (
-                  <li key={i.key} className="relative h-24 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                    {i.kind === 'image' ? <img src={i.preview} alt="" className="h-full w-full object-cover" /> : i.preview ? <video src={i.preview} className="h-full w-full object-cover" muted /> : <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-gray-500">{i.name}</span>}
-                    {!i.media && !i.error && <span className="absolute inset-x-0 bottom-0 bg-black/60 text-center text-[10px] text-white">{i.progress}%</span>}
-                    {i.error && <span className="absolute inset-0 flex items-center justify-center bg-red-600/85 p-1 text-center text-[10px] font-medium text-white">Envio parou</span>}
-                    <button type="button" onClick={() => setItems((l) => l.filter((x) => x.key !== i.key))} aria-label="Remover" className="absolute right-0.5 top-0.5 rounded-full bg-white/90 p-0.5"><X size={12} /></button>
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
 
@@ -541,7 +552,7 @@ export default function PostAvulsoPage() {
                   {OCCASIONS.map((o) => <option key={o} value={o}>{OCCASION_LABEL[o]}</option>)}
                 </select>
               )}
-              <input className={cn(inputCls, 'min-w-0 basis-full flex-1 py-1 text-xs sm:basis-auto sm:min-w-[200px]')} value={notes} maxLength={600} onChange={(e) => setNotes(e.target.value)} placeholder={textMode === 'TIPO' ? 'Detalhe (opcional, para a IA): ex. Porsche 911 Carrera S, único dono' : 'Detalhe (opcional): ex. entrega do Compass para a família Souza'} />
+              <input className={cn(inputCls, 'w-full py-1 text-xs sm:w-auto sm:min-w-[200px] sm:flex-1')} value={notes} maxLength={600} onChange={(e) => setNotes(e.target.value)} placeholder={textMode === 'TIPO' ? 'Detalhe (opcional, para a IA): ex. Porsche 911 Carrera S, único dono' : 'Detalhe (opcional): ex. entrega do Compass para a família Souza'} />
               <button type="button" onClick={() => void writeText(false)} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs">{busy === 'MODELO' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}{textMode === 'TIPO' ? 'Legenda pronta' : 'Modelo pronto'}</button>
               {textMode === 'TIPO' && variant && <button type="button" onClick={() => void writeText(false, { next: true })} disabled={!!busy} className="btn-secondary px-2.5 py-1 text-xs"><RefreshCw size={13} />Outra opção</button>}
               <button type="button" onClick={() => void writeText(true)} disabled={!!busy} className="btn-primary px-2.5 py-1 text-xs">{busy === 'IA' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}Escrever com IA</button>
