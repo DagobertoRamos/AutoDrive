@@ -8,6 +8,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { isGate, sameLabel, STAGE_SERVICES } from '@/lib/stock/intake-core'
 import { formatCPF, normalizeCPF, isValidCPF } from '@/lib/br-docs/cpf'
 import { formatCNPJ, normalizeCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
@@ -497,6 +498,10 @@ function VehicleCard({
     : Shield
 
   const locked = !selected && !!v.hasOpenNegotiation
+  // Carro ainda na esteira de entrada (compra, perícia, recebimento…): pode
+  // vender, mas com aviso em destaque do que falta.
+  const intakeOpen = (v.stockPendencies ?? []).filter((p) => p.option?.label && (isGate(p.option.label) || sameLabel(p.option.label, STAGE_SERVICES))).map((p) => p.option.label)
+  const inPrep = intakeOpen.length > 0 || v.stockStatus === 'PENDENTE_PREPARACAO' || v.stockStatus === 'EM_SERVICO'
 
   return (
     <button
@@ -521,6 +526,16 @@ function VehicleCard({
             {v.openNegotiationSeller && <> pelo vendedor <strong>{v.openNegotiationSeller}</strong></>}
             {v.openNegotiationUnit   && <> · unidade <strong>{v.openNegotiationUnit}</strong></>}
             {v.openNegotiationNumber && <span className="ml-1 font-mono opacity-70">({v.openNegotiationNumber})</span>}
+          </span>
+        </div>
+      )}
+      {inPrep && (
+        <div role="alert" className="mb-2 flex items-start gap-2 rounded-lg border border-orange-300 bg-orange-50 px-2.5 py-1.5 text-[11px] text-orange-900">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0 text-orange-600" />
+          <span className="leading-snug">
+            <strong>Ainda na preparação de entrada</strong>
+            {intakeOpen.length > 0 ? <> — pendente: <strong>{intakeOpen.join(', ')}</strong></> : v.stockStatus === 'EM_SERVICO' ? ' — serviços em andamento' : ''}.
+            {' '}Pode vender, mas confira antes de prometer prazo de entrega.
           </span>
         </div>
       )}
@@ -602,8 +617,10 @@ function notSellableReasons(v: StockVehicle, requireSalePrice: boolean): string[
   if (v.stockStatus === 'EM_PRECIFICACAO') r.push('Em precificação: o gerente precisa definir o preço de venda no Estoque.')
   else if (requireSalePrice && !(v.salePrice != null && Number(v.salePrice) > 0)) r.push('Sem preço de venda: o gerente precisa precificar no Estoque.')
   if (requireSalePrice && v.hasOpenNegotiation) r.push(`Já está em outra negociação${v.openNegotiationNumber ? ` (nº ${v.openNegotiationNumber})` : ''}${v.openNegotiationSeller ? ` com ${v.openNegotiationSeller}` : ''}.`)
+  // Pendências da esteira não impedem a venda (aviso no cartão); só entram aqui
+  // como informação quando o carro já está bloqueado por outro motivo.
   const pend = (v.stockPendencies ?? []).map((p) => p.option?.label).filter(Boolean)
-  if (pend.length) r.push(`Pendente na esteira: ${pend.join(', ')}.`)
+  if (r.length && pend.length) r.push(`Pendente na esteira: ${pend.join(', ')}.`)
   return r
 }
 
