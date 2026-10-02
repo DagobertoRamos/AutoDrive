@@ -121,7 +121,7 @@ async function postRetry(url: string, body: Blob, tries = 4): Promise<any> {
 const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => Promise.race([p, new Promise<T>((ok) => setTimeout(() => ok(fallback), ms))])
 
 /** Envios de vídeo em andamento (para retomar de onde parou). */
-type PendingUpload = { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string; /** Pasta no armazenamento de arquivos (vídeo fora do banco); sem ela, envia em pedaços para o banco. */ blobFolder?: string }
+type PendingUpload = { file: Blob; name: string; uploadId: string; parts: number; next: number; posterAssetId?: string; /** Pasta no armazenamento de arquivos (vídeo fora do banco); sem ela, envia em pedaços para o banco. */ blobFolder?: string; blobMode?: 'presigned' | 'token' }
 const pendingUploads = new Map<string, PendingUpload>()
 /** Tipo do armazenamento (público por padrão; troca sozinho se for privado). */
 let blobAccess: 'public' | 'private' = 'public'
@@ -320,8 +320,8 @@ export default function PostAvulsoPage() {
   }, [loadPosts])
 
   // Armazenamento de arquivos para vídeos (fora do banco): ligado quando o servidor tem a chave.
-  const [blobCfg, setBlobCfg] = useState<{ enabled: boolean; folder: string; reason?: string } | null>(null)
-  useEffect(() => { api<{ enabled: boolean; folder: string; reason?: string }>('/api/publications/avulsa/blob').then((j) => setBlobCfg({ enabled: j.enabled, folder: j.folder, reason: j.reason })).catch((e) => setBlobCfg({ enabled: false, folder: '', reason: `Não consegui consultar o armazenamento de vídeos: ${(e as Error).message}` })) }, [])
+  const [blobCfg, setBlobCfg] = useState<{ enabled: boolean; folder: string; reason?: string; mode?: 'presigned' | 'token' | null } | null>(null)
+  useEffect(() => { api<{ enabled: boolean; folder: string; reason?: string; mode?: 'presigned' | 'token' | null }>('/api/publications/avulsa/blob').then((j) => setBlobCfg({ enabled: j.enabled, folder: j.folder, reason: j.reason, mode: j.mode })).catch((e) => setBlobCfg({ enabled: false, folder: '', reason: `Não consegui consultar o armazenamento de vídeos: ${(e as Error).message}` })) }, [])
 
   const setItem = (key: string, x: Partial<Item>) => setItems((l) => l.map((i) => (i.key === key ? { ...i, ...x } : i)))
 
@@ -346,8 +346,11 @@ export default function PostAvulsoPage() {
     if (u.blobFolder) {
       // Direto do celular para o armazenamento de arquivos (em partes, com novas tentativas).
       try {
-        const { upload } = await import('@vercel/blob/client')
-        const send = (access: 'public' | 'private') => upload(`${u.blobFolder}${safeName(u.name)}`, u.file, {
+        const { upload, uploadPresigned } = await import('@vercel/blob/client')
+        if (u.blobMode === 'presigned') blobAccess = 'private'
+        // Nome único (a autorização pré-assinada vale só para este arquivo).
+        const pathname = `${u.blobFolder}${u.uploadId.slice(0, 8)}-${safeName(u.name)}`
+        const send = (access: 'public' | 'private') => (u.blobMode === 'presigned' ? uploadPresigned : upload)(pathname, u.file, {
           access, handleUploadUrl: '/api/publications/avulsa/blob', contentType: u.file.type || 'video/mp4',
           multipart: u.file.size > 8 * 1024 * 1024,
           onUploadProgress: ({ percentage }) => setItem(key, { progress: Math.min(99, Math.round(percentage)) }),
@@ -397,7 +400,7 @@ export default function PostAvulsoPage() {
       return
     }
     setItem(key, { preview: URL.createObjectURL(data) })
-    const u: PendingUpload = { file: data, name: f.name, uploadId, parts: Math.ceil(f.size / PART_BYTES), next: 0, ...(blobCfg?.enabled ? { blobFolder: blobCfg.folder } : {}) }
+    const u: PendingUpload = { file: data, name: f.name, uploadId, parts: Math.ceil(f.size / PART_BYTES), next: 0, ...(blobCfg?.enabled ? { blobFolder: blobCfg.folder, blobMode: blobCfg.mode === 'presigned' ? 'presigned' as const : 'token' as const } : {}) }
     pendingUploads.set(key, u)
     // Capa, tamanho e identificação do carro: em paralelo e com prazo (não seguram o envio).
     void withTimeout(videoFrames(new File([data], f.name, { type: data.type })), 12_000, { poster: null, sheet: null, w: 0, h: 0 }).then(async (fr) => {

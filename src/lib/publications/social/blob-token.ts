@@ -1,8 +1,9 @@
 // =============================================================================
-// Chave do armazenamento de vídeos (Vercel Blob). A Vercel cria a variável
-// BLOB_READ_WRITE_TOKEN ao conectar o armazenamento ao projeto — mas deixa
-// escolher outro prefixo (ex.: VIDEOS_READ_WRITE_TOKEN). Aceita qualquer
-// variável cujo valor seja uma chave do Blob (vercel_blob_rw_…).
+// Credencial do armazenamento de vídeos (Vercel Blob). Dois formatos:
+//   • novo: a Vercel cria BLOB_STORE_ID e autentica sozinha (OIDC) — envio do
+//     navegador por URL pré-assinada;
+//   • antigo: chave BLOB_READ_WRITE_TOKEN (ou outro prefixo escolhido ao
+//     conectar, ex.: VIDEOS_READ_WRITE_TOKEN) — envio por token de cliente.
 // =============================================================================
 
 export function blobToken(): string | undefined {
@@ -13,4 +14,16 @@ export function blobToken(): string | undefined {
   }
   for (const v of Object.values(process.env)) if (v && v.startsWith('vercel_blob_rw_')) return v
   return undefined
+}
+
+/** Como o navegador envia: 'presigned' (BLOB_STORE_ID), 'token' (chave antiga) ou null (desligado). */
+export function blobMode(): 'presigned' | 'token' | null {
+  if (process.env.BLOB_STORE_ID) return 'presigned'
+  return blobToken() ? 'token' : null
+}
+
+/** Opções de autenticação para del/list/get no servidor (a chave antiga, se houver; senão o SDK usa o BLOB_STORE_ID). */
+export function blobAuth(): { token?: string } {
+  const t = process.env.BLOB_STORE_ID ? undefined : blobToken()
+  return t ? { token: t } : {}
 }

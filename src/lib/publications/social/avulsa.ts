@@ -309,8 +309,7 @@ export async function socialStorage(tenantId: string): Promise<{ fotos: number; 
 /** Baixa o vídeo do armazenamento (público por link; privado com a chave). */
 async function blobToFile(url: string, file: string): Promise<void> {
   if (!/\.private\.blob\./.test(url)) return downloadToFile(url, file)
-  const token = (await import('./blob-token')).blobToken()
-  const r = await (await import('@vercel/blob')).get(url, { access: 'private', token })
+  const r = await (await import('@vercel/blob')).get(url, { access: 'private', ...(await import('./blob-token')).blobAuth() })
   if (!r || r.statusCode !== 200) throw new Error('arquivo não encontrado')
   const { Readable } = await import('node:stream')
   const { pipeline } = await import('node:stream/promises')
@@ -319,26 +318,27 @@ async function blobToFile(url: string, file: string): Promise<void> {
 }
 
 async function deleteBlob(url: string): Promise<void> {
-  const token = (await import('./blob-token')).blobToken()
-  if (!token) return
-  try { await (await import('@vercel/blob')).del(url, { token }) } catch (e) { console.error('[avulsa] apagar vídeo do armazenamento', (e as Error).message) }
+  const bt = await import('./blob-token')
+  if (!bt.blobMode()) return
+  try { await (await import('@vercel/blob')).del(url, bt.blobAuth()) } catch (e) { console.error('[avulsa] apagar vídeo do armazenamento', (e as Error).message) }
 }
 
 /** Vídeos no armazenamento com mais de 3 dias que nenhum post pendente usa (envio abandonado). */
 export async function pruneVideoBlobs(now = new Date()): Promise<number> {
-  const token = (await import('./blob-token')).blobToken()
-  if (!token) return 0
+  const bt = await import('./blob-token')
+  if (!bt.blobMode()) return 0
+  const auth = bt.blobAuth()
   const { list, del } = await import('@vercel/blob')
   const active = await prisma.socialPost.findMany({ where: { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } }, select: { media: true } })
   const keep = new Set(active.flatMap((p) => sanitizeMedia(p.media).flatMap((m) => (m.type === 'video' && 'blobUrl' in m ? [m.blobUrl] : []))))
   const old: string[] = []
   let cursor: string | undefined
   do {
-    const r = await list({ prefix: 'avulsa/', cursor, limit: 1000, token })
+    const r = await list({ prefix: 'avulsa/', cursor, limit: 1000, ...auth })
     for (const b of r.blobs) if (b.uploadedAt.getTime() < now.getTime() - 3 * 86_400_000 && !keep.has(b.url)) old.push(b.url)
     cursor = r.hasMore ? r.cursor : undefined
   } while (cursor && old.length < 1000)
-  if (old.length) await del(old, { token })
+  if (old.length) await del(old, auth)
   return old.length
 }
 
