@@ -12,6 +12,7 @@ import { canEditSensitiveFields, SENSITIVE_FIELDS, EDITABLE_STATUSES } from '@/l
 import { computeDealTotals, createDealAudit } from '@/lib/negotiation-service'
 import { canEditDeal, isDealLocked } from '@/lib/negotiation-rbac'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -388,6 +389,7 @@ export async function PATCH(
       return d
     })
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated })
   } catch (err) {
     return handlePrismaError(err)

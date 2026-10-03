@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateEntrySchema } from '@/lib/validators/finance'
 import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { isDealPaymentSource, paymentIdOfSource } from '@/lib/finance/deal-finance-sync'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Lançamento não encontrado.' }, { status: 404 })
@@ -68,6 +69,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
         await prisma.commissionCalculation.updateMany({ where: { id: existing.commissionCalculationId, status: 'PAGO' }, data: { status: 'APROVADO', paidAt: null } })
       }
     }
+    // Pagamento de negociação baixado/estornado no Financeiro → mesmo status no pagamento.
+    if (isDealPaymentSource(existing.source) && d.status && d.status !== existing.status) {
+      await syncPaymentStatus(existing.source!, d.status, (updateData.paidDate as Date | undefined) ?? existing.paidDate)
+    }
     return NextResponse.json({ success: true, data: { ...entry, amount: num(entry.amount) } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
@@ -89,6 +94,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     // Lançamentos integrados (VENDA/COMISSAO/...) não são apagados manualmente — cancela.
     if (existing.source && existing.source !== 'MANUAL') {
       await prisma.financialEntry.update({ where: { id }, data: { status: 'CANCELADO' } })
+      if (isDealPaymentSource(existing.source)) await syncPaymentStatus(existing.source!, 'CANCELADO', null)
       await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'CANCEL', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role })
       return NextResponse.json({ success: true, canceled: true })
     }
@@ -98,4 +104,12 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   } catch (err) {
     return handlePrismaError(err)
   }
+}
+
+/** Espelha no DealPayment o status dado ao lançamento (Financeiro › Lançamentos). */
+async function syncPaymentStatus(source: string, status: string, paidDate: Date | null) {
+  const data = status === 'RECEBIDO' || status === 'PAGO' ? { status: 'CONFIRMADO', paidAt: paidDate ?? new Date() }
+    : status === 'CANCELADO' ? { status: 'CANCELADO' }
+    : { status: 'PENDENTE', paidAt: null }
+  await prisma.dealPayment.updateMany({ where: { id: paymentIdOfSource(source) }, data }).catch((e) => console.error('[entries] pagamento da negociação', e))
 }

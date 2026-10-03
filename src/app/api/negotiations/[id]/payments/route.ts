@@ -11,6 +11,7 @@ import { isDealLocked, canAddPayment } from '@/lib/negotiation-rbac'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -146,6 +147,7 @@ export async function POST(
       userRole: session.user.role,
     })
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: created }, { status: 201 })
   } catch (err) {
     return handlePrismaError(err)

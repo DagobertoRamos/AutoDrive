@@ -9,6 +9,7 @@ import { requireModule }        from '@/lib/permissions'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 const REJECTABLE_STATUSES = new Set(['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'])
 
@@ -79,6 +80,7 @@ export async function POST(
       return d
     })
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated })
   } catch (err) {
     return handlePrismaError(err)

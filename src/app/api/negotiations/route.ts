@@ -18,6 +18,7 @@ import {
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
 import { MANAGER_REVIEW_REASON, needsManagerReview } from '@/lib/evaluation/site-pre-evaluation'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
 
@@ -782,6 +783,7 @@ export async function POST(req: NextRequest) {
         .catch((e) => console.error('[esteira] portão de negociação', e))
     }
 
+    await syncDealFinanceSafe(newDealId)
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err) {
     return handlePrismaError(err)

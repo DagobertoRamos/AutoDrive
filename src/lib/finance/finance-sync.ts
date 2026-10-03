@@ -11,6 +11,7 @@
 import type { UserRole } from '@/lib/permissions'
 import { tenantWhere } from '@/lib/auth-guards'
 import { prisma } from '@/lib/prisma'
+import { PAYMENT_SOURCE_PREFIX, syncDealsFinance } from './deal-finance-sync'
 
 const COMMISSION_SOURCE: Record<string, string> = { RETORNO: 'RETORNO', GARANTIA: 'GARANTIA' }
 
@@ -38,6 +39,9 @@ async function ensureCategoryId(tenantId: string | null, source: string, cache: 
 async function runSync(dealWhere: Record<string, unknown>, commWhere: Record<string, unknown>): Promise<{ vendas: number; comissoes: number }> {
   const catCache = new Map<string, string>()
 
+  // ── Pagamentos e débitos das negociações de venda (deal-finance-sync) ──
+  await syncDealsFinance(dealWhere).catch((e) => console.error('[finance-sync] negociações', e))
+
   // ── Vendas finalizadas → RECEITA ──────────────────────────────────────
   const deals = await prisma.deal.findMany({
     where: { ...dealWhere, type: 'VENDA', status: 'FINALIZADA', saleAmount: { gt: 0 } } as never,
@@ -45,7 +49,11 @@ async function runSync(dealWhere: Record<string, unknown>, commWhere: Record<str
   })
   const dealIds = deals.map((d) => d.id)
   const existingDeal = dealIds.length
-    ? await prisma.financialEntry.findMany({ where: { source: 'VENDA', dealId: { in: dealIds } }, select: { dealId: true } })
+    ? await prisma.financialEntry.findMany({
+        // Venda já lançada, ou recebida pelos pagamentos (NEG_PGTO_*) → não lança o total de novo.
+        where: { dealId: { in: dealIds }, OR: [{ source: 'VENDA' }, { source: { startsWith: PAYMENT_SOURCE_PREFIX } }] },
+        select: { dealId: true },
+      })
     : []
   const haveDeal = new Set(existingDeal.map((e) => e.dealId))
   const dealEntries: Record<string, unknown>[] = []

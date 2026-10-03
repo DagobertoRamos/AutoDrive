@@ -12,6 +12,7 @@ import { getSessionUser, assertTenantId, unauthorizedResponse, forbiddenResponse
 import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { saveDealAttachment, validateDealUpload } from '@/lib/negotiation/storage'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -57,6 +58,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const updated = await prisma.dealPayment.update({ where: { id: paymentId }, data })
     await createSafeAuditLog({ userId: user.id, tenantId: user.tenantId ?? null, action: action ? `PAYMENT_${action}` : 'PAYMENT_AUTH_CODE', entity: 'DealPayment', entityId: paymentId, userName: user.name ?? null, userRole: user.role })
+    await syncDealFinanceSafe(p.dealId)
     return NextResponse.json({ success: true, data: updated })
   } catch (err) { return handlePrismaError(err) }
 }

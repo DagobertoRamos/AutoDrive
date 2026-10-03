@@ -11,6 +11,7 @@ import { isDealLocked, canAddPayment } from '@/lib/negotiation-rbac'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,6 +96,7 @@ export async function PATCH(
       action: 'UPDATE_PAYMENT', entity: 'DealPayment', entityId: params.paymentId,
       userName: session.user.name, userRole: session.user.role,
     })
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated })
   } catch (err) { return handlePrismaError(err) }
 }
@@ -127,6 +129,7 @@ export async function DELETE(
       action: 'DELETE_PAYMENT', entity: 'DealPayment', entityId: params.paymentId,
       userName: session.user.name, userRole: session.user.role,
     })
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ ok: true })
   } catch (err) { return handlePrismaError(err) }
 }

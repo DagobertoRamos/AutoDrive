@@ -10,6 +10,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { canEditDeal }          from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 async function getDealAndCheck(dealId: string, session: NonNullable<Awaited<ReturnType<typeof getServerAuthSession>>>) {
   const deal = await prisma.deal.findFirst({
@@ -60,6 +61,7 @@ export async function PATCH(
 
     void deal // used for check above
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated })
   } catch (err) {
     return handlePrismaError(err)
@@ -100,6 +102,7 @@ export async function DELETE(
       },
     }).catch(() => {})
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ success: true })
   } catch (err) {
     return handlePrismaError(err)

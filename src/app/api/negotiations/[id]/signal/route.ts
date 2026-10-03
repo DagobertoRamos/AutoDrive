@@ -10,6 +10,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { generateOnSignal } from '@/lib/negotiation/contracts/generate'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 const SIGNAL_ALLOWED_STATUSES = new Set([
   'APROVADA', 'LIBERADA', 'AGUARDANDO_SINAL', 'EM_ANDAMENTO', 'RESERVADA',
@@ -102,6 +103,7 @@ export async function POST(
     // Termo de sinal e reserva com os dados da venda (aba Contratos). Não bloqueia.
     await generateOnSignal(params.id, session.user.id)
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated })
   } catch (err) {
     return handlePrismaError(err)

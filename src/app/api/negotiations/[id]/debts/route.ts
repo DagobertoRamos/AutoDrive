@@ -10,6 +10,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { canEditDeal }          from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 // ── GET — Listar débitos ──────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ export async function POST(
       },
     }).catch(() => {})
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: debt }, { status: 201 })
   } catch (err) {
     return handlePrismaError(err)

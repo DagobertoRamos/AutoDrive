@@ -14,6 +14,7 @@ import { cancelCommissionsForDeal } from '@/lib/commission/sync'
 import { reopenNegotiationGate } from '@/lib/stock/intake'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifyStockChanged } from '@/lib/publications/service'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 
 export async function POST(
   req: NextRequest,
@@ -135,6 +136,7 @@ export async function POST(
     await reopenNegotiationGate(params.id, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
       .catch((e) => console.error('[esteira] reabrir portão de negociação', e))
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated, commissionCancelResult })
   } catch (err) {
     return handlePrismaError(err)

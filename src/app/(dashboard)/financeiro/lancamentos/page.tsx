@@ -151,7 +151,7 @@ export default function FinanceEntriesPage() {
               ) : (
                 items.map((e) => (
                   <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3"><p className="font-medium text-gray-900">{e.description}</p>{e.source && e.source !== 'MANUAL' && <span className="text-[10px] uppercase tracking-wide text-brand-600">{e.source}</span>}</td>
+                    <td className="px-4 py-3"><p className="font-medium text-gray-900">{e.description}</p>{e.source && e.source !== 'MANUAL' && <span className="text-[10px] uppercase tracking-wide text-brand-600">{sourceLabel(e.source)}</span>}</td>
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', e.type === 'RECEITA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600')}>{e.type === 'RECEITA' ? 'Receita' : 'Despesa'}</span></td>
                     <td className="px-4 py-3 text-gray-600">{e.category ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{e.account ?? '—'}</td>
@@ -197,4 +197,11 @@ export default function FinanceEntriesPage() {
       )}
     </div>
   )
+}
+
+/** Origem do lançamento para exibição (os integrados por negociação levam o id no source). */
+function sourceLabel(source: string) {
+  if (source.startsWith('NEG_PGTO_')) return 'Pagamento da negociação'
+  if (source.startsWith('NEG_DEBITO_')) return 'Débito da negociação'
+  return source
 }
