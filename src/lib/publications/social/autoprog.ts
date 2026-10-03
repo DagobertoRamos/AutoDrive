@@ -14,6 +14,8 @@ import { loadPublicationSettings } from '../settings'
 import { assign, autoKey, upcoming, type Candidate } from './autoprog-core'
 import { classifyVideo } from './video-core'
 import { allocateSlots } from './cadence'
+import { SOCIAL_CHANNELS } from '../channels'
+import { formatsFor, type SocialFormat } from './formats'
 
 const ACTOR = { id: null, name: 'Programação automática' }
 
@@ -21,8 +23,8 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
   const settings = await loadPublicationSettings(tenantId)
   const prog = settings.autoProgram
   if (!prog.enabled || !prog.slots.length) return { planned: 0, results: [], message: 'Programação automática desligada.' }
-  const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: prog.connectionIds }, status: 'CONECTADO', channel: { in: ['INSTAGRAM', 'META_PAGE'] } }, select: { id: true } })
-  if (!conns.length) return { planned: 0, results: [], message: 'Nenhuma conta do Instagram/Facebook conectada na programação.' }
+  const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: prog.connectionIds }, status: 'CONECTADO', channel: { in: [...SOCIAL_CHANNELS] } }, select: { id: true, channel: true } })
+  if (!conns.length) return { planned: 0, results: [], message: 'Nenhuma conta do Instagram/Facebook/TikTok conectada na programação.' }
 
   const occ = upcoming(prog.slots, utcToLocalInput(now, settings.timezone), 48)
   if (!occ.length) return { planned: 0, results: [], message: 'Nenhum horário da grade nas próximas 48 h.' }
@@ -39,7 +41,7 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
   })
   if (!vehicles.length) return { planned: 0, results: [], message: 'Nenhum carro disponível com fotos para programar.' }
   const recent = await prisma.publication.groupBy({
-    by: ['vehicleId'], where: { tenantId, vehicleId: { in: vehicles.map((v) => v.id) }, channel: { in: ['INSTAGRAM', 'META_PAGE'] } },
+    by: ['vehicleId'], where: { tenantId, vehicleId: { in: vehicles.map((v) => v.id) }, channel: { in: [...SOCIAL_CHANNELS] } },
     _max: { publishedAt: true, scheduledAt: true, createdAt: true },
   })
   const lastBy = new Map(recent.map((r) => [r.vehicleId, [r._max.publishedAt, r._max.scheduledAt, r._max.createdAt].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null]))
@@ -55,7 +57,8 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
   const results: CreateResult[] = []
   // Cada conta ganha o seu horário (a partir do horário da grade), sem repetir
   // horário, dentro de 07:00–20:00 e da quantidade segura por dia.
-  const reqs = plan.flatMap((slot) => conns.filter((c) => !taken.has(`${c.id}:${autoKey(slot.format, slot.local)}`)).map((c) => ({ key: `${slot.vehicleId}|${c.id}|${slot.format}|${slot.local}`, connectionId: c.id, format: slot.format, notBeforeLocal: slot.local })))
+  const fits = (c: { channel: string }, f: SocialFormat) => formatsFor(c.channel).includes(f)
+  const reqs = plan.flatMap((slot) => conns.filter((c) => fits(c, slot.format) && !taken.has(`${c.id}:${autoKey(slot.format, slot.local)}`)).map((c) => ({ key: `${slot.vehicleId}|${c.id}|${slot.format}|${slot.local}`, connectionId: c.id, format: slot.format, notBeforeLocal: slot.local })))
   const slots = await allocateSlots(tenantId, reqs)
   for (const slot of plan) {
     const key = autoKey(slot.format, slot.local)

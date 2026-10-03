@@ -15,7 +15,7 @@
 // =============================================================================
 
 export type ChannelId =
-  | 'SITE' | 'WEBMOTORS' | 'OLX' | 'MERCADO_LIVRE' | 'CHAVES_NA_MAO' | 'META_PAGE' | 'INSTAGRAM'
+  | 'SITE' | 'WEBMOTORS' | 'OLX' | 'MERCADO_LIVRE' | 'CHAVES_NA_MAO' | 'META_PAGE' | 'INSTAGRAM' | 'TIKTOK'
   | 'META_CATALOGO' | 'MANUAL_SOCIAL'
   | 'NAPISTA' | 'CARRO_SP' | 'AUTOLINE' | 'ICARROS' | 'MOBIAUTO' | 'SOCARRAO' | 'USADOSBR' | 'COMPRECAR'
   | 'SHOPCAR' | 'SEMINOVOS' | 'LITORALCAR' | 'CARROS_NA_SERRA' | 'SOROCABA_MOTORS' | 'CARFLIX'
@@ -196,6 +196,21 @@ export const CHANNELS: ChannelSpec[] = [
     priority: 7,
   },
   {
+    id: 'TIKTOK', name: 'TikTok', aliases: ['tiktok', 'tik tok', 'tiktok.com', 'tiktok business'], group: 'SOCIAL',
+    devStatus: 'AGUARDANDO_HOMOLOGACAO', verified: 'CONTRATO', mechanism: 'API', direction: 'ENVIO', connect: 'OAUTH', campaigns: true,
+    capabilities: { authenticate: 'SIM', testConnection: 'SIM', validate: 'SIM', publish: 'SIM', get: 'SIM', update: 'NAO', pause: 'NAO', resume: 'NAO', remove: 'MANUAL', limits: 'SIM', webhooks: 'NAO' },
+    auth: 'Login Kit (OAuth 2.0 v2): https://www.tiktok.com/v2/auth/authorize/ com escopos user.info.basic e video.publish; token em https://open.tiktokapis.com/v2/oauth/token/ (acesso 24 h, renovação 365 dias). App da plataforma criado em developers.tiktok.com.',
+    protocol: 'Content Posting API (Direct Post): consulta do criador POST /v2/post/publish/creator_info/query/; vídeo POST /v2/post/publish/video/init/ (FILE_UPLOAD) + PUT no upload_url (Content-Range); fotos POST /v2/post/publish/content/init/ (media_type PHOTO, PULL_FROM_URL); status POST /v2/post/publish/status/fetch/.',
+    commercial: 'Gratuito (post orgânico). Não é anúncio pago (TikTok Ads).',
+    limits: '6 requisições/min por token na criação; limite diário de posts por criador (spam_risk_too_many_posts). App NÃO auditado pelo TikTok só publica como PRIVADO (SELF_ONLY) — a auditoria libera o público.',
+    sandbox: 'Sandbox do app no portal do desenvolvedor (contas de teste); app não auditado publica só em modo privado.',
+    dependencies: ['App TikTok da plataforma (client key/secret) com Login Kit + Content Posting API (Direct Post) — Master › Integrações', 'Prefixo de URL do AutoDrive verificado no app (fotos são buscadas por link)', 'Auditoria do app pelo TikTok para posts públicos'],
+    media: { min: 1, max: 35, formats: ['jpg', 'mp4'], watermark: 'PERMITIDA', aspect: 'Vertical 9:16 (vídeo); fotos JPEG até 1080p', notes: 'Vídeo enviado como arquivo (sem depender de link); fotos buscadas pelo TikTok no nosso link assinado (prefixo verificado). Sem Story pela API.' },
+    text: { titleMax: 90, descriptionMax: 2200, contactsInDescription: true },
+    source: { url: 'https://developers.tiktok.com/doc/content-posting-api-reference-direct-post', verifiedAt: '2026-10-02', notes: 'Post, Carrossel (modo foto), Reels e Vídeo do carro direto no perfil da loja. O TikTok não oferece exclusão nem edição pela API: na venda, fica pendência manual com o link.' },
+    priority: 8,
+  },
+  {
     id: 'META_CATALOGO', name: 'Meta — Catálogo (feed)', aliases: ['catalogo meta', 'meta catalog', 'catalogo do facebook', 'commerce manager'], group: 'SOCIAL',
     devStatus: 'DISPONIVEL', verified: 'TESTES_LOCAIS', mechanism: 'FEED', direction: 'CONSULTA', connect: 'NENHUMA', campaigns: false,
     capabilities: { authenticate: 'NAO', testConnection: 'SIM', validate: 'SIM', publish: 'NAO', get: 'NAO', update: 'NAO', pause: 'NAO', resume: 'NAO', remove: 'NAO', limits: 'NAO', webhooks: 'NAO' },
@@ -245,6 +260,15 @@ export const CHANNELS: ChannelSpec[] = [
   evaluating('SOROCABA_MOTORS', 'SorocabaMotors', ['sorocabamotors', 'sorocaba motors', 'sorocabamotors.com.br'], 'Opção regional.', 'https://www.sorocabamotors.com.br', 22),
   evaluating('CARFLIX', 'Carflix', ['carflix', 'carflix.com.br'], 'Rede de intermediação/franquias de seminovos (Mercado Livre é sócio). Não é portal aberto para qualquer revenda: exige parceria comercial antes de qualquer integração.', 'https://www.carflix.com.br/sua-carflix', 23),
 ]
+
+/** Redes sociais com estúdio (formatos, arte, vídeo). */
+export const SOCIAL_CHANNELS = ['INSTAGRAM', 'META_PAGE', 'TIKTOK'] as const
+export const isSocialChannel = (c: string | null | undefined): boolean => !!c && (SOCIAL_CHANNELS as readonly string[]).includes(c)
+/** Nome curto da rede para a tela. */
+export type SocialNetwork = 'INSTAGRAM' | 'FACEBOOK' | 'TIKTOK'
+/** Rede para a prévia (mock do celular). */
+export const socialNetwork = (c: string | null | undefined): SocialNetwork => (c === 'INSTAGRAM' ? 'INSTAGRAM' : c === 'TIKTOK' ? 'TIKTOK' : 'FACEBOOK')
+export const socialName = (c: string): string => (c === 'INSTAGRAM' ? 'Instagram' : c === 'TIKTOK' ? 'TikTok' : c === 'META_PAGE' ? 'Facebook' : c)
 
 const BY_ID = new Map(CHANNELS.map((c) => [c.id, c]))
 export function channelSpec(id: string): ChannelSpec | undefined { return BY_ID.get(id as ChannelId) }

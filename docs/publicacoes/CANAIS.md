@@ -14,6 +14,7 @@ produção: faltam credenciais/homologação (abaixo).
 | Chaves na Mão | ✅ API | envio | ❌ | contrato + banco local (simulado) | Não | token de integração; token de homologação (tecnologia@chavesnamao.com.br) |
 | Facebook — Página | ✅ Graph | envio | ❌ | contrato | Não | app Meta + App Review (pages_manage_posts etc.) |
 | Instagram profissional | ✅ Graph | envio | ❌ | contrato | Não | app Meta + App Review; conta profissional ligada à Página |
+| TikTok | ✅ Content Posting API | envio | ❌ | contrato | Não | app TikTok (Login Kit + Content Posting API, Direct Post); prefixo de URL verificado (fotos); **auditoria** do TikTok para posts públicos (antes saem privados) |
 | Meta — Catálogo | feed existente | portal consulta | conforme loja | local (proteção de feed) | Feed sim; **não** é Marketplace | catálogo no Commerce Manager |
 | Marketplace, grupos, perfis | manual | exportação ZIP + texto | ✅ | local | Manual (identificado) | — |
 | Mobiauto | ✅ API (Open API 1.0) | envio | ❌ | contrato | Não | app OAuth (client_id/segredo) pedido a openapi@mobiauto.com.br; revenda com plano |
@@ -57,6 +58,22 @@ Página: fotos `published=false` + `/feed` com `attached_media`; editar texto s�
 do app; DELETE. Instagram: contêineres → CAROUSEL (até 10) → `media_publish`; 100 posts/24 h
 (`content_publishing_limit`); só JPEG; sem edição/remoção documentadas → pendência manual.
 Página ≠ Catálogo ≠ anúncios pagos ≠ Marketplace.
+
+**TikTok** — Content Posting API (Direct Post), lida em 02/10/2026
+(developers.tiktok.com/doc/content-posting-api-reference-direct-post, -photo-post,
+-get-video-status, media-transfer-guide). OAuth Login Kit v2 (`user.info.basic`,
+`video.publish`); acesso 24 h, renovação 365 dias (renovada no conector; o vencimento
+gravado na conexão é o da renovação). Vídeo (Reels / Vídeo do carro / Post com música):
+`/v2/post/publish/video/init/` com FILE_UPLOAD + PUT em pedaços (`Content-Range`; ≤ 64 MB
+num pedaço só). Post/Carrossel: modo foto `/v2/post/publish/content/init/` (PHOTO, só
+PULL_FROM_URL → prefixo `…/api/integrations/publications/media/` verificado no app; até 35
+fotos; título 90, descrição 4000). Conferência por `/v2/post/publish/status/fetch/`
+(`publicaly_available_post_id` é int64 → lido como texto). Sem Story, sem edição e sem
+exclusão pela API → venda vira pendência manual com o link. App não auditado: o envio
+público volta `unaudited_client_can_only_post_to_private_accounts` → repetimos como
+SELF_ONLY e avisamos. Limites: 6 req/min por token na criação; teto diário por criador.
+App da plataforma: Master › Integrações › "Publicações — TikTok (app)" (PUB_TIKTOK) ou
+`TIKTOK_CLIENT_KEY`/`TIKTOK_CLIENT_SECRET`.
 
 **Mobiauto** — Swagger público https://open-api.mobiauto.com.br/swagger-ui.html (grupo
 open-api-1.0). OAuth2 Keycloak (`auth.mobiauto.com.br/auth/realms/mobiauto`), estoque

@@ -8,9 +8,10 @@ import { useState } from 'react'
 import { ExternalLink, Eye, Loader2 } from 'lucide-react'
 import { api, ErrorNote } from '@/components/publications/ui'
 import { PostPreview, type PreviewAudio, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
+import { type SocialNetwork } from '@/lib/publications/channels'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type Data = { network: 'INSTAGRAM' | 'FACEBOOK'; account: string; media: PreviewMedia[]; caption: string; music: string | null; audio?: PreviewAudio | null; slides?: number[] | null; real?: boolean; permalink?: string | null; note?: string | null; musicNote?: string | null }
+type Data = { network: SocialNetwork; account: string; media: PreviewMedia[]; caption: string; music: string | null; audio?: PreviewAudio | null; slides?: number[] | null; real?: boolean; permalink?: string | null; note?: string | null; musicNote?: string | null }
 
 /** Busca a mídia real (se publicada) e, sem ela, a prévia remontada. */
 export async function loadPreview(opts: { publicationId?: string; socialPostId?: string; connectionId: string; vehicleId?: string; overrides?: any; published: boolean }): Promise<Data> {

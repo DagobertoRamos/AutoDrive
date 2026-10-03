@@ -8,6 +8,7 @@ import { mobiautoConnector } from './mobiauto'
 import { instagramConnector, metaPageConnector } from './meta'
 import { olxConnector } from './olx'
 import { siteConnector } from './site'
+import { tiktokConnector } from './tiktok'
 import type { Connector } from './types'
 import { webmotorsConnector } from './webmotors'
 
@@ -20,6 +21,7 @@ const REGISTRY: Partial<Record<ChannelId, Connector>> = {
   MOBIAUTO: mobiautoConnector,
   META_PAGE: metaPageConnector,
   INSTAGRAM: instagramConnector,
+  TIKTOK: tiktokConnector,
 }
 
 export function getConnector(channel: string): Connector | null {

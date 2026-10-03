@@ -6,7 +6,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { audit, bad, pubAuth } from '@/lib/publications/api'
-import { AVULSA_FORMATS, FACEBOOK_ONLY, isBrandMark, type AvulsaFormat } from '@/lib/publications/social/avulsa-core'
+import { AVULSA_FORMATS, avulsaAccepts, isBrandMark, type AvulsaFormat } from '@/lib/publications/social/avulsa-core'
+import { SOCIAL_CHANNELS } from '@/lib/publications/channels'
 import { createAvulsa } from '@/lib/publications/social/avulsa'
 import { allocateSlots } from '@/lib/publications/social/cadence'
 import type { SocialFormat } from '@/lib/publications/social/formats'
@@ -21,13 +22,13 @@ export async function POST(req: Request) {
   const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30) as Array<Record<string, unknown>>
   if (!items.length) return bad('Adicione ao menos um post ao lote.')
   const ids = Array.isArray(b.connectionIds) ? b.connectionIds.filter((x): x is string => typeof x === 'string').slice(0, 10) : []
-  const conns = await prisma.publicationConnection.findMany({ where: { tenantId: a.tenantId, id: { in: ids }, channel: { in: ['INSTAGRAM', 'META_PAGE'] } }, select: { id: true, channel: true } })
-  if (!conns.length) return bad('Escolha ao menos uma conta do Instagram ou do Facebook.')
+  const conns = await prisma.publicationConnection.findMany({ where: { tenantId: a.tenantId, id: { in: ids }, channel: { in: [...SOCIAL_CHANNELS] } }, select: { id: true, channel: true } })
+  if (!conns.length) return bad('Escolha ao menos uma conta do Instagram, do Facebook ou do TikTok.')
 
   // Contas de cada post (link só vai para a Página do Facebook).
   const plan = items.map((it, n) => {
     const format = (AVULSA_FORMATS as readonly string[]).includes(String(it.format)) ? (it.format as AvulsaFormat) : null
-    const accounts = conns.filter((c) => !format || !FACEBOOK_ONLY.includes(format) || c.channel === 'META_PAGE').map((c) => c.id)
+    const accounts = conns.filter((c) => !format || avulsaAccepts(c.channel, format)).map((c) => c.id)
     return { n, it, format, accounts }
   })
   const bad1 = plan.find((p) => !p.format)

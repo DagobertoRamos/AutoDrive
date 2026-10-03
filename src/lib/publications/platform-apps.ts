@@ -9,11 +9,11 @@ import { prisma } from '@/lib/prisma'
 import { decrypt, encrypt } from '@/lib/crypto'
 import { createHttpClient, type HttpClient } from './connectors/http'
 
-export type PlatformChannel = 'MERCADO_LIVRE' | 'OLX' | 'META' | 'MOBIAUTO'
+export type PlatformChannel = 'MERCADO_LIVRE' | 'OLX' | 'META' | 'MOBIAUTO' | 'TIKTOK'
 export interface PlatformApp { clientId: string; clientSecret: string; source: 'master' | 'env' }
 
-const SERVICE: Record<PlatformChannel, string> = { MERCADO_LIVRE: 'PUB_MERCADO_LIVRE', OLX: 'PUB_OLX', META: 'PUB_META', MOBIAUTO: 'PUB_MOBIAUTO' }
-const ENV: Record<PlatformChannel, [string, string]> = { MERCADO_LIVRE: ['ML_CLIENT_ID', 'ML_CLIENT_SECRET'], OLX: ['OLX_CLIENT_ID', 'OLX_CLIENT_SECRET'], META: ['META_APP_ID', 'META_APP_SECRET'], MOBIAUTO: ['MOBIAUTO_CLIENT_ID', 'MOBIAUTO_CLIENT_SECRET'] }
+const SERVICE: Record<PlatformChannel, string> = { MERCADO_LIVRE: 'PUB_MERCADO_LIVRE', OLX: 'PUB_OLX', META: 'PUB_META', MOBIAUTO: 'PUB_MOBIAUTO', TIKTOK: 'PUB_TIKTOK' }
+const ENV: Record<PlatformChannel, [string, string]> = { MERCADO_LIVRE: ['ML_CLIENT_ID', 'ML_CLIENT_SECRET'], OLX: ['OLX_CLIENT_ID', 'OLX_CLIENT_SECRET'], META: ['META_APP_ID', 'META_APP_SECRET'], MOBIAUTO: ['MOBIAUTO_CLIENT_ID', 'MOBIAUTO_CLIENT_SECRET'], TIKTOK: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET'] }
 
 /** Segredos dos apps de publicação são gravados cifrados. */
 export function sealIfPublication(service: string, value: string | null): string | null {
@@ -65,6 +65,13 @@ export async function testPlatformApp(service: string, apiKey: string | null, se
     if (res.status === 200 && j?.access_token) return { ok: true, message: 'App da Mobiauto válido (ID e segredo aceitos).' }
     if (j?.error === 'invalid_client') return { ok: false, message: `Mobiauto recusou o app (invalid_client: ${j.error_description ?? ''}).` }
     return { ok: false, message: `Não foi possível confirmar pela Mobiauto (${j?.error ?? res.status}: ${j?.error_description ?? ''}). A validação final acontece no primeiro login de uma loja.` }
+  }
+  if (service === 'PUB_TIKTOK') {
+    // Token de cliente (client_credentials) — Login Kit v2 do TikTok.
+    const res = await http.request({ method: 'POST', url: 'https://open.tiktokapis.com/v2/oauth/token/', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_key: id, client_secret: secret, grant_type: 'client_credentials' }) })
+    const j = res.json<{ access_token?: string; error?: string; error_description?: string }>()
+    if (res.status === 200 && j?.access_token) return { ok: true, message: 'App do TikTok válido (client key e secret aceitos). Para posts públicos o app precisa da auditoria do TikTok; antes disso, saem como privados.' }
+    return { ok: false, message: `TikTok recusou o app (${j?.error ?? res.status}${j?.error_description ? `: ${j.error_description}` : ''}).` }
   }
   if (service === 'PUB_OLX') {
     return { ok: true, message: 'Dados salvos. A OLX não oferece teste do app sem login: a validação acontece quando a primeira loja clicar em Conectar.' }

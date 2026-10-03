@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { api, ago, ChannelMark, Drawer, ErrorNote, inputCls, PubTabs, StatusPill, type Tone } from '@/components/publications/ui'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO } from '@/lib/publications/social/formats'
 import { MOOD_LABEL, MUSIC_MOODS } from '@/lib/publications/social/music-core'
+import { isSocialChannel } from '@/lib/publications/channels'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Channel = any
@@ -31,8 +32,8 @@ const DEV: Record<string, { label: string; tone: Tone }> = {
 }
 const VERIFIED: Record<string, string> = { NENHUM: 'não verificado', TESTES_LOCAIS: 'testes locais', CONTRATO: 'teste de contrato (simulação)', SANDBOX: 'sandbox/homologação', PRODUCAO: 'produção' }
 const CAP: Record<string, string> = { authenticate: 'Autenticar', testConnection: 'Testar', validate: 'Validar', publish: 'Publicar', get: 'Consultar', update: 'Atualizar', pause: 'Pausar', resume: 'Reativar', remove: 'Remover', limits: 'Limites', webhooks: 'Eventos' }
-const OAUTH_SLUG: Record<string, string> = { MERCADO_LIVRE: 'mercado-livre', OLX: 'olx', META_PAGE: 'meta', INSTAGRAM: 'meta', MOBIAUTO: 'mobiauto' }
-const OAUTH_KEY: Record<string, string> = { MERCADO_LIVRE: 'MERCADO_LIVRE', OLX: 'OLX', META_PAGE: 'META', INSTAGRAM: 'META', MOBIAUTO: 'MOBIAUTO' }
+const OAUTH_SLUG: Record<string, string> = { MERCADO_LIVRE: 'mercado-livre', OLX: 'olx', META_PAGE: 'meta', INSTAGRAM: 'meta', MOBIAUTO: 'mobiauto', TIKTOK: 'tiktok' }
+const OAUTH_KEY: Record<string, string> = { MERCADO_LIVRE: 'MERCADO_LIVRE', OLX: 'OLX', META_PAGE: 'META', INSTAGRAM: 'META', MOBIAUTO: 'MOBIAUTO', TIKTOK: 'TIKTOK' }
 /** Canais OAuth que a loja também conecta colando um token (sem esperar o app da plataforma). */
 const TOKEN_CONNECT = new Set(['META_PAGE', 'INSTAGRAM'])
 
@@ -360,9 +361,9 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
           {eligible.map((c) => <label key={c.id} className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={s.autoPublish.connectionIds.includes(c.id)} onChange={(e) => set('autoPublish.connectionIds', e.target.checked ? [...s.autoPublish.connectionIds, c.id] : s.autoPublish.connectionIds.filter((x: string) => x !== c.id))} />{channels.find((ch) => ch.id === c.channel)?.name} · {c.label}</label>)}
           {!eligible.length && <p className="text-[11px] text-gray-400">Conecte um canal para escolher.</p>}
           {s.autoPublish.enabled && !s.autoPublish.connectionIds.length && <p className="flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle size={12} />Escolha ao menos um destino.</p>}
-          {eligible.some((c) => c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE') && (
+          {eligible.some((c) => isSocialChannel(c.channel)) && (
             <div className="space-y-1.5 rounded-lg border border-brand-100 bg-brand-50/40 p-2">
-              <p className="text-[11px] font-semibold text-gray-700">Instagram e Facebook no piloto automático</p>
+              <p className="text-[11px] font-semibold text-gray-700">Instagram, Facebook e TikTok no piloto automático</p>
               <div className="flex flex-wrap gap-x-3 gap-y-1">
                 {SOCIAL_FORMATS.map((f) => (
                   <label key={f} className="flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={s.autoPublish.social?.formats?.includes(f) ?? false} onChange={(e) => { const cur: string[] = s.autoPublish.social?.formats ?? []; set('autoPublish.social', { ...s.autoPublish.social, template: s.autoPublish.social?.template ?? 'CHEGOU', formats: e.target.checked ? [...cur, f] : cur.filter((x) => x !== f) }) }} />{FORMAT_INFO[f].label}</label>

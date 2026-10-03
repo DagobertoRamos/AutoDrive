@@ -18,8 +18,9 @@ import { partsUrl, StoredPreview } from '@/components/publications/AvulsaPreview
 import { cn } from '@/lib/utils'
 import { api, ErrorNote, inputCls, PubTabs } from '@/components/publications/ui'
 import { PostPreview, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
-import { AVULSA_FORMATS, AVULSA_LABEL, FACEBOOK_ONLY, MAX_BLOB_VIDEO_BYTES, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia, isBrandMark, type BrandMark } from '@/lib/publications/social/avulsa-core'
+import { AVULSA_FORMATS, AVULSA_LABEL, avulsaAccepts, MAX_BLOB_VIDEO_BYTES, MAX_VIDEO_BYTES, PART_BYTES, validateAvulsa, type AvulsaFormat, type AvulsaMedia, isBrandMark, type BrandMark } from '@/lib/publications/social/avulsa-core'
 import { classifyVideo, VIDEO_HINT } from '@/lib/publications/social/video-core'
+import { isSocialChannel, socialName, socialNetwork, type SocialNetwork } from '@/lib/publications/channels'
 
 interface Conn { id: string; channel: string; label: string; status: string }
 interface Item { key: string; media: AvulsaMedia | null; preview: string; kind: 'image' | 'video'; name: string; progress: number; error?: string; /** Tamanho do vídeo (para a prévia da marca). */ vw?: number; vh?: number }
@@ -159,7 +160,7 @@ export default function PostAvulsoPage() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [posts, setPosts] = useState<any[] | null>(null)
   const [tab, setTab] = useState('agendados')
-  const [net, setNet] = useState<'INSTAGRAM' | 'FACEBOOK'>('INSTAGRAM')
+  const [net, setNet] = useState<SocialNetwork>('INSTAGRAM')
   const [viewing, setViewing] = useState<any | null>(null)
   // Lote: vários posts variados, agendados de uma vez em horários diferentes.
   type BatchItem = { id: string; title: string; format: AvulsaFormat; caption: string; media: AvulsaMedia[]; thumb: string | null; kind: 'image' | 'video' | 'link'; brand?: BrandMark | null }
@@ -312,7 +313,7 @@ export default function PostAvulsoPage() {
   const loadPosts = useCallback(() => { api('/api/publications/avulsa').then((j) => { setPosts(j.data) }).catch(() => setPosts([])) }, [])
   useEffect(() => {
     api('/api/publications/connections').then((j) => {
-      const list = (j.data.connections as Conn[]).filter((c) => (c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE') && c.status === 'CONECTADO')
+      const list = (j.data.connections as Conn[]).filter((c) => isSocialChannel(c.channel) && c.status === 'CONECTADO')
       setConns(list); setSel((cur) => (cur.length ? cur : list.map((c) => c.id)))
     }).catch(() => undefined)
     api('/api/publications/settings').then((j) => { setTz(j.data.timezone); setContacts(j.data.contacts ?? {}) }).catch(() => undefined)
@@ -431,10 +432,10 @@ export default function PostAvulsoPage() {
   const media: AvulsaMedia[] = format === 'LINK' ? (classifyVideo(linkMedia) ? [{ type: 'link', url: linkMedia.trim() }] : []) : items.flatMap((i) => (i.media ? [i.media] : []))
   const uploading = items.some((i) => !i.media && !i.error)
   const problem = validateAvulsa(format, media, caption)
-  const allowed = (c: Conn) => !FACEBOOK_ONLY.includes(format) || c.channel === 'META_PAGE'
+  const allowed = (c: Conn) => avulsaAccepts(c.channel, format)
   const selConns = conns.filter((c) => sel.includes(c.id) && allowed(c))
-  const previewNet = format === 'LINK' ? 'FACEBOOK' : selConns.some((c) => (net === 'INSTAGRAM' ? c.channel === 'INSTAGRAM' : c.channel === 'META_PAGE')) ? net : selConns[0]?.channel === 'META_PAGE' ? 'FACEBOOK' : 'INSTAGRAM'
-  const account = selConns.find((c) => (previewNet === 'INSTAGRAM' ? c.channel === 'INSTAGRAM' : c.channel === 'META_PAGE'))?.label ?? 'sua loja'
+  const previewNet: SocialNetwork = format === 'LINK' ? 'FACEBOOK' : selConns.some((c) => socialNetwork(c.channel) === net) ? net : selConns[0] ? socialNetwork(selConns[0].channel) : 'INSTAGRAM'
+  const account = selConns.find((c) => socialNetwork(c.channel) === previewNet)?.label ?? 'sua loja'
   const previewMedia: PreviewMedia[] = useMemo(() => items.filter((i) => i.preview).map((i): PreviewMedia => {
     if (!brand) return { type: i.kind, url: i.preview, contain: i.kind === 'video' }
     if (i.media?.type === 'image') return { type: 'image', url: i.media.branded ? i.preview : `/api/publications/avulsa/brand?${new URLSearchParams({ style: brand, assetId: i.media.assetId })}` }
@@ -495,10 +496,10 @@ export default function PostAvulsoPage() {
             {conns.map((c) => (
               <label key={c.id} className={cn('mr-4 inline-flex items-center gap-2 text-xs', allowed(c) ? 'text-gray-700' : 'text-gray-400')}>
                 <input type="checkbox" disabled={!allowed(c)} checked={sel.includes(c.id) && allowed(c)} onChange={(e) => setSel(e.target.checked ? [...sel, c.id] : sel.filter((x) => x !== c.id))} />
-                {c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'} · {c.label}{!allowed(c) ? ' (não aceita link)' : ''}
+                {socialName(c.channel)} · {c.label}{!allowed(c) ? (format === 'LINK' ? ' (não aceita link)' : ' (sem Story pela API)') : ''}
               </label>
             ))}
-            {!conns.length && <p className="text-xs text-gray-500">Conecte o Instagram ou a Página do Facebook em Canais conectados.</p>}
+            {!conns.length && <p className="text-xs text-gray-500">Conecte o Instagram, a Página do Facebook ou o TikTok em Canais conectados.</p>}
           </div>
 
           {format === 'LINK' ? (
@@ -630,7 +631,7 @@ export default function PostAvulsoPage() {
 
         <aside className="min-w-0 space-y-2">
           <div className="flex justify-center gap-1.5" role="tablist" aria-label="Rede">
-            {(['INSTAGRAM', 'FACEBOOK'] as const).map((n) => <button key={n} role="tab" aria-selected={previewNet === n} disabled={format === 'LINK' && n === 'INSTAGRAM'} onClick={() => setNet(n)} className={cn('rounded-full border px-3 py-0.5 text-xs disabled:opacity-40', previewNet === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600')}>{n === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}</button>)}
+            {(['INSTAGRAM', 'FACEBOOK', 'TIKTOK'] as const).map((n) => <button key={n} role="tab" aria-selected={previewNet === n} disabled={(format === 'LINK' && n !== 'FACEBOOK') || (format === 'STORY' && n === 'TIKTOK')} onClick={() => setNet(n)} className={cn('rounded-full border px-3 py-0.5 text-xs disabled:opacity-40', previewNet === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600')}>{n === 'INSTAGRAM' ? 'Instagram' : n === 'TIKTOK' ? 'TikTok' : 'Facebook'}</button>)}
           </div>
           <PostPreview network={previewNet} format={pf(format, previewMedia.length)} account={account} media={previewMedia} caption={format === 'STORY' ? '' : caption} link={format === 'LINK' ? linkMedia : undefined} />
           <p className="text-center text-[11px] text-gray-500">Prévia de como aparece no celular. Vídeo é ajustado para 9:16 (vertical) sem cortar.</p>
@@ -641,7 +642,7 @@ export default function PostAvulsoPage() {
         <section className="space-y-3 rounded-xl border border-brand-200 bg-brand-50/30 p-4" aria-label="Lote de posts">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900"><Layers size={15} className="text-brand-700" />Lote de posts {batch.length > 0 && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-[11px] text-white">{batch.length}</span>}</h2>
-            <span className="text-[11px] text-gray-500">Contas: {selConns.map((c) => (c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook')).join(' + ') || 'escolha acima'}</span>
+            <span className="text-[11px] text-gray-500">Contas: {selConns.map((c) => socialName(c.channel)).join(' + ') || 'escolha acima'}</span>
           </div>
           {batch.length > 0 && (
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -699,7 +700,7 @@ export default function PostAvulsoPage() {
                   <ul className="mt-1 space-y-0.5">
                     {(p.connectionIds as string[]).map((id) => {
                       const c = conns.find((x) => x.id === id); const r = p.results?.[id]
-                      return <li key={id} className="text-gray-600">{c ? `${c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'} · ${c.label}` : 'Conta'}: {r ? (r.state === 'PUBLICADO' ? <>publicado {r.remoteUrl && <a href={r.remoteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-brand-700 underline">abrir na rede<ExternalLink size={10} /></a>}</> : r.state === 'EM_ANALISE' ? 'processando o vídeo…' : <span className="text-red-700">erro — {r.error}</span>) : p.status === 'AGENDADO' || p.status === 'RASCUNHO' ? 'aguardando' : 'enviando…'}</li>
+                      return <li key={id} className="text-gray-600">{c ? `${socialName(c.channel)} · ${c.label}` : 'Conta'}: {r ? (r.state === 'PUBLICADO' ? <>publicado {r.remoteUrl && <a href={r.remoteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-brand-700 underline">abrir na rede<ExternalLink size={10} /></a>}</> : r.state === 'EM_ANALISE' ? 'processando o vídeo…' : <span className="text-red-700">erro — {r.error}</span>) : p.status === 'AGENDADO' || p.status === 'RASCUNHO' ? 'aguardando' : 'enviando…'}</li>
                     })}
                   </ul>
                   {p.lastError && <p className="mt-1 text-amber-700">{p.lastError}</p>}

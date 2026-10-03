@@ -590,7 +590,7 @@ export async function approveMedia(tenantId: string, vehicleId: string, photos: 
       // Sem duplicar: Post/Carrossel uma vez por conta; Story/Reels/Vídeo uma vez por dia.
       const dayAgo = Date.now() - 86_400_000
       const has = (connId: string, f: string) => pubs.some((p) => p.connectionId === connId && (p.campaignKey === f.toLowerCase() || (p.campaignKey.startsWith(`${f.toLowerCase()}-`) && p.createdAt.getTime() > dayAgo)))
-      const reqs = socialConns.flatMap((c) => social.formats.filter((f) => !has(c.id, f)).map((f) => ({ key: `${c.id}|${f}`, connectionId: c.id, format: f })))
+      const reqs = socialConns.flatMap((c) => social.formats.filter((f) => formatsFor(c.channel).includes(f) && !has(c.id, f)).map((f) => ({ key: `${c.id}|${f}`, connectionId: c.id, format: f })))
       const { allocateSlots } = await import('./social/cadence')
       const slots = reqs.length ? await allocateSlots(tenantId, reqs) : {}
       for (const r of reqs) {

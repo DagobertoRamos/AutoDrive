@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bookmark, ChevronLeft, ChevronRight, Globe, Heart, MessageCircle, MoreHorizontal, Music2, Pause, Play, Send, Share2, ThumbsUp, Volume2, VolumeX } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { type SocialNetwork } from '@/lib/publications/channels'
 
 export interface PreviewMedia { type: 'image' | 'video'; url: string; note?: string; /** Camada por cima (ex.: identidade da loja no vídeo). */ overlay?: string; /** Vídeo inteiro sobre ele mesmo desfocado (como sai no Reels). */ contain?: boolean }
 export interface PreviewAudio { url: string; title: string; artist?: string }
@@ -106,7 +107,7 @@ function linkThumb(url: string): string | null {
   return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null
 }
 
-export function PostPreview({ network, format, account, media, caption, music, link, audio, slides }: { network: 'INSTAGRAM' | 'FACEBOOK'; format: PreviewFormat; account: string; media: PreviewMedia[]; caption: string; music?: string | null; link?: string; audio?: PreviewAudio | null; slides?: number[] | null }) {
+export function PostPreview({ network, format, account, media, caption, music, link, audio, slides }: { network: SocialNetwork; format: PreviewFormat; account: string; media: PreviewMedia[]; caption: string; music?: string | null; link?: string; audio?: PreviewAudio | null; slides?: number[] | null }) {
   const [sel, setI] = useState(0)
   const player = usePlayer(media.length, slides, audio?.url)
   const i = player.idx ?? sel
@@ -118,7 +119,7 @@ export function PostPreview({ network, format, account, media, caption, music, l
 
   // ── Link de vídeo (só Facebook) ───────────────────────────────────────────
   if (format === 'LINK') {
-    if (network === 'INSTAGRAM') return <p className="rounded-lg bg-amber-50 p-3 text-center text-xs text-amber-800">O Instagram não publica links em posts (regra da rede). Este formato vai só para a Página do Facebook.</p>
+    if (network !== 'FACEBOOK') return <p className="rounded-lg bg-amber-50 p-3 text-center text-xs text-amber-800">O {network === 'TIKTOK' ? 'TikTok' : 'Instagram'} não publica links em posts (regra da rede). Este formato vai só para a Página do Facebook.</p>
     if (!link) return <p className="text-center text-xs text-gray-500">Cole o link do vídeo para ver a prévia.</p>
     const thumb = linkThumb(link)
     let host = ''; try { host = new URL(link).hostname.replace(/^www\./, '') } catch { /* link inválido */ }
@@ -136,7 +137,8 @@ export function PostPreview({ network, format, account, media, caption, music, l
   }
 
   const cur = media[Math.min(i, media.length - 1)]
-  const vertical = format === 'STORY' || format === 'REELS' || format === 'VIDEO'
+  // TikTok: tudo em tela cheia vertical (Post e Carrossel saem no modo foto).
+  const vertical = format === 'STORY' || format === 'REELS' || format === 'VIDEO' || network === 'TIKTOK'
   const name = account || 'sua loja'
   if (!cur) return <p className="text-center text-xs text-gray-500">Adicione fotos ou vídeo para ver a prévia.</p>
 
@@ -156,17 +158,28 @@ export function PostPreview({ network, format, account, media, caption, music, l
     )
   }
 
-  // ── Reels / vídeo vertical ────────────────────────────────────────────────
+  const carousel = media.length > 1
+  const nav = carousel && (
+    <>
+      {i > 0 && <button type="button" onClick={() => setI(i - 1)} aria-label="Anterior" className="absolute left-1 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/80 p-0.5"><ChevronLeft size={16} /></button>}
+      {i < media.length - 1 && <button type="button" onClick={() => setI(i + 1)} aria-label="Próxima" className="absolute right-1 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/80 p-0.5"><ChevronRight size={16} /></button>}
+      <span className="absolute right-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">{i + 1}/{media.length}</span>
+    </>
+  )
+
+  // ── Reels / vídeo vertical / TikTok ───────────────────────────────────────
   if (vertical) {
+    const tiktok = network === 'TIKTOK'
     return (
       <Phone dark>
         <div className="relative aspect-[9/16] w-full overflow-hidden">
           <Media key={mkey} m={cur} kb={kb} />
-          <span className="absolute left-3 top-3 text-sm font-bold text-white drop-shadow">Reels</span>
+          <span className="absolute left-3 top-3 text-sm font-bold text-white drop-shadow">{tiktok ? 'Para você' : 'Reels'}</span>
+          {tiktok && !slides && nav}
           {playable && cur.type !== 'video' && <PlayLayer p={player} label={playLabel} />}
           {player.playing && slides && slides.length > 1 && <div className="absolute inset-x-0 bottom-0 z-20 h-0.5 bg-white/30"><div className="h-full bg-white transition-all" style={{ width: `${(((player.idx ?? 0) + 1) / slides.length) * 100}%` }} /></div>}
           <div className="absolute bottom-24 right-2 flex flex-col items-center gap-4 text-white drop-shadow">
-            {network === 'INSTAGRAM' ? <><Heart size={22} /><MessageCircle size={22} /><Send size={22} /><MoreHorizontal size={22} /></> : <><ThumbsUp size={22} /><MessageCircle size={22} /><Share2 size={22} /></>}
+            {network === 'INSTAGRAM' ? <><Heart size={22} /><MessageCircle size={22} /><Send size={22} /><MoreHorizontal size={22} /></> : tiktok ? <><Heart size={22} /><MessageCircle size={22} /><Bookmark size={22} /><Share2 size={22} /></> : <><ThumbsUp size={22} /><MessageCircle size={22} /><Share2 size={22} /></>}
           </div>
           <div className="absolute inset-x-3 bottom-3 space-y-1.5 pr-10">
             <div className="flex items-center gap-2 text-[12px] font-semibold text-white drop-shadow"><Avatar name={name} small />{name.replace(/^@/, '')}<span className="rounded border border-white/70 px-1.5 text-[10px]">Seguir</span></div>
@@ -178,15 +191,6 @@ export function PostPreview({ network, format, account, media, caption, music, l
       </Phone>
     )
   }
-
-  const carousel = media.length > 1
-  const nav = carousel && (
-    <>
-      {i > 0 && <button type="button" onClick={() => setI(i - 1)} aria-label="Anterior" className="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-0.5"><ChevronLeft size={16} /></button>}
-      {i < media.length - 1 && <button type="button" onClick={() => setI(i + 1)} aria-label="Próxima" className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-0.5"><ChevronRight size={16} /></button>}
-      <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">{i + 1}/{media.length}</span>
-    </>
-  )
 
   // ── Instagram feed ────────────────────────────────────────────────────────
   if (network === 'INSTAGRAM') {

@@ -12,9 +12,11 @@ import { prisma } from '@/lib/prisma'
 import { ConnectorError, isConnectorError } from '../errors'
 import { graph, graphBase, graphError, rupload, waitContainer } from '../connectors/meta'
 import type { ConnectorContext } from '../connectors/types'
+import { creatorInfo, pickPrivacy, tiktokPhotos, tiktokResult, tiktokStatus, tiktokVideo } from '../connectors/tiktok'
+import { socialName } from '../channels'
 import { mediaUrlFor } from '../media-token'
 import { connectorContext, type WorkerDeps } from '../worker'
-import { blobBelongsTo, FACEBOOK_ONLY, overallStatus, plainCaption, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
+import { avulsaChannels, blobBelongsTo, FACEBOOK_ONLY, overallStatus, plainCaption, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
 import { downloadToFile, downloadVideoLink, probeVideo, toReels, type ReelsExtras } from './video'
 
 export const VIDEO_PART_KIND = 'SOCIAL_VPART'
@@ -101,9 +103,9 @@ export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id
   if (i.brand) media = await applyBrand(tenantId, media, i.brand)
   const err = validateAvulsa(i.format, media, i.caption)
   if (err) throw new Error(err)
-  const channels = FACEBOOK_ONLY.includes(i.format) ? ['META_PAGE'] : ['INSTAGRAM', 'META_PAGE']
+  const channels = avulsaChannels(i.format)
   const conns = await prisma.publicationConnection.findMany({ where: { tenantId, id: { in: i.connectionIds }, channel: { in: channels } }, select: { id: true } })
-  if (!conns.length) throw new Error(FACEBOOK_ONLY.includes(i.format) ? 'Link só pode ser publicado na Página do Facebook (o Instagram não aceita links em posts).' : 'Escolha ao menos uma conta do Instagram ou do Facebook.')
+  if (!conns.length) throw new Error(FACEBOOK_ONLY.includes(i.format) ? 'Link só pode ser publicado na Página do Facebook (o Instagram não aceita links em posts).' : i.format === 'STORY' ? 'Story vai para o Instagram ou o Facebook (o TikTok não tem Story pela API).' : 'Escolha ao menos uma conta do Instagram, do Facebook ou do TikTok.')
   const imgs = media.flatMap((m) => (m.type === 'image' ? [m.assetId] : m.type === 'video' && 'posterAssetId' in m && m.posterAssetId ? [m.posterAssetId] : []))
   if (imgs.length && (await prisma.siteAsset.count({ where: { tenantId, id: { in: imgs }, kind: 'SOCIAL_UPLOAD' } })) !== imgs.length) throw new Error('Alguma foto não foi encontrada. Envie de novo.')
   for (const m of media) if (m.type === 'video' && 'uploadId' in m && !(await partsReady(tenantId, m))) throw new Error('O vídeo ainda não terminou de subir. Aguarde e tente de novo.')
@@ -142,6 +144,16 @@ interface Prepared { images: string[]; link: string | null; video: () => Promise
 
 async function publishTo(channel: string, ctx: ConnectorContext, format: AvulsaFormat, caption: string, m: Prepared): Promise<AvulsaResult> {
   const acc = ctx.connection.externalAccountId
+  if (channel === 'TIKTOK') {
+    if (format !== 'POST' && format !== 'REELS') throw new ConnectorError('VALIDATION', 'O TikTok aceita só fotos (Post) e vídeo (Reels).')
+    const creator = await creatorInfo(ctx)
+    const privacy = pickPrivacy(creator.privacy_level_options, ctx.connection.config.privacyLevel)
+    const photo = format === 'POST'
+    const sent = photo
+      ? await tiktokPhotos(ctx, m.images, caption.split('\n')[0] ?? '', caption, privacy, true)
+      : await tiktokVideo(ctx, await m.video(), caption, privacy)
+    return { state: 'EM_ANALISE', pendingToken: `${sent.publishId}|${photo ? 'f' : 'v'}|${sent.privateOnly ? 'p' : ''}` }
+  }
   if (channel === 'INSTAGRAM') {
     if (format === 'POST') {
       if (m.images.length === 1) {
@@ -193,6 +205,13 @@ async function publishTo(channel: string, ctx: ConnectorContext, format: AvulsaF
 
 /** Vídeo em processamento: confere e publica (Instagram) ou confirma (Facebook). */
 async function checkPending(channel: string, ctx: ConnectorContext, r: AvulsaResult): Promise<AvulsaResult> {
+  if (channel === 'TIKTOK' && r.pendingToken) {
+    const [id, kind, priv] = r.pendingToken.split('|')
+    const x = tiktokResult(await tiktokStatus(ctx, id), id, ctx.secrets.username, kind === 'f', priv === 'p')
+    if (x.state === 'REJEITADO') return { state: 'FALHA', error: x.message ?? 'O TikTok recusou o post.' }
+    if (x.state !== 'PUBLICADO') return r
+    return { state: 'PUBLICADO', remoteId: x.remoteId ?? id, remoteUrl: x.remoteUrl ?? null, ...(x.message ? { error: x.message } : {}) }
+  }
   if (channel === 'INSTAGRAM' && r.pendingToken) {
     const st = await graph<{ status_code?: string; status?: string }>(ctx, 'GET', `/${r.pendingToken}`, { fields: 'status_code,status' }, 'Instagram (processamento)')
     if (st.status_code === 'ERROR' || st.status_code === 'EXPIRED') return { state: 'FALHA', error: `O Instagram recusou o vídeo (${st.status ?? st.status_code}).` }
@@ -245,7 +264,7 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
         results[id] = { ...(prev?.state === 'EM_ANALISE' ? await checkPending(conn.channel, ctx, prev) : await publishTo(conn.channel, ctx, post.format as AvulsaFormat, plainCaption(post.caption ?? ''), prepared)), at: now.toISOString() }
       } catch (e) {
         const ce = isConnectorError(e) ? e : null
-        lastError = `${conn.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}: ${(e as Error).message}`
+        lastError = `${socialName(conn.channel)}: ${(e as Error).message}`
         if (ce && TRANSIENT.has(ce.kind) && post.attempts < 3) transient = true
         else results[id] = { state: 'FALHA', error: (e as Error).message.slice(0, 400), at: now.toISOString() }
       }

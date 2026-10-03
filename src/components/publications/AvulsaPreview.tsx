@@ -11,6 +11,7 @@ import { api, Drawer } from '@/components/publications/ui'
 import { PostPreview, type PreviewFormat, type PreviewMedia } from '@/components/publications/PostPreview'
 import { AVULSA_LABEL, type AvulsaFormat, type AvulsaMedia } from '@/lib/publications/social/avulsa-core'
 import { classifyVideo } from '@/lib/publications/social/video-core'
+import { socialName, socialNetwork } from '@/lib/publications/channels'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface Conn { id: string; channel: string; label: string }
@@ -51,14 +52,14 @@ export function StoredPreview({ post, conns, onClose }: { post: any; conns: Conn
   return (
     <Drawer open onClose={onClose} title="Como ficou o post" subtitle={post.title || AVULSA_LABEL[post.format as AvulsaFormat]}>
       <div className="space-y-3">
-        <div className="flex flex-wrap gap-1.5">{targets.map((t) => <button key={t.id} onClick={() => setCid(t.id)} className={cn('rounded-lg border px-2 py-0.5 text-xs', cid === t.id ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-gray-200 text-gray-600')}>{t.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'} · {t.label}</button>)}</div>
+        <div className="flex flex-wrap gap-1.5">{targets.map((t) => <button key={t.id} onClick={() => setCid(t.id)} className={cn('rounded-lg border px-2 py-0.5 text-xs', cid === t.id ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-gray-200 text-gray-600')}>{socialName(t.channel)} · {t.label}</button>)}</div>
         {r?.remoteUrl && <a href={r.remoteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 underline">Abrir o post na rede<ExternalLink size={11} /></a>}
         {shown ? (
           <>
             <p className="text-center text-[11px] font-medium text-green-700">Como está na rede agora (mídia real publicada)</p>
             <PostPreview key={realKey} network={shown.network} format={format === 'POST' && shown.media.length > 1 ? 'CARROSSEL' : format} account={shown.account} media={shown.media} caption={post.format === 'STORY' ? '' : shown.caption} link={link} />
           </>
-        ) : <PostPreview key={realKey} network={c?.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'} format={format} account={c?.label ?? ''} media={items} caption={post.format === 'STORY' ? '' : post.caption ?? ''} link={link} />}
+        ) : <PostPreview key={realKey} network={socialNetwork(c?.channel)} format={format} account={c?.label ?? ''} media={items} caption={post.format === 'STORY' ? '' : post.caption ?? ''} link={link} />}
         {!shown && !items.length && post.format !== 'LINK' && <p className="text-center text-[11px] text-gray-500">Abra o post na rede para ver as mídias.</p>}
       </div>
     </Drawer>

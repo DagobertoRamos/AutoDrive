@@ -82,6 +82,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
         })}
       </div>
       {!value.formats.length && <p className="text-xs text-amber-700">Sem formato marcado: vai um post comum com as fotos, sem arte.</p>}
+      {value.formats.includes('STORY') && targets.some((t) => t.channel === 'TIKTOK') && <p className="text-xs text-gray-500">O TikTok não tem Story pela API: no TikTok saem só os outros formatos marcados (Post e Carrossel no modo foto; Reels e Vídeo como vídeo).</p>}
 
       {value.formats.length > 0 && (
         <>

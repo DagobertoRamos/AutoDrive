@@ -74,6 +74,8 @@ export function campaignKeyFor(format: SocialFormat, localDate?: string): string
 /** Formatos que cada canal aceita pela API oficial. */
 export function formatsFor(channel: string): SocialFormat[] {
   if (channel === 'INSTAGRAM' || channel === 'META_PAGE') return [...SOCIAL_FORMATS]
+  // TikTok: sem Story pela API (Post/Carrossel saem no modo foto).
+  if (channel === 'TIKTOK') return ['POST', 'CARROSSEL', 'REELS', 'VIDEO']
   return []
 }
 

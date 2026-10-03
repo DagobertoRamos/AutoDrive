@@ -14,6 +14,7 @@ import { api, inputCls } from '@/components/publications/ui'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type SocialFormat } from '@/lib/publications/social/formats'
 import { MOOD_LABEL, MUSIC_MOODS } from '@/lib/publications/social/music-core'
 import type { AutoProgram, AutoSlot } from '@/lib/publications/social/autoprog-core'
+import { isSocialChannel, socialName } from '@/lib/publications/channels'
 
 const DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 const DAY_NAMES = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
@@ -27,7 +28,7 @@ export function AutoProgramPanel({ onPlanned }: { onPlanned?: () => void }) {
 
   useEffect(() => {
     api('/api/publications/settings').then((j) => setP(j.data.autoProgram)).catch(() => undefined)
-    api('/api/publications/connections').then((j) => { setConns(j.data.connections.filter((c: { channel: string }) => c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE')); setCan(!!j.data.can?.connections) }).catch(() => undefined)
+    api('/api/publications/connections').then((j) => { setConns(j.data.connections.filter((c: { channel: string }) => isSocialChannel(c.channel))); setCan(!!j.data.can?.connections) }).catch(() => undefined)
   }, [])
   if (!p) return null
   const set = (x: Partial<AutoProgram>) => setP({ ...p, ...x })
@@ -61,7 +62,7 @@ export function AutoProgramPanel({ onPlanned }: { onPlanned?: () => void }) {
           {conns.map((c) => (
             <label key={c.id} className={cn('flex items-center gap-2 text-xs', c.status === 'CONECTADO' ? 'text-gray-700' : 'text-gray-400')}>
               <input type="checkbox" disabled={c.status !== 'CONECTADO'} checked={p.connectionIds.includes(c.id)} onChange={(e) => set({ connectionIds: e.target.checked ? [...p.connectionIds, c.id] : p.connectionIds.filter((x) => x !== c.id) })} />
-              {c.channel === 'INSTAGRAM' ? 'Instagram' : 'Facebook'} · {c.label}{c.status !== 'CONECTADO' ? ' (reconectar)' : ''}
+              {socialName(c.channel)} · {c.label}{c.status !== 'CONECTADO' ? ' (reconectar)' : ''}
             </label>
           ))}
           {!conns.length && <p className="text-xs text-gray-500">Conecte o Instagram ou a Página do Facebook em Canais conectados.</p>}

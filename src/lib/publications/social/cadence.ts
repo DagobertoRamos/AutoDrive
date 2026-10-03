@@ -7,6 +7,7 @@
 import { prisma } from '@/lib/prisma'
 import { localToUtc, utcToLocalInput } from '../schedule-core'
 import { loadPublicationSettings } from '../settings'
+import { SOCIAL_CHANNELS } from '../channels'
 import { allocate, localToMinutes, minutesToLocal, type Busy, type SlotRequest } from './cadence-core'
 
 const LIVE = ['AGENDADO', 'NA_FILA', 'ENVIANDO', 'EM_ANALISE', 'PUBLICADO', 'ATUALIZACAO_PENDENTE']
@@ -17,7 +18,7 @@ export async function busySlots(tenantId: string, tz: string): Promise<Busy[]> {
   const toLocal = (d: Date) => localToMinutes(utcToLocalInput(d, tz))!
   const [pubs, posts] = await Promise.all([
     prisma.publication.findMany({
-      where: { tenantId, channel: { in: ['INSTAGRAM', 'META_PAGE'] }, status: { in: LIVE }, OR: [{ scheduledAt: { gte: since } }, { publishedAt: { gte: since } }] },
+      where: { tenantId, channel: { in: [...SOCIAL_CHANNELS] }, status: { in: LIVE }, OR: [{ scheduledAt: { gte: since } }, { publishedAt: { gte: since } }] },
       select: { connectionId: true, scheduledAt: true, publishedAt: true, overrides: true },
     }),
     prisma.socialPost.findMany({

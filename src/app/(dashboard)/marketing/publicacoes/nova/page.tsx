@@ -20,10 +20,11 @@ import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/pu
 import { TextAssist } from '@/components/publications/TextAssist'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
-import { campaignKeyFor, isArtTemplate, isSocialFormat, type SocialFormat } from '@/lib/publications/social/formats'
+import { campaignKeyFor, formatsFor, isArtTemplate, isSocialFormat, type SocialFormat } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { DAILY_IDEAL, KIND_LABEL, kindOf } from '@/lib/publications/social/cadence-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
+import { isSocialChannel } from '@/lib/publications/channels'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface Veh { id: string; title: string; plate: string | null; year: number | null; modelYear: number | null; km: number | null; cover: string | null; photos: number; price: number | null; publishable: boolean; preparable?: boolean; stockStatus: string | null; photosStatus: string; mediaApproved: boolean; mediaPending: boolean; channels: Array<{ channel: string; status: string }>; unit: string | null }
@@ -391,7 +392,7 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
       </ul>
       {!usable.length && <p className="text-sm text-gray-500">Nenhuma conta conectada.</p>}
       <Link href="/marketing/canais" className="inline-block text-xs font-medium text-brand-700 hover:underline">Conectar mais canais</Link>
-      {hasSocial && <SocialStudio vehicles={vehicles} value={social} onChange={setSocial} hasInstagram={[...targets].some((id) => conns.find((c) => c.id === id)?.channel === 'INSTAGRAM')} targets={conns.filter((c) => targets.has(c.id) && (c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE'))} />}
+      {hasSocial && <SocialStudio vehicles={vehicles} value={social} onChange={setSocial} hasInstagram={[...targets].some((id) => conns.find((c) => c.id === id)?.channel === 'INSTAGRAM')} targets={conns.filter((c) => targets.has(c.id) && isSocialChannel(c.channel))} />}
       {hasSocial && !social.formats.length && (
         <label className="block max-w-sm text-xs font-medium text-gray-600">Nome da campanha (redes sociais)
           <input className={inputCls} value={campaign} onChange={(e) => setCampaign(e.target.value.slice(0, 60))} />
@@ -411,7 +412,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
   const [sending, setSending] = useState(false)
   const [results, setResults] = useState<any[] | null>(null)
   const [previewOf, setPreviewOf] = useState<string | null>(null)
-  const socialTargets = conns.filter((c) => connectionIds.includes(c.id) && (c.channel === 'INSTAGRAM' || c.channel === 'META_PAGE'))
+  const socialTargets = conns.filter((c) => connectionIds.includes(c.id) && isSocialChannel(c.channel))
   const requestKey = useRef<string>(crypto.randomUUID())
   const load = useCallback(() => {
     setItems(null)
@@ -421,20 +422,20 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
 
   const blocked = items?.filter((i) => i.blocked).length ?? 0
   // Anti-spam: sem "Espalhar", quantos saem de uma vez por conta (por tipo) × o seguro por dia.
-  const socialConnIds = connectionIds.filter((c) => ['INSTAGRAM', 'META_PAGE'].includes(conns.find((x) => x.id === c)?.channel ?? ''))
+  const socialConnIds = connectionIds.filter((c) => isSocialChannel(conns.find((x) => x.id === c)?.channel))
   const perKind = (['FEED', 'REELS', 'STORY'] as const).map((k) => ({ k, n: vehicleIds.length * social.formats.filter((f) => kindOf(f) === k).length })).filter((x) => x.n > DAILY_IDEAL[x.k])
   const overload = !social.spread && socialConnIds.length > 0 && perKind.length > 0
-    ? `Isto publica de uma vez, em cada conta: ${perKind.map((x) => `${x.n} ${KIND_LABEL[x.k]} (seguro: até ${DAILY_IDEAL[x.k]} por dia)`).join('; ')}. Acima disso o Instagram/Facebook pode tratar como spam e limitar ou bloquear a conta. Ligue “Espalhar automaticamente” na etapa Canais.`
+    ? `Isto publica de uma vez, em cada conta: ${perKind.map((x) => `${x.n} ${KIND_LABEL[x.k]} (seguro: até ${DAILY_IDEAL[x.k]} por dia)`).join('; ')}. Acima disso a rede (Instagram/Facebook/TikTok) pode tratar como spam e limitar ou bloquear a conta. Ligue “Espalhar automaticamente” na etapa Canais.`
     : null
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     if (sending) return // clique duplo
     setSending(true); setErr(null)
     try {
       // Instagram/Facebook com formatos do estúdio: um envio por formato.
-      const isSocial = (c: string) => social.formats.length > 0 && ['INSTAGRAM', 'META_PAGE'].includes(conns.find((x) => x.id === c)?.channel ?? '')
+      const isSocial = (c: string) => social.formats.length > 0 && isSocialChannel(conns.find((x) => x.id === c)?.channel)
       const plain = vehicleIds.flatMap((v) => connectionIds.filter((c) => !isSocial(c)).map((c) => ({ vehicleId: v, connectionId: c, campaignKey: campaign })))
       const nowLocal = utcToLocalInput(new Date(), tz)
-      const socialTargets = (local: string, formats = social.formats) => vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => formats.map((f) => ({
+      const socialTargets = (local: string, formats = social.formats) => vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => formats.filter((f) => formatsFor(conns.find((x) => x.id === c)?.channel ?? '').includes(f)).map((f) => ({
         vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f, local),
         overrides: { social: { format: f, template: social.template, design: social.design, seconds: social.seconds, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) },
       }))))
@@ -444,7 +445,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
         // sem repetir horário (considera o que já está agendado) e no limite seguro por dia.
         const start = mode === 'AGENDAR' && when ? when : nowLocal
         if (plain.length) calls.push({ targets: plain, mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined })
-        const reqs = vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => social.formats.map((f) => ({ key: `${v}|${c}|${f}`, connectionId: c, format: f }))))
+        const reqs = vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => social.formats.filter((f) => formatsFor(conns.find((x) => x.id === c)?.channel ?? '').includes(f)).map((f) => ({ key: `${v}|${c}|${f}`, connectionId: c, format: f }))))
         const { slots } = await api<{ slots: Record<string, string> }>('/api/publications/social/slots', { method: 'POST', json: { requests: reqs, startLocal: start } })
         const byTime = new Map<string, unknown[]>()
         for (const r of reqs) {

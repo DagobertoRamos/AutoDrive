@@ -26,6 +26,7 @@ export type ServiceKey =
   | 'PUB_OLX'           // app registrado com a OLX (autoupload)
   | 'PUB_META'          // app Meta (Página + Instagram)
   | 'PUB_MOBIAUTO'      // app OAuth da Mobiauto Open API
+  | 'PUB_TIKTOK'        // app TikTok (Login Kit + Content Posting API)
   | 'PUB_FREESOUND'     // músicas CC0 (domínio público) para Reels/Stories
   | 'OTHER'
 
@@ -198,6 +199,15 @@ export const SERVICES: ServiceDef[] = [
     fieldLabels: { apiKey: 'client_id', apiSecret: 'client_secret' },
     fieldRequired: { apiKey: true, apiSecret: true },
     badgeColor:  'bg-indigo-50 text-indigo-700 border-indigo-200',
+  },
+  {
+    key:         'PUB_TIKTOK',
+    label:       'Publicações — TikTok (app)',
+    description: 'App em developers.tiktok.com com Login Kit (Web) e Content Posting API (Direct Post), escopos user.info.basic e video.publish. Redirect URI: https://www.appautodrive.online/api/publications/oauth/tiktok/callback. Verifique o prefixo de URL https://www.appautodrive.online/api/integrations/publications/media/ (fotos do modo foto). Sem auditoria do TikTok, os posts saem privados.',
+    fields:      ['apiKey', 'apiSecret'],
+    fieldLabels: { apiKey: 'Client key', apiSecret: 'Client secret' },
+    fieldRequired: { apiKey: true, apiSecret: true },
+    badgeColor:  'bg-gray-900 text-white border-gray-900',
   },
   {
     key:         'PUB_FREESOUND',

@@ -109,6 +109,8 @@ export function musicPlan(choice: MusicChoice | null, channel: string, format: s
   }
   // Carrossel no Facebook é álbum de fotos: não toca música.
   if (channel === 'META_PAGE' && format === 'CARROSSEL') return null
+  // Carrossel no TikTok é modo foto: o próprio TikTok põe música (auto_add_music).
+  if (channel === 'TIKTOK' && format === 'CARROSSEL') return null
   return 'EMBED'
 }
 

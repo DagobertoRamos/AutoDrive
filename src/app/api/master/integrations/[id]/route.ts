@@ -294,7 +294,8 @@ export async function POST(
           case 'PUB_MERCADO_LIVRE':
           case 'PUB_OLX':
           case 'PUB_META':
-          case 'PUB_MOBIAUTO': {
+          case 'PUB_MOBIAUTO':
+          case 'PUB_TIKTOK': {
             clearPlatformAppCache()
             const r = await testPlatformApp(cred.service, cred.apiKey, cred.apiSecret)
             ok = r.ok; message = r.message

@@ -14,6 +14,7 @@ import { musicOf, musicPlan, MOOD_LABEL } from '@/lib/publications/social/music-
 import { previewAudio } from '@/lib/publications/social/music'
 import { reelPlanFor } from '@/lib/publications/social/studio'
 import { classifyVideo } from '@/lib/publications/social/video-core'
+import { socialNetwork } from '@/lib/publications/channels'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
   const p = await buildFor(a.tenantId, v, 'previa', overrides)
   const art = (format: string, extra: Record<string, string> = {}, tpl: string = template) => `/api/publications/social/preview?${new URLSearchParams({ vehicleId: v.id, format, template: tpl, ...(design ? { design } : {}), ...extra })}`
   const format = b.format
-  const network = conn.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK'
+  const network = socialNetwork(conn.channel)
   const plan = musicPlan(music, conn.channel, format)
   // Com música, Post e Story viram vídeo curto da arte (a prévia toca como vídeo).
   const clip = !!plan && (format === 'STORY' || format === 'POST')

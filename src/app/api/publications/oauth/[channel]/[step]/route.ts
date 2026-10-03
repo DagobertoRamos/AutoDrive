@@ -12,7 +12,7 @@ import { audit, kickWorker, pubAuth } from '@/lib/publications/api'
 
 export const dynamic = 'force-dynamic'
 
-const CHANNEL: Record<string, OAuthChannel> = { 'mercado-livre': 'MERCADO_LIVRE', olx: 'OLX', meta: 'META', mobiauto: 'MOBIAUTO' }
+const CHANNEL: Record<string, OAuthChannel> = { 'mercado-livre': 'MERCADO_LIVRE', olx: 'OLX', meta: 'META', mobiauto: 'MOBIAUTO', tiktok: 'TIKTOK' }
 
 function back(req: Request, params: Record<string, string>) {
   const u = new URL('/marketing/canais', req.url)

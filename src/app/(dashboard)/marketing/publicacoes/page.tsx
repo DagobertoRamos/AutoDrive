@@ -23,6 +23,7 @@ import { AdPackageButton } from '@/components/publications/AdPackage'
 import type { PreviewFormat } from '@/components/publications/PostPreview'
 import { BOARD_COLUMNS, COLUMN_INFO, type BoardColumn } from '@/lib/publications/board-core'
 import type { BoardCard, BoardChannel } from '@/app/api/publications/board/route'
+import { isSocialChannel } from '@/lib/publications/channels'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const COL_STYLE: Record<BoardColumn, { bar: string; badge: string; icon: LucideIcon }> = {
@@ -116,7 +117,7 @@ export default function PainelPage() {
       } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
       return
     }
-    if (c.socialFormat && c.channels.some((x) => x.channel === 'INSTAGRAM' || x.channel === 'META_PAGE')) setPreview(c)
+    if (c.socialFormat && c.channels.some((x) => isSocialChannel(x.channel))) setPreview(c)
     else setDetail(c.channels[0]?.pubId ?? null)
   }
 
@@ -250,7 +251,7 @@ function Card({ c, col, tz, can, busy, onView, onResume, onRetry, onDelete, onDe
 
 /** Prévia de um post de rede do quadro: uma aba por conta; publicado = mídia real. */
 function SocialPreviewDrawer({ card, onClose, onDetail }: { card: BoardCard; onClose: () => void; onDetail: (pubId: string) => void }) {
-  const social = useMemo(() => card.channels.filter((x) => (x.channel === 'INSTAGRAM' || x.channel === 'META_PAGE') && x.connectionId && x.pubId), [card])
+  const social = useMemo(() => card.channels.filter((x) => isSocialChannel(x.channel) && x.connectionId && x.pubId), [card])
   const [cur, setCur] = useState(social[0]?.pubId ?? '')
   const ch = social.find((x) => x.pubId === cur)
   const [res, setRes] = useState<{ key: string; data?: any; err?: string } | null>(null)

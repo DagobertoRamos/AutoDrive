@@ -16,6 +16,14 @@ export const AVULSA_LABEL: Record<AvulsaFormat, string> = { POST: 'Post / Carros
 /** Formato que só a Página do Facebook aceita. */
 export const FACEBOOK_ONLY: AvulsaFormat[] = ['LINK']
 
+/** Redes que aceitam o formato: TikTok publica fotos (modo foto) e vídeo, sem Story e sem link. */
+export function avulsaChannels(format: AvulsaFormat): string[] {
+  if (FACEBOOK_ONLY.includes(format)) return ['META_PAGE']
+  if (format === 'STORY') return ['INSTAGRAM', 'META_PAGE']
+  return ['INSTAGRAM', 'META_PAGE', 'TIKTOK']
+}
+export const avulsaAccepts = (channel: string, format: AvulsaFormat) => avulsaChannels(format).includes(channel)
+
 /**
  * Identidade da loja aplicada na mídia.
  *   ASSINATURA: logo + @ pequenos e limpos (no vídeo, fora da imagem quando

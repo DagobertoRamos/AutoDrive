@@ -15,9 +15,10 @@ import { createHttpClient, throwForStatus, type HttpClient } from './connectors/
 import { graphBase } from './connectors/meta'
 import { getPlatformApp } from './platform-apps'
 import { MOBIAUTO_API, MOBIAUTO_AUTH } from './connectors/mobiauto'
+import { TIKTOK_API, TIKTOK_AUTH, TIKTOK_SCOPES } from './connectors/tiktok'
 import { logEvent, maskHint, releaseBlockedJobs, sealSecrets, type Actor } from './service'
 
-export type OAuthChannel = 'MERCADO_LIVRE' | 'OLX' | 'META' | 'MOBIAUTO'
+export type OAuthChannel = 'MERCADO_LIVRE' | 'OLX' | 'META' | 'MOBIAUTO' | 'TIKTOK'
 
 interface StateClaims { t: string; u: string; c: OAuthChannel; n: string; e: number }
 
@@ -66,6 +67,7 @@ export async function authorizeUrl(channel: OAuthChannel, state: string): Promis
   const app = await appOf(channel)
   if (channel === 'MERCADO_LIVRE') return `https://auth.mercadolivre.com.br/authorization?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, state })}`
   if (channel === 'MOBIAUTO') return `${MOBIAUTO_AUTH}/auth?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, scope: 'openid', state })}`
+  if (channel === 'TIKTOK') return `${TIKTOK_AUTH}?${new URLSearchParams({ client_key: app.clientId, response_type: 'code', scope: TIKTOK_SCOPES.join(','), redirect_uri: redirect, state })}`
   if (channel === 'OLX') return `https://auth.olx.com.br/oauth?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, scope: 'autoupload basic_user_info', state })}`
   return `https://www.facebook.com/${process.env.META_GRAPH_VERSION || 'v23.0'}/dialog/oauth?${new URLSearchParams({ client_id: app.clientId, redirect_uri: redirect, state, scope: META_SCOPES.join(','), response_type: 'code' })}`
 }
@@ -108,6 +110,21 @@ export async function completeOAuth(claims: StateClaims, code: string, actor: Ac
       connected.push(c.label)
     }
     return { connected }
+  }
+  if (claims.c === 'TIKTOK') {
+    const res = await http.request({ method: 'POST', url: `${TIKTOK_API}/v2/oauth/token/`, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_key: app.clientId, client_secret: app.clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirect }) })
+    const j = res.json<{ access_token?: string; refresh_token?: string; expires_in?: number; refresh_expires_in?: number; open_id?: string; scope?: string; error?: string; error_description?: string }>()
+    if (!j?.access_token || !j.open_id) throw new ConnectorError('AUTH', `O TikTok não concluiu a autorização${j?.error_description ? ` (${j.error_description})` : ''}.`, 'Tente conectar de novo.')
+    if (!String(j.scope ?? '').split(',').includes('video.publish')) throw new ConnectorError('CONFIG', 'A permissão de publicar vídeos (video.publish) não foi concedida.', 'Conecte de novo e aceite todas as permissões pedidas.')
+    // Nome do perfil (@usuario) pela consulta do criador — usado nos links dos posts.
+    const ci = await http.request({ method: 'POST', url: `${TIKTOK_API}/v2/post/publish/creator_info/query/`, headers: { Authorization: `Bearer ${j.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' }, body: '{}' })
+    const info = ci.json<{ data?: { creator_username?: string; creator_nickname?: string } }>()?.data ?? {}
+    const now = Date.now()
+    const refreshExp = new Date(now + (j.refresh_expires_in ?? 31_536_000) * 1000)
+    const user = info.creator_username ?? ''
+    const label = user ? `TikTok @${user}` : `TikTok ${info.creator_nickname ?? maskHint(j.open_id)}`
+    const c = await upsertConnection(claims.t, 'TIKTOK', j.open_id, label, { access_token: j.access_token, refresh_token: j.refresh_token ?? '', expires_at: String(now + (j.expires_in ?? 86_400) * 1000), open_id: j.open_id, username: user }, { conta: user ? `@${user}` : info.creator_nickname ?? '—' }, refreshExp, actor)
+    return { connected: [c.label] }
   }
   if (claims.c === 'OLX') {
     const res = await http.request({ method: 'POST', url: 'https://auth.olx.com.br/oauth/token', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: app.clientId, client_secret: app.clientSecret, redirect_uri: redirect, grant_type: 'authorization_code' }) })

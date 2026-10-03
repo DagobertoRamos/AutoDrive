@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { bad, pubAuth } from '@/lib/publications/api'
 import { connectorContext } from '@/lib/publications/worker'
 import { remoteMedia } from '@/lib/publications/connectors/meta'
+import { socialNetwork } from '@/lib/publications/channels'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
   if (!conn || (conn.channel !== 'INSTAGRAM' && conn.channel !== 'META_PAGE')) return NextResponse.json({ success: true, data: null, reason: 'Canal sem prévia da rede.' })
   try {
     const data = await remoteMedia(await connectorContext(conn, {}), conn.channel, remoteId)
-    return NextResponse.json({ success: true, data, network: conn.channel === 'INSTAGRAM' ? 'INSTAGRAM' : 'FACEBOOK', account: conn.label, reason: data ? null : 'A rede não devolveu a mídia (Story some depois de 24 h).' })
+    return NextResponse.json({ success: true, data, network: socialNetwork(conn.channel), account: conn.label, reason: data ? null : 'A rede não devolveu a mídia (Story some depois de 24 h).' })
   } catch (e) {
     return NextResponse.json({ success: true, data: null, reason: `A rede não devolveu o post: ${(e as Error).message}` })
   }
