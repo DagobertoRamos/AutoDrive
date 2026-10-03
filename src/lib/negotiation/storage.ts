@@ -88,13 +88,62 @@ async function deleteLocal(storageKey: string): Promise<void> {
   await fs.unlink(full).catch(() => { /* ignore */ })
 }
 
+// ── Backend: ARMAZENAMENTO DE ARQUIVOS (Vercel Blob, privado) ─────────────────
+// Em produção (serverless) o disco é somente leitura e se apaga a cada deploy:
+// o comprovante iria embora. Aqui vai para o Blob PRIVADO e é servido por
+// rota autenticada (/api/negotiations/files), que confere o acesso à negociação.
+
+export const BLOB_PREFIX = 'blob://'
+export const fileUrl = (storageKey: string) => `/api/negotiations/files?key=${encodeURIComponent(storageKey)}`
+
+/** Backend em uso: DEAL_STORAGE_BACKEND (local|blob); sem env, blob em serverless e local no dev. */
+export function dealStorageBackend(): 'local' | 'blob' {
+  const v = (process.env.DEAL_STORAGE_BACKEND ?? '').toLowerCase()
+  if (v === 'local' || v === 'blob') return v
+  return process.env.VERCEL || process.env.BLOB_STORE_ID ? 'blob' : 'local'
+}
+
+async function saveBlob(pathname: string, filename: string, mime: string, bytes: Buffer): Promise<SavedDealAttachment> {
+  const { put } = await import('@vercel/blob')
+  const { blobAuth } = await import('@/lib/publications/social/blob-token')
+  await put(pathname, bytes, { access: 'private', contentType: mime, addRandomSuffix: false, ...blobAuth() })
+  const storageKey = `${BLOB_PREFIX}${pathname}`
+  return { storageKey, publicUrl: fileUrl(storageKey), fileType: ALLOWED_MIME[mime.toLowerCase()] ?? 'other', mimeType: mime, fileSize: bytes.length, fileName: sanitizeFilename(filename) }
+}
+
 export async function saveDealAttachment(dealId: string, filename: string, mime: string, bytes: Buffer): Promise<SavedDealAttachment> {
-  const backend = (process.env.DEAL_STORAGE_BACKEND ?? 'local').toLowerCase()
-  if (backend === 'local') return saveLocal(dealId, filename, mime, bytes)
-  throw new Error(`Storage backend "${backend}" ainda não implementado neste build.`)
+  if (dealStorageBackend() === 'blob') return saveBlob(`deals/${dealId}/${shortId()}_${sanitizeFilename(filename)}`, filename, mime, bytes)
+  return saveLocal(dealId, filename, mime, bytes)
+}
+
+/** Pasta dos comprovantes enviados antes de a negociação existir (no modal de pagamento). */
+export const pendingFolder = (tenantId: string) => `deals/pending/${tenantId}/`
+
+/** Comprovante enviado no modal de pagamento, antes de salvar a negociação. Vinculado ao salvar. */
+export async function savePendingReceipt(tenantId: string, filename: string, mime: string, bytes: Buffer): Promise<SavedDealAttachment> {
+  if (dealStorageBackend() === 'blob') return saveBlob(`${pendingFolder(tenantId)}${shortId()}_${sanitizeFilename(filename)}`, filename, mime, bytes)
+  return saveLocal(`pending/${tenantId}`, filename, mime, bytes)
+}
+
+/** Lê o arquivo (só para o backend blob; o local é servido direto de /uploads). */
+export async function readDealFile(storageKey: string): Promise<{ stream: ReadableStream<Uint8Array>; contentType: string } | null> {
+  if (!storageKey.startsWith(BLOB_PREFIX)) return null
+  const { get } = await import('@vercel/blob')
+  const { blobAuth } = await import('@/lib/publications/social/blob-token')
+  const r = await get(storageKey.slice(BLOB_PREFIX.length), { access: 'private', ...blobAuth() })
+  if (!r || r.statusCode !== 200) return null
+  return { stream: r.stream, contentType: r.blob.contentType || 'application/octet-stream' }
 }
 
 export async function deleteDealAttachment(storageKey: string): Promise<void> {
-  const backend = (process.env.DEAL_STORAGE_BACKEND ?? 'local').toLowerCase()
-  if (backend === 'local') return deleteLocal(storageKey)
+  if (!storageKey) return
+  if (storageKey.startsWith(BLOB_PREFIX)) {
+    try {
+      const { del } = await import('@vercel/blob')
+      const { blobAuth } = await import('@/lib/publications/social/blob-token')
+      await del(storageKey.slice(BLOB_PREFIX.length), blobAuth())
+    } catch { /* já removido */ }
+    return
+  }
+  return deleteLocal(storageKey)
 }

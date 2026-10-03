@@ -119,6 +119,12 @@ export interface PaymentEntry {
   vehiclePlate: string
   pixKey:       string
   notes:        string
+  /** Forma do sinal/entrada (PIX, DINHEIRO, CARTAO_CREDITO…). */
+  signalMethod?:      string
+  /** Código de autorização do cartão (obrigatório quando há comprovante). */
+  authorizationCode?: string
+  /** Comprovante enviado no modal (vinculado ao pagamento ao salvar). */
+  receipt?: { storageKey: string; publicUrl: string; fileName: string; fileType: string; mimeType: string; fileSize: number } | null
 }
 
 interface DealForm {
@@ -2757,6 +2763,33 @@ const PAYMENT_ENTRY_LABELS: Record<PaymentEntryType, string> = {
   OUTRO:           'Outro',
 }
 
+/** Formas que ENTRAM dinheiro (quitação e troco são débitos — ficam fora). */
+const INCOMING_TYPES: PaymentEntryType[] = ['DINHEIRO', 'PIX', 'SINAL', 'ENTRADA', 'FINANCIAMENTO', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'BOLETO', 'DUPLICATA', 'TRANSFERENCIA', 'OUTRO']
+
+/** Como o cliente pagou o sinal/entrada. */
+const SIGNAL_METHODS: Array<{ value: string; label: string }> = [
+  { value: 'PIX', label: 'Pix' },
+  { value: 'DINHEIRO', label: 'Dinheiro' },
+  { value: 'CARTAO_CREDITO', label: 'Cartão de Crédito' },
+  { value: 'CARTAO_DEBITO', label: 'Cartão de Débito' },
+  { value: 'TRANSFERENCIA', label: 'Transferência' },
+  { value: 'BOLETO', label: 'Boleto' },
+]
+const SIGNAL_METHOD_LABEL: Record<string, string> = Object.fromEntries(SIGNAL_METHODS.map((m) => [m.value, m.label]))
+
+/** Reduz foto do comprovante antes de enviar (limite da hospedagem ~4 MB por envio). */
+async function shrinkReceipt(file: File): Promise<Blob> {
+  if (!file.type.startsWith('image/') || file.size < 1_500_000) return file
+  try {
+    const bmp = await createImageBitmap(file)
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height))
+    const c = document.createElement('canvas')
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height)
+    return await new Promise<Blob>((res) => c.toBlob((b) => res(b ?? file), 'image/jpeg', 0.85))
+  } catch { return file }
+}
+
 const PAYMENT_STATUS_LABELS: Record<PaymentEntryStatus, string> = {
   PENDENTE:    'Pendente',
   CONFIRMADO:  'Confirmado',
@@ -2833,8 +2866,28 @@ function PaymentModal({
     return e
   }
 
-  const [entry, setEntry] = useState<PaymentEntry>(initial ?? buildEmpty())
+  const [entry, setEntry] = useState<PaymentEntry>(() => {
+    const e = initial ?? buildEmpty()
+    // Placa: sempre a do veículo que a loja está vendendo (ou comprando).
+    return { ...e, vehiclePlate: e.vehiclePlate || vehiclePlates?.[0] || '' }
+  })
   const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+
+  async function uploadReceipt(file: File) {
+    setUploading(true); setError('')
+    try {
+      const body = new FormData()
+      const blob = await shrinkReceipt(file)
+      body.append('file', blob instanceof File ? blob : new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }))
+      const r = await fetch('/api/negotiations/receipts', { method: 'POST', body })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.success) throw new Error(j.error ?? `Falha ao enviar (HTTP ${r.status}).`)
+      update('receipt', j.data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Não foi possível enviar o comprovante.')
+    } finally { setUploading(false) }
+  }
 
   const update = <K extends keyof PaymentEntry>(k: K, v: PaymentEntry[K]) => {
     setEntry((prev) => ({ ...prev, [k]: v }))
@@ -2844,13 +2897,20 @@ function PaymentModal({
     const amount = parseBRLInput(entry.amount)
     if (!entry.type)                  return setError('Selecione o tipo de pagamento.')
     if (amount == null || amount <= 0) return setError('Informe um valor maior que zero.')
+    if (isSignal && !entry.signalMethod) return setError('Informe como o cliente pagou o sinal/entrada (Pix, dinheiro, cartão…).')
+    if (isCardPay && entry.receipt && !entry.authorizationCode?.trim()) return setError('Com o comprovante do cartão anexado, informe o código de autorização.')
+    if (uploading) return setError('Aguarde o envio do comprovante terminar.')
     setError('')
-    onSave(entry)
+    // Status não é escolhido aqui: quem confirma é o financeiro (Financeiro › Recebimentos).
+    onSave({ ...entry, status: initial?.status ?? 'PENDENTE', signalMethod: isSignal ? entry.signalMethod : '' })
   }
 
-  // Campos condicionais por tipo
+  // Campos condicionais por tipo (sinal/entrada seguem a forma escolhida)
+  const isSignal         = entry.type === 'SINAL' || entry.type === 'ENTRADA'
+  const payVia           = isSignal ? (entry.signalMethod ?? '') : entry.type
+  const isCardPay        = payVia === 'CARTAO_CREDITO' || payVia === 'CARTAO_DEBITO'
   const needsBank        = ['FINANCIAMENTO', 'BOLETO', 'TRANSFERENCIA', 'DUPLICATA', 'QUITACAO'].includes(entry.type)
-  const needsCard        = entry.type === 'CARTAO_CREDITO' || entry.type === 'CARTAO_DEBITO'
+  const needsCard        = isCardPay
   const needsParcelas    = ['CARTAO_CREDITO', 'FINANCIAMENTO', 'DUPLICATA'].includes(entry.type)
   const needsFirstDue    = ['FINANCIAMENTO', 'BOLETO', 'DUPLICATA'].includes(entry.type)
   const needsPix         = entry.type === 'PIX'
@@ -2876,48 +2936,34 @@ function PaymentModal({
             </div>
           )}
 
-          <div className={isCompra ? '' : 'grid grid-cols-2 gap-3'}>
+          <div className={isSignal ? 'grid grid-cols-2 gap-3' : ''}>
             <Field label="Tipo de pagamento" required>
               <select className={inputCls} value={entry.type} onChange={(e) => update('type', e.target.value as PaymentEntryType)}>
-                {(isCompra ? COMPRA_TYPES : Object.keys(PAYMENT_ENTRY_LABELS) as PaymentEntryType[]).map((t) => (
+                {(isCompra ? COMPRA_TYPES : INCOMING_TYPES).map((t) => (
                   <option key={t} value={t}>
                     {t === 'TRANSFERENCIA' && isCompra ? 'DOC / TED / TEF' : PAYMENT_ENTRY_LABELS[t]}
                   </option>
                 ))}
               </select>
             </Field>
-            {/* Status removido pra COMPRA — loja-paga-cliente é evento direto.
-                Em VENDA/TROCA o Status continua útil para rastrear pendências. */}
-            {!isCompra && (
-              <Field label={isVendedorOnly ? 'Status (gerente/F&I altera)' : 'Status'}>
-                <select
-                  className={`${inputCls} ${isVendedorOnly ? 'cursor-not-allowed bg-gray-100 text-gray-500' : ''}`}
-                  value={isVendedorOnly ? 'PENDENTE' : entry.status}
-                  disabled={isVendedorOnly}
-                  onChange={(e) => update('status', e.target.value as PaymentEntryStatus)}
-                >
-                  {(Object.keys(PAYMENT_STATUS_LABELS) as PaymentEntryStatus[]).map((s) => (
-                    <option key={s} value={s}>{PAYMENT_STATUS_LABELS[s]}</option>
-                  ))}
+            {isSignal && (
+              <Field label="Forma do sinal / entrada" required>
+                <select className={inputCls} value={entry.signalMethod ?? ''} onChange={(e) => update('signalMethod', e.target.value)}>
+                  <option value="">Selecione</option>
+                  {SIGNAL_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </Field>
             )}
           </div>
+          {!isCompra && (
+            <p className="-mt-1 text-[11px] text-gray-500">
+              {initial && initial.status !== 'PENDENTE' ? `Situação: ${PAYMENT_STATUS_LABELS[initial.status]} (definida pelo financeiro).` : 'Entra como pendente — o financeiro confirma no módulo Financeiro › Recebimentos.'}
+            </p>
+          )}
 
-          {/* Placa do veículo — só aparece se houver mais de 1 veículo no negócio (lote) */}
-          {vehiclePlates && vehiclePlates.length > 1 && (
-            <Field label="Placa do veículo">
-              <select
-                className={inputCls}
-                value={entry.vehiclePlate}
-                onChange={(e) => update('vehiclePlate', e.target.value)}
-              >
-                <option value="">— selecione a placa —</option>
-                {vehiclePlates.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </Field>
+          {/* Placa: sempre a do veículo vendido (preenchida sozinha) */}
+          {entry.vehiclePlate && (
+            <p className="text-xs text-gray-600">Veículo: <span className="font-mono font-semibold text-gray-800">{entry.vehiclePlate}</span></p>
           )}
 
           <div className="grid grid-cols-2 gap-3">
@@ -2930,7 +2976,7 @@ function PaymentModal({
                 onChange={(e) => update('amount', maskBRLInput(e.target.value))}
               />
             </Field>
-            <Field label="Data prevista de pagamento">
+            <Field label="Data de pagamento (pode preencher depois)">
               <input
                 className={inputCls}
                 type="date"
@@ -2939,17 +2985,6 @@ function PaymentModal({
               />
             </Field>
           </div>
-
-          {entry.status === 'CONFIRMADO' && (
-            <Field label="Data de pagamento">
-              <input
-                className={inputCls}
-                type="date"
-                value={entry.paidAt}
-                onChange={(e) => update('paidAt', e.target.value)}
-              />
-            </Field>
-          )}
 
           {/* Campos condicionais por tipo */}
           {needsBank && (
@@ -2991,6 +3026,17 @@ function PaymentModal({
                 <option value="AMEX">American Express</option>
                 <option value="OUTRO">Outro</option>
               </select>
+            </Field>
+          )}
+          {isCardPay && (
+            <Field label={`Código de autorização${entry.receipt ? ' *' : ''}`}>
+              <input
+                className={inputCls}
+                placeholder="Nº de autorização do comprovante do cartão"
+                value={entry.authorizationCode ?? ''}
+                onChange={(e) => update('authorizationCode', e.target.value.replace(/[^\w-]/g, '').slice(0, 40))}
+              />
+              <p className="mt-1 text-[11px] text-gray-400">Obrigatório quando o comprovante do cartão for anexado.</p>
             </Field>
           )}
 
@@ -3093,13 +3139,21 @@ function PaymentModal({
             />
           </Field>
 
-          <div className="flex items-start gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
-            <Paperclip size={13} className="mt-0.5 shrink-0" />
-            <span>
-              <strong>Comprovante (foto/PDF):</strong> após salvar a negociação,
-              anexe o comprovante deste pagamento direto no <em>Resumo Financeiro</em> do
-              detalhe — cada linha tem botão <em>Anexar</em>. Aceita JPG, PNG, WEBP, PDF e XML.
-            </span>
+          <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+            <p className="flex items-center gap-1.5 font-semibold"><Paperclip size={13} />Comprovante (foto ou PDF)</p>
+            {entry.receipt ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <a href={entry.receipt.publicUrl} target="_blank" rel="noopener" className="truncate font-medium text-brand-700 underline">{entry.receipt.fileName}</a>
+                <button type="button" onClick={() => update('receipt', null)} className="text-red-600 hover:underline">remover</button>
+              </div>
+            ) : (
+              <label className={`mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-brand-300 bg-white px-2.5 py-1 font-medium text-brand-700 hover:bg-brand-50 ${uploading ? 'pointer-events-none opacity-60' : ''}`}>
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+                {uploading ? 'Enviando…' : 'Anexar comprovante'}
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) void uploadReceipt(fl); e.target.value = '' }} />
+              </label>
+            )}
+            <p className="mt-1 text-[11px] text-brand-700/80">Pode anexar agora ou depois, no detalhe da negociação. JPG, PNG, WEBP ou PDF.</p>
           </div>
         </div>
 
@@ -3530,8 +3584,9 @@ function StepPagamento({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5 mb-1">
                           <span className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
-                            {PAYMENT_ENTRY_LABELS[p.type]}
+                            {PAYMENT_ENTRY_LABELS[p.type]}{(p.type === 'SINAL' || p.type === 'ENTRADA') && p.signalMethod ? ` · ${SIGNAL_METHOD_LABEL[p.signalMethod] ?? p.signalMethod}` : ''}
                           </span>
+                          {p.receipt && <span title="Comprovante anexado" className="inline-flex items-center gap-0.5 text-[10px] text-brand-700"><Paperclip size={10} />comprovante</span>}
                           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${PAYMENT_STATUS_COLOR[p.status]}`}>
                             {PAYMENT_STATUS_LABELS[p.status]}
                           </span>
@@ -3541,7 +3596,7 @@ function StepPagamento({
                         </div>
                         <p className="text-sm font-bold text-gray-900">{fmtBRL(parseBRLInput(p.amount) ?? 0)}</p>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-gray-500">
-                          {p.dueDate && <span>Venc: {new Date(p.dueDate).toLocaleDateString('pt-BR')}</span>}
+                          {p.dueDate && <span>Pagamento: {new Date(`${p.dueDate}T12:00:00`).toLocaleDateString('pt-BR')}</span>}
                           {p.bank && <span>· {p.bank}</span>}
                           {p.pixKey && <span>· Pix</span>}
                         </div>
@@ -3649,7 +3704,7 @@ function StepPagamento({
              Só quando NÃO está editando — edição preserva o valor original. */
           suggestedAmount={!editing && emAberto > 0 ? emAberto : undefined}
           userRole={userRole}
-          vehiclePlates={vehiclePlates}
+          vehiclePlates={form.vehicle?.plate ? [form.vehicle.plate] : []}
         />
       )}
       {trocoOpen && (
@@ -4756,6 +4811,9 @@ export default function NovaNegociacaoPage() {
           vehiclePlate: p.vehiclePlate || null,
           pixKey:       p.pixKey       || null,
           notes:        p.notes        || null,
+          signalMethod:      p.signalMethod      || null,
+          authorizationCode: p.authorizationCode || null,
+          receipt:           p.receipt           ?? null,
         })),
       changeBeneficiary: form.changeBeneficiary || null,
       changePix:        form.changePix        || null,

@@ -5,7 +5,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireModule } from '@/lib/permissions'
+import { canAccessModule, requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { isDealLocked, canAddPayment } from '@/lib/negotiation-rbac'
 import { createSafeAuditLog } from '@/lib/auth-guards'
@@ -76,6 +76,17 @@ export async function PATCH(
   if (body?.firstDueDate !== undefined) data.firstDueDate = body.firstDueDate ? new Date(body.firstDueDate) : null
   if (body?.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null
   if (body?.notes !== undefined) data.notes = body.notes
+  if (body?.signalMethod !== undefined) data.method = body.signalMethod ? String(body.signalMethod).toUpperCase().slice(0, 30) : null
+  if (body?.authorizationCode !== undefined) data.authorizationCode = body.authorizationCode ? String(body.authorizationCode).trim().slice(0, 40) : null
+  if (body?.paidAt !== undefined) data.paidAt = body.paidAt ? new Date(body.paidAt) : null
+  // Status (confirmar/cancelar) só pelo financeiro.
+  if (body?.status !== undefined) {
+    if (!canAccessModule(session.user.role, 'finance.manage')) return NextResponse.json({ error: 'Só o financeiro confirma ou cancela pagamentos (Financeiro › Recebimentos).' }, { status: 403 })
+    const st = String(body.status).toUpperCase()
+    if (!['PENDENTE', 'CONFIRMADO', 'CANCELADO'].includes(st)) return NextResponse.json({ error: 'Status inválido' }, { status: 400 })
+    data.status = st
+    if (st === 'CONFIRMADO' && body?.paidAt === undefined) data.paidAt = new Date()
+  }
 
   try {
     const updated = await prisma.dealPayment.update({ where: { id: params.paymentId }, data })

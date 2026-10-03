@@ -1960,6 +1960,10 @@ model DealPayment {
    * Placa do veículo identificadora — útil pra negociações em lote multi-veículo.
    */
   vehiclePlate            String?
+  /// Forma do sinal/entrada (PIX, DINHEIRO, CARTAO_CREDITO…) — quando type = SINAL | ENTRADA.
+  method                  String?
+  /// Código de autorização do cartão (preenchido junto com o comprovante).
+  authorizationCode       String?
   firstDueDate            DateTime?
   dueDate                 DateTime?
   paidAt                  DateTime?

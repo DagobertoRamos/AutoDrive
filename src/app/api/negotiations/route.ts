@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { BLOB_PREFIX, pendingFolder } from '@/lib/negotiation/storage'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
@@ -658,29 +659,27 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      // 6.5. Pagamentos do wizard (array opcional)
+      // 6.5. Pagamentos do wizard (array opcional). Entram sempre PENDENTES:
+      // quem confirma é o financeiro, no módulo Financeiro › Recebimentos.
+      // Comprovante enviado no modal vira anexo do próprio pagamento.
       if (Array.isArray(payments) && payments.length > 0) {
-        const isVendedor = ['VENDEDOR', 'VENDEDOR_LIDER'].includes(session.user.role)
-        await (tx.dealPayment as any).createMany({
-          data: payments.map((p: any) => {
-            // Sanitiza retorno % pra 0..6 com 2 casas
-            let returnPct: number | null = null
-            if (p.returnPct != null && p.returnPct !== '') {
-              const n = Number(p.returnPct)
-              if (Number.isFinite(n)) returnPct = Math.min(6, Math.max(0, Math.round(n * 100) / 100))
-            }
-            // Vendedor só pode mandar PENDENTE
-            const rawStatus = typeof p.status === 'string' ? p.status.toUpperCase() : null
-            const status    = isVendedor
-              ? 'PENDENTE'
-              : (['PENDENTE', 'CONFIRMADO', 'CANCELADO'].includes(rawStatus ?? '') ? rawStatus : 'PENDENTE')
-
-            return {
+        const pendingPrefix = `${BLOB_PREFIX}${pendingFolder(session.user.tenantId ?? '')}`
+        for (const p of payments as any[]) {
+          let returnPct: number | null = null
+          if (p.returnPct != null && p.returnPct !== '') {
+            const n = Number(p.returnPct)
+            if (Number.isFinite(n)) returnPct = Math.min(6, Math.max(0, Math.round(n * 100) / 100))
+          }
+          const type = String(p.type ?? 'OUTROS').toUpperCase()
+          const created = await (tx.dealPayment as any).create({
+            data: {
               dealId:                  deal.id,
               tenantId:                session.user.tenantId ?? null,
-              type:                    String(p.type ?? 'OUTROS').toUpperCase(),
-              status,
+              type,
+              status:                  'PENDENTE',
               value:                   Number(p.amount ?? p.value ?? 0),
+              method:                  ['SINAL', 'ENTRADA'].includes(type) && p.signalMethod ? String(p.signalMethod).toUpperCase().slice(0, 30) : null,
+              authorizationCode:       p.authorizationCode ? String(p.authorizationCode).trim().slice(0, 40) : null,
               bank:                    p.bank      || null,
               cardBrand:               p.cardBrand || null,
               pixKey:                  p.pixKey    || null,
@@ -693,12 +692,24 @@ export async function POST(req: NextRequest) {
               vehiclePlate:            p.vehiclePlate || null,
               firstDueDate:            p.firstDueDate ? new Date(p.firstDueDate) : null,
               dueDate:                 p.dueDate      ? new Date(p.dueDate)      : null,
-              paidAt:                  p.paidAt       ? new Date(p.paidAt)       : null,
+              paidAt:                  null,
               notes:                   p.notes || null,
               createdById:             session.user.id,
-            }
-          }),
-        })
+            },
+            select: { id: true },
+          })
+          const r = p.receipt
+          if (r && typeof r.storageKey === 'string' && (r.storageKey.startsWith(pendingPrefix) || r.storageKey.startsWith(`deals/pending/${session.user.tenantId}/`))) {
+            await (tx.dealAttachment as any).create({
+              data: {
+                dealId: deal.id, tenantId: session.user.tenantId ?? null, category: 'COMPROVANTE_PAGAMENTO',
+                fileName: String(r.fileName ?? 'comprovante').slice(0, 160), fileType: r.fileType ?? 'other', mimeType: r.mimeType ?? 'application/octet-stream',
+                fileSize: Number(r.fileSize) || null, storageKey: r.storageKey, publicUrl: r.publicUrl ?? null,
+                paymentId: created.id, uploadedById: session.user.id, uploadedByName: session.user.name ?? null,
+              },
+            })
+          }
+        }
       }
 
       // 6.6. Troco (se cadastrado no wizard com beneficiário)

@@ -5,7 +5,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireModule } from '@/lib/permissions'
+import { canAccessModule, requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { isDealLocked, canAddPayment } from '@/lib/negotiation-rbac'
 import { createSafeAuditLog } from '@/lib/auth-guards'
@@ -99,12 +99,10 @@ export async function POST(
       const n = Number(body.returnPct)
       if (Number.isFinite(n)) returnPct = Math.min(6, Math.max(0, Math.round(n * 100) / 100))
     }
-    // Vendedor não pode setar status diferente de PENDENTE
-    const isVendedor = ['VENDEDOR', 'VENDEDOR_LIDER'].includes(session.user.role)
+    // Confirmar é do financeiro (Financeiro › Recebimentos): na negociação,
+    // pagamento novo entra PENDENTE — exceto para quem tem o módulo financeiro.
     const rawStatus  = typeof body?.status === 'string' ? body.status.toUpperCase() : null
-    const status     = isVendedor
-      ? 'PENDENTE'
-      : (['PENDENTE', 'CONFIRMADO', 'CANCELADO'].includes(rawStatus ?? '') ? rawStatus : 'PENDENTE')
+    const status     = canAccessModule(session.user.role, 'finance.manage') && ['PENDENTE', 'CONFIRMADO', 'CANCELADO'].includes(rawStatus ?? '') ? rawStatus : 'PENDENTE'
 
     // Cast `as any` no data inteiro porque alguns campos novos (status,
     // pixKey, agency, account, installmentValue, installmentIntervalDays,
@@ -128,6 +126,8 @@ export async function POST(
         installmentIntervalDays: body?.installmentIntervalDays != null ? Number(body.installmentIntervalDays) : null,
         returnPct:    returnPct as any,
         vehiclePlate: body?.vehiclePlate ?? null,
+        method:       ['SINAL', 'ENTRADA'].includes(method) && body?.signalMethod ? String(body.signalMethod).toUpperCase().slice(0, 30) : null,
+        authorizationCode: body?.authorizationCode ? String(body.authorizationCode).trim().slice(0, 40) : null,
         firstDueDate: body?.firstDueDate ? new Date(body.firstDueDate) : null,
         dueDate:      body?.dueDate ? new Date(body.dueDate) : null,
         paidAt:       body?.paidAt ? new Date(body.paidAt) : null,

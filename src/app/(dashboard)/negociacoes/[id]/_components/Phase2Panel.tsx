@@ -26,6 +26,8 @@ export interface Phase2Payment {
   firstDueDate?:  string | null
   dueDate?:       string | null
   notes?:         string | null
+  method?:            string | null
+  authorizationCode?: string | null
 }
 
 export interface Phase2DiscountRequest {
@@ -822,9 +824,12 @@ function PaymentModal({
   const [firstDueDate, setFirstDueDate] = useState(initial?.firstDueDate?.slice(0, 10) ?? '')
   const [dueDate, setDueDate]   = useState(initial?.dueDate?.slice(0, 10) ?? '')
   const [notes, setNotes]   = useState(initial?.notes ?? '')
+  const [signalMethod, setSignalMethod] = useState(initial?.method ?? '')
+  const [authCode, setAuthCode] = useState(initial?.authorizationCode ?? '')
   const [saving, setSaving] = useState(false)
 
-  const isCard         = type === 'CARTAO_CREDITO' || type === 'CARTAO_DEBITO'
+  const isSignal       = type === 'SINAL' || type === 'ENTRADA'
+  const isCard         = type === 'CARTAO_CREDITO' || type === 'CARTAO_DEBITO' || (isSignal && (signalMethod === 'CARTAO_CREDITO' || signalMethod === 'CARTAO_DEBITO'))
   const isBankRelated  = type === 'FINANCIAMENTO' || type === 'BOLETO' || type === 'TRANSFERENCIA' || type === 'DUPLICATA'
   const isInstallable  = type === 'CARTAO_CREDITO' || type === 'FINANCIAMENTO' || type === 'DUPLICATA'
   const isPix          = type === 'PIX'
@@ -841,6 +846,7 @@ function PaymentModal({
     e.preventDefault()
     const amount = parseBRL(valueStr)
     if (!amount || amount <= 0) { onError('Informe um valor valido'); return }
+    if (isSignal && !signalMethod) { onError('Informe como o cliente pagou o sinal (Pix, dinheiro, cartão…).'); return }
     setSaving(true)
     try {
       const url = initial?.id
@@ -858,6 +864,8 @@ function PaymentModal({
           firstDueDate: isInstallable && firstDueDate ? firstDueDate : null,
           dueDate: dueDate || null,
           notes: notes || null,
+          signalMethod: isSignal ? signalMethod : null,
+          authorizationCode: isCard ? authCode || null : null,
         }),
       })
       if (!r.ok) {
@@ -888,9 +896,30 @@ function PaymentModal({
           </Field>
         </div>
 
-        <Field label="Data prevista">
+        {isSignal && (
+          <Field label="Forma do sinal / entrada">
+            <select value={signalMethod} onChange={e => setSignalMethod(e.target.value)} className="input">
+              <option value="">Selecione</option>
+              <option value="PIX">Pix</option>
+              <option value="DINHEIRO">Dinheiro</option>
+              <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+              <option value="CARTAO_DEBITO">Cartão de Débito</option>
+              <option value="TRANSFERENCIA">Transferência</option>
+              <option value="BOLETO">Boleto</option>
+            </select>
+          </Field>
+        )}
+
+        <Field label="Data de pagamento (pode preencher depois)">
           <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="input" />
         </Field>
+
+        {isCard && (
+          <Field label="Código de autorização do cartão">
+            <input value={authCode} onChange={e => setAuthCode(e.target.value.replace(/[^\w-]/g, '').slice(0, 40))} className="input" placeholder="Obrigatório quando o comprovante for anexado" />
+          </Field>
+        )}
+        <p className="text-[11px] text-gray-500">O pagamento entra como pendente; o financeiro confirma em Financeiro › Recebimentos. Anexe o comprovante na linha do pagamento.</p>
 
         {/* Conditional fields */}
         {isPix && (

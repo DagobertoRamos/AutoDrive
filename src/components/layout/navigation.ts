@@ -5,7 +5,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { Module } from '@/lib/permissions'
-import {
+import { HandCoins,
   Home,
   Car,
   ClipboardCheck,
@@ -168,6 +168,7 @@ export const NAV_GROUPS: NavItem[] = [
     icon:  Wallet,
     module: 'finance',
     children: [
+      { label: 'Recebimentos', href: '/financeiro/recebimentos', icon: HandCoins, module: 'finance' },
       { label: 'Lançamentos', href: '/financeiro/lancamentos', icon: Wallet,    module: 'finance' },
       { label: 'Contas',      href: '/financeiro/contas',      icon: Landmark,  module: 'finance' },
       { label: 'Custos de veículos', href: '/financeiro/veiculos', icon: Car, module: 'finance' },

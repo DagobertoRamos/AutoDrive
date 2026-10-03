@@ -27,7 +27,7 @@ export interface StatementInput {
   warrantyPaidBy?: string | null
   flatDiscount?: number | null
   discountRequests?: Array<{ status: string; approvedValue?: unknown; requestedValue?: unknown; reason?: string | null }>
-  payments: Array<{ type?: string | null; status?: string | null; value: unknown; notes?: string | null; bank?: string | null; installments?: number | null; installmentValue?: unknown; paidAt?: Date | null; dueDate?: Date | null }>
+  payments: Array<{ type?: string | null; method?: string | null; status?: string | null; value: unknown; notes?: string | null; bank?: string | null; installments?: number | null; installmentValue?: unknown; paidAt?: Date | null; dueDate?: Date | null }>
   tradeIns?: Array<{ label: string; value: number }>
 }
 
@@ -92,7 +92,9 @@ const PAY_LABEL: Record<string, string> = {
 /** Retorno de financiamento = comissão do banco para a loja (não é pagamento do cliente). */
 export const isStoreIncome = (p: { notes?: string | null }) => /retorno de financiamento|RECEITA COM RETORNO/i.test(clean(p.notes))
 
-export function paymentLabel(p: { type?: string | null; notes?: string | null; bank?: string | null; installments?: number | null; installmentValue?: unknown }): { forma: string; detalhe?: string } {
+export function paymentLabel(p: { type?: string | null; method?: string | null; notes?: string | null; bank?: string | null; installments?: number | null; installmentValue?: unknown }): { forma: string; detalhe?: string } {
+  const tt = String(p.type ?? '').toUpperCase()
+  if ((tt === 'SINAL' || tt === 'ENTRADA') && p.method) return { forma: 'Sinal / entrada', detalhe: PAY_LABEL[String(p.method).toUpperCase()] ?? String(p.method) }
   const n = clean(p.notes).replace(/^Negocia[cç][aã]o #\d+\s*-\s*/i, '')
   const t = String(p.type ?? '').toUpperCase()
   // O AutoConf às vezes marca financiamento como cartão: a observação diz a verdade.
