@@ -159,8 +159,12 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
     tradeIns: trocas.map((v) => ({ label: label(v), value: num(v.valor) })),
   })
 
+  // Sinal = só os pagamentos lançados como Sinal/Entrada. O campo antigo
+  // deal.signalAmount soma também Pix e dinheiro — vale só sem pagamentos.
   const sinalPay = deal.payments.filter((p) => ['SINAL', 'ENTRADA'].includes(String(p.type).toUpperCase()) && String(p.status).toUpperCase() !== 'CANCELADO')
-  const sinalValor = num(deal.signalAmount) || sinalPay.reduce((s, p) => s + num(p.value), 0)
+  const sinalValor = sinalPay.length ? sinalPay.reduce((s, p) => s + num(p.value), 0) : deal.payments.length ? 0 : num(deal.signalAmount)
+  const SIG: Record<string, string> = { PIX: 'Pix', DINHEIRO: 'dinheiro', CARTAO_CREDITO: 'cartão de crédito', CARTAO_DEBITO: 'cartão de débito', TRANSFERENCIA: 'transferência', BOLETO: 'boleto' }
+  const sinalFormas = [...new Set(sinalPay.map((p) => SIG[String(p.method ?? '').toUpperCase()]).filter(Boolean))]
   const now = new Date()
   const data: ContractData = {
     numero: deal.dealNumber ?? deal.id.slice(-8).toUpperCase(),
@@ -171,7 +175,7 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
     vendedorNome: deal.seller?.fullName ?? null,
     veiculo, trocas, extrato,
     garantias: deal.warrantySales.filter((w) => String(w.status) === 'ATIVA').map((w) => ({ nome: w.warranty?.name ?? 'Garantia', cobertura: w.warranty?.coverageType ?? null, anos: w.warranty?.durationYears ?? null, fornecedor: w.warranty?.provider ?? null })),
-    sinal: sinalValor > 0 ? { valor: sinalValor, data: sinalPay[0]?.paidAt ?? sinalPay[0]?.createdAt ?? null, forma: sinalPay[0] ? String(sinalPay[0].type) === 'ENTRADA' || String(sinalPay[0].type) === 'SINAL' ? null : String(sinalPay[0].type) : null } : null,
+    sinal: sinalValor > 0 ? { valor: sinalValor, data: sinalPay[0]?.paidAt ?? sinalPay[0]?.dueDate ?? sinalPay[0]?.createdAt ?? null, forma: sinalFormas.join(' e ') || null } : null,
     reservaAte: deal.deliveryDate ?? new Date(now.getTime() + 7 * 86_400_000),
     entregaPrevista: deal.deliveryDate ?? null,
     comissao: num(deal.consignCommPct) > 0 ? `${(num(deal.consignCommPct) * (num(deal.consignCommPct) <= 1 ? 100 : 1)).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% do valor da venda` : sv?.partnerStore?.commission ?? null,

@@ -4893,7 +4893,7 @@ export default function NovaNegociacaoPage() {
       // — backend continua aceitando shape antigo sem mudanças.
       signalAmount:     (() => {
         const sum = form.payments
-          .filter((p) => p.status !== 'CANCELADO' && (p.type === 'SINAL' || p.type === 'ENTRADA' || p.type === 'DINHEIRO' || p.type === 'PIX'))
+          .filter((p) => p.status !== 'CANCELADO' && (p.type === 'SINAL' || p.type === 'ENTRADA'))
           .reduce((s, p) => s + (parseBRLInput(p.amount) ?? 0), 0)
         return sum > 0 ? sum : parseBRLInput(form.signalAmount)
       })(),
