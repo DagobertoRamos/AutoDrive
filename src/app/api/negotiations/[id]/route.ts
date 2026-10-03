@@ -258,7 +258,9 @@ export async function PATCH(
       return Number.isFinite(n) ? n : null
     }
     if ((field === 'deliveryDate' || field === 'consignDeadline') && raw != null) {
-      const d = raw instanceof Date ? raw : new Date(String(raw))
+      // Só a data (aaaa-mm-dd): meio-dia, para não virar o dia anterior no fuso do Brasil.
+      const str = String(raw)
+      const d = raw instanceof Date ? raw : new Date(/^\d{4}-\d{2}-\d{2}$/.test(str) ? `${str}T12:00:00` : str)
       return Number.isNaN(d.getTime()) ? null : d
     }
     return raw

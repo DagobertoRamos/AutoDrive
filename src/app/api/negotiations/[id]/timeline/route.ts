@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { hasMinRole, requireModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
-import { describeAudit, describeStatus, type HistoryItem } from '@/lib/negotiation/history-text'
+import { describeAudit, describeStatus, type HistoryItem, extraHistory } from '@/lib/negotiation/history-text'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace(/\s/g, ' ')
 const VEHICLE_ROLE: Record<string, string> = { VENDIDO: 'vendido', TROCA: 'de troca', COMPRADO: 'comprado', CONSIGNADO: 'consignado' }
@@ -37,18 +37,34 @@ export async function GET(
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
   const isManager = hasMinRole(session.user.role, 'GERENTE')
 
-  const [statusHistory, auditLogs, services, vehicles, pendencies] = await Promise.all([
-    prisma.dealStatusHistory.findMany({ where: { dealId: params.id }, orderBy: { createdAt: 'asc' } }),
-    prisma.dealAuditLog.findMany({ where: { dealId: params.id }, orderBy: { createdAt: 'asc' } }),
-    prisma.dealService.findMany({ where: { dealId: params.id }, orderBy: { createdAt: 'asc' } }),
-    prisma.dealVehicle.findMany({ where: { dealId: params.id }, orderBy: { createdAt: 'asc' } }),
-    prisma.pendency.findMany({ where: { dealId: params.id } as never, orderBy: { createdAt: 'asc' } }),
+  const dealId = params.id
+  const [statusHistory, auditLogs, services, vehicles, pendencies, payments, debts, attachments, documents, discounts, changes, reopens, releases, imported] = await Promise.all([
+    prisma.dealStatusHistory.findMany({ where: { dealId }, orderBy: { createdAt: 'asc' } }),
+    prisma.dealAuditLog.findMany({ where: { dealId }, orderBy: { createdAt: 'asc' } }),
+    prisma.dealService.findMany({ where: { dealId }, orderBy: { createdAt: 'asc' } }),
+    prisma.dealVehicle.findMany({ where: { dealId }, orderBy: { createdAt: 'asc' } }),
+    prisma.pendency.findMany({ where: { dealId } as never, orderBy: { createdAt: 'asc' } }),
+    // Tudo o que acontece na negociação sem linha própria no log:
+    prisma.dealPayment.findMany({ where: { dealId }, select: { type: true, method: true, value: true, status: true, bank: true, createdAt: true, paidAt: true } }),
+    prisma.dealDebt.findMany({ where: { dealId }, select: { type: true, description: true, value: true, responsavel: true, createdAt: true } }),
+    prisma.dealAttachment.findMany({ where: { dealId }, select: { category: true, fileName: true, uploadedByName: true, uploadedAt: true } }),
+    prisma.dealDocument.findMany({ where: { dealId }, select: { type: true, name: true, createdAt: true, signedAt: true, signedBy: true } }),
+    prisma.dealDiscountRequest.findMany({ where: { dealId }, select: { requestedValue: true, approvedValue: true, reason: true, status: true, createdAt: true, decidedAt: true, decisionNote: true, requestedById: true, decidedById: true } }),
+    prisma.dealChange.findMany({ where: { dealId }, select: { value: true, beneficiary: true, createdAt: true } }),
+    prisma.dealReopenLog.findMany({ where: { dealId }, select: { reason: true, createdAt: true, reopenedById: true } }),
+    prisma.dealReleaseRequest.findMany({ where: { dealId }, select: { status: true, reason: true, requestedAt: true, reviewedAt: true, requestedBy: true, reviewedBy: true } }),
+    prisma.dealHistoryEntry.findMany({ where: { dealId }, select: { summary: true, userName: true, createdAt: true } }),
   ])
 
   // Nomes: quem mudou o status + ids citados no log (vendedor, gerente, unidade, cliente).
   const refIds = new Set<string>()
   for (const a of auditLogs) if (a.field && /Id$/.test(a.field)) { if (a.oldValue) refIds.add(a.oldValue); if (a.newValue) refIds.add(a.newValue) }
-  const userIds = [...new Set(statusHistory.map((h) => h.changedByUserId).filter((x): x is string => !!x))]
+  const userIds = [...new Set([
+    ...statusHistory.map((h) => h.changedByUserId),
+    ...discounts.flatMap((d) => [d.requestedById, d.decidedById]),
+    ...reopens.map((r) => r.reopenedById),
+    ...releases.flatMap((r) => [r.requestedBy, r.reviewedBy]),
+  ].filter((x): x is string => !!x))]
   const ids = [...refIds]
   const [users, sellers, units, people] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: [...userIds, ...ids] } }, select: { id: true, name: true } }),
@@ -84,6 +100,16 @@ export async function GET(
   for (const p of pendencies) {
     items.push({ kind: 'PENDENCIA', title: 'Pendência aberta', text: p.description ? `Pendência aberta: ${p.description}` : 'Pendência aberta para esta negociação.', user: null, date: new Date(p.createdAt).toISOString() })
   }
+
+  const name = (id: string | null | undefined) => (id ? refs[id] ?? null : null)
+  items.push(...extraHistory({
+    audit: auditLogs, payments, debts, attachments, documents,
+    discounts: discounts.map((d) => ({ ...d, requestedBy: name(d.requestedById), decidedBy: name(d.decidedById) })),
+    changes,
+    reopens: reopens.map((r) => ({ ...r, by: name(r.reopenedById) })),
+    releases: releases.map((r) => ({ ...r, by: name(r.requestedBy), reviewer: name(r.reviewedBy) })),
+    imported,
+  }))
 
   const visible = items.filter((i) => isManager || !i.restricted)
   visible.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())

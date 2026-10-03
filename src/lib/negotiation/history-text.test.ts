@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeAudit, describeStatus, formatValue } from './history-text'
+import { describeAudit, describeStatus, extraHistory, formatValue } from './history-text'
 
 const at = '2026-10-03T20:26:24.000Z'
 
@@ -31,5 +31,33 @@ describe('histórico da negociação em português', () => {
   it('valores em formato BR também', () => {
     expect(formatValue('money', '1.500,50')).toBe('R$ 1.500,50')
     expect(formatValue('money', null)).toBe('—')
+  })
+})
+
+describe('histórico completo — eventos sem linha no log', () => {
+  const base = { audit: [], payments: [], debts: [], attachments: [], documents: [], discounts: [], changes: [], reopens: [], releases: [], imported: [] }
+  it('pagamentos lançados e confirmados, débitos e anexos entram', () => {
+    const items = extraHistory({
+      ...base,
+      payments: [{ type: 'SINAL', method: 'PIX', value: '500', status: 'CONFIRMADO', createdAt: '2026-10-03T01:08:44Z', paidAt: '2026-10-02T12:00:00Z' }],
+      debts: [{ type: 'DOCUMENTACAO', value: 1500, responsavel: 'COMPRADOR', createdAt: '2026-10-03T01:08:43Z' }],
+      attachments: [{ category: 'COMPROVANTE_PAGAMENTO', fileName: 'pix.jpg', uploadedByName: 'Ana', uploadedAt: '2026-10-03T02:00:00Z' }],
+    })
+    expect(items.map((i) => i.title)).toEqual(['Pagamento lançado', 'Pagamento confirmado', 'Débito lançado', 'Arquivo anexado'])
+    expect(items[0].text).toBe('Pagamento lançado: Sinal (PIX) de R$ 500,00.')
+    expect(items[0].restricted).toBe(true)
+    expect(items[3].restricted).toBeUndefined()
+  })
+  it('não repete o que já tem linha própria no log', () => {
+    const at = '2026-10-03T10:00:00Z'
+    const items = extraHistory({ ...base, audit: [{ field: 'pagamento', newValue: 'Incluído: PIX R$ 10,00', createdAt: '2026-10-03T10:00:03Z' }], payments: [{ type: 'PIX', value: 10, status: 'PENDENTE', createdAt: at }] })
+    expect(items).toEqual([])
+  })
+})
+
+describe('data sem hora', () => {
+  it('meia-noite UTC mostra o dia informado (não o anterior)', () => {
+    expect(formatValue('date', 'Wed Oct 07 2026 00:00:00 GMT+0000 (Coordinated Universal Time)')).toBe('07/10/2026')
+    expect(formatValue('date', '2026-10-07')).toBe('07/10/2026')
   })
 })
