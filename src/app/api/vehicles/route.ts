@@ -50,6 +50,8 @@ export async function GET(req: NextRequest) {
     const conditionType = searchParams.get('conditionType')         ?? ''
     const pendencyIds   = searchParams.get('pendencyIds')           ?? ''
     const cautelarStatus = searchParams.get('cautelarStatus')       ?? ''
+    // Fornecedor do carro (Cadastros › Fornecedores, tipo Veículos); PROPRIO = sem fornecedor.
+    const supplierId    = searchParams.get('supplierId')            ?? ''
     const includeInactive = searchParams.get('includeInactive') === 'true'
 
     // Base where com isolamento de tenant
@@ -73,6 +75,7 @@ export async function GET(req: NextRequest) {
     if (stockType)     where.stockType     = stockType
     if (conditionType) where.conditionType = conditionType
     if (cautelarStatus) where.cautelarStatus = cautelarStatus
+    if (supplierId)     where.partnerStoreId = supplierId === 'PROPRIO' ? null : supplierId
 
     // Filtro por pendências ativas
     if (pendencyIds) {
@@ -107,8 +110,7 @@ export async function GET(req: NextRequest) {
           ...(year ? [{ year }, { modelYear: year }] : []),
         ]
       }
-      if (tokens.length === 1) where.OR = tokenOr(tokens[0])
-      else where.AND = [...((where.AND as unknown[]) ?? []), ...tokens.map((t) => ({ OR: tokenOr(t) }))]
+      where.AND = [...((where.AND as unknown[]) ?? []), ...tokens.map((t) => ({ OR: tokenOr(t) }))]
     }
 
     const [total, vehicles] = await Promise.all([

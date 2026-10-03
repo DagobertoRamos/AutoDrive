@@ -5,7 +5,7 @@
 // Cadastro e busca de veículos
 // =============================================================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Car, Search, RefreshCw, Plus, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -31,22 +31,29 @@ export default function VeiculosPage() {
   const [total, setTotal]         = useState(0)
   const PER_PAGE = 50
 
+  // Só a resposta da busca mais recente vale (digitar "onix" não pode mostrar o resultado de "o").
+  const seq = useRef(0)
   const fetchVehicles = useCallback(async () => {
+    const my = ++seq.current
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(page), perPage: String(PER_PAGE) })
-      if (search) params.set('search', search)
+      const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) })
+      if (search.trim()) params.set('search', search.trim())
       const res  = await fetch(`/api/vehicles?${params}`, { credentials: 'include' })
       const data = await res.json()
+      if (my !== seq.current) return
       if (data.success) {
         setVehicles(data.data ?? [])
-        setTotal(data.meta?.total ?? 0)
+        setTotal(data.meta?.total ?? data.pagination?.total ?? 0)
       }
     } catch { /* silent */ }
-    finally { setLoading(false) }
+    finally { if (my === seq.current) setLoading(false) }
   }, [page, search])
 
-  useEffect(() => { fetchVehicles() }, [fetchVehicles])
+  useEffect(() => {
+    const t = setTimeout(() => void fetchVehicles(), search ? 350 : 0)
+    return () => clearTimeout(t)
+  }, [fetchVehicles, search])
 
   const totalPages = Math.ceil(total / PER_PAGE)
 

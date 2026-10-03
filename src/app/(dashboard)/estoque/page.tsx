@@ -186,7 +186,11 @@ export default function EstoquePage() {
   const [stockType,       setStockType]       = useState('')
   const [conditionType,   setConditionType]   = useState('')
   const [cautelarStatus,  setCautelarStatus]  = useState('')
+  const [supplierId,      setSupplierId]      = useState('')
+  const [suppliers,       setSuppliers]       = useState<Array<{ value: string; label: string }>>([])
   const [includeInactive, setIncludeInactive] = useState(false)
+  // Só a resposta da busca mais recente vale (uma resposta antiga não pode sobrescrever).
+  const fetchSeq = useRef(0)
 
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -209,8 +213,17 @@ export default function EstoquePage() {
       .catch(() => {})
   }, [])
 
+  // Fornecedores de veículos (filtro)
+  useEffect(() => {
+    fetch('/api/suppliers?tipo=VEICULOS', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setSuppliers([{ value: 'PROPRIO', label: 'Estoque próprio' }, ...(d.data ?? []).map((s: { id: string; name: string }) => ({ value: s.id, label: s.name }))]) })
+      .catch(() => {})
+  }, [])
+
   // Carrega veículos
   const fetchVehicles = useCallback(async () => {
+    const seq = ++fetchSeq.current
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -224,10 +237,12 @@ export default function EstoquePage() {
       if (stockType)       params.set('stockType', stockType)
       if (conditionType)   params.set('conditionType', conditionType)
       if (cautelarStatus)  params.set('cautelarStatus', cautelarStatus)
+      if (supplierId)      params.set('supplierId', supplierId)
       if (includeInactive) params.set('includeInactive', 'true')
 
       const res  = await fetch(`/api/vehicles?${params}`, { cache: 'no-store' })
       const data = await res.json()
+      if (seq !== fetchSeq.current) return
       if (data.success) {
         setVehicles(data.data ?? [])
         setPagination(data.pagination ?? null)
@@ -235,16 +250,16 @@ export default function EstoquePage() {
     } catch (_) {
       //
     } finally {
-      setLoading(false)
+      if (seq === fetchSeq.current) setLoading(false)
     }
-  }, [page, debouncedSearch, unitId, stockStatus, stockLocation, vehicleType, stockType, conditionType, cautelarStatus, includeInactive])
+  }, [page, debouncedSearch, unitId, stockStatus, stockLocation, vehicleType, stockType, conditionType, cautelarStatus, supplierId, includeInactive])
 
   useEffect(() => { fetchVehicles() }, [fetchVehicles])
 
   // Resetar página ao mudar filtros (exceto page)
   const resetPage = () => setPage(1)
 
-  const hasActiveFilters = !!(unitId || stockStatus || stockLocation || vehicleType || stockType || conditionType || cautelarStatus || includeInactive || debouncedSearch)
+  const hasActiveFilters = !!(unitId || stockStatus || stockLocation || vehicleType || stockType || conditionType || cautelarStatus || supplierId || includeInactive || debouncedSearch)
 
   function clearFilters() {
     setSearch('')
@@ -255,6 +270,7 @@ export default function EstoquePage() {
     setStockType('')
     setConditionType('')
     setCautelarStatus('')
+    setSupplierId('')
     setIncludeInactive(false)
     setPage(1)
   }
@@ -441,6 +457,13 @@ export default function EstoquePage() {
               onChange={(v) => { setConditionType(v); resetPage() }}
               placeholder="Condição"
               options={CONDITION_OPTIONS}
+            />
+
+            <FilterSelect
+              value={supplierId}
+              onChange={(v) => { setSupplierId(v); resetPage() }}
+              placeholder="Fornecedor"
+              options={suppliers}
             />
 
             <FilterSelect
