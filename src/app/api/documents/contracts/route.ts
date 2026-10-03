@@ -4,24 +4,36 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getSessionUser, assertTenantId, tenantWhere, type SessionUser } from '@/lib/auth-guards'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
+/**
+ * Escopo de loja dos contratos. Usuário comum: sempre a própria loja (sem loja
+ * → erro). MASTER dentro de uma loja vê só ela; MASTER fora de loja vê tudo.
+ */
+function contractScope(user: SessionUser, extra: Record<string, unknown> = {}) {
+  if (user.role === 'MASTER') return user.tenantId ? { ...extra, tenantId: user.tenantId } : extra
+  return tenantWhere(user.role, assertTenantId(user.tenantId, user.role), extra)
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerAuthSession()
-    if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
-    if (!canAccessModule(session.user.role, 'documents')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
-    { const gate = await assertModuleEnabled(session.user, 'documents'); if (gate) return gate }
+    const user = await getSessionUser()
+    if (!user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
+    if (!canAccessModule(user.role, 'documents')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(user, 'documents'); if (gate) return gate }
 
     const { searchParams } = new URL(req.url)
     const page    = Math.max(1, Number(searchParams.get('page')    ?? 1))
     const perPage = Math.min(100, Number(searchParams.get('perPage') ?? 50))
     const search  = searchParams.get('search') || undefined
 
-    const where: Record<string, unknown> = {}
+    let where: Record<string, unknown>
+    try { where = contractScope(user) } catch (e) {
+      return NextResponse.json({ success: false, error: (e as Error).message }, { status: 403 })
+    }
     if (search) {
       where.OR = [
         { number:   { contains: search, mode: 'insensitive' } },
@@ -71,16 +83,22 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerAuthSession()
-    if (!session?.user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
-    if (!canAccessModule(session.user.role, 'documents.pdf')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
-    { const gate = await assertModuleEnabled(session.user, 'documents'); if (gate) return gate }
+    const user = await getSessionUser()
+    if (!user) return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
+    if (!canAccessModule(user.role, 'documents.pdf')) return NextResponse.json({ success: false, error: 'Acesso negado' }, { status: 403 })
+    { const gate = await assertModuleEnabled(user, 'documents'); if (gate) return gate }
+
+    let tenantId: string | null
+    try { tenantId = user.role === 'MASTER' ? user.tenantId ?? null : assertTenantId(user.tenantId, user.role) } catch (e) {
+      return NextResponse.json({ success: false, error: (e as Error).message }, { status: 403 })
+    }
 
     const body = await req.json()
 
     // TODO: match customer and vehicle by name/plate if they exist
     const contract = await prisma.contract.create({
       data: {
+        tenantId,
         number:  body.contractNumber ?? null,
         type:    'VENDA',
         status:  'ATIVO',
