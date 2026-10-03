@@ -13,7 +13,6 @@ import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { loadContractData } from '@/lib/negotiation/contracts/contract-data'
 import { generateDealDocument, isDocKind } from '@/lib/negotiation/contracts/generate'
-import { DOC_KIND_LABEL } from '@/lib/negotiation/contracts/documents-core'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +35,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   const where = await buildNegotiationAccessWhere(g.session.user, { id })
   const loaded = await loadContractData(id, where)
   if (!loaded) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
-  return NextResponse.json({ data: { suggested: loaded.suggested, intermediated: loaded.intermediated, labels: DOC_KIND_LABEL } })
+  return NextResponse.json({ data: { suggested: loaded.suggested, intermediated: loaded.intermediated, hasSold: loaded.hasSold, hasEntry: loaded.hasEntry, outorgados: loaded.data.outorgados?.length ?? 0 } })
 }
 
 export async function POST(req: NextRequest, ctx: Ctx) {
@@ -44,7 +43,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const g = await guard(true)
   if (g.error) return g.error
   const body = (await req.json().catch(() => ({}))) as { kind?: unknown }
-  if (!isDocKind(body.kind)) return NextResponse.json({ error: 'Escolha o documento: VENDA, SINAL ou INTERMEDIACAO.' }, { status: 400 })
+  if (!isDocKind(body.kind)) return NextResponse.json({ error: 'Documento inválido.' }, { status: 400 })
   const where = await buildNegotiationAccessWhere(g.session.user, { id })
   try {
     const r = await generateDealDocument(id, body.kind, g.session.user.id, where)

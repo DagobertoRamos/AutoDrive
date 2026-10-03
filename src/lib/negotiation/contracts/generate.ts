@@ -6,27 +6,32 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { loadContractData } from './contract-data'
+import { loadContractData, type AnyDocKind } from './contract-data'
 import { DOC_KIND_LABEL, renderDocument, type DocKind } from './documents-core'
+import { isProxyKind, PROXY_KIND_LABEL, renderProxyDocument } from './proxies-core'
 
 const TYPE: Record<DocKind, 'CONTRATO_VENDA' | 'OUTRO'> = { VENDA: 'CONTRATO_VENDA', SINAL: 'OUTRO', INTERMEDIACAO: 'OUTRO' }
-export const isDocKind = (x: unknown): x is DocKind => x === 'VENDA' || x === 'SINAL' || x === 'INTERMEDIACAO'
+const isBaseKind = (x: unknown): x is DocKind => x === 'VENDA' || x === 'SINAL' || x === 'INTERMEDIACAO'
+export const isDocKind = (x: unknown): x is AnyDocKind => isBaseKind(x) || isProxyKind(x)
+export const docKindLabel = (k: AnyDocKind) => (isProxyKind(k) ? PROXY_KIND_LABEL[k] : DOC_KIND_LABEL[k])
 
-export async function generateDealDocument(dealId: string, kind: DocKind, actorId: string | null, tenantWhere: Record<string, unknown> = {}) {
+export async function generateDealDocument(dealId: string, kind: AnyDocKind, actorId: string | null, tenantWhere: Record<string, unknown> = {}) {
   const loaded = await loadContractData(dealId, tenantWhere)
   if (!loaded) throw new Error('Negociação não encontrada.')
   if (kind === 'INTERMEDIACAO' && !loaded.intermediated) {
     // Sem proprietário identificado: sai com os campos do proprietário em branco.
     loaded.data.proprietario = { tipo: 'PF', nome: '' }
   }
-  const html = renderDocument(kind, loaded.data)
-  const name = `${DOC_KIND_LABEL[kind]} — Nº ${loaded.data.numero}`
+  if (isProxyKind(kind) && kind.endsWith('_VENDA') && !loaded.hasSold) throw new Error('Esta negociação não tem veículo vendido.')
+  if (isProxyKind(kind) && kind.endsWith('_TROCA') && !loaded.hasEntry) throw new Error('Esta negociação não tem veículo de troca ou compra.')
+  const html = isProxyKind(kind) ? renderProxyDocument(kind, loaded.data) : renderDocument(kind, loaded.data)
+  const name = `${docKindLabel(kind)} — Nº ${loaded.data.numero}`
   const key = `auto:${kind}`
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { tenantId: true } })
   const existing = await prisma.dealDocument.findFirst({ where: { dealId, storageKey: key, status: { in: ['RASCUNHO', 'GERADO'] } }, orderBy: { createdAt: 'desc' } })
   const doc = existing
     ? await prisma.dealDocument.update({ where: { id: existing.id }, data: { bodyHtml: html, name, status: 'GERADO' } })
-    : await prisma.dealDocument.create({ data: { dealId, tenantId: deal?.tenantId ?? null, type: TYPE[kind], name, bodyHtml: html, status: 'GERADO', storageKey: key, createdById: actorId } })
+    : await prisma.dealDocument.create({ data: { dealId, tenantId: deal?.tenantId ?? null, type: isProxyKind(kind) ? (kind.startsWith('ENTREGA') ? 'TERMO_ENTREGA' : 'PROCURACAO') : TYPE[kind], name, bodyHtml: html, status: 'GERADO', storageKey: key, createdById: actorId } })
   return { doc, regenerated: !!existing, suggested: loaded.suggested }
 }
 
@@ -35,7 +40,8 @@ export async function generateOnFinalize(dealId: string, actorId: string | null)
   try {
     const loaded = await loadContractData(dealId)
     if (!loaded) return
-    for (const k of loaded.suggested.filter((x) => x !== 'SINAL')) await generateDealDocument(dealId, k, actorId)
+    // Contrato (+ intermediação) ao finalizar; procurações e termos ficam nos botões.
+    for (const k of loaded.suggested.filter((x) => x === 'VENDA' || x === 'INTERMEDIACAO')) await generateDealDocument(dealId, k, actorId)
   } catch (e) { console.error('[contratos] geração automática ao finalizar', e) }
 }
 

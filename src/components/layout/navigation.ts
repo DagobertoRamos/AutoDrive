@@ -419,6 +419,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Procurações', href: '/documentos/procuracoes', icon: Stamp,         module: 'documents.pdf' },
       { label: 'Termos',      href: '/documentos/termos',      icon: FileCheck2,    module: 'documents.pdf' },
       { label: 'Declarações', href: '/documentos/declaracoes', icon: ScrollText,    module: 'documents.pdf' },
+      { label: 'Configurações', href: '/documentos/configuracoes', icon: Settings, module: 'documents.pdf' },
     ],
   },
 

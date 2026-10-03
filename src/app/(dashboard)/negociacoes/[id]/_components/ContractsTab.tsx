@@ -61,11 +61,11 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
   const [preview, setPreview]     = useState<DealDocument | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   // Documentos da venda montados com os dados do sistema (contrato, sinal, intermediação).
-  const [saleDocs, setSaleDocs] = useState<{ suggested: string[]; intermediated: boolean } | null>(null)
+  const [saleDocs, setSaleDocs] = useState<{ suggested: string[]; intermediated: boolean; hasSold?: boolean; hasEntry?: boolean; outorgados?: number } | null>(null)
   const [makingKind, setMakingKind] = useState<string | null>(null)
   const printUrl = (docId: string) => `/api/negotiations/${dealId}/documents/${docId}/print`
 
-  async function makeSaleDoc(kind: 'VENDA' | 'SINAL' | 'INTERMEDIACAO') {
+  async function makeSaleDoc(kind: string) {
     setMakingKind(kind)
     // Abre a aba já no clique (o navegador bloqueia janela aberta depois do await).
     const win = window.open('', '_blank')
@@ -172,14 +172,24 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
         </div>
         <div className="space-y-3 p-4">
           <p className="text-xs text-gray-600">Montados com os dados cadastrados: loja (logo e qualificação), cliente, veículo vendido, troca, quadro de débitos (com cortesias e descontos) e de pagamentos, e as cláusulas legais (Código Civil, CDC, CTB e LGPD). O contrato sai sozinho ao finalizar a venda e o termo de sinal ao registrar o sinal; aqui você gera ou atualiza a qualquer momento.</p>
-          <div className="flex flex-wrap gap-2">
-            {([['VENDA', 'Contrato de compra e venda'], ['SINAL', 'Termo de sinal e reserva'], ['INTERMEDIACAO', 'Termo de intermediação']] as const).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => makeSaleDoc(k)} disabled={!!makingKind}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium disabled:opacity-50 ${saleDocs?.suggested.includes(k) ? 'bg-brand-600 text-white hover:bg-brand-700' : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
-                {makingKind === k ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}{l}
-              </button>
-            ))}
-          </div>
+          {([
+            { title: 'Venda', show: true, items: [['VENDA', 'Contrato de compra e venda'], ['SINAL', 'Termo de sinal e reserva'], ['INTERMEDIACAO', 'Termo de intermediação']] },
+            { title: 'Veículo vendido', show: saleDocs?.hasSold !== false, items: [['PROC_VENDA', 'Procuração (amplos poderes)'], ['PROC_MULTAS_VENDA', 'Procuração — indicação de condutor/pontos'], ['ENTREGA_VENDA', 'Termo de entrega e responsabilidade']] },
+            { title: 'Veículo da troca / compra', show: !!saleDocs?.hasEntry, items: [['PROC_TROCA', 'Procuração em causa própria'], ['PROC_MULTAS_TROCA', 'Procuração — indicação de condutor/pontos'], ['ENTREGA_TROCA', 'Termo de entrega e responsabilidade']] },
+          ] as const).filter((g) => g.show).map((g) => (
+            <div key={g.title} className="space-y-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{g.title}</p>
+              <div className="flex flex-wrap gap-2">
+                {g.items.map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => makeSaleDoc(k)} disabled={!!makingKind}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium disabled:opacity-50 ${saleDocs?.suggested.includes(k) && (k === 'VENDA' || k === 'SINAL' || k === 'INTERMEDIACAO') ? 'bg-brand-600 text-white hover:bg-brand-700' : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+                    {makingKind === k ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}{l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {saleDocs && !saleDocs.outorgados && <p className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">Cadastre os outorgados (procuradores) em <a href="/documentos/configuracoes" className="font-medium underline">Documentos › Configurações</a> — sem eles as procurações saem com o procurador em branco.</p>}
           {saleDocs && <p className="text-[11px] text-gray-500">{saleDocs.intermediated ? 'Veículo de parceiro/particular: a loja entra como INTERMEDIADORA e o dono do veículo como vendedor.' : 'Veículo próprio da loja: a loja entra como VENDEDORA. O termo de intermediação é para veículos de parceiros/particulares.'} Campos sem cadastro (ex.: estado civil, profissão) saem em branco para preencher à mão.</p>}
         </div>
       </div>

@@ -65,26 +65,32 @@ export interface ContractData {
   /** Remuneração da intermediação (texto, ex.: "8% do valor da venda"). */
   comissao?: string | null
   financiado?: boolean
+  /** Veículos que ENTRAM na loja (troca ou compra). */
+  entrada?: VehicleData[]
+  /** Procuradores cadastrados em Documentos › Configurações. */
+  outorgados?: Array<{ nome: string; cpf?: string | null; rg?: string | null; orgaoRg?: string | null; nacionalidade?: string | null; estadoCivil?: string | null; profissao?: string | null; endereco?: string | null; cargo?: string | null }>
+  validadeProcuracaoDias?: number
+  firmaReconhecida?: boolean
 }
 
 // ── Utilidades ───────────────────────────────────────────────────────────────
 
-const BLANK = '<span class="blank">____________________</span>'
-const SHORT = '<span class="blank">__________</span>'
+export const BLANK = '<span class="blank">____________________</span>'
+export const SHORT = '<span class="blank">__________</span>'
 export const esc = (s: unknown): string => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
-const f = (v: unknown, blank = BLANK) => (v === null || v === undefined || String(v).trim() === '' ? blank : esc(v))
-const dataBR = (d?: Date | null) => (d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : SHORT)
-const dataExtenso = (d: Date) => new Date(d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' })
+export const f = (v: unknown, blank = BLANK) => (v === null || v === undefined || String(v).trim() === '' ? blank : esc(v))
+export const dataBR = (d?: Date | null) => (d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : SHORT)
+export const dataExtenso = (d: Date) => new Date(d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' })
 const money = (v: number) => `${brl(v)} (${extenso(v)})`
 
-function qualifica(p: Party, papel: string): string {
+export function qualifica(p: Party, papel: string): string {
   if (p.tipo === 'PJ') {
     return `<p class="party"><b>${papel}:</b> <b>${f(p.nome)}</b>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${f(p.documento)}${p.ie ? (/isent/i.test(p.ie) ? ', isenta de Inscrição Estadual' : `, Inscrição Estadual nº ${esc(p.ie)}`) : ''}, com sede em ${f(p.endereco)}${p.telefone ? `, telefone ${esc(p.telefone)}` : ''}${p.email ? `, e-mail ${esc(p.email)}` : ''}${p.representante?.nome ? `, neste ato representada por ${esc(p.representante.nome)}${p.representante.cpf ? `, CPF nº ${esc(p.representante.cpf)}` : ''}` : ', neste ato representada na forma de seu contrato social'}.</p>`
   }
   return `<p class="party"><b>${papel}:</b> <b>${f(p.nome)}</b>, nacionalidade ${SHORT}, estado civil ${SHORT}, profissão ${SHORT}, portador(a) do RG nº ${f(p.rg, SHORT)} e inscrito(a) no CPF sob o nº ${f(p.documento)}, residente e domiciliado(a) em ${f(p.endereco)}${p.telefone ? `, telefone ${esc(p.telefone)}` : ''}${p.email ? `, e-mail ${esc(p.email)}` : ''}.</p>`
 }
 
-function veiculoTabela(v: VehicleData, titulo?: string): string {
+export function veiculoTabela(v: VehicleData, titulo?: string): string {
   const row = (a: string, b: unknown, c: string, d: unknown) => `<tr><th>${a}</th><td>${f(b, SHORT)}</td><th>${c}</th><td>${f(d, SHORT)}</td></tr>`
   return `${titulo ? `<p class="sub">${esc(titulo)}</p>` : ''}<table class="kv">
 ${row('Marca', v.marca, 'Modelo', [v.modelo, v.versao].filter(Boolean).join(' ') || null)}
@@ -120,7 +126,7 @@ ${rows || '<tr><td colspan="4">Nenhum pagamento lançado.</td></tr>'}
 </tbody><tfoot><tr><td colspan="3"><b>TOTAL PAGO / A PAGAR CONFORME ACIMA</b></td><td class="r"><b>${brl(e.totalPago)}</b></td></tr>${saldo}</tfoot></table>`
 }
 
-function cabecalho(d: ContractData, titulo: string): string {
+export function cabecalho(d: ContractData, titulo: string): string {
   const l = d.loja
   return `<header class="hd">
   ${d.logoUrl ? `<img class="logo" src="${esc(d.logoUrl)}" alt="">` : `<div class="logo-txt">${esc(l.nome)}</div>`}
@@ -130,16 +136,16 @@ function cabecalho(d: ContractData, titulo: string): string {
 <p class="num">Nº ${esc(d.numero)} · ${dataBR(d.data)}</p>`
 }
 
-function assinaturas(partes: Array<{ papel: string; p: Party }>, d: ContractData): string {
+export function assinaturas(partes: Array<{ papel: string; p: Party }>, d: ContractData): string {
   const box = (papel: string, p: Party) => `<div class="sig"><div class="line"></div><b>${esc(p.nome)}</b><br>${papel}${p.documento ? `<br>${p.tipo === 'PJ' ? 'CNPJ' : 'CPF'} ${esc(p.documento)}` : ''}</div>`
   const test = (n: number) => `<div class="sig"><div class="line"></div>Testemunha ${n}<br>Nome: ____________________<br>CPF: ____________________</div>`
   return `<p class="local">${f(d.cidade, SHORT)}${d.uf ? `/${esc(d.uf)}` : ''}, ${dataExtenso(d.data)}.</p>
 <div class="sigs">${partes.map((x) => box(x.papel, x.p)).join('')}${test(1)}${test(2)}</div>`
 }
 
-const LGPD = (controlador: string) => `<b>Proteção de dados (LGPD).</b> As partes autorizam o tratamento de seus dados pessoais por ${controlador}, nos termos da Lei nº 13.709/2018, exclusivamente para a execução deste instrumento e de obrigações legais e regulatórias (art. 7º, II e V): emissão de documentos, transferência junto ao DETRAN, comunicação de venda, análise de crédito e financiamento, contratação de garantia e seguro, despachante e prestação de contas a órgãos públicos, podendo os dados ser compartilhados apenas com esses terceiros e para essas finalidades. Os dados serão guardados pelo prazo legal. O titular pode, a qualquer tempo, solicitar acesso, correção, informação sobre compartilhamento e demais direitos do art. 18 da LGPD pelos canais da loja.`
+export const LGPD = (controlador: string) => `<b>Proteção de dados (LGPD).</b> As partes autorizam o tratamento de seus dados pessoais por ${controlador}, nos termos da Lei nº 13.709/2018, exclusivamente para a execução deste instrumento e de obrigações legais e regulatórias (art. 7º, II e V): emissão de documentos, transferência junto ao DETRAN, comunicação de venda, análise de crédito e financiamento, contratação de garantia e seguro, despachante e prestação de contas a órgãos públicos, podendo os dados ser compartilhados apenas com esses terceiros e para essas finalidades. Os dados serão guardados pelo prazo legal. O titular pode, a qualquer tempo, solicitar acesso, correção, informação sobre compartilhamento e demais direitos do art. 18 da LGPD pelos canais da loja.`
 
-function cls(items: string[]): string {
+export function cls(items: string[]): string {
   return `<ol class="cl">${items.map((t) => `<li>${t}</li>`).join('\n')}</ol>`
 }
 
@@ -286,7 +292,7 @@ const CSS = `
 @media print{.ad-doc{padding:0;max-width:none}.ad-doc section{break-inside:auto}.ad-doc .sigs,.ad-doc .receipt,.ad-doc tr{break-inside:avoid}}
 `
 
-function wrap(body: string): string {
+export function wrap(body: string): string {
   return `<div class="ad-doc"><style>${CSS}</style>${body}</div>`
 }
 

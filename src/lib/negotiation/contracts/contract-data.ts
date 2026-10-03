@@ -8,7 +8,10 @@
 import { prisma } from '@/lib/prisma'
 import { loadSiteConfig } from '@/lib/site/config'
 import type { ContractData, DocKind, Party, VehicleData } from './documents-core'
+import type { ProxyKind } from './proxies-core'
 import { buildStatement, num, parseVehicleText, renavamFromDebts } from './statement-core'
+import { loadDocSettings } from './doc-settings'
+import { formatCpf } from './doc-settings-core'
 
 const digits = (s?: string | null) => String(s ?? '').replace(/\D/g, '')
 export function fmtDoc(s?: string | null): string | null {
@@ -77,7 +80,8 @@ function vehicleData(dv: DealVehRow, valor?: number | null): VehicleData {
 
 const label = (v: VehicleData) => [[v.marca, v.modelo, v.versao].filter(Boolean).join(' ').replace(/\s+/g, ' '), v.anoModelo || v.anoFab, v.placa ? `placa ${v.placa}` : null].filter(Boolean).join(' — ')
 
-export interface LoadedContract { data: ContractData; intermediated: boolean; suggested: DocKind[]; dealStatus: string }
+export type AnyDocKind = DocKind | ProxyKind
+export interface LoadedContract { data: ContractData; intermediated: boolean; suggested: AnyDocKind[]; dealStatus: string; hasSold: boolean; hasEntry: boolean }
 
 export async function loadContractData(dealId: string, tenantWhere: Record<string, unknown> = {}): Promise<LoadedContract | null> {
   const deal = await prisma.deal.findFirst({
@@ -142,6 +146,8 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
   }
 
   const trocasRows = deal.vehicles.filter((v) => v.role === 'TROCA')
+  // Veículos que ENTRAM na loja: troca e compra (procuração em causa própria, termo de entrega).
+  const entrada = deal.vehicles.filter((v) => v.role === 'TROCA' || v.role === 'COMPRADO').map((v) => { const t = vehicleData(v as DealVehRow, null); if (!t.renavam) t.renavam = renavamFromDebts(t.placa, deal.debts); return t })
   const trocas = trocasRows.map((v) => { const t = vehicleData(v as DealVehRow, num(v.agreedValue) || num(v.evaluatedValue)); if (!t.renavam) t.renavam = renavamFromDebts(t.placa, deal.debts); return t })
 
   const extrato = buildStatement({
@@ -166,11 +172,16 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
   const SIG: Record<string, string> = { PIX: 'Pix', DINHEIRO: 'dinheiro', CARTAO_CREDITO: 'cartão de crédito', CARTAO_DEBITO: 'cartão de débito', TRANSFERENCIA: 'transferência', BOLETO: 'boleto' }
   const sinalFormas = [...new Set(sinalPay.map((p) => SIG[String(p.method ?? '').toUpperCase()]).filter(Boolean))]
   const now = new Date()
+  // Documentos › Configurações: cabeçalho (logo/endereço/contatos/local) e outorgados.
+  const cfg = t ? await loadDocSettings(t.id) : null
+  if (cfg?.endereco) loja.endereco = cfg.endereco
+  if (cfg?.telefone) loja.telefone = cfg.telefone
+  if (cfg?.email) loja.email = cfg.email
   const data: ContractData = {
     numero: deal.dealNumber ?? deal.id.slice(-8).toUpperCase(),
     data: deal.finalizedAt ?? deal.saleDate ?? now,
-    cidade: t?.city ?? null, uf: t?.state ?? null,
-    logoUrl: t?.logoUrl || site?.identity?.logoUrl || null,
+    cidade: cfg?.cidade || t?.city || null, uf: cfg?.uf || t?.state || null,
+    logoUrl: cfg?.logoUrl || t?.logoUrl || site?.identity?.logoUrl || null,
     loja, comprador, proprietario,
     vendedorNome: deal.seller?.fullName ?? null,
     veiculo, trocas, extrato,
@@ -180,7 +191,16 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
     entregaPrevista: deal.deliveryDate ?? null,
     comissao: num(deal.consignCommPct) > 0 ? `${(num(deal.consignCommPct) * (num(deal.consignCommPct) <= 1 ? 100 : 1)).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% do valor da venda` : sv?.partnerStore?.commission ?? null,
     financiado: extrato.pagamentos.some((p) => p.forma === 'Financiamento'),
+    entrada,
+    outorgados: (cfg?.outorgados ?? []).filter((o) => o.ativo).map((o) => ({ ...o, cpf: o.cpf ? formatCpf(o.cpf) : null })),
+    validadeProcuracaoDias: cfg?.validadeProcuracaoDias ?? 180,
+    firmaReconhecida: cfg?.exigirFirmaReconhecida ?? true,
   }
-  const suggested: DocKind[] = ['VENDA', ...(sinalValor > 0 ? ['SINAL' as const] : []), ...(proprietario ? ['INTERMEDIACAO' as const] : [])]
-  return { data, intermediated: !!proprietario, suggested, dealStatus: String(deal.status) }
+  const hasSold = deal.vehicles.some((v) => v.role === 'VENDIDO' || v.role === 'CONSIGNADO')
+  const suggested: AnyDocKind[] = [
+    ...(hasSold ? ['VENDA' as const] : []), ...(sinalValor > 0 ? ['SINAL' as const] : []), ...(proprietario ? ['INTERMEDIACAO' as const] : []),
+    ...(hasSold ? ['PROC_VENDA' as const, 'PROC_MULTAS_VENDA' as const, 'ENTREGA_VENDA' as const] : []),
+    ...(entrada.length ? ['PROC_TROCA' as const, 'PROC_MULTAS_TROCA' as const, 'ENTREGA_TROCA' as const] : []),
+  ]
+  return { data, intermediated: !!proprietario, suggested, dealStatus: String(deal.status), hasSold, hasEntry: entrada.length > 0 }
 }
