@@ -499,6 +499,9 @@ function Field({
  * veículo "sumia" ao voltar de etapa, editar a negociação ou abrir rascunho —
  * e só o usuário pode remover um veículo selecionado.
  */
+/** Status em que "Salvar e Reenviar" manda a negociação de volta para aprovação. */
+const RESUBMITTABLE = new Set(['RASCUNHO', 'EM_PREENCHIMENTO', 'REABERTA', 'DEVOLVIDA_PARA_CORRECAO'])
+
 function stockFromForm(v: VehicleFields): StockVehicle | null {
   if (!v.vehicleId) return null
   const year = v.year ? Number(v.year) : null
@@ -4439,7 +4442,7 @@ export default function NovaNegociacaoPage() {
 
         // Localiza veículo principal e veículo de troca
         const vMain  = Array.isArray(d.vehicles) ? d.vehicles.find((v: { role: string }) =>
-                        ['VENDIDO', 'COMPRADO', 'CONSIGNADO'].includes(v.role)) ?? d.vehicles[0] ?? null : null
+                        ['VENDIDO', 'COMPRADO', 'CONSIGNADO'].includes(v.role)) ?? null : null
         const vTrade = Array.isArray(d.vehicles) ? d.vehicles.find((v: { role: string }) => v.role === 'TROCA') ?? null : null
 
         const mkVehicle = (v: typeof vMain): typeof INITIAL_FORM.vehicle => ({
@@ -4861,7 +4864,8 @@ export default function NovaNegociacaoPage() {
         payoffValue:    parseBRLInput(v.payoffValue),
         payoffBank:     v.payoffBank     || null,
         notes:          v.notes || null,
-      } : undefined,
+      // Na edição, `null` = usuário removeu o veículo (ausente = não mexe).
+      } : (mode === 'edit' ? null : undefined),
       tradeInVehicle: hasTradeVehicle ? {
         evaluationId:   tv.evaluationId ?? undefined,
         vehicleId:      tv.vehicleId ?? undefined,
@@ -4877,7 +4881,7 @@ export default function NovaNegociacaoPage() {
         payoffValue:    parseBRLInput(tv.payoffValue),
         payoffBank:     tv.payoffBank     || null,
         notes:          tv.notes || null,
-      } : undefined,
+      } : (mode === 'edit' ? null : undefined),
       saleAmount:       parseBRLInput(form.saleAmount),
       purchaseAmount:   parseBRLInput(form.purchaseAmount),
       // Os campos legados signalAmount/financedAmount/paymentType/paymentBank
@@ -4963,7 +4967,12 @@ export default function NovaNegociacaoPage() {
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Erro ao atualizar negociação')
-        showToast('Negociação atualizada com sucesso.', true)
+        if (submit && dealMeta && RESUBMITTABLE.has(dealMeta.status)) {
+          const sr = await fetch(`/api/negotiations/${dealId}/submit`, { method: 'POST' })
+          const sd = await sr.json().catch(() => ({}))
+          if (!sr.ok) throw new Error(`Alterações salvas, mas não foi possível reenviar: ${sd.error ?? 'erro'}`)
+        }
+        showToast(submit ? 'Negociação atualizada e reenviada para aprovação.' : 'Negociação atualizada com sucesso.', true)
         router.replace(`/negociacoes/${dealId}`)
         return
       }

@@ -3,7 +3,6 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server'
-import { BLOB_PREFIX, pendingFolder } from '@/lib/negotiation/storage'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { requireModule }        from '@/lib/permissions'
@@ -17,7 +16,10 @@ import {
 } from '@/lib/negotiation-filters'
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
-import { MANAGER_REVIEW_REASON, needsManagerReview } from '@/lib/evaluation/site-pre-evaluation'
+import {
+  assertNoOtherEntryDeal, assertTradeEvaluationUsable, assertVehicleNotInOtherSale,
+  createWizardDebt, createWizardPayment,
+} from '@/lib/negotiation/deal-children'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { resolveDealManagerUserId } from '@/lib/negotiation/manager'
 
@@ -316,19 +318,7 @@ export async function POST(req: NextRequest) {
       }
       // 2) Um carro só tem UMA negociação de entrada (consignação/compra) ativa.
       if ((type === 'CONSIGNACAO' || type === 'COMPRA') && (vehicle?.vehicleId || vehicle?.plate)) {
-        const plate = typeof vehicle.plate === 'string' ? vehicle.plate.toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
-        const dup = await tx.dealVehicle.findFirst({
-          where: {
-            role: { in: ['CONSIGNADO', 'COMPRADO'] },
-            OR: [
-              ...(vehicle.vehicleId ? [{ vehicleId: vehicle.vehicleId as string }] : []),
-              ...(!vehicle.vehicleId && plate ? [{ plate }] : []),
-            ],
-            deal: { tenantId: session.user.tenantId ?? null, status: { notIn: ['CANCELADA', 'RECUSADA', 'DESAPROVADA', 'FINALIZADA'] as never[] } },
-          },
-          select: { deal: { select: { dealNumber: true, status: true } } },
-        })
-        if (dup) throw new Error(`Este veículo já tem a negociação de entrada ${dup.deal.dealNumber ?? ''} (${String(dup.deal.status).toLowerCase().replace(/_/g, ' ')}). Abra-a em vez de criar outra.`.replace('  ', ' '))
+        await assertNoOtherEntryDeal(tx, session.user.tenantId ?? null, vehicle)
       }
 
       let personId: string | null = null
@@ -501,41 +491,7 @@ export async function POST(req: NextRequest) {
         // Pra VENDA/TROCA, recusa se o veículo já está em outra negociação
         // ativa (qualquer status que não seja terminal). Mensagem clara
         // pro vendedor saber quem está com o carro.
-        if (vehicleId && (type === 'VENDA' || type === 'TROCA')) {
-          const OPEN = ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO',
-            'APROVADA', 'LIBERADA', 'SINAL_RECEBIDO', 'RESERVADA',
-            'AGUARDANDO_FINANCEIRO', 'FINANCEIRO_APROVADO',
-            'AGUARDANDO_DOCUMENTACAO', 'DOCUMENTACAO_CONCLUIDA',
-            'AGUARDANDO_CONTRATO', 'CONTRATO_GERADO',
-            'AGUARDANDO_ASSINATURA', 'ASSINADA',
-            'AGUARDANDO_ENTREGA', 'ENTREGUE', 'EM_ANDAMENTO', 'FINALIZADA']
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const conflict: any = await tx.dealVehicle.findFirst({
-            where: {
-              vehicleId,
-              // Só venda conflita: consignação/compra são a ENTRADA do carro.
-              role:  'VENDIDO',
-              deal:  { status: { in: OPEN as never[] } },
-            },
-            select: {
-              deal: {
-                select: {
-                  id: true, dealNumber: true, status: true,
-                  seller: { select: { fullName: true, shortName: true } },
-                },
-              },
-            },
-          })
-          if (conflict?.deal) {
-            const APPROVED = new Set(OPEN.filter((s) => s !== 'AGUARDANDO_APROVACAO' && s !== 'AGUARDANDO_LIBERACAO'))
-            const sellerLbl = conflict.deal.seller?.shortName ?? conflict.deal.seller?.fullName ?? 'outro vendedor'
-            const negLbl    = conflict.deal.dealNumber ?? conflict.deal.id.slice(0, 8)
-            const msg = APPROVED.has(conflict.deal.status)
-              ? `Este veículo não está mais disponível. Venda já liberada pelo gerente na negociação ${negLbl}.`
-              : `Este veículo já está em negociação pelo vendedor ${sellerLbl} (negociação ${negLbl}).`
-            throw new Error(msg)
-          }
-        }
+        if (vehicleId && (type === 'VENDA' || type === 'TROCA')) await assertVehicleNotInOtherSale(tx, vehicleId)
 
         await tx.dealVehicle.create({
           data: {
@@ -565,59 +521,7 @@ export async function POST(req: NextRequest) {
       // 5. Veículo de troca (TROCA)
       if (type === 'TROCA' && tradeInVehicle?.plate) {
         // ── Guard duplicidade: avaliação não pode entrar em 2 trocas ativas
-        if (tradeInVehicle.evaluationId) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const ev: any = await (tx as any).vehicleEvaluation.findUnique({
-            where:  { id: tradeInVehicle.evaluationId },
-            select: {
-              id: true, status: true, result: true,
-              customerDecision: true, availableFor: true,
-              cancelledAt: true, proposalValidUntil: true,
-              lookupSource: true, releasedByUserId: true,
-            },
-          })
-          if (!ev) {
-            throw new Error('Avaliação informada não foi encontrada.')
-          }
-          // Reusa o helper canEvaluationVehicleBeUsed pra mensagem consistente
-          // (não importa aqui pra evitar ciclo — duplica a checagem mínima).
-          if (ev.cancelledAt)
-            throw new Error('Este veículo avaliado não está disponível para troca. Avaliação cancelada.')
-          const releasedOk = ['LIBERADA', 'APROVADO', 'APPROVED', 'FINALIZED', 'AGUARDANDO_ENTRADA', 'NO_ESTOQUE'].includes(
-            (ev.status ?? ev.result ?? '').toUpperCase(),
-          ) || (ev.result ?? '').toUpperCase() === 'APROVADO'
-          if (!releasedOk)
-            throw new Error('Este veículo avaliado não está disponível para troca. Proposta ainda não liberada pelo gerente.')
-          if (needsManagerReview(ev))
-            throw new Error(`Este veículo avaliado não está disponível para troca. ${MANAGER_REVIEW_REASON}`)
-          const decision = (ev.customerDecision ?? 'PENDENTE').toUpperCase()
-          if (decision !== 'ACEITA')
-            throw new Error('Este veículo avaliado não está disponível para troca. Cliente ainda não aceitou a proposta.')
-          const af = (ev.availableFor ?? '').toUpperCase()
-          if (af && !af.split(',').map((s: string) => s.trim()).includes('TROCA'))
-            throw new Error('Este veículo avaliado não está disponível para troca. Liberação do gerente é para outra operação.')
-          // Já vinculada a deal ativo?
-          const OPEN = ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO',
-            'APROVADA', 'LIBERADA', 'SINAL_RECEBIDO', 'RESERVADA',
-            'AGUARDANDO_FINANCEIRO', 'FINANCEIRO_APROVADO',
-            'AGUARDANDO_DOCUMENTACAO', 'DOCUMENTACAO_CONCLUIDA',
-            'AGUARDANDO_CONTRATO', 'CONTRATO_GERADO',
-            'AGUARDANDO_ASSINATURA', 'ASSINADA',
-            'AGUARDANDO_ENTREGA', 'ENTREGUE', 'EM_ANDAMENTO', 'FINALIZADA']
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const conflict: any = await tx.dealVehicle.findFirst({
-            where: {
-              role:  'TROCA',
-              plate: tradeInVehicle.plate.toUpperCase(),
-              deal:  { status: { in: OPEN as never[] } },
-            },
-            select: { deal: { select: { id: true, dealNumber: true } } },
-          })
-          if (conflict?.deal) {
-            const neg = conflict.deal.dealNumber ?? conflict.deal.id.slice(0, 8)
-            throw new Error(`Este veículo avaliado já está vinculado à negociação ${neg}.`)
-          }
-        }
+        if (tradeInVehicle.evaluationId) await assertTradeEvaluationUsable(tx, tradeInVehicle.evaluationId, tradeInVehicle.plate)
 
         await tx.dealVehicle.create({
           data: {
@@ -644,89 +548,17 @@ export async function POST(req: NextRequest) {
       }
 
       // 6. Débitos do wizard (array opcional)
-      if (Array.isArray(debts) && debts.length > 0) {
+      const uploader = { id: session.user.id, name: session.user.name ?? null, tenantId: session.user.tenantId ?? null }
+      if (Array.isArray(debts)) {
         // Um a um: o boleto/comprovante enviado na tela vira anexo do próprio débito.
-        const pendingOk = (k: unknown) => typeof k === 'string' && (k.startsWith(`${BLOB_PREFIX}${pendingFolder(session.user.tenantId ?? '')}`) || k.startsWith(`deals/pending/${session.user.tenantId}/`))
-        for (const d of debts as Array<{ vehicleRole?: string; type: string; description?: string; value: number; responsavel?: string; notes?: string; dueDate?: string | null; receipt?: { storageKey?: string; publicUrl?: string; fileName?: string; fileType?: string; mimeType?: string; fileSize?: number } | null }>) {
-          const created = await (tx.dealDebt as any).create({
-            data: {
-              dealId:      deal.id,
-              vehicleRole: d.vehicleRole ?? null,
-              type:        d.type,
-              description: d.description ?? null,
-              value:       Number(d.value),
-              dueDate:     d.dueDate ? new Date(`${String(d.dueDate).slice(0, 10)}T12:00:00`) : null,
-              responsavel: d.responsavel ?? 'LOJA',
-              notes:       d.notes       ?? null,
-            },
-            select: { id: true },
-          })
-          const r = d.receipt
-          if (r && pendingOk(r.storageKey)) {
-            await (tx.dealAttachment as any).create({
-              data: {
-                dealId: deal.id, tenantId: session.user.tenantId ?? null,
-                category: String(d.type).toUpperCase() === 'FINANCIAMENTO' ? 'COMPROVANTE_QUITACAO' : 'COMPROVANTE_DEBITO',
-                fileName: String(r.fileName ?? 'boleto').slice(0, 160), fileType: r.fileType ?? 'other', mimeType: r.mimeType ?? 'application/octet-stream',
-                fileSize: Number(r.fileSize) || null, storageKey: r.storageKey, publicUrl: r.publicUrl ?? null,
-                debtId: created.id, uploadedById: session.user.id, uploadedByName: session.user.name ?? null,
-              },
-            })
-          }
-        }
+        for (const d of debts) await createWizardDebt(tx, deal.id, uploader, d)
       }
 
       // 6.5. Pagamentos do wizard (array opcional). Entram sempre PENDENTES:
       // quem confirma é o financeiro, no módulo Financeiro › Recebimentos.
       // Comprovante enviado no modal vira anexo do próprio pagamento.
-      if (Array.isArray(payments) && payments.length > 0) {
-        const pendingPrefix = `${BLOB_PREFIX}${pendingFolder(session.user.tenantId ?? '')}`
-        for (const p of payments as any[]) {
-          let returnPct: number | null = null
-          if (p.returnPct != null && p.returnPct !== '') {
-            const n = Number(p.returnPct)
-            if (Number.isFinite(n)) returnPct = Math.min(6, Math.max(0, Math.round(n * 100) / 100))
-          }
-          const type = String(p.type ?? 'OUTROS').toUpperCase()
-          const created = await (tx.dealPayment as any).create({
-            data: {
-              dealId:                  deal.id,
-              tenantId:                session.user.tenantId ?? null,
-              type,
-              status:                  'PENDENTE',
-              value:                   Number(p.amount ?? p.value ?? 0),
-              method:                  ['SINAL', 'ENTRADA'].includes(type) && p.signalMethod ? String(p.signalMethod).toUpperCase().slice(0, 30) : null,
-              authorizationCode:       p.authorizationCode ? String(p.authorizationCode).trim().slice(0, 40) : null,
-              bank:                    p.bank      || null,
-              cardBrand:               p.cardBrand || null,
-              pixKey:                  p.pixKey    || null,
-              agency:                  p.agency    || null,
-              account:                 p.account   || null,
-              installments:            p.installments ? Number(p.installments) : null,
-              installmentValue:        p.installmentValue != null && p.installmentValue !== '' ? Number(p.installmentValue) : null,
-              installmentIntervalDays: p.installmentIntervalDays ? Number(p.installmentIntervalDays) : null,
-              returnPct,
-              vehiclePlate:            p.vehiclePlate || null,
-              firstDueDate:            p.firstDueDate ? new Date(p.firstDueDate) : null,
-              dueDate:                 p.dueDate      ? new Date(p.dueDate)      : null,
-              paidAt:                  null,
-              notes:                   p.notes || null,
-              createdById:             session.user.id,
-            },
-            select: { id: true },
-          })
-          const r = p.receipt
-          if (r && typeof r.storageKey === 'string' && (r.storageKey.startsWith(pendingPrefix) || r.storageKey.startsWith(`deals/pending/${session.user.tenantId}/`))) {
-            await (tx.dealAttachment as any).create({
-              data: {
-                dealId: deal.id, tenantId: session.user.tenantId ?? null, category: 'COMPROVANTE_PAGAMENTO',
-                fileName: String(r.fileName ?? 'comprovante').slice(0, 160), fileType: r.fileType ?? 'other', mimeType: r.mimeType ?? 'application/octet-stream',
-                fileSize: Number(r.fileSize) || null, storageKey: r.storageKey, publicUrl: r.publicUrl ?? null,
-                paymentId: created.id, uploadedById: session.user.id, uploadedByName: session.user.name ?? null,
-              },
-            })
-          }
-        }
+      if (Array.isArray(payments)) {
+        for (const p of payments) await createWizardPayment(tx, deal.id, uploader, p)
       }
 
       // 6.6. Troco (se cadastrado no wizard com beneficiário)

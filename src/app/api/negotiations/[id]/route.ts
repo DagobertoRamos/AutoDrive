@@ -11,6 +11,9 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canEditSensitiveFields, SENSITIVE_FIELDS, EDITABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { computeDealTotals, createDealAudit } from '@/lib/negotiation-service'
 import { canEditDeal, isDealLocked } from '@/lib/negotiation-rbac'
+import { syncDealVehicles, type VehicleSyncResult } from '@/lib/negotiation/deal-children'
+import { notifyStockChanged } from '@/lib/publications/service'
+import { resolveNegotiationGate } from '@/lib/stock/intake'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { applyChildren, planChildren, planHasChanges } from '@/lib/negotiation/children-sync'
@@ -261,6 +264,20 @@ export async function PATCH(
     return raw
   }
 
+  // Loja e vendedor: só valores da mesma loja; VENDEDOR não troca o vendedor.
+  const tenantId = deal.tenantId ?? null
+  if (typeof body.unitId === 'string' && body.unitId && body.unitId !== deal.unitId) {
+    const unit = await prisma.unit.findFirst({ where: { id: body.unitId, ...(tenantId ? { tenantId } : {}) }, select: { id: true } })
+    if (!unit) return NextResponse.json({ error: 'Unidade inválida para esta loja.' }, { status: 400 })
+  }
+  if (typeof body.sellerId === 'string' && body.sellerId && body.sellerId !== deal.sellerId) {
+    if (session.user.role === 'VENDEDOR') delete body.sellerId
+    else {
+      const sel = await prisma.seller.findFirst({ where: { id: body.sellerId, ...(tenantId ? { unit: { tenantId } } : {}) }, select: { id: true } })
+      if (!sel) return NextResponse.json({ error: 'Vendedor inválido para esta loja.' }, { status: 400 })
+    }
+  }
+
   const allowedFields: Record<string, unknown> = {}
   const auditEntries: Array<{ field: string; oldValue: unknown; newValue: unknown }> = []
 
@@ -332,9 +349,19 @@ export async function PATCH(
   const childrenPlan = await planChildren(dealId, body)
   const childrenChanged = planHasChanges(childrenPlan)
 
-  if (Object.keys(allowedFields).length === 0 && !personPatch && !childrenChanged) {
+  // Veículo principal e da troca (antes eram descartados na edição).
+  // `undefined` = não enviado (não mexe); `null` = removido pelo usuário.
+  const vehicleBody = 'vehicle' in body ? (body.vehicle as never) : undefined
+  const tradeBody   = 'tradeInVehicle' in body ? (body.tradeInVehicle as never) : undefined
+  const vehiclesSent = vehicleBody !== undefined || tradeBody !== undefined
+
+  if (Object.keys(allowedFields).length === 0 && !personPatch && !childrenChanged && !vehiclesSent) {
     return NextResponse.json({ data: deal, message: 'Nenhuma alteração detectada.' })
   }
+  const nextType = String(allowedFields.type ?? deal.type ?? '')
+  const agreedRaw = nextType === 'COMPRA' ? (allowedFields.purchaseAmount ?? deal.purchaseAmount) : nextType === 'CONSIGNACAO' ? null : (allowedFields.saleAmount ?? deal.saleAmount)
+  const agreedValue = agreedRaw != null && agreedRaw !== '' && Number.isFinite(Number(agreedRaw)) ? Number(agreedRaw) : null
+  let vehicleSync: VehicleSyncResult = { released: [], held: [], changes: [] }
 
   // Recalcular totais se algum campo financeiro mudou
   const financialFields = ['saleAmount', 'purchaseAmount', 'tradeValue', 'signalAmount', 'financedAmount', 'documentationFee', 'servicesAmount', 'discountAmount', 'payoffAmount']
@@ -368,6 +395,12 @@ export async function PATCH(
           data:  personPatch as never,
         })
       }
+
+      vehicleSync = await syncDealVehicles(tx, {
+        deal: { id: dealId, tenantId, unitId: (allowedFields.unitId as string | undefined) ?? deal.unitId },
+        type: nextType, vehicle: vehicleBody, tradeInVehicle: tradeBody, agreedValue,
+      })
+      for (const c of vehicleSync.changes) auditEntries.push(c)
 
       // Só chama deal.update se houver campos do Deal a atualizar.
       // Se só o Person mudou, retornamos o deal carregado novamente.
@@ -465,6 +498,13 @@ export async function PATCH(
       return d
     })
 
+    // Carros que entraram/saíram desta venda → Central de Publicações reavalia os anúncios.
+    const touched = [...vehicleSync.released, ...vehicleSync.held]
+    if (touched.length) notifyStockChanged(tenantId ?? session.user.tenantId, touched, { id: session.user.id, name: session.user.name ?? null })
+    if (vehicleSync.changes.length) {
+      await resolveNegotiationGate(dealId, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
+        .catch((e) => console.error('[esteira] portão de negociação', e))
+    }
     await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated })
   } catch (err) {
