@@ -172,12 +172,30 @@ export async function syncDealVehicles(tx: Tx, args: {
   vehicle?: VehicleInput | null
   tradeInVehicle?: VehicleInput | null
   agreedValue?: number | null
+  /** Veículos adicionais (mesmo papel do principal). Enviado = a tela trata a lista inteira. */
+  extraVehicles?: VehicleInput[] | null
+  /** Veículos adicionais recebidos na troca. */
+  extraTradeInVehicles?: VehicleInput[] | null
 }): Promise<VehicleSyncResult> {
   const { deal, type } = args
   const out: VehicleSyncResult = { released: [], held: [], changes: [] }
   const rows: DealVehicleRow[] = await tx.dealVehicle.findMany({
     where: { dealId: deal.id }, select: { id: true, role: true, vehicleId: true, plate: true }, orderBy: { createdAt: 'asc' },
   })
+
+  // Tela nova: manda a lista completa (principal + adicionais) → sincroniza a lista.
+  if (Array.isArray(args.extraVehicles) || Array.isArray(args.extraTradeInVehicles)) {
+    const role = VEHICLE_ROLE_BY_TYPE[type] ?? 'VENDIDO'
+    const mains = [args.vehicle, ...(args.extraVehicles ?? [])].filter((v): v is VehicleInput => !!v && !!(v.vehicleId || normPlate(v.plate) || v.brand))
+    // Um veículo só e sem valor próprio: acompanha o valor da negociação (como antes).
+    if (mains.length === 1 && mains[0].agreedValue == null) mains[0] = { ...mains[0], agreedValue: args.agreedValue ?? null }
+    await syncVehicleList(tx, deal, type, role, rows.filter((r) => MAIN_VEHICLE_ROLES.includes(r.role)), mains, out)
+    const trades = type === 'TROCA'
+      ? [args.tradeInVehicle, ...(args.extraTradeInVehicles ?? [])].filter((v): v is VehicleInput => !!v && !!(normPlate(v.plate) || v.brand))
+      : []
+    await syncVehicleList(tx, deal, type, 'TROCA', rows.filter((r) => r.role === 'TROCA'), trades, out)
+    return out
+  }
 
   // ── Veículo principal ──
   // Venda de vários carros (lote) não é editada por aqui: a tela trata um veículo só.
@@ -266,6 +284,130 @@ export async function syncDealVehicles(tx: Tx, args: {
     }
   }
   return out
+}
+
+/** Carro do estoque da loja para o veículo informado (procura pela placa ou cadastra). */
+async function resolveStockVehicleId(tx: Tx, deal: { tenantId: string | null; unitId: string | null }, car: VehicleInput): Promise<string | null> {
+  let vehicleId: string | null = car.vehicleId ?? null
+  if (!vehicleId && normPlate(car.plate)) {
+    const found = await tx.vehicle.findFirst({ where: { tenantId: deal.tenantId ?? undefined, plate: String(car.plate).toUpperCase() }, select: { id: true } })
+    vehicleId = found?.id ?? (await tx.vehicle.create({
+      data: {
+        tenantId: deal.tenantId, unitId: deal.unitId, plate: String(car.plate).toUpperCase(),
+        brand: car.brand ?? null, model: car.model ?? null, year: car.year ? Number(car.year) : null,
+        color: car.color ?? null, km: car.km ? Number(car.km) : null,
+      },
+      select: { id: true },
+    })).id
+  }
+  if (vehicleId) {
+    const owned = await tx.vehicle.findFirst({ where: { id: vehicleId, ...(deal.tenantId ? { tenantId: deal.tenantId } : {}) }, select: { id: true } })
+    if (!owned) throw new Error('Veículo não encontrado no estoque desta loja.')
+  }
+  return vehicleId
+}
+
+const duplicated = (plate: unknown): never => {
+  throw new Error(`O veículo ${normPlate(plate) || ''} foi informado duas vezes nesta negociação.`.replace('  ', ' '))
+}
+
+/**
+ * Sincroniza TODOS os veículos de um papel (vendidos/comprados ou da troca) com a lista da tela:
+ * mesmo carro → atualiza; carro novo → entra com as travas; carro que sumiu → sai (e volta ao estoque).
+ */
+async function syncVehicleList(
+  tx: Tx, deal: { id: string; tenantId: string | null; unitId: string | null }, type: string, role: string,
+  rows: DealVehicleRow[], inputs: VehicleInput[], out: VehicleSyncResult,
+) {
+  const isTrade = role === 'TROCA'
+  const field = isTrade ? 'tradeInVehicle' : 'vehicle'
+  const left = [...rows]
+  const seen = new Set<string>()
+  for (const car of inputs) {
+    const key = (isTrade ? '' : car.vehicleId) || normPlate(car.plate)
+    if (key) { if (seen.has(key)) duplicated(car.plate); seen.add(key) }
+    const idx = left.findIndex((r) => (isTrade ? !!normPlate(car.plate) && normPlate(r.plate) === normPlate(car.plate) : sameCar(r, car)))
+    const current = idx >= 0 ? left.splice(idx, 1)[0] : null
+    if (isTrade) {
+      if (!current && car.evaluationId && normPlate(car.plate)) await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate), deal.id)
+      const data = vehicleData(car, {
+        role: 'TROCA',
+        ...(car.vehicleId !== undefined ? { vehicleId: car.vehicleId ?? null } : {}),
+        ...(car.agreedValue !== undefined ? { agreedValue: numOrNull(car.agreedValue) } : {}),
+      })
+      if (current) await tx.dealVehicle.update({ where: { id: current.id }, data })
+      else {
+        await tx.dealVehicle.create({ data: { ...data, dealId: deal.id } })
+        out.changes.push({ field, oldValue: null, newValue: label({ plate: car.plate }) })
+      }
+      continue
+    }
+    const vehicleId = await resolveStockVehicleId(tx, deal, { ...car, vehicleId: car.vehicleId ?? current?.vehicleId ?? null })
+    if (!current || current.role !== role) {
+      if (vehicleId && (type === 'VENDA' || type === 'TROCA')) await assertVehicleNotInOtherSale(tx, vehicleId, deal.id)
+      if (type === 'COMPRA' || type === 'CONSIGNACAO') await assertNoOtherEntryDeal(tx, deal.tenantId, { vehicleId, plate: car.plate }, deal.id)
+    }
+    const data = vehicleData(car, { vehicleId, role, ...(car.agreedValue !== undefined ? { agreedValue: numOrNull(car.agreedValue) } : {}) })
+    if (current) await tx.dealVehicle.update({ where: { id: current.id }, data })
+    else {
+      await tx.dealVehicle.create({ data: { ...data, dealId: deal.id } })
+      out.changes.push({ field, oldValue: null, newValue: label({ plate: car.plate, vehicleId }) })
+    }
+    if (vehicleId && role === 'VENDIDO' && (!current || current.role !== 'VENDIDO')) {
+      await tx.vehicle.updateMany({ where: { id: vehicleId, stockStatus: { notIn: ['VENDIDO'] as never[] } }, data: { stockStatus: 'EM_NEGOCIACAO' as never } })
+      out.held.push(vehicleId)
+    }
+  }
+  // O que ficou de fora saiu da negociação.
+  for (const r of left) {
+    await tx.dealVehicle.delete({ where: { id: r.id } })
+    if (r.vehicleId && r.role === 'VENDIDO' && await releaseStock(tx, r.vehicleId, deal.id)) out.released.push(r.vehicleId)
+    out.changes.push({ field, oldValue: label(r), newValue: null })
+  }
+}
+
+/**
+ * Criação (POST): veículos adicionais da negociação — mais carros vendidos/comprados
+ * e mais carros recebidos na troca, com as mesmas travas do principal.
+ * Devolve os carros do estoque que ficaram EM_NEGOCIACAO.
+ */
+export async function createExtraDealVehicles(tx: Tx, args: {
+  deal: { id: string; tenantId: string | null; unitId: string | null }
+  type: string
+  vehicles?: VehicleInput[] | null
+  tradeIns?: VehicleInput[] | null
+}): Promise<string[]> {
+  const { deal, type } = args
+  const role = VEHICLE_ROLE_BY_TYPE[type] ?? 'VENDIDO'
+  const held: string[] = []
+  const rows: DealVehicleRow[] = await tx.dealVehicle.findMany({ where: { dealId: deal.id }, select: { id: true, role: true, vehicleId: true, plate: true } })
+  const usedIds = new Set(rows.map((r) => r.vehicleId).filter(Boolean) as string[])
+  const usedPlates = new Set(rows.map((r) => normPlate(r.plate)).filter(Boolean))
+
+  for (const car of (Array.isArray(args.vehicles) ? args.vehicles : []).slice(0, 20)) {
+    if (!car || !(car.vehicleId || normPlate(car.plate) || car.brand)) continue
+    const vehicleId = await resolveStockVehicleId(tx, deal, car)
+    if ((vehicleId && usedIds.has(vehicleId)) || (normPlate(car.plate) && usedPlates.has(normPlate(car.plate)))) duplicated(car.plate)
+    if (vehicleId) usedIds.add(vehicleId)
+    if (normPlate(car.plate)) usedPlates.add(normPlate(car.plate))
+    if (vehicleId && (type === 'VENDA' || type === 'TROCA')) await assertVehicleNotInOtherSale(tx, vehicleId)
+    if (type === 'COMPRA' || type === 'CONSIGNACAO') await assertNoOtherEntryDeal(tx, deal.tenantId, { vehicleId, plate: car.plate })
+    await tx.dealVehicle.create({ data: { ...vehicleData(car, { vehicleId, role, agreedValue: numOrNull(car.agreedValue) }), dealId: deal.id } })
+    if (vehicleId && role === 'VENDIDO') {
+      await tx.vehicle.updateMany({ where: { id: vehicleId, stockStatus: { notIn: ['VENDIDO'] as never[] } }, data: { stockStatus: 'EM_NEGOCIACAO' as never } })
+      held.push(vehicleId)
+    }
+  }
+  if (type === 'TROCA') {
+    for (const car of (Array.isArray(args.tradeIns) ? args.tradeIns : []).slice(0, 20)) {
+      if (!car || !(normPlate(car.plate) || car.brand)) continue
+      if (normPlate(car.plate) && usedPlates.has(normPlate(car.plate))) duplicated(car.plate)
+      if (normPlate(car.plate)) usedPlates.add(normPlate(car.plate))
+      if (car.evaluationId && normPlate(car.plate)) await assertTradeEvaluationUsable(tx, car.evaluationId, String(car.plate))
+      await tx.dealVehicle.create({ data: { ...vehicleData(car, { role: 'TROCA', vehicleId: car.vehicleId ?? null, agreedValue: numOrNull(car.agreedValue) }), dealId: deal.id } })
+    }
+  }
+  return held
 }
 
 // ── Pagamentos ────────────────────────────────────────────────────────────────

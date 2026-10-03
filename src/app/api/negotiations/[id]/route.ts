@@ -353,7 +353,9 @@ export async function PATCH(
   // `undefined` = não enviado (não mexe); `null` = removido pelo usuário.
   const vehicleBody = 'vehicle' in body ? (body.vehicle as never) : undefined
   const tradeBody   = 'tradeInVehicle' in body ? (body.tradeInVehicle as never) : undefined
-  const vehiclesSent = vehicleBody !== undefined || tradeBody !== undefined
+  const extraBody      = Array.isArray(body.extraVehicles) ? (body.extraVehicles as never[]) : undefined
+  const extraTradeBody = Array.isArray(body.extraTradeInVehicles) ? (body.extraTradeInVehicles as never[]) : undefined
+  const vehiclesSent = vehicleBody !== undefined || tradeBody !== undefined || extraBody !== undefined || extraTradeBody !== undefined
 
   if (Object.keys(allowedFields).length === 0 && !personPatch && !childrenChanged && !vehiclesSent) {
     return NextResponse.json({ data: deal, message: 'Nenhuma alteração detectada.' })
@@ -399,6 +401,7 @@ export async function PATCH(
       vehicleSync = await syncDealVehicles(tx, {
         deal: { id: dealId, tenantId, unitId: (allowedFields.unitId as string | undefined) ?? deal.unitId },
         type: nextType, vehicle: vehicleBody, tradeInVehicle: tradeBody, agreedValue,
+        extraVehicles: extraBody, extraTradeInVehicles: extraTradeBody,
       })
       for (const c of vehicleSync.changes) auditEntries.push(c)
 

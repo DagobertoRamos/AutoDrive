@@ -51,3 +51,33 @@ describe('configurações dos documentos', () => {
     expect(s.uf).toBe('SP')
   })
 })
+
+describe('venda de vários veículos', () => {
+  const lote: ContractData = {
+    ...base,
+    vendidos: [
+      { marca: 'Hyundai', modelo: 'HB20', placa: 'GHM4F38', valor: 55890 },
+      { marca: 'Chevrolet', modelo: 'Onix', placa: 'ABC1D23', valor: 61900 },
+    ],
+  }
+  it('procuração, multas e entrega listam todos os carros vendidos', () => {
+    const proc = renderProcVenda(lote)
+    for (const t of ['Veículo 1', 'Veículo 2', 'GHM4F38', 'ABC1D23', 'aos veículos acima']) expect(proc).toContain(t)
+    expect(renderProcMultasVenda(lote)).toContain('ABC1D23')
+    const ent = renderEntregaVenda(lote)
+    for (const t of ['Veículos entregues', 'GHM4F38', 'ABC1D23']) expect(ent).toContain(t)
+  })
+  it('um veículo só continua como antes', () => {
+    expect(renderProcVenda(base)).not.toContain('Veículo 1')
+  })
+})
+
+describe('contrato com vários veículos', () => {
+  it('objeto do contrato e termo de sinal listam cada carro com o valor', async () => {
+    const { renderSaleContract, renderReservationTerm } = await import('./documents-core')
+    const lote: ContractData = { ...base, vendidos: [{ marca: 'Hyundai', modelo: 'HB20', placa: 'GHM4F38', valor: 55890 }, { marca: 'Chevrolet', modelo: 'Onix', placa: 'ABC1D23', valor: 61900 }] }
+    const c = renderSaleContract(lote)
+    for (const t of ['veículos vendidos', 'Veículo 2', 'ABC1D23']) expect(c).toContain(t)
+    expect(renderReservationTerm(lote)).toContain('Veículos reservados')
+  })
+})

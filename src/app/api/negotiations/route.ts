@@ -17,7 +17,7 @@ import {
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
 import {
-  assertNoOtherEntryDeal, assertTradeEvaluationUsable, assertVehicleNotInOtherSale,
+  assertNoOtherEntryDeal, assertTradeEvaluationUsable, assertVehicleNotInOtherSale, createExtraDealVehicles,
   createWizardDebt, createWizardPayment,
 } from '@/lib/negotiation/deal-children'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
       type, person, customer, personId: bodyPersonId, draftId,
       // Localização
       unitId: bodyUnitId, sellerId: bodySellerId,
-      vehicle, tradeInVehicle,
+      vehicle, tradeInVehicle, extraVehicles, extraTradeInVehicles,
       // Valores
       saleAmount, purchaseAmount, financedAmount, documentationFee,
       signalAmount, payoffAmount, discountAmount, paymentBank, paymentType,
@@ -308,6 +308,7 @@ export async function POST(req: NextRequest) {
       if (sel) resolvedSellerId = sel.id
     }
 
+    let heldExtra: string[] = []
     const result = await prisma.$transaction(async (tx) => {
       // ── Trava de envio duplicado ─────────────────────────────────────────
       // 1) Rascunho de uso único: o mesmo rascunho aberto em dois aparelhos
@@ -458,6 +459,7 @@ export async function POST(req: NextRequest) {
         VENDA: 'VENDIDO', COMPRA: 'COMPRADO', TROCA: 'VENDIDO', CONSIGNACAO: 'CONSIGNADO',
       }
 
+      const hasExtras = (Array.isArray(extraVehicles) && extraVehicles.length > 0) || (Array.isArray(extraTradeInVehicles) && extraTradeInVehicles.length > 0)
       if (vehicle?.plate || vehicle?.brand || vehicle?.vehicleId) {
         // Se o usuário selecionou veículo do estoque, usa o ID diretamente
         let vehicleId: string | null = vehicle?.vehicleId ?? null
@@ -504,8 +506,10 @@ export async function POST(req: NextRequest) {
             year:      vehicle.year   ? Number(vehicle.year) : null,
             color:     vehicle.color  ?? null,
             km:        vehicle.km     ? Number(vehicle.km)   : null,
-            agreedValue: saleAmount || purchaseAmount
-              ? Number(saleAmount ?? purchaseAmount ?? 0) : null,
+            // Vários veículos: cada um com o próprio valor; um só = valor da operação.
+            agreedValue: hasExtras && vehicle.agreedValue != null
+              ? Number(vehicle.agreedValue)
+              : saleAmount || purchaseAmount ? Number(saleAmount ?? purchaseAmount ?? 0) : null,
           } as never,
         })
 
@@ -544,6 +548,14 @@ export async function POST(req: NextRequest) {
             payoffBank:    tradeInVehicle.payoffBank     ?? null,
             notes:         tradeInVehicle.notes          ?? null,
           } as never,
+        })
+      }
+
+      // 5.5. Veículos adicionais (mais carros vendidos/comprados e mais carros na troca).
+      if (hasExtras) {
+        heldExtra = await createExtraDealVehicles(tx, {
+          deal: { id: deal.id, tenantId: session.user.tenantId ?? null, unitId: resolvedUnitId },
+          type, vehicles: extraVehicles, tradeIns: extraTradeInVehicles,
         })
       }
 
@@ -610,7 +622,7 @@ export async function POST(req: NextRequest) {
 
     // Central de Publicações: venda registrada (veículo em negociação) → pausa
     // os anúncios conforme a regra da loja. Segundo plano; nunca bloqueia.
-    if (type === 'VENDA' || type === 'TROCA') notifyStockChanged((result as { tenantId?: string | null }).tenantId ?? session.user.tenantId, [vehicle?.vehicleId], { id: session.user.id, name: session.user.name ?? null })
+    if (type === 'VENDA' || type === 'TROCA') notifyStockChanged((result as { tenantId?: string | null }).tenantId ?? session.user.tenantId, [vehicle?.vehicleId, ...heldExtra], { id: session.user.id, name: session.user.name ?? null })
 
     // Esteira de entrada: carro que ENTRA por esta negociação (troca/compra/
     // consignação) tem o portão "Negociação de entrada" resolvido ao cadastrar.

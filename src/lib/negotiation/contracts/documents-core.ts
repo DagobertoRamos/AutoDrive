@@ -56,6 +56,8 @@ export interface ContractData {
   proprietario?: Party | null
   vendedorNome?: string | null
   veiculo: VehicleData
+  /** Todos os veículos vendidos quando a negociação tem mais de um (cada um com o próprio valor). */
+  vendidos?: VehicleData[]
   trocas: VehicleData[]
   extrato: Statement
   garantias?: Array<{ nome: string; cobertura?: string | null; anos?: number | null; fornecedor?: string | null }>
@@ -88,6 +90,12 @@ export function qualifica(p: Party, papel: string): string {
     return `<p class="party"><b>${papel}:</b> <b>${f(p.nome)}</b>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${f(p.documento)}${p.ie ? (/isent/i.test(p.ie) ? ', isenta de Inscrição Estadual' : `, Inscrição Estadual nº ${esc(p.ie)}`) : ''}, com sede em ${f(p.endereco)}${p.telefone ? `, telefone ${esc(p.telefone)}` : ''}${p.email ? `, e-mail ${esc(p.email)}` : ''}${p.representante?.nome ? `, neste ato representada por ${esc(p.representante.nome)}${p.representante.cpf ? `, CPF nº ${esc(p.representante.cpf)}` : ''}` : ', neste ato representada na forma de seu contrato social'}.</p>`
   }
   return `<p class="party"><b>${papel}:</b> <b>${f(p.nome)}</b>, nacionalidade ${SHORT}, estado civil ${SHORT}, profissão ${SHORT}, portador(a) do RG nº ${f(p.rg, SHORT)} e inscrito(a) no CPF sob o nº ${f(p.documento)}, residente e domiciliado(a) em ${f(p.endereco)}${p.telefone ? `, telefone ${esc(p.telefone)}` : ''}${p.email ? `, e-mail ${esc(p.email)}` : ''}.</p>`
+}
+
+/** Veículo(s) objeto do documento: um só, ou "Veículo 1, 2…" quando a venda tem vários. */
+export function veiculosVendidos(d: Pick<ContractData, 'veiculo' | 'vendidos'>, semValor = false): string {
+  const list = d.vendidos && d.vendidos.length > 1 ? d.vendidos : [d.veiculo]
+  return list.map((v, i) => veiculoTabela(semValor ? { ...v, valor: null } : v, list.length > 1 ? `Veículo ${i + 1}` : undefined)).join('')
 }
 
 export function veiculoTabela(v: VehicleData, titulo?: string): string {
@@ -181,7 +189,7 @@ ${qualifica(vendedor, vend)}
 ${inter ? qualifica(d.loja, 'INTERMEDIADORA') : ''}
 ${qualifica(d.comprador, 'COMPRADOR(A)')}
 <p>As partes acima identificadas têm entre si justo e contratado o presente instrumento, que se regerá pelas cláusulas seguintes${inter ? ', atuando a INTERMEDIADORA nos termos do Termo de Intermediação que integra esta venda' : ''}.</p></section>
-<section><h2>1. Do objeto — veículo vendido</h2>${veiculoTabela(d.veiculo)}</section>
+<section><h2>1. Do objeto — ${d.vendidos && d.vendidos.length > 1 ? 'veículos vendidos' : 'veículo vendido'}</h2>${veiculosVendidos(d)}</section>
 ${temTroca ? `<section><h2>2. Do veículo dado na troca</h2>${d.trocas.map((t, i) => veiculoTabela(t, d.trocas.length > 1 ? `Veículo de troca ${i + 1}` : undefined)).join('')}</section>` : ''}
 <section><h2>${temTroca ? '3' : '2'}. Quadro de débitos (composição do valor)</h2>${quadroDebitos(e)}</section>
 <section><h2>${temTroca ? '4' : '3'}. Quadro de pagamentos (extrato)</h2>${quadroPagamentos(e)}</section>
@@ -216,7 +224,7 @@ export function renderReservationTerm(d: ContractData): string {
   const partes = [{ papel: vend, p: vendedor }, ...(inter ? [{ papel: 'INTERMEDIADORA', p: d.loja }] : []), { papel: 'COMPRADOR(A)', p: d.comprador }]
   return wrap(`${cabecalho(d, 'TERMO DE SINAL (ARRAS) E RESERVA DE VEÍCULO')}
 <section><h2>Partes</h2>${qualifica(vendedor, vend)}${inter ? qualifica(d.loja, 'INTERMEDIADORA') : ''}${qualifica(d.comprador, 'COMPRADOR(A)')}</section>
-<section><h2>1. Veículo reservado</h2>${veiculoTabela(d.veiculo)}</section>
+<section><h2>1. ${d.vendidos && d.vendidos.length > 1 ? 'Veículos reservados' : 'Veículo reservado'}</h2>${veiculosVendidos(d)}</section>
 ${d.trocas.length ? `<section><h2>2. Veículo oferecido na troca</h2>${d.trocas.map((t) => veiculoTabela(t)).join('')}<p class="small">O valor da troca está sujeito à vistoria e às condições do contrato de compra e venda.</p></section>` : ''}
 <section><h2>${d.trocas.length ? '3' : '2'}. Quadro de débitos</h2>${quadroDebitos(e)}</section>
 <section><h2>${d.trocas.length ? '4' : '3'}. Quadro de pagamentos</h2>${quadroPagamentos(e)}</section>
@@ -244,7 +252,7 @@ export function renderIntermediationTerm(d: ContractData): string {
   ]
   return wrap(`${cabecalho(d, 'TERMO DE INTERMEDIAÇÃO DE COMPRA E VENDA DE VEÍCULO')}
 <section><h2>Partes</h2>${qualifica(prop as Party, 'PROPRIETÁRIO(A)/VENDEDOR(A)')}${qualifica(d.loja, 'INTERMEDIADORA')}${qualifica(d.comprador, 'COMPRADOR(A)')}</section>
-<section><h2>1. Veículo intermediado</h2>${veiculoTabela(d.veiculo)}</section>
+<section><h2>1. ${d.vendidos && d.vendidos.length > 1 ? 'Veículos intermediados' : 'Veículo intermediado'}</h2>${veiculosVendidos(d)}</section>
 ${d.trocas.length ? `<section><h2>2. Veículo dado na troca</h2>${d.trocas.map((t) => veiculoTabela(t)).join('')}</section>` : ''}
 <section><h2>${d.trocas.length ? '3' : '2'}. Quadro de débitos</h2>${quadroDebitos(e)}</section>
 <section><h2>${d.trocas.length ? '4' : '3'}. Quadro de pagamentos</h2>${quadroPagamentos(e)}</section>

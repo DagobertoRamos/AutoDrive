@@ -15,7 +15,7 @@
 // =============================================================================
 
 import {
-  assinaturas, BLANK, cabecalho, cls, dataBR, esc, f, qualifica, SHORT, veiculoTabela, wrap,
+  assinaturas, BLANK, cabecalho, cls, dataBR, esc, f, qualifica, SHORT, veiculoTabela, veiculosVendidos, wrap,
   type ContractData, type Party, type VehicleData,
 } from './documents-core'
 import { extenso } from './statement-core'
@@ -70,9 +70,9 @@ export function renderProcVenda(d: ContractData): string {
 <section><h2>Partes</h2>
 ${qualifica(d.comprador, 'OUTORGANTE')}
 ${outorgadosBloco(d)}</section>
-<section><h2>Veículo</h2>${veiculoTabela({ ...d.veiculo, valor: null })}</section>
+<section><h2>Veículo</h2>${veiculosVendidos(d, true)}</section>
 <section><h2>Poderes</h2>
-<p>Pelo presente instrumento particular de mandato (arts. 653 e seguintes do Código Civil), o(a) OUTORGANTE nomeia e constitui seu(s) bastante(s) procurador(es) o(s) OUTORGADO(S) acima qualificado(s), com poderes para representá-lo(a) perante o <b>DETRAN de qualquer Estado da Federação, CIRETRANs, Poupatempo, SENATRAN, polícias rodoviárias, prefeituras, secretarias da Fazenda, cartórios, instituições financeiras e seguradoras</b>, especialmente para, em relação ao veículo acima${placa(d.veiculo)}, adquirido na negociação nº ${esc(d.numero)}:</p>
+<p>Pelo presente instrumento particular de mandato (arts. 653 e seguintes do Código Civil), o(a) OUTORGANTE nomeia e constitui seu(s) bastante(s) procurador(es) o(s) OUTORGADO(S) acima qualificado(s), com poderes para representá-lo(a) perante o <b>DETRAN de qualquer Estado da Federação, CIRETRANs, Poupatempo, SENATRAN, polícias rodoviárias, prefeituras, secretarias da Fazenda, cartórios, instituições financeiras e seguradoras</b>, especialmente para, em relação ${d.vendidos && d.vendidos.length > 1 ? `aos veículos acima (${d.vendidos.map((v) => esc(v.placa ?? '')).filter(Boolean).join(', ')}), adquiridos` : `ao veículo acima${placa(d.veiculo)}, adquirido`} na negociação nº ${esc(d.numero)}:</p>
 ${cls(poderes)}
 <p>Esta procuração é válida por <b>${dias} (${extenso(dias).replace(/ reais?$/, '')}) dias</b> a contar desta data, ou até a conclusão da transferência, o que ocorrer primeiro.</p>
 ${firma(d)}</section>
@@ -108,7 +108,7 @@ ${assinaturaOutorgante(d.comprador, d)}`)
 
 // ── Procuração para indicação de condutor (pontos) ──────────────────────────
 function renderProcMultas(d: ContractData, lado: 'VENDA' | 'TROCA'): string {
-  const veics = lado === 'VENDA' ? [d.veiculo] : (d.entrada ?? d.trocas)
+  const veics = lado === 'VENDA' ? (d.vendidos && d.vendidos.length > 1 ? d.vendidos : [d.veiculo]) : (d.entrada ?? d.trocas)
   const periodo = lado === 'VENDA'
     ? `ocorridas <b>a partir da data e hora em que o veículo lhe foi entregue</b> (registradas no termo de entrega) <b>até a efetiva transferência</b> da propriedade para o seu nome`
     : `ocorridas <b>até a data e hora em que o veículo foi entregue à ${esc(d.loja.nome)}</b> (registradas no termo de entrega), período em que esteve na posse do(a) OUTORGANTE`
@@ -139,7 +139,7 @@ export function renderEntregaVenda(d: ContractData): string {
   const vend: Party = d.proprietario ?? d.loja
   return wrap(`${cabecalho(d, 'TERMO DE ENTREGA E RESPONSABILIDADE — VEÍCULO VENDIDO')}
 <section><h2>Partes</h2>${qualifica(vend, d.proprietario ? 'VENDEDOR(A)' : 'VENDEDORA')}${d.proprietario ? qualifica(d.loja, 'INTERMEDIADORA') : ''}${qualifica(d.comprador, 'COMPRADOR(A)')}</section>
-<section><h2>Veículo entregue</h2>${veiculoTabela({ ...d.veiculo, valor: null })}</section>
+<section><h2>${d.vendidos && d.vendidos.length > 1 ? 'Veículos entregues' : 'Veículo entregue'}</h2>${veiculosVendidos(d, true)}</section>
 <section><h2>Entrega</h2>
 <p>O(A) COMPRADOR(A) declara que <b>recebeu o veículo acima em ____/____/________, às ____:____ h, com __________ km</b>, referente à negociação nº ${esc(d.numero)}, nas condições em que o vistoriou, testou e aprovou, acompanhado de:</p>
 ${checklist(['chave principal', 'chave reserva', 'manual do proprietário', 'CRLV', 'estepe', 'macaco e chave de roda', 'triângulo', 'tapetes'])}

@@ -177,6 +177,11 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
   const saleValue = num(deal.saleAmount) || num(deal.vehicleValue) || num(sold?.agreedValue)
   const veiculo: VehicleData = sold ? vehicleData(sold as DealVehRow, saleValue) : { valor: saleValue }
   if (!veiculo.renavam) veiculo.renavam = renavamFromDebts(veiculo.placa, deal.debts)
+  // Venda de vários carros: cada um com o próprio valor acordado.
+  const soldRows = deal.vehicles.filter((v) => v.role === 'VENDIDO' || v.role === 'CONSIGNADO')
+  const vendidos: VehicleData[] = soldRows.length > 1
+    ? soldRows.map((v) => { const t = vehicleData(v as DealVehRow, num(v.agreedValue) || null); if (!t.renavam) t.renavam = renavamFromDebts(t.placa, deal.debts); return t })
+    : [veiculo]
 
   // Intermediação: veículo de lojista parceiro, particular intermediado ou consignação.
   const sv = sold?.vehicle
@@ -199,7 +204,7 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
   const trocas = trocasRows.map((v) => { const t = vehicleData(v as DealVehRow, num(v.agreedValue) || num(v.evaluatedValue)); if (!t.renavam) t.renavam = renavamFromDebts(t.placa, deal.debts); return t })
 
   const extrato = buildStatement({
-    vehicleLabel: `Veículo: ${label(veiculo) || 'objeto deste contrato'}`,
+    vehicleLabel: vendidos.length > 1 ? `Veículos: ${vendidos.map(label).filter(Boolean).join(' + ')}` : `Veículo: ${label(veiculo) || 'objeto deste contrato'}`,
     vehicleValue: saleValue,
     documentationFee: num(deal.documentationFee),
     documentationPaidBy: deal.documentationPaidBy,
@@ -232,7 +237,7 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
     logoUrl: cfg?.logoUrl || t?.logoUrl || site?.identity?.logoUrl || null,
     loja, comprador, proprietario,
     vendedorNome: deal.seller?.fullName ?? null,
-    veiculo, trocas, extrato,
+    veiculo, vendidos, trocas, extrato,
     garantias: deal.warrantySales.filter((w) => String(w.status) === 'ATIVA').map((w) => ({ nome: w.warranty?.name ?? 'Garantia', cobertura: w.warranty?.coverageType ?? null, anos: w.warranty?.durationYears ?? null, fornecedor: w.warranty?.provider ?? null })),
     sinal: sinalValor > 0 ? { valor: sinalValor, data: sinalPay[0]?.paidAt ?? sinalPay[0]?.dueDate ?? sinalPay[0]?.createdAt ?? null, forma: sinalFormas.join(' e ') || null } : null,
     reservaAte: deal.deliveryDate ?? new Date(now.getTime() + 7 * 86_400_000),

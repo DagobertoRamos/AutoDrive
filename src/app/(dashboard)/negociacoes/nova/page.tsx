@@ -100,6 +100,9 @@ interface VehicleFields {
   evaluationId:   string | null
 }
 
+/** 2º, 3º… veículo da negociação (vendido, comprado ou recebido na troca). */
+type ExtraVehicle = VehicleFields & { key: string }
+
 interface Unit   { id: string; name: string }
 interface Seller { id: string; fullName: string; shortName: string | null; userId: string }
 
@@ -193,6 +196,10 @@ interface DealForm {
   // Step 2 - Veículos
   vehicle:      VehicleFields
   tradeVehicle: VehicleFields
+  /** Mais veículos do mesmo papel do principal (vendidos ou comprados). */
+  extraVehicles:      ExtraVehicle[]
+  /** Mais veículos recebidos na troca. */
+  extraTradeVehicles: ExtraVehicle[]
   consignMinValue:  string
   consignCommPct:   string
   consignDeadline:  string
@@ -314,6 +321,7 @@ const INITIAL_FORM: DealForm = {
   cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
   vehicle: { ...EMPTY_VEHICLE },
   tradeVehicle: { ...EMPTY_VEHICLE },
+  extraVehicles: [], extraTradeVehicles: [],
   consignMinValue: '', consignCommPct: '', consignDeadline: '',
   debts: [],
   saleAmount: '', purchaseAmount: '', signalAmount: '', financedAmount: '',
@@ -667,6 +675,7 @@ function VehicleInlineSearch({
   onClear,
   label,
   requireSalePrice,
+  excludeIds,
 }: {
   selected: StockVehicle | null
   onSelect: (v: StockVehicle) => void
@@ -674,6 +683,8 @@ function VehicleInlineSearch({
   label: string
   /** Quando true, oculta veículos sem preço de venda definido (não-liberados). */
   requireSalePrice?: boolean
+  /** Carros que já estão nesta negociação (não aparecem de novo). */
+  excludeIds?: Array<string | null | undefined>
 }) {
   const [query,    setQuery]    = useState('')
   const [loading,  setLoading]  = useState(false)
@@ -684,6 +695,8 @@ function VehicleInlineSearch({
   // Cada letra dispara uma busca; só a resposta da ÚLTIMA vale (uma antiga,
   // ex.: de "H", não pode sobrescrever a de "HB20").
   const seq = useRef(0)
+  const excludeRef = useRef(excludeIds)
+  useEffect(() => { excludeRef.current = excludeIds })
 
   const doSearch = useCallback(async (q: string) => {
     const my = ++seq.current
@@ -716,7 +729,9 @@ function VehicleInlineSearch({
       // Só ocultamos o que efetivamente saiu do estoque. Status nulos ou
       // desconhecidos passam (defesa contra dados antigos sem stockStatus).
       const HIDDEN_STATUSES = new Set(['VENDIDO', 'CANCELADO', 'DEVOLVIDO', 'BLOQUEADO', 'EM_PRECIFICACAO'])
+      const taken = new Set((excludeRef.current ?? []).filter(Boolean) as string[])
       const visible = list
+        .filter((v) => !taken.has(v.id))
         .filter((v) => !v.stockStatus || !HIDDEN_STATUSES.has(v.stockStatus))
         // Pra VENDA: só veículos liberados (com preço de venda definido pelo gerente).
         .filter((v) => !requireSalePrice || (v.salePrice != null && Number(v.salePrice) > 0))
@@ -740,7 +755,7 @@ function VehicleInlineSearch({
       const shown = new Set(final.map((v) => v.id))
       const GONE = new Set(['VENDIDO', 'CANCELADO', 'DEVOLVIDO'])
       setBlocked(isInitial ? [] : list
-        .filter((v) => !shown.has(v.id) && !(v.stockStatus && GONE.has(v.stockStatus)))
+        .filter((v) => !shown.has(v.id) && !taken.has(v.id) && !(v.stockStatus && GONE.has(v.stockStatus)))
         .map((v) => ({ v, reasons: notSellableReasons(v, !!requireSalePrice) }))
         .filter((x) => x.reasons.length > 0))
     } catch (e) {
@@ -799,8 +814,8 @@ function VehicleInlineSearch({
         </div>
       )}
 
-      {/* Resultados em cards */}
-      {!selected && (
+      {/* Resultados em cards — com carro escolhido, digitar busca outro para trocar */}
+      {(!selected || query.trim().length > 0) && (
         <>
           {!loading && error && (
             <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -816,8 +831,8 @@ function VehicleInlineSearch({
           )}
           {!loading && results.length > 0 && (
             <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-              {results.map((v) => (
-                <VehicleCard key={v.id} v={v} onSelect={() => onSelect(v)} />
+              {results.filter((v) => v.id !== selected?.id).map((v) => (
+                <VehicleCard key={v.id} v={v} onSelect={() => { onSelect(v); setQuery('') }} />
               ))}
             </div>
           )}
@@ -2028,6 +2043,111 @@ function StepVeiculos({
   const tradeEvalId = form.tradeVehicle.evaluationId
   const tradePlateEditable = !!tradeEvalId && (plateEditEvalId === tradeEvalId || !isValidPlate(form.tradeVehicle.plate))
 
+  // ── Vários veículos ────────────────────────────────────────────────────────
+  /** Soma valores mascarados (R$) e devolve mascarado ('' quando zero). */
+  const sumBRL = (vals: Array<string | undefined>) => {
+    const t = vals.reduce((acc, v) => acc + (parseBRLInput(v ?? '') ?? 0), 0)
+    return t > 0 ? maskBRLInput(String(Math.round(t * 100))) : ''
+  }
+  const [addingOut, setAddingOut] = useState(false)
+  const [showEvalModalTradeExtra, setShowEvalModalTradeExtra] = useState(false)
+  const [showEvalModalCompraExtra, setShowEvalModalCompraExtra] = useState(false)
+  const outIds = [form.vehicle.vehicleId, ...form.extraVehicles.map((x) => x.vehicleId)]
+
+  /** Mais um carro do estoque saindo (VENDA/TROCA). */
+  const addOutStock = (v: StockVehicle) => {
+    if (outIds.includes(v.id)) { alert('Este veículo já está nesta negociação.'); return }
+    const x: ExtraVehicle = {
+      ...EMPTY_VEHICLE, key: genId(), vehicleId: v.id,
+      plate: v.plate ?? '', brand: v.brand ?? '', model: v.model ?? '', version: v.version ?? '',
+      year: v.modelYear ?? v.year ? String(v.modelYear ?? v.year) : '', km: v.km != null ? String(v.km) : '',
+      color: v.color ?? '', fuel: v.fuel ?? '', vehicleValue: moneyMask(v.salePrice),
+    }
+    const list = [...form.extraVehicles, x]
+    setField('extraVehicles', list)
+    setField('saleAmount', sumBRL([form.vehicle.vehicleValue, ...list.map((e) => e.vehicleValue)]))
+    setAddingOut(false)
+  }
+  const removeOut = (key: string) => {
+    const list = form.extraVehicles.filter((x) => x.key !== key)
+    setField('extraVehicles', list)
+    if (form.type === 'COMPRA') setField('purchaseAmount', sumBRL([form.vehicle.vehicleValue, ...list.map((e) => e.vehicleValue)]))
+    else setField('saleAmount', sumBRL([form.vehicle.vehicleValue, ...list.map((e) => e.vehicleValue)]))
+  }
+  const evalTaken = (ev: EvaluationItem, list: VehicleFields[]) =>
+    list.some((v) => (ev.id && v.evaluationId === ev.id) || (!!ev.plate && normalizePlate(v.plate) === normalizePlate(ev.plate)))
+  const vehicleFromEval = (ev: EvaluationItem): ExtraVehicle => ({
+    ...EMPTY_VEHICLE, key: genId(), evaluationId: ev.id, vehicleId: ev.vehicle?.id ?? ev.vehicleId ?? null,
+    plate: ev.plate ?? '', brand: ev.brand ?? '', model: ev.model ?? '',
+    year: evalYear(ev) != null ? String(evalYear(ev)) : '', km: ev.km != null ? String(ev.km) : '',
+    color: ev.color ?? '', fuel: ev.fuel ?? '',
+    evaluatedValue: moneyMask(ev.evaluatedValue), fipeValue: moneyMask(ev.fipeValue),
+  })
+  /** Mais um carro comprado (COMPRA) — valor = o aprovado na avaliação. */
+  const addCompraEval = (ev: EvaluationItem) => {
+    if (evalTaken(ev, [form.vehicle, ...form.extraVehicles])) { alert('Este veículo já está nesta negociação.'); return }
+    const x = vehicleFromEval(ev); x.vehicleValue = x.evaluatedValue
+    const list = [...form.extraVehicles, x]
+    setField('extraVehicles', list)
+    setField('purchaseAmount', sumBRL([form.vehicle.vehicleValue, ...list.map((e) => e.vehicleValue)]))
+  }
+  /** Mais um carro recebido na troca — valor = o da avaliação aceita. */
+  const addTradeEval = (ev: EvaluationItem) => {
+    if (evalTaken(ev, [form.tradeVehicle, ...form.extraTradeVehicles])) { alert('Este veículo já está na troca.'); return }
+    const x = vehicleFromEval(ev); x.agreedValue = x.evaluatedValue
+    const list = [...form.extraTradeVehicles, x]
+    setField('extraTradeVehicles', list)
+    setField('tradeValue', sumBRL([form.tradeVehicle.agreedValue, ...list.map((e) => e.agreedValue)]))
+  }
+  const removeTrade = (key: string) => {
+    const list = form.extraTradeVehicles.filter((x) => x.key !== key)
+    setField('extraTradeVehicles', list)
+    setField('tradeValue', sumBRL([form.tradeVehicle.agreedValue, ...list.map((e) => e.agreedValue)]))
+  }
+  const updTrade = (key: string, patch: Partial<VehicleFields>) =>
+    setField('extraTradeVehicles', form.extraTradeVehicles.map((x) => (x.key === key ? { ...x, ...patch } : x)))
+
+  const carLine = (v: VehicleFields) => [v.brand, v.model, v.year].filter(Boolean).join(' ') || 'Veículo'
+  const carSub = (v: VehicleFields) => [v.km && `${Number(v.km).toLocaleString('pt-BR')} km`, v.color, v.fuel].filter(Boolean).join(' · ')
+
+  /** Carros adicionais que saem (VENDA/TROCA) + botão para adicionar outro do estoque. */
+  const renderOutExtras = () => (
+    <div className="space-y-2">
+      {form.extraVehicles.map((x, i) => (
+        <div key={x.key} className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">{i + 2}º veículo</p>
+            <p className="text-sm font-semibold text-gray-900">{carLine(x)}{x.plate && <span className="ml-2 font-mono text-xs text-gray-500">{x.plate}</span>}</p>
+            {carSub(x) && <p className="text-xs text-gray-600">{carSub(x)}</p>}
+          </div>
+          <div className="flex shrink-0 items-start gap-2">
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wide text-gray-500">Preço de venda</p>
+              <p className="text-base font-bold text-emerald-700">{x.vehicleValue ? fmtBRL(x.vehicleValue) : '—'}</p>
+            </div>
+            <button type="button" onClick={() => { if (confirm('Remover este veículo da negociação?')) removeOut(x.key) }} className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover veículo"><X size={14} /></button>
+          </div>
+        </div>
+      ))}
+      {addingOut ? (
+        <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-gray-900">Adicionar outro veículo</p>
+            <button type="button" onClick={() => setAddingOut(false)} className="text-xs font-medium text-gray-500 hover:text-gray-800">Cancelar</button>
+          </div>
+          <VehicleInlineSearch label="Estoque disponível" selected={null} onSelect={addOutStock} onClear={() => {}} requireSalePrice excludeIds={outIds} />
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAddingOut(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-emerald-400 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+          <Plus size={14} />Adicionar outro veículo
+        </button>
+      )}
+      {form.extraVehicles.length > 0 && (
+        <p className="text-right text-sm text-gray-700">Total dos {form.extraVehicles.length + 1} veículos: <span className="font-bold text-emerald-700">{fmtBRL(form.saleAmount)}</span></p>
+      )}
+    </div>
+  )
+
   // Seleciona veículo principal (VENDA / TROCA saída).
   // O preço de venda cadastrado pelo gerente (salePrice) vai pra DOIS campos:
   //   • form.vehicle.vehicleValue → exibido no card resumo do veículo
@@ -2047,8 +2167,8 @@ function StepVeiculos({
     if (v.salePrice != null) {
       const masked = maskBRLInput(String(Math.round(Number(v.salePrice) * 100)))
       setVehicleField('vehicleValue', masked)
-      // Espelha pro saleAmount global (valor da operação de venda).
-      setField('saleAmount', masked)
+      // Espelha pro saleAmount global (valor da operação de venda) — soma dos carros.
+      setField('saleAmount', sumBRL([masked, ...form.extraVehicles.map((e) => e.vehicleValue)]))
     }
   }
 
@@ -2075,7 +2195,7 @@ function StepVeiculos({
       const masked = maskBRLInput(String(Math.round(Number(ev.evaluatedValue) * 100)))
       setTradeVehicleField('evaluatedValue', masked)
       setTradeVehicleField('agreedValue', masked)
-      setField('tradeValue', masked)
+      setField('tradeValue', sumBRL([masked, ...form.extraTradeVehicles.map((e) => e.agreedValue)]))
     }
     if (ev.fipeValue != null)
       setTradeVehicleField('fipeValue', maskBRLInput(String(Math.round(Number(ev.fipeValue) * 100))))
@@ -2113,8 +2233,8 @@ function StepVeiculos({
       // Preço de compra que será pago ao cliente = valor aprovado pelo gerente
       setVehicleField('vehicleValue', masked)
       // form.purchaseAmount é o que o backend persiste E o cálculo de
-      // totalOperacao lê — precisa estar sincronizado com vehicleValue.
-      setField('purchaseAmount', masked)
+      // totalOperacao lê — soma dos carros comprados.
+      setField('purchaseAmount', sumBRL([masked, ...form.extraVehicles.map((e) => e.vehicleValue)]))
     }
     if (ev.fipeValue != null) {
       setVehicleField('fipeValue', maskBRLInput(String(Math.round(Number(ev.fipeValue) * 100))))
@@ -2184,6 +2304,7 @@ function StepVeiculos({
             selected={selectedStock}
             onSelect={handleSelectStock}
             requireSalePrice
+            excludeIds={form.extraVehicles.map((x) => x.vehicleId)}
             onClear={() => {
               setSelectedStock(null)
               setVehicleField('vehicleId', null)
@@ -2191,7 +2312,8 @@ function StepVeiculos({
               setVehicleField('brand', '')
               setVehicleField('model', '')
               setVehicleField('year', '')
-              setField('saleAmount', '')
+              setVehicleField('vehicleValue', '')
+              setField('saleAmount', sumBRL(form.extraVehicles.map((e) => e.vehicleValue)))
             }}
           />
           {/* Veículo selecionado — dados já cadastrados, sem solicitar novamente */}
@@ -2224,6 +2346,7 @@ function StepVeiculos({
               )}
             </div>
           )}
+          {(selectedStock || form.extraVehicles.length > 0) && renderOutExtras()}
         </div>
       )}
 
@@ -2238,13 +2361,15 @@ function StepVeiculos({
               selected={selectedStock}
               onSelect={handleSelectStock}
               requireSalePrice
+              excludeIds={form.extraVehicles.map((x) => x.vehicleId)}
               onClear={() => {
                 setSelectedStock(null)
                 setVehicleField('vehicleId', null)
                 setVehicleField('plate', '')
                 setVehicleField('brand', '')
                 setVehicleField('model', '')
-                setField('saleAmount', '')
+                setVehicleField('vehicleValue', '')
+                setField('saleAmount', sumBRL(form.extraVehicles.map((e) => e.vehicleValue)))
               }}
             />
             {selectedStock && (
@@ -2276,6 +2401,7 @@ function StepVeiculos({
                 )}
               </div>
             )}
+            {(selectedStock || form.extraVehicles.length > 0) && renderOutExtras()}
           </div>
 
           {/* Veículo recebido na troca — sempre via avaliação liberada e aceita */}
@@ -2349,7 +2475,7 @@ function StepVeiculos({
                       setTradeVehicleField('agreedValue', '')
                       setTradeVehicleField('evaluatedValue', '')
                       setTradeVehicleField('fipeValue', '')
-                      setField('tradeValue', '')
+                      setField('tradeValue', sumBRL(form.extraTradeVehicles.map((e) => e.agreedValue)))
                     }}
                     className="rounded-md p-1 text-purple-400 hover:bg-red-50 hover:text-red-600"
                     title="Remover veículo da troca"
@@ -2412,6 +2538,64 @@ function StepVeiculos({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Mais carros recebidos na troca */}
+            {showEvalModalTradeExtra && (
+              <EvaluationSearchModal
+                operation="TROCA"
+                onSelect={(ev) => { addTradeEval(ev); setShowEvalModalTradeExtra(false) }}
+                onClose={() => setShowEvalModalTradeExtra(false)}
+              />
+            )}
+            {form.extraTradeVehicles.map((x, i) => (
+              <div key={x.key} className="space-y-3 rounded-xl border-2 border-purple-200 bg-purple-50/40 p-4">
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-purple-200 bg-white px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-purple-700">{i + 2}º veículo da troca</p>
+                    <p className="text-sm font-semibold text-gray-900">{carLine(x)}{x.plate && <span className="ml-2 font-mono text-xs text-gray-500">{x.plate}</span>}</p>
+                    {carSub(x) && <p className="text-xs text-gray-600">{carSub(x)}</p>}
+                    {!isValidPlate(x.plate) && (
+                      <label className="mt-2 flex items-center gap-2 text-xs font-medium text-gray-700">
+                        Placa <RequiredMark />
+                        <input className={`${inputCls} w-32 font-mono uppercase`} placeholder="AAA0A00" value={formatPlate(x.plate)} onChange={(e) => updTrade(x.key, { plate: normalizePlate(e.target.value) })} />
+                      </label>
+                    )}
+                    {x.agreedValue && <p className="mt-1 text-sm font-bold text-purple-700">Valor aceito: {fmtBRL(x.agreedValue)}</p>}
+                  </div>
+                  <button type="button" onClick={() => { if (confirm('Remover este veículo da troca?')) removeTrade(x.key) }} className="rounded-md p-1 text-purple-400 hover:bg-red-50 hover:text-red-600" title="Remover veículo da troca"><X size={14} /></button>
+                </div>
+                <div className="space-y-3 rounded-lg border border-purple-200 bg-white p-3">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-purple-600" checked={x.hasFinancing} onChange={(e) => updTrade(x.key, { hasFinancing: e.target.checked })} />
+                    <span className="text-gray-700">Possui financiamento ativo (quitação)</span>
+                  </label>
+                  {x.hasFinancing && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <Field label="Valor da quitação">
+                        <input className={inputCls} inputMode="numeric" placeholder="0,00" value={x.payoffValue} onChange={(e) => updTrade(x.key, { payoffValue: maskBRLInput(e.target.value) })} />
+                      </Field>
+                      <Field label="Banco">
+                        <BankCombo value={x.payoffBank} onChange={(v) => updTrade(x.key, { payoffBank: v })} placeholder="Buscar banco..." />
+                      </Field>
+                      <Field label="Vencimento do boleto">
+                        <input className={inputCls} type="date" value={x.payoffDueDate ?? ''} onChange={(e) => updTrade(x.key, { payoffDueDate: e.target.value })} />
+                      </Field>
+                      <p className="text-[11px] text-purple-700/80 sm:col-span-3">A quitação entra sozinha na etapa Débitos; o boleto pode ser anexado lá.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {hasTradeVehicle && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button type="button" onClick={() => setShowEvalModalTradeExtra(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-purple-400 bg-white px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50">
+                  <Plus size={14} />Adicionar outro veículo na troca
+                </button>
+                {form.extraTradeVehicles.length > 0 && (
+                  <p className="text-sm text-gray-700">Total da troca: <span className="font-bold text-purple-700">{fmtBRL(form.tradeValue)}</span></p>
+                )}
               </div>
             )}
           </div>
@@ -2545,6 +2729,36 @@ function StepVeiculos({
             </div>
           )}
 
+          {/* Mais carros comprados do mesmo cliente */}
+          {showEvalModalCompraExtra && (
+            <EvaluationSearchModal
+              operation="COMPRA"
+              onSelect={(ev) => { addCompraEval(ev); setShowEvalModalCompraExtra(false) }}
+              onClose={() => setShowEvalModalCompraExtra(false)}
+            />
+          )}
+          {form.extraVehicles.map((x, i) => (
+            <div key={x.key} className="flex items-start justify-between gap-3 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 p-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">{i + 2}º veículo</p>
+                <p className="text-sm font-bold text-gray-900">{carLine(x)}{x.plate && <span className="ml-2 font-mono text-xs text-gray-500">{x.plate}</span>}</p>
+                {carSub(x) && <p className="text-xs text-gray-600">{carSub(x)}</p>}
+                {x.vehicleValue && <p className="mt-1 text-xs font-medium text-emerald-700">Valor aprovado de compra: {fmtBRL(x.vehicleValue)}</p>}
+              </div>
+              <button type="button" onClick={() => { if (confirm('Remover este veículo da compra?')) removeOut(x.key) }} className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover veículo"><X size={14} /></button>
+            </div>
+          ))}
+          {hasMainVehicle && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" onClick={() => setShowEvalModalCompraExtra(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-emerald-400 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+                <Plus size={14} />Adicionar outro veículo
+              </button>
+              {form.extraVehicles.length > 0 && (
+                <p className="text-sm text-gray-700">Total da compra: <span className="font-bold text-emerald-700">{fmtBRL(form.purchaseAmount)}</span></p>
+              )}
+            </div>
+          )}
+
           {/* Bloco mantido pra TS — não renderiza, evita refatorar imports */}
           {false && form.vehicle.evaluationId && (
             <VehicleFormBlock
@@ -2629,18 +2843,33 @@ async function uploadPendingFile(file: File): Promise<{ storageKey: string; publ
  * Quitação do veículo da troca → débito automático do veículo recebido (valor,
  * banco, vencimento e boleto). Responsável e notas editados em Débitos ficam.
  */
+/** Débito automático de quitação: o do 1º carro da troca e um por carro adicional. */
+const isAutoPayoffId = (id: string) => id === AUTO_PAYOFF_DEBT_ID || id.startsWith(`${AUTO_PAYOFF_DEBT_ID}:`)
+const extraPayoffId = (key: string) => `${AUTO_PAYOFF_DEBT_ID}:${key}`
+
 function applyPayoffDebt(p: DealForm): DealForm {
-  const want = p.type === 'TROCA' && p.tradeVehicle.hasFinancing && (parseBRLInput(p.tradeVehicle.payoffValue) ?? 0) > 0
-  const cur = p.debts.find((d) => d.id === AUTO_PAYOFF_DEBT_ID)
-  if (!want) return cur ? { ...p, debts: p.debts.filter((d) => d.id !== AUTO_PAYOFF_DEBT_ID) } : p
-  const next: DebtEntry = {
-    id: AUTO_PAYOFF_DEBT_ID, auto: 'QUITACAO_TROCA', vehicleRole: 'TROCA', type: 'FINANCIAMENTO',
-    description: `Quitação de financiamento${p.tradeVehicle.payoffBank ? ` — ${p.tradeVehicle.payoffBank}` : ''}${p.tradeVehicle.plate ? ` (${p.tradeVehicle.plate})` : ''}`,
-    value: p.tradeVehicle.payoffValue, dueDate: p.tradeVehicle.payoffDueDate ?? '', receipt: p.tradeVehicle.payoffReceipt ?? null,
-    responsavel: cur?.responsavel ?? 'LOJA', notes: cur?.notes ?? '',
+  const trades: Array<{ id: string; v: VehicleFields }> = p.type === 'TROCA'
+    ? [{ id: AUTO_PAYOFF_DEBT_ID, v: p.tradeVehicle }, ...(p.extraTradeVehicles ?? []).map((x) => ({ id: extraPayoffId(x.key), v: x as VehicleFields }))]
+    : []
+  const wanted = new Map<string, DebtEntry>()
+  for (const { id, v } of trades) {
+    if (!v.hasFinancing || !((parseBRLInput(v.payoffValue) ?? 0) > 0)) continue
+    const cur = p.debts.find((d) => d.id === id)
+    wanted.set(id, {
+      id, auto: 'QUITACAO_TROCA', vehicleRole: 'TROCA', type: 'FINANCIAMENTO',
+      description: `Quitação de financiamento${v.payoffBank ? ` — ${v.payoffBank}` : ''}${v.plate ? ` (${v.plate})` : ''}`,
+      value: v.payoffValue, dueDate: v.payoffDueDate ?? '', receipt: v.payoffReceipt ?? null,
+      responsavel: cur?.responsavel ?? 'LOJA', notes: cur?.notes ?? '',
+    })
   }
-  if (cur && JSON.stringify(cur) === JSON.stringify(next)) return p
-  return { ...p, debts: cur ? p.debts.map((d) => (d.id === AUTO_PAYOFF_DEBT_ID ? next : d)) : [...p.debts, next] }
+  const next: DebtEntry[] = []
+  for (const d of p.debts) {
+    if (!isAutoPayoffId(d.id)) { next.push(d); continue }
+    const w = wanted.get(d.id)
+    if (w) { next.push(w); wanted.delete(d.id) }
+  }
+  next.push(...wanted.values())
+  return JSON.stringify(next) === JSON.stringify(p.debts) ? p : { ...p, debts: next }
 }
 
 const EMPTY_DEBT = (): DebtEntry => ({
@@ -2666,8 +2895,10 @@ function StepDebitos({
     if (editingId) {
       setField('debts', form.debts.map((d) => (d.id === editingId ? { ...draft } : d)) as DealForm['debts'])
       // Quitação automática: o que mudar aqui volta para a etapa Veículos.
-      if (draft.auto === 'QUITACAO_TROCA') {
+      if (draft.auto === 'QUITACAO_TROCA' && editingId === AUTO_PAYOFF_DEBT_ID) {
         setField('tradeVehicle', { ...form.tradeVehicle, payoffValue: draft.value, payoffDueDate: draft.dueDate ?? '', payoffReceipt: draft.receipt ?? null })
+      } else if (draft.auto === 'QUITACAO_TROCA') {
+        setField('extraTradeVehicles', form.extraTradeVehicles.map((x) => (extraPayoffId(x.key) === editingId ? { ...x, payoffValue: draft.value, payoffDueDate: draft.dueDate ?? '', payoffReceipt: draft.receipt ?? null } : x)))
       }
     } else {
       setField('debts', [...form.debts, { ...draft }] as DealForm['debts'])
@@ -2680,9 +2911,10 @@ function StepDebitos({
   const editDebt = (d: DebtEntry) => { setDraft({ ...d }); setEditingId(d.id); setAdding(true) }
 
   const removeDebt = (id: string) => {
-    if (id === AUTO_PAYOFF_DEBT_ID) {
+    if (isAutoPayoffId(id)) {
       if (!confirm('Esta quitação vem do veículo da troca. Remover também desmarca "Possui financiamento" lá. Continuar?')) return
-      setField('tradeVehicle', { ...form.tradeVehicle, hasFinancing: false, payoffValue: '', payoffDueDate: '', payoffReceipt: null })
+      if (id === AUTO_PAYOFF_DEBT_ID) setField('tradeVehicle', { ...form.tradeVehicle, hasFinancing: false, payoffValue: '', payoffDueDate: '', payoffReceipt: null })
+      else setField('extraTradeVehicles', form.extraTradeVehicles.map((x) => (extraPayoffId(x.key) === id ? { ...x, hasFinancing: false, payoffValue: '', payoffDueDate: '', payoffReceipt: null } : x)))
     }
     setField('debts', form.debts.filter((d) => d.id !== id) as DealForm['debts'])
   }
@@ -3370,7 +3602,9 @@ function StepPagamento({
   // Placas de todos os veículos da negociação (lote multi-veículo)
   const vehiclePlates = [
     form.vehicle?.plate,
+    ...form.extraVehicles.map((x) => x.plate),
     form.tradeVehicle?.plate,
+    ...form.extraTradeVehicles.map((x) => x.plate),
   ].filter((p): p is string => !!p && p.trim().length > 0)
 
   // ── Itens da Negociação ──────────────────────────────────────────────────
@@ -3502,9 +3736,21 @@ function StepPagamento({
                         <p className="text-xs text-gray-500 font-mono">{veiculoVendido.plate}</p>
                       )}
                     </div>
-                    <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{fmtBRL(sale)}</p>
+                    <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{fmtBRL(form.extraVehicles.length ? (parseBRLInput(veiculoVendido.vehicleValue) ?? 0) : sale)}</p>
                   </div>
                 </div>
+                {form.extraVehicles.map((x) => (
+                  <div key={x.key} className="mt-2 rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">{[x.brand, x.model, x.year].filter(Boolean).join(' ') || '—'}</p>
+                        {x.plate && <p className="font-mono text-xs text-gray-500">{x.plate}</p>}
+                      </div>
+                      <p className="whitespace-nowrap text-sm font-bold text-gray-900">{fmtBRL(parseBRLInput(x.vehicleValue) ?? 0)}</p>
+                    </div>
+                  </div>
+                ))}
+                {form.extraVehicles.length > 0 && <p className="mt-1 text-right text-xs text-gray-600">Total dos veículos: <span className="font-semibold text-gray-900">{fmtBRL(sale)}</span></p>}
               </div>
             )}
 
@@ -3524,9 +3770,21 @@ function StepPagamento({
                         <p className="text-xs text-gray-500 font-mono">{veiculoTroca.plate}</p>
                       )}
                     </div>
-                    <p className="text-sm font-bold text-blue-700 whitespace-nowrap">− {fmtBRL(trade)}</p>
+                    <p className="text-sm font-bold text-blue-700 whitespace-nowrap">− {fmtBRL(form.extraTradeVehicles.length ? (parseBRLInput(veiculoTroca.agreedValue) ?? 0) : trade)}</p>
                   </div>
                 </div>
+                {form.extraTradeVehicles.map((x) => (
+                  <div key={x.key} className="mt-2 rounded-lg border border-blue-200 bg-blue-50/40 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">{[x.brand, x.model, x.year].filter(Boolean).join(' ') || '—'}</p>
+                        {x.plate && <p className="font-mono text-xs text-gray-500">{x.plate}</p>}
+                      </div>
+                      <p className="whitespace-nowrap text-sm font-bold text-blue-700">− {fmtBRL(parseBRLInput(x.agreedValue) ?? 0)}</p>
+                    </div>
+                  </div>
+                ))}
+                {form.extraTradeVehicles.length > 0 && <p className="mt-1 text-right text-xs text-gray-600">Total da troca: <span className="font-semibold text-blue-700">− {fmtBRL(trade)}</span></p>}
               </div>
             )}
 
@@ -3811,7 +4069,7 @@ function StepPagamento({
              Só quando NÃO está editando — edição preserva o valor original. */
           suggestedAmount={!editing && emAberto > 0 ? emAberto : undefined}
           userRole={userRole}
-          vehiclePlates={form.vehicle?.plate ? [form.vehicle.plate] : []}
+          vehiclePlates={[form.vehicle?.plate, ...(form.type === 'COMPRA' ? [] : form.extraVehicles.map((x) => x.plate))].filter((p): p is string => !!p)}
         />
       )}
       {trocoOpen && (
@@ -4031,6 +4289,16 @@ function StepResumo({
             {form.vehicle.vehicleValue && (
               <p className="mt-1 text-sm font-semibold text-gray-800">{fmtBRL(form.vehicle.vehicleValue)}</p>
             )}
+            {form.extraVehicles.map((x, i) => (
+              <div key={x.key} className="mt-2 border-t border-gray-200 pt-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{i + 2}º veículo</p>
+                <p className="text-sm text-gray-700">
+                  {[x.brand, x.model, x.year].filter(Boolean).join(' ')}
+                  {x.plate && <span className="ml-1.5 font-mono text-gray-500">· {x.plate}</span>}
+                </p>
+                {x.vehicleValue && <p className="text-sm font-semibold text-gray-800">{fmtBRL(x.vehicleValue)}</p>}
+              </div>
+            ))}
           </div>
         )}
 
@@ -4048,6 +4316,17 @@ function StepResumo({
             {form.tradeVehicle.hasFinancing && (
               <p className="mt-0.5 text-xs text-amber-700">Com financiamento — quitação: {fmtBRL(form.tradeVehicle.payoffValue)}</p>
             )}
+            {form.extraTradeVehicles.map((x, i) => (
+              <div key={x.key} className="mt-2 border-t border-purple-200 pt-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-purple-500">{i + 2}º veículo da troca</p>
+                <p className="text-sm text-purple-800">
+                  {[x.brand, x.model, x.year].filter(Boolean).join(' ')}
+                  {x.plate && <span className="ml-1.5 font-mono">· {x.plate}</span>}
+                </p>
+                {x.agreedValue && <p className="text-sm font-semibold text-purple-700">Aceito: {fmtBRL(x.agreedValue)}</p>}
+                {x.hasFinancing && <p className="text-xs text-amber-700">Com financiamento — quitação: {fmtBRL(x.payoffValue)}</p>}
+              </div>
+            ))}
           </div>
         )}
 
@@ -4441,9 +4720,11 @@ export default function NovaNegociacaoPage() {
         const c = d.customer ?? null
 
         // Localiza veículo principal e veículo de troca
-        const vMain  = Array.isArray(d.vehicles) ? d.vehicles.find((v: { role: string }) =>
-                        ['VENDIDO', 'COMPRADO', 'CONSIGNADO'].includes(v.role)) ?? null : null
-        const vTrade = Array.isArray(d.vehicles) ? d.vehicles.find((v: { role: string }) => v.role === 'TROCA') ?? null : null
+        const allMains  = Array.isArray(d.vehicles) ? d.vehicles.filter((v: { role: string }) => ['VENDIDO', 'COMPRADO', 'CONSIGNADO'].includes(v.role)) : []
+        const allTrades = Array.isArray(d.vehicles) ? d.vehicles.filter((v: { role: string }) => v.role === 'TROCA') : []
+        const vMain  = allMains[0] ?? null
+        const vTrade = allTrades[0] ?? null
+        hadExtraVehicles.current = allMains.length > 1 || allTrades.length > 1
 
         const mkVehicle = (v: typeof vMain): typeof INITIAL_FORM.vehicle => ({
           ...EMPTY_VEHICLE,
@@ -4516,6 +4797,8 @@ export default function NovaNegociacaoPage() {
           estado:      p?.estado      ?? c?.state ?? '',
           vehicle:      mkVehicle(vMain),
           tradeVehicle: vTrade ? mkVehicle(vTrade) : { ...EMPTY_VEHICLE },
+          extraVehicles:      allMains.slice(1).map((v: { id: string }) => ({ ...mkVehicle(v as typeof vMain), key: v.id })),
+          extraTradeVehicles: allTrades.slice(1).map((v: { id: string }) => ({ ...mkVehicle(v as typeof vMain), key: v.id })),
           consignMinValue: num(d.consignMinValue),
           consignCommPct:  d.consignCommPct ? String(d.consignCommPct) : '',
           consignDeadline: d.consignDeadline ? String(d.consignDeadline).slice(0, 10) : '',
@@ -4609,9 +4892,11 @@ export default function NovaNegociacaoPage() {
   )
 
   // Edição: os débitos já salvos vêm do servidor (sem débito automático da quitação).
+  // A negociação carregada já tinha mais de um veículo (a edição manda a lista inteira).
+  const hadExtraVehicles = useRef(false)
   const syncPayoff = (p: DealForm) => (mode === 'edit' ? p : applyPayoffDebt(p))
   const setField = <K extends keyof DealForm>(k: K, v: DealForm[K]) =>
-    setForm((p) => (k === 'tradeVehicle' || k === 'type' ? syncPayoff({ ...p, [k]: v }) : { ...p, [k]: v }))
+    setForm((p) => (k === 'tradeVehicle' || k === 'extraTradeVehicles' || k === 'type' ? syncPayoff({ ...p, [k]: v }) : { ...p, [k]: v }))
 
   const setFields = useCallback((updates: Partial<DealForm>) =>
     setForm((p) => ({ ...p, ...updates })), [])
@@ -4693,6 +4978,10 @@ export default function NovaNegociacaoPage() {
           errs.push('Adicione o veículo recebido na troca.')
         else if (form.type === 'TROCA' && !isValidPlate(form.tradeVehicle.plate))
           errs.push('Placa do veículo da troca inválida.')
+        if (form.type === 'TROCA' && form.extraTradeVehicles.some((x) => !isValidPlate(x.plate)))
+          errs.push('Placa inválida em um dos veículos adicionais da troca.')
+        if ((form.type === 'VENDA' || form.type === 'TROCA') && form.extraVehicles.some((x) => !x.vehicleId))
+          errs.push('Um dos veículos adicionais não está no estoque — remova-o e adicione de novo.')
         return errs
 
       case 3: return errs
@@ -4882,6 +5171,24 @@ export default function NovaNegociacaoPage() {
         payoffBank:     tv.payoffBank     || null,
         notes:          tv.notes || null,
       } : (mode === 'edit' ? null : undefined),
+      // Vários veículos: só vai quando há (ou havia) carros adicionais — sem eles o
+      // servidor segue o caminho de um veículo só.
+      ...(form.extraVehicles.length || form.extraTradeVehicles.length || hadExtraVehicles.current ? {
+        extraVehicles: (form.type === 'CONSIGNACAO' ? [] : form.extraVehicles).filter((x) => x.plate || x.brand || x.vehicleId).map((x) => ({
+          vehicleId: x.vehicleId ?? undefined, evaluationId: x.evaluationId ?? undefined,
+          plate: x.plate || null, brand: x.brand || null, model: x.model || null, version: x.version || null,
+          year: x.year ? Number(x.year) : null, color: x.color || null, km: x.km ? Number(x.km) : null, fuel: x.fuel || null,
+          agreedValue: parseBRLInput(x.vehicleValue), evaluatedValue: parseBRLInput(x.evaluatedValue), fipeValue: parseBRLInput(x.fipeValue),
+          hasFinancing: x.hasFinancing, payoffValue: parseBRLInput(x.payoffValue), payoffBank: x.payoffBank || null, notes: x.notes || null,
+        })),
+        extraTradeInVehicles: (form.type === 'TROCA' ? form.extraTradeVehicles : []).filter((x) => x.plate || x.brand).map((x) => ({
+          evaluationId: x.evaluationId ?? undefined, vehicleId: x.vehicleId ?? undefined,
+          plate: x.plate || null, brand: x.brand || null, model: x.model || null,
+          year: x.year ? Number(x.year) : null, km: x.km ? Number(x.km) : null, color: x.color || null,
+          agreedValue: parseBRLInput(x.agreedValue), evaluatedValue: parseBRLInput(x.evaluatedValue), fipeValue: parseBRLInput(x.fipeValue),
+          hasFinancing: x.hasFinancing, payoffValue: parseBRLInput(x.payoffValue), payoffBank: x.payoffBank || null, notes: x.notes || null,
+        })),
+      } : {}),
       saleAmount:       parseBRLInput(form.saleAmount),
       purchaseAmount:   parseBRLInput(form.purchaseAmount),
       // Os campos legados signalAmount/financedAmount/paymentType/paymentBank
