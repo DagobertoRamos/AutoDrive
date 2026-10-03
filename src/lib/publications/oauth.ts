@@ -50,21 +50,21 @@ export function redirectUri(channel: OAuthChannel): string {
 }
 
 /** App da plataforma cadastrado (Master › Integrações ou variável de ambiente). */
-export async function oauthConfigured(channel: OAuthChannel): Promise<boolean> {
-  return !!(await getPlatformApp(channel))
+export async function oauthConfigured(channel: OAuthChannel, tenantId?: string): Promise<boolean> {
+  return !!(await getPlatformApp(channel, tenantId))
 }
 
-async function appOf(channel: OAuthChannel) {
-  const app = await getPlatformApp(channel)
+async function appOf(channel: OAuthChannel, tenantId: string) {
+  const app = await getPlatformApp(channel, tenantId)
   if (!app) throw new ConnectorError('CONFIG', 'O aplicativo oficial deste canal ainda não foi cadastrado na plataforma.', 'O MASTER cadastra em Master › Integrações.')
   return app
 }
 
 export const META_SCOPES = ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish']
 
-export async function authorizeUrl(channel: OAuthChannel, state: string): Promise<string> {
+export async function authorizeUrl(channel: OAuthChannel, state: string, tenantId: string): Promise<string> {
   const redirect = redirectUri(channel)
-  const app = await appOf(channel)
+  const app = await appOf(channel, tenantId)
   if (channel === 'MERCADO_LIVRE') return `https://auth.mercadolivre.com.br/authorization?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, state })}`
   if (channel === 'MOBIAUTO') return `${MOBIAUTO_AUTH}/auth?${new URLSearchParams({ response_type: 'code', client_id: app.clientId, redirect_uri: redirect, scope: 'openid', state })}`
   if (channel === 'TIKTOK') return `${TIKTOK_AUTH}?${new URLSearchParams({ client_key: app.clientId, response_type: 'code', scope: TIKTOK_SCOPES.join(','), redirect_uri: redirect, state })}`
@@ -86,7 +86,7 @@ async function upsertConnection(tenantId: string, channel: string, externalAccou
 /** Troca o código pela autorização e grava a(s) conexão(ões) da loja. */
 export async function completeOAuth(claims: StateClaims, code: string, actor: Actor, http: HttpClient = createHttpClient()): Promise<{ connected: string[] }> {
   const redirect = redirectUri(claims.c)
-  const app = await appOf(claims.c)
+  const app = await appOf(claims.c, claims.t)
   if (claims.c === 'MERCADO_LIVRE') {
     const res = await http.request({ method: 'POST', url: 'https://api.mercadolibre.com/oauth/token', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: app.clientId, client_secret: app.clientSecret, code, redirect_uri: redirect }) })
     throwForStatus(res, 'Mercado Livre (autorização)')

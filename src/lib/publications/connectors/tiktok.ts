@@ -87,7 +87,7 @@ export async function ensureTikTokToken(ctx: ConnectorContext, force = false): P
   const exp = Number(ctx.secrets.expires_at ?? 0)
   if (!force && ctx.secrets.access_token && exp - ctx.now().getTime() > REFRESH_BEFORE_MS) return ctx.secrets.access_token
   if (!ctx.secrets.refresh_token) throw new ConnectorError('AUTH', 'Autorização do TikTok ausente.', 'Conecte a conta em Canais conectados.')
-  const app = await getPlatformApp('TIKTOK')
+  const app = await getPlatformApp('TIKTOK', ctx.connection.tenantId)
   if (!app) throw new ConnectorError('CONFIG', 'App do TikTok não configurado na plataforma.', 'O MASTER cadastra em Master › Integrações (Publicações — TikTok).')
   const res = await ctx.http.request({
     method: 'POST', url: `${TIKTOK_API}/v2/oauth/token/`, headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

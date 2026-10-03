@@ -28,8 +28,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ channel: string
   if (a instanceof NextResponse) return a
 
   if (step === 'start') {
-    if (!await oauthConfigured(channel)) return back(req, { erro: 'A plataforma ainda não tem o aplicativo oficial deste canal configurado. Fale com o suporte AutoDrive.' })
-    return NextResponse.redirect(await authorizeUrl(channel, signState({ t: a.tenantId, u: a.user.id, c: channel })))
+    if (!await oauthConfigured(channel, a.tenantId)) return back(req, { erro: 'A plataforma ainda não tem o aplicativo oficial deste canal configurado. Fale com o suporte AutoDrive.' })
+    return NextResponse.redirect(await authorizeUrl(channel, signState({ t: a.tenantId, u: a.user.id, c: channel }), a.tenantId))
   }
 
   const sp = new URL(req.url).searchParams

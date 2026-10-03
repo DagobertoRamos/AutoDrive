@@ -86,7 +86,7 @@ function Channels() {
   }
   const startConnect = (ch: Channel) => {
     if (ch.connect === 'OAUTH') {
-      if (!data?.oauth[OAUTH_KEY[ch.id]]) { if (TOKEN_CONNECT.has(ch.id)) setMetaFor(ch); else if (data?.master && APP_FORM[ch.id]) setAppFor(ch); else setPending(ch); return }
+      if (!data?.oauth[OAUTH_KEY[ch.id]]) { if (TOKEN_CONNECT.has(ch.id)) setMetaFor(ch); else if (APP_FORM[ch.id]) setAppFor(ch); else setPending(ch); return }
       window.location.assign(`/api/publications/oauth/${OAUTH_SLUG[ch.id]}/start`)
     } else setConnectFor(ch)
   }
@@ -162,7 +162,7 @@ function Channels() {
                     {ch.mechanism !== 'MANUAL' && <div className="mt-2 flex flex-wrap gap-1">{Object.entries(ch.capabilities).filter(([k]) => ['publish', 'get', 'update', 'pause', 'remove'].includes(k)).map(([k, v]) => <span key={k} className={cn('rounded px-1.5 py-0.5 text-[10px]', v === 'SIM' ? 'bg-green-50 text-green-700' : v === 'MANUAL' ? 'bg-amber-50 text-amber-700' : v === 'NAO' ? 'bg-gray-100 text-gray-400 line-through' : 'bg-gray-50 text-gray-400')}>{CAP[k]}</span>)}</div>}
                     <p className="mt-2 flex-1 text-[11px] text-gray-500">{ch.source.notes}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && (ch.connect === 'OAUTH' && !data.oauth[OAUTH_KEY[ch.id]] && !TOKEN_CONNECT.has(ch.id) && !(data.master && APP_FORM[ch.id])
+                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && (ch.connect === 'OAUTH' && !data.oauth[OAUTH_KEY[ch.id]] && !TOKEN_CONNECT.has(ch.id) && !APP_FORM[ch.id]
                         ? <button onClick={() => startConnect(ch)} className="btn-secondary px-2 py-1 text-xs"><AlertTriangle size={13} className="text-amber-600" />Como conectar</button>
                         : <button onClick={() => startConnect(ch)} className="btn-primary px-2 py-1 text-xs"><Plug size={13} />{connected ? 'Conectar outra conta' : 'Conectar'}</button>)}
                       {connected > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-green-700"><CheckCircle2 size={12} />{connected} conectada(s)</span>}
@@ -186,7 +186,7 @@ function Channels() {
           </div>
         </Drawer>
       )}
-      {appFor && <AppConnectForm channel={appFor} onClose={() => setAppFor(null)} />}
+      {appFor && <AppConnectForm channel={appFor} master={!!data?.master} onClose={() => setAppFor(null)} />}
       {metaFor && <MetaConnectForm channel={metaFor} onClose={() => setMetaFor(null)} onDone={(t) => { setMetaFor(null); setFlash(t); void load() }} />}
       {connectFor && <ConnectForm channel={connectFor} onClose={() => setConnectFor(null)} onDone={(t) => { setConnectFor(null); setFlash(t); void load() }} />}
       {configFor && <ConfigForm conn={configFor} spec={specOf(configFor.channel)} onClose={() => setConfigFor(null)} onDone={(t) => { setConfigFor(null); setFlash(t); void load() }} />}
@@ -237,8 +237,8 @@ const META_STEPS: Array<[string, string, string?]> = [
   ['Gere o token', '“Gerar novo token” › escolha o app › validade “Nunca” › marque pages_show_list, pages_read_engagement, pages_manage_posts, instagram_basic e instagram_content_publish › Gerar. Copie o token.'],
 ]
 
-/** MASTER: cadastra o app da plataforma (client key/segredo) e já abre o login do canal. */
-function AppConnectForm({ channel, onClose }: { channel: Channel; onClose: () => void }) {
+/** Cadastra o app do canal (client key/segredo) e já abre o login. MASTER = app da plataforma; loja = app próprio dela. */
+function AppConnectForm({ channel, master, onClose }: { channel: Channel; master: boolean; onClose: () => void }) {
   const cfg = APP_FORM[channel.id]
   const [clientId, setClientId] = useState('')
   const [secret, setSecret] = useState('')
@@ -254,7 +254,7 @@ function AppConnectForm({ channel, onClose }: { channel: Channel; onClose: () =>
     } catch (e) { setErr((e as Error).message); setBusy(false) }
   }
   return (
-    <Drawer open onClose={onClose} title={`Conectar ${channel.name}`} subtitle="Aplicativo da plataforma (vale para todas as lojas)">
+    <Drawer open onClose={onClose} title={`Conectar ${channel.name}`} subtitle={master ? 'Aplicativo da plataforma (vale para todas as lojas)' : 'Aplicativo da sua loja (client key e secret do seu app)'}>
       <div className="space-y-4 text-sm text-gray-700">
         <ol className="space-y-2">
           {cfg.steps.map((t, i) => (
@@ -269,7 +269,7 @@ function AppConnectForm({ channel, onClose }: { channel: Channel; onClose: () =>
           <label className="block text-xs text-gray-600">{cfg.keyLabel}<input className={inputCls} autoComplete="off" spellCheck={false} value={clientId} onChange={(e) => setClientId(e.target.value)} /></label>
           <label className="block text-xs text-gray-600">{cfg.secretLabel}<input className={inputCls} type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} /></label>
         </div>
-        <p className="text-[11px] text-gray-500">Conferimos os dados com o {channel.name} antes de salvar. O segredo fica cifrado no servidor (o mesmo de Master › Integrações). Depois de salvar, abre o login do {channel.name} para conectar a conta da loja.</p>
+        <p className="text-[11px] text-gray-500">Conferimos os dados com o {channel.name} antes de salvar. O segredo fica cifrado no servidor. Depois de salvar, abre o login do {channel.name} para conectar a conta da loja.</p>
         {err && <ErrorNote message={err} />}
         <div className="flex justify-end gap-2"><button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button><button onClick={submit} disabled={busy || !clientId.trim() || !secret.trim()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />}Salvar e conectar</button></div>
       </div>

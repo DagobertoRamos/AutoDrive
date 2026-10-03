@@ -32,7 +32,7 @@ async function ensureToken(ctx: ConnectorContext, force = false): Promise<string
   const exp = Number(ctx.secrets.expires_at ?? 0)
   if (!force && ctx.secrets.access_token && exp - ctx.now().getTime() > REFRESH_BEFORE_MS) return ctx.secrets.access_token
   if (!ctx.secrets.refresh_token) throw new ConnectorError('AUTH', 'Autorização da Mobiauto ausente.', 'Conecte a conta em Canais conectados.')
-  const app = await getPlatformApp('MOBIAUTO')
+  const app = await getPlatformApp('MOBIAUTO', ctx.connection.tenantId)
   if (!app) throw new ConnectorError('CONFIG', 'App da Mobiauto não cadastrado na plataforma.', 'O MASTER cadastra em Master › Integrações (Publicações — Mobiauto).')
   const res = await ctx.http.request({
     method: 'POST', url: `${MOBIAUTO_AUTH}/token`, headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

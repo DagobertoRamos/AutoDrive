@@ -1,15 +1,17 @@
 // =============================================================================
-// POST /api/publications/platform-app — cadastra o app OAuth DA PLATAFORMA
-// (client key/segredo) direto da tela Canais conectados, sem ir ao Master.
-// Só MASTER: o app é do AutoDrive e vale para todas as lojas. Grava no mesmo
-// lugar de Master › Integrações (IntegrationCredential PUB_*, segredo cifrado),
-// testa pelo meio oficial do canal e devolve o link para entrar com a conta.
+// POST /api/publications/platform-app — cadastra o app OAuth do canal
+// (client key/segredo) direto da tela Canais conectados.
+//   • MASTER: app DA PLATAFORMA (todas as lojas) — mesmo lugar de Master ›
+//     Integrações (IntegrationCredential PUB_*, segredo cifrado).
+//   • Loja (quem gerencia conexões): app PRÓPRIO da loja, que vale antes do
+//     da plataforma só para ela (SystemSetting t:<loja>:pubapp:<canal>, cifrado).
+// Testa pelo meio oficial do canal antes de gravar e devolve o link de login.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { audit, bad, pubAuth } from '@/lib/publications/api'
-import { clearPlatformAppCache, sealIfPublication, testPlatformApp, type PlatformChannel } from '@/lib/publications/platform-apps'
+import { clearPlatformAppCache, saveTenantApp, sealIfPublication, testPlatformApp, type PlatformChannel } from '@/lib/publications/platform-apps'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +25,6 @@ const SERVICE: Partial<Record<PlatformChannel, { service: string; name: string; 
 export async function POST(req: Request) {
   const a = await pubAuth(req, 'marketing.publications.connections')
   if (a instanceof NextResponse) return a
-  if (a.user.role !== 'MASTER') return bad('Só o MASTER cadastra o aplicativo da plataforma. Peça ao suporte AutoDrive.', 403)
   const b = (await req.json().catch(() => ({}))) as { channel?: string; clientId?: string; clientSecret?: string }
   const def = SERVICE[String(b.channel ?? '') as PlatformChannel]
   if (!def) return bad('Canal sem aplicativo de plataforma.')
@@ -35,6 +36,12 @@ export async function POST(req: Request) {
   const test = await testPlatformApp(def.service, clientId, sealed)
   // App recusado não é gravado: o botão "Conectar" levaria a um login que falha.
   if (!test.ok) return bad(test.message)
+  const start = `/api/publications/oauth/${def.slug}/start`
+  if (a.user.role !== 'MASTER') {
+    await saveTenantApp(a.tenantId, b.channel as PlatformChannel, clientId, secret)
+    await audit(a, 'UPDATE', 'PublicationApp', b.channel ?? null, { canal: b.channel, escopo: 'loja' })
+    return NextResponse.json({ success: true, ok: true, message: test.message, start })
+  }
   const now = new Date()
   const existing = await prisma.integrationCredential.findFirst({ where: { service: def.service }, orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }] })
   const data = { apiKey: clientId, apiSecret: sealed, active: true, isDefault: true, lastTestedAt: now, lastTestOk: true, lastTestMsg: test.message }
@@ -43,5 +50,5 @@ export async function POST(req: Request) {
     : await prisma.integrationCredential.create({ data: { service: def.service, name: def.name, createdById: a.user.id, ...data } })
   clearPlatformAppCache()
   await audit(a, 'UPDATE', 'IntegrationCredential', cred.id, { service: def.service, origem: 'Canais conectados', testeOk: test.ok })
-  return NextResponse.json({ success: true, ok: true, message: test.message, start: `/api/publications/oauth/${def.slug}/start` })
+  return NextResponse.json({ success: true, ok: true, message: test.message, start })
 }

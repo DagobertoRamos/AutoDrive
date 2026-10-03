@@ -10,7 +10,7 @@ import { decrypt, encrypt } from '@/lib/crypto'
 import { createHttpClient, type HttpClient } from './connectors/http'
 
 export type PlatformChannel = 'MERCADO_LIVRE' | 'OLX' | 'META' | 'MOBIAUTO' | 'TIKTOK'
-export interface PlatformApp { clientId: string; clientSecret: string; source: 'master' | 'env' }
+export interface PlatformApp { clientId: string; clientSecret: string; source: 'tenant' | 'master' | 'env' }
 
 const SERVICE: Record<PlatformChannel, string> = { MERCADO_LIVRE: 'PUB_MERCADO_LIVRE', OLX: 'PUB_OLX', META: 'PUB_META', MOBIAUTO: 'PUB_MOBIAUTO', TIKTOK: 'PUB_TIKTOK' }
 const ENV: Record<PlatformChannel, [string, string]> = { MERCADO_LIVRE: ['ML_CLIENT_ID', 'ML_CLIENT_SECRET'], OLX: ['OLX_CLIENT_ID', 'OLX_CLIENT_SECRET'], META: ['META_APP_ID', 'META_APP_SECRET'], MOBIAUTO: ['MOBIAUTO_CLIENT_ID', 'MOBIAUTO_CLIENT_SECRET'], TIKTOK: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET'] }
@@ -21,14 +21,38 @@ export function sealIfPublication(service: string, value: string | null): string
   return encrypt(value)
 }
 
-const cache = new Map<PlatformChannel, { v: PlatformApp | null; exp: number }>()
+const cache = new Map<string, { v: PlatformApp | null; exp: number }>()
 export function clearPlatformAppCache() { cache.clear() }
 
-export async function getPlatformApp(channel: PlatformChannel): Promise<PlatformApp | null> {
-  const hit = cache.get(channel)
+/** Chave do app PRÓPRIO da loja (a loja cadastra o app dela; vale antes do app da plataforma). */
+export const tenantAppKey = (tenantId: string, channel: PlatformChannel) => `t:${tenantId}:pubapp:${channel}`
+
+/** Grava o app próprio da loja (segredo cifrado). */
+export async function saveTenantApp(tenantId: string, channel: PlatformChannel, clientId: string, clientSecret: string): Promise<void> {
+  const key = tenantAppKey(tenantId, channel)
+  const value = JSON.stringify({ clientId, secret: encrypt(clientSecret) })
+  await prisma.systemSetting.upsert({ where: { key }, create: { key, tenantId, value, group: 'publications', description: `App ${channel} da loja (Central de Publicações)` }, update: { value } })
+  clearPlatformAppCache()
+}
+
+/**
+ * App OAuth do canal: o da loja (quando `tenantId` e ela cadastrou um), senão
+ * o da plataforma (Master › Integrações) ou as variáveis de ambiente.
+ */
+export async function getPlatformApp(channel: PlatformChannel, tenantId?: string | null): Promise<PlatformApp | null> {
+  const ck = `${channel}|${tenantId ?? ''}`
+  const hit = cache.get(ck)
   if (hit && hit.exp > Date.now()) return hit.v
   let v: PlatformApp | null = null
-  try {
+  if (tenantId) {
+    try {
+      const row = await prisma.systemSetting.findUnique({ where: { key: tenantAppKey(tenantId, channel) } })
+      const j = row ? (JSON.parse(row.value) as { clientId?: string; secret?: string }) : null
+      const sec = j?.secret ? decrypt(j.secret) : ''
+      if (j?.clientId && sec) v = { clientId: j.clientId.trim(), clientSecret: sec.trim(), source: 'tenant' }
+    } catch { /* sem app da loja: usa o da plataforma */ }
+  }
+  if (!v) try {
     const row = await prisma.integrationCredential.findFirst({ where: { service: SERVICE[channel], active: true }, orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }] })
     const secret = row?.apiSecret ? decrypt(row.apiSecret) : ''
     if (row?.apiKey && secret) v = { clientId: row.apiKey.trim(), clientSecret: secret.trim(), source: 'master' }
@@ -38,7 +62,7 @@ export async function getPlatformApp(channel: PlatformChannel): Promise<Platform
     const id = process.env[idK]; const sec = process.env[secK]
     if (id && sec) v = { clientId: id, clientSecret: sec, source: 'env' }
   }
-  cache.set(channel, { v, exp: Date.now() + 60_000 })
+  cache.set(ck, { v, exp: Date.now() + 60_000 })
   return v
 }
 

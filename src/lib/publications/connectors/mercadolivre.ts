@@ -51,7 +51,7 @@ export function mlError(res: HttpResponse, what: string): ConnectorError | null 
 async function ensureToken(ctx: ConnectorContext, force = false): Promise<string> {
   const exp = Number(ctx.secrets.expires_at ?? 0)
   if (!force && ctx.secrets.access_token && exp - ctx.now().getTime() > REFRESH_BEFORE_MS) return ctx.secrets.access_token
-  const app = await getPlatformApp('MERCADO_LIVRE')
+  const app = await getPlatformApp('MERCADO_LIVRE', ctx.connection.tenantId)
   if (!app) throw new ConnectorError('CONFIG', 'App do Mercado Livre não configurado na plataforma.', 'O MASTER cadastra o app em Master › Integrações (Publicações — Mercado Livre).')
   const { clientId, clientSecret } = app
   if (!ctx.secrets.refresh_token) throw new ConnectorError('AUTH', 'Autorização do Mercado Livre ausente.', 'Conecte a conta em Canais conectados.')
