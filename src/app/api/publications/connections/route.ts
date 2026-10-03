@@ -19,6 +19,7 @@ import { CHANNELS, channelSpec, isPublishable } from '@/lib/publications/channel
 import { isConnectorError } from '@/lib/publications/errors'
 import { getConnector } from '@/lib/publications/connectors'
 import { connectMetaByToken, oauthConfigured } from '@/lib/publications/oauth'
+import { getPlatformApp } from '@/lib/publications/platform-apps'
 import { ensureSiteConnection, logEvent, maskHint, releaseBlockedJobs, sealSecrets } from '@/lib/publications/service'
 import { connectorContext } from '@/lib/publications/worker'
 import { audit, bad, kickWorker, permissions, pubAuth } from '@/lib/publications/api'
@@ -43,6 +44,8 @@ export async function GET(req: Request) {
       oauth, can: await permissions(a.user),
       // MASTER cadastra o app da plataforma direto daqui (client key/segredo).
       master: a.user.role === 'MASTER',
+      // Origem do app de cada canal OAuth: 'tenant' (chaves da loja), 'master'/'env' (plataforma) ou null.
+      appSource: Object.fromEntries(await Promise.all((['MERCADO_LIVRE', 'OLX', 'MOBIAUTO', 'TIKTOK'] as const).map(async (k) => [k, (await getPlatformApp(k, a.tenantId))?.source ?? null]))),
     },
   })
 }

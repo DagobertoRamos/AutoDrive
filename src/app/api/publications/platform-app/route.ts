@@ -11,7 +11,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { audit, bad, pubAuth } from '@/lib/publications/api'
-import { clearPlatformAppCache, saveTenantApp, sealIfPublication, testPlatformApp, type PlatformChannel } from '@/lib/publications/platform-apps'
+import { clearPlatformAppCache, deleteTenantApp, saveTenantApp, sealIfPublication, testPlatformApp, type PlatformChannel } from '@/lib/publications/platform-apps'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,4 +51,20 @@ export async function POST(req: Request) {
   clearPlatformAppCache()
   await audit(a, 'UPDATE', 'IntegrationCredential', cred.id, { service: def.service, origem: 'Canais conectados', testeOk: test.ok })
   return NextResponse.json({ success: true, ok: true, message: test.message, start })
+}
+
+/** DELETE ?channel=TIKTOK — remove as chaves do app da loja (MASTER: desativa também o app da plataforma). */
+export async function DELETE(req: Request) {
+  const a = await pubAuth(req, 'marketing.publications.connections')
+  if (a instanceof NextResponse) return a
+  const channel = new URL(req.url).searchParams.get('channel') ?? ''
+  const def = SERVICE[channel as PlatformChannel]
+  if (!def) return bad('Canal sem aplicativo de plataforma.')
+  await deleteTenantApp(a.tenantId, channel as PlatformChannel)
+  if (a.user.role === 'MASTER') {
+    await prisma.integrationCredential.updateMany({ where: { service: def.service }, data: { active: false } })
+    clearPlatformAppCache()
+  }
+  await audit(a, 'DELETE', 'PublicationApp', channel, { canal: channel, escopo: a.user.role === 'MASTER' ? 'plataforma' : 'loja' })
+  return NextResponse.json({ success: true, ok: true, message: 'Chaves do app removidas.' })
 }

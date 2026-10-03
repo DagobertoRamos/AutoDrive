@@ -35,6 +35,12 @@ export async function saveTenantApp(tenantId: string, channel: PlatformChannel, 
   clearPlatformAppCache()
 }
 
+/** Remove o app próprio da loja (volta a valer o da plataforma, se houver). */
+export async function deleteTenantApp(tenantId: string, channel: PlatformChannel): Promise<void> {
+  await prisma.systemSetting.deleteMany({ where: { key: tenantAppKey(tenantId, channel) } })
+  clearPlatformAppCache()
+}
+
 /**
  * App OAuth do canal: o da loja (quando `tenantId` e ela cadastrou um), senão
  * o da plataforma (Master › Integrações) ou as variáveis de ambiente.

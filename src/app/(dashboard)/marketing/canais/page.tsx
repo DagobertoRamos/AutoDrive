@@ -58,7 +58,7 @@ export default function ChannelsPage() {
 
 function Channels() {
   const params = useSearchParams()
-  const [data, setData] = useState<{ channels: Channel[]; connections: Connection[]; oauth: Record<string, boolean>; can: any; master?: boolean } | null>(null)
+  const [data, setData] = useState<{ channels: Channel[]; connections: Connection[]; oauth: Record<string, boolean>; can: any; master?: boolean; appSource?: Record<string, string | null> } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(() => params.get('ok') ? { ok: true, text: params.get('ok')! } : params.get('erro') ? { ok: false, text: params.get('erro')! } : null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -83,6 +83,13 @@ function Channels() {
     if (!confirm(`Desconectar ${c.label}?\n\nEnvios pendentes serão cancelados. Anúncios já publicados CONTINUAM no portal e deixam de ser atualizados ou retirados automaticamente.`)) return
     setBusy(c.id)
     try { const j = await api(`/api/publications/connections/${c.id}`, { method: 'DELETE' }); setFlash({ ok: true, text: `${c.label} desconectada. ${j.message}` }) } catch (e) { setFlash({ ok: false, text: (e as Error).message }) } finally { setBusy(null); void load() }
+  }
+  const disconnectChannel = async (ch: Channel) => {
+    const list = (data?.connections ?? []).filter((c) => c.channel === ch.id && c.status !== 'NAO_CONECTADO')
+    if (!list.length) return
+    if (!confirm(`Desconectar ${list.length > 1 ? `as ${list.length} contas` : 'a conta'} de ${ch.name} (${list.map((c) => c.label).join(', ')})?\n\nEnvios pendentes serão cancelados. Anúncios já publicados CONTINUAM no canal e deixam de ser atualizados ou retirados automaticamente.`)) return
+    setBusy(ch.id); setFlash(null)
+    try { for (const c of list) await api(`/api/publications/connections/${c.id}`, { method: 'DELETE' }); setFlash({ ok: true, text: `${ch.name} desconectado.` }) } catch (e) { setFlash({ ok: false, text: (e as Error).message }) } finally { setBusy(null); void load() }
   }
   const startConnect = (ch: Channel) => {
     if (ch.connect === 'OAUTH') {
@@ -152,12 +159,16 @@ function Channels() {
             <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
               {catalog.map((ch) => {
                 const dev = DEV[ch.devStatus]; const connected = data.connections.filter((c) => c.channel === ch.id && c.status === 'CONECTADO').length
+                const linked = data.connections.filter((c) => c.channel === ch.id && c.status !== 'NAO_CONECTADO').length
+                const reconnect = data.connections.some((c) => c.channel === ch.id && c.status === 'RECONECTAR')
+                const hasApp = !!APP_FORM[ch.id] && !!data.appSource?.[OAUTH_KEY[ch.id]]
                 return (
                   <li key={ch.id} className="flex flex-col rounded-xl border border-gray-200 bg-white p-3">
                     <div className="flex items-start gap-2">
                       <ChannelMark channel={ch.id} />
                       <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-gray-900">{ch.name}</p><p className="text-[11px] text-gray-500">{ch.mechanism === 'FEED' ? 'Feed consultado pelo portal' : ch.mechanism === 'MANUAL' ? 'Publicação manual' : ch.mechanism === 'INTERNO' ? 'Integrado' : ch.mechanism === 'A_DEFINIR' ? 'Mecanismo a definir' : `Envio por ${ch.mechanism === 'WEBSERVICE' ? 'webservice' : 'API'}`} · verificado: {VERIFIED[ch.verified]}</p></div>
-                      <StatusPill tone={dev.tone} label={dev.label} />
+                      {/* Conta da loja ligada vale mais que a fase do conector: mostra a situação real. */}
+                      {connected ? <StatusPill tone="success" label="Conectado" /> : reconnect ? <StatusPill tone="danger" label="Reconectar" /> : <StatusPill tone={dev.tone} label={dev.label} />}
                     </div>
                     {ch.mechanism !== 'MANUAL' && <div className="mt-2 flex flex-wrap gap-1">{Object.entries(ch.capabilities).filter(([k]) => ['publish', 'get', 'update', 'pause', 'remove'].includes(k)).map(([k, v]) => <span key={k} className={cn('rounded px-1.5 py-0.5 text-[10px]', v === 'SIM' ? 'bg-green-50 text-green-700' : v === 'MANUAL' ? 'bg-amber-50 text-amber-700' : v === 'NAO' ? 'bg-gray-100 text-gray-400 line-through' : 'bg-gray-50 text-gray-400')}>{CAP[k]}</span>)}</div>}
                     <p className="mt-2 flex-1 text-[11px] text-gray-500">{ch.source.notes}</p>
@@ -166,6 +177,8 @@ function Channels() {
                         ? <button onClick={() => startConnect(ch)} className="btn-secondary px-2 py-1 text-xs"><AlertTriangle size={13} className="text-amber-600" />Como conectar</button>
                         : <button onClick={() => startConnect(ch)} className="btn-primary px-2 py-1 text-xs"><Plug size={13} />{connected ? 'Conectar outra conta' : 'Conectar'}</button>)}
                       {connected > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-green-700"><CheckCircle2 size={12} />{connected} conectada(s)</span>}
+                      {data.can.connections && hasApp && <button onClick={() => setAppFor(ch)} className="btn-secondary px-2 py-1 text-xs"><Settings2 size={13} />Chaves do app</button>}
+                      {data.can.connections && linked > 0 && ch.id !== 'SITE' && <button onClick={() => disconnectChannel(ch)} disabled={busy === ch.id} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50">{busy === ch.id ? <Loader2 size={13} className="animate-spin" /> : <Unplug size={13} />}Desconectar</button>}
                       <button onClick={() => setDiag(ch)} className="ml-auto text-[11px] font-medium text-brand-700 hover:underline">Detalhes técnicos</button>
                     </div>
                   </li>
@@ -186,7 +199,7 @@ function Channels() {
           </div>
         </Drawer>
       )}
-      {appFor && <AppConnectForm channel={appFor} master={!!data?.master} onClose={() => setAppFor(null)} />}
+      {appFor && <AppConnectForm channel={appFor} master={!!data?.master} source={data?.appSource?.[OAUTH_KEY[appFor.id]] ?? null} onClose={() => setAppFor(null)} onRemoved={(t) => { setAppFor(null); setFlash(t); void load() }} />}
       {metaFor && <MetaConnectForm channel={metaFor} onClose={() => setMetaFor(null)} onDone={(t) => { setMetaFor(null); setFlash(t); void load() }} />}
       {connectFor && <ConnectForm channel={connectFor} onClose={() => setConnectFor(null)} onDone={(t) => { setConnectFor(null); setFlash(t); void load() }} />}
       {configFor && <ConfigForm conn={configFor} spec={specOf(configFor.channel)} onClose={() => setConfigFor(null)} onDone={(t) => { setConfigFor(null); setFlash(t); void load() }} />}
@@ -238,7 +251,7 @@ const META_STEPS: Array<[string, string, string?]> = [
 ]
 
 /** Cadastra o app do canal (client key/segredo) e já abre o login. MASTER = app da plataforma; loja = app próprio dela. */
-function AppConnectForm({ channel, master, onClose }: { channel: Channel; master: boolean; onClose: () => void }) {
+function AppConnectForm({ channel, master, source, onClose, onRemoved }: { channel: Channel; master: boolean; source: string | null; onClose: () => void; onRemoved: (f: { ok: boolean; text: string }) => void }) {
   const cfg = APP_FORM[channel.id]
   const [clientId, setClientId] = useState('')
   const [secret, setSecret] = useState('')
@@ -246,6 +259,11 @@ function AppConnectForm({ channel, master, onClose }: { channel: Channel; master
   const [err, setErr] = useState<string | null>(null)
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const redirect = `${origin}/api/publications/oauth/${OAUTH_SLUG[channel.id]}/callback`
+  const remove = async () => {
+    if (!confirm(`Remover as chaves do app ${channel.name}? As contas já conectadas param de renovar o acesso até você salvar chaves novas.`)) return
+    setBusy(true); setErr(null)
+    try { const j = await api(`/api/publications/platform-app?channel=${OAUTH_KEY[channel.id]}`, { method: 'DELETE' }); onRemoved({ ok: true, text: `${channel.name}: ${j.message}` }) } catch (e) { setErr((e as Error).message); setBusy(false) }
+  }
   const submit = async () => {
     setBusy(true); setErr(null)
     try {
@@ -256,6 +274,7 @@ function AppConnectForm({ channel, master, onClose }: { channel: Channel; master
   return (
     <Drawer open onClose={onClose} title={`Conectar ${channel.name}`} subtitle={master ? 'Aplicativo da plataforma (vale para todas as lojas)' : 'Aplicativo da sua loja (client key e secret do seu app)'}>
       <div className="space-y-4 text-sm text-gray-700">
+        {source && <p className="rounded-lg bg-green-50 px-3 py-2 text-xs text-green-800">Já há chaves salvas ({source === 'tenant' ? 'app da loja' : 'app da plataforma'}). Cole chaves novas para trocar (ex.: Sandbox ↔ Produção) ou remova.</p>}
         <ol className="space-y-2">
           {cfg.steps.map((t, i) => (
             <li key={i} className="flex gap-2">
@@ -271,7 +290,12 @@ function AppConnectForm({ channel, master, onClose }: { channel: Channel; master
         </div>
         <p className="text-[11px] text-gray-500">Conferimos os dados com o {channel.name} antes de salvar. O segredo fica cifrado no servidor. Depois de salvar, abre o login do {channel.name} para conectar a conta da loja.</p>
         {err && <ErrorNote message={err} />}
-        <div className="flex justify-end gap-2"><button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button><button onClick={submit} disabled={busy || !clientId.trim() || !secret.trim()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />}Salvar e conectar</button></div>
+        <div className="flex flex-wrap justify-end gap-2">
+          {source && (source === 'tenant' || master) && <button onClick={remove} disabled={busy} className="mr-auto inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50"><Unplug size={13} />Remover chaves</button>}
+          {source && <button onClick={() => window.location.assign(`/api/publications/oauth/${OAUTH_SLUG[channel.id]}/start`)} disabled={busy} className="btn-secondary px-3 py-1.5 text-xs"><Plug size={13} />Conectar com as chaves salvas</button>}
+          <button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button>
+          <button onClick={submit} disabled={busy || !clientId.trim() || !secret.trim()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />}Salvar e conectar</button>
+        </div>
       </div>
     </Drawer>
   )
