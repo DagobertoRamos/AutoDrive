@@ -14,7 +14,7 @@ import { graph, graphBase, graphError, rupload, waitContainer } from '../connect
 import type { ConnectorContext } from '../connectors/types'
 import { creatorInfo, pickPrivacy, tiktokPhotos, tiktokResult, tiktokStatus, tiktokVideo } from '../connectors/tiktok'
 import { socialName } from '../channels'
-import { mediaUrlFor } from '../media-token'
+import { mediaUrlFor, videoUrlFor } from '../media-token'
 import { connectorContext, type WorkerDeps } from '../worker'
 import { avulsaChannels, blobBelongsTo, FACEBOOK_ONLY, overallStatus, plainCaption, sanitizeMedia, validateAvulsa, type AvulsaFormat, type AvulsaMedia, type AvulsaResult, type BrandMark } from './avulsa-core'
 import { downloadToFile, downloadVideoLink, probeVideo, toReels, type ReelsExtras } from './video'
@@ -127,11 +127,23 @@ export async function createAvulsa(tenantId: string, i: AvulsaInput, actor: { id
 
 // ── Publicação ───────────────────────────────────────────────────────────────
 
-async function igResumable(ctx: ConnectorContext, params: Record<string, string>, bytes: Uint8Array, what: string): Promise<string> {
+async function igResumable(ctx: ConnectorContext, params: Record<string, string>, bytes: Uint8Array, what: string, videoUrl?: () => Promise<string>): Promise<string> {
   const c = await graph<{ id: string }>(ctx, 'POST', `/${ctx.connection.externalAccountId}/media`, { ...params, upload_type: 'resumable' }, what)
   const up = await ctx.http.request({ method: 'POST', url: `https://rupload.facebook.com/ig-api-upload/${graphBase().split('/').pop()}/${c.id}`, headers: { Authorization: `OAuth ${ctx.secrets.page_access_token}`, offset: '0', file_size: String(bytes.length), 'Content-Type': 'application/octet-stream' }, body: bytes, timeoutMs: 180_000 })
-  if (up.status < 200 || up.status >= 300) throw graphError(up, `${what} (envio)`) ?? new ConnectorError('UNAVAILABLE', `${what}: HTTP ${up.status}`)
-  return c.id
+  if (up.status >= 200 && up.status < 300) return c.id
+  // O envio do arquivo devolve o motivo em debug_info (não em error) — antes só aparecia "HTTP 400".
+  const dbg = up.json<{ debug_info?: { message?: string; type?: string } }>()?.debug_info
+  const err = graphError(up, dbg?.message ? `${what} (envio): ${dbg.message}${dbg.type ? ` (${dbg.type})` : ''}` : `${what} (envio)`) ?? new ConnectorError('UNAVAILABLE', `${what}: HTTP ${up.status}`)
+  // Recusa do envio direto: o Instagram baixa o mesmo vídeo pelo nosso link.
+  if (videoUrl && up.status >= 400 && up.status < 500) {
+    try {
+      const alt = await graph<{ id: string }>(ctx, 'POST', `/${ctx.connection.externalAccountId}/media`, { ...params, video_url: await videoUrl() }, `${what} (link)`)
+      return alt.id
+    } catch (e) {
+      throw new ConnectorError(err.kind, `${err.message} · alternativa por link: ${(e as Error).message}`.slice(0, 400), err.hint, err.opts)
+    }
+  }
+  throw err
 }
 
 async function igPublish(ctx: ConnectorContext, creation: string): Promise<AvulsaResult> {
@@ -140,7 +152,7 @@ async function igPublish(ctx: ConnectorContext, creation: string): Promise<Avuls
   return { state: 'PUBLICADO', remoteId: media.id, remoteUrl: j.permalink ?? null }
 }
 
-interface Prepared { images: string[]; link: string | null; video: () => Promise<Uint8Array> }
+interface Prepared { images: string[]; link: string | null; video: () => Promise<Uint8Array>; /** Link público (assinado) do mesmo vídeo pronto — envio alternativo. */ videoUrl?: () => Promise<string> }
 
 async function publishTo(channel: string, ctx: ConnectorContext, format: AvulsaFormat, caption: string, m: Prepared): Promise<AvulsaResult> {
   const acc = ctx.connection.externalAccountId
@@ -171,7 +183,7 @@ async function publishTo(channel: string, ctx: ConnectorContext, format: AvulsaF
       await waitContainer(ctx, c); return igPublish(ctx, c)
     }
     const bytes = await m.video()
-    const c = await igResumable(ctx, format === 'STORY' ? { media_type: 'STORIES' } : { media_type: 'REELS', caption, share_to_feed: 'true' }, bytes, format === 'STORY' ? 'Instagram (story em vídeo)' : 'Instagram (Reels)')
+    const c = await igResumable(ctx, format === 'STORY' ? { media_type: 'STORIES' } : { media_type: 'REELS', caption, share_to_feed: 'true' }, bytes, format === 'STORY' ? 'Instagram (story em vídeo)' : 'Instagram (Reels)', m.videoUrl)
     return { state: 'EM_ANALISE', pendingToken: c }
   }
   // Página do Facebook
@@ -246,10 +258,16 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
     const media = sanitizeMedia(post.media)
     const origin = (deps.origin ?? process.env.NEXTAUTH_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
     let videoCache: Promise<Uint8Array> | null = null
+    let videoUrlCache: Promise<string> | null = null
     const prepared: Prepared = {
       images: media.flatMap((m) => (m.type === 'image' ? [mediaUrlFor(origin, post.tenantId, `/api/site/assets/${m.assetId}`, { now })] : [])),
       link: media.find((m) => m.type === 'link')?.type === 'link' ? (media.find((m) => m.type === 'link') as { url: string }).url : null,
       video: () => (videoCache ??= (async () => { const v = media.find((m) => m.type === 'video'); if (!v || v.type !== 'video') throw new ConnectorError('VALIDATION', 'Sem vídeo.'); return assembleVideo(post.tenantId, v) })()),
+      videoUrl: () => (videoUrlCache ??= (async () => {
+        const mp4 = await prepared.video()
+        const a = await prisma.siteAsset.create({ data: { tenantId: post.tenantId, kind: 'SOCIAL_VIDEO', mimeType: 'video/mp4', fileSize: mp4.length, width: 1080, height: 1920, sha256: createHash('sha256').update(mp4).digest('hex'), data: new Uint8Array(mp4) }, select: { id: true } })
+        return videoUrlFor(origin, post.tenantId, a.id, { now })
+      })()),
     }
     let lastError: string | null = null
     let transient = false
@@ -280,10 +298,88 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
         ...(status === 'PUBLICADO' || status === 'PARCIAL' ? { publishedAt: now } : {}),
       },
     })
-    // Terminou (sem nada processando): os pedaços do vídeo não servem mais.
-    if (!pendingOrRetry) await deleteVideoParts(post.tenantId, media)
+    // Publicado em todas as redes: o vídeo não serve mais. Com falha, fica
+    // guardado para "Tentar de novo" e "Baixar" (limpeza após KEEP_FAILED_DAYS).
+    if (!pendingOrRetry && status === 'PUBLICADO') await deleteVideoParts(post.tenantId, media)
   }
   return { processed }
+}
+
+/** Dias que o vídeo de um post com falha fica guardado para reenviar/baixar. */
+export const KEEP_FAILED_DAYS = 7
+/** Posts cujo vídeo ainda é necessário: pendentes ou com falha recente. */
+const KEEP_VIDEO_WHERE = () => ({
+  OR: [
+    { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } },
+    { status: { in: ['FALHA', 'PARCIAL'] }, updatedAt: { gte: new Date(Date.now() - KEEP_FAILED_DAYS * 86_400_000) } },
+  ],
+})
+
+/** O vídeo do post ainda está guardado? (pedaços completos ou arquivo no armazenamento) */
+export async function videoAvailable(tenantId: string, media: AvulsaMedia[]): Promise<boolean> {
+  for (const m of media) {
+    if (m.type !== 'video') continue
+    if ('uploadId' in m && !(await partsReady(tenantId, m))) return false
+    if ('blobUrl' in m) {
+      if (!/\.private\.blob\./.test(m.blobUrl)) continue
+      try {
+        const r = await (await import('@vercel/blob')).head(m.blobUrl, (await import('./blob-token')).blobAuth())
+        if (!r) return false
+      } catch { return false }
+    }
+  }
+  return true
+}
+
+/**
+ * "Tentar de novo": volta para a fila só as redes que falharam (o que já foi
+ * publicado não é reenviado). Exige que a mídia ainda esteja guardada.
+ */
+export async function retryAvulsa(tenantId: string, id: string): Promise<{ ok: true; channels: number } | { ok: false; error: string }> {
+  const post = await prisma.socialPost.findFirst({ where: { id, tenantId } })
+  if (!post) return { ok: false, error: 'Post não encontrado.' }
+  if (!['FALHA', 'PARCIAL'].includes(post.status)) return { ok: false, error: 'Só posts com falha podem ser reenviados.' }
+  const results = { ...((post.results as Record<string, AvulsaResult> | null) ?? {}) }
+  const failed = Object.keys(results).filter((k) => results[k]?.state === 'FALHA')
+  if (!failed.length) return { ok: false, error: 'Nenhuma rede com falha neste post.' }
+  if (!(await videoAvailable(tenantId, sanitizeMedia(post.media)))) return { ok: false, error: 'O vídeo deste post não está mais guardado. Envie o vídeo de novo em Post avulso.' }
+  for (const k of failed) delete results[k]
+  await prisma.socialPost.update({
+    where: { id },
+    data: { status: 'AGENDADO', scheduledAt: new Date(), attempts: 0, lockedUntil: null, lastError: null, results: results as unknown as object },
+  })
+  return { ok: true, channels: failed.length }
+}
+
+/** Arquivo original de uma mídia do post (para baixar e postar fora). */
+export async function avulsaMediaFile(tenantId: string, media: AvulsaMedia): Promise<{ bytes: Uint8Array; mime: string; ext: string } | { redirect: string } | null> {
+  if (media.type === 'image') {
+    const a = await prisma.siteAsset.findFirst({ where: { id: media.assetId, tenantId }, select: { data: true, mimeType: true } })
+    return a ? { bytes: new Uint8Array(a.data), mime: a.mimeType ?? 'image/jpeg', ext: (a.mimeType ?? '').includes('png') ? 'png' : 'jpg' } : null
+  }
+  if (media.type === 'link') return { redirect: media.url }
+  if ('link' in media) return { redirect: media.link }
+  const dir = await mkdtemp(path.join(tmpdir(), 'avulsa-dl-'))
+  try {
+    const src = path.join(dir, 'video')
+    if ('blobUrl' in media) await blobToFile(media.blobUrl, src)
+    else {
+      if (!(await partsReady(tenantId, media))) return null
+      await writeFile(src, new Uint8Array())
+      for (let i = 0; i < media.parts; i++) {
+        const rows = await prisma.$queryRaw<{ b64: string }[]>`SELECT encode(data, 'base64') AS b64 FROM site_assets WHERE "tenantId" = ${tenantId} AND kind = ${VIDEO_PART_KIND} AND sha256 = ${partKey(media.uploadId, i)} LIMIT 1`
+        if (!rows[0]) return null
+        await appendFile(src, Buffer.from(rows[0].b64, 'base64'))
+      }
+    }
+    const name = ('name' in media && media.name) || ''
+    const ext = (/\.([a-z0-9]{2,4})$/i.exec(name)?.[1] ?? 'mp4').toLowerCase()
+    return { bytes: new Uint8Array(await readFile(src)), mime: ext === 'mov' ? 'video/quicktime' : 'video/mp4', ext }
+  } catch {
+    return null
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
 }
 
 /** Apaga os pedaços de vídeo de um post (publicado, com erro ou cancelado). */
@@ -348,7 +444,7 @@ export async function pruneVideoBlobs(now = new Date()): Promise<number> {
   if (!bt.blobMode()) return 0
   const auth = bt.blobAuth()
   const { list, del } = await import('@vercel/blob')
-  const active = await prisma.socialPost.findMany({ where: { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } }, select: { media: true } })
+  const active = await prisma.socialPost.findMany({ where: KEEP_VIDEO_WHERE(), select: { media: true } })
   const keep = new Set(active.flatMap((p) => sanitizeMedia(p.media).flatMap((m) => (m.type === 'video' && 'blobUrl' in m ? [m.blobUrl] : []))))
   const old: string[] = []
   let cursor: string | undefined
@@ -365,7 +461,7 @@ export async function pruneVideoBlobs(now = new Date()): Promise<number> {
 export async function pruneVideoParts(): Promise<number> {
   const old = await prisma.siteAsset.findMany({ where: { kind: VIDEO_PART_KIND, createdAt: { lt: new Date(Date.now() - 3 * 86_400_000) } }, select: { id: true, sha256: true }, take: 500 })
   if (!old.length) return 0
-  const active = await prisma.socialPost.findMany({ where: { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } }, select: { media: true } })
+  const active = await prisma.socialPost.findMany({ where: KEEP_VIDEO_WHERE(), select: { media: true } })
   const keep = new Set(active.flatMap((p) => sanitizeMedia(p.media).flatMap((m) => (m.type === 'video' && 'uploadId' in m ? [m.uploadId] : []))))
   const ids = old.filter((a) => !keep.has(a.sha256.split(':')[0])).map((a) => a.id)
   if (!ids.length) return 0

@@ -8,6 +8,7 @@ import { verifyMedia } from '@/lib/publications/media-token'
 import { MediaNotFound, renderVariant } from '@/lib/publications/media'
 import { readSiteAsset } from '@/lib/site/assets'
 import { artFromClaims, SOCIAL_VIDEO_KIND } from '@/lib/publications/social/studio'
+import { streamBytes } from '@/lib/http/stream-bytes'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,7 +24,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ file: string }
     if (claims.m === 'mp4') {
       const asset = await readSiteAsset(claims.a!)
       if (!asset || asset.tenantId !== claims.t || asset.kind !== SOCIAL_VIDEO_KIND) throw new MediaNotFound('Vídeo não encontrado.')
-      return new NextResponse(new Uint8Array(asset.data), { headers: { ...HEADERS, 'Content-Type': 'video/mp4', 'Content-Length': String(asset.data.length), 'Accept-Ranges': 'none' } })
+      return new NextResponse(streamBytes(new Uint8Array(asset.data)), { headers: { ...HEADERS, 'Content-Type': 'video/mp4', 'Content-Length': String(asset.data.length), 'Accept-Ranges': 'none' } })
     }
     const body = claims.x ? await artFromClaims(claims) : await renderVariant(claims)
     return new NextResponse(new Uint8Array(body), { headers: { ...HEADERS, 'Content-Type': 'image/jpeg', 'Content-Length': String(body.length) } })

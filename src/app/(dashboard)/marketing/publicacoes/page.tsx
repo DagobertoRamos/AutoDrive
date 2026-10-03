@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Eye, FileText, ImagePlus, Info, Loader2, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TrendingUp, Wand2, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Download, Eye, FileText, ImagePlus, Info, Loader2, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TrendingUp, Wand2, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, ChannelMark, DOT, Drawer, ErrorNote, PubTabs, STATUS_LABEL, STATUS_TONE } from '@/components/publications/ui'
 import { PublicationDetail } from '@/components/publications/PublicationDetail'
@@ -94,6 +94,7 @@ export default function PainelPage() {
     setBusy(c.key); setMsg(null)
     try {
       if (c.kind === 'ASSISTENTE') await api('/api/publications/wizard', { method: 'DELETE' })
+      else if (c.kind === 'AVULSO' && what === 'REENVIAR') await api(`/api/publications/avulsa/${c.postId}/retry`, { method: 'POST' })
       else if (c.kind === 'AVULSO') await api(`/api/publications/avulsa/${c.postId}`, { method: 'DELETE' })
       else {
         const ids = c.channels.filter((x) => x.pubId && (what === 'EXCLUIR' || FAILED.has(x.status))).map((x) => x.pubId!)
@@ -103,6 +104,25 @@ export default function PainelPage() {
       }
       setMsg({ ok: true, text: what === 'REENVIAR' ? 'Enviado de novo para a fila.' : 'Excluído.' })
       await load()
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+  }
+
+  const download = async (c: BoardCard) => {
+    if (!c.postId) return
+    setBusy(c.key); setMsg(null)
+    try {
+      const j = await api(`/api/publications/avulsa/${c.postId}/download`)
+      const { caption, files } = j.data as { caption: string; files: Array<{ index: number }> }
+      if (!files.length) throw new Error('Este post não tem arquivo para baixar.')
+      if (caption) await navigator.clipboard?.writeText(caption).catch(() => undefined)
+      for (const f of files) {
+        const a = document.createElement('a')
+        a.href = `/api/publications/avulsa/${c.postId}/download?i=${f.index}`
+        a.download = ''
+        document.body.appendChild(a); a.click(); a.remove()
+        await new Promise((r) => setTimeout(r, 400))
+      }
+      setMsg({ ok: true, text: caption ? 'Download iniciado. Legenda copiada.' : 'Download iniciado.' })
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
   }
 
@@ -172,7 +192,7 @@ export default function PainelPage() {
                   </header>
                   <div className="flex max-h-[68vh] min-h-[120px] flex-col gap-2 overflow-y-auto px-2 pb-2">
                     {!cards.length && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{col === 'atencao' ? 'Nenhum problema. 👍' : col === 'rascunhos' ? 'Nenhum rascunho.' : col === 'publicando' ? 'Nada saindo agora.' : 'Nada por aqui.'}</p>}
-                    {cards.map((c) => <Card key={c.key} c={c} col={col} tz={tz} can={can} busy={busy === c.key} onView={() => void view(c)} onResume={() => resume(c)} onRetry={() => void run(c, 'REENVIAR')} onDelete={() => void run(c, 'EXCLUIR')} onDetail={(id) => setDetail(id)} />)}
+                    {cards.map((c) => <Card key={c.key} c={c} col={col} tz={tz} can={can} busy={busy === c.key} onView={() => void view(c)} onResume={() => resume(c)} onRetry={() => void run(c, 'REENVIAR')} onDownload={() => void download(c)} onDelete={() => void run(c, 'EXCLUIR')} onDetail={(id) => setDetail(id)} />)}
                     {total > cards.length && LIST_STATUS[col] && <Link href={`/marketing/publicacoes/lista?status=${LIST_STATUS[col]}`} className="py-1 text-center text-[11px] font-medium text-brand-700 hover:underline">Ver todos ({total})</Link>}
                   </div>
                 </section>
@@ -213,9 +233,9 @@ function ChannelDot({ ch }: { ch: BoardChannel }) {
     : <span title={label} aria-label={label} className="relative inline-flex">{inner}</span>
 }
 
-function Card({ c, col, tz, can, busy, onView, onResume, onRetry, onDelete, onDetail }: { c: BoardCard; col: BoardColumn; tz: string; can: any; busy: boolean; onView: () => void; onResume: () => void; onRetry: () => void; onDelete: () => void; onDetail: (id: string) => void }) {
+function Card({ c, col, tz, can, busy, onView, onResume, onRetry, onDownload, onDelete, onDetail }: { c: BoardCard; col: BoardColumn; tz: string; can: any; busy: boolean; onView: () => void; onResume: () => void; onRetry: () => void; onDownload: () => void; onDelete: () => void; onDetail: (id: string) => void }) {
   const err = c.channels.find((x) => x.error && (FAILED.has(x.status) || x.status === 'ACAO_MANUAL'))
-  const failing = c.kind === 'VEICULO' && c.channels.some((x) => FAILED.has(x.status))
+  const failing = (c.kind === 'VEICULO' || c.kind === 'AVULSO') && c.channels.some((x) => FAILED.has(x.status))
   const manual = c.channels.find((x) => x.status === 'ACAO_MANUAL' && x.pubId)
   const Icon = c.kind === 'AVULSO' ? ImagePlus : c.kind === 'ASSISTENTE' ? Wand2 : FileText
   return (
@@ -239,6 +259,7 @@ function Card({ c, col, tz, can, busy, onView, onResume, onRetry, onDelete, onDe
             {c.kind !== 'ASSISTENTE' && <button type="button" onClick={onView} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Eye size={12} />Visualizar</button>}
             {col === 'rascunhos' && can.prepare && <button type="button" onClick={onResume} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Play size={12} />Retomar</button>}
             {failing && can.publish && <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><RotateCcw size={12} />Tentar de novo</button>}
+            {c.kind === 'AVULSO' && col !== 'rascunhos' && <button type="button" onClick={onDownload} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline" title="Baixar o arquivo original e copiar a legenda para postar fora"><Download size={12} />Baixar</button>}
             {c.kind === 'VEICULO' && c.vehicleId && <AdPackageButton vehicleId={c.vehicleId} title={c.title} className="font-medium" />}
             {manual && <button type="button" onClick={() => onDetail(manual.pubId!)} className="inline-flex items-center gap-1 font-medium text-amber-700 hover:underline"><AlertTriangle size={12} />Resolver</button>}
             {(can.publish || (c.kind === 'ASSISTENTE' && can.prepare)) && <button type="button" onClick={onDelete} className="ml-auto inline-flex items-center gap-1 text-gray-500 hover:text-red-700"><Trash2 size={12} />Excluir</button>}
