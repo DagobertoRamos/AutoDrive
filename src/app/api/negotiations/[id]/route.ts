@@ -15,6 +15,7 @@ import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negot
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { applyChildren, planChildren, planHasChanges } from '@/lib/negotiation/children-sync'
 import { BLOB_PREFIX, pendingFolder } from '@/lib/negotiation/storage'
+import { resolveDealManagerUserId } from '@/lib/negotiation/manager'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,6 +97,35 @@ export async function GET(
 
   if (!deal) {
     return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
+  }
+
+  // Negociações antigas sem gerente: preenche com o gerente do vendedor/unidade (uma vez).
+  if (!deal.managerId) {
+    const managerUserId = await resolveDealManagerUserId(prisma, { sellerId: deal.sellerId, unitId: deal.unitId }).catch(() => null)
+    if (managerUserId) {
+      await prisma.deal.update({ where: { id: deal.id }, data: { managerId: managerUserId } }).catch(() => undefined)
+      const u = await prisma.user.findUnique({ where: { id: managerUserId }, select: { id: true, name: true, email: true } })
+      Object.assign(deal, { managerId: managerUserId, manager: u })
+    }
+  }
+
+  // Edições antigas mudavam o valor de venda/compra sem atualizar o valor do
+  // veículo: alinha uma vez (o resumo e a aba Veículos mostravam o preço velho).
+  {
+    const price = deal.type === 'COMPRA' ? deal.purchaseAmount : deal.type === 'CONSIGNACAO' ? null : deal.saleAmount
+    const role = deal.type === 'COMPRA' ? 'COMPRADO' : 'VENDIDO'
+    // Só com UM veículo nesse papel (venda de vários carros tem valor por veículo).
+    const mains = deal.vehicles.filter((v) => v.role === role)
+    const main = mains.length === 1 ? mains[0] : null
+    const stale = price != null && mains.length <= 1 && (String(deal.vehicleValue ?? '') !== String(price) || (main && String(main.agreedValue ?? '') !== String(price)))
+    if (stale) {
+      await prisma.$transaction([
+        prisma.deal.update({ where: { id: deal.id }, data: { vehicleValue: price } }),
+        prisma.dealVehicle.updateMany({ where: { dealId: deal.id, role }, data: { agreedValue: price } }),
+      ]).catch(() => undefined)
+      Object.assign(deal, { vehicleValue: price })
+      for (const v of deal.vehicles) if (v.role === role) Object.assign(v, { agreedValue: price })
+    }
   }
 
   // Enriquecer histórico com nome do usuário (query separada)
@@ -285,6 +315,17 @@ export async function PATCH(
     if (Object.keys(patch).length > 0) personPatch = patch
   }
 
+  // Valor do veículo acompanha o valor de venda/compra editado (o wizard só
+  // envia saleAmount/purchaseAmount; vehicleValue e o valor do veículo
+  // vinculado ficavam com o valor antigo e o resumo mostrava o preço velho).
+  const priceField = deal.type === 'COMPRA' ? 'purchaseAmount' : deal.type === 'CONSIGNACAO' ? null : 'saleAmount'
+  const newVehiclePrice = priceField && priceField in allowedFields && !('vehicleValue' in body) ? allowedFields[priceField] : undefined
+  if (newVehiclePrice !== undefined && String(deal.vehicleValue ?? '') !== String(newVehiclePrice ?? '')) allowedFields.vehicleValue = newVehiclePrice
+  if (!deal.managerId && !('managerId' in allowedFields)) {
+    const m = await resolveDealManagerUserId(prisma, { sellerId: (allowedFields.sellerId as string | undefined) ?? deal.sellerId, unitId: (allowedFields.unitId as string | undefined) ?? deal.unitId }).catch(() => null)
+    if (m) allowedFields.managerId = m
+  }
+
   // Se o usuário não enviou nenhuma mudança válida, devolvemos sucesso vazio
   // em vez de chamar update com data:{} (que Prisma também rejeita).
   // Pagamentos e débitos da tela de edição: grava por id só o que mudou (com log).
@@ -336,6 +377,13 @@ export async function PATCH(
             data:  allowedFields as any,
           })
         : await tx.deal.findUniqueOrThrow({ where: { id: dealId } })
+
+      // Veículo principal da negociação com o valor acordado novo.
+      if (newVehiclePrice !== undefined && newVehiclePrice != null) {
+        const role = deal.type === 'COMPRA' ? 'COMPRADO' : 'VENDIDO'
+        // Só com UM veículo nesse papel (venda de vários carros tem valor por veículo).
+        if ((await tx.dealVehicle.count({ where: { dealId, role } })) === 1) await tx.dealVehicle.updateMany({ where: { dealId, role }, data: { agreedValue: newVehiclePrice as never } })
+      }
 
       // Auditoria campo a campo — paralela para não bloquear a transação
       await Promise.all(auditEntries.map(entry =>

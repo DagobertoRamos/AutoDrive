@@ -16,7 +16,7 @@ import {
   canForceFinalize,
   isDealLocked,
 } from '@/lib/negotiation-rbac'
-import { computeDealBalance, type DealBalanceResult } from '@/lib/negotiation-service'
+import { dealBalanceOf, type DealBalanceResult, type FinancialSummary } from '@/lib/negotiation-service'
 import { FINALIZABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { formatBRL } from '@/lib/masks'
 
@@ -46,6 +46,8 @@ export interface DealActionsDeal {
 
 export interface DealActions {
   balance:               DealBalanceResult
+  /** Composição completa (veículo, débitos, serviços, taxas, descontos, pago confirmado/pendente). */
+  summary:               FinancialSummary | null
   saldo:                 number
   saldoStatus:           'zerado' | 'aberto' | 'excedente'
   isLocked:              boolean
@@ -70,6 +72,7 @@ export function useDealActions(
     if (!deal || !actor) {
       return {
         balance: empty,
+        summary: null,
         saldo: 0,
         saldoStatus: 'zerado',
         isLocked: false,
@@ -84,15 +87,8 @@ export function useDealActions(
       }
     }
 
-    const balance = computeDealBalance({
-      vehicleValue:     deal.vehicleValue != null ? Number(deal.vehicleValue) : Number(deal.saleAmount ?? 0),
-      servicesAmount:   deal.servicesAmount != null ? Number(deal.servicesAmount) : 0,
-      debts:            deal.debts,
-      services:         deal.services,
-      payments:         deal.payments,
-      discountRequests: deal.discountRequests,
-      changes:          deal.changes,
-    })
+    // Mesma conta do card "Valores Detalhados" e da trava de finalização no servidor.
+    const { summary, ...balance } = dealBalanceOf(deal)
 
     const saldo = balance.saldo
     const saldoStatus: 'zerado' | 'aberto' | 'excedente' =
@@ -128,6 +124,7 @@ export function useDealActions(
 
     return {
       balance,
+      summary,
       saldo,
       saldoStatus,
       isLocked,

@@ -43,6 +43,7 @@ import ReturnPanel from './_components/ReturnPanel'
 import WarrantySalesPanel from './_components/WarrantySalesPanel'
 import FinancingPanel from './_components/FinancingPanel'
 import DealSummary from './_components/DealSummary'
+import DealHistory, { useDealHistory } from './_components/DealHistory'
 import AttachmentUploader, { type Attachment } from './_components/AttachmentUploader'
 import ContractsTab from './_components/ContractsTab'
 import NfeTab from './_components/NfeTab'
@@ -1038,7 +1039,7 @@ function ActionsDropdown({ deal, role, onAction, onOpenModal, activeTab, setTab,
           {showForce && item(() => { onForceFinalize(); setOpen(false) }, <CheckCircle2 size={14} className="text-red-500" />, 'Forçar finalização (MASTER)', 'text-red-700 hover:bg-red-50')}
           {canReopen && item(() => onAction('reopen'), <RotateCcw size={14} className="text-orange-400" />, 'Reabrir negociação', 'text-orange-700 hover:bg-orange-50')}
           <div className="my-1 border-t border-gray-100" />
-          {item(() => setTab('timeline'), <Clock size={14} className="text-gray-400" />, 'Ver Timeline')}
+          {item(() => setTab('timeline'), <Clock size={14} className="text-gray-400" />, 'Ver histórico')}
           {isManager && item(() => setTab('auditoria'), <Shield size={14} className="text-gray-400" />, 'Ver Auditoria')}
           {canCancel && (
             <>
@@ -1080,9 +1081,7 @@ export default function NegociacaoDetailPage() {
   const [tab, setTab]         = useState<Tab>('resumo')
   const [modal, setModal]     = useState<ModalType>(null)
 
-  // Timeline & Audit
-  const [timeline, setTimeline] = useState<TimelineEvent[]>([])
-  const [timelineLoading, setTimelineLoading] = useState(false)
+  // Auditoria (aba Auditoria, gerência)
   const [audit, setAudit]       = useState<AuditEntry[]>([])
   const [auditLoading, setAuditLoading]       = useState(false)
 
@@ -1130,20 +1129,12 @@ export default function NegociacaoDetailPage() {
 
   useEffect(() => { loadDeal() }, [loadDeal])
 
-  // Load timeline when tab selected
-  useEffect(() => {
-    if (tab !== 'timeline' || !id) return
-    setTimelineLoading(true)
-    fetch(`/api/negotiations/${id}/timeline`)
-      .then((r) => r.json())
-      .then((d) => setTimeline(d.data ?? []))
-      .catch(() => {})
-      .finally(() => setTimelineLoading(false))
-  }, [tab, id])
+  // Histórico em português (Resumo e aba Histórico): recarrega a cada salvamento.
+  const history = useDealHistory(id, (deal as { updatedAt?: string } | null)?.updatedAt)
 
   // Log de alterações: no Resumo e na aba Auditoria (só gerência)
   useEffect(() => {
-    if ((tab !== 'auditoria' && tab !== 'resumo') || !id || !isManager) return
+    if (tab !== 'auditoria' || !id || !isManager) return
     setAuditLoading(true)
     fetch(`/api/negotiations/${id}/audit`)
       .then((r) => r.json())
@@ -1268,7 +1259,7 @@ export default function NegociacaoDetailPage() {
         : []),
       { id: 'anotacoes' as Tab, label: 'Anotações',  icon: <MessageSquare size={14} /> },
     ] : []),
-    { id: 'timeline',    label: 'Timeline',      icon: <Clock size={14} /> },
+    { id: 'timeline',    label: 'Histórico',     icon: <Clock size={14} /> },
     ...(isManager ? [{ id: 'auditoria' as Tab, label: 'Auditoria', icon: <Shield size={14} /> }] : []),
   ]
 
@@ -1418,90 +1409,23 @@ export default function NegociacaoDetailPage() {
       {/* ── ABA: RESUMO ── */}
       {tab === 'resumo' && (
         <div className="space-y-4">
-          {/* Row: Cliente + Vendedor */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* ── Cliente ── */}
-            <SectionCard title="Cliente" icon={<User size={15} />}>
-              {deal.person ? (
-                <>
-                  <dl>
-                    <InfoRow label="Nome"     value={deal.person.nomeCompleto} />
-                    <InfoRow label="Tipo"     value={deal.person.type === 'FISICA' ? 'Pessoa Física' : 'Pessoa Jurídica'} />
-                    <InfoRow label="CPF"      value={deal.person.cpf}  />
-                    <InfoRow label="CNPJ"     value={deal.person.cnpj} />
-                    <InfoRow label="E-mail"   value={deal.person.email} />
-                    <InfoRow label="Telefone" value={deal.person.phone} />
-                  </dl>
-                  {deal.source === 'PLANILHA' && !deal.person.cpf && !deal.person.phone && (
-                    <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                      Cadastro importado incompleto. Necessário complementar dados do cliente.
-                    </div>
-                  )}
-                </>
-              ) : deal.customer ? (
-                <>
-                  <dl>
-                    <InfoRow label="Nome"     value={deal.customer.name} />
-                    <InfoRow label="E-mail"   value={deal.customer.email} />
-                    <InfoRow label="Telefone" value={deal.customer.phone} />
-                    <InfoRow label="CPF"      value={deal.customer.cpf} />
-                  </dl>
-                  {deal.source === 'PLANILHA' && !deal.customer.cpf && !deal.customer.phone && (
-                    <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                      Cadastro importado incompleto. Necessário complementar dados do cliente.
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm text-gray-400 italic">
-                  {deal.source === 'PLANILHA' ? 'Cliente não vinculado automaticamente' : 'Sem dados de cliente'}
-                </p>
-              )}
-            </SectionCard>
-
-            {/* ── Vendedor / Equipe ── */}
-            <SectionCard title="Equipe" icon={<Settings2 size={15} />}>
-              <dl>
-                <div className="py-1.5 text-sm">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Vendedor</p>
-                  <p className="mt-0.5 font-medium text-gray-800">
-                    {deal.seller?.user?.name ?? deal.seller?.fullName ?? deal.sellerNameFromSheet ?? 'Vendedor não informado'}
-                    {deal.isSellerProvisional && (
-                      <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">Provisório</span>
-                    )}
-                  </p>
-                  {deal.sellerNameFromSheet && deal.seller?.user?.name !== deal.sellerNameFromSheet && (
-                    <p className="text-xs text-gray-400 mt-0.5">Planilha: {deal.sellerNameFromSheet}</p>
-                  )}
-                </div>
-                {deal.manager && (
-                  <div className="py-1.5 text-sm">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Gerente</p>
-                    <p className="mt-0.5 font-medium text-gray-800">{deal.manager.name}</p>
-                  </div>
-                )}
-                {deal.approvedBy && (
-                  <div className="py-1.5 text-sm">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Aprovado por</p>
-                    <p className="mt-0.5 font-medium text-gray-800">{deal.approvedBy.name}</p>
-                    {deal.approvedAt && <p className="text-xs text-gray-400">{fmtDateTime(deal.approvedAt)}</p>}
-                  </div>
-                )}
-              </dl>
-              {deal.isSellerProvisional && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">
-                  <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                  Vendedor vinculado provisoriamente. Revisar e corrigir o responsável da negociação.
-                </div>
-              )}
-            </SectionCard>
-          </div>
+          {/* Cliente, equipe, situação e datas ficam no painel do topo; aqui só os avisos. */}
+          {deal.source === 'PLANILHA' && !(deal.person?.cpf || deal.customer?.cpf) && !(deal.person?.phone || deal.customer?.phone) && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              Cadastro do cliente importado incompleto: complemente CPF e telefone.
+            </div>
+          )}
+          {deal.isSellerProvisional && (
+            <div className="flex items-start gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              Vendedor vinculado provisoriamente{deal.sellerNameFromSheet ? ` (planilha: ${deal.sellerNameFromSheet})` : ''}. Revise o responsável da negociação.
+            </div>
+          )}
 
           {/* ── Veículo(s) ── */}
-          {deal.vehicles.length > 0 && (
-            <SectionCard title={`Veículo${deal.vehicles.length > 1 ? 's' : ''} (${deal.vehicles.length})`} icon={<Car size={15} />}>
+          {deal.vehicles.length > 1 && (
+            <SectionCard title={`Veículos da negociação (${deal.vehicles.length})`} icon={<Car size={15} />}>
               <div className="divide-y divide-gray-50">
                 {deal.vehicles.map((dv) => {
                   const plate = dv.plate ?? dv.vehicle?.plate
@@ -1534,14 +1458,6 @@ export default function NegociacaoDetailPage() {
               </div>
             </SectionCard>
           )}
-          {deal.vehicles.length === 0 && (
-            <SectionCard title="Veículo" icon={<Car size={15} />}>
-              <p className="text-sm text-gray-400 italic">
-                {deal.source === 'PLANILHA' ? 'Veículo não vinculado automaticamente' : 'Nenhum veículo vinculado'}
-              </p>
-            </SectionCard>
-          )}
-
           {/* FinancialReview + TotalOperationCard removidos: redundavam com o
               Phase2Panel logo abaixo. Para enxugar o resumo do gerente,
               mantemos APENAS o Phase2Panel (mais completo, com botões de
@@ -1564,32 +1480,6 @@ export default function NegociacaoDetailPage() {
               Editar valores e pagamentos
             </button>
           </div>
-
-          {/* ── Status ── */}
-          <SectionCard title="Status" icon={<Calendar size={15} />}>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR[deal.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                {STATUS_LABEL[deal.status] ?? deal.status}
-              </span>
-              <span className="text-xs text-gray-400">Criada em {fmtDateTime(deal.createdAt)}</span>
-              {deal.finalizedAt && <span className="text-xs text-green-700">· Finalizada em {fmtDateTime(deal.finalizedAt)}</span>}
-              {deal.cancelledAt && <span className="text-xs text-red-700">· Cancelada em {fmtDateTime(deal.cancelledAt)}</span>}
-            </div>
-            {deal.cancelledReason && (
-              <p className="mt-2 text-xs text-red-600">Motivo: {deal.cancelledReason}</p>
-            )}
-          </SectionCard>
-
-          {/* ── Agendamento ── */}
-          <SectionCard title="Agendamento" icon={<Calendar size={15} />}>
-            <dl className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
-              <InfoRow label="Data da Venda"    value={fmtDate(deal.saleDate)} />
-              <InfoRow label="Entrega prevista" value={fmtDate(deal.deliveryDate)} />
-            </dl>
-            {!deal.saleDate && !deal.deliveryDate && (
-              <p className="text-sm text-gray-400 italic">Nenhum agendamento cadastrado</p>
-            )}
-          </SectionCard>
 
           {/* ── Pendências ── */}
           {(deal.pendencies ?? []).length > 0 && (
@@ -1626,31 +1516,11 @@ export default function NegociacaoDetailPage() {
             <SheetDataAccordion rows={deal.sheetImportRows ?? []} />
           )}
 
-          {/* ── Histórico ── */}
-          {deal.statusHistory.length > 0 && (
-            <SectionCard title="Histórico" icon={<Clock size={15} />}>
-              <ol className="space-y-2 border-l-2 border-gray-100 pl-4">
-                {[...deal.statusHistory].reverse().map((h) => (
-                  <li key={h.id} className="relative text-sm">
-                    <div className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full bg-brand-200 ring-2 ring-white" />
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="font-semibold text-gray-800">{STATUS_LABEL[h.newStatus] ?? h.newStatus}</span>
-                      {h.previousStatus && (
-                        <span className="text-xs text-gray-400">← {STATUS_LABEL[h.previousStatus] ?? h.previousStatus}</span>
-                      )}
-                      <span className="ml-auto text-xs text-gray-400">{fmtDateTime(h.createdAt)}</span>
-                    </div>
-                    {(h.reason || h.changedByUser) && (
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {h.changedByUser?.name && <>{h.changedByUser.name}{h.reason ? ' · ' : ''}</>}
-                        {h.reason}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </SectionCard>
-          )}
+          {/* ── Atividade: tudo o que aconteceu, em português. Edições de valores,
+              pagamentos e débitos só aparecem para a gerência (filtro no servidor). ── */}
+          <SectionCard title="Atividade da negociação" icon={<Clock size={15} />}>
+            <DealHistory items={history} limit={8} onShowAll={() => setTab('timeline')} />
+          </SectionCard>
 
           {/* ── Botão Ações (rodapé) ── */}
           <div className="flex items-center justify-end gap-2 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -1668,33 +1538,6 @@ export default function NegociacaoDetailPage() {
               onForceFinalize={() => { setForceTyped(''); setShowForceConfirm(true) }}
             />
           </div>
-          {isManager && (
-            <SectionCard title="Histórico de alterações" icon={<Shield size={15} />}>
-              {auditLoading ? (
-                <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-brand-600" /></div>
-              ) : audit.length === 0 ? (
-                <p className="py-4 text-center text-sm text-gray-400">Nenhuma alteração.</p>
-              ) : (
-                <ul className="divide-y divide-gray-50">
-                  {audit.slice(0, 30).map((a) => (
-                    <li key={a.id} className="py-2 text-sm">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <span className="font-medium text-gray-800">{AUDIT_FIELD_LABEL[a.field ?? ''] ?? a.field ?? a.action}</span>
-                        <span className="text-xs text-gray-400">{a.userName ?? '—'} · {fmtDateTime(a.createdAt)}</span>
-                      </div>
-                      {(a.oldValue || a.newValue) && (
-                        <p className="mt-0.5 text-xs text-gray-600">
-                          {a.oldValue && <span className="text-red-600 line-through decoration-red-300">{a.oldValue}</span>}
-                          {a.oldValue && a.newValue && <span className="mx-1 text-gray-400">→</span>}
-                          {a.newValue && <span className="text-green-700">{a.newValue}</span>}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </SectionCard>
-          )}
         </div>
       )}
 
@@ -2072,71 +1915,8 @@ export default function NegociacaoDetailPage() {
 
       {/* ── ABA: TIMELINE ── */}
       {tab === 'timeline' && (
-        <SectionCard title="Timeline da Negociação" icon={<Clock size={15} />}>
-          {timelineLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 size={24} className="animate-spin text-brand-600" />
-            </div>
-          ) : timeline.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-10 text-gray-400">
-              <Clock size={24} />
-              <p className="text-sm">Sem eventos na timeline</p>
-              <p className="text-xs text-gray-300">Veja o histórico de status abaixo</p>
-            </div>
-          ) : (
-            <ol className="space-y-0">
-              {timeline.map((ev, i) => (
-                <li key={i} className="relative flex gap-4 pb-6">
-                  <div className="relative flex flex-col items-center">
-                    <div className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-sm">
-                      {ev.icon || '•'}
-                    </div>
-                    {i < timeline.length - 1 && (
-                      <div className="absolute top-8 h-full w-0.5 bg-gray-200" />
-                    )}
-                  </div>
-                  <div className="flex-1 pt-1">
-                    <p className="font-medium text-gray-800 text-sm">{ev.title}</p>
-                    {ev.description && <p className="text-xs text-gray-500 mt-0.5">{ev.description}</p>}
-                    <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
-                      {ev.user && <span>{ev.user}</span>}
-                      <span>·</span>
-                      <span>{relativeTime(ev.date)}</span>
-                      <span>·</span>
-                      <span>{fmtDateTime(ev.date)}</span>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-
-          {/* Histórico de status como fallback */}
-          {deal.statusHistory.length > 0 && (
-            <div className="mt-6 border-t border-gray-100 pt-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Histórico de Status</p>
-              <ol className="space-y-2 border-l-2 border-gray-100 pl-4">
-                {deal.statusHistory.map((h) => (
-                  <li key={h.id} className="relative text-sm">
-                    <div className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full bg-brand-200 ring-2 ring-white" />
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="font-semibold text-gray-800">{STATUS_LABEL[h.newStatus] ?? h.newStatus}</span>
-                      {h.previousStatus && (
-                        <span className="text-xs text-gray-400">← {STATUS_LABEL[h.previousStatus] ?? h.previousStatus}</span>
-                      )}
-                      <span className="ml-auto text-xs text-gray-400">{fmtDateTime(h.createdAt)}</span>
-                    </div>
-                    {(h.reason || h.changedByUser) && (
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {h.changedByUser?.name && <>{h.changedByUser.name} · </>}
-                        {h.reason}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
+        <SectionCard title="Histórico completo" icon={<Clock size={15} />}>
+          <DealHistory items={history} />
         </SectionCard>
       )}
 

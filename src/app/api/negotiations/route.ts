@@ -19,6 +19,7 @@ import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
 import { MANAGER_REVIEW_REASON, needsManagerReview } from '@/lib/evaluation/site-pre-evaluation'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { resolveDealManagerUserId } from '@/lib/negotiation/manager'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
 
@@ -417,12 +418,16 @@ export async function POST(req: NextRequest) {
       const dealNumber    = `NEG-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`
       const initialStatus = submit ? 'AGUARDANDO_APROVACAO' : 'RASCUNHO'
 
+      // Gerente responsável: o do vendedor (ou o 1º gerente ativo da unidade).
+      const managerUserId = await resolveDealManagerUserId(tx, { sellerId: resolvedSellerId, unitId: resolvedUnitId })
+
       const deal = await tx.deal.create({
         data: {
           dealNumber,
           tenantId: session.user.tenantId ?? null,
           unitId:   resolvedUnitId,
           sellerId: resolvedSellerId,
+          managerId: managerUserId,
           personId,
           type,
           status:     initialStatus,

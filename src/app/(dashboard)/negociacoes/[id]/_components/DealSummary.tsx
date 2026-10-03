@@ -1,13 +1,17 @@
 'use client'
 
 // =============================================================================
-// DealSummary — Painel-resumo no topo da página da negociação
+// DealSummary — Painel-resumo no topo da página da negociação.
+// Cabeçalho (número, situação, datas, ações) + negócio (veículo, cliente,
+// equipe) + resumo financeiro com a composição do valor. Os números vêm de
+// useDealActions → dealBalanceOf (mesma conta do card "Valores Detalhados" e
+// da trava de finalização): o valor de venda ATUAL, nunca o valor antigo.
 // =============================================================================
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
-  User, Car, Users, DollarSign, Wallet, ArrowDownCircle, ArrowUpCircle,
-  TrendingDown, History, Edit, CheckCircle2, RotateCcw, AlertTriangle, ShieldAlert, Ban,
+  User, Car, Users, DollarSign, ArrowDownCircle, ArrowUpCircle, CalendarDays, Truck, Phone, Mail, MapPin,
+  Edit, CheckCircle2, RotateCcw, AlertTriangle, ShieldAlert, Ban,
 } from 'lucide-react'
 import { formatBRL, maskCPF, maskCNPJ, maskPhone, maskCEP } from '@/lib/masks'
 import { useDealActions, type DealActionsActor, type DealActionsDeal } from '../_hooks/useDealActions'
@@ -57,36 +61,36 @@ interface DealLike extends DealActionsDeal {
   dealNumber?: string | null
   type:        string
   status:      string
+  purchaseAmount?: any | number | null
   person?:     PersonLike | null
   customer?:   { name?: string | null; cpf?: string | null; email?: string | null; phone?: string | null; address?: string | null; city?: string | null; state?: string | null } | null
   seller?:     { id?: string; fullName?: string | null; user?: { id?: string; name?: string | null; email?: string | null; role?: string | null } | null; cargo?: string | null } | null
   manager?:    { id?: string; name?: string | null; email?: string | null } | null
   vehicles?:   VehicleLike[]
-}
-
-interface TimelineEvt {
-  type: string
-  icon: string
-  title: string
-  description?: string | null
-  user?: string | null
-  date: string
+  createdAt?:  string | null
+  saleDate?:   string | null
+  deliveryDate?: string | null
+  approvedAt?: string | null
+  approvedBy?: { name?: string | null } | null
+  cancelledReason?: string | null
+  sellerNameFromSheet?: string | null
+  isSellerProvisional?: boolean | null
 }
 
 // ── Constantes visuais ────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<string, string> = {
-  RASCUNHO: 'Rascunho', EM_PREENCHIMENTO: 'Em Preenchimento',
-  AGUARDANDO_LIBERACAO: 'Aguardando Liberação', AGUARDANDO_APROVACAO: 'Aguardando Aprovação',
+  RASCUNHO: 'Rascunho', EM_PREENCHIMENTO: 'Em preenchimento',
+  AGUARDANDO_LIBERACAO: 'Aguardando liberação', AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   LIBERADA: 'Liberada', APROVADA: 'Aprovada', RECUSADA: 'Recusada', DESAPROVADA: 'Desaprovada',
-  DEVOLVIDA_PARA_CORRECAO: 'Devolvida p/ Correção', AGUARDANDO_SINAL: 'Aguardando Sinal',
-  SINAL_RECEBIDO: 'Sinal Recebido', RESERVADA: 'Reservada',
-  AGUARDANDO_FINANCEIRO: 'Aguardando Financeiro', FINANCEIRO_APROVADO: 'Financeiro Aprovado',
-  FINANCEIRO_REPROVADO: 'Financeiro Reprovado', AGUARDANDO_DOCUMENTACAO: 'Aguardando Documentação',
-  DOCUMENTACAO_CONCLUIDA: 'Documentação Concluída', AGUARDANDO_CONTRATO: 'Aguardando Contrato',
-  CONTRATO_GERADO: 'Contrato Gerado', AGUARDANDO_ASSINATURA: 'Aguardando Assinatura',
-  ASSINADA: 'Assinada', AGUARDANDO_ENTREGA: 'Aguardando Entrega', ENTREGUE: 'Entregue',
-  EM_ANDAMENTO: 'Em Andamento', FINALIZADA: 'Finalizada', CANCELADA: 'Cancelada',
+  DEVOLVIDA_PARA_CORRECAO: 'Devolvida p/ correção', AGUARDANDO_SINAL: 'Aguardando sinal',
+  SINAL_RECEBIDO: 'Sinal recebido', RESERVADA: 'Reservada',
+  AGUARDANDO_FINANCEIRO: 'Aguardando financeiro', FINANCEIRO_APROVADO: 'Financeiro aprovado',
+  FINANCEIRO_REPROVADO: 'Financeiro reprovado', AGUARDANDO_DOCUMENTACAO: 'Aguardando documentação',
+  DOCUMENTACAO_CONCLUIDA: 'Documentação concluída', AGUARDANDO_CONTRATO: 'Aguardando contrato',
+  CONTRATO_GERADO: 'Contrato gerado', AGUARDANDO_ASSINATURA: 'Aguardando assinatura',
+  ASSINADA: 'Assinada', AGUARDANDO_ENTREGA: 'Aguardando entrega', ENTREGUE: 'Entregue',
+  EM_ANDAMENTO: 'Em andamento', FINALIZADA: 'Finalizada', CANCELADA: 'Cancelada',
   REABERTA: 'Reaberta', BLOQUEADA: 'Bloqueada',
 }
 
@@ -116,7 +120,7 @@ const TYPE_PILL: Record<string, string>  = {
   CONSIGNACAO: 'bg-amber-100 text-amber-800',
 }
 
-const fmtDateTime = (s?: string | null) => s ? new Date(s).toLocaleString('pt-BR') : ''
+const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '')
 
 function maskDoc(v?: string | null): string {
   if (!v) return ''
@@ -143,19 +147,7 @@ export default function DealSummary({
   deal, actor, onEdit, onFinalize, onForceFinalize, onReopen, onApprove, onCancelDeal,
 }: DealSummaryProps) {
   const a = useDealActions(deal, actor)
-  const [timeline, setTimeline]   = useState<TimelineEvt[]>([])
-  const [loadingTl, setLoadingTl] = useState(false)
   const [confirmForce, setConfirmForce] = useState(false)
-
-  useEffect(() => {
-    if (!deal?.id) return
-    setLoadingTl(true)
-    fetch(`/api/negotiations/${deal.id}/timeline`)
-      .then(r => r.ok ? r.json() : { data: [] })
-      .then(d => setTimeline(Array.isArray(d?.data) ? d.data.slice(-12) : []))
-      .catch(() => setTimeline([]))
-      .finally(() => setLoadingTl(false))
-  }, [deal?.id])
 
   const person      = deal.person ?? null
   const customer    = deal.customer ?? null
@@ -164,261 +156,201 @@ export default function DealSummary({
   const cliPhone    = person?.phone ?? customer?.phone ?? null
   const cliEmail    = person?.email ?? customer?.email ?? null
   const cliCep      = person?.cep
-  const cliLograd   = person?.logradouro
-  const cliNumero   = person?.numero
-  const cliComp     = person?.complemento
-  const cliBairro   = person?.bairro
   const cliCidade   = person?.cidade ?? customer?.city
   const cliEstado   = person?.estado ?? customer?.state
+  const street      = [person?.logradouro, person?.numero].filter(Boolean).join(', ') + (person?.complemento ? ` — ${person.complemento}` : '')
+  const cityLine    = [person?.bairro, [cliCidade, cliEstado].filter(Boolean).join('/')].filter(Boolean).join(' · ')
 
-  const vendido = (deal.vehicles ?? []).find(v => v.role === 'VENDIDO') ?? (deal.vehicles ?? [])[0]
+  const main = deal.type === 'COMPRA' ? 'COMPRADO' : deal.type === 'CONSIGNACAO' ? 'CONSIGNADO' : 'VENDIDO'
+  const vendido = (deal.vehicles ?? []).find(v => v.role === main) ?? (deal.vehicles ?? [])[0]
   const vPlate  = vendido?.plate  ?? vendido?.vehicle?.plate
   const vBrand  = vendido?.brand  ?? vendido?.vehicle?.brand
   const vModel  = vendido?.model  ?? vendido?.vehicle?.model
-  const vVersion = (vendido as any)?.version ?? vendido?.vehicle?.version
+  const vVersion = vendido?.version ?? vendido?.vehicle?.version
   const vYear   = vendido?.year   ?? vendido?.vehicle?.year
-  const vModelYear = (vendido as any)?.modelYear ?? vendido?.vehicle?.modelYear
+  const vModelYear = vendido?.modelYear ?? vendido?.vehicle?.modelYear
   const vColor  = vendido?.color  ?? vendido?.vehicle?.color
   const vKm     = vendido?.km
   const vPhoto  = vendido?.vehicle?.mainPhotoUrl ?? null
-  const vValor  = deal.vehicleValue ?? deal.saleAmount
+  // Valor ATUAL da negociação (o valor editado), nunca o valor antigo do veículo.
+  const vValor  = deal.type === 'COMPRA' ? (deal.purchaseAmount ?? deal.vehicleValue) : (deal.saleAmount ?? deal.vehicleValue ?? vendido?.agreedValue)
 
   const initial = (cliNome ?? '?').trim().charAt(0).toUpperCase()
+  const fin = a.summary
+  const net = fin?.netTotal ?? a.balance.totalLiquido
+  const paid = fin?.paidTotal ?? a.balance.totalPago
+  const paidPct = net > 0 ? Math.min(100, Math.max(0, (paid / net) * 100)) : 0
+  const sellerName = deal.seller?.user?.name ?? deal.seller?.fullName ?? deal.sellerNameFromSheet ?? null
+  const priceLabel = deal.type === 'COMPRA' ? 'Valor de compra' : deal.type === 'CONSIGNACAO' ? 'Valor do veículo' : 'Valor de venda'
+  const vehicleRoleLabel = deal.type === 'COMPRA' ? 'Veículo comprado' : deal.type === 'CONSIGNACAO' ? 'Veículo consignado' : 'Veículo vendido'
+  const specs = [
+    vYear ? (vModelYear && vModelYear !== vYear ? `${vYear}/${vModelYear}` : String(vYear)) : null,
+    vColor,
+    vKm != null ? `${Number(vKm).toLocaleString('pt-BR')} km` : null,
+  ].filter(Boolean).join(' · ')
 
   return (
     <div className="space-y-4">
-      {/* ── Header row ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="font-mono text-lg font-bold text-gray-900">
-            {deal.dealNumber ?? deal.id.slice(0, 8)}
-          </span>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_PILL[deal.status] ?? 'bg-gray-100 text-gray-700'}`}>
-            {STATUS_LABEL[deal.status] ?? deal.status}
-          </span>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${TYPE_PILL[deal.type] ?? 'bg-gray-100 text-gray-700'}`}>
-            {TYPE_LABEL[deal.type] ?? deal.type}
-          </span>
+      {/* ── Cabeçalho ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-mono text-lg font-bold tracking-tight text-gray-900">{deal.dealNumber ?? deal.id.slice(0, 8)}</h1>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_PILL[deal.status] ?? 'bg-gray-100 text-gray-700'}`}>{STATUS_LABEL[deal.status] ?? deal.status}</span>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${TYPE_PILL[deal.type] ?? 'bg-gray-100 text-gray-700'}`}>{TYPE_LABEL[deal.type] ?? deal.type}</span>
+          </div>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            {deal.createdAt && <span className="inline-flex items-center gap-1"><CalendarDays size={12} />Criada em {fmtDate(deal.createdAt)}</span>}
+            {deal.saleDate && <span>Venda em {fmtDate(deal.saleDate)}</span>}
+            {deal.deliveryDate && <span className="inline-flex items-center gap-1"><Truck size={12} />Entrega prevista para {fmtDate(deal.deliveryDate)}</span>}
+            {deal.approvedBy?.name && <span className="inline-flex items-center gap-1"><CheckCircle2 size={12} className="text-green-600" />Aprovada por {deal.approvedBy.name}{deal.approvedAt ? ` em ${fmtDate(deal.approvedAt)}` : ''}</span>}
+            {deal.status === 'CANCELADA' && deal.cancelledReason && <span className="text-red-600">Motivo do cancelamento: {deal.cancelledReason}</span>}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Aprovar (gerente+, status aguardando) */}
           {onApprove && ['AGUARDANDO_APROVACAO', 'AGUARDANDO_LIBERACAO'].includes(deal.status) && (
-            <button
-              onClick={onApprove}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700"
-            >
+            <button onClick={onApprove} className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700">
               <CheckCircle2 size={14} /> Aprovar
             </button>
           )}
-
           {a.canEditNow && (
-            <button
-              onClick={onEdit}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
+            <button onClick={onEdit} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
               <Edit size={14} /> Editar
             </button>
           )}
-
-          {/* Cancelar */}
           {onCancelDeal && !['FINALIZADA', 'CANCELADA'].includes(deal.status) && (
-            <button
-              onClick={onCancelDeal}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
-            >
+            <button onClick={onCancelDeal} className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">
               <Ban size={14} /> Cancelar
             </button>
           )}
-
-          {/* Finalizar */}
-          <div className="relative group">
-            <button
-              onClick={onFinalize}
-              disabled={!a.canFinalizeNow}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+          <div className="group relative">
+            <button onClick={onFinalize} disabled={!a.canFinalizeNow} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50">
               <CheckCircle2 size={14} /> Finalizar
             </button>
             {!a.canFinalizeNow && a.finalizeDisabledReason && (
-              <div className="pointer-events-none absolute right-0 top-full z-20 mt-1 hidden whitespace-pre-wrap rounded-md bg-gray-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block max-w-xs">
+              <div className="pointer-events-none absolute right-0 top-full z-20 mt-1 hidden w-64 whitespace-pre-wrap rounded-md bg-gray-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
                 {a.finalizeDisabledReason}
               </div>
             )}
           </div>
-
           {a.canForceFinalize && !a.canFinalizeNow && a.isFinalizable && !a.isLocked && (
-            <button
-              onClick={() => setConfirmForce(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
-              title="Forçar finalização mesmo com saldo aberto (MASTER)"
-            >
-              <ShieldAlert size={14} /> Forçar finalização (MASTER)
+            <button onClick={() => setConfirmForce(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100" title="Forçar finalização mesmo com saldo aberto (MASTER)">
+              <ShieldAlert size={14} /> Forçar finalização
             </button>
           )}
-
           {a.canReopenNow && (
-            <button
-              onClick={onReopen}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100"
-            >
+            <button onClick={onReopen} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100">
               <RotateCcw size={14} /> Reabrir
             </button>
           )}
         </div>
       </div>
 
-      {/* ── 3 colunas: Cliente / Veículo / Equipe ────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {/* Cliente */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <User size={15} className="text-brand-600" /> Cliente
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 font-semibold">
-              {initial}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-medium text-gray-900">{cliNome ?? '—'}</p>
-              {cliDoc && <p className="text-xs text-gray-500">{maskDoc(cliDoc)}</p>}
-            </div>
-          </div>
-          <dl className="mt-3 space-y-1 text-sm">
-            {cliPhone && <Row label="Telefone" value={maskPhone(cliPhone)} />}
-            {cliEmail && <Row label="E-mail" value={cliEmail} />}
-            {(cliCep || cliLograd || cliCidade) && (
-              <div className="border-t border-gray-100 pt-2 text-xs text-gray-600">
-                {cliCep && <p>CEP: {maskCEP(cliCep)}</p>}
-                {(cliLograd || cliNumero) && <p>{[cliLograd, cliNumero].filter(Boolean).join(', ')}{cliComp ? ` — ${cliComp}` : ''}</p>}
-                {(cliBairro || cliCidade || cliEstado) && (
-                  <p>{[cliBairro, [cliCidade, cliEstado].filter(Boolean).join('/')].filter(Boolean).join(' — ')}</p>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* ── Negócio: veículo + cliente + equipe ─────────────────────────────── */}
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:col-span-2">
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+            {vendido ? (
+              <>
+                {vPhoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={vPhoto} alt={vModel ?? 'veículo'} className="h-24 w-full shrink-0 rounded-xl object-cover sm:w-36" />
+                ) : (
+                  <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-400 sm:w-36"><Car size={28} /></div>
                 )}
-              </div>
-            )}
-          </dl>
-        </div>
-
-        {/* Veículo */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <Car size={15} className="text-brand-600" /> Veículo
-          </div>
-          {vendido ? (
-            <div className="flex items-start gap-3">
-              {vPhoto ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={vPhoto} alt={vModel ?? 'veículo'} className="h-16 w-16 shrink-0 rounded-lg object-cover" />
-              ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-400">
-                  <Car size={22} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {vPlate && <span className="rounded-md bg-gray-900 px-2 py-0.5 font-mono text-xs font-semibold tracking-wider text-white">{vPlate}</span>}
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{vehicleRoleLabel}</span>
+                  </div>
+                  <p className="mt-1 truncate text-lg font-semibold text-gray-900">{[vBrand, vModel].filter(Boolean).join(' ') || '—'}</p>
+                  {vVersion && <p className="truncate text-sm text-gray-500">{vVersion}</p>}
+                  {specs && <p className="mt-1 text-xs text-gray-500">{specs}</p>}
                 </div>
-              )}
-              <div className="min-w-0 flex-1">
-                {vPlate && (
-                  <span className="inline-block rounded bg-gray-900 px-2 py-0.5 font-mono text-xs font-semibold text-white">
-                    {vPlate}
-                  </span>
-                )}
-                <p className="mt-1 truncate font-medium text-gray-900">
-                  {[vBrand, vModel].filter(Boolean).join(' ') || '—'}
-                </p>
-                {vVersion && <p className="truncate text-xs text-gray-500">{vVersion}</p>}
-                <p className="mt-1 text-xs text-gray-600">
-                  {[vYear && `Ano ${vYear}`, vModelYear && vModelYear !== vYear && `(modelo ${vModelYear})`].filter(Boolean).join(' ')}
-                  {vColor ? `${(vYear || vModelYear) ? ' · ' : ''}${vColor}` : ''}
-                  {vKm != null ? ` · ${Number(vKm).toLocaleString('pt-BR')} km` : ''}
-                </p>
                 {vValor != null && (
-                  <p className="mt-1 text-sm font-semibold text-brand-700">{formatBRL(Number(vValor))}</p>
+                  <div className="shrink-0 sm:text-right">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{priceLabel}</p>
+                    <p className="text-2xl font-bold tabular-nums text-gray-900">{formatBRL(Number(vValor))}</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm italic text-gray-400">Nenhum veículo vinculado.</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 divide-y divide-gray-100 border-t border-gray-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+            {/* Cliente */}
+            <div className="min-w-0 p-5">
+              <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400"><User size={12} />Cliente</p>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700">{initial}</div>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-gray-900" title={cliNome ?? undefined}>{cliNome ?? 'Cliente não informado'}</p>
+                  {cliDoc && <p className="text-xs tabular-nums text-gray-500">{maskDoc(cliDoc)}</p>}
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5 text-sm">
+                {cliPhone && <IconRow icon={<Phone size={13} />} value={maskPhone(cliPhone)} />}
+                {cliEmail && <IconRow icon={<Mail size={13} />} value={cliEmail} />}
+                {(street || cityLine || cliCep) && (
+                  <IconRow icon={<MapPin size={13} />} value={[street, cityLine, cliCep && `CEP ${maskCEP(cliCep)}`].filter(Boolean).join(' · ')} wrap />
                 )}
               </div>
             </div>
-          ) : (
-            <p className="text-sm italic text-gray-400">Nenhum veículo vinculado.</p>
-          )}
+
+            {/* Equipe */}
+            <div className="min-w-0 p-5">
+              <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400"><Users size={12} />Equipe</p>
+              <dl className="space-y-3">
+                <Person label="Vendedor" name={sellerName} hint={deal.seller?.cargo ?? null} empty="Vendedor não informado" badge={deal.isSellerProvisional ? 'Provisório' : null} />
+                <Person label="Gerente responsável" name={deal.manager?.name ?? null} empty="Sem gerente vinculado ao vendedor" />
+              </dl>
+            </div>
+          </div>
         </div>
 
-        {/* Equipe */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <Users size={15} className="text-brand-600" /> Equipe
-          </div>
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-gray-400">Vendedor</dt>
-              <dd className="font-medium text-gray-800">
-                {deal.seller?.user?.name ?? deal.seller?.fullName ?? 'Vendedor não informado'}
-              </dd>
-              {deal.seller?.cargo && <dd className="text-xs text-gray-500">{deal.seller.cargo}</dd>}
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-gray-400">Gerente responsável</dt>
-              <dd className="font-medium text-gray-800">{deal.manager?.name ?? '—'}</dd>
+        {/* ── Resumo financeiro ───────────────────────────────────────────────── */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400"><DollarSign size={12} />Resumo financeiro</p>
+          <dl className="space-y-1.5 text-sm">
+            <Money label={priceLabel} value={fin?.vehicleAmount ?? Number(vValor ?? 0)} />
+            {!!fin?.debtAmount && <Money label="Débitos e despesas" value={fin.debtAmount} sign="+" />}
+            {!!fin?.serviceAmount && <Money label="Serviços" value={fin.serviceAmount} sign="+" />}
+            {!!fin?.warrantyAmount && <Money label="Garantias" value={fin.warrantyAmount} sign="+" />}
+            {!!fin?.feeAmount && <Money label="Documentação" value={fin.feeAmount} sign="+" />}
+            {!!fin?.discountApprovedTotal && <Money label="Descontos" value={fin.discountApprovedTotal} sign="−" tone="text-green-700" />}
+            <div className="flex items-baseline justify-between border-t border-gray-100 pt-2">
+              <dt className="font-semibold text-gray-800">Total da negociação</dt>
+              <dd className="font-bold tabular-nums text-gray-900">{formatBRL(net)}</dd>
             </div>
           </dl>
+
+          <div className="mt-4 rounded-xl bg-gray-50 p-3">
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="text-gray-600">Recebido</span>
+              <span className="font-semibold tabular-nums text-gray-900">{formatBRL(paid)}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow={Math.round(paidPct)} aria-valuemin={0} aria-valuemax={100} aria-label="Percentual recebido">
+              <div className={`h-full rounded-full ${a.saldoStatus === 'zerado' ? 'bg-green-500' : a.saldoStatus === 'excedente' ? 'bg-blue-500' : 'bg-brand-500'}`} style={{ width: `${paidPct}%` }} />
+            </div>
+            {!!fin?.paidPending && (
+              <p className="mt-1.5 text-[11px] text-amber-700">{formatBRL(fin.paidPending)} aguardando confirmação do financeiro</p>
+            )}
+          </div>
+
+          <div className={`mt-3 flex items-center justify-between rounded-xl px-3 py-2.5 ${a.saldoStatus === 'zerado' ? 'bg-green-50 text-green-800' : a.saldoStatus === 'aberto' ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-blue-800'}`}>
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              {a.saldoStatus === 'zerado' ? <CheckCircle2 size={15} /> : a.saldoStatus === 'aberto' ? <ArrowUpCircle size={15} /> : <ArrowDownCircle size={15} />}
+              {a.saldoStatus === 'zerado' ? 'Quitado' : a.saldoStatus === 'aberto' ? 'Falta receber' : 'Valor excedente'}
+            </span>
+            <span className="text-lg font-bold tabular-nums">{formatBRL(Math.abs(a.saldo))}</span>
+          </div>
+          {a.balance.totalTroco > 0 && <p className="mt-2 text-xs text-gray-500">Troco a devolver ao cliente: <strong className="tabular-nums">{formatBRL(a.balance.totalTroco)}</strong></p>}
         </div>
       </div>
 
-      {/* ── Strip Financeiro ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm md:grid-cols-5">
-        <MiniCard
-          icon={<DollarSign size={14} />}
-          label="Total Bruto"
-          value={formatBRL(a.balance.totalBruto)}
-        />
-        <MiniCard
-          icon={<TrendingDown size={14} />}
-          label="Total Líquido"
-          value={formatBRL(a.balance.totalLiquido)}
-          hint={a.balance.totalDiscountApproved > 0 ? `−${formatBRL(a.balance.totalDiscountApproved)} em descontos aprovados` : null}
-        />
-        <MiniCard
-          icon={<Wallet size={14} />}
-          label="Total Pago"
-          value={formatBRL(a.balance.totalPago)}
-        />
-        <MiniCard
-          icon={a.saldoStatus === 'zerado' ? <CheckCircle2 size={14} /> : a.saldoStatus === 'aberto' ? <ArrowUpCircle size={14} /> : <ArrowDownCircle size={14} />}
-          label="Saldo"
-          value={formatBRL(a.saldo)}
-          tone={a.saldoStatus === 'zerado' ? 'success' : a.saldoStatus === 'aberto' ? 'warn' : 'info'}
-        />
-        {a.balance.totalTroco > 0 && (
-          <MiniCard
-            icon={<ArrowDownCircle size={14} />}
-            label="Troco"
-            value={formatBRL(a.balance.totalTroco)}
-            tone="info"
-          />
-        )}
-      </div>
-
-      {/* ── Timeline strip ───────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-          <History size={13} /> Histórico recente
-        </div>
-        {loadingTl ? (
-          <p className="text-xs italic text-gray-400">Carregando…</p>
-        ) : timeline.length === 0 ? (
-          <p className="text-xs italic text-gray-400">Sem eventos registrados.</p>
-        ) : (
-          <ol className="flex gap-3 overflow-x-auto pb-1">
-            {timeline.slice().reverse().map((ev, i) => (
-              <li key={i} className="min-w-[180px] shrink-0 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                <p className="text-xs font-semibold text-gray-800">{ev.title}</p>
-                {ev.description && <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{ev.description}</p>}
-                <p className="mt-1 text-[10px] text-gray-400">
-                  {ev.user ? `${ev.user} · ` : ''}{fmtDateTime(ev.date)}
-                </p>
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
-
-      {/* ── Modal: Forçar finalização ────────────────────────────────────────── */}
       {confirmForce && (
         <ForceFinalizeModal
           dealNumber={deal.dealNumber ?? deal.id.slice(0, 8)}
@@ -433,30 +365,36 @@ export default function DealSummary({
 
 // ── Auxiliares ────────────────────────────────────────────────────────────────
 
-function Row({ label, value }: { label: string; value: string }) {
+function IconRow({ icon, value, wrap }: { icon: React.ReactNode; value: string; wrap?: boolean }) {
   return (
-    <div className="flex justify-between gap-2 text-xs">
-      <dt className="text-gray-500">{label}</dt>
-      <dd className="truncate text-gray-800">{value}</dd>
+    <div className="flex items-start gap-2 text-gray-700">
+      <span className="mt-0.5 shrink-0 text-gray-400">{icon}</span>
+      <span className={wrap ? 'text-xs leading-relaxed text-gray-600' : 'truncate'}>{value}</span>
     </div>
   )
 }
 
-function MiniCard({
-  icon, label, value, hint, tone,
-}: { icon: React.ReactNode; label: string; value: string; hint?: string | null; tone?: 'success' | 'warn' | 'info' }) {
-  const toneCls =
-    tone === 'success' ? 'text-green-700'
-    : tone === 'warn' ? 'text-amber-700'
-    : tone === 'info' ? 'text-blue-700'
-    : 'text-gray-900'
+function Person({ label, name, hint, empty, badge }: { label: string; name: string | null; hint?: string | null; empty: string; badge?: string | null }) {
   return (
-    <div className="rounded-lg bg-gray-50 px-3 py-2">
-      <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
-        <span className="text-brand-600">{icon}</span>{label}
+    <div className="flex items-center gap-3">
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${name ? 'bg-gray-100 text-gray-700' : 'bg-gray-50 text-gray-300'}`}>{(name ?? '?').trim().charAt(0).toUpperCase()}</div>
+      <div className="min-w-0">
+        <dt className="text-[11px] text-gray-400">{label}</dt>
+        <dd className={`truncate text-sm ${name ? 'font-medium text-gray-900' : 'italic text-gray-400'}`}>
+          {name ?? empty}
+          {badge && <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium not-italic text-orange-700">{badge}</span>}
+        </dd>
+        {hint && <dd className="text-xs text-gray-500">{hint}</dd>}
       </div>
-      <div className={`mt-0.5 text-sm font-semibold ${toneCls}`}>{value}</div>
-      {hint && <div className="text-[10px] text-gray-500">{hint}</div>}
+    </div>
+  )
+}
+
+function Money({ label, value, sign, tone }: { label: string; value: number; sign?: '+' | '−'; tone?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-gray-600">{sign && <span className="mr-1 text-gray-400">{sign}</span>}{label}</dt>
+      <dd className={`tabular-nums ${tone ?? 'text-gray-900'}`}>{formatBRL(value)}</dd>
     </div>
   )
 }

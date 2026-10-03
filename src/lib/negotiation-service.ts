@@ -334,6 +334,20 @@ export function dealToFinancialInput(deal: any): FinancialSummaryInput {
   }
 }
 
+/**
+ * Saldo da negociação pela fonte ÚNICA (a mesma do card "Valores Detalhados"):
+ * valor de venda atual (saleAmount), débitos, serviços, taxas, descontos e
+ * pagamentos. Usado no resumo da tela E na trava da finalização — os dois
+ * nunca divergem.
+ */
+export function dealBalanceOf(deal: any): DealBalanceResult & { summary: FinancialSummary } {
+  const s = calculateNegotiationFinancialSummary(dealToFinancialInput(deal))
+  return {
+    totalBruto: s.grossTotal, totalLiquido: s.netTotal, totalPago: s.paidTotal, saldo: s.openBalance,
+    totalTroco: s.changeTotal, totalDiscountApproved: s.discountApprovedTotal, summary: s,
+  }
+}
+
 // ── Atualizar estoque do veículo ──────────────────────────────────────────────
 
 export async function updateVehicleStock(
