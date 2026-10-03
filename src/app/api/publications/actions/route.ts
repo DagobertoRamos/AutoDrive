@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { applyIntent, logEvent, type Intent } from '@/lib/publications/service'
 import { audit, bad, kickWorker, pubAuth } from '@/lib/publications/api'
+import { socialOf } from '@/lib/publications/social/formats'
 
 export const dynamic = 'force-dynamic'
 const INTENTS: Intent[] = ['PAUSAR', 'RETOMAR', 'RETIRAR', 'VERIFICAR', 'SINCRONIZAR', 'CANCELAR_AGENDAMENTO', 'REENVIAR']
@@ -65,9 +66,14 @@ export async function POST(req: Request) {
       }
       if (action === 'EXCLUIR') {
         // Nunca foi ao ar: apaga. Já publicado: retira do canal (fica no histórico).
-        const pub = await prisma.publication.findFirst({ where: { id, tenantId: a.tenantId }, select: { id: true, status: true, remoteId: true, publishedAt: true, pendingToken: true } })
+        const pub = await prisma.publication.findFirst({ where: { id, tenantId: a.tenantId }, select: { id: true, status: true, remoteId: true, publishedAt: true, pendingToken: true, desiredState: true, overrides: true } })
         if (!pub) { results.push({ id, ok: false, message: 'Publicação não encontrada.' }); continue }
-        if ((pub.remoteId || pub.publishedAt || pub.pendingToken) && pub.status !== 'REMOVIDO') {
+        // Story some sozinho da rede em até 24 h: não há o que retirar, só apaga o registro.
+        const story = socialOf(pub.overrides)?.format === 'STORY'
+        // Já pediram para retirar e a remoção não concluiu (ficava "Publicando" para
+        // sempre e o Excluir respondia "nada a mudar"): o 2º Excluir apaga o registro.
+        const removalStuck = pub.desiredState === 'REMOVIDO' || pub.status === 'REMOCAO_PENDENTE'
+        if (!story && !removalStuck && (pub.remoteId || pub.publishedAt || pub.pendingToken) && pub.status !== 'REMOVIDO') {
           const r = await applyIntent(a.tenantId, id, 'RETIRAR', a.actor, { reason: 'MANUAL', archive: 'RETIRADO' })
           results.push({ id, ...r, message: r.ok ? 'Já estava no ar: retirando do canal.' : r.message })
           continue
@@ -77,7 +83,7 @@ export async function POST(req: Request) {
           prisma.publicationEvent.deleteMany({ where: { publicationId: id } }),
           prisma.publication.delete({ where: { id } }),
         ])
-        results.push({ id, ok: true, message: 'Excluído.' })
+        results.push({ id, ok: true, message: story ? 'Excluído. O Story some sozinho da rede em até 24 h.' : removalStuck ? 'Registro apagado. Se ainda aparecer na rede, apague por lá.' : 'Excluído.' })
         continue
       }
       results.push({ id, ok: false, message: 'Ação desconhecida.' })

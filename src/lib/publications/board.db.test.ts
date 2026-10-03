@@ -111,6 +111,15 @@ describe.skipIf(!RUN)('Painel — banco local', () => {
     expect(r2.results.map((r: any) => r.message)).toEqual(['Excluído.', expect.stringContaining('retirando')])
     expect(await prisma.publication.findUnique({ where: { id: T.draft.id } })).toBeNull()
     expect((await prisma.publication.findUnique({ where: { id: T.sitePub.id } })).desiredState).toBe('REMOVIDO')
+    // 2º Excluir com a remoção sem concluir (ficava em "Publicando" para sempre): apaga o registro.
+    const r3 = await (await post({ ids: [T.sitePub.id], action: 'EXCLUIR' })).json()
+    expect(r3.results[0]).toMatchObject({ ok: true, message: expect.stringContaining('Registro apagado') })
+    expect(await prisma.publication.findUnique({ where: { id: T.sitePub.id } })).toBeNull()
+    // Story no ar: não há o que retirar (some em 24 h) — apaga direto.
+    const story = await prisma.publication.create({ data: { tenantId: T.t.id, unitId: T.unit.id, vehicleId: T.adv.id, channel: T.ig.channel, connectionId: T.ig.id, connectionKey: T.ig.id, campaignKey: 'story-no-ar', externalRef: `s${randomUUID().slice(0, 10)}`, status: 'EM_ANALISE', remoteId: 'ST1', publishedAt: new Date(), overrides: { social: { format: 'STORY', template: 'OFERTA' } } } })
+    const r4 = await (await post({ ids: [story.id], action: 'EXCLUIR' })).json()
+    expect(r4.results[0].message).toContain('Story some sozinho')
+    expect(await prisma.publication.findUnique({ where: { id: story.id } })).toBeNull()
     // Post avulso: rascunho vira cancelado (sai do quadro); com erro é apagado.
     const del = (id: string) => avulsaDel.DELETE(new Request(`http://x/api/publications/avulsa/${id}`, { method: 'DELETE' }), { params: Promise.resolve({ id }) })
     expect((await del(T.post.id)).status).toBe(200)

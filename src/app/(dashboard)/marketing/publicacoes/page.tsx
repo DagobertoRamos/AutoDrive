@@ -96,6 +96,7 @@ export default function PainelPage() {
       c.kind === 'ASSISTENTE' ? 'Descartar a publicação em andamento?'
       : c.kind === 'AVULSO' ? `Excluir o post "${c.title}" do sistema?${live ? '\n\nO que já está no ar continua nas redes.' : ''}`
       : failedOnly ? `Excluir as falhas de "${c.title} · ${c.format}"?${live ? '\n\nOs canais onde já está no ar continuam no ar.' : ''}`
+      : /story/i.test(c.format ?? '') ? `Excluir "${c.title} · ${c.format}"?${live ? '\n\nO Story some sozinho da rede em até 24 h.' : ''}`
       : live ? `Excluir "${c.title} · ${c.format}"?\n\nOs canais onde já está no ar serão retirados; os demais, apagados.` : `Excluir "${c.title} · ${c.format}"?`)) return
     setBusy(c.key); setMsg(null)
     try {
