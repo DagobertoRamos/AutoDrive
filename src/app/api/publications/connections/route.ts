@@ -41,6 +41,8 @@ export async function GET(req: Request) {
       channels: CHANNELS.map((c) => ({ ...c, publishable: isPublishable(c) || c.mechanism === 'MANUAL', implemented: !!getConnector(c.id) || c.mechanism === 'MANUAL' || c.mechanism === 'FEED' })).sort((x, y) => x.priority - y.priority),
       connections: conns.map((c) => ({ ...c, activePublications: c._count.publications })),
       oauth, can: await permissions(a.user),
+      // MASTER cadastra o app da plataforma direto daqui (client key/segredo).
+      master: a.user.role === 'MASTER',
     },
   })
 }

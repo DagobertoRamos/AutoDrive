@@ -36,6 +36,21 @@ const OAUTH_SLUG: Record<string, string> = { MERCADO_LIVRE: 'mercado-livre', OLX
 const OAUTH_KEY: Record<string, string> = { MERCADO_LIVRE: 'MERCADO_LIVRE', OLX: 'OLX', META_PAGE: 'META', INSTAGRAM: 'META', MOBIAUTO: 'MOBIAUTO', TIKTOK: 'TIKTOK' }
 /** Canais OAuth que a loja também conecta colando um token (sem esperar o app da plataforma). */
 const TOKEN_CONNECT = new Set(['META_PAGE', 'INSTAGRAM'])
+/** Canais OAuth cujo app da plataforma o MASTER cadastra aqui mesmo (client key/segredo). */
+const APP_FORM: Record<string, { keyLabel: string; secretLabel: string; portal: string; steps: string[] }> = {
+  TIKTOK: {
+    keyLabel: 'Client key', secretLabel: 'Client secret', portal: 'https://developers.tiktok.com/apps',
+    steps: [
+      'No app em developers.tiktok.com: produtos Login Kit (Web) e Content Posting API com Direct Post ligado.',
+      'Redirect URI do Login Kit: {redirect}',
+      'URL properties: prefixo {origin}/ verificado.',
+      'Copie a Client key e o Client secret (topo da página do app) e cole abaixo.',
+    ],
+  },
+  MERCADO_LIVRE: { keyLabel: 'Client ID (App ID)', secretLabel: 'Chave secreta', portal: 'https://developers.mercadolivre.com.br/devcenter', steps: ['Crie o app no DevCenter do Mercado Livre.', 'URI de redirect: {redirect}', 'Cole o ID e a chave secreta abaixo.'] },
+  OLX: { keyLabel: 'client_id', secretLabel: 'client_secret', portal: 'https://developers.olx.com.br', steps: ['Peça o app a suporteintegrador@olxbr.com informando a URI de redirect: {redirect}', 'Cole o client_id e o client_secret recebidos.'] },
+  MOBIAUTO: { keyLabel: 'client_id', secretLabel: 'client_secret', portal: 'https://open-api.mobiauto.com.br/swagger-ui.html', steps: ['Peça o app a openapi@mobiauto.com.br informando a URI de redirect: {redirect}', 'Cole o client_id e o client_secret recebidos.'] },
+}
 
 export default function ChannelsPage() {
   return <Suspense fallback={<Loader2 className="m-6 animate-spin text-gray-400" />}><Channels /></Suspense>
@@ -43,7 +58,7 @@ export default function ChannelsPage() {
 
 function Channels() {
   const params = useSearchParams()
-  const [data, setData] = useState<{ channels: Channel[]; connections: Connection[]; oauth: Record<string, boolean>; can: any } | null>(null)
+  const [data, setData] = useState<{ channels: Channel[]; connections: Connection[]; oauth: Record<string, boolean>; can: any; master?: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(() => params.get('ok') ? { ok: true, text: params.get('ok')! } : params.get('erro') ? { ok: false, text: params.get('erro')! } : null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -53,6 +68,7 @@ function Channels() {
   const [diag, setDiag] = useState<Channel | null>(null)
   const [pending, setPending] = useState<Channel | null>(null)
   const [metaFor, setMetaFor] = useState<Channel | null>(null)
+  const [appFor, setAppFor] = useState<Channel | null>(null)
   // Aviso sempre à vista (quem clica lá embaixo no catálogo também vê).
   useEffect(() => { if (flash) window.scrollTo({ top: 0, behavior: 'smooth' }) }, [flash])
 
@@ -70,7 +86,7 @@ function Channels() {
   }
   const startConnect = (ch: Channel) => {
     if (ch.connect === 'OAUTH') {
-      if (!data?.oauth[OAUTH_KEY[ch.id]]) { if (TOKEN_CONNECT.has(ch.id)) setMetaFor(ch); else setPending(ch); return }
+      if (!data?.oauth[OAUTH_KEY[ch.id]]) { if (TOKEN_CONNECT.has(ch.id)) setMetaFor(ch); else if (data?.master && APP_FORM[ch.id]) setAppFor(ch); else setPending(ch); return }
       window.location.assign(`/api/publications/oauth/${OAUTH_SLUG[ch.id]}/start`)
     } else setConnectFor(ch)
   }
@@ -146,7 +162,7 @@ function Channels() {
                     {ch.mechanism !== 'MANUAL' && <div className="mt-2 flex flex-wrap gap-1">{Object.entries(ch.capabilities).filter(([k]) => ['publish', 'get', 'update', 'pause', 'remove'].includes(k)).map(([k, v]) => <span key={k} className={cn('rounded px-1.5 py-0.5 text-[10px]', v === 'SIM' ? 'bg-green-50 text-green-700' : v === 'MANUAL' ? 'bg-amber-50 text-amber-700' : v === 'NAO' ? 'bg-gray-100 text-gray-400 line-through' : 'bg-gray-50 text-gray-400')}>{CAP[k]}</span>)}</div>}
                     <p className="mt-2 flex-1 text-[11px] text-gray-500">{ch.source.notes}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && (ch.connect === 'OAUTH' && !data.oauth[OAUTH_KEY[ch.id]] && !TOKEN_CONNECT.has(ch.id)
+                      {data.can.connections && ch.connect !== 'NENHUMA' && ch.devStatus !== 'EM_AVALIACAO' && (ch.connect === 'OAUTH' && !data.oauth[OAUTH_KEY[ch.id]] && !TOKEN_CONNECT.has(ch.id) && !(data.master && APP_FORM[ch.id])
                         ? <button onClick={() => startConnect(ch)} className="btn-secondary px-2 py-1 text-xs"><AlertTriangle size={13} className="text-amber-600" />Como conectar</button>
                         : <button onClick={() => startConnect(ch)} className="btn-primary px-2 py-1 text-xs"><Plug size={13} />{connected ? 'Conectar outra conta' : 'Conectar'}</button>)}
                       {connected > 0 && <span className="inline-flex items-center gap-1 text-[11px] text-green-700"><CheckCircle2 size={12} />{connected} conectada(s)</span>}
@@ -170,6 +186,7 @@ function Channels() {
           </div>
         </Drawer>
       )}
+      {appFor && <AppConnectForm channel={appFor} onClose={() => setAppFor(null)} />}
       {metaFor && <MetaConnectForm channel={metaFor} onClose={() => setMetaFor(null)} onDone={(t) => { setMetaFor(null); setFlash(t); void load() }} />}
       {connectFor && <ConnectForm channel={connectFor} onClose={() => setConnectFor(null)} onDone={(t) => { setConnectFor(null); setFlash(t); void load() }} />}
       {configFor && <ConfigForm conn={configFor} spec={specOf(configFor.channel)} onClose={() => setConfigFor(null)} onDone={(t) => { setConfigFor(null); setFlash(t); void load() }} />}
@@ -219,6 +236,46 @@ const META_STEPS: Array<[string, string, string?]> = [
   ['Dê acesso à Página e ao app', 'Com o usuário selecionado, “Atribuir ativos”: marque a Página da loja com controle total e o app criado no passo 1.'],
   ['Gere o token', '“Gerar novo token” › escolha o app › validade “Nunca” › marque pages_show_list, pages_read_engagement, pages_manage_posts, instagram_basic e instagram_content_publish › Gerar. Copie o token.'],
 ]
+
+/** MASTER: cadastra o app da plataforma (client key/segredo) e já abre o login do canal. */
+function AppConnectForm({ channel, onClose }: { channel: Channel; onClose: () => void }) {
+  const cfg = APP_FORM[channel.id]
+  const [clientId, setClientId] = useState('')
+  const [secret, setSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const redirect = `${origin}/api/publications/oauth/${OAUTH_SLUG[channel.id]}/callback`
+  const submit = async () => {
+    setBusy(true); setErr(null)
+    try {
+      const j = await api('/api/publications/platform-app', { method: 'POST', json: { channel: OAUTH_KEY[channel.id], clientId, clientSecret: secret } })
+      window.location.assign(j.start)
+    } catch (e) { setErr((e as Error).message); setBusy(false) }
+  }
+  return (
+    <Drawer open onClose={onClose} title={`Conectar ${channel.name}`} subtitle="Aplicativo da plataforma (vale para todas as lojas)">
+      <div className="space-y-4 text-sm text-gray-700">
+        <ol className="space-y-2">
+          {cfg.steps.map((t, i) => (
+            <li key={i} className="flex gap-2">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-semibold text-white">{i + 1}</span>
+              <p className="break-all text-xs text-gray-700">{t.replace('{redirect}', redirect).replace('{origin}', origin)}</p>
+            </li>
+          ))}
+        </ol>
+        <a href={cfg.portal} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-brand-700 underline">Abrir o portal do desenvolvedor<ExternalLink size={11} /></a>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block text-xs text-gray-600">{cfg.keyLabel}<input className={inputCls} autoComplete="off" spellCheck={false} value={clientId} onChange={(e) => setClientId(e.target.value)} /></label>
+          <label className="block text-xs text-gray-600">{cfg.secretLabel}<input className={inputCls} type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} /></label>
+        </div>
+        <p className="text-[11px] text-gray-500">Conferimos os dados com o {channel.name} antes de salvar. O segredo fica cifrado no servidor (o mesmo de Master › Integrações). Depois de salvar, abre o login do {channel.name} para conectar a conta da loja.</p>
+        {err && <ErrorNote message={err} />}
+        <div className="flex justify-end gap-2"><button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button><button onClick={submit} disabled={busy || !clientId.trim() || !secret.trim()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />}Salvar e conectar</button></div>
+      </div>
+    </Drawer>
+  )
+}
 
 function MetaConnectForm({ channel, onClose, onDone }: { channel: Channel; onClose: () => void; onDone: (f: { ok: boolean; text: string }) => void }) {
   const [token, setToken] = useState('')

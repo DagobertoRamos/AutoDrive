@@ -71,7 +71,9 @@ export async function testPlatformApp(service: string, apiKey: string | null, se
     const res = await http.request({ method: 'POST', url: 'https://open.tiktokapis.com/v2/oauth/token/', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_key: id, client_secret: secret, grant_type: 'client_credentials' }) })
     const j = res.json<{ access_token?: string; error?: string; error_description?: string }>()
     if (res.status === 200 && j?.access_token) return { ok: true, message: 'App do TikTok válido (client key e secret aceitos). Para posts públicos o app precisa da auditoria do TikTok; antes disso, saem como privados.' }
-    return { ok: false, message: `TikTok recusou o app (${j?.error ?? res.status}${j?.error_description ? `: ${j.error_description}` : ''}).` }
+    if (j?.error === 'invalid_client') return { ok: false, message: `TikTok recusou a client key ou o client secret (invalid_client${j.error_description ? `: ${j.error_description}` : ''}).` }
+    // Outros retornos (ex.: app sem token de cliente liberado) não provam erro nas chaves: valida no 1º login.
+    return { ok: true, message: `Chaves salvas; o TikTok não confirmou pelo token de cliente (${j?.error ?? res.status}). A validação final acontece no login da conta.` }
   }
   if (service === 'PUB_OLX') {
     return { ok: true, message: 'Dados salvos. A OLX não oferece teste do app sem login: a validação acontece quando a primeira loja clicar em Conectar.' }
