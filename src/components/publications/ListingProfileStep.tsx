@@ -56,7 +56,7 @@ export function ListingProfileStep({ vehicleId, canEdit }: { vehicleId: string; 
 
   const save = useCallback(async () => {
     if (!dirty.current || !canEdit) return true
-    if (origin === 'PARTNER' && !partnerId) { setState('error'); setMsg('Escolha a loja parceira.'); return false }
+    if (origin === 'PARTNER' && !partnerId) { setState('error'); setMsg('Escolha o fornecedor do veículo.'); return false }
     setState('saving')
     try {
       const r = await fetch(`/api/publications/profile/${vehicleId}`, {
@@ -100,10 +100,10 @@ export function ListingProfileStep({ vehicleId, canEdit }: { vehicleId: string; 
         {origin === 'PARTNER' && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <select value={partnerId} disabled={!canEdit} onChange={(e) => { touch(); setPartnerId(e.target.value) }} className="min-w-[240px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
-              <option value="">Escolha a loja parceira…</option>
+              <option value="">Escolha o fornecedor…</option>
               {p.partners.map((s) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` · ${s.city}` : ''}{s.active ? '' : ' (inativa)'}</option>)}
             </select>
-            <Link href="/cadastros/lojas-parceiras" target="_blank" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">Cadastrar loja parceira <ExternalLink size={11} /></Link>
+            <Link href="/cadastros/fornecedores?tipo=VEICULOS" target="_blank" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">Cadastrar fornecedor <ExternalLink size={11} /></Link>
           </div>
         )}
         {!p.originDefined && <p className="mt-2 text-[11px] text-amber-700">Origem ainda não confirmada: sugerimos pelo tipo de estoque. Confira e salve.</p>}

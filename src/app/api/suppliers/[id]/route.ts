@@ -30,6 +30,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     else {
       const parsed = supplierData({ ...g.row, ...body })
       if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
+      const dup = await prisma.supplier.findFirst({ where: { tenantId: g.row.tenantId, document: parsed.data.document, id: { not: g.row.id } }, select: { name: true } })
+      if (dup) return NextResponse.json({ success: false, error: `CPF/CNPJ já cadastrado: ${dup.name}.` }, { status: 409 })
       data = { ...parsed.data, ...(typeof body.active === 'boolean' ? { active: body.active } : {}) }
     }
     const row = await prisma.supplier.update({ where: { id: g.row.id }, data })
@@ -44,10 +46,10 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const g = await load(ctx)
     if ('error' in g) return g.error
-    const used = await prisma.vehicleService.count({ where: { supplierId: g.row.id } })
+    const used = await prisma.vehicleService.count({ where: { supplierId: g.row.id } }) + await prisma.vehicle.count({ where: { partnerStoreId: g.row.id } })
     if (used) {
       await prisma.supplier.update({ where: { id: g.row.id }, data: { active: false } })
-      return NextResponse.json({ success: true, deactivated: true, message: `Fornecedor com ${used} serviço(s) no histórico: foi desativado.` })
+      return NextResponse.json({ success: true, deactivated: true, message: 'Fornecedor com histórico: foi desativado.' })
     }
     await prisma.supplier.delete({ where: { id: g.row.id } })
     return NextResponse.json({ success: true, deleted: true })

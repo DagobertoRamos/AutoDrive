@@ -11,7 +11,7 @@ export type OriginType = (typeof ORIGIN_TYPES)[number]
 
 export const ORIGIN_LABEL: Record<OriginType, string> = {
   OWN:     'Estoque próprio',
-  PARTNER: 'Loja parceira',
+  PARTNER: 'Fornecedor (lojista parceiro)',
   PRIVATE: 'Particular',
 }
 
@@ -52,7 +52,7 @@ export function validateOriginInput(input: { originType?: unknown; partnerStoreI
   const originType = normalizeOrigin(input.originType)
   if (!originType) return { ok: false, error: 'Escolha a origem: estoque próprio, loja parceira ou particular.' }
   const partnerStoreId = typeof input.partnerStoreId === 'string' && input.partnerStoreId.trim() ? input.partnerStoreId.trim() : null
-  if (originType === 'PARTNER' && !partnerStoreId) return { ok: false, error: 'Escolha a loja parceira.' }
+  if (originType === 'PARTNER' && !partnerStoreId) return { ok: false, error: 'Escolha o fornecedor do veículo.' }
   return { ok: true, originType, partnerStoreId: originType === 'PARTNER' ? partnerStoreId : null }
 }
 

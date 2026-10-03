@@ -1,26 +1,38 @@
 'use client'
 
 // =============================================================================
-// Cadastros › Fornecedores — oficinas, funilaria, estética, despachante, peças,
-// laudos… Usados nos serviços de preparação do veículo e no financeiro.
+// Cadastros › Fornecedores — todos os fornecedores da loja por tipo (veículos,
+// peças, oficinas, despachante, material de escritório…). PF/PJ pelo documento;
+// CNPJ e CEP preenchem os dados. Fornecedor de veículos sai nos contratos.
 // =============================================================================
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { AlertCircle, Loader2, Pencil, Plus, Save, Search, Wrench, X } from 'lucide-react'
+import { AlertCircle, Loader2, Pencil, Plus, Save, Search, Truck, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canAccessModule } from '@/lib/permissions'
-import { SUPPLIER_KINDS } from '@/lib/stock/suppliers'
+import { SUPPLIER_KINDS, SUPPLIER_KIND_LABEL, personTypeOf, supplierData } from '@/lib/stock/suppliers'
+import { formatCPF } from '@/lib/br-docs/cpf'
+import { formatCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
+import { formatPhone } from '@/lib/br-docs/phone'
+import { formatCEP } from '@/lib/br-docs/cep'
 
 interface Supplier {
-  id: string; name: string; kind: string; document: string | null; contactName: string | null; phone: string | null; whatsapp: string | null
-  email: string | null; city: string | null; address: string | null; pixKey: string | null; bankInfo: string | null; notes: string | null
-  active: boolean; _count?: { services: number }
+  id: string; name: string; legalName: string | null; kind: string; personType: string; document: string | null
+  rg: string | null; stateRegistration: string | null; repName: string | null; repCpf: string | null
+  phone: string | null; whatsapp: string | null; email: string | null
+  cep: string | null; street: string | null; number: string | null; complement: string | null; district: string | null; city: string | null; state: string | null
+  commission: string | null; pixKey: string | null; bankInfo: string | null; notes: string | null
+  active: boolean; _count?: { services: number; vehicles: number }
 }
-type Form = Omit<Supplier, 'id' | 'active' | '_count'>
-const EMPTY: Form = { name: '', kind: 'OFICINA', document: '', contactName: '', phone: '', whatsapp: '', email: '', city: '', address: '', pixKey: '', bankInfo: '', notes: '' }
-const KIND_LABEL = Object.fromEntries(SUPPLIER_KINDS) as Record<string, string>
+const FIELDS = ['kind', 'document', 'name', 'legalName', 'rg', 'stateRegistration', 'repName', 'repCpf', 'whatsapp', 'phone', 'email', 'cep', 'street', 'number', 'complement', 'district', 'city', 'state', 'commission', 'pixKey', 'bankInfo', 'notes'] as const
+type Key = (typeof FIELDS)[number]
+type Form = Record<Key, string>
+const EMPTY = Object.fromEntries(FIELDS.map((k) => [k, ''])) as Form
+const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ')
 const inputCls = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
+const digits = (s: string | null | undefined) => String(s ?? '').replace(/\D/g, '')
+const fmtDoc = (s: string | null | undefined) => { const d = digits(s); return d.length > 11 ? formatCNPJ(d) : formatCPF(d) }
 
 export default function FornecedoresPage() {
   const { data: session } = useSession()
@@ -28,91 +40,229 @@ export default function FornecedoresPage() {
   const canEdit = canAccessModule(role, 'stock.manage') || canAccessModule(role, 'finance')
   const [rows, setRows] = useState<Supplier[] | null>(null)
   const [q, setQ] = useState('')
+  const [tipo, setTipo] = useState('')
   const [err, setErr] = useState('')
   const [editing, setEditing] = useState<{ id: string | null; form: Form } | null>(null)
+  const [formErr, setFormErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const [lookup, setLookup] = useState<'' | 'cnpj' | 'cep'>('')
+
+  // ?tipo=VEICULOS (links de outras telas)
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tipo')?.toUpperCase()
+    if (t && SUPPLIER_KIND_LABEL[t]) setTimeout(() => setTipo(t), 0)
+  }, [])
 
   const load = useCallback(async () => {
-    const j = await fetch(`/api/suppliers${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`).then((r) => r.json()).catch(() => null)
+    const qs = new URLSearchParams()
+    if (q.trim()) qs.set('q', q.trim())
+    if (tipo) qs.set('tipo', tipo)
+    const j = await fetch(`/api/suppliers?${qs}`).then((r) => r.json()).catch(() => null)
     if (j?.success) setRows(j.data); else { setErr(j?.error ?? 'Falha ao carregar.'); setRows([]) }
-  }, [q])
+  }, [q, tipo])
   useEffect(() => { const t = setTimeout(() => void load(), 250); return () => clearTimeout(t) }, [load])
+
+  const f = editing?.form
+  const pt = f ? personTypeOf(f.document) : null
+  const isVeh = f?.kind === 'VEICULOS'
+  const set = (k: Key, v: string) => { setFormErr(''); setEditing((e) => e && { ...e, form: { ...e.form, [k]: v } }) }
+  const fill = (patch: Partial<Form>) => setEditing((e) => e && { ...e, form: { ...e.form, ...Object.fromEntries(Object.entries(patch).filter(([k, v]) => v && !e.form[k as Key])) } })
+
+  function open(s?: Supplier) {
+    setFormErr('')
+    setEditing(s
+      ? { id: s.id, form: Object.fromEntries(FIELDS.map((k) => [k, k === 'name' && s.personType === 'PJ' && s.legalName === s.name ? '' : String((s as unknown as Record<string, unknown>)[k] ?? '')])) as Form }
+      : { id: null, form: { ...EMPTY, kind: tipo } })
+  }
+
+  async function onDocument(v: string) {
+    const d = digits(v).slice(0, 14)
+    set('document', d)
+    if (d.length !== 14 || !isValidCNPJ(d)) return
+    setLookup('cnpj')
+    const j = await fetch(`/api/integrations/brasilapi/cnpj/${d}`).then((r) => r.json()).catch(() => null)
+    setLookup('')
+    const x = j?.data
+    if (!x) return
+    fill({ legalName: x.razaoSocial, name: x.nomeFantasia, email: String(x.email ?? '').toLowerCase(), phone: digits(x.telefone1), cep: digits(x.cep), street: x.logradouro, number: x.numero, complement: x.complemento, district: x.bairro, city: x.cidade, state: x.estado })
+  }
+
+  async function onCep(v: string) {
+    const d = digits(v).slice(0, 8)
+    set('cep', d)
+    if (d.length !== 8) return
+    setLookup('cep')
+    const j = await fetch(`/api/address/lookup-by-cep?cep=${d}`).then((r) => r.json()).catch(() => null)
+    setLookup('')
+    const x = j?.data
+    if (x) setEditing((e) => e && { ...e, form: { ...e.form, street: x.logradouro || e.form.street, district: x.bairro || e.form.district, city: x.cidade || e.form.city, state: x.estado || e.form.state } })
+  }
 
   async function save() {
     if (!editing) return
-    setSaving(true); setErr('')
+    const check = supplierData(editing.form)
+    if (!check.ok) { setFormErr(check.error); return }
+    setSaving(true); setFormErr('')
     const r = await fetch(editing.id ? `/api/suppliers/${editing.id}` : '/api/suppliers', { method: editing.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editing.form) })
     const j = await r.json().catch(() => ({}))
     setSaving(false)
-    if (!r.ok) { setErr(j.error ?? 'Falha ao salvar.'); return }
+    if (!r.ok) { setFormErr(j.error ?? 'Falha ao salvar.'); return }
     setEditing(null); void load()
   }
   const toggle = async (s: Supplier) => { await fetch(`/api/suppliers/${s.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: !s.active }) }); void load() }
-  const set = (k: keyof Form, v: string) => setEditing((e) => e && { ...e, form: { ...e.form, [k]: v } })
+
+  const counts = useMemo(() => rows?.length ?? 0, [rows])
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700"><Wrench size={20} /></div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Fornecedores</h1>
-            <p className="text-sm text-gray-500">Oficinas, funilaria, estética, despachante e demais prestadores da preparação dos veículos.</p>
-          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700"><Truck size={20} /></div>
+          <div><h1 className="text-xl font-bold text-gray-900">Fornecedores</h1><p className="text-sm text-gray-500">{rows ? `${counts} cadastrado(s)` : ' '}</p></div>
         </div>
-        {canEdit && <button onClick={() => setEditing({ id: null, form: EMPTY })} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"><Plus size={15} /> Novo fornecedor</button>}
+        {canEdit && <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Novo fornecedor</button>}
       </div>
-      <div className="relative max-w-sm">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nome ou cidade" className={cn(inputCls, 'mt-0 pl-9')} />
+
+      <div className="flex flex-wrap gap-2">
+        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={cn(inputCls, 'mt-0 w-auto')}>
+          <option value="">Todos os tipos</option>
+          {SUPPLIER_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nome, CPF/CNPJ ou cidade" className={cn(inputCls, 'mt-0 pl-9')} />
+        </div>
       </div>
+
       {err && <p className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={15} />{err}</p>}
-      {!rows ? <Loader2 className="animate-spin text-gray-400" /> : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">Nenhum fornecedor cadastrado.</div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rows.map((s) => (
-            <div key={s.id} className={cn('rounded-xl border border-gray-200 bg-white p-4 shadow-sm', !s.active && 'opacity-60')}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0"><p className="truncate font-semibold text-gray-900">{s.name}</p><p className="text-xs text-gray-500">{KIND_LABEL[s.kind] ?? s.kind}{s.city ? ` · ${s.city}` : ''}</p></div>
-                <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', s.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500')}>{s.active ? 'Ativo' : 'Inativo'}</span>
+
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-100 text-sm">
+            <thead className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr><th className="px-4 py-2.5">Fornecedor</th><th className="px-4 py-2.5">Tipo</th><th className="px-4 py-2.5">CPF/CNPJ</th><th className="px-4 py-2.5">Cidade</th><th className="px-4 py-2.5">Contato</th><th className="px-4 py-2.5" /></tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {!rows ? (
+                <tr><td colSpan={6} className="py-10 text-center"><Loader2 className="mx-auto animate-spin text-gray-400" /></td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={6} className="py-10 text-center text-sm text-gray-400">Nenhum fornecedor.</td></tr>
+              ) : rows.map((s) => (
+                <tr key={s.id} className={cn('hover:bg-gray-50', !s.active && 'opacity-50')}>
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium text-gray-900">{s.name}</p>
+                    {s.legalName && s.legalName !== s.name && <p className="text-xs text-gray-500">{s.legalName}</p>}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-600">{SUPPLIER_KIND_LABEL[s.kind] ?? s.kind}{s.kind === 'VEICULOS' && s._count?.vehicles ? <span className="ml-1 text-xs text-gray-400">· {s._count.vehicles} carro(s)</span> : null}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-600">{s.document ? fmtDoc(s.document) : <span className="text-amber-600">pendente</span>}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{[s.city, s.state].filter(Boolean).join('/') || '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-gray-600">{s.whatsapp || s.phone ? formatPhone(s.whatsapp || s.phone) : '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                    {canEdit && <>
+                      <button onClick={() => open(s)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={15} /></button>
+                      <button onClick={() => void toggle(s)} className="rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50">{s.active ? 'Desativar' : 'Ativar'}</button>
+                    </>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {editing && f && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
+              <h2 className="text-lg font-bold text-gray-900">{editing.id ? 'Editar fornecedor' : 'Novo fornecedor'}</h2>
+              <button onClick={() => setEditing(null)} className="rounded p-1 text-gray-500 hover:bg-gray-100" aria-label="Fechar"><X size={18} /></button>
+            </div>
+            <div className="space-y-5 overflow-y-auto px-5 py-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <L label="Tipo" req><select className={inputCls} value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="">Selecione</option>{SUPPLIER_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></L>
+                <L label="CPF/CNPJ" req hint={lookup === 'cnpj' ? 'consultando…' : pt === 'PJ' ? 'Pessoa jurídica' : pt === 'PF' ? 'Pessoa física' : undefined}>
+                  <input className={inputCls} inputMode="numeric" value={fmtDoc(f.document)} onChange={(e) => void onDocument(e.target.value)} />
+                </L>
               </div>
-              <div className="mt-2 space-y-0.5 text-xs text-gray-600">
-                {s.contactName && <p>Contato: {s.contactName}</p>}
-                {(s.whatsapp || s.phone) && <p>{s.whatsapp ? `WhatsApp ${s.whatsapp}` : `Tel. ${s.phone}`}</p>}
-                {s.pixKey && <p>PIX: {s.pixKey}</p>}
-                <p className="font-medium text-gray-700">{s._count?.services ?? 0} carro(s) em serviço agora</p>
-              </div>
-              {canEdit && (
-                <div className="mt-3 flex gap-2">
-                  <button onClick={() => setEditing({ id: s.id, form: Object.fromEntries(Object.keys(EMPTY).map((k) => [k, (s as unknown as Record<string, string | null>)[k] ?? ''])) as Form })} className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"><Pencil size={12} />Editar</button>
-                  <button onClick={() => void toggle(s)} className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">{s.active ? 'Desativar' : 'Ativar'}</button>
+
+              {pt && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {pt === 'PJ' ? <>
+                    <L label="Razão social" req><input className={inputCls} value={f.legalName} onChange={(e) => set('legalName', e.target.value)} /></L>
+                    <L label="Nome fantasia"><input className={inputCls} value={f.name} onChange={(e) => set('name', e.target.value)} /></L>
+                    <L label="Inscrição estadual"><input className={inputCls} value={f.stateRegistration} onChange={(e) => set('stateRegistration', e.target.value)} /></L>
+                  </> : <>
+                    <L label="Nome completo" req><input className={inputCls} value={f.name} onChange={(e) => set('name', e.target.value)} /></L>
+                    <L label="RG"><input className={inputCls} value={f.rg} onChange={(e) => set('rg', e.target.value)} /></L>
+                  </>}
                 </div>
               )}
+
+              <Section title="Contato">
+                <L label="WhatsApp" req={!f.phone}><input className={inputCls} inputMode="tel" value={formatPhone(f.whatsapp)} onChange={(e) => set('whatsapp', digits(e.target.value).slice(0, 11))} /></L>
+                <L label="Telefone" req={!f.whatsapp}><input className={inputCls} inputMode="tel" value={formatPhone(f.phone)} onChange={(e) => set('phone', digits(e.target.value).slice(0, 11))} /></L>
+                <div className="sm:col-span-2"><L label="E-mail"><input className={inputCls} type="email" value={f.email} onChange={(e) => set('email', e.target.value)} /></L></div>
+              </Section>
+
+              <Section title="Endereço">
+                <L label="CEP" req={isVeh} hint={lookup === 'cep' ? 'consultando…' : undefined}><input className={inputCls} inputMode="numeric" value={formatCEP(f.cep)} onChange={(e) => void onCep(e.target.value)} /></L>
+                <L label="Logradouro" req={isVeh}><input className={inputCls} value={f.street} onChange={(e) => set('street', e.target.value)} /></L>
+                <L label="Número" req={isVeh}><input className={inputCls} value={f.number} onChange={(e) => set('number', e.target.value)} /></L>
+                <L label="Complemento"><input className={inputCls} value={f.complement} onChange={(e) => set('complement', e.target.value)} /></L>
+                <L label="Bairro" req={isVeh}><input className={inputCls} value={f.district} onChange={(e) => set('district', e.target.value)} /></L>
+                <div className="grid grid-cols-[1fr_88px] gap-3">
+                  <L label="Cidade" req={isVeh}><input className={inputCls} value={f.city} onChange={(e) => set('city', e.target.value)} /></L>
+                  <L label="UF" req={isVeh}><select className={inputCls} value={f.state} onChange={(e) => set('state', e.target.value)}><option value="" />{UFS.map((u) => <option key={u}>{u}</option>)}</select></L>
+                </div>
+              </Section>
+
+              {pt === 'PJ' && (
+                <Section title="Representante legal">
+                  <L label="Nome" req={isVeh}><input className={inputCls} value={f.repName} onChange={(e) => set('repName', e.target.value)} /></L>
+                  <L label="CPF" req={isVeh}><input className={inputCls} inputMode="numeric" value={formatCPF(f.repCpf)} onChange={(e) => set('repCpf', digits(e.target.value).slice(0, 11))} /></L>
+                </Section>
+              )}
+
+              {isVeh && (
+                <Section title="Intermediação">
+                  <div className="sm:col-span-2"><L label="Remuneração da loja"><input className={inputCls} value={f.commission} onChange={(e) => set('commission', e.target.value)} placeholder="Ex.: 8% do valor da venda" /></L></div>
+                </Section>
+              )}
+
+              <Section title="Pagamento">
+                <L label="Chave PIX"><input className={inputCls} value={f.pixKey} onChange={(e) => set('pixKey', e.target.value)} /></L>
+                <L label="Dados bancários"><input className={inputCls} value={f.bankInfo} onChange={(e) => set('bankInfo', e.target.value)} placeholder="Banco, agência, conta" /></L>
+                <div className="sm:col-span-2"><L label="Observações"><textarea rows={2} className={inputCls} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></L></div>
+              </Section>
             </div>
-          ))}
-        </div>
-      )}
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editing.id ? 'Editar fornecedor' : 'Novo fornecedor'}</h2><button onClick={() => setEditing(null)} className="rounded p-1 text-gray-500 hover:bg-gray-100" aria-label="Fechar"><X size={18} /></button></div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-xs font-medium text-gray-600">Nome *<input className={inputCls} value={editing.form.name} onChange={(e) => set('name', e.target.value)} maxLength={120} /></label>
-              <label className="block text-xs font-medium text-gray-600">Tipo<select className={inputCls} value={editing.form.kind} onChange={(e) => set('kind', e.target.value)}>{SUPPLIER_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
-              {([['document', 'CNPJ/CPF'], ['contactName', 'Contato'], ['whatsapp', 'WhatsApp'], ['phone', 'Telefone'], ['email', 'E-mail'], ['city', 'Cidade'], ['address', 'Endereço'], ['pixKey', 'Chave PIX']] as Array<[keyof Form, string]>).map(([k, l]) => (
-                <label key={k} className="block text-xs font-medium text-gray-600">{l}<input className={inputCls} value={editing.form[k] ?? ''} onChange={(e) => set(k, e.target.value)} /></label>
-              ))}
-              <label className="block text-xs font-medium text-gray-600 sm:col-span-2">Dados bancários<input className={inputCls} value={editing.form.bankInfo ?? ''} onChange={(e) => set('bankInfo', e.target.value)} /></label>
-              <label className="block text-xs font-medium text-gray-600 sm:col-span-2">Observações<textarea rows={3} className={inputCls} value={editing.form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} /></label>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setEditing(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
-              <button onClick={() => void save()} disabled={saving || !editing.form.name.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar</button>
+            <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-3">
+              <p className="min-h-5 text-sm text-red-600">{formErr}</p>
+              <div className="flex shrink-0 gap-2">
+                <button onClick={() => setEditing(null)} className="btn-secondary text-sm">Cancelar</button>
+                <button onClick={() => void save()} disabled={saving} className="btn-primary text-sm">{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Salvar</button>
+              </div>
             </div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function L({ label, req, hint, children }: { label: string; req?: boolean; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block text-xs font-medium text-gray-700">
+      <span className="flex items-center justify-between">{label}{req && <span className="text-red-500"> *</span>}<span className="ml-auto font-normal text-gray-400">{hint}</span></span>
+      {children}
+    </label>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+      <div className="grid gap-3 sm:grid-cols-2">{children}</div>
     </div>
   )
 }

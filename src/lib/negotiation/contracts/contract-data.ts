@@ -12,6 +12,7 @@ import type { ProxyKind } from './proxies-core'
 import { buildStatement, num, parseVehicleText, renavamFromDebts } from './statement-core'
 import { loadDocSettings } from './doc-settings'
 import { formatCpf } from './doc-settings-core'
+import { supplierAddress } from '@/lib/stock/suppliers'
 
 const digits = (s?: string | null) => String(s ?? '').replace(/\D/g, '')
 export function fmtDoc(s?: string | null): string | null {
@@ -134,8 +135,16 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
   const sv = sold?.vehicle
   let proprietario: Party | null = null
   if (sv?.originType === 'PARTNER' && sv.partnerStore) {
+    // Fornecedor de veículos (Cadastros › Fornecedores): PF ou PJ pelo documento.
     const p = sv.partnerStore
-    proprietario = { tipo: digits(p.cnpj).length === 14 ? 'PJ' : 'PF', nome: p.legalName || p.name, documento: fmtDoc(p.cnpj), endereco: join([p.address, join([p.city, p.state], '/')]), telefone: p.whatsapp ?? null, email: p.email ?? null, representante: p.responsibleName ? { nome: p.responsibleName } : null }
+    const pj = p.personType === 'PJ' || digits(p.document).length === 14
+    proprietario = {
+      tipo: pj ? 'PJ' : 'PF',
+      nome: pj && p.legalName && p.legalName !== p.name ? `${p.legalName} (${p.name})` : p.legalName || p.name,
+      documento: fmtDoc(p.document), rg: pj ? null : p.rg ?? null, ie: pj ? p.stateRegistration ?? null : null,
+      endereco: supplierAddress(p), telefone: p.whatsapp || p.phone || null, email: p.email ?? null,
+      representante: pj && p.repName ? { nome: p.repName, cpf: fmtDoc(p.repCpf) } : null,
+    }
   } else if (sv?.originType === 'PRIVATE' || deal.type === 'CONSIGNACAO') {
     if (sv?.customer) proprietario = partyFromCustomer(sv.customer as CustomerLike)
     else if (sv?.originEvaluationId) {

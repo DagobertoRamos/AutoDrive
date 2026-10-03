@@ -31,8 +31,8 @@ export async function GET(req: Request, ctx: Ctx) {
     const evalRow = v.originEvaluationId
       ? await prisma.vehicleEvaluation.findUnique({ where: { id: v.originEvaluationId }, select: { evaluationNotes: true } })
       : null
-    const partners = await prisma.partnerStore.findMany({
-      where: { tenantId: a.tenantId, OR: [{ active: true }, ...(v.partnerStoreId ? [{ id: v.partnerStoreId }] : [])] },
+    const partners = await prisma.supplier.findMany({
+      where: { tenantId: a.tenantId, kind: 'VEICULOS', OR: [{ active: true }, ...(v.partnerStoreId ? [{ id: v.partnerStoreId }] : [])] },
       orderBy: { name: 'asc' }, select: { id: true, name: true, city: true, active: true },
     })
     // Sem opcionais marcados: já vêm do cadastro (avaliação + o que está escrito
@@ -68,7 +68,7 @@ export async function PUT(req: Request, ctx: Ctx) {
     const origin = validateOriginInput(body)
     if (!origin.ok) return bad(origin.error)
     if (origin.partnerStoreId) {
-      const ok = await prisma.partnerStore.findFirst({ where: { id: origin.partnerStoreId, tenantId: a.tenantId }, select: { id: true } })
+      const ok = await prisma.supplier.findFirst({ where: { id: origin.partnerStoreId, tenantId: a.tenantId, kind: 'VEICULOS' }, select: { id: true } })
       if (!ok) return bad('Loja parceira não encontrada.')
     }
     const options = cleanOptions(body.options)

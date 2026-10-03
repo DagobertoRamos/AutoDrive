@@ -316,7 +316,6 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Clientes',   href: '/cadastros/clientes',   icon: Users,        module: 'registrations.customers' },
       { label: 'Veículos',   href: '/cadastros/veiculos',   icon: Car,          module: 'registrations.vehicles' },
       { label: 'Unidades',   href: '/cadastros/unidades',   icon: Building2,    module: 'registrations.units' },
-      { label: 'Lojas parceiras', href: '/cadastros/lojas-parceiras', icon: Handshake, module: 'registrations.vehicles' },
       { label: 'Fornecedores', href: '/cadastros/fornecedores', icon: Wrench, module: 'registrations.vehicles' },
       { label: 'Colaboradores', href: '/cadastros/vendedores', icon: UserCircle, module: 'registrations.sellers' },
       { label: 'Gerentes',   href: '/cadastros/gerentes',   icon: UserCog,      module: 'registrations.managers' },

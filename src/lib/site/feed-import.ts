@@ -83,15 +83,16 @@ async function syncLegacyPartners(tenantId: string) {
     )
     for (const r of rows) {
       const id = await ensurePartnerStoreByName(tenantId, String(r.name), { city: (r.city as string) || null, whatsapp: (r.whatsapp as string) || null })
-      const cur = await prisma.partnerStore.findUnique({ where: { id } })
+      const cur = await prisma.supplier.findUnique({ where: { id } })
       if (!cur) continue
       const fill: Record<string, string> = {}
-      const map: Array<[keyof typeof cur, string]> = [['legalName', 'legal_name'], ['cnpj', 'cnpj'], ['responsibleName', 'responsible_name'], ['email', 'email'], ['address', 'address'], ['instagram', 'instagram'], ['website', 'website'], ['commission', 'commission']]
+      const map: Array<[keyof typeof cur, string]> = [['legalName', 'legal_name'], ['document', 'cnpj'], ['repName', 'responsible_name'], ['email', 'email'], ['address', 'address'], ['commission', 'commission']]
       for (const [k, col] of map) {
         const v = String(r[col] ?? '').trim()
-        if (v && !cur[k]) fill[k as string] = k === 'cnpj' ? v.replace(/\D/g, '') : v
+        if (v && !cur[k]) fill[k as string] = k === 'document' ? v.replace(/\D/g, '') : v
       }
-      if (Object.keys(fill).length) await prisma.partnerStore.update({ where: { id }, data: fill })
+      if (fill.document) fill.personType = fill.document.length === 11 ? 'PF' : 'PJ'
+      if (Object.keys(fill).length) await prisma.supplier.update({ where: { id }, data: fill })
     }
   } finally {
     await pool.end().catch(() => {})

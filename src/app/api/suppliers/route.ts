@@ -1,6 +1,6 @@
 // =============================================================================
-// /api/suppliers — fornecedores/prestadores (oficinas, funilaria, estética,
-// despachante, peças, laudos…). GET ?ativos=1&q=  ·  POST { name, kind, ... }
+// /api/suppliers — fornecedores (veículos, peças, oficinas, despachante,
+// material de escritório…). GET ?ativos=1&q=&tipo=VEICULOS&semTipo=VEICULOS · POST
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -20,14 +20,22 @@ export async function GET(req: NextRequest) {
     const tenantId = assertTenantId(user.tenantId, user.role)
     const sp = req.nextUrl.searchParams
     const q = (sp.get('q') ?? '').trim()
+    const qDigits = q.replace(/\D/g, '')
+    const tipo = (sp.get('tipo') ?? '').toUpperCase()
+    const semTipo = (sp.get('semTipo') ?? '').toUpperCase()
     const rows = await prisma.supplier.findMany({
       where: {
         ...tenantWhere(user.role, tenantId),
         ...(sp.get('ativos') === '1' ? { active: true } : {}),
-        ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { city: { contains: q, mode: 'insensitive' as const } }] } : {}),
+        ...(tipo ? { kind: tipo } : semTipo ? { kind: { not: semTipo } } : {}),
+        ...(q ? { OR: [
+          { name: { contains: q, mode: 'insensitive' as const } }, { legalName: { contains: q, mode: 'insensitive' as const } },
+          { city: { contains: q, mode: 'insensitive' as const } },
+          ...(qDigits.length >= 3 ? [{ document: { contains: qDigits } }] : []),
+        ] } : {}),
       },
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
-      include: { _count: { select: { services: { where: { status: 'EM_SERVICO' } } } } },
+      include: { _count: { select: { services: { where: { status: 'EM_SERVICO' } }, vehicles: true } } },
     })
     return NextResponse.json({ success: true, data: rows })
   } catch (err) {
@@ -44,8 +52,8 @@ export async function POST(req: NextRequest) {
     if (!tenantId) return NextResponse.json({ success: false, error: 'Entre na loja para cadastrar fornecedores.' }, { status: 400 })
     const parsed = supplierData(await req.json().catch(() => ({})))
     if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
-    const dup = await prisma.supplier.findFirst({ where: { tenantId, name: { equals: parsed.data.name, mode: 'insensitive' } }, select: { id: true } })
-    if (dup) return NextResponse.json({ success: false, error: 'Já existe um fornecedor com esse nome.' }, { status: 409 })
+    const dup = await prisma.supplier.findFirst({ where: { tenantId, document: parsed.data.document }, select: { name: true } })
+    if (dup) return NextResponse.json({ success: false, error: `CPF/CNPJ já cadastrado: ${dup.name}.` }, { status: 409 })
     const row = await prisma.supplier.create({ data: { ...parsed.data, tenantId } })
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE', entity: 'Supplier', entityId: row.id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true, data: row }, { status: 201 })

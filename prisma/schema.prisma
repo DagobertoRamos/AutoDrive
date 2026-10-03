@@ -832,7 +832,8 @@ model Vehicle {
   stockPendencies VehicleStockPendency[] // pendências de estoque configuráveis
   pricingHistory  VehiclePricingHistory[]
   siteListing     SiteListing? // anúncio no site da loja (tabela própria)
-  partnerStore    PartnerStore?           @relation(fields: [partnerStoreId], references: [id], onDelete: SetNull)
+  /// Fornecedor do carro (kind VEICULOS) quando a loja intermedeia — antiga "loja parceira".
+  partnerStore    Supplier?               @relation("VehicleSupplierOrigin", fields: [partnerStoreId], references: [id], onDelete: SetNull)
   services        VehicleService[] // preparação (oficinas, estética, funilaria...)
   files           VehicleFile[] // laudo, recebimento, comprovantes
   reception       VehicleReception?
@@ -897,25 +898,44 @@ model VehicleReception {
 model Supplier {
   id          String   @id @default(cuid())
   tenantId    String
+  /// Nome de exibição: nome fantasia (PJ) ou nome completo (PF).
   name        String
-  kind        String   @default("OFICINA") // OFICINA | FUNILARIA | ESTETICA | MECANICA | ELETRICA | PECAS | DESPACHANTE | LAUDO | OUTRO
-  document    String? // CNPJ/CPF
+  /// Razão social (PJ) / nome completo (PF) — usado nos contratos e termos.
+  legalName   String?
+  kind        String   @default("OUTRO") // ver SUPPLIER_KINDS (VEICULOS = fornecedor de carros intermediados)
+  personType  String   @default("PJ") // PF | PJ — pelo documento
+  document    String? // CNPJ/CPF (só dígitos)
+  rg          String?
+  stateRegistration String? // inscrição estadual
+  repName     String? // representante legal (PJ)
+  repCpf      String?
   contactName String?
   phone       String?
   whatsapp    String?
   email       String?
+  cep         String?
+  street      String?
+  number      String?
+  complement  String?
+  district    String?
   city        String?
-  address     String?
+  state       String?
+  address     String? // legado (texto livre)
+  commission  String? // remuneração da intermediação (fornecedor de veículos)
   pixKey      String?
   bankInfo    String?
   notes       String?
+  sourceRef   String? // importação (feed do site antigo)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   services VehicleService[]
+  vehicles Vehicle[]        @relation("VehicleSupplierOrigin")
 
+  @@unique([tenantId, sourceRef])
   @@index([tenantId, active])
+  @@index([tenantId, kind])
   @@map("suppliers")
 }
 
@@ -995,33 +1015,8 @@ model DealDraft {
 // Lojistas cujos carros a loja anuncia/intermedeia (origem PARTNER do veículo).
 // `sourceRef` = identificação na origem (ex.: "legacy:<uuid>" do site antigo,
 // "feed:<nome>") para importar sem duplicar.
-model PartnerStore {
-  id              String   @id @default(cuid())
-  tenantId        String
-  name            String
-  legalName       String?
-  cnpj            String?
-  responsibleName String?
-  whatsapp        String?
-  email           String?
-  city            String?
-  state           String?
-  address         String?
-  instagram       String?
-  website         String?
-  commission      String?
-  notes           String?
-  active          Boolean  @default(true)
-  sourceRef       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  vehicles Vehicle[]
-
-  @@unique([tenantId, sourceRef])
-  @@index([tenantId, active])
-  @@map("partner_stores")
-}
+// PartnerStore (partner_stores) foi unificada em Supplier (kind VEICULOS) — a tabela antiga
+// fica no banco só como histórico; os ids foram preservados.
 
 // ── Site da loja: anúncio do veículo ──────────────────────────────────────────
 // Tabela própria (não altera `vehicles`). Regra de publicação: carro ativo e

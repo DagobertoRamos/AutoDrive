@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
         orderBy: [{ createdAt: 'asc' }],
         include: { supplier: { select: { id: true, name: true, kind: true, whatsapp: true, phone: true } }, events: { orderBy: { createdAt: 'desc' }, take: 30 } },
       }),
-      prisma.supplier.findMany({ where: { tenantId: g.vehicle.tenantId ?? '', active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, kind: true } }),
+      prisma.supplier.findMany({ where: { tenantId: g.vehicle.tenantId ?? '', active: true, kind: { not: 'VEICULOS' } }, orderBy: { name: 'asc' }, select: { id: true, name: true, kind: true } }),
     ])
     const data = services.map((s) => ({ ...s, estimatedCost: s.estimatedCost == null ? null : Number(s.estimatedCost), actualCost: s.actualCost == null ? null : Number(s.actualCost) }))
     return NextResponse.json({ success: true, data: { services: data, summary: servicesSummary(data), suppliers } })
