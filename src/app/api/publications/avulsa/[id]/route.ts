@@ -1,6 +1,7 @@
 // DELETE /api/publications/avulsa/<id> — exclui um post avulso:
 //   rascunho/agendado → cancelado (sai da fila); com erro/cancelado → apagado.
-//   O que já foi para as redes é apagado na própria rede.
+//   ?permanente=1 → apaga o registro em qualquer situação (o que já está no ar
+//   continua nas redes — a Central não mexe nelas).
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { audit, bad, pubAuth } from '@/lib/publications/api'
@@ -13,9 +14,12 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   const a = await pubAuth(req, 'marketing.publications.publish')
   if (a instanceof NextResponse) return a
   const { id } = await ctx.params
+  const permanent = new URL(req.url).searchParams.get('permanente') === '1'
   const post = await prisma.socialPost.findFirst({ where: { id, tenantId: a.tenantId }, select: { status: true, media: true } })
   if (!post) return bad('Post não encontrado.', 404)
-  if (post.status === 'RASCUNHO' || post.status === 'AGENDADO') {
+  if (permanent && post.status !== 'ENVIANDO') {
+    await prisma.socialPost.delete({ where: { id } })
+  } else if (post.status === 'RASCUNHO' || post.status === 'AGENDADO') {
     const r = await prisma.socialPost.updateMany({ where: { id, tenantId: a.tenantId, status: { in: ['RASCUNHO', 'AGENDADO'] } }, data: { status: 'CANCELADO' } })
     if (!r.count) return bad('O post acabou de ir para a fila; atualize a tela.', 409)
   } else if (post.status === 'FALHA' || post.status === 'CANCELADO') {

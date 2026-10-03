@@ -90,13 +90,24 @@ export default function PainelPage() {
 
   const run = async (c: BoardCard, what: 'EXCLUIR' | 'REENVIAR') => {
     const live = c.channels.some((x) => x.status === 'PUBLICADO')
-    if (what === 'EXCLUIR' && !confirm(c.kind === 'ASSISTENTE' ? 'Descartar a publicação em andamento?' : c.kind === 'AVULSO' ? `Excluir o post "${c.title}"?` : live ? `Excluir "${c.title} · ${c.format}"?\n\nOs canais onde já está no ar serão retirados; os demais, apagados.` : `Excluir "${c.title} · ${c.format}"?`)) return
+    // Card com erro: "Excluir" apaga só as redes que falharam (o que deu certo segue no ar).
+    const failedOnly = c.kind === 'VEICULO' && c.column === 'atencao' && c.channels.some((x) => FAILED.has(x.status) || x.status === 'ACAO_MANUAL')
+    if (what === 'EXCLUIR' && !confirm(
+      c.kind === 'ASSISTENTE' ? 'Descartar a publicação em andamento?'
+      : c.kind === 'AVULSO' ? `Excluir o post "${c.title}" do sistema?${live ? '\n\nO que já está no ar continua nas redes.' : ''}`
+      : failedOnly ? `Excluir as falhas de "${c.title} · ${c.format}"?${live ? '\n\nOs canais onde já está no ar continuam no ar.' : ''}`
+      : live ? `Excluir "${c.title} · ${c.format}"?\n\nOs canais onde já está no ar serão retirados; os demais, apagados.` : `Excluir "${c.title} · ${c.format}"?`)) return
     setBusy(c.key); setMsg(null)
     try {
       if (c.kind === 'ASSISTENTE') await api('/api/publications/wizard', { method: 'DELETE' })
       else if (c.kind === 'AVULSO' && what === 'REENVIAR') await api(`/api/publications/avulsa/${c.postId}/retry`, { method: 'POST' })
-      else if (c.kind === 'AVULSO') await api(`/api/publications/avulsa/${c.postId}`, { method: 'DELETE' })
-      else {
+      else if (c.kind === 'AVULSO') await api(`/api/publications/avulsa/${c.postId}?permanente=1`, { method: 'DELETE' })
+      else if (what === 'EXCLUIR' && failedOnly) {
+        const ids = c.channels.filter((x) => x.pubId && (FAILED.has(x.status) || x.status === 'ACAO_MANUAL')).map((x) => x.pubId!)
+        const j = await api('/api/publications/actions', { method: 'POST', json: { ids, action: 'APAGAR_REGISTRO' } })
+        const bad = (j.results as Array<{ ok: boolean; message: string }>).filter((r) => !r.ok)
+        if (bad.length) throw new Error(bad.map((r) => r.message).join(' · '))
+      } else {
         const ids = c.channels.filter((x) => x.pubId && (what === 'EXCLUIR' || FAILED.has(x.status))).map((x) => x.pubId!)
         const j = await api('/api/publications/actions', { method: 'POST', json: { ids, action: what } })
         const bad = (j.results as Array<{ ok: boolean; message: string }>).filter((r) => !r.ok)
@@ -104,7 +115,11 @@ export default function PainelPage() {
       }
       setMsg({ ok: true, text: what === 'REENVIAR' ? 'Enviado de novo para a fila.' : 'Excluído.' })
       await load()
-    } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
+    } catch (e) {
+      // No celular a faixa de aviso fica fora da tela: o erro aparece também em alerta.
+      setMsg({ ok: false, text: (e as Error).message })
+      alert((e as Error).message)
+    } finally { setBusy(null) }
   }
 
   const download = async (c: BoardCard) => {
