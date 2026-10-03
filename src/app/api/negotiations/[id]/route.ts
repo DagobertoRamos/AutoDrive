@@ -101,7 +101,7 @@ export async function GET(
 
   // Negociações antigas sem gerente: preenche com o gerente do vendedor/unidade (uma vez).
   if (!deal.managerId) {
-    const managerUserId = await resolveDealManagerUserId(prisma, { sellerId: deal.sellerId, unitId: deal.unitId }).catch(() => null)
+    const managerUserId = await resolveDealManagerUserId(prisma, { sellerId: deal.sellerId, unitId: deal.unitId, fallbackUserId: deal.approvedById }).catch(() => null)
     if (managerUserId) {
       await prisma.deal.update({ where: { id: deal.id }, data: { managerId: managerUserId } }).catch(() => undefined)
       const u = await prisma.user.findUnique({ where: { id: managerUserId }, select: { id: true, name: true, email: true } })
@@ -322,7 +322,7 @@ export async function PATCH(
   const newVehiclePrice = priceField && priceField in allowedFields && !('vehicleValue' in body) ? allowedFields[priceField] : undefined
   if (newVehiclePrice !== undefined && String(deal.vehicleValue ?? '') !== String(newVehiclePrice ?? '')) allowedFields.vehicleValue = newVehiclePrice
   if (!deal.managerId && !('managerId' in allowedFields)) {
-    const m = await resolveDealManagerUserId(prisma, { sellerId: (allowedFields.sellerId as string | undefined) ?? deal.sellerId, unitId: (allowedFields.unitId as string | undefined) ?? deal.unitId }).catch(() => null)
+    const m = await resolveDealManagerUserId(prisma, { sellerId: (allowedFields.sellerId as string | undefined) ?? deal.sellerId, unitId: (allowedFields.unitId as string | undefined) ?? deal.unitId, fallbackUserId: deal.approvedById }).catch(() => null)
     if (m) allowedFields.managerId = m
   }
 

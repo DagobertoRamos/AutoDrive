@@ -65,6 +65,8 @@ export async function POST(
           releasedByUserId: session.user.id,
         } as object,
       })
+      // Sem gerente responsável (loja sem gerente cadastrado p/ o vendedor): quem aprovou assume.
+      await tx.deal.updateMany({ where: { id: params.id, managerId: null }, data: { managerId: session.user.id } })
       await tx.dealStatusHistory.create({
         data: {
           dealId:          params.id,
