@@ -46,10 +46,21 @@ function plateLabel(v: { plate: string | null; brand: string | null; model: stri
   return [v.plate, [v.brand, v.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
 }
 
+/** Carro recebido na troca de uma venda ativa (pago com o próprio carro). */
+async function tradeInDeal(vehicleId: string) {
+  return prisma.dealVehicle.findFirst({
+    where:  { vehicleId, role: 'TROCA', deal: { status: { notIn: ['CANCELADA', 'DESAPROVADA', 'RECUSADA'] } } },
+    select: { agreedValue: true, evaluatedValue: true, deal: { select: { id: true, dealNumber: true, approvedAt: true, createdAt: true } } },
+  })
+}
+
 /** Lançamento de compra (estoque próprio) ou repasse ao proprietário (consignado) na entrada. */
 export async function createAcquisitionEntry(vehicleId: string, createdById: string | null) {
   const v = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true, tenantId: true, unitId: true, plate: true, brand: true, model: true, stockType: true, purchasePrice: true } })
   if (!v || v.purchasePrice == null || Number(v.purchasePrice) <= 0) return
+  // Carro da troca: já foi pago com ele mesmo — não vira conta a pagar (entra
+  // como entrada na venda; o extrato do carro mostra a compra pela troca).
+  if (v.stockType !== 'CONSIGNADO' && await tradeInDeal(vehicleId)) return
   const category = v.stockType === 'CONSIGNADO' ? 'REPASSE' : 'COMPRA_VEICULO'
   const exists = await prisma.financialEntry.findFirst({ where: { vehicleId, source: sourceOf(category), status: { not: 'CANCELADO' } }, select: { id: true } })
   if (exists) return
@@ -106,7 +117,7 @@ export async function syncServiceEntry(serviceId: string, actorId: string | null
 
 export interface LedgerLine {
   id: string
-  origin: 'ENTRY' | 'SALE' | 'COMMISSION'
+  origin: 'ENTRY' | 'SALE' | 'COMMISSION' | 'TRADE'
   entryId: string | null
   type: 'RECEITA' | 'DESPESA'
   category: string
@@ -187,6 +198,20 @@ export async function loadVehicleLedger(vehicleId: string) {
       status: debt.deal.status === 'FINALIZADA' ? 'RECEBIDO' : 'PREVISTO',
       dueDate: iso(e.dueDate ?? e.competenceDate), paidDate: null, counterparty: null, paymentMethod: null,
       dealNumber: debt.deal.dealNumber, locked: 'Valor cobrado: vem do débito da negociação.', receipts: [],
+    })
+  }
+
+  // Compra pela troca: custo de aquisição do carro, pago com o próprio carro.
+  const hasAcquisition = entries.some((e) => (e.source === sourceOf('COMPRA_VEICULO') || e.source === sourceOf('REPASSE')) && e.status !== 'CANCELADO')
+  const trade = hasAcquisition ? null : await tradeInDeal(vehicleId)
+  const tradeValue = trade ? num(trade.agreedValue ?? trade.evaluatedValue) || num(v.purchasePrice) : 0
+  if (trade && tradeValue > 0) {
+    const when = trade.deal.approvedAt ?? trade.deal.createdAt
+    lines.push({
+      id: `troca:${trade.deal.id}`, origin: 'TRADE', entryId: null, type: 'DESPESA', category: 'COMPRA_VEICULO', categoryLabel: EXPENSE_LABEL.COMPRA_VEICULO,
+      description: `Compra — recebido na troca da negociação ${trade.deal.dealNumber ?? trade.deal.id.slice(0, 8)}`, amount: tradeValue,
+      status: 'PAGO', dueDate: iso(when), paidDate: iso(when), counterparty: null, paymentMethod: 'Veículo na troca',
+      dealNumber: trade.deal.dealNumber, locked: 'Pago com o próprio carro na troca (entra como entrada na venda).', receipts: [],
     })
   }
 

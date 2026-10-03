@@ -18,7 +18,7 @@ import { VehicleFilesField, type VFile } from './VehicleFilesField'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
 
 interface Line {
-  id: string; origin: 'ENTRY' | 'SALE' | 'COMMISSION'; entryId: string | null; type: 'RECEITA' | 'DESPESA'; category: string; categoryLabel: string
+  id: string; origin: 'ENTRY' | 'SALE' | 'COMMISSION' | 'TRADE'; entryId: string | null; type: 'RECEITA' | 'DESPESA'; category: string; categoryLabel: string
   description: string; amount: number; status: string; dueDate: string | null; paidDate: string | null; counterparty: string | null
   paymentMethod: string | null; dealNumber: string | null; locked: string | null; receipts: VFile[]
   items?: Array<{ kind: string; label: string; description: string; amount: number }>; chargedAmount?: number | null

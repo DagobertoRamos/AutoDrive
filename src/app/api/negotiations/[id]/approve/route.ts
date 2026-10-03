@@ -11,6 +11,8 @@ import { APPROVABLE_STATUSES }  from '@/lib/negotiation-permissions'
 import { notifyDealApproved }   from '@/services/notification.service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
+import { syncTenantFinance } from '@/lib/finance/finance-sync'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifyStockChanged } from '@/lib/publications/service'
 import { resolveNegotiationGate } from '@/lib/stock/intake'
@@ -157,6 +159,11 @@ export async function POST(
     } catch (err) {
       console.error('[approve] commission generation failed', err)
     }
+
+    // Financeiro acompanha a aprovação: pagamentos/débitos/troca da negociação e
+    // as comissões recém-geradas viram lançamentos.
+    await syncDealFinanceSafe(params.id)
+    await syncTenantFinance(deal.tenantId ?? null).catch((e) => console.error('[approve] financeiro', e))
 
     return NextResponse.json({
       data: updated,

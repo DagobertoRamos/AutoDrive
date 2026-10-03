@@ -3,6 +3,8 @@
 // lançamentos assim que são cadastrados, sem esperar a finalização.
 //   - DealPayment (sinal, entrada, PIX, financiamento…) → RECEITA, 1 por pagamento
 //       PENDENTE → PREVISTO · CONFIRMADO → RECEBIDO (paidAt) · CANCELADO → CANCELADO
+//   - Veículo recebido na troca → RECEITA (entrada da venda, recebida com o carro);
+//       o carro da troca NÃO gera "Compra do veículo" a pagar — já foi pago com ele.
 //   - DealDebt (documentação, cautelar, quitação da troca…) → DESPESA PREVISTO,
 //       1 por débito: a loja paga ao terceiro (Detran, banco, despachante); quem
 //       arca com ele já está no total da negociação.
@@ -16,6 +18,8 @@ import { isPayoffDebt } from './entry-settlement-core'
 
 export const PAYMENT_SOURCE_PREFIX = 'NEG_PGTO_'
 export const DEBT_SOURCE_PREFIX = 'NEG_DEBITO_'
+/** Veículo recebido na troca = entrada da venda (pago com o carro, não com dinheiro). */
+export const TRADE_SOURCE_PREFIX = 'NEG_TROCA_'
 const paymentSource = (id: string) => `${PAYMENT_SOURCE_PREFIX}${id}`
 const debtSource = (id: string) => `${DEBT_SOURCE_PREFIX}${id}`
 export const isDealPaymentSource = (s: string | null | undefined) => !!s?.startsWith(PAYMENT_SOURCE_PREFIX)
@@ -61,9 +65,10 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
     where: { id: dealId },
     select: {
       id: true, tenantId: true, unitId: true, sellerId: true, dealNumber: true, type: true, status: true, source: true,
+      approvedAt: true, createdAt: true, tradeValue: true,
       customer: { select: { name: true } },
       payments: true, debts: true,
-      vehicles: { select: { role: true, plate: true, vehicleId: true } },
+      vehicles: { select: { id: true, role: true, plate: true, brand: true, model: true, vehicleId: true, agreedValue: true, evaluatedValue: true } },
     },
   })
   if (!deal || !SALE_TYPES.includes(deal.type) || IMPORTED_SOURCES.includes(String(deal.source ?? '').toUpperCase())) return
@@ -112,6 +117,29 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
     }
   }
 
+  // ── Veículo na troca → RECEITA (entrada da venda) ────────────────────
+  const trades = deal.vehicles.filter((v) => v.role === 'TROCA')
+  for (const t of trades) {
+    const value = Number(t.agreedValue ?? t.evaluatedValue ?? (trades.length === 1 ? deal.tradeValue : 0) ?? 0)
+    if (!(value > 0)) continue
+    const source = `${TRADE_SOURCE_PREFIX}${t.id}`
+    keep.add(source)
+    const when = deal.approvedAt ?? deal.createdAt
+    const status: 'CANCELADO' | 'RECEBIDO' = dead ? 'CANCELADO' : 'RECEBIDO'
+    const data = {
+      description: `Veículo na troca — ${[t.plate, [t.brand, t.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ')} · ${ref}`,
+      amount: value, status, dueDate: when, paidDate: status === 'RECEBIDO' ? when : null,
+      paymentMethod: 'Veículo na troca', counterparty: deal.customer?.name ?? null,
+    }
+    const cur = bySource.get(source)
+    if (cur) await prisma.financialEntry.update({ where: { id: cur.id }, data })
+    else await prisma.financialEntry.create({ data: { ...base, ...data, source, type: 'RECEITA', competenceDate: when, categoryId: await categoryId(deal.tenantId, CATEGORY.payment, cache) } })
+    // O carro da troca já foi pago com ele mesmo: some a "Compra do veículo" a pagar.
+    if (t.vehicleId && !dead) {
+      await prisma.financialEntry.deleteMany({ where: { vehicleId: t.vehicleId, source: 'VEICULO_COMPRA_VEICULO', status: 'PREVISTO' } })
+    }
+  }
+
   // ── Débitos → DESPESA (a loja paga ao terceiro) ───────────────────────
   for (const d of deal.debts) {
     if (Number(d.value) <= 0) continue
@@ -146,9 +174,9 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
   }
 
   // ── Pagamento/débito apagado na negociação → some o previsto ──────────
-  const orphans = entries.filter((e) => (e.source?.startsWith(PAYMENT_SOURCE_PREFIX) || e.source?.startsWith(DEBT_SOURCE_PREFIX)) && !keep.has(e.source!))
+  const orphans = entries.filter((e) => (e.source?.startsWith(PAYMENT_SOURCE_PREFIX) || e.source?.startsWith(DEBT_SOURCE_PREFIX) || e.source?.startsWith(TRADE_SOURCE_PREFIX)) && !keep.has(e.source!))
   for (const o of orphans) {
-    if (o.status === 'PREVISTO') await prisma.financialEntry.delete({ where: { id: o.id } })
+    if (o.status === 'PREVISTO' || o.source?.startsWith(TRADE_SOURCE_PREFIX)) await prisma.financialEntry.delete({ where: { id: o.id } })
   }
 }
 

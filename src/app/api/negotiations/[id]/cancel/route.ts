@@ -15,6 +15,7 @@ import { reopenNegotiationGate } from '@/lib/stock/intake'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifyStockChanged } from '@/lib/publications/service'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { syncTenantFinance } from '@/lib/finance/finance-sync'
 
 export async function POST(
   req: NextRequest,
@@ -137,6 +138,8 @@ export async function POST(
       .catch((e) => console.error('[esteira] reabrir portão de negociação', e))
 
     await syncDealFinanceSafe(params.id)
+    // Comissões canceladas → lançamentos previstos delas cancelados no Financeiro.
+    await syncTenantFinance(deal.tenantId ?? null).catch((e) => console.error('[cancel] financeiro', e))
     return NextResponse.json({ data: updated, commissionCancelResult })
   } catch (err) {
     return handlePrismaError(err)

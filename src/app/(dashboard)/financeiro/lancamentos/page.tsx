@@ -202,5 +202,6 @@ export default function FinanceEntriesPage() {
 function sourceLabel(source: string) {
   if (source.startsWith('NEG_PGTO_')) return 'Pagamento da negociação'
   if (source.startsWith('NEG_DEBITO_')) return 'Débito da negociação'
+  if (source.startsWith('NEG_TROCA_')) return 'Veículo na troca'
   return source
 }

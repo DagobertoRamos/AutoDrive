@@ -99,8 +99,16 @@ async function runSync(dealWhere: Record<string, unknown>, commWhere: Record<str
       data:  { status: 'PAGO', paidDate: new Date() },
     }).catch(() => { /* não bloqueia o sync */ })
   }
+  // Comissão cancelada (venda/compra cancelada) → lançamento previsto cancelado.
+  const canceledIds = comissoes.filter((c) => c.status === 'CANCELADO').map((c) => c.id)
+  if (canceledIds.length) {
+    await prisma.financialEntry.updateMany({
+      where: { commissionCalculationId: { in: canceledIds }, status: 'PREVISTO' },
+      data:  { status: 'CANCELADO' },
+    }).catch(() => { /* não bloqueia o sync */ })
+  }
   const comEntries: Record<string, unknown>[] = []
-  for (const c of comissoes.filter((x) => !haveCom.has(x.id))) {
+  for (const c of comissoes.filter((x) => !haveCom.has(x.id) && x.status !== 'CANCELADO')) {
     const source = COMMISSION_SOURCE[c.ruleType] ?? 'COMISSAO'
     comEntries.push({
       tenantId: c.tenantId, sellerId: c.sellerId, commissionCalculationId: c.id, source,

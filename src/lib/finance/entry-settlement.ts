@@ -9,7 +9,7 @@
 
 import type { FinancialEntry, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { DEBT_SOURCE_PREFIX, PAYMENT_SOURCE_PREFIX } from './deal-finance-sync'
+import { DEBT_SOURCE_PREFIX, PAYMENT_SOURCE_PREFIX, TRADE_SOURCE_PREFIX } from './deal-finance-sync'
 import {
   COST_ITEM_LABEL, DOC_DEBT_TYPES, SUGGESTED_ITEMS, chargeResult, isChargedToCustomer, itemsTotal, normalizeItems,
   type CostItemInput, type CostItemKind,
@@ -28,6 +28,7 @@ export function sourceLabel(source: string | null) {
   if (!source || source === 'MANUAL') return 'Manual'
   if (source.startsWith(PAYMENT_SOURCE_PREFIX)) return 'Pagamento da negociação'
   if (source.startsWith(DEBT_SOURCE_PREFIX)) return 'Débito da negociação'
+  if (source.startsWith(TRADE_SOURCE_PREFIX)) return 'Veículo na troca'
   if (source.startsWith('VEICULO_')) return 'Custo do veículo'
   return ({ VENDA: 'Venda', COMISSAO: 'Comissão', RETORNO: 'Comissão — retorno', GARANTIA: 'Comissão — garantia' } as Record<string, string>)[source] ?? source
 }
