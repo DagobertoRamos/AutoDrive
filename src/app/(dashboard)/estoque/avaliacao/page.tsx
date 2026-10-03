@@ -26,6 +26,7 @@ import { FieldLabel, FieldError } from '@/components/ui/field'
 import { isEmptyValue } from '@/lib/evaluation/rules'
 import { StepDocumentoVeiculo, type ExtractionSource } from './_components/StepDocumentoVeiculo'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
+import { compressImage } from '@/lib/images/compress-client'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -1164,7 +1165,7 @@ function AvaliacaoForm() {
           pendingDocs.map(async (file) => {
             try {
               const fd = new FormData()
-              fd.append('file', file)
+              fd.append('file', await compressImage(file, { maxSide: 2400, quality: 0.88 }))
               fd.append('section',  'DOCUMENTOS')
               fd.append('category', file.type === 'application/pdf' ? 'OUTRO' : 'FOTO')
               await fetch(`/api/evaluations/${id}/attachments`, {

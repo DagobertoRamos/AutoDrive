@@ -19,11 +19,12 @@
 
 import { useRef, useState, useCallback } from 'react'
 import {
-  Upload, FileCheck, XCircle,
+  Upload, FileCheck, XCircle, Camera,
   Loader2, Eye, Trash2, RefreshCw, FileText,
   AlertTriangle, CheckCircle, Clock,
 } from 'lucide-react'
 import type { ExtractedVehicle, ExtractionConfidence } from '@/lib/crlv/parser'
+import { compressImage } from '@/lib/images/compress-client'
 
 // ── Tipos públicos ────────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ const TIMEOUTS = {
   NETWORK:            20_000,
 } as const
 
-const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp'
+const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,application/pdf,image/*'
 const MAX_BYTES = 8 * 1024 * 1024
 
 function fmtSize(bytes: number): string {
@@ -204,6 +205,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
   const [uiState, setUiState] = useState<UIState>({ machine: 'IDLE' })
   const [dragging, setDragging] = useState(false)
   const inputRef       = useRef<HTMLInputElement | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const processingRef  = useRef(false) // protege contra dupla execução
   const abortRef       = useRef<AbortController | null>(null)
 
@@ -265,7 +267,9 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
 
   // ── Fluxo principal ────────────────────────────────────────────────────────
 
-  async function handleFile(file: File) {
+  async function handleFile(original: File) {
+    // Foto do documento (câmera/galeria) chega com vários MB: reduz mantendo legível p/ leitura.
+    const file = original.type.startsWith('image/') ? await compressImage(original, { maxSide: 2400, quality: 0.9 }) : original
     // Proteção contra dupla execução
     if (processingRef.current) return
     processingRef.current = true
@@ -794,8 +798,16 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
             <Upload className="h-6 w-6 text-brand-700" />
           </div>
           <p className="text-sm font-semibold text-gray-800">Clique ou arraste o arquivo aqui</p>
-          <p className="text-[11px] text-gray-500 mt-1">PDF · JPG · PNG · WEBP · máx 8MB</p>
+          <p className="text-[11px] text-gray-500 mt-1">PDF ou foto</p>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click() }}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Camera className="h-4 w-4" /> Tirar foto do documento
+          </button>
           <input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={onFileSelected} />
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onClick={(e) => e.stopPropagation()} onChange={onFileSelected} />
         </div>
       )}
 

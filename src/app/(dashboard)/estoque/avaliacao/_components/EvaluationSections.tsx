@@ -21,7 +21,7 @@ import { Loader2, ChevronRight, ChevronLeft, Camera, Upload, Trash2, ImageIcon, 
 import { ITEMS, SECTIONS, ITEM_STATUS, type CatalogItem, type SectionKey } from '@/lib/evaluation/catalog'
 import {
   getSectionProgress, findCatalogItem,
-  isAnswerRequired, isPhotoRequiredFor, getItemPhotos, getSectionPhotos,
+  isAnswerRequired, isPhotoRequiredFor, getItemPhotos, getSectionPhotos, REQUIRED_SHOTS, shotCategory,
   type EvaluationAttachmentLike, type EvaluationItemLike, type EvaluationRuleContext,
   type PendingRequirement, type SectionProgress,
 } from '@/lib/evaluation/rules'
@@ -30,6 +30,7 @@ import { ItemDrawer, type DrawerItem } from './ItemDrawer'
 import { ServicesSection } from './ServicesSection'
 import { PhotoLightbox, type LightboxPhoto } from './PhotoLightbox'
 import { SummarySection } from './SummarySection'
+import { compressImage, uploadErrorMessage } from '@/lib/images/compress-client'
 
 type EvalItem = EvaluationItemLike & {
   priority: string | null
@@ -83,6 +84,16 @@ function statusBadge(status: string) {
 }
 
 /** Selo de status da seção (Pendente / Em andamento / Concluída). */
+/** itemId → chave do reparo da tabela (serviço previsto do item). */
+function repairMap(services: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const s of Array.isArray(services) ? services as Array<{ itemId?: string | null; notes?: string | null; status?: string }> : []) {
+    const m = s.itemId && s.status !== 'CANCELED' ? /^\[REPARO_TABELA\](\S+)/.exec(s.notes ?? '') : null
+    if (m) out[s.itemId!] = m[1]
+  }
+  return out
+}
+
 function sectionStatusBadge(progress: SectionProgress) {
   const map = {
     CONCLUIDA:    { label: 'Concluída',    cls: 'bg-emerald-100 text-emerald-800' },
@@ -112,7 +123,11 @@ function SectionPhotoWidget({
   const [err,  setErr]  = useState('')
   const [view, setView] = useState<number | null>(null)
 
-  async function upload(files: FileList | null) {
+  const shots = REQUIRED_SHOTS[section] ?? []
+  const shotRef = useRef<HTMLInputElement>(null)
+  const [shotKey, setShotKey] = useState<string | null>(null)
+
+  async function upload(files: FileList | null, category = 'FOTO_SECAO') {
     if (!files || files.length === 0) return
     setBusy(true); setErr('')
     let failed = false
@@ -120,14 +135,13 @@ function SectionPhotoWidget({
       for (let i = 0; i < files.length; i++) {
         const f  = files[i]
         const fd = new FormData()
-        fd.append('file', f)
+        fd.append('file', await compressImage(f))
         fd.append('section',  section)
-        fd.append('category', 'FOTO_SECAO')
+        fd.append('category', category)
         const r = await fetch(`/api/evaluations/${evaluationId}/attachments`, { method: 'POST', body: fd })
         if (!r.ok) {
-          const d = await r.json().catch(() => ({}))
           // Upload que falha NÃO conta como foto enviada: a pendência continua.
-          setErr(d?.error ?? 'Falha ao enviar a foto. Tente novamente.')
+          setErr(await uploadErrorMessage(r))
           failed = true
           break
         }
@@ -156,7 +170,9 @@ function SectionPhotoWidget({
     }
   }
 
-  const hasPhotos = photos.length > 0
+  // Seção com fotos nomeadas (ex.: traseira): elas são as obrigatórias; as demais, extras.
+  const extraPhotos = shots.length ? photos.filter((p) => !shots.some((sh) => p.category === shotCategory(sh.key))) : photos
+  const hasPhotos = shots.length ? shots.every((sh) => photos.some((p) => p.category === shotCategory(sh.key))) : photos.length > 0
 
   return (
     <div
@@ -170,14 +186,15 @@ function SectionPhotoWidget({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
-          <FieldLabel
-            required
-            hint={hasPhotos ? `${photos.length} foto(s) enviada(s).` : 'Mínimo de 1 foto.'}
-          >
-            <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
-              <ImageIcon className="h-4 w-4" /> Foto geral da seção
-            </span>
-          </FieldLabel>
+          {shots.length ? (
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><ImageIcon className="h-4 w-4" /> Fotos da seção</span>
+          ) : (
+            <FieldLabel required hint={hasPhotos ? `${photos.length} foto(s)` : undefined}>
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+                <ImageIcon className="h-4 w-4" /> Foto geral da seção
+              </span>
+            </FieldLabel>
+          )}
         </div>
         {!readOnly && (
           <div className="flex items-center gap-1.5">
@@ -218,16 +235,49 @@ function SectionPhotoWidget({
         )}
       </div>
 
+      {shots.length > 0 && (
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <input ref={shotRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={(e) => { const k = shotKey; e.currentTarget.blur(); void upload(e.target.files, shotCategory(k ?? '')).then(() => { if (shotRef.current) shotRef.current.value = '' }) }} />
+          {shots.map((sh) => {
+            const ph = photos.find((p) => p.category === shotCategory(sh.key))
+            return (
+              <div key={sh.key} className="flex flex-col gap-1">
+                <span className="text-[11px] font-semibold text-gray-700">{sh.label} <RequiredMark /></span>
+                {ph ? (
+                  <div className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-emerald-300 bg-gray-100">
+                    {ph.publicUrl
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={ph.publicUrl} alt={sh.label} className="h-full w-full cursor-zoom-in object-cover" onClick={() => setView(photos.indexOf(ph))} />
+                      : <div className="flex h-full items-center justify-center text-[10px] text-gray-400">{ph.fileName}</div>}
+                    {!readOnly && <button type="button" onClick={() => remove(ph.id)} className="absolute right-1 top-1 rounded-full bg-white/90 p-1 text-error" aria-label="Remover foto"><Trash2 className="h-3 w-3" /></button>}
+                  </div>
+                ) : (
+                  <button
+                    type="button" disabled={readOnly || busy}
+                    onClick={() => { setShotKey(sh.key); shotRef.current?.click() }}
+                    className={`flex aspect-[4/3] flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed text-[11px] font-medium ${invalid ? 'border-error text-error' : 'border-brand-400 bg-white text-brand-700'}`}
+                  >
+                    {busy && shotKey === sh.key ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
+                    Tirar foto
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {invalid && !err && (
         <p role="alert" className="text-xs font-medium text-error mb-2">
-          Envie ao menos 1 foto desta seção para avançar.
+          {shots.length ? 'Tire as fotos obrigatórias desta seção.' : 'Envie ao menos 1 foto desta seção para avançar.'}
         </p>
       )}
       {err && <p role="alert" className="text-xs font-medium text-error mb-2">{err}</p>}
 
-      {hasPhotos && (
+      {extraPhotos.length > 0 && (
         <ul className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-          {photos.map((a, idx) => (
+          {extraPhotos.map((a) => ({ a, idx: photos.indexOf(a) })).map(({ a, idx }) => (
             <li key={a.id} className="group relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
               {a.publicUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -295,6 +345,8 @@ export function EvaluationSections({
   const [tab,         setTab]         = useState<SectionKey>('INTERIOR')
   const [items,       setItems]       = useState<EvalItem[]>([])
   const [attachments, setAttachments] = useState<EvalAttachment[]>([])
+  // Reparo da tabela escolhido por item (serviço previsto marcado [REPARO_TABELA]key).
+  const [repairByItem, setRepairByItem] = useState<Record<string, string>>({})
   const [loading,     setLoading]     = useState(true)
   const [drawer,      setDrawer]      = useState<DrawerItem | null>(null)
   const [viewer,      setViewer]      = useState<{ title: string; photos: LightboxPhoto[] } | null>(null)
@@ -343,12 +395,14 @@ export function EvaluationSections({
           if (seq !== loadSeq.current) return
           setItems(dedupeItems(Array.isArray(d2?.data?.items) ? d2.data.items : []))
           setAttachments(Array.isArray(d2?.data?.attachments) ? d2.data.attachments : [])
+          setRepairByItem(repairMap(d2?.data?.services))
         } finally {
           seedInFlight.current = false
         }
       } else {
         setItems(dedupeItems(incoming))
         setAttachments(incAttachments)
+        setRepairByItem(repairMap(d?.data?.services))
       }
     } catch {
       if (seq === loadSeq.current) setErr('Erro de conexão ao carregar a avaliação.')
@@ -403,8 +457,8 @@ export function EvaluationSections({
 
   function openDrawer(it: EvalItem) {
     setDrawer({
-      id: it.id, evaluationId, name: displayName(it), status: it.status ?? 'PENDING',
-      priority: it.priority, notes: it.notes, catalogKey: it.catalogKey,
+      id: it.id, evaluationId, name: displayName(it), section: it.section, status: it.status ?? 'PENDING',
+      priority: it.priority, notes: it.notes, catalogKey: it.catalogKey, repairKey: repairByItem[it.id] ?? null,
     })
   }
 

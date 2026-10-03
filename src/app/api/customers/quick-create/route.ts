@@ -1,7 +1,9 @@
 // =============================================================================
 // POST /api/customers/quick-create
-// Criação mínima de cliente para o fluxo de Avaliação. Aceita name (obrigatório),
-// doc (CPF/CNPJ), phone, email. Disponível para quem tem stock.evaluate.
+// Cadastro rápido de cliente no fluxo de Avaliação (uso exclusivo do
+// StepCliente). Exige nome, CPF/CNPJ, nascimento/fundação, RG/IE, e-mail,
+// telefone e endereço completo. Grava/atualiza a Person (cadastro universal)
+// e cria/vincula o Customer. Disponível para quem tem stock.evaluate.
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -9,8 +11,12 @@ import { getServerAuthSession } from '@/lib/auth'
 import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { upsertPerson } from '@/lib/people/upsert-person'
+import { docKind, onlyDigits, parseDateBR, validateQuickCustomer, type QuickCustomerInput } from '@/lib/customers/quick-create'
 
 export const dynamic = 'force-dynamic'
+
+const SELECT = { id: true, name: true, cpf: true, phone: true, email: true } as const
 
 export async function POST(req: NextRequest) {
   const session = await getServerAuthSession()
@@ -20,35 +26,76 @@ export async function POST(req: NextRequest) {
   }
   { const gate = await assertModuleEnabled(session.user, 'stock.evaluate'); if (gate) return gate }
   try {
-    const body = await req.json()
-    const name  = String(body.name ?? '').trim()
-    const doc   = String(body.doc ?? body.cpf ?? '').replace(/\D/g, '') || null
-    const phone = String(body.phone ?? '').replace(/\D/g, '') || null
-    const email = String(body.email ?? '').trim() || null
-    if (!name || name.length < 2) {
-      return NextResponse.json({ error: 'Nome é obrigatório.' }, { status: 400 })
+    const body = (await req.json()) as Record<string, unknown>
+    const s = (k: string, max = 200) => String(body[k] ?? '').trim().slice(0, max)
+    const input: QuickCustomerInput = {
+      name: s('name'), doc: s('doc'), birthDate: s('birthDate'), regDoc: s('regDoc', 40),
+      email: s('email'), phone: s('phone'), cep: s('cep'), logradouro: s('logradouro'),
+      numero: s('numero', 20), complemento: s('complemento'), bairro: s('bairro'),
+      cidade: s('cidade'), estado: s('estado', 2).toUpperCase(),
     }
+    const invalid = validateQuickCustomer(input)
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
-    // Evita duplicidade por CPF/CNPJ + tenant
-    if (doc) {
-      const existing = await prisma.customer.findFirst({
-        where: { tenantId: session.user.tenantId ?? undefined, cpf: doc },
-        select: { id: true, name: true, cpf: true, phone: true, email: true },
+    const tenantId = session.user.tenantId ?? null
+    const doc   = onlyDigits(input.doc)
+    const pj    = docKind(doc) === 'PJ'
+    const name  = input.name!
+    const phone = onlyDigits(input.phone)
+    const email = input.email!.toLowerCase()
+    // Data de fundação (PJ) não tem coluna própria: usa Person.dataNascimento.
+    const dataNascimento = parseDateBR(input.birthDate)
+    const address = [
+      `${input.logradouro}, ${input.numero}`,
+      input.complemento || null,
+      input.bairro,
+      `CEP ${onlyDigits(input.cep).replace(/(\d{5})(\d{3})/, '$1-$2')}`,
+    ].filter(Boolean).join(' - ')
+
+    const result = await prisma.$transaction(async (tx) => {
+      const person = await upsertPerson(tx, tenantId, {
+        type: pj ? 'JURIDICA' : 'FISICA',
+        cpf:  pj ? null : doc,
+        cnpj: pj ? doc : null,
+        nomeCompleto: name,
+        razaoSocial:  pj ? name : null,
+        rg:                pj ? null : input.regDoc,
+        inscricaoEstadual: pj ? input.regDoc : null,
+        dataNascimento,
+        email, phone,
+        cep: onlyDigits(input.cep), logradouro: input.logradouro, numero: input.numero,
+        complemento: input.complemento || null, bairro: input.bairro, cidade: input.cidade, estado: input.estado,
       })
-      if (existing) return NextResponse.json({ data: existing, reused: true })
-    }
+      if ('error' in person) throw new Error(person.error)
+      if (pj) {
+        await tx.person.update({
+          where: { id: person.id },
+          data:  { possuiIE: input.regDoc!.toUpperCase() !== 'ISENTO' },
+        })
+      }
 
-    const created = await prisma.customer.create({
-      data: {
-        tenantId: session.user.tenantId ?? null,
-        name,
-        cpf:   doc,
-        phone,
-        email,
-      },
-      select: { id: true, name: true, cpf: true, phone: true, email: true },
+      const customerData = {
+        name, phone, email, address,
+        city: input.cidade!, state: input.estado!,
+        personId: person.id,
+      }
+      // Evita duplicidade por CPF/CNPJ + tenant: reaproveita e atualiza.
+      const existing = await tx.customer.findFirst({
+        where:  { tenantId: tenantId ?? undefined, cpf: doc },
+        select: { id: true },
+      })
+      if (existing) {
+        const updated = await tx.customer.update({ where: { id: existing.id }, data: customerData, select: SELECT })
+        return { data: updated, reused: true }
+      }
+      const created = await tx.customer.create({
+        data:   { tenantId, cpf: doc, ...customerData },
+        select: SELECT,
+      })
+      return { data: created, reused: false }
     })
-    return NextResponse.json({ data: created }, { status: 201 })
+
+    return NextResponse.json(result, { status: result.reused ? 200 : 201 })
   } catch (err) {
     console.error('[POST /api/customers/quick-create]', err)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })

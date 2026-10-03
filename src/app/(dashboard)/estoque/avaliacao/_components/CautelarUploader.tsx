@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { useRef, useState } from 'react'
+import { compressImage, uploadErrorMessage } from '@/lib/images/compress-client'
 import {
   Upload, FileText, Image as ImageIcon, Trash2, ExternalLink, Download, Loader2,
   ShieldCheck, X,
@@ -65,14 +66,11 @@ export function CautelarUploader({
 
   async function uploadOne(file: File): Promise<void> {
     const fd = new FormData()
-    fd.append('file', file)
+    fd.append('file', await compressImage(file, { maxSide: 2400, quality: 0.88 }))
     fd.append('section',  'DOCUMENTOS')
     fd.append('category', 'LAUDO_CAUTELAR')
     const r = await fetch(`/api/evaluations/${evaluationId}/attachments`, { method: 'POST', body: fd })
-    if (!r.ok) {
-      const d = await r.json().catch(() => ({}))
-      throw new Error(d?.error ?? `Falha ao enviar ${file.name}`)
-    }
+    if (!r.ok) throw new Error(await uploadErrorMessage(r))
   }
 
   async function handleFiles(filesList: FileList | null) {

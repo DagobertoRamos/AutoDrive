@@ -15,6 +15,7 @@ import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
 import { formatCEP, normalizeCEP, isCEPComplete } from '@/lib/br-docs/cep'
 import { BankCombo } from '@/components/forms/BankCombo'
 import { RequiredMark } from '@/components/ui/field'
+import { isValidPlate, normalizePlate, formatPlate } from '@/lib/vehicles/plate'
 import { draftTitle } from '@/lib/negotiation-drafts'
 import {
   ArrowLeft,
@@ -1993,6 +1994,11 @@ function StepVeiculos({
   // Veículo do estoque selecionado (objeto rico com cautelar etc.)
   const [selectedStock, setSelectedStock]       = useState<StockVehicle | null>(null)
   const [selectedTradeStock, setSelectedTradeStock] = useState<StockVehicle | null>(null)
+  // Placa da troca: editável só quando a avaliação veio sem placa válida
+  // (mantém o campo aberto enquanto o usuário digita).
+  const [plateEditEvalId, setPlateEditEvalId] = useState<string | null>(null)
+  const tradeEvalId = form.tradeVehicle.evaluationId
+  const tradePlateEditable = !!tradeEvalId && (plateEditEvalId === tradeEvalId || !isValidPlate(form.tradeVehicle.plate))
 
   // Seleciona veículo principal (VENDA / TROCA saída).
   // O preço de venda cadastrado pelo gerente (salePrice) vai pra DOIS campos:
@@ -2248,7 +2254,7 @@ function StepVeiculos({
           <div className="border-t border-gray-200 pt-6 space-y-4">
             <div className="flex items-center gap-2">
               <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-              <h3 className="font-semibold text-purple-900">Veículo Recebido na Troca</h3>
+              <h3 className="font-semibold text-purple-900">Veículo Recebido na Troca <RequiredMark /></h3>
             </div>
 
             {!form.tradeVehicle.evaluationId ? (
@@ -2282,6 +2288,17 @@ function StepVeiculos({
                         {form.tradeVehicle.km && <span className="ml-2">{Number(form.tradeVehicle.km).toLocaleString('pt-BR')} km</span>}
                         {form.tradeVehicle.color && <span className="ml-2">{form.tradeVehicle.color}</span>}
                       </p>
+                      {tradePlateEditable && (
+                        <label className="mt-2 flex items-center gap-2 text-xs font-medium text-gray-700">
+                          Placa <RequiredMark />
+                          <input
+                            className={`${inputCls} w-32 font-mono uppercase`}
+                            placeholder="AAA0A00"
+                            value={formatPlate(form.tradeVehicle.plate)}
+                            onChange={(e) => { setPlateEditEvalId(tradeEvalId); setTradeVehicleField('plate', normalizePlate(e.target.value)) }}
+                          />
+                        </label>
+                      )}
                       {form.tradeVehicle.agreedValue && (
                         <p className="mt-1 text-sm font-bold text-purple-700">
                           Valor aceito: {fmtBRL(form.tradeVehicle.agreedValue)}
@@ -4623,6 +4640,8 @@ export default function NovaNegociacaoPage() {
           errs.push('Selecione o veículo que será vendido pela loja.')
         if (form.type === 'TROCA' && !form.tradeVehicle.plate && !form.tradeVehicle.brand)
           errs.push('Adicione o veículo recebido na troca.')
+        else if (form.type === 'TROCA' && !isValidPlate(form.tradeVehicle.plate))
+          errs.push('Placa do veículo da troca inválida.')
         return errs
 
       case 3: return errs

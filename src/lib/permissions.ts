@@ -37,6 +37,7 @@ export type Module =
   | 'stock.view'                  // ver estoque
   | 'stock.evaluate'              // fazer avaliações
   | 'stock.manage'                // criar/editar/excluir veículos no estoque
+  | 'stock.evaluate.config'       // tabela de reparos e regras da avaliação (gerente+)
   | 'stock.pendencies.configure'  // configurar opções de pendências (MASTER/ADM)
   | 'dashboard'
   | 'pendencies'
@@ -240,6 +241,10 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
   'stock.manage': {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
     actions: ['read', 'create', 'update', 'delete'],
+  },
+  'stock.evaluate.config': {
+    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'],
+    actions: ['read', 'update'],
   },
   'stock.pendencies.configure': {
     // Gerente+ configura os tipos/cobranças da PRÓPRIA loja (opções globais do

@@ -113,6 +113,7 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Ver Estoque',           href: '/estoque',                    icon: Car,             module: 'stock.view' },
       { label: 'Fazer Avaliação',       href: '/estoque/avaliacao',          icon: ClipboardCheck,  module: 'stock.evaluate' },
       { label: 'Avaliações pendentes',  href: '/estoque/avaliacoes',         icon: ClipboardCheck,  module: 'stock.evaluate' },
+      { label: 'Configurações de avaliação', href: '/estoque/avaliacao/configuracoes', icon: Settings, module: 'stock.evaluate.config' },
     ],
   },
 

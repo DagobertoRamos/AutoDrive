@@ -13,6 +13,8 @@ import {
   isRequiredFieldMissing,
   isSectionComplete,
   parseOpcionais,
+  REQUIRED_SHOTS,
+  shotCategory,
   type EvaluationAttachmentLike,
   type EvaluationItemLike,
   type EvaluationRuleContext,
@@ -261,6 +263,7 @@ describe('cenário 15 — avaliação inteira', () => {
     const attachments: EvaluationAttachmentLike[] = []
     for (const section of CHECKLIST_SECTIONS) {
       attachments.push({ id: `sec-${section}`, section, itemId: null, fileType: 'image' })
+      for (const sh of REQUIRED_SHOTS[section] ?? []) attachments.push({ id: `shot-${section}-${sh.key}`, section, itemId: null, fileType: 'image', category: shotCategory(sh.key) })
       ITEMS[section].forEach((c, i) => {
         const id = `${section}-${i}`
         items.push({ id, section, catalogKey: c.key, name: c.name, status: 'CONFORME' })
@@ -284,6 +287,14 @@ describe('cenário 15 — avaliação inteira', () => {
     expect(pending).toHaveLength(1)
     expect(pending[0].sectionId).toBe('ESQUERDA')
     expect(pending[0].type).toBe('SECTION_PHOTO')
+  })
+
+  it('traseira exige fotos da traseira, do porta-malas aberto e da placa', () => {
+    const c = completeContext()
+    c.attachments = c.attachments.filter((a) => a.category !== shotCategory('PORTA_MALAS') && a.category !== shotCategory('PLACA'))
+    const pending = getEvaluationPending(c)
+    expect(pending.map((p) => p.label)).toEqual(['Foto: Porta-malas aberto', 'Foto: Placa'])
+    expect(pending.every((p) => p.sectionId === 'TRASEIRA' && p.type === 'SECTION_PHOTO')).toBe(true)
   })
 
   it('é determinístico: mesma entrada persistida → mesmo resultado (F5/reentrada)', () => {

@@ -9,9 +9,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Search, UserPlus, X, CheckCircle, User as UserIcon, Phone, Mail } from 'lucide-react'
 import { maskCPF, maskCNPJ, maskPhone } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
-import { isValidCPF } from '@/lib/br-docs/cpf'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
-import { isValidPhone } from '@/lib/br-docs/phone'
+import {
+  docKind, isoToBR, maskCepQuick, maskDateBR, maskDoc, maskPhoneQuick, onlyDigits, validateQuickCustomer,
+} from '@/lib/customers/quick-create'
 
 export interface CustomerLite {
   id:    string
@@ -50,7 +51,6 @@ export function StepCliente({ selected, onSelect }: StepClienteProps) {
   const [results, setResults] = useState<CustomerLite[]>([])
   const [loading, setLoading] = useState(false)
   const [drawer,  setDrawer]  = useState(false)
-  const [err,     setErr]     = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -160,65 +160,149 @@ export function StepCliente({ selected, onSelect }: StepClienteProps) {
       {/* Drawer cadastro rápido */}
       {drawer && (
         <QuickCreateDrawer
-          onClose={() => { setDrawer(false); setErr('') }}
-          onCreated={(c) => { onSelect(c); setDrawer(false); setErr('') }}
-          onError={setErr}
+          onClose={() => setDrawer(false)}
+          onCreated={(c) => { onSelect(c); setDrawer(false) }}
         />
-      )}
-      {err && (
-        <p className="text-xs text-red-600">{err}</p>
       )}
     </div>
   )
 }
 
 // ── Drawer cadastro rápido ──────────────────────────────────────────────────
+type AddrKey = 'logradouro' | 'bairro' | 'cidade' | 'estado'
+
 function QuickCreateDrawer({
-  onClose, onCreated, onError,
+  onClose, onCreated,
 }: {
   onClose: () => void
   onCreated: (c: CustomerLite) => void
-  onError: (msg: string) => void
 }) {
-  const [name,  setName]  = useState('')
-  const [tipo,  setTipo]  = useState<'FISICA' | 'JURIDICA'>('FISICA')
-  const [doc,   setDoc]   = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [name,        setName]        = useState('')
+  const [doc,         setDoc]         = useState('')
+  const [birthDate,   setBirthDate]   = useState('')
+  const [regDoc,      setRegDoc]      = useState('')
+  const [email,       setEmail]       = useState('')
+  const [phone,       setPhone]       = useState('')
+  const [cep,         setCep]         = useState('')
+  const [addr,        setAddr]        = useState<Record<AddrKey, string>>({ logradouro: '', bairro: '', cidade: '', estado: '' })
+  const [locked,      setLocked]      = useState<Partial<Record<AddrKey, boolean>>>({})
+  const [numero,      setNumero]      = useState('')
+  const [complemento, setComplemento] = useState('')
+  const [cepLoading,  setCepLoading]  = useState(false)
+  const [submitting,  setSubmitting]  = useState(false)
+  const [err,         setErr]         = useState('')
+
+  const docDigits = onlyDigits(doc)
+  const pj = docKind(docDigits) === 'PJ'
+  const cepDigits = onlyDigits(cep)
+
+  // CEP completo → busca endereço; o que vier preenchido fica travado.
+  useEffect(() => {
+    if (cepDigits.length !== 8) return
+    let alive = true
+    fetch(`/api/address/lookup-by-cep?cep=${cepDigits}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        const data = d?.data ?? {}
+        const next: Partial<Record<AddrKey, string>> = {}
+        const lock: Partial<Record<AddrKey, boolean>> = {}
+        for (const k of ['logradouro', 'bairro', 'cidade', 'estado'] as AddrKey[]) {
+          const v = String(data?.[k] ?? '').trim()
+          if (d?.success && v) { next[k] = k === 'estado' ? v.toUpperCase() : v; lock[k] = true }
+        }
+        setAddr((a) => ({ ...a, ...next }))
+        setLocked(lock)
+      })
+      .catch(() => { if (alive) setLocked({}) })
+      .finally(() => { if (alive) setCepLoading(false) })
+    return () => { alive = false }
+  }, [cepDigits])
+
+  function changeCep(v: string) {
+    const d = onlyDigits(v).slice(0, 8)
+    setCep(d)
+    setLocked({})
+    setCepLoading(d.length === 8)
+  }
+
+  // CNPJ válido → preenche razão social, fundação, contato e endereço vazios.
+  useEffect(() => {
+    if (docDigits.length !== 14 || !isValidCNPJ(docDigits)) return
+    let alive = true
+    fetch(`/api/integrations/brasilapi/cnpj/${docDigits}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive || !d?.ok || !d?.data) return
+        const c = d.data
+        const fill = (cur: string, v: unknown) => (cur.trim() ? cur : String(v ?? '').trim())
+        setName((v) => fill(v, c.razaoSocial))
+        setBirthDate((v) => fill(v, isoToBR(c.dataAbertura)))
+        setEmail((v) => fill(v, String(c.email ?? '').toLowerCase()))
+        setPhone((v) => fill(v, onlyDigits(c.telefone1).slice(0, 11)))
+        setNumero((v) => fill(v, c.numero))
+        setComplemento((v) => fill(v, c.complemento))
+        setAddr((a) => ({
+          logradouro: fill(a.logradouro, c.logradouro),
+          bairro:     fill(a.bairro, c.bairro),
+          cidade:     fill(a.cidade, c.cidade),
+          estado:     fill(a.estado, String(c.estado ?? '').toUpperCase()),
+        }))
+        const cnpjCep = onlyDigits(c.cep).slice(0, 8)
+        setCep((v) => {
+          if (v || cnpjCep.length !== 8) return v
+          setCepLoading(true)
+          return cnpjCep
+        })
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [docDigits])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || name.trim().length < 2) { onError('Informe o nome.'); return }
-    if (!doc.replace(/\D/g, '')) { onError(tipo === 'JURIDICA' ? 'Informe o CNPJ.' : 'Informe o CPF.'); return }
-    if (tipo === 'JURIDICA' ? !isValidCNPJ(doc) : !isValidCPF(doc)) { onError(tipo === 'JURIDICA' ? 'CNPJ inválido.' : 'CPF inválido.'); return }
-    if (!phone.replace(/\D/g, '')) { onError('Informe o telefone.'); return }
-    if (!isValidPhone(phone)) { onError('Telefone inválido.'); return }
+    const payload = {
+      name: name.trim(), doc: docDigits, birthDate, regDoc: regDoc.trim(),
+      email: email.trim(), phone: onlyDigits(phone), cep: cepDigits,
+      logradouro: addr.logradouro.trim(), numero: numero.trim(), complemento: complemento.trim(),
+      bairro: addr.bairro.trim(), cidade: addr.cidade.trim(), estado: addr.estado.trim().toUpperCase(),
+    }
+    const invalid = validateQuickCustomer(payload)
+    if (invalid) { setErr(invalid); return }
     setSubmitting(true)
-    onError('')
+    setErr('')
     try {
       const r = await fetch('/api/customers/quick-create', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          name:  name.trim(),
-          doc:   doc.replace(/\D/g, '') || null,
-          phone: phone.replace(/\D/g, '') || null,
-          email: email.trim() || null,
-        }),
+        body:    JSON.stringify(payload),
       })
       const d = await r.json()
-      if (!r.ok || !d?.data?.id) {
-        onError(d?.error ?? 'Erro ao criar cliente.')
-      } else {
-        onCreated(d.data as CustomerLite)
-      }
+      if (!r.ok || !d?.data?.id) setErr(d?.error ?? 'Erro ao criar cliente.')
+      else onCreated(d.data as CustomerLite)
     } catch {
-      onError('Erro de conexão.')
+      setErr('Erro de conexão.')
     } finally {
       setSubmitting(false)
     }
   }
+
+  const lbl = 'text-xs font-medium text-gray-600'
+  const addrInput = (k: AddrKey, label: string) => (
+    <label className="flex flex-col gap-1">
+      <span className={lbl}>{label} <RequiredMark /></span>
+      <input
+        className={inputCls + (locked[k] ? ' bg-gray-50 text-gray-600' : '')}
+        value={addr[k]}
+        readOnly={!!locked[k]}
+        maxLength={k === 'estado' ? 2 : 120}
+        onChange={(e) => {
+          const v = k === 'estado' ? e.target.value.toUpperCase().replace(/[^A-Z]/g, '') : e.target.value
+          setAddr((a) => ({ ...a, [k]: v }))
+        }}
+      />
+    </label>
+  )
 
   return (
     <>
@@ -230,36 +314,65 @@ function QuickCreateDrawer({
             <X className="h-4 w-4" />
           </button>
         </header>
-        <form onSubmit={submit} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
+        <form onSubmit={submit} noValidate className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Nome <RequiredMark /></span>
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome ou razão social" autoFocus />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Tipo</span>
-            <select className={inputCls} value={tipo} onChange={(e) => { setTipo(e.target.value as 'FISICA' | 'JURIDICA'); setDoc('') }}>
-              <option value="FISICA">Pessoa Física (CPF)</option>
-              <option value="JURIDICA">Pessoa Jurídica (CNPJ)</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">{tipo === 'JURIDICA' ? 'CNPJ' : 'CPF'} <RequiredMark /></span>
+            <span className={lbl}>CPF/CNPJ <RequiredMark /></span>
             <input
               className={inputCls + ' font-mono'}
-              value={tipo === 'JURIDICA' ? maskCNPJ(doc) : maskCPF(doc)}
-              onChange={(e) => setDoc(e.target.value)}
-              placeholder={tipo === 'JURIDICA' ? '00.000.000/0000-00' : '000.000.000-00'}
+              value={maskDoc(doc)}
+              onChange={(e) => setDoc(onlyDigits(e.target.value).slice(0, 14))}
+              placeholder="000.000.000-00"
               inputMode="numeric"
+              autoFocus
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Telefone / WhatsApp <RequiredMark /></span>
-            <input className={inputCls} value={maskPhone(phone)} onChange={(e) => setPhone(e.target.value)} placeholder="(00) 00000-0000" inputMode="tel" />
+            <span className={lbl}>{pj ? 'Razão social' : 'Nome completo'} <RequiredMark /></span>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} maxLength={200} />
           </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className={lbl}>{pj ? 'Data de fundação' : 'Data de nascimento'} <RequiredMark /></span>
+              <input className={inputCls} value={birthDate} onChange={(e) => setBirthDate(maskDateBR(e.target.value))} placeholder="dd/mm/aaaa" inputMode="numeric" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={lbl}>{pj ? 'Inscrição estadual' : 'RG'} <RequiredMark /></span>
+              <input className={inputCls} value={regDoc} onChange={(e) => setRegDoc(e.target.value.toUpperCase())} placeholder={pj ? 'ISENTO' : undefined} maxLength={20} />
+            </label>
+          </div>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">E-mail</span>
+            <span className={lbl}>E-mail <RequiredMark /></span>
             <input type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" />
           </label>
+          <label className="flex flex-col gap-1">
+            <span className={lbl}>Telefone <RequiredMark /></span>
+            <input className={inputCls} value={maskPhoneQuick(phone)} onChange={(e) => setPhone(onlyDigits(e.target.value).slice(0, 11))} placeholder="(00)0.0000-0000" inputMode="tel" />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className={lbl}>CEP <RequiredMark /></span>
+              <input className={inputCls} value={maskCepQuick(cep)} onChange={(e) => changeCep(e.target.value)} placeholder="00000-000" inputMode="numeric" />
+            </label>
+            {cepLoading && <span className="self-end pb-2 text-xs text-gray-400">Buscando...</span>}
+          </div>
+          {addrInput('logradouro', 'Logradouro')}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className={lbl}>Número <RequiredMark /></span>
+              <input className={inputCls} value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={20} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={lbl}>Complemento</span>
+              <input className={inputCls} value={complemento} onChange={(e) => setComplemento(e.target.value)} maxLength={120} />
+            </label>
+          </div>
+          {addrInput('bairro', 'Bairro')}
+          <div className="grid grid-cols-[1fr_5rem] gap-3">
+            {addrInput('cidade', 'Cidade')}
+            {addrInput('estado', 'UF')}
+          </div>
+
+          {err && <p className="text-xs text-red-600">{err}</p>}
 
           <div className="mt-auto flex justify-end gap-2 border-t border-gray-100 pt-4">
             <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">

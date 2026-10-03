@@ -29,10 +29,10 @@ function address(a: { logradouro?: string | null; numero?: string | null; comple
   return join([join([a.logradouro, a.numero]), a.complemento, a.bairro, city, a.cep ? `CEP ${fmtCep(a.cep)}` : null])
 }
 
-type PersonLike = { type?: string | null; nomeCompleto?: string | null; razaoSocial?: string | null; cpf?: string | null; cnpj?: string | null; rg?: string | null; inscricaoEstadual?: string | null; email?: string | null; phone?: string | null; logradouro?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null; cidade?: string | null; estado?: string | null; cep?: string | null; socioAdmNome?: string | null; socioAdmCpf?: string | null }
-type CustomerLike = { name: string; cpf?: string | null; phone?: string | null; email?: string | null; address?: string | null; city?: string | null; state?: string | null; person?: PersonLike | null }
+export type PersonLike = { type?: string | null; nomeCompleto?: string | null; razaoSocial?: string | null; cpf?: string | null; cnpj?: string | null; rg?: string | null; inscricaoEstadual?: string | null; email?: string | null; phone?: string | null; logradouro?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null; cidade?: string | null; estado?: string | null; cep?: string | null; socioAdmNome?: string | null; socioAdmCpf?: string | null }
+export type CustomerLike = { name: string; cpf?: string | null; phone?: string | null; email?: string | null; address?: string | null; city?: string | null; state?: string | null; person?: PersonLike | null }
 
-function partyFromPerson(p: PersonLike): Party {
+export function partyFromPerson(p: PersonLike): Party {
   const pj = p.type === 'JURIDICA' || digits(p.cnpj).length === 14
   return {
     tipo: pj ? 'PJ' : 'PF',
@@ -45,7 +45,7 @@ function partyFromPerson(p: PersonLike): Party {
   }
 }
 
-function partyFromCustomer(c: CustomerLike): Party {
+export function partyFromCustomer(c: CustomerLike): Party {
   if (c.person) {
     const p = partyFromPerson(c.person)
     return { ...p, nome: p.nome || c.name, documento: p.documento || fmtDoc(c.cpf), telefone: p.telefone || c.phone || null, email: p.email || c.email || null, endereco: p.endereco || join([c.address, join([c.city, c.state], '/')]) }
@@ -79,6 +79,62 @@ function vehicleData(dv: DealVehRow, valor?: number | null): VehicleData {
   }
 }
 
+type SupplierLike = Parameters<typeof supplierAddress>[0] & { name: string; legalName?: string | null; personType?: string | null; document?: string | null; rg?: string | null; stateRegistration?: string | null; phone?: string | null; whatsapp?: string | null; email?: string | null; repName?: string | null; repCpf?: string | null }
+
+/** Fornecedor (Cadastros › Fornecedores) como parte do documento: PF ou PJ pelo documento. */
+export function partyFromSupplier(p: SupplierLike): Party {
+  const pj = p.personType === 'PJ' || digits(p.document).length === 14
+  return {
+    tipo: pj ? 'PJ' : 'PF',
+    nome: pj && p.legalName && p.legalName !== p.name ? `${p.legalName} (${p.name})` : p.legalName || p.name,
+    documento: fmtDoc(p.document), rg: pj ? null : p.rg ?? null, ie: pj ? p.stateRegistration ?? null : null,
+    endereco: supplierAddress(p), telefone: p.whatsapp || p.phone || null, email: p.email ?? null,
+    representante: pj && p.repName ? { nome: p.repName, cpf: fmtDoc(p.repCpf) } : null,
+  }
+}
+
+type TenantLike = { razaoSocial?: string | null; nomeFantasia?: string | null; name?: string | null; cnpj?: string | null; isentoInscricaoEstadual?: boolean | null; inscricaoEstadual?: string | null; logradouro?: string | null; address?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null; city?: string | null; state?: string | null; zipCode?: string | null; email?: string | null; phone?: string | null; responsavel?: string | null }
+
+const loadPrincipal = (tenantId: string) =>
+  prisma.tenantPartner.findFirst({ where: { tenantId }, orderBy: [{ principal: 'desc' }, { createdAt: 'asc' }], select: { nomeCompleto: true, cpf: true } }).catch(() => null)
+
+/** Loja como parte: Tenant + sócio principal (representante). */
+function storeParty(t: TenantLike | null | undefined, principal: { nomeCompleto: string; cpf?: string | null } | null): Party {
+  const loja: Party = {
+    tipo: 'PJ',
+    nome: t?.razaoSocial || t?.nomeFantasia || t?.name || 'Loja',
+    documento: fmtDoc(t?.cnpj),
+    ie: t?.isentoInscricaoEstadual ? 'isento' : t?.inscricaoEstadual ?? null,
+    endereco: address({ logradouro: t?.logradouro ?? t?.address, numero: t?.numero, complemento: t?.complemento, bairro: t?.bairro, cidade: t?.city, estado: t?.state, cep: t?.zipCode }),
+    email: t?.email ?? null, telefone: t?.phone ?? null,
+    representante: principal ? { nome: principal.nomeCompleto, cpf: fmtDoc(principal.cpf) } : t?.responsavel ? { nome: t.responsavel } : null,
+  }
+  if (t?.nomeFantasia && t.razaoSocial && t.nomeFantasia !== t.razaoSocial) loja.nome = `${t.razaoSocial} (${t.nomeFantasia})`
+  return loja
+}
+
+export interface StoreContext { loja: Party; cidade: string | null; uf: string | null; outorgados: NonNullable<ContractData['outorgados']> }
+
+/** Loja + Documentos › Configurações (cabeçalho, cidade, outorgados ativos) — sem negociação. */
+export async function loadStoreContext(tenantId: string): Promise<StoreContext | null> {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId } }).catch(() => null)
+  if (!t) return null
+  const [principal, cfg] = await Promise.all([loadPrincipal(t.id), loadDocSettings(t.id)])
+  const loja = storeParty(t, principal)
+  if (cfg.endereco) loja.endereco = cfg.endereco
+  if (cfg.telefone) loja.telefone = cfg.telefone
+  if (cfg.email) loja.email = cfg.email
+  return {
+    loja, cidade: cfg.cidade || t.city || null, uf: cfg.uf || t.state || null,
+    outorgados: cfg.outorgados.filter((o) => o.ativo).map((o) => ({ ...o, cpf: o.cpf ? formatCpf(o.cpf) : null })),
+  }
+}
+
+/** Veículo do estoque nos dados do documento. */
+export function vehicleFromStock(v: VehRow, valor?: number | null): VehicleData {
+  return vehicleData({ role: 'ESTOQUE', vehicle: v }, valor)
+}
+
 const label = (v: VehicleData) => [[v.marca, v.modelo, v.versao].filter(Boolean).join(' ').replace(/\s+/g, ' '), v.anoModelo || v.anoFab, v.placa ? `placa ${v.placa}` : null].filter(Boolean).join(' — ')
 
 export type AnyDocKind = DocKind | ProxyKind
@@ -100,18 +156,9 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
   if (!deal) return null
   const t = deal.tenant
   // Loja: Tenant + sócio principal + logo (site da loja, se o cadastro não tiver).
-  const principal = t ? await prisma.tenantPartner.findFirst({ where: { tenantId: t.id }, orderBy: [{ principal: 'desc' }, { createdAt: 'asc' }], select: { nomeCompleto: true, cpf: true } }).catch(() => null) : null
+  const principal = t ? await loadPrincipal(t.id) : null
   const site = t ? await loadSiteConfig(t.id).catch(() => null) : null
-  const loja: Party = {
-    tipo: 'PJ',
-    nome: t?.razaoSocial || t?.nomeFantasia || t?.name || 'Loja',
-    documento: fmtDoc(t?.cnpj),
-    ie: t?.isentoInscricaoEstadual ? 'isento' : t?.inscricaoEstadual ?? null,
-    endereco: address({ logradouro: t?.logradouro ?? t?.address, numero: t?.numero, complemento: t?.complemento, bairro: t?.bairro, cidade: t?.city, estado: t?.state, cep: t?.zipCode }),
-    email: t?.email ?? null, telefone: t?.phone ?? null,
-    representante: principal ? { nome: principal.nomeCompleto, cpf: fmtDoc(principal.cpf) } : t?.responsavel ? { nome: t.responsavel } : null,
-  }
-  if (t?.nomeFantasia && t.razaoSocial && t.nomeFantasia !== t.razaoSocial) loja.nome = `${t.razaoSocial} (${t.nomeFantasia})`
+  const loja = storeParty(t, principal)
 
   const fromPerson = deal.person ? partyFromPerson(deal.person) : null
   const fromCustomer = deal.customer ? partyFromCustomer(deal.customer) : null
@@ -136,15 +183,7 @@ export async function loadContractData(dealId: string, tenantWhere: Record<strin
   let proprietario: Party | null = null
   if (sv?.originType === 'PARTNER' && sv.partnerStore) {
     // Fornecedor de veículos (Cadastros › Fornecedores): PF ou PJ pelo documento.
-    const p = sv.partnerStore
-    const pj = p.personType === 'PJ' || digits(p.document).length === 14
-    proprietario = {
-      tipo: pj ? 'PJ' : 'PF',
-      nome: pj && p.legalName && p.legalName !== p.name ? `${p.legalName} (${p.name})` : p.legalName || p.name,
-      documento: fmtDoc(p.document), rg: pj ? null : p.rg ?? null, ie: pj ? p.stateRegistration ?? null : null,
-      endereco: supplierAddress(p), telefone: p.whatsapp || p.phone || null, email: p.email ?? null,
-      representante: pj && p.repName ? { nome: p.repName, cpf: fmtDoc(p.repCpf) } : null,
-    }
+    proprietario = partyFromSupplier(sv.partnerStore)
   } else if (sv?.originType === 'PRIVATE' || deal.type === 'CONSIGNACAO') {
     if (sv?.customer) proprietario = partyFromCustomer(sv.customer as CustomerLike)
     else if (sv?.originEvaluationId) {

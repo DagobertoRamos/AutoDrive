@@ -2,25 +2,134 @@
 
 // =============================================================================
 // DocumentGeneratorPanel — gera documentos (procurações/termos/declarações) a
-// partir de modelos: escolhe o modelo, preenche os campos, pré-visualiza e
-// imprime/salva em PDF (via navegador). Não persiste — geração sob demanda.
+// partir de modelos. Os dados vêm da base: escolhe a origem (negociação,
+// cliente, veículo do estoque ou fornecedor) e os campos do modelo são
+// preenchidos; a loja/outorgados vêm das Configurações. Campos seguem
+// editáveis para ajuste fino. Imprime/salva em PDF pelo navegador.
 // =============================================================================
 
-import { useMemo, useState } from 'react'
-import { FileText, Printer } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FileText, Loader2, Printer, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
 import { templatesByCategory, type DocCategory } from '@/lib/documents/templates'
+import { applySource, dateBR, type DocSource } from '@/lib/documents/source-fields'
+import type { DocSourcePayload, SourceKind } from '@/lib/documents/source-loader'
+
+const KINDS: Array<{ id: SourceKind; label: string; placeholder: string; param: string }> = [
+  { id: 'deal', label: 'Negociação', placeholder: 'Nº, placa ou cliente', param: 'dealId' },
+  { id: 'customer', label: 'Cliente', placeholder: 'Nome, CPF/CNPJ ou telefone', param: 'customerId' },
+  { id: 'vehicle', label: 'Veículo', placeholder: 'Placa, modelo ou chassi', param: 'vehicleId' },
+  { id: 'supplier', label: 'Fornecedor', placeholder: 'Nome ou CPF/CNPJ', param: 'supplierId' },
+]
+
+type Hit = { id: string; label: string; sub: string }
+
+const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
+
+function storePart(p: DocSourcePayload): DocSource {
+  return { loja: p.loja, cidade: p.cidade, uf: p.uf, outorgado: p.outorgados[0] ?? null }
+}
 
 export default function DocumentGeneratorPanel({ category }: { category: DocCategory }) {
   const templates = useMemo(() => templatesByCategory(category), [category])
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? '')
-  const [values, setValues] = useState<Record<string, string>>({})
+  const [values, setValues] = useState<Record<string, string>>(() => ({ data: dateBR() }))
   const tpl = templates.find((t) => t.id === selectedId) ?? templates[0]
 
-  const set = (k: string, v: string) => setValues((s) => ({ ...s, [k]: v }))
-  const html = tpl ? tpl.render(values) : ''
+  // Origem dos dados
+  const [kind, setKind] = useState<SourceKind>('deal')
+  const [q, setQ] = useState('')
+  const [hits, setHits] = useState<Hit[]>([])
+  const [open, setOpen] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [source, setSource] = useState<DocSourcePayload | null>(null)
+  const [store, setStore] = useState<DocSourcePayload | null>(null)
+  const [parteKey, setParteKey] = useState('')
+  const [veicKey, setVeicKey] = useState('')
+  const [outIdx, setOutIdx] = useState(0)
+  const boxRef = useRef<HTMLDivElement>(null)
 
+  const set = (k: string, v: string) => setValues((s) => ({ ...s, [k]: v }))
+  const apply = useCallback((src: DocSource) => setValues((s) => applySource(s, src)), [])
+
+  // Loja e outorgados das Configurações já no início.
+  useEffect(() => {
+    let alive = true
+    fetch('/api/documents/source', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((j) => { if (alive && j?.success && j.data) { setStore(j.data); apply(storePart(j.data)) } })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [apply])
+
+  // Busca (negociação sem texto = mais recentes).
+  useEffect(() => {
+    if (!open) return
+    if (kind !== 'deal' && q.trim().length < 2) return
+    const ctl = new AbortController()
+    const t = setTimeout(() => {
+      setSearching(true)
+      fetch(`/api/documents/source/search?type=${kind}&q=${encodeURIComponent(q.trim())}`, { credentials: 'include', signal: ctl.signal })
+        .then((r) => r.json())
+        .then((j) => setHits(j?.success ? j.data ?? [] : []))
+        .catch(() => {})
+        .finally(() => setSearching(false))
+    }, 250)
+    return () => { clearTimeout(t); ctl.abort() }
+  }, [q, kind, open])
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  const choose = async (hit: Hit) => {
+    setOpen(false); setQ(''); setError(''); setLoading(true)
+    try {
+      const param = KINDS.find((k) => k.id === kind)!.param
+      const r = await fetch(`/api/documents/source?${param}=${encodeURIComponent(hit.id)}`, { credentials: 'include' })
+      const j = await r.json()
+      if (!r.ok || !j?.success) throw new Error(j?.error || 'Não foi possível carregar os dados.')
+      const p = j.data as DocSourcePayload
+      const parte = p.partes[0], veic = p.veiculos[0]
+      setSource(p); setParteKey(parte?.key ?? ''); setVeicKey(veic?.key ?? ''); setOutIdx(0)
+      apply({
+        ...storePart(p),
+        ...(parte ? { parte: parte.party } : {}),
+        ...(veic ? { veiculo: veic.veiculo } : {}),
+        ...(p.kind === 'deal' ? { valor: p.valor, formaPagamento: p.formaPagamento } : p.valor != null ? { valor: p.valor } : {}),
+      })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const clear = () => {
+    setSource(null); setError('')
+    setValues(() => applySource({ data: dateBR() }, store ? storePart(store) : {}))
+  }
+
+  const pickParte = (key: string) => { setParteKey(key); const p = source?.partes.find((x) => x.key === key); if (p) apply({ parte: p.party }) }
+  const pickVeic = (key: string) => {
+    setVeicKey(key)
+    const v = source?.veiculos.find((x) => x.key === key)
+    if (v) apply({ veiculo: v.veiculo, ...(key === source?.veiculos[0]?.key && source?.valor != null ? { valor: source.valor } : {}) })
+  }
+  const outorgados = (source ?? store)?.outorgados ?? []
+  const pickOut = (i: number) => { setOutIdx(i); apply({ outorgado: outorgados[i] ?? null }) }
+
+  const has = (k: string) => !!tpl?.fields.some((f) => f.key === k)
+  const showParte = (source?.partes.length ?? 0) > 1 && (has('clienteNome') || has('outorganteNome'))
+  const showVeic = (source?.veiculos.length ?? 0) > 1 && has('placa')
+  const showOut = outorgados.length > 1 && has('outorgadoNome')
+
+  const html = tpl ? tpl.render(values) : ''
   const missing = tpl ? tpl.fields.some((f) => f.required && !(values[f.key] ?? '').trim()) : false
 
   const print = () => {
@@ -32,6 +141,9 @@ export default function DocumentGeneratorPanel({ category }: { category: DocCate
   }
 
   if (!tpl) return <p className="text-sm text-gray-400">Nenhum modelo disponível.</p>
+  const kindInfo = KINDS.find((k) => k.id === kind)!
+  const canSearch = kind === 'deal' || q.trim().length >= 2
+  const shown = canSearch ? hits : []
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -39,10 +151,69 @@ export default function DocumentGeneratorPanel({ category }: { category: DocCate
       <div className="space-y-4">
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-700">Modelo</label>
-          <select value={selectedId} onChange={(e) => { setSelectedId(e.target.value); setValues({}) }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+          <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className={inputCls}>
             {templates.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
           <p className="mt-1 text-xs text-gray-400">{tpl.description}</p>
+        </div>
+
+        {/* Origem dos dados */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div className="mb-2 flex flex-wrap gap-1">
+            {KINDS.map((k) => (
+              <button key={k.id} type="button" onClick={() => { setKind(k.id); setHits([]); setQ('') }}
+                className={cn('rounded-md px-2.5 py-1 text-xs font-medium', kind === k.id ? 'bg-white text-brand-700 shadow-sm ring-1 ring-gray-200' : 'text-gray-500 hover:text-gray-800')}>
+                {k.label}
+              </button>
+            ))}
+          </div>
+          <div ref={boxRef} className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={q} onChange={(e) => { setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)}
+              placeholder={`Buscar ${kindInfo.label.toLowerCase()}: ${kindInfo.placeholder}`} className={cn(inputCls, 'pl-9 pr-8')} />
+            {(searching || loading) && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
+            {open && canSearch && (
+              <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                {shown.length === 0 && <li className="px-3 py-2 text-xs text-gray-400">{searching ? 'Buscando…' : 'Nada encontrado.'}</li>}
+                {shown.map((h) => (
+                  <li key={h.id}>
+                    <button type="button" onClick={() => choose(h)} className="block w-full px-3 py-2 text-left hover:bg-gray-50">
+                      <div className="truncate text-sm font-medium text-gray-900">{h.label}</div>
+                      {h.sub && <div className="truncate text-xs text-gray-500">{h.sub}</div>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {source && (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5 text-xs ring-1 ring-gray-200">
+              <span className="truncate text-gray-700"><span className="text-gray-400">{KINDS.find((k) => k.id === source.kind)?.label}:</span> {source.label || '—'}</span>
+              <button type="button" onClick={clear} title="Limpar" className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><X size={13} /></button>
+            </div>
+          )}
+          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+
+          {(showParte || showVeic || showOut) && (
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {showParte && (
+                <select value={parteKey} onChange={(e) => pickParte(e.target.value)} className={cn(inputCls, 'py-1.5 text-xs')}>
+                  {source!.partes.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              )}
+              {showVeic && (
+                <select value={veicKey} onChange={(e) => pickVeic(e.target.value)} className={cn(inputCls, 'py-1.5 text-xs')}>
+                  {source!.veiculos.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+                </select>
+              )}
+              {showOut && (
+                <select value={outIdx} onChange={(e) => pickOut(Number(e.target.value))} className={cn(inputCls, 'py-1.5 text-xs')}>
+                  {outorgados.map((o, i) => <option key={i} value={i}>Outorgado · {o.nome}</option>)}
+                </select>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -50,9 +221,9 @@ export default function DocumentGeneratorPanel({ category }: { category: DocCate
             <div key={f.key} className={cn(f.full || f.type === 'textarea' ? 'col-span-2' : 'col-span-1')}>
               <label className="mb-1 block text-xs font-medium text-gray-700">{f.label}{f.required && <> <RequiredMark /></>}</label>
               {f.type === 'textarea' ? (
-                <textarea value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} className="min-h-[64px] w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                <textarea value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} className={cn(inputCls, 'min-h-[64px] resize-y')} />
               ) : (
-                <input type={f.type === 'number' ? 'number' : 'text'} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                <input type={f.type === 'number' ? 'number' : 'text'} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} className={inputCls} />
               )}
             </div>
           ))}

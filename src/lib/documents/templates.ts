@@ -49,7 +49,7 @@ const PLACE_DATE = (v: Record<string, string>) =>
   `<p style="margin-top:40px;text-align:right">${g(v, 'cidade', 'Cidade')}, ${g(v, 'data', 'data')}.</p>`
 
 const VEICULO = (v: Record<string, string>) =>
-  `o veículo <b>${g(v, 'veiculo', 'marca/modelo')}</b>, ano ${g(v, 'ano', '____')}, placa <b>${g(v, 'placa', '_______')}</b>, chassi ${g(v, 'chassi', '_________________')}, RENAVAM ${g(v, 'renavam', '___________')}`
+  `o veículo <b>${g(v, 'veiculo', 'marca/modelo')}</b>, ano ${g(v, 'ano', '____')}${v.cor?.trim() ? ', cor ' + esc(v.cor.trim()) : ''}, placa <b>${g(v, 'placa', '_______')}</b>, chassi ${g(v, 'chassi', '_________________')}, RENAVAM ${g(v, 'renavam', '___________')}`
 
 const docWrap = (title: string, inner: string) =>
   `<div style="font-family:Georgia,'Times New Roman',serif;color:#111;line-height:1.7;font-size:14px;max-width:720px;margin:0 auto;padding:8px">
@@ -60,6 +60,7 @@ const docWrap = (title: string, inner: string) =>
 const COMMON_VEICULO: TplField[] = [
   { key: 'veiculo', label: 'Veículo (marca/modelo)', full: true },
   { key: 'ano', label: 'Ano' },
+  { key: 'cor', label: 'Cor' },
   { key: 'placa', label: 'Placa' },
   { key: 'renavam', label: 'RENAVAM' },
   { key: 'chassi', label: 'Chassi', full: true },

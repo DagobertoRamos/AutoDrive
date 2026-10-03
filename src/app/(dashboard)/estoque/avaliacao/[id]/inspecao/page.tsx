@@ -23,6 +23,7 @@ import { StockEntryPanel } from '../../_components/StockEntryPanel'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
 import { getStatusDef } from '@/components/estoque/avaliacoes/status'
 import { RequiredMark } from '@/components/ui/field'
+import { compressImage } from '@/lib/images/compress-client'
 import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
   Gauge, Wrench, FileText, CheckCircle2, AlertTriangle, Plus,
@@ -772,7 +773,7 @@ function AttachmentUploader({
     for (let i = 0; i < files.length; i++) {
       const f  = files[i]
       const fd = new FormData()
-      fd.append('file', f)
+      fd.append('file', await compressImage(f))
       fd.append('category', category)
       if (section) fd.append('section', section)
       if (itemId)  fd.append('itemId',  itemId)

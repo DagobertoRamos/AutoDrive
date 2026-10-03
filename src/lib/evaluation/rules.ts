@@ -29,6 +29,25 @@ export const CHECKLIST_SECTIONS: SectionKey[] = [
 /** Seções que exigem, no mínimo, 1 foto geral (sem vínculo a item). */
 export const SECTIONS_REQUIRING_PHOTO: SectionKey[] = [...CHECKLIST_SECTIONS]
 
+/**
+ * Fotos obrigatórias nomeadas por seção (substituem a "foto geral" nela).
+ * Gravadas como anexo da seção com category `FOTO_<key>`.
+ */
+export const REQUIRED_SHOTS: Partial<Record<SectionKey, Array<{ key: string; label: string }>>> = {
+  TRASEIRA: [
+    { key: 'TRASEIRA', label: 'Traseira' },
+    { key: 'PORTA_MALAS', label: 'Porta-malas aberto' },
+    { key: 'PLACA', label: 'Placa' },
+  ],
+}
+export const shotCategory = (key: string) => `FOTO_${key}`
+
+/** Shots obrigatórios da seção ainda sem foto. */
+export function missingShots(section: SectionKey, attachments: EvaluationAttachmentLike[]): Array<{ key: string; label: string }> {
+  const shots = REQUIRED_SHOTS[section] ?? []
+  return shots.filter((sh) => !attachments.some((a) => a.section === section && !a.itemId && isImage(a) && a.category === shotCategory(sh.key)))
+}
+
 // ── Formatos de entrada (compatíveis com Prisma e com o estado do client) ────
 
 export interface EvaluationItemLike {
@@ -190,7 +209,11 @@ export function getSectionPending(
   const label = sectionLabel(section)
 
   // 1) Foto geral da seção
-  if (SECTIONS_REQUIRING_PHOTO.includes(section) && getSectionPhotos(section, ctx.attachments).length === 0) {
+  if (REQUIRED_SHOTS[section]) {
+    for (const sh of missingShots(section, ctx.attachments)) {
+      pending.push({ sectionId: section, sectionLabel: label, itemId: null, catalogKey: null, type: 'SECTION_PHOTO', label: `Foto: ${sh.label}` })
+    }
+  } else if (SECTIONS_REQUIRING_PHOTO.includes(section) && getSectionPhotos(section, ctx.attachments).length === 0) {
     pending.push({
       sectionId: section, sectionLabel: label, itemId: null, catalogKey: null,
       type: 'SECTION_PHOTO', label: 'Foto geral da seção',
@@ -229,7 +252,7 @@ export function countSectionRequirements(
   section: SectionKey,
   ctx: EvaluationRuleContext,
 ): number {
-  let total = SECTIONS_REQUIRING_PHOTO.includes(section) ? 1 : 0
+  let total = REQUIRED_SHOTS[section]?.length ?? (SECTIONS_REQUIRING_PHOTO.includes(section) ? 1 : 0)
   for (const cat of getCatalog(section)) {
     if (isAnswerRequired(cat)) total += 1
     if (isPhotoRequiredFor(cat, ctx.opcionais)) total += 1
