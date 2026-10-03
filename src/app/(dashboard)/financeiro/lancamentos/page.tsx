@@ -11,6 +11,7 @@ import { Plus, Pencil, Trash2, Wallet, X, Save, RefreshCw, CheckCircle2, Downloa
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
+import { EntryDrawer } from '@/components/finance/EntryDrawer'
 
 interface Entry {
   id: string; type: 'RECEITA' | 'DESPESA'; status: string; description: string; amount: number
@@ -39,6 +40,7 @@ export default function FinanceEntriesPage() {
   const [modal, setModal] = useState(false); const [editing, setEditing] = useState<Entry | null>(null)
   const [form, setForm] = useState<Form>(emptyForm); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false); const [msg, setMsg] = useState<string | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,11 +95,6 @@ export default function FinanceEntriesPage() {
     } catch { setError('Erro de rede.') } finally { setSaving(false) }
   }
 
-  const settle = async (e: Entry) => {
-    const newStatus = e.type === 'RECEITA' ? 'RECEBIDO' : 'PAGO'
-    await fetch(`/api/finance/entries/${e.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status: newStatus }) })
-    await load()
-  }
   const remove = async (e: Entry) => {
     if (!confirm(`Excluir o lançamento "${e.description}"?`)) return
     await fetch(`/api/finance/entries/${e.id}`, { method: 'DELETE', credentials: 'include' }); await load()
@@ -150,7 +147,7 @@ export default function FinanceEntriesPage() {
                 <tr><td colSpan={8} className="py-14 text-center"><Wallet size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum lançamento. Crie um ou use “Sincronizar”.</p></td></tr>
               ) : (
                 items.map((e) => (
-                  <tr key={e.id} className="hover:bg-gray-50">
+                  <tr key={e.id} onClick={() => setDetailId(e.id)} className="cursor-pointer hover:bg-gray-50" title="Abrir lançamento: detalhar custos e dar baixa">
                     <td className="px-4 py-3"><p className="font-medium text-gray-900">{e.description}</p>{e.source && e.source !== 'MANUAL' && <span className="text-[10px] uppercase tracking-wide text-brand-600">{sourceLabel(e.source)}</span>}</td>
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', e.type === 'RECEITA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600')}>{e.type === 'RECEITA' ? 'Receita' : 'Despesa'}</span></td>
                     <td className="px-4 py-3 text-gray-600">{e.category ?? '—'}</td>
@@ -158,8 +155,8 @@ export default function FinanceEntriesPage() {
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">{date(e.dueDate)}</td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums font-medium text-gray-900">{fmt(e.amount)}</td>
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_CLS[e.status] ?? 'bg-gray-100 text-gray-600')}>{STATUS_LABEL[e.status] ?? e.status}</span></td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {e.status === 'PREVISTO' && <button onClick={() => settle(e)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-600" title="Liquidar"><CheckCircle2 size={15} /></button>}
+                    <td className="whitespace-nowrap px-4 py-3 text-right" onClick={(ev) => ev.stopPropagation()}>
+                      {e.status === 'PREVISTO' && <button onClick={() => setDetailId(e.id)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-600" title="Dar baixa"><CheckCircle2 size={15} /></button>}
                       <button onClick={() => open(e)} className="mr-1 inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={15} /></button>
                       <button onClick={() => remove(e)} className="inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir"><Trash2 size={15} /></button>
                     </td>
@@ -170,6 +167,8 @@ export default function FinanceEntriesPage() {
           </table>
         </div>
       </div>
+
+      {detailId && <EntryDrawer entryId={detailId} onClose={() => setDetailId(null)} onChanged={() => void load()} />}
 
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setModal(false)}>

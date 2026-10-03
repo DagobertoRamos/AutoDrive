@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import { isPayoffDebt } from './entry-settlement-core'
 
 export const PAYMENT_SOURCE_PREFIX = 'NEG_PGTO_'
 export const DEBT_SOURCE_PREFIX = 'NEG_DEBITO_'
@@ -62,14 +63,14 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
       id: true, tenantId: true, unitId: true, sellerId: true, dealNumber: true, type: true, status: true, source: true,
       customer: { select: { name: true } },
       payments: true, debts: true,
-      vehicles: { select: { role: true, plate: true } },
+      vehicles: { select: { role: true, plate: true, vehicleId: true } },
     },
   })
   if (!deal || !SALE_TYPES.includes(deal.type) || IMPORTED_SOURCES.includes(String(deal.source ?? '').toUpperCase())) return
 
   const entries = await prisma.financialEntry.findMany({
     where: { dealId },
-    select: { id: true, source: true, status: true },
+    select: { id: true, source: true, status: true, chargedAmount: true, vehicleId: true },
   })
   if (entries.some((e) => e.source === 'VENDA')) return // legado: total da venda já lançado
 
@@ -101,7 +102,9 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
     }
     const cur = bySource.get(source)
     if (cur) {
-      await prisma.financialEntry.update({ where: { id: cur.id }, data })
+      // Valor ajustado na baixa (ex.: taxa do cartão): mantém o real, atualiza o cobrado.
+      const { amount, ...rest } = data
+      await prisma.financialEntry.update({ where: { id: cur.id }, data: cur.chargedAmount != null ? { ...rest, chargedAmount: amount } : data })
     } else {
       await prisma.financialEntry.create({
         data: { ...base, ...data, source, type: 'RECEITA', competenceDate: p.createdAt, categoryId: await categoryId(deal.tenantId, CATEGORY.payment, cache) },
@@ -117,6 +120,9 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
     const label = d.description?.trim() || DEBT_LABEL[d.type] || d.type
     const role = d.vehicleRole === 'TROCA' ? 'veículo da troca' : 'veículo vendido'
     const resp = RESP_LABEL[String(d.responsavel ?? '').toUpperCase()]
+    // Débito entra no extrato do veículo — menos a quitação do carro da troca, que
+    // já compõe o valor de compra dele (seria custo em dobro).
+    const vehicleId = isPayoffDebt(d) ? null : deal.vehicles.find((v) => v.role === (d.vehicleRole ?? 'VENDIDO'))?.vehicleId ?? null
     const data = {
       description: `${label} — ${role} ${plateOf(d.vehicleRole) ?? ''}`.trim() + ` · ${ref}`,
       amount: d.value,
@@ -125,11 +131,16 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
     }
     const cur = bySource.get(source)
     if (cur) {
-      // Já pago/cancelado no Financeiro: não mexe. Negociação morta cancela o previsto.
-      if (cur.status === 'PREVISTO') await prisma.financialEntry.update({ where: { id: cur.id }, data: { ...data, ...(dead ? { status: 'CANCELADO' } : {}) } })
+      if (cur.vehicleId !== vehicleId) await prisma.financialEntry.update({ where: { id: cur.id }, data: { vehicleId } })
+      // Custo real já detalhado/baixado: o débito só atualiza o valor COBRADO.
+      if (cur.chargedAmount != null || cur.status !== 'PREVISTO') {
+        if (cur.status !== 'CANCELADO') await prisma.financialEntry.update({ where: { id: cur.id }, data: { chargedAmount: d.value } })
+      } else {
+        await prisma.financialEntry.update({ where: { id: cur.id }, data: { ...data, ...(dead ? { status: 'CANCELADO' } : {}) } })
+      }
     } else if (!dead) {
       await prisma.financialEntry.create({
-        data: { ...base, ...data, source, type: 'DESPESA', status: 'PREVISTO', competenceDate: d.createdAt, categoryId: await categoryId(deal.tenantId, CATEGORY.debt, cache) },
+        data: { ...base, ...data, vehicleId, source, type: 'DESPESA', status: 'PREVISTO', competenceDate: d.createdAt, categoryId: await categoryId(deal.tenantId, CATEGORY.debt, cache) },
       })
     }
   }

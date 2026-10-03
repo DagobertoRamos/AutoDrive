@@ -15,17 +15,21 @@ import { cn } from '@/lib/utils'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { EXPENSE_CATEGORIES, parseMoneyInput, REVENUE_CATEGORIES } from '@/lib/stock/prep-core'
 import { VehicleFilesField, type VFile } from './VehicleFilesField'
+import { EntryDrawer } from '@/components/finance/EntryDrawer'
 
 interface Line {
   id: string; origin: 'ENTRY' | 'SALE' | 'COMMISSION'; entryId: string | null; type: 'RECEITA' | 'DESPESA'; category: string; categoryLabel: string
   description: string; amount: number; status: string; dueDate: string | null; paidDate: string | null; counterparty: string | null
   paymentMethod: string | null; dealNumber: string | null; locked: string | null; receipts: VFile[]
+  items?: Array<{ kind: string; label: string; description: string; amount: number }>; chargedAmount?: number | null
 }
+interface DocSummary { charged: number; cost: number; gross: number; commissions: number; net: number; margin: number | null; costIsEstimate: boolean; items: Array<{ kind: string; label: string; amount: number }> }
 interface Data {
   vehicle: { id: string; plate: string | null; title: string; stockType: string | null; stockStatus: string | null; purchasePrice: number | null; salePrice: number | null; dealNumbers: string[] }
   lines: Line[]
   result: { revenue: number; cost: number; profit: number; margin: number | null; toPay: number; toReceive: number; byCategory: Record<string, number> }
   accounts: Array<{ id: string; name: string }>
+  documentation: DocSummary | null
 }
 
 const brl = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -33,13 +37,13 @@ const date = (s: string | null) => (s ? new Date(s).toLocaleDateString('pt-BR') 
 const input = 'w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm'
 const METHODS = ['PIX', 'Transferência', 'Boleto', 'Dinheiro', 'Cartão', 'Débito em conta', 'Outro']
 const EXPENSES_MANUAL = EXPENSE_CATEGORIES.filter(([k]) => k !== 'COMISSAO')
-const REVENUES_MANUAL = REVENUE_CATEGORIES.filter(([k]) => k !== 'VENDA_VEICULO')
+const REVENUES_MANUAL = REVENUE_CATEGORIES.filter(([k]) => k !== 'VENDA_VEICULO' && k !== 'COBRADO_CLIENTE')
 
 export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
   const [d, setD] = useState<Data | null>(null)
   const [err, setErr] = useState('')
   const [filter, setFilter] = useState<'TODOS' | 'PENDENTES' | 'PAGOS'>('TODOS')
-  const [paying, setPaying] = useState<Line | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
   const [receipts, setReceipts] = useState<Line | null>(null)
   const [adding, setAdding] = useState(false)
 
@@ -63,6 +67,8 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
   const commissions = -(r.byCategory.COMISSAO ?? 0) + 0
   const acquisition = -((r.byCategory.COMPRA_VEICULO ?? 0) + (r.byCategory.REPASSE ?? 0)) + 0
   const prep = r.cost - commissions - acquisition
+  const sale = (r.byCategory.VENDA_VEICULO ?? 0) + 0
+  const charged = (r.byCategory.COBRADO_CLIENTE ?? 0) + 0
   const lines = d.lines.filter((l) => filter === 'TODOS' ? true : filter === 'PENDENTES' ? l.status === 'PREVISTO' : l.status === 'PAGO' || l.status === 'RECEBIDO')
 
   return (
@@ -70,8 +76,9 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {([
           [d.vehicle.stockType === 'CONSIGNADO' ? 'Repasse' : 'Compra', brl(acquisition), ''],
-          ['Venda', brl(r.revenue), ''],
+          ['Venda', brl(sale), ''],
           ['Preparação e custos', brl(prep), ''],
+          ...(charged ? [['Cobrado do cliente', brl(charged), 'text-emerald-700'] as [string, string, string]] : []),
           ['Comissões', brl(commissions), ''],
           ['Lucro', brl(r.profit), r.profit >= 0 ? 'text-emerald-700' : 'text-red-700'],
           ['Margem', r.margin == null ? '—' : `${r.margin.toLocaleString('pt-BR')}%`, r.profit >= 0 ? 'text-emerald-700' : 'text-red-700'],
@@ -83,7 +90,8 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
           </div>
         ))}
       </div>
-      {r.revenue === 0 && <p className="text-[11px] text-gray-500">Ainda sem venda: lucro e margem ficam completos quando a negociação de venda for registrada (anúncio: {brl(d.vehicle.salePrice)}).</p>}
+      {d.documentation && <DocCard doc={d.documentation} />}
+      {sale === 0 && <p className="text-[11px] text-gray-500">Ainda sem venda: lucro e margem ficam completos quando a negociação de venda for registrada (anúncio: {brl(d.vehicle.salePrice)}).</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1 text-xs">
@@ -103,9 +111,15 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {lines.map((l) => (
-              <tr key={l.id} className={l.status === 'CANCELADO' ? 'opacity-50' : ''}>
+              <tr key={l.id} onClick={() => l.entryId && l.origin !== 'COMMISSION' && setDetailId(l.entryId)} className={cn(l.status === 'CANCELADO' && 'opacity-50', l.entryId && l.origin !== 'COMMISSION' && 'cursor-pointer hover:bg-gray-50')}>
                 <td className="px-3 py-2">
                   <p className="font-medium text-gray-900">{l.description}</p>
+                  {!!l.items?.length && (
+                    <ul className="mt-0.5 space-y-0.5 text-[11px] text-gray-600">
+                      {l.items.map((i, k) => <li key={k} className="flex justify-between gap-3"><span>• {i.description}</span><span className="tabular-nums">{brl(i.amount)}</span></li>)}
+                    </ul>
+                  )}
+                  {l.chargedAmount != null && l.chargedAmount !== l.amount && <p className="text-[10px] text-gray-500">previsto/cobrado {brl(l.chargedAmount)}</p>}
                   <p className="text-[11px] text-gray-500">{[l.counterparty, l.dealNumber ? `Negociação ${l.dealNumber}` : null, l.paymentMethod].filter(Boolean).join(' · ')}</p>
                   {l.locked && <p className="text-[10px] text-gray-400">{l.locked}</p>}
                 </td>
@@ -118,10 +132,10 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
                   </span>
                   {l.paidDate && (l.status === 'PAGO' || l.status === 'RECEBIDO') && <p className="text-[10px] text-gray-400">em {date(l.paidDate)}</p>}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
+                <td className="whitespace-nowrap px-3 py-2 text-right" onClick={(ev) => ev.stopPropagation()}>
                   {l.entryId && l.origin !== 'COMMISSION' && (
                     <div className="flex justify-end gap-1">
-                      {l.status === 'PREVISTO' && <button type="button" onClick={() => setPaying(l)} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"><CheckCircle2 size={11} />Dar baixa</button>}
+                      {l.status === 'PREVISTO' && <button type="button" onClick={() => setDetailId(l.entryId)} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"><CheckCircle2 size={11} />Dar baixa</button>}
                       {(l.status === 'PAGO' || l.status === 'RECEBIDO') && <button type="button" onClick={() => { if (confirm('Estornar a baixa?')) void act(l, { action: 'unpay' }) }} className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-[11px] text-gray-600"><RotateCcw size={11} />Estornar</button>}
                       <button type="button" onClick={() => setReceipts(l)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-[11px] text-gray-600" title="Comprovantes"><Receipt size={11} />{l.receipts.length || ''}</button>
                       {l.status === 'PREVISTO' && !l.locked && <button type="button" onClick={() => { if (confirm('Cancelar este lançamento?')) void act(l, { action: 'cancel' }) }} className="rounded-md border border-gray-300 p-1 text-gray-500 hover:text-red-600" aria-label="Cancelar"><X size={11} /></button>}
@@ -135,7 +149,7 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
         </table>
       </div>
 
-      {paying && <PayModal line={paying} accounts={d.accounts} onClose={() => setPaying(null)} onPay={async (b) => { if (await act(paying, { action: 'pay', ...b })) setPaying(null) }} />}
+      {detailId && <EntryDrawer entryId={detailId} onClose={() => setDetailId(null)} onChanged={() => void load()} />}
       {receipts && (
         <Modal title={`Comprovantes — ${receipts.description}`} onClose={() => setReceipts(null)}>
           <VehicleFilesField vehicleId={vehicleId} kind="COMPROVANTE" refKey={receipts.entryId} files={receipts.receipts} canEdit onChange={async () => { await load(); setReceipts(null) }} />
@@ -155,25 +169,6 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         {children}
       </div>
     </div>
-  )
-}
-
-function PayModal({ line, accounts, onClose, onPay }: { line: Line; accounts: Data['accounts']; onClose: () => void; onPay: (b: Record<string, unknown>) => Promise<void> }) {
-  const [f, setF] = useState({ paidDate: new Date().toISOString().slice(0, 10), paymentMethod: line.paymentMethod ?? 'PIX', accountId: '', amount: String(line.amount) })
-  const [busy, setBusy] = useState(false)
-  return (
-    <Modal title={`${line.type === 'RECEITA' ? 'Receber' : 'Pagar'}: ${line.description}`} onClose={onClose}>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs text-gray-600">Data<input type="date" className={input} value={f.paidDate} onChange={(e) => setF({ ...f, paidDate: e.target.value })} /></label>
-        <label className="text-xs text-gray-600">Valor<MoneyInput className={input} disabled={!!line.locked} value={textToMoney(f.amount)} onChange={(n) => setF({ ...f, amount: moneyToText(n) })} /></label>
-        <label className="text-xs text-gray-600">Forma<select className={input} value={f.paymentMethod} onChange={(e) => setF({ ...f, paymentMethod: e.target.value })}>{METHODS.map((m) => <option key={m}>{m}</option>)}</select></label>
-        <label className="text-xs text-gray-600">Conta<select className={input} value={f.accountId} onChange={(e) => setF({ ...f, accountId: e.target.value })}><option value="">—</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-      </div>
-      <div className="mt-3 flex justify-end gap-2">
-        <button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button>
-        <button disabled={busy} onClick={async () => { setBusy(true); await onPay({ paidDate: `${f.paidDate}T12:00:00`, paymentMethod: f.paymentMethod, accountId: f.accountId || undefined, ...(line.locked ? {} : { amount: parseMoneyInput(f.amount) }) }); setBusy(false) }} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}Confirmar baixa</button>
-      </div>
-    </Modal>
   )
 }
 
@@ -216,5 +211,29 @@ function NewEntryModal({ vehicleId, accounts, onClose, onSaved }: { vehicleId: s
         <button disabled={busy || !f.description.trim() || !f.amount} onClick={() => void save()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}Lançar</button>
       </div>
     </Modal>
+  )
+}
+
+/** Documentação (despachante) do carro: cobrado − custo real detalhado − comissões de documento. */
+function DocCard({ doc }: { doc: DocSummary }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500"><FileText size={13} />Documentação / despachante</div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {([
+          ['Cobrado do cliente', brl(doc.charged), ''],
+          [doc.costIsEstimate ? 'Custo (previsto)' : 'Custo real', brl(doc.cost), 'text-red-700'],
+          ['Lucro sobre despachante', brl(doc.gross), doc.gross >= 0 ? 'text-emerald-700' : 'text-red-700'],
+          ['Comissões de documento', brl(doc.commissions), ''],
+          ['Lucro líquido', brl(doc.net), doc.net >= 0 ? 'text-emerald-700' : 'text-red-700'],
+        ] as Array<[string, string, string]>).map(([l, v, c]) => (
+          <div key={l} className="rounded-lg bg-gray-50 px-2.5 py-1.5"><p className="text-[10px] uppercase tracking-wide text-gray-500">{l}</p><p className={cn('text-sm font-bold tabular-nums text-gray-900', c)}>{v}</p></div>
+        ))}
+      </div>
+      {doc.items.length > 0 && (
+        <p className="mt-2 text-[11px] text-gray-600">Custo detalhado: {doc.items.map((i) => `${i.label} ${brl(i.amount)}`).join(' · ')}</p>
+      )}
+      {doc.costIsEstimate && <p className="mt-1 text-[11px] text-amber-700">Custo ainda previsto — abra o lançamento de documentação e lance o que foi pago (licenciamento, placa, laudo…).</p>}
+    </div>
   )
 }

@@ -14,6 +14,14 @@ import type { FinancialEntryStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { EXPENSE_LABEL, REVENUE_LABEL, serviceCost, vehicleResult, type ExpenseCategory } from './prep-core'
 import { listVehicleFiles, type VehicleFileMeta } from './vehicle-files'
+import { DEBT_SOURCE_PREFIX } from '@/lib/finance/deal-finance-sync'
+import { COST_ITEM_LABEL, DOC_DEBT_TYPES, chargeResult, isChargedToCustomer } from '@/lib/finance/entry-settlement-core'
+
+/** Tipo do débito da negociação → categoria do extrato do veículo. */
+const DEBT_CATEGORY: Record<string, string> = {
+  DOCUMENTACAO: 'DOCUMENTACAO', DESPACHANTE: 'DOCUMENTACAO', LICENCIAMENTO: 'DEBITO', IPVA: 'DEBITO',
+  MULTA: 'MULTA', CAUTELAR: 'LAUDO', REPARO: 'SERVICO', FINANCIAMENTO: 'OUTRO', OUTROS: 'OUTRO',
+}
 
 export const VEHICLE_SOURCE_PREFIX = 'VEICULO_'
 export const sourceOf = (category: string) => `${VEHICLE_SOURCE_PREFIX}${category}`
@@ -113,6 +121,12 @@ export interface LedgerLine {
   dealNumber: string | null
   locked: string | null // motivo de não editar o valor aqui (serviço, comissão…)
   receipts: VehicleFileMeta[]
+  /** Composição do custo real (baixa detalhada no Financeiro). */
+  items?: Array<{ kind: string; label: string; description: string; amount: number }>
+  /** Valor cobrado do cliente / previsto antes do custo real. */
+  chargedAmount?: number | null
+  /** Tipo da comissão (origin COMMISSION): VENDA, DOCUMENTO, RETORNO… */
+  commissionType?: string
 }
 
 const num = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d))
@@ -126,7 +140,7 @@ export async function loadVehicleLedger(vehicleId: string) {
   if (!v) return null
 
   const [entries, saleRows, receipts] = await Promise.all([
-    prisma.financialEntry.findMany({ where: { vehicleId }, orderBy: [{ createdAt: 'asc' }] }),
+    prisma.financialEntry.findMany({ where: { vehicleId }, orderBy: [{ createdAt: 'asc' }], include: { items: { orderBy: [{ sortOrder: 'asc' }] } } }),
     prisma.dealVehicle.findMany({
       where:  { vehicleId, role: 'VENDIDO', deal: { status: { not: 'CANCELADA' } } },
       select: { deal: { select: { id: true, dealNumber: true, status: true, saleAmount: true, finalizedAt: true, saleDate: true, createdAt: true } } },
@@ -136,8 +150,17 @@ export async function loadVehicleLedger(vehicleId: string) {
   const receiptsBy = new Map<string, VehicleFileMeta[]>()
   for (const r of receipts) if (r.refKey) receiptsBy.set(r.refKey, [...(receiptsBy.get(r.refKey) ?? []), r])
 
+  // Débitos da negociação ligados ao carro: tipo e quem paga vêm do DealDebt.
+  const debtIds = entries.map((e) => (e.source?.startsWith(DEBT_SOURCE_PREFIX) ? e.source.slice(DEBT_SOURCE_PREFIX.length) : null)).filter((x): x is string => !!x)
+  const debts = debtIds.length
+    ? await prisma.dealDebt.findMany({ where: { id: { in: debtIds } }, select: { id: true, type: true, responsavel: true, value: true, deal: { select: { id: true, dealNumber: true, status: true } } } })
+    : []
+  const debtBy = new Map(debts.map((d) => [d.id, d]))
+  const debtOf = (source: string | null) => (source?.startsWith(DEBT_SOURCE_PREFIX) ? debtBy.get(source.slice(DEBT_SOURCE_PREFIX.length)) ?? null : null)
+
   const lines: LedgerLine[] = entries.map((e) => {
-    const category = categoryOf(e.source)
+    const debt = debtOf(e.source)
+    const category = debt ? DEBT_CATEGORY[debt.type] ?? 'OUTRO' : categoryOf(e.source)
     return {
       id: e.id, origin: 'ENTRY', entryId: e.id, type: e.type, category,
       categoryLabel: e.type === 'DESPESA' ? (EXPENSE_LABEL[category as ExpenseCategory] ?? category) : (REVENUE_LABEL[category] ?? category),
@@ -145,8 +168,27 @@ export async function loadVehicleLedger(vehicleId: string) {
       counterparty: e.counterparty, paymentMethod: e.paymentMethod, dealNumber: null,
       locked: e.vehicleServiceId ? 'Valor do serviço: altere na aba Serviços.' : null,
       receipts: receiptsBy.get(e.id) ?? [],
+      items: e.items.map((i) => ({ kind: i.kind, label: (COST_ITEM_LABEL as Record<string, string>)[i.kind] ?? i.kind, description: i.description, amount: num(i.amount) })),
+      chargedAmount: e.chargedAmount == null ? null : num(e.chargedAmount),
+      ...(debt ? { dealNumber: debt.deal.dealNumber } : {}),
     }
   })
+
+  // O que foi cobrado do cliente por esses débitos é receita do carro (o custo
+  // real fica na despesa; a diferença é o lucro sobre o despachante/débito).
+  for (const e of entries) {
+    const debt = debtOf(e.source)
+    if (!debt || e.status === 'CANCELADO' || !isChargedToCustomer(debt.responsavel)) continue
+    const charged = num(e.chargedAmount ?? debt.value)
+    if (charged <= 0) continue
+    lines.push({
+      id: `cobrado:${e.id}`, origin: 'SALE', entryId: null, type: 'RECEITA', category: 'COBRADO_CLIENTE', categoryLabel: REVENUE_LABEL.COBRADO_CLIENTE,
+      description: `Cobrado do cliente — ${e.description}`, amount: charged,
+      status: debt.deal.status === 'FINALIZADA' ? 'RECEBIDO' : 'PREVISTO',
+      dueDate: iso(e.dueDate ?? e.competenceDate), paidDate: null, counterparty: null, paymentMethod: null,
+      dealNumber: debt.deal.dealNumber, locked: 'Valor cobrado: vem do débito da negociação.', receipts: [],
+    })
+  }
 
   const deals = saleRows.map((r) => r.deal)
   for (const d of deals) {
@@ -171,12 +213,28 @@ export async function loadVehicleLedger(vehicleId: string) {
         id: `comissao:${c.id}`, origin: 'COMMISSION', entryId: null, type: 'DESPESA', category: 'COMISSAO', categoryLabel: 'Comissões',
         description: c.description || `Comissão ${c.ruleType}`, amount: num(c.commissionValue), status: c.status === 'PAGO' ? 'PAGO' : 'PREVISTO',
         dueDate: iso(c.createdAt), paidDate: iso(c.paidAt), counterparty: null, paymentMethod: null, dealNumber: d.dealNumber,
-        locked: 'Comissão: baixa automática quando paga no sistema de comissões.', receipts: [],
+        locked: 'Comissão: baixa automática quando paga no sistema de comissões.', receipts: [], commissionType: c.ruleType,
       })
     }
   }
 
   const result = vehicleResult(lines.map((l) => ({ type: l.type, category: l.category, amount: l.amount, status: l.status })))
+
+  // Documentação (despachante): cobrado − custo real (detalhado) − comissões de documento.
+  const docEntries = entries.filter((e) => { const d = debtOf(e.source); return !!d && DOC_DEBT_TYPES.includes(d.type) && e.status !== 'CANCELADO' })
+  let documentation = null as null | (ReturnType<typeof chargeResult> & { costIsEstimate: boolean; items: Array<{ kind: string; label: string; amount: number }> })
+  if (docEntries.length) {
+    const charged = docEntries.reduce((s, e) => { const d = debtOf(e.source)!; return s + (isChargedToCustomer(d.responsavel) ? num(e.chargedAmount ?? d.value) : 0) }, 0)
+    const cost = docEntries.reduce((s, e) => s + num(e.amount), 0)
+    const docComms = lines.filter((l) => l.origin === 'COMMISSION' && l.commissionType === 'DOCUMENTO').map((l) => ({ amount: l.amount, status: l.status }))
+    const byKind = new Map<string, number>()
+    for (const e of docEntries) for (const i of e.items) byKind.set(i.kind, (byKind.get(i.kind) ?? 0) + num(i.amount))
+    documentation = {
+      ...chargeResult({ charged, cost, commissions: docComms }),
+      costIsEstimate: docEntries.some((e) => e.items.length === 0 && e.status === 'PREVISTO'),
+      items: [...byKind].map(([kind, amount]) => ({ kind, label: (COST_ITEM_LABEL as Record<string, string>)[kind] ?? kind, amount: Math.round(amount * 100) / 100 })),
+    }
+  }
   return {
     vehicle: {
       id: v.id, plate: v.plate, title: [v.brand, v.model].filter(Boolean).join(' '), stockType: v.stockType, stockStatus: v.stockStatus,
@@ -185,5 +243,6 @@ export async function loadVehicleLedger(vehicleId: string) {
     },
     lines: lines.sort((a, b) => String(a.dueDate ?? '').localeCompare(String(b.dueDate ?? ''))),
     result,
+    documentation,
   }
 }

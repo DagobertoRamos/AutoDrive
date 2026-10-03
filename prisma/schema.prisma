@@ -4210,8 +4210,15 @@ model FinancialEntry {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
 
+  /// Valor original cobrado/previsto antes da baixa com o custo real (ex.: documentação
+  /// cobrada do cliente 1.500 → gasto real 725; o lucro é a diferença).
+  chargedAmount           Decimal?             @db.Decimal(14, 2)
+  /// Fornecedor da baixa (despachante, oficina…) — Supplier.id.
+  supplierId              String?
+
   account  FinancialAccount?  @relation(fields: [accountId], references: [id])
   category FinancialCategory? @relation(fields: [categoryId], references: [id])
+  items    FinancialEntryItem[]
 
   @@unique([commissionCalculationId])
   @@unique([dealId, source])
@@ -4225,6 +4232,26 @@ model FinancialEntry {
   @@index([unitId])
   @@index([vehicleId])
   @@map("financial_entries")
+}
+
+/// Composição do custo real de um lançamento (baixa detalhada): licenciamento,
+/// placa, laudo ECV, honorário do despachante… A soma vira o valor do lançamento.
+model FinancialEntryItem {
+  id          String   @id @default(cuid())
+  entryId     String
+  tenantId    String?
+  kind        String // LICENCIAMENTO | PLACA | LAUDO_ECV | VISTORIA | TAXA_DETRAN | TRANSFERENCIA | HONORARIO | IPVA | MULTA | CARTORIO | OUTRO
+  description String
+  amount      Decimal  @db.Decimal(14, 2)
+  supplierId  String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+  @@index([tenantId])
+  @@map("financial_entry_items")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -3,7 +3,8 @@
 // =============================================================================
 // DocumentoConfigCard — comissão de DOCUMENTAÇÃO (despachante), configurável:
 //   • Loja paga → cortesia → sem comissão (liga/desliga).
-//   • Cliente paga → FAIXAS por valor cobrado, com valor p/ gerente e vendedor.
+//   • Cliente paga → FAIXAS por valor cobrado, com valor p/ gerente, vendedor e
+//     setor de documentação (cargos Documentação / Gerente de Documentação).
 // Campos editáveis para mudanças futuras de valores. Reusa /api/commissions/documento-config.
 // =============================================================================
 
@@ -11,7 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { FileText, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface Tier { minFee: string; maxFee: string; gerente: string; vendedor: string }
+interface Tier { minFee: string; maxFee: string; gerente: string; vendedor: string; setor: string; setorGerente: string }
 interface Config { active: boolean; lojaPagaSemComissao: boolean; exigirPagadorCliente: boolean; tiers: Tier[] }
 
 const asText = (v: number | null | undefined) => (v == null ? '' : String(v))
@@ -33,13 +34,13 @@ export default function DocumentoConfigCard() {
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error ?? 'Erro ao carregar')
       const d = j.data
-      setCfg({ active: d.active, lojaPagaSemComissao: d.lojaPagaSemComissao, exigirPagadorCliente: d.exigirPagadorCliente !== false, tiers: (d.tiers ?? []).map((t: { minFee: number; maxFee: number | null; gerente: number; vendedor: number }) => ({ minFee: asText(t.minFee), maxFee: asText(t.maxFee), gerente: asText(t.gerente), vendedor: asText(t.vendedor) })) })
+      setCfg({ active: d.active, lojaPagaSemComissao: d.lojaPagaSemComissao, exigirPagadorCliente: d.exigirPagadorCliente !== false, tiers: (d.tiers ?? []).map((t: { minFee: number; maxFee: number | null; gerente: number; vendedor: number; setor?: number; setorGerente?: number }) => ({ minFee: asText(t.minFee), maxFee: asText(t.maxFee), gerente: asText(t.gerente), vendedor: asText(t.vendedor), setor: asText(t.setor ?? 0), setorGerente: asText(t.setorGerente ?? 0) })) })
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erro ao carregar') } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
 
   const setTier = (i: number, k: keyof Tier, v: string) => { setSaved(false); setCfg((c) => c ? { ...c, tiers: c.tiers.map((t, j) => j === i ? { ...t, [k]: v } : t) } : c) }
-  const addTier = () => setCfg((c) => c ? { ...c, tiers: [...c.tiers, { minFee: '', maxFee: '', gerente: '', vendedor: '' }] } : c)
+  const addTier = () => setCfg((c) => c ? { ...c, tiers: [...c.tiers, { minFee: '', maxFee: '', gerente: '', vendedor: '', setor: '', setorGerente: '' }] } : c)
   const delTier = (i: number) => setCfg((c) => c ? { ...c, tiers: c.tiers.filter((_, j) => j !== i) } : c)
 
   const save = async () => {
@@ -48,7 +49,7 @@ export default function DocumentoConfigCard() {
     try {
       const payload = {
         active: cfg.active, lojaPagaSemComissao: cfg.lojaPagaSemComissao, exigirPagadorCliente: cfg.exigirPagadorCliente,
-        tiers: cfg.tiers.map((t) => ({ minFee: pnum(t.minFee), maxFee: pnumOrNull(t.maxFee), gerente: pnum(t.gerente), vendedor: pnum(t.vendedor) })),
+        tiers: cfg.tiers.map((t) => ({ minFee: pnum(t.minFee), maxFee: pnumOrNull(t.maxFee), gerente: pnum(t.gerente), vendedor: pnum(t.vendedor), setor: pnum(t.setor), setorGerente: pnum(t.setorGerente) })),
       }
       const res = await fetch('/api/commissions/documento-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
       const j = await res.json().catch(() => ({}))
@@ -87,7 +88,7 @@ export default function DocumentoConfigCard() {
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
-                <tr>{['Faixa — de (R$)', 'até (R$)', 'Gerente (R$)', 'Vendedor (R$)', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr>
+                <tr>{['Faixa — de (R$)', 'até (R$)', 'Gerente da loja (R$)', 'Vendedor (R$)', 'Setor doc. (R$/pessoa)', 'Gerente doc. (R$)', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {cfg.tiers.map((t, i) => (
@@ -96,15 +97,17 @@ export default function DocumentoConfigCard() {
                     <td className="px-2 py-1.5"><input inputMode="decimal" value={t.maxFee} onChange={(e) => setTier(i, 'maxFee', e.target.value)} placeholder="sem teto" className={inputCls} /></td>
                     <td className="px-2 py-1.5"><input inputMode="decimal" value={t.gerente} onChange={(e) => setTier(i, 'gerente', e.target.value)} placeholder="0" className={inputCls} /></td>
                     <td className="px-2 py-1.5"><input inputMode="decimal" value={t.vendedor} onChange={(e) => setTier(i, 'vendedor', e.target.value)} placeholder="0" className={inputCls} /></td>
+                    <td className="px-2 py-1.5"><input inputMode="decimal" value={t.setor} onChange={(e) => setTier(i, 'setor', e.target.value)} placeholder="0" className={inputCls} /></td>
+                    <td className="px-2 py-1.5"><input inputMode="decimal" value={t.setorGerente} onChange={(e) => setTier(i, 'setorGerente', e.target.value)} placeholder="0" className={inputCls} /></td>
                     <td className="px-2 py-1.5 text-center"><button onClick={() => delTier(i)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover faixa"><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
-                {cfg.tiers.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-sm text-gray-400">Sem faixas — abaixo de qualquer faixa, não paga comissão.</td></tr>}
+                {cfg.tiers.length === 0 && <tr><td colSpan={7} className="px-3 py-4 text-center text-sm text-gray-400">Sem faixas — abaixo de qualquer faixa, não paga comissão.</td></tr>}
               </tbody>
             </table>
           </div>
           <button onClick={addTier} className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-600"><Plus size={15} />Adicionar faixa</button>
-          <p className="text-xs text-gray-400">Valor cobrado abaixo da menor faixa → sem comissão. Ex.: 990–1489,99 = gerente 50 / vendedor 100; 1490+ = gerente 100 / vendedor 200.</p>
+          <p className="text-xs text-gray-400">Valor cobrado abaixo da menor faixa → sem comissão. Ex.: 1490+ = gerente da loja 100 / vendedor 200 / setor doc. 10 por pessoa / gerente doc. 30. O setor é quem tem o cargo <b>Documentação</b> ou <b>Gerente de Documentação</b> no cadastro de colaboradores. A comissão é descontada do lucro do documento no Financeiro e no extrato do veículo.</p>
 
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={14} />{error}</div>}
           {saved && <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"><CheckCircle2 size={14} />Salvo. Reimporte/regenere as vendas para aplicar.</div>}

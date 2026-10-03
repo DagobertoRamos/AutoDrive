@@ -106,7 +106,7 @@ export const EXPENSE_CATEGORIES = [
 ] as const
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number][0]
 export const EXPENSE_LABEL = Object.fromEntries(EXPENSE_CATEGORIES) as Record<ExpenseCategory, string>
-export const REVENUE_CATEGORIES = [['VENDA_VEICULO', 'Venda do veículo'], ['RETORNO', 'Retorno financeiro'], ['OUTRA_RECEITA', 'Outras receitas']] as const
+export const REVENUE_CATEGORIES = [['VENDA_VEICULO', 'Venda do veículo'], ['COBRADO_CLIENTE', 'Cobrado do cliente (documentação/débitos)'], ['RETORNO', 'Retorno financeiro'], ['OUTRA_RECEITA', 'Outras receitas']] as const
 export const REVENUE_LABEL = Object.fromEntries(REVENUE_CATEGORIES) as Record<string, string>
 
 export interface LedgerLine { type: 'RECEITA' | 'DESPESA'; category: string; amount: number; status: string }

@@ -25,7 +25,7 @@ import {
 } from '@/lib/commission-matcher'
 import { calculateWarrantyCommission } from '@/lib/warranty/warranty-calc'
 import { getUnitCommissionConfig, isRoleCommissionEligible } from '@/lib/commission/unit-config'
-import { getDocumentoConfig, computeDocumentoCommission, type DocumentoConfig } from '@/lib/finance/documento-config'
+import { getDocumentoConfig, computeDocumentoCommission, resolveDocumentationFee, type DocumentoConfig, type DocumentoBeneficiary } from '@/lib/finance/documento-config'
 import { getGarantiaConfig, computeGarantiaCommission, type GarantiaConfig } from '@/lib/finance/garantia-config'
 import { recalculateSellerMainForPeriod } from '@/lib/commission/retroactive'
 import { getDecendPeriod } from '@/lib/commission/decendial'
@@ -185,6 +185,7 @@ export async function generateCommissionsForDeal(
     include: {
       vehicles: true,
       services: true,
+      debts:    { select: { type: true, value: true, responsavel: true } },
       warrantySales: { include: { warranty: true } },
       seller:   { select: { id: true, fullName: true, unitId: true, positionId: true, userId: true, user: { select: { role: true } } } },
       manager:  { select: { id: true, name: true, positionId: true, role: true } },
@@ -495,25 +496,42 @@ export async function generateCommissionsForDeal(
   // cliente paga = faixa por valor { gerente, vendedor }. Aplicado num bloco
   // direto abaixo. Aqui só roda o modelo LEGADO por REGRA quando a config está
   // DESLIGADA.
-  const docBase = toNum(d.documentationFee)
+  // Base: taxa própria da negociação ou débitos de Documentação/Despachante.
+  const docFee = resolveDocumentationFee(d)
+  const docBase = docFee.fee
   const documentoConfig: DocumentoConfig = tenantId
     ? await getDocumentoConfig(tenantId)
     : { active: false, lojaPagaSemComissao: true, exigirPagadorCliente: true, tiers: [] }
   if (docBase > 0 && documentoConfig.active) {
     // Config TIERED: comissão por FAIXA de valor + quem paga (loja = cortesia).
     // Valor já calculado (fixedCommissionValue) → não passa pelo matcher.
-    const payer = d.documentationPaidBy ?? null
-    const pushDoc = (earner: LocalEarner, isManager: boolean) => {
-      const val = computeDocumentoCommission({ config: documentoConfig, fee: docBase, payer, isManager }) ?? 0
+    const payer = docFee.payer
+    const DOC_LABEL: Record<DocumentoBeneficiary, string> = { VENDEDOR: 'vendedor', GERENTE: 'gerente', SETOR: 'setor de documentação', SETOR_GERENTE: 'gerente de documentação' }
+    const pushDoc = (earner: LocalEarner, beneficiary: DocumentoBeneficiary) => {
+      const val = computeDocumentoCommission({ config: documentoConfig, fee: docBase, payer, beneficiary }) ?? 0
       items.push({
         ruleType: 'DOCUMENTO', commissionScope: 'DOCUMENT_COMMISSION',
         employeeKind: earner.kind, employeeId: earner.id, employeeUserId: earner.userId, employeeLabel: earner.label,
-        baseValue: docBase, description: `DOCUMENTO — ${isManager ? 'gerente' : 'vendedor'} ${earner.label}`,
+        baseValue: docBase, description: `DOCUMENTO — ${DOC_LABEL[beneficiary]} ${earner.label}`,
         reference: { dealId: d.id }, fixedCommissionValue: val,
       })
     }
-    if (sellerEarner) pushDoc(sellerEarner, false)
-    if (managerEarner) pushDoc(managerEarner, true)
+    if (sellerEarner) pushDoc(sellerEarner, 'VENDEDOR')
+    if (managerEarner) pushDoc(managerEarner, 'GERENTE')
+    // Setor de documentação: cargos "Documentação" e "Gerente de Documentação"
+    // da loja (mesma unidade ou sem unidade), cada um com o valor da faixa.
+    const sector = await prisma.user.findMany({
+      where:  { tenantId, status: 'ATIVO', position: { slug: { in: ['documentacao', 'gerente_documentacao'] } } },
+      select: { id: true, name: true, unitId: true, positionId: true, role: true, position: { select: { slug: true } } },
+    })
+    for (const u of sector) {
+      if (unitId && u.unitId && u.unitId !== unitId) continue
+      if (u.id === sellerEarner?.userId || u.id === managerEarner?.userId) continue
+      pushDoc(
+        { kind: 'USER', id: u.id, userId: u.id, positionId: u.positionId, role: u.role, label: u.name },
+        u.position?.slug === 'gerente_documentacao' ? 'SETOR_GERENTE' : 'SETOR',
+      )
+    }
   } else if (docBase > 0) {
     // Modelo LEGADO por REGRA (só quando a config tiered está desligada).
     if (sellerEarner) {

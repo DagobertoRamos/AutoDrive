@@ -4,7 +4,9 @@
 //   • LOJA paga → cortesia → SEM comissão.
 //   • CLIENTE paga → faixa por valor cobrado:
 //       fee < menor faixa           → 0
-//       faixa [min, max]            → { gerente, vendedor }
+//       faixa [min, max]            → { gerente, vendedor, setor, setorGerente }
+//   setor        = cada colaborador do cargo "Documentação" (por documento)
+//   setorGerente = cada colaborador do cargo "Gerente de Documentação" (por documento)
 // Tudo configurável (faixas e valores) para mudanças futuras de produtos/comissões.
 // Guardado como JSON em SystemSetting (sem coluna nova por config).
 // =============================================================================
@@ -18,7 +20,10 @@ export interface DocumentoTier {
   maxFee: number | null // null = sem teto
   gerente: number
   vendedor: number
+  setor: number // por colaborador do cargo Documentação
+  setorGerente: number // por colaborador do cargo Gerente de Documentação
 }
+export type DocumentoBeneficiary = 'VENDEDOR' | 'GERENTE' | 'SETOR' | 'SETOR_GERENTE'
 export interface DocumentoConfig {
   active: boolean
   lojaPagaSemComissao: boolean
@@ -41,8 +46,8 @@ export const DEFAULT_DOCUMENTO_CONFIG: DocumentoConfig = {
   lojaPagaSemComissao: true,
   exigirPagadorCliente: true,
   tiers: [
-    { minFee: 990, maxFee: 1489.99, gerente: 50, vendedor: 100 },
-    { minFee: 1490, maxFee: null, gerente: 100, vendedor: 200 },
+    { minFee: 990, maxFee: 1489.99, gerente: 50, vendedor: 100, setor: 0, setorGerente: 0 },
+    { minFee: 1490, maxFee: null, gerente: 100, vendedor: 200, setor: 0, setorGerente: 0 },
   ],
 }
 
@@ -58,6 +63,8 @@ function coerceTier(raw: unknown): DocumentoTier {
     maxFee: o.maxFee == null || o.maxFee === '' ? null : Math.max(0, num(o.maxFee)),
     gerente: Math.max(0, num(o.gerente)),
     vendedor: Math.max(0, num(o.vendedor)),
+    setor: Math.max(0, num(o.setor)),
+    setorGerente: Math.max(0, num(o.setorGerente)),
   }
 }
 
@@ -100,7 +107,9 @@ export function computeDocumentoCommission(input: {
   config: DocumentoConfig
   fee: number
   payer: DocumentoPayer | string | null | undefined
-  isManager: boolean
+  /** Legado: true = gerente, false = vendedor. Use `beneficiary` para o setor. */
+  isManager?: boolean
+  beneficiary?: DocumentoBeneficiary
 }): number | null {
   const { config } = input
   if (!config.active) return null
@@ -112,5 +121,28 @@ export function computeDocumentoCommission(input: {
   const fee = Math.max(0, num(input.fee))
   const tier = config.tiers.find((t) => fee >= t.minFee && (t.maxFee == null || fee <= t.maxFee))
   if (!tier) return 0
-  return input.isManager ? tier.gerente : tier.vendedor
+  const who: DocumentoBeneficiary = input.beneficiary ?? (input.isManager ? 'GERENTE' : 'VENDEDOR')
+  return who === 'GERENTE' ? tier.gerente : who === 'SETOR' ? tier.setor : who === 'SETOR_GERENTE' ? tier.setorGerente : tier.vendedor
+}
+
+/**
+ * Taxa de documentação da negociação: o campo próprio (documentationFee) ou, se
+ * vazio, os débitos de Documentação/Despachante. Pagador: o informado; senão, o
+ * responsável pelo débito (comprador → CLIENTE; loja → LOJA).
+ */
+export function resolveDocumentationFee(d: {
+  documentationFee: unknown
+  documentationPaidBy: string | null
+  debts?: Array<{ type: string; value: unknown; responsavel: string | null }>
+}): { fee: number; payer: DocumentoPayer } {
+  const own = num(d.documentationFee)
+  if (own > 0) return { fee: own, payer: normalizePayer(d.documentationPaidBy) }
+  const docs = (d.debts ?? []).filter((x) => x.type === 'DOCUMENTACAO' || x.type === 'DESPACHANTE')
+  const fee = Math.round(docs.reduce((s, x) => s + Math.max(0, num(x.value)), 0) * 100) / 100
+  if (fee <= 0) return { fee: 0, payer: null }
+  const resp = new Set(docs.map((x) => String(x.responsavel ?? '').toUpperCase()))
+  const payer: DocumentoPayer = resp.has('LOJA') && resp.size === 1 ? 'LOJA'
+    : [...resp].every((r) => r === 'COMPRADOR' || r === 'CLIENTE') ? 'CLIENTE'
+    : normalizePayer(d.documentationPaidBy)
+  return { fee, payer }
 }
