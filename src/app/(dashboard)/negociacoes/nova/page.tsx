@@ -47,6 +47,7 @@ import {
   Shield,
   ClipboardList,
   Paperclip,
+  Pencil,
 } from 'lucide-react'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -63,6 +64,12 @@ interface DebtEntry {
   value:       string
   responsavel: string
   notes:       string
+  /** Vencimento (ex.: boleto de quitação). */
+  dueDate?:    string
+  /** Boleto/comprovante anexado (vinculado ao débito ao salvar). */
+  receipt?:    { storageKey: string; publicUrl: string; fileName: string; fileType: string; mimeType: string; fileSize: number } | null
+  /** Débito gerado sozinho a partir da quitação do veículo da troca. */
+  auto?:       'QUITACAO_TROCA'
 }
 
 interface VehicleFields {
@@ -82,6 +89,10 @@ interface VehicleFields {
   hasFinancing:   boolean
   payoffValue:    string
   payoffBank:     string
+  /** Vencimento do boleto de quitação. */
+  payoffDueDate?: string
+  /** Boleto de quitação anexado. */
+  payoffReceipt?: { storageKey: string; publicUrl: string; fileName: string; fileType: string; mimeType: string; fileSize: number } | null
   notes:          string
   vehicleId:      string | null
   evaluationId:   string | null
@@ -2038,6 +2049,15 @@ function StepVeiculos({
     }
   }
 
+  // Boleto da quitação do veículo da troca (enviado antes de salvar a negociação).
+  const [uploadingPayoff, setUploadingPayoff] = useState(false)
+  const attachPayoff = async (file: File) => {
+    setUploadingPayoff(true)
+    try { const r = await uploadPendingFile(file); setField('tradeVehicle', { ...form.tradeVehicle, payoffReceipt: r }) }
+    catch (e) { alert(e instanceof Error ? e.message : 'Não foi possível enviar o boleto.') }
+    finally { setUploadingPayoff(false) }
+  }
+
   // Seleciona avaliação para o veículo recebido na troca
   const handleSelectEvaluation = (ev: EvaluationItem) => {
     setTradeVehicleField('evaluationId', ev.id)
@@ -2364,6 +2384,25 @@ function StepVeiculos({
                           placeholder="Buscar banco..."
                         />
                       </Field>
+                      <Field label="Vencimento do boleto">
+                        <input
+                          className={inputCls}
+                          type="date"
+                          value={form.tradeVehicle.payoffDueDate ?? ''}
+                          onChange={(e) => setTradeVehicleField('payoffDueDate', e.target.value)}
+                        />
+                      </Field>
+                      <Field label="Boleto de quitação">
+                        {form.tradeVehicle.payoffReceipt ? (
+                          <span className="flex items-center gap-2 py-2 text-xs"><a href={form.tradeVehicle.payoffReceipt.publicUrl} target="_blank" rel="noopener" className="truncate text-brand-700 underline">{form.tradeVehicle.payoffReceipt.fileName}</a><button type="button" onClick={() => setField('tradeVehicle', { ...form.tradeVehicle, payoffReceipt: null })} className="text-red-600 hover:underline">remover</button></span>
+                        ) : (
+                          <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-purple-300 bg-white px-2.5 py-2 text-xs font-medium text-purple-700 hover:bg-purple-50 ${uploadingPayoff ? 'pointer-events-none opacity-60' : ''}`}>
+                            {uploadingPayoff ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}{uploadingPayoff ? 'Enviando…' : 'Anexar boleto'}
+                            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) void attachPayoff(fl); e.target.value = '' }} />
+                          </label>
+                        )}
+                      </Field>
+                      <p className="col-span-2 text-[11px] text-purple-700/80">A quitação entra sozinha na etapa Débitos (débito do veículo recebido), com o boleto anexado.</p>
                     </div>
                   )}
                 </div>
@@ -2573,6 +2612,36 @@ function StepVeiculos({
 
 // ── StepDebitos ───────────────────────────────────────────────────────────────
 
+export const AUTO_PAYOFF_DEBT_ID = 'auto-quitacao-troca'
+
+/** Envia boleto/comprovante antes de a negociação existir (fica pendente até salvar). */
+async function uploadPendingFile(file: File): Promise<{ storageKey: string; publicUrl: string; fileName: string; fileType: string; mimeType: string; fileSize: number }> {
+  const body = new FormData()
+  body.append('file', await shrinkReceipt(file))
+  const r = await fetch('/api/negotiations/receipts', { method: 'POST', body })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || !j.success) throw new Error(j.error ?? `Falha ao enviar (HTTP ${r.status}).`)
+  return j.data
+}
+
+/**
+ * Quitação do veículo da troca → débito automático do veículo recebido (valor,
+ * banco, vencimento e boleto). Responsável e notas editados em Débitos ficam.
+ */
+function applyPayoffDebt(p: DealForm): DealForm {
+  const want = p.type === 'TROCA' && p.tradeVehicle.hasFinancing && (parseBRLInput(p.tradeVehicle.payoffValue) ?? 0) > 0
+  const cur = p.debts.find((d) => d.id === AUTO_PAYOFF_DEBT_ID)
+  if (!want) return cur ? { ...p, debts: p.debts.filter((d) => d.id !== AUTO_PAYOFF_DEBT_ID) } : p
+  const next: DebtEntry = {
+    id: AUTO_PAYOFF_DEBT_ID, auto: 'QUITACAO_TROCA', vehicleRole: 'TROCA', type: 'FINANCIAMENTO',
+    description: `Quitação de financiamento${p.tradeVehicle.payoffBank ? ` — ${p.tradeVehicle.payoffBank}` : ''}${p.tradeVehicle.plate ? ` (${p.tradeVehicle.plate})` : ''}`,
+    value: p.tradeVehicle.payoffValue, dueDate: p.tradeVehicle.payoffDueDate ?? '', receipt: p.tradeVehicle.payoffReceipt ?? null,
+    responsavel: cur?.responsavel ?? 'LOJA', notes: cur?.notes ?? '',
+  }
+  if (cur && JSON.stringify(cur) === JSON.stringify(next)) return p
+  return { ...p, debts: cur ? p.debts.map((d) => (d.id === AUTO_PAYOFF_DEBT_ID ? next : d)) : [...p.debts, next] }
+}
+
 const EMPTY_DEBT = (): DebtEntry => ({
   id: genId(), vehicleRole: 'VENDIDO', type: '', description: '', value: '', responsavel: 'LOJA', notes: '',
 })
@@ -2586,18 +2655,43 @@ function StepDebitos({
 }) {
   const [adding, setAdding] = useState(false)
   const [draft, setDraft]   = useState<DebtEntry>(EMPTY_DEBT())
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [uploadingDebt, setUploadingDebt] = useState(false)
 
   const setDraftField = (k: keyof DebtEntry, v: string) =>
     setDraft((p) => ({ ...p, [k]: v }))
 
   const addDebt = () => {
-    setField('debts', [...form.debts, { ...draft }] as DealForm['debts'])
+    if (editingId) {
+      setField('debts', form.debts.map((d) => (d.id === editingId ? { ...draft } : d)) as DealForm['debts'])
+      // Quitação automática: o que mudar aqui volta para a etapa Veículos.
+      if (draft.auto === 'QUITACAO_TROCA') {
+        setField('tradeVehicle', { ...form.tradeVehicle, payoffValue: draft.value, payoffDueDate: draft.dueDate ?? '', payoffReceipt: draft.receipt ?? null })
+      }
+    } else {
+      setField('debts', [...form.debts, { ...draft }] as DealForm['debts'])
+    }
     setDraft(EMPTY_DEBT())
+    setEditingId(null)
     setAdding(false)
   }
 
-  const removeDebt = (id: string) =>
+  const editDebt = (d: DebtEntry) => { setDraft({ ...d }); setEditingId(d.id); setAdding(true) }
+
+  const removeDebt = (id: string) => {
+    if (id === AUTO_PAYOFF_DEBT_ID) {
+      if (!confirm('Esta quitação vem do veículo da troca. Remover também desmarca "Possui financiamento" lá. Continuar?')) return
+      setField('tradeVehicle', { ...form.tradeVehicle, hasFinancing: false, payoffValue: '', payoffDueDate: '', payoffReceipt: null })
+    }
     setField('debts', form.debts.filter((d) => d.id !== id) as DealForm['debts'])
+  }
+
+  const attachDebtFile = async (file: File) => {
+    setUploadingDebt(true)
+    try { const r = await uploadPendingFile(file); setDraft((p) => ({ ...p, receipt: r })) }
+    catch (e) { alert(e instanceof Error ? e.message : 'Não foi possível enviar o arquivo.') }
+    finally { setUploadingDebt(false) }
+  }
 
   const totalDebts = form.debts.reduce((sum, d) => sum + (parseBRLInput(d.value) ?? 0), 0)
 
@@ -2618,11 +2712,17 @@ function StepDebitos({
         </p>
         <p className="text-xs text-gray-500">
           Resp.: {DEBT_RESPONSAVEL.find((r) => r.value === d.responsavel)?.label ?? d.responsavel}
+          {d.dueDate && ` · venc. ${new Date(`${d.dueDate}T12:00:00`).toLocaleDateString('pt-BR')}`}
           {d.notes && ` · ${d.notes}`}
+          {d.receipt && <a href={d.receipt.publicUrl} target="_blank" rel="noopener" className="ml-1 inline-flex items-center gap-0.5 text-brand-700 hover:underline"><Paperclip size={10} />boleto</a>}
+          {d.auto === 'QUITACAO_TROCA' && <span className="ml-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700">automático — do veículo da troca</span>}
         </p>
       </div>
       <span className="shrink-0 text-sm font-semibold text-gray-800">{fmtBRL(d.value)}</span>
-      <button type="button" onClick={() => removeDebt(d.id)} className="shrink-0 text-gray-400 hover:text-red-500 transition-colors">
+      <button type="button" onClick={() => editDebt(d)} title="Editar" className="shrink-0 text-gray-400 hover:text-brand-600 transition-colors">
+        <Pencil size={14} />
+      </button>
+      <button type="button" onClick={() => removeDebt(d.id)} title="Excluir" className="shrink-0 text-gray-400 hover:text-red-500 transition-colors">
         <Trash2 size={14} />
       </button>
     </div>
@@ -2676,7 +2776,7 @@ function StepDebitos({
 
       {adding && (
         <div className="rounded-xl border border-brand-200 bg-brand-50/30 p-4 space-y-3 mb-4">
-          <p className="text-sm font-medium text-gray-800">Novo débito</p>
+          <p className="text-sm font-medium text-gray-800">{editingId ? 'Editar débito' : 'Novo débito'}</p>
           <div className="grid grid-cols-2 gap-3">
             {isTraoca && (
               <Field label="Veículo">
@@ -2705,14 +2805,29 @@ function StepDebitos({
             <Field label="Valor (R$)">
               <input className={inputCls} placeholder="0,00" value={draft.value} onChange={(e) => setDraftField('value', maskBRLInput(e.target.value))} />
             </Field>
+            <Field label="Vencimento">
+              <input className={inputCls} type="date" value={draft.dueDate ?? ''} onChange={(e) => setDraftField('dueDate', e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Notas">
               <input className={inputCls} placeholder="Observação opcional" value={draft.notes} onChange={(e) => setDraftField('notes', e.target.value)} />
+            </Field>
+            <Field label="Boleto / comprovante">
+              {draft.receipt ? (
+                <span className="flex items-center gap-2 py-2 text-xs"><a href={draft.receipt.publicUrl} target="_blank" rel="noopener" className="truncate text-brand-700 underline">{draft.receipt.fileName}</a><button type="button" onClick={() => setDraft((p) => ({ ...p, receipt: null }))} className="text-red-600 hover:underline">remover</button></span>
+              ) : (
+                <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-brand-300 bg-white px-2.5 py-2 text-xs font-medium text-brand-700 hover:bg-brand-50 ${uploadingDebt ? 'pointer-events-none opacity-60' : ''}`}>
+                  {uploadingDebt ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}{uploadingDebt ? 'Enviando…' : 'Anexar'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) void attachDebtFile(fl); e.target.value = '' }} />
+                </label>
+              )}
             </Field>
           </div>
           <div className="flex gap-2 justify-end">
             <button
               type="button"
-              onClick={() => { setAdding(false); setDraft(EMPTY_DEBT()) }}
+              onClick={() => { setAdding(false); setEditingId(null); setDraft(EMPTY_DEBT()) }}
               className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Cancelar
@@ -2720,11 +2835,11 @@ function StepDebitos({
             <button
               type="button"
               onClick={addDebt}
-              disabled={!draft.type || !draft.value}
+              disabled={!draft.type || !draft.value || uploadingDebt}
               className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
             >
-              <Plus size={13} />
-              Adicionar
+              {editingId ? <Save size={13} /> : <Plus size={13} />}
+              {editingId ? 'Salvar' : 'Adicionar'}
             </button>
           </div>
         </div>
@@ -2778,7 +2893,7 @@ const SIGNAL_METHODS: Array<{ value: string; label: string }> = [
 const SIGNAL_METHOD_LABEL: Record<string, string> = Object.fromEntries(SIGNAL_METHODS.map((m) => [m.value, m.label]))
 
 /** Reduz foto do comprovante antes de enviar (limite da hospedagem ~4 MB por envio). */
-async function shrinkReceipt(file: File): Promise<Blob> {
+async function shrinkReceipt(file: File): Promise<File> {
   if (!file.type.startsWith('image/') || file.size < 1_500_000) return file
   try {
     const bmp = await createImageBitmap(file)
@@ -2786,7 +2901,8 @@ async function shrinkReceipt(file: File): Promise<Blob> {
     const c = document.createElement('canvas')
     c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
     c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height)
-    return await new Promise<Blob>((res) => c.toBlob((b) => res(b ?? file), 'image/jpeg', 0.85))
+    const b = await new Promise<Blob | null>((res) => c.toBlob((x) => res(x), 'image/jpeg', 0.85))
+    return b ? new File([b], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file
   } catch { return file }
 }
 
@@ -2878,8 +2994,7 @@ function PaymentModal({
     setUploading(true); setError('')
     try {
       const body = new FormData()
-      const blob = await shrinkReceipt(file)
-      body.append('file', blob instanceof File ? blob : new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }))
+      body.append('file', await shrinkReceipt(file))
       const r = await fetch('/api/negotiations/receipts', { method: 'POST', body })
       const j = await r.json().catch(() => ({}))
       if (!r.ok || !j.success) throw new Error(j.error ?? `Falha ao enviar (HTTP ${r.status}).`)
@@ -4500,8 +4615,10 @@ export default function NovaNegociacaoPage() {
     [],
   )
 
+  // Edição: os débitos já salvos vêm do servidor (sem débito automático da quitação).
+  const syncPayoff = (p: DealForm) => (mode === 'edit' ? p : applyPayoffDebt(p))
   const setField = <K extends keyof DealForm>(k: K, v: DealForm[K]) =>
-    setForm((p) => ({ ...p, [k]: v }))
+    setForm((p) => (k === 'tradeVehicle' || k === 'type' ? syncPayoff({ ...p, [k]: v }) : { ...p, [k]: v }))
 
   const setFields = useCallback((updates: Partial<DealForm>) =>
     setForm((p) => ({ ...p, ...updates })), [])
@@ -4510,7 +4627,9 @@ export default function NovaNegociacaoPage() {
     setForm((p) => ({ ...p, vehicle: { ...p.vehicle, [k]: v as VehicleFields[typeof k] } }))
 
   const setTradeVehicleField = (k: keyof VehicleFields, v: string | boolean | null) =>
-    setForm((p) => ({ ...p, tradeVehicle: { ...p.tradeVehicle, [k]: v as VehicleFields[typeof k] } }))
+    setForm((p) => syncPayoff({ ...p, tradeVehicle: { ...p.tradeVehicle, [k]: v as VehicleFields[typeof k] } }))
+
+
 
   // Validação por step — retorna lista de erros (vazio = pode avançar)
   const validateStep = (s: number): string[] => {
@@ -4830,6 +4949,8 @@ export default function NovaNegociacaoPage() {
             value:       parseBRLInput(d.value) ?? 0,
             responsavel: d.responsavel,
             notes:       d.notes || null,
+            dueDate:     d.dueDate || null,
+            receipt:     d.receipt ?? null,
           }))
         : undefined,
     }

@@ -639,24 +639,35 @@ export async function POST(req: NextRequest) {
 
       // 6. Débitos do wizard (array opcional)
       if (Array.isArray(debts) && debts.length > 0) {
-        await (tx.dealDebt as any).createMany({
-          data: debts.map((d: {
-            vehicleRole?: string
-            type: string
-            description?: string
-            value: number
-            responsavel?: string
-            notes?: string
-          }) => ({
-            dealId:      deal.id,
-            vehicleRole: d.vehicleRole ?? null,
-            type:        d.type,
-            description: d.description ?? null,
-            value:       Number(d.value),
-            responsavel: d.responsavel ?? 'LOJA',
-            notes:       d.notes       ?? null,
-          })),
-        })
+        // Um a um: o boleto/comprovante enviado na tela vira anexo do próprio débito.
+        const pendingOk = (k: unknown) => typeof k === 'string' && (k.startsWith(`${BLOB_PREFIX}${pendingFolder(session.user.tenantId ?? '')}`) || k.startsWith(`deals/pending/${session.user.tenantId}/`))
+        for (const d of debts as Array<{ vehicleRole?: string; type: string; description?: string; value: number; responsavel?: string; notes?: string; dueDate?: string | null; receipt?: { storageKey?: string; publicUrl?: string; fileName?: string; fileType?: string; mimeType?: string; fileSize?: number } | null }>) {
+          const created = await (tx.dealDebt as any).create({
+            data: {
+              dealId:      deal.id,
+              vehicleRole: d.vehicleRole ?? null,
+              type:        d.type,
+              description: d.description ?? null,
+              value:       Number(d.value),
+              dueDate:     d.dueDate ? new Date(`${String(d.dueDate).slice(0, 10)}T12:00:00`) : null,
+              responsavel: d.responsavel ?? 'LOJA',
+              notes:       d.notes       ?? null,
+            },
+            select: { id: true },
+          })
+          const r = d.receipt
+          if (r && pendingOk(r.storageKey)) {
+            await (tx.dealAttachment as any).create({
+              data: {
+                dealId: deal.id, tenantId: session.user.tenantId ?? null,
+                category: String(d.type).toUpperCase() === 'FINANCIAMENTO' ? 'COMPROVANTE_QUITACAO' : 'COMPROVANTE_DEBITO',
+                fileName: String(r.fileName ?? 'boleto').slice(0, 160), fileType: r.fileType ?? 'other', mimeType: r.mimeType ?? 'application/octet-stream',
+                fileSize: Number(r.fileSize) || null, storageKey: r.storageKey, publicUrl: r.publicUrl ?? null,
+                debtId: created.id, uploadedById: session.user.id, uploadedByName: session.user.name ?? null,
+              },
+            })
+          }
+        }
       }
 
       // 6.5. Pagamentos do wizard (array opcional). Entram sempre PENDENTES:
