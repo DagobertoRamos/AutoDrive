@@ -13,6 +13,7 @@ import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 import {
   docKind, isoToBR, maskCepQuick, maskDateBR, maskDoc, maskPhoneQuick, onlyDigits, validateQuickCustomer,
 } from '@/lib/customers/quick-create'
+import { formatCPF } from '@/lib/br-docs/cpf'
 
 export interface CustomerLite {
   id:    string
@@ -171,62 +172,106 @@ export function StepCliente({ selected, onSelect }: StepClienteProps) {
 // ── Drawer cadastro rápido ──────────────────────────────────────────────────
 type AddrKey = 'logradouro' | 'bairro' | 'cidade' | 'estado'
 
+interface Address { cep: string; logradouro: string; numero: string; complemento: string; bairro: string; cidade: string; estado: string }
+const EMPTY_ADDR: Address = { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '' }
+const EMPTY_SOCIO = { nome: '', cpf: '', rg: '', nascimento: '', email: '', phone: '', cota: '' }
+const lbl = 'text-xs font-medium text-gray-600'
+
+/** Endereço com CEP automático: o que a consulta preencher fica travado. */
+function AddressFields({ value, onChange }: { value: Address; onChange: (a: Address) => void }) {
+  const [locked, setLocked] = useState<Partial<Record<AddrKey, boolean>>>({})
+  const [loading, setLoading] = useState(false)
+  const cep = onlyDigits(value.cep)
+  const valueRef = useRef(value)
+  useEffect(() => { valueRef.current = value })
+
+  useEffect(() => {
+    if (cep.length !== 8) return
+    let alive = true
+    const t = setTimeout(() => { if (alive) setLoading(true) }, 0)
+    fetch(`/api/address/lookup-by-cep?cep=${cep}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        const data = d?.data ?? {}
+        const next: Partial<Address> = {}
+        const lock: Partial<Record<AddrKey, boolean>> = {}
+        for (const k of ['logradouro', 'bairro', 'cidade', 'estado'] as AddrKey[]) {
+          const v = String(data?.[k] ?? '').trim()
+          if (d?.success && v) { next[k] = k === 'estado' ? v.toUpperCase() : v; lock[k] = true }
+        }
+        onChange({ ...valueRef.current, ...next })
+        setLocked(lock)
+      })
+      .catch(() => { if (alive) setLocked({}) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false; clearTimeout(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cep])
+
+  const set = (k: keyof Address, v: string) => onChange({ ...value, [k]: v })
+  const addrInput = (k: AddrKey, label: string) => (
+    <label className="flex flex-col gap-1">
+      <span className={lbl}>{label} <RequiredMark /></span>
+      <input
+        className={inputCls + (locked[k] ? ' bg-gray-50 text-gray-600' : '')}
+        value={value[k]} readOnly={!!locked[k]} maxLength={k === 'estado' ? 2 : 120}
+        onChange={(e) => set(k, k === 'estado' ? e.target.value.toUpperCase().replace(/[^A-Z]/g, '') : e.target.value)}
+      />
+    </label>
+  )
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className={lbl}>CEP <RequiredMark /></span>
+          <input className={inputCls} value={maskCepQuick(value.cep)} onChange={(e) => { setLocked({}); set('cep', onlyDigits(e.target.value).slice(0, 8)) }} placeholder="00000-000" inputMode="numeric" />
+        </label>
+        {loading && <span className="self-end pb-2 text-xs text-gray-400">Buscando...</span>}
+      </div>
+      {addrInput('logradouro', 'Logradouro')}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className={lbl}>Número <RequiredMark /></span>
+          <input className={inputCls} value={value.numero} onChange={(e) => set('numero', e.target.value)} maxLength={20} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={lbl}>Complemento</span>
+          <input className={inputCls} value={value.complemento} onChange={(e) => set('complemento', e.target.value)} maxLength={120} />
+        </label>
+      </div>
+      {addrInput('bairro', 'Bairro')}
+      <div className="grid grid-cols-[1fr_5rem] gap-3">
+        {addrInput('cidade', 'Cidade')}
+        {addrInput('estado', 'UF')}
+      </div>
+    </>
+  )
+}
+
 function QuickCreateDrawer({
   onClose, onCreated,
 }: {
   onClose: () => void
   onCreated: (c: CustomerLite) => void
 }) {
-  const [name,        setName]        = useState('')
-  const [doc,         setDoc]         = useState('')
-  const [birthDate,   setBirthDate]   = useState('')
-  const [regDoc,      setRegDoc]      = useState('')
-  const [email,       setEmail]       = useState('')
-  const [phone,       setPhone]       = useState('')
-  const [cep,         setCep]         = useState('')
-  const [addr,        setAddr]        = useState<Record<AddrKey, string>>({ logradouro: '', bairro: '', cidade: '', estado: '' })
-  const [locked,      setLocked]      = useState<Partial<Record<AddrKey, boolean>>>({})
-  const [numero,      setNumero]      = useState('')
-  const [complemento, setComplemento] = useState('')
-  const [cepLoading,  setCepLoading]  = useState(false)
-  const [submitting,  setSubmitting]  = useState(false)
-  const [err,         setErr]         = useState('')
+  const [name,       setName]       = useState('')
+  const [doc,        setDoc]        = useState('')
+  const [birthDate,  setBirthDate]  = useState('')
+  const [regDoc,     setRegDoc]     = useState('')
+  const [email,      setEmail]      = useState('')
+  const [phone,      setPhone]      = useState('')
+  const [addr,       setAddr]       = useState<Address>(EMPTY_ADDR)
+  const [socio,      setSocio]      = useState(EMPTY_SOCIO)
+  const [socioAddr,  setSocioAddr]  = useState<Address>(EMPTY_ADDR)
+  const [submitting, setSubmitting] = useState(false)
+  const [err,        setErr]        = useState('')
 
   const docDigits = onlyDigits(doc)
-  const pj = docKind(docDigits) === 'PJ'
-  const cepDigits = onlyDigits(cep)
+  const pj = docKind(docDigits) === 'PJ' && docDigits.length === 14
+  const setS = (k: keyof typeof EMPTY_SOCIO, v: string) => setSocio((x) => ({ ...x, [k]: v }))
 
-  // CEP completo → busca endereço; o que vier preenchido fica travado.
-  useEffect(() => {
-    if (cepDigits.length !== 8) return
-    let alive = true
-    fetch(`/api/address/lookup-by-cep?cep=${cepDigits}`, { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!alive) return
-        const data = d?.data ?? {}
-        const next: Partial<Record<AddrKey, string>> = {}
-        const lock: Partial<Record<AddrKey, boolean>> = {}
-        for (const k of ['logradouro', 'bairro', 'cidade', 'estado'] as AddrKey[]) {
-          const v = String(data?.[k] ?? '').trim()
-          if (d?.success && v) { next[k] = k === 'estado' ? v.toUpperCase() : v; lock[k] = true }
-        }
-        setAddr((a) => ({ ...a, ...next }))
-        setLocked(lock)
-      })
-      .catch(() => { if (alive) setLocked({}) })
-      .finally(() => { if (alive) setCepLoading(false) })
-    return () => { alive = false }
-  }, [cepDigits])
-
-  function changeCep(v: string) {
-    const d = onlyDigits(v).slice(0, 8)
-    setCep(d)
-    setLocked({})
-    setCepLoading(d.length === 8)
-  }
-
-  // CNPJ válido → preenche razão social, fundação, contato e endereço vazios.
+  // CNPJ válido → preenche razão social, fundação, contato, endereço e o sócio (QSA) vazios.
   useEffect(() => {
     if (docDigits.length !== 14 || !isValidCNPJ(docDigits)) return
     let alive = true
@@ -240,20 +285,15 @@ function QuickCreateDrawer({
         setBirthDate((v) => fill(v, isoToBR(c.dataAbertura)))
         setEmail((v) => fill(v, String(c.email ?? '').toLowerCase()))
         setPhone((v) => fill(v, onlyDigits(c.telefone1).slice(0, 11)))
-        setNumero((v) => fill(v, c.numero))
-        setComplemento((v) => fill(v, c.complemento))
         setAddr((a) => ({
-          logradouro: fill(a.logradouro, c.logradouro),
-          bairro:     fill(a.bairro, c.bairro),
-          cidade:     fill(a.cidade, c.cidade),
-          estado:     fill(a.estado, String(c.estado ?? '').toUpperCase()),
+          cep: fill(a.cep, onlyDigits(c.cep).slice(0, 8)), numero: fill(a.numero, c.numero), complemento: fill(a.complemento, c.complemento),
+          logradouro: fill(a.logradouro, c.logradouro), bairro: fill(a.bairro, c.bairro), cidade: fill(a.cidade, c.cidade),
+          estado: fill(a.estado, String(c.estado ?? '').toUpperCase()),
         }))
-        const cnpjCep = onlyDigits(c.cep).slice(0, 8)
-        setCep((v) => {
-          if (v || cnpjCep.length !== 8) return v
-          setCepLoading(true)
-          return cnpjCep
-        })
+        const qsa = Array.isArray(c.qsa) ? c.qsa as Array<{ nome_socio?: string; qualificacao_socio?: string }> : []
+        const adm = qsa.find((q) => /administrador/i.test(q.qualificacao_socio ?? '')) ?? qsa[0]
+        if (adm?.nome_socio) setSocio((x) => ({ ...x, nome: fill(x.nome, adm.nome_socio) }))
+        if (qsa.length === 1) setSocio((x) => ({ ...x, cota: fill(x.cota, '100') }))
       })
       .catch(() => {})
     return () => { alive = false }
@@ -261,11 +301,17 @@ function QuickCreateDrawer({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    const trimAddr = (a: Address) => ({
+      cep: onlyDigits(a.cep), logradouro: a.logradouro.trim(), numero: a.numero.trim(), complemento: a.complemento.trim(),
+      bairro: a.bairro.trim(), cidade: a.cidade.trim(), estado: a.estado.trim().toUpperCase(),
+    })
     const payload = {
       name: name.trim(), doc: docDigits, birthDate, regDoc: regDoc.trim(),
-      email: email.trim(), phone: onlyDigits(phone), cep: cepDigits,
-      logradouro: addr.logradouro.trim(), numero: numero.trim(), complemento: complemento.trim(),
-      bairro: addr.bairro.trim(), cidade: addr.cidade.trim(), estado: addr.estado.trim().toUpperCase(),
+      email: email.trim(), phone: onlyDigits(phone), ...trimAddr(addr),
+      socio: pj ? {
+        nome: socio.nome.trim(), cpf: onlyDigits(socio.cpf), rg: socio.rg.trim(), nascimento: socio.nascimento,
+        email: socio.email.trim(), phone: onlyDigits(socio.phone), cota: socio.cota.trim(), ...trimAddr(socioAddr),
+      } : null,
     }
     const invalid = validateQuickCustomer(payload)
     if (invalid) { setErr(invalid); return }
@@ -286,23 +332,6 @@ function QuickCreateDrawer({
       setSubmitting(false)
     }
   }
-
-  const lbl = 'text-xs font-medium text-gray-600'
-  const addrInput = (k: AddrKey, label: string) => (
-    <label className="flex flex-col gap-1">
-      <span className={lbl}>{label} <RequiredMark /></span>
-      <input
-        className={inputCls + (locked[k] ? ' bg-gray-50 text-gray-600' : '')}
-        value={addr[k]}
-        readOnly={!!locked[k]}
-        maxLength={k === 'estado' ? 2 : 120}
-        onChange={(e) => {
-          const v = k === 'estado' ? e.target.value.toUpperCase().replace(/[^A-Z]/g, '') : e.target.value
-          setAddr((a) => ({ ...a, [k]: v }))
-        }}
-      />
-    </label>
-  )
 
   return (
     <>
@@ -348,29 +377,46 @@ function QuickCreateDrawer({
             <span className={lbl}>Telefone <RequiredMark /></span>
             <input className={inputCls} value={maskPhoneQuick(phone)} onChange={(e) => setPhone(onlyDigits(e.target.value).slice(0, 11))} placeholder="(00)0.0000-0000" inputMode="tel" />
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className={lbl}>CEP <RequiredMark /></span>
-              <input className={inputCls} value={maskCepQuick(cep)} onChange={(e) => changeCep(e.target.value)} placeholder="00000-000" inputMode="numeric" />
-            </label>
-            {cepLoading && <span className="self-end pb-2 text-xs text-gray-400">Buscando...</span>}
-          </div>
-          {addrInput('logradouro', 'Logradouro')}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className={lbl}>Número <RequiredMark /></span>
-              <input className={inputCls} value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={20} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={lbl}>Complemento</span>
-              <input className={inputCls} value={complemento} onChange={(e) => setComplemento(e.target.value)} maxLength={120} />
-            </label>
-          </div>
-          {addrInput('bairro', 'Bairro')}
-          <div className="grid grid-cols-[1fr_5rem] gap-3">
-            {addrInput('cidade', 'Cidade')}
-            {addrInput('estado', 'UF')}
-          </div>
+          <AddressFields value={addr} onChange={setAddr} />
+
+          {pj && (
+            <div className="mt-2 flex flex-col gap-3 border-t border-gray-200 pt-4">
+              <p className="text-sm font-semibold text-gray-900">Sócio proprietário</p>
+              <label className="flex flex-col gap-1">
+                <span className={lbl}>Nome completo <RequiredMark /></span>
+                <input className={inputCls} value={socio.nome} onChange={(e) => setS('nome', e.target.value)} maxLength={200} />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className={lbl}>CPF <RequiredMark /></span>
+                  <input className={inputCls + ' font-mono'} value={formatCPF(socio.cpf)} onChange={(e) => setS('cpf', onlyDigits(e.target.value).slice(0, 11))} placeholder="000.000.000-00" inputMode="numeric" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={lbl}>RG <RequiredMark /></span>
+                  <input className={inputCls} value={socio.rg} onChange={(e) => setS('rg', e.target.value.toUpperCase())} maxLength={20} />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className={lbl}>Data de nascimento <RequiredMark /></span>
+                  <input className={inputCls} value={socio.nascimento} onChange={(e) => setS('nascimento', maskDateBR(e.target.value))} placeholder="dd/mm/aaaa" inputMode="numeric" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={lbl}>Participação (%) <RequiredMark /></span>
+                  <input className={inputCls} value={socio.cota} onChange={(e) => setS('cota', e.target.value.replace(/[^\d,.]/g, '').slice(0, 6))} placeholder="100" inputMode="decimal" />
+                </label>
+              </div>
+              <label className="flex flex-col gap-1">
+                <span className={lbl}>E-mail <RequiredMark /></span>
+                <input type="email" className={inputCls} value={socio.email} onChange={(e) => setS('email', e.target.value)} placeholder="email@exemplo.com" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={lbl}>Telefone <RequiredMark /></span>
+                <input className={inputCls} value={maskPhoneQuick(socio.phone)} onChange={(e) => setS('phone', onlyDigits(e.target.value).slice(0, 11))} placeholder="(00)0.0000-0000" inputMode="tel" />
+              </label>
+              <AddressFields value={socioAddr} onChange={setSocioAddr} />
+            </div>
+          )}
 
           {err && <p className="text-xs text-red-600">{err}</p>}
 

@@ -7,7 +7,28 @@
 import { isValidCPF } from '@/lib/br-docs/cpf'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 
+/** Sócio proprietário (obrigatório quando o cliente é PJ). */
+export interface QuickSocioInput {
+  nome?:        string | null
+  cpf?:         string | null
+  rg?:          string | null
+  /** dd/mm/aaaa */
+  nascimento?:  string | null
+  email?:       string | null
+  phone?:       string | null
+  cep?:         string | null
+  logradouro?:  string | null
+  numero?:      string | null
+  complemento?: string | null
+  bairro?:      string | null
+  cidade?:      string | null
+  estado?:      string | null
+  /** % da empresa (0,01–100) */
+  cota?:        string | number | null
+}
+
 export interface QuickCustomerInput {
+  socio?:       QuickSocioInput | null
   name?:        string | null
   doc?:         string | null
   /** dd/mm/aaaa — nascimento (PF) ou fundação (PJ) */
@@ -138,5 +159,40 @@ export function validateQuickCustomer(i: QuickCustomerInput, today: Date = new D
   if (!t(i.bairro)) return 'Informe o bairro.'
   if (!t(i.cidade)) return 'Informe a cidade.'
   if (!UFS.has(t(i.estado).toUpperCase())) return 'Informe a UF.'
+  if (pj) {
+    const e = validateSocio(i.socio ?? {}, today)
+    if (e) return e
+  }
+  return null
+}
+
+/** % digitado ("50", "33,33") → número; null se inválido. */
+export function parseCota(v: unknown): number | null {
+  const n = Number(String(v ?? '').trim().replace(',', '.'))
+  return Number.isFinite(n) && n > 0 && n <= 100 ? Math.round(n * 100) / 100 : null
+}
+
+/** Sócio proprietário da PJ — mesmas regras da pessoa física. */
+export function validateSocio(sc: QuickSocioInput, today: Date = new Date()): string | null {
+  const t = (v: unknown) => String(v ?? '').trim()
+  const cpf = onlyDigits(sc.cpf)
+  if (t(sc.nome).split(/\s+/).filter(Boolean).length < 2) return 'Informe o nome completo do sócio.'
+  if (!cpf) return 'Informe o CPF do sócio.'
+  if (cpf.length !== 11 || !isValidCPF(cpf)) return 'CPF do sócio inválido.'
+  if (!t(sc.rg)) return 'Informe o RG do sócio.'
+  if (!/^[0-9A-Za-z.\-/ ]{3,20}$/.test(t(sc.rg))) return 'RG do sócio inválido.'
+  if (!t(sc.nascimento)) return 'Informe a data de nascimento do sócio.'
+  if (!parseDateBR(sc.nascimento, today)) return 'Data de nascimento do sócio inválida.'
+  if (!t(sc.email)) return 'Informe o e-mail do sócio.'
+  if (!isValidEmail(sc.email)) return 'E-mail do sócio inválido.'
+  if (!onlyDigits(sc.phone)) return 'Informe o telefone do sócio.'
+  if (!isValidQuickPhone(sc.phone)) return 'Telefone do sócio inválido.'
+  if (onlyDigits(sc.cep).length !== 8) return 'Informe o CEP do sócio.'
+  if (!t(sc.logradouro)) return 'Informe o logradouro do sócio.'
+  if (!t(sc.numero)) return 'Informe o número do endereço do sócio.'
+  if (!t(sc.bairro)) return 'Informe o bairro do sócio.'
+  if (!t(sc.cidade)) return 'Informe a cidade do sócio.'
+  if (!UFS.has(t(sc.estado).toUpperCase())) return 'Informe a UF do sócio.'
+  if (parseCota(sc.cota) == null) return 'Informe a participação do sócio (%).'
   return null
 }

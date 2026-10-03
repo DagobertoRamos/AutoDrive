@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  docKind, maskDateBR, maskDoc, maskPhoneQuick, maskCepQuick, isoToBR, parseDateBR, validateQuickCustomer,
+  docKind, maskDateBR, maskDoc, maskPhoneQuick, maskCepQuick, isoToBR, parseDateBR, validateQuickCustomer, parseCota,
   type QuickCustomerInput,
 } from './quick-create'
 
@@ -11,7 +11,8 @@ const PF: QuickCustomerInput = {
   email: 'maria@exemplo.com', phone: '(11)9.9999-8888', cep: '01310-100', logradouro: 'Av. Paulista',
   numero: '1000', bairro: 'Bela Vista', cidade: 'São Paulo', estado: 'SP',
 }
-const PJ: QuickCustomerInput = { ...PF, name: 'Empresa X Ltda', doc: '11.222.333/0001-81', regDoc: 'ISENTO', birthDate: '01/01/2010' }
+const SOCIO = { nome: 'João Souza', cpf: '529.982.247-25', rg: '11.222.333-4', nascimento: '02/03/1980', email: 'joao@x.com', phone: '11988887777', cep: '01310100', logradouro: 'Rua A', numero: '10', bairro: 'Centro', cidade: 'São Paulo', estado: 'SP', cota: '100' }
+const PJ: QuickCustomerInput = { ...PF, name: 'Empresa X Ltda', doc: '11.222.333/0001-81', regDoc: 'ISENTO', birthDate: '01/01/2010', socio: SOCIO }
 
 describe('máscaras', () => {
   it('telefone celular e fixo', () => {
@@ -49,4 +50,20 @@ describe('validateQuickCustomer', () => {
   it('exige número', () => expect(validateQuickCustomer({ ...PF, numero: '' }, TODAY)).toBe('Informe o número.'))
   it('exige UF válida', () => expect(validateQuickCustomer({ ...PF, estado: 'XX' }, TODAY)).toBe('Informe a UF.'))
   it('data futura', () => expect(validateQuickCustomer({ ...PF, birthDate: '01/01/2030' }, TODAY)).toBe('Data de nascimento inválida.'))
+})
+
+describe('sócio proprietário (só CNPJ)', () => {
+  it('PJ completo passa; PF não pede sócio', () => {
+    expect(validateQuickCustomer(PJ, TODAY)).toBeNull()
+    expect(validateQuickCustomer({ ...PF, socio: null }, TODAY)).toBeNull()
+  })
+  it('PJ sem sócio é barrado', () => expect(validateQuickCustomer({ ...PJ, socio: null }, TODAY)).toBe('Informe o nome completo do sócio.'))
+  it('valida CPF, nascimento, endereço e participação', () => {
+    expect(validateQuickCustomer({ ...PJ, socio: { ...SOCIO, cpf: '111.111.111-11' } }, TODAY)).toBe('CPF do sócio inválido.')
+    expect(validateQuickCustomer({ ...PJ, socio: { ...SOCIO, nascimento: '31/02/1980' } }, TODAY)).toBe('Data de nascimento do sócio inválida.')
+    expect(validateQuickCustomer({ ...PJ, socio: { ...SOCIO, numero: '' } }, TODAY)).toBe('Informe o número do endereço do sócio.')
+    expect(validateQuickCustomer({ ...PJ, socio: { ...SOCIO, cota: '0' } }, TODAY)).toBe('Informe a participação do sócio (%).')
+    expect(parseCota('33,335')).toBe(33.34)
+    expect(parseCota('150')).toBeNull()
+  })
 })

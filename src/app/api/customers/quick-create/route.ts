@@ -12,7 +12,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { upsertPerson } from '@/lib/people/upsert-person'
-import { docKind, onlyDigits, parseDateBR, validateQuickCustomer, type QuickCustomerInput } from '@/lib/customers/quick-create'
+import { docKind, onlyDigits, parseCota, parseDateBR, validateQuickCustomer, type QuickCustomerInput } from '@/lib/customers/quick-create'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +33,13 @@ export async function POST(req: NextRequest) {
       email: s('email'), phone: s('phone'), cep: s('cep'), logradouro: s('logradouro'),
       numero: s('numero', 20), complemento: s('complemento'), bairro: s('bairro'),
       cidade: s('cidade'), estado: s('estado', 2).toUpperCase(),
+    }
+    const sc = (body.socio && typeof body.socio === 'object' ? body.socio : {}) as Record<string, unknown>
+    const ss = (k: string, max = 200) => String(sc[k] ?? '').trim().slice(0, max)
+    input.socio = {
+      nome: ss('nome'), cpf: ss('cpf'), rg: ss('rg', 20), nascimento: ss('nascimento'), email: ss('email'), phone: ss('phone'),
+      cep: ss('cep'), logradouro: ss('logradouro'), numero: ss('numero', 20), complemento: ss('complemento'),
+      bairro: ss('bairro'), cidade: ss('cidade'), estado: ss('estado', 2).toUpperCase(), cota: ss('cota', 10),
     }
     const invalid = validateQuickCustomer(input)
     if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
@@ -65,12 +72,19 @@ export async function POST(req: NextRequest) {
         email, phone,
         cep: onlyDigits(input.cep), logradouro: input.logradouro, numero: input.numero,
         complemento: input.complemento || null, bairro: input.bairro, cidade: input.cidade, estado: input.estado,
+        ...(pj && input.socio ? {
+          socioAdmNome: input.socio.nome, socioAdmCpf: onlyDigits(input.socio.cpf), socioAdmRg: input.socio.rg,
+          socioAdmDataNascimento: parseDateBR(input.socio.nascimento), socioAdmEmail: String(input.socio.email).toLowerCase(),
+          socioAdmPhone: onlyDigits(input.socio.phone), socioAdmCep: onlyDigits(input.socio.cep),
+          socioAdmLogradouro: input.socio.logradouro, socioAdmNumero: input.socio.numero, socioAdmComplemento: input.socio.complemento || null,
+          socioAdmBairro: input.socio.bairro, socioAdmCidade: input.socio.cidade, socioAdmEstado: input.socio.estado,
+        } : {}),
       })
       if ('error' in person) throw new Error(person.error)
       if (pj) {
         await tx.person.update({
           where: { id: person.id },
-          data:  { possuiIE: input.regDoc!.toUpperCase() !== 'ISENTO' },
+          data:  { possuiIE: input.regDoc!.toUpperCase() !== 'ISENTO', socioAdmCota: parseCota(input.socio?.cota) },
         })
       }
 
