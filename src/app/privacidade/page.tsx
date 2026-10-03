@@ -12,7 +12,7 @@ export const metadata = {
   description: 'Como o AutoDrive coleta, usa e protege os dados pessoais.',
 }
 
-const ATUALIZADO_EM = '25 de junho de 2026'
+const ATUALIZADO_EM = '2 de outubro de 2026'
 const CONTATO = 'beto1910@gmail.com'
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
@@ -110,14 +110,34 @@ export default function PoliticaPrivacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="9. Alterações desta política">
+        <Secao titulo="9. Redes sociais conectadas (Facebook, Instagram e TikTok)">
+          <p>
+            A loja pode conectar as próprias contas do Facebook, do Instagram e do TikTok para publicar
+            os veículos do estoque. A conexão é feita pelo login oficial de cada rede, por quem administra
+            a conta, e pode ser desfeita a qualquer momento em Marketing › Canais conectados ou nas
+            configurações da própria rede.
+          </p>
+          <p>
+            No TikTok usamos somente as permissões <strong>user.info.basic</strong> (identificar a conta
+            conectada: nome de usuário e apelido) e <strong>video.publish</strong> (publicar no perfil da
+            loja os vídeos e fotos que ela preparou e aprovou no AutoDrive). Não lemos mensagens,
+            seguidores, comentários nem outros conteúdos da conta, e não vendemos nem compartilhamos esses
+            dados com terceiros.
+          </p>
+          <p>
+            As chaves de acesso fornecidas pelas redes ficam cifradas no servidor e são apagadas quando a
+            conta é desconectada ou a loja é encerrada.
+          </p>
+        </Secao>
+
+        <Secao titulo="10. Alterações desta política">
           <p>
             Esta política pode ser atualizada. A data de "última atualização" no topo indica a versão
             vigente. Mudanças relevantes serão comunicadas pelos canais do aplicativo.
           </p>
         </Secao>
 
-        <Secao titulo="10. Contato">
+        <Secao titulo="11. Contato">
           <p>
             Dúvidas sobre privacidade e proteção de dados:{' '}
             <a href={`mailto:${CONTATO}`} className="font-medium text-brand-600 underline">{CONTATO}</a>.

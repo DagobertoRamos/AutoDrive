@@ -13,7 +13,7 @@ import {
 
 describe('rotas públicas x protegidas', () => {
   it('mantém /login e demais telas de acesso públicas (sem loop de redirect)', () => {
-    for (const path of ['/login', '/cadastro', '/recuperar-senha', '/ativar-cadastro', '/privacidade', '/excluir-conta']) {
+    for (const path of ['/login', '/cadastro', '/recuperar-senha', '/ativar-cadastro', '/privacidade', '/termos', '/excluir-conta']) {
       expect(isPublicPath(path)).toBe(true)
       expect(isProtectedPath(path)).toBe(false)
     }

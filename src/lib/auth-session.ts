@@ -23,6 +23,7 @@ export const PUBLIC_ROUTES = [
   '/ativar-cadastro',
   '/recuperar-senha',
   '/privacidade',
+  '/termos',
   '/excluir-conta',
   '/s', // site público das lojas (rota de teste /s/<slug>)
 ] as const
