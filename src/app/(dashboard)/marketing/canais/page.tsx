@@ -433,6 +433,22 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
           <p className="pt-2 text-xs font-semibold text-gray-700">Fotos</p>
           <label className="flex items-start gap-2 text-xs text-gray-600"><input type="checkbox" className="mt-0.5" checked={s.photoEnhance !== false} onChange={(e) => set('photoEnhance', e.target.checked)} /><span>Tratar as fotos automaticamente: clareia fotos escuras, recupera sombras, ajusta contraste, cor e nitidez. Vale para redes e portais; a foto original do estoque não muda.</span></label>
           <label className="block text-xs text-gray-600">Fuso horário<input className={inputCls} value={s.timezone} onChange={(e) => set('timezone', e.target.value)} /></label>
+          {s.posting && (
+            <div className="space-y-2 rounded-lg border border-gray-200 p-2">
+              <p className="text-xs font-semibold text-gray-700">Disparo nas redes (Instagram, Facebook, TikTok)</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-xs text-gray-600">Das<input type="time" className={inputCls} value={s.posting.windowStart} onChange={(e) => set('posting.windowStart', e.target.value)} /></label>
+                <label className="block text-xs text-gray-600">Até<input type="time" className={inputCls} value={s.posting.windowEnd} onChange={(e) => set('posting.windowEnd', e.target.value)} /></label>
+                <label className="block text-xs text-gray-600">Intervalo mínimo (min)<input type="number" min={15} max={720} step={5} className={inputCls} value={s.posting.gapMin} onChange={(e) => set('posting.gapMin', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Intervalo máximo (min)<input type="number" min={15} max={720} step={5} className={inputCls} value={s.posting.gapMax} onChange={(e) => set('posting.gapMax', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Posts no feed por dia<input type="number" min={1} max={10} className={inputCls} value={s.posting.perDay.FEED} onChange={(e) => set('posting.perDay.FEED', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Reels por dia<input type="number" min={1} max={5} className={inputCls} value={s.posting.perDay.REELS} onChange={(e) => set('posting.perDay.REELS', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Stories por dia<input type="number" min={1} max={20} className={inputCls} value={s.posting.perDay.STORY} onChange={(e) => set('posting.perDay.STORY', Number(e.target.value))} /></label>
+                <label className="block text-xs text-gray-600">Guardar mídias (dias)<input type="number" min={1} max={30} className={inputCls} value={s.posting.mediaKeepDays} onChange={(e) => set('posting.mediaKeepDays', Number(e.target.value))} /></label>
+              </div>
+              <p className="text-[11px] text-gray-500">Publicações em lote são distribuídas sozinhas dentro desse horário, com o intervalo sorteado entre o mínimo e o máximo na mesma conta e sem encostar no que já está agendado. Fotos e vídeos ficam guardados (para baixar e postar) pelos dias acima depois de publicados; depois disso o post sai do painel e fica só no histórico.</p>
+            </div>
+          )}
         </div>
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-700">Publicação automática</p>
@@ -459,7 +475,7 @@ function SettingsForm({ connections, channels, canEdit }: { connections: Connect
                   {MUSIC_MOODS.map((m) => <option key={m} value={m}>Automática — {MOOD_LABEL[m]}</option>)}
                 </select>
               </label>
-              <p className="text-[11px] text-gray-500">Com formatos marcados, cada carro aprovado ganha arte e legenda prontas, agendadas pela agenda inteligente: entre 07:00 e 20:00, sem repetir horário e dentro da quantidade segura por dia. Sem formato: post comum com as fotos.</p>
+              <p className="text-[11px] text-gray-500">Com formatos marcados, cada carro aprovado ganha arte e legenda prontas, agendadas pela agenda inteligente: no horário de disparo abaixo, com intervalo entre posts e sem repetir horário e dentro da quantidade segura por dia. Sem formato: post comum com as fotos.</p>
             </div>
           )}
         </div>

@@ -9,9 +9,10 @@
 // =============================================================================
 
 import { useState } from 'react'
-import { Clapperboard, Eye, Images, Loader2, ShieldAlert, Smartphone, Sparkles, Square, Video } from 'lucide-react'
+import { Clapperboard, Eye, Images, Layers, Loader2, ShieldAlert, Smartphone, Sparkles, Square, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, inputCls } from '@/components/publications/ui'
+import { pool } from '@/components/publications/BatchContent'
 import { ART_TEMPLATES, FORMAT_INFO, SOCIAL_FORMATS, TEMPLATE_INFO, type ArtTemplate, type SocialFormat } from '@/lib/publications/social/formats'
 import { CAPTION_TONES, TONE_LABEL, type CaptionTone } from '@/lib/publications/social/caption-core'
 import type { MusicChoice } from '@/lib/publications/social/music-core'
@@ -62,6 +63,27 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
     } catch (e) { setNote({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
   }
 
+  // Lote: legenda própria para cada carro × formato, com o tom girando (nenhuma sai igual).
+  const [batch, setBatch] = useState<{ done: number; total: number } | null>(null)
+  const generateAll = async (overwrite: boolean) => {
+    const formats = value.formats.filter((f) => f !== 'STORY')
+    const jobs = vehicles.flatMap((v, i) => formats.map((f, k) => ({ v, f, tone: CAPTION_TONES[(i + k) % CAPTION_TONES.length] })))
+      .filter((j) => overwrite || !value.captions[`${j.v.id}:${j.f}`]?.trim())
+    if (!jobs.length) { setNote({ ok: true, text: 'Todos os carros já têm legenda.' }); return }
+    setBatch({ done: 0, total: jobs.length }); setNote(null)
+    const acc = { ...value.captions }
+    let fails = 0; let ai = 0
+    await pool(jobs, 3, async (j) => {
+      try {
+        const r = await api('/api/publications/social/caption', { method: 'POST', json: { vehicleId: j.v.id, format: j.f, tone: j.tone } })
+        acc[`${j.v.id}:${j.f}`] = r.text; if (r.ai) ai++
+      } catch { fails++ } finally { setBatch((b) => (b ? { ...b, done: b.done + 1 } : b)) }
+    })
+    onChange({ ...value, captions: acc })
+    setBatch(null)
+    setNote({ ok: !fails, text: `${jobs.length - fails} legenda(s) escrita(s)${ai ? ` (${ai} pela IA)` : ' com o modelo automático'}${fails ? ` · ${fails} com erro` : ''}. Confira carro a carro abaixo.` })
+  }
+
   return (
     <section className="space-y-4 rounded-xl border border-brand-200 bg-brand-50/30 p-4">
       <div>
@@ -95,6 +117,14 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
                 className={cn('rounded-full border px-2.5 py-0.5 text-xs', value.template === t ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}>{TEMPLATE_INFO[t].label}</button>
             ))}
           </div>
+
+          {vehicles.length > 1 && value.formats.some((f) => f !== 'STORY') && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-200 bg-white p-2">
+              <button type="button" onClick={() => void generateAll(false)} disabled={!!batch} className="btn-primary px-2.5 py-1 text-xs">{batch ? <Loader2 size={13} className="animate-spin" /> : <Layers size={13} />}{batch ? `Escrevendo ${batch.done} de ${batch.total}…` : `Escrever as legendas dos ${vehicles.length} carros (variadas)`}</button>
+              <button type="button" onClick={() => void generateAll(true)} disabled={!!batch} className="text-xs text-brand-700 hover:underline">Refazer todas</button>
+              <span className="text-[11px] text-gray-500">Vazio = legenda automática, que também varia de carro para carro.</span>
+            </div>
+          )}
 
           {vehicles.length > 1 && (
             <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Veículo">
@@ -135,10 +165,10 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
                 {CAPTION_TONES.map((t) => <option key={t} value={t}>{TONE_LABEL[t]}</option>)}
               </select>
             </label>
-            <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar automaticamente entre 07:00 e 20:00 (sem horários repetidos)</label>
+            <label className="flex items-center gap-1.5"><input type="checkbox" checked={value.spread} onChange={(e) => set({ spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Espalhar automaticamente no horário de disparo da loja (2 a 3 h entre posts, sem horários repetidos)</label>
             <PhotoEnhanceToggle onChanged={() => setArtRev((n) => n + 1)} />
           </div>
-          <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900"><ShieldAlert size={14} className="mt-0.5 shrink-0" /><span><b>Anti-spam:</b> {CADENCE_NOTICE} {value.spread ? 'Com “Espalhar” ligado, o sistema já agenda dentro desse limite, a partir de 07:00 até 20:00, sem repetir horário com o que já está na agenda.' : 'Sem “Espalhar”, tudo sai de uma vez — use só para poucos posts.'}</span></p>
+          <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900"><ShieldAlert size={14} className="mt-0.5 shrink-0" /><span><b>Anti-spam:</b> {CADENCE_NOTICE} {value.spread ? 'Com “Espalhar” ligado, o sistema já agenda dentro desse limite, no horário configurado em Canais conectados, com 2 a 3 h entre posts da mesma conta e sem encostar no que já está na agenda.' : 'Sem “Espalhar”, tudo sai de uma vez — use só para poucos posts.'}</span></p>
           <MusicPicker value={value.music} onChange={(music) => set({ music })} hasInstagram={hasInstagram} />
           {vid && targets.length > 0 && (
             <button type="button" onClick={() => setPreview(true)} className="btn-primary px-3 py-1.5 text-xs"><Eye size={14} />Pré-visualizar como fica no celular</button>

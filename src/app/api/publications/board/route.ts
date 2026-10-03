@@ -1,6 +1,8 @@
 // =============================================================================
 // GET /api/publications/board — Painel da Central: indicadores + quadro
-// (rascunhos, agendados, publicando, publicados em 7 dias, precisam de atenção).
+// (rascunhos, agendados, publicando, publicados no prazo de guarda das mídias —
+// padrão 5 dias, configurável —, precisam de atenção). Vencido o prazo, o post
+// sai do quadro e dos indicadores e fica só no Histórico.
 // Cada cartão é um POST: o anúncio de um veículo numa campanha/formato (com a
 // situação em cada canal) ou um post avulso. A tela atualiza sozinha.
 // =============================================================================
@@ -33,17 +35,20 @@ export async function GET(req: Request) {
   if (a instanceof NextResponse) return a
   const now = Date.now()
   const week = new Date(now - 7 * DAY)
-  const [settings, pubs, posts, conns, wizard, can] = await Promise.all([
-    loadPublicationSettings(a.tenantId),
+  const settings = await loadPublicationSettings(a.tenantId)
+  const keepDays = settings.posting.mediaKeepDays
+  const shown = new Date(now - keepDays * DAY)
+  const [pubs, posts, conns, wizard, can] = await Promise.all([
     prisma.publication.findMany({
-      where: { tenantId: a.tenantId, archivedAt: null, status: { notIn: ['REMOVIDO', 'PAUSADO'] }, OR: [{ status: { not: 'PUBLICADO' } }, { publishedAt: { gte: week } }] },
+      where: { tenantId: a.tenantId, archivedAt: null, status: { notIn: ['REMOVIDO', 'PAUSADO'] }, OR: [{ status: { not: 'PUBLICADO' } }, { publishedAt: { gte: shown } }] },
       orderBy: { updatedAt: 'desc' }, take: 1500,
       select: {
         id: true, vehicleId: true, channel: true, connectionId: true, campaignKey: true, status: true, overrides: true, lastError: true, manualAction: true, remoteUrl: true, scheduledAt: true, publishedAt: true, updatedAt: true,
         vehicle: { select: { id: true, brand: true, model: true, version: true, year: true, modelYear: true, plate: true, mainPhotoUrl: true, unit: { select: { name: true } } } },
       },
     }),
-    prisma.socialPost.findMany({ where: { tenantId: a.tenantId, status: { not: 'CANCELADO' }, OR: [{ status: { not: 'PUBLICADO' } }, { publishedAt: { gte: week } }] }, orderBy: { updatedAt: 'desc' }, take: 300 }),
+    // Publicado com as mídias já apagadas (prazo vencido) = só histórico.
+    prisma.socialPost.findMany({ where: { tenantId: a.tenantId, status: { not: 'CANCELADO' }, OR: [{ status: { notIn: ['PUBLICADO', 'PARCIAL'] } }, { publishedAt: { gte: shown }, NOT: { media: { equals: [] } } }] }, orderBy: { updatedAt: 'desc' }, take: 300 }),
     prisma.publicationConnection.findMany({ where: { tenantId: a.tenantId }, select: { id: true, channel: true, label: true, status: true } }),
     prisma.systemSetting.findUnique({ where: { key: `u:${a.user.id}:t:${a.tenantId}:pubwizard:v1` } }).catch(() => null),
     permissions(a.user),
@@ -110,16 +115,16 @@ export async function GET(req: Request) {
 
   // Indicadores.
   const [pub7, fail7, paused, sched7, postPub7, postFail7] = await Promise.all([
-    prisma.publication.count({ where: { tenantId: a.tenantId, publishedAt: { gte: week } } }),
+    prisma.publication.count({ where: { tenantId: a.tenantId, publishedAt: { gte: shown } } }),
     prisma.publication.count({ where: { tenantId: a.tenantId, status: { in: ['FALHA', 'REJEITADO'] }, updatedAt: { gte: week } } }),
     prisma.publication.count({ where: { tenantId: a.tenantId, status: 'PAUSADO', archivedAt: null } }),
     prisma.publication.count({ where: { tenantId: a.tenantId, status: 'AGENDADO', scheduledAt: { lte: new Date(now + 7 * DAY) } } }),
-    prisma.socialPost.count({ where: { tenantId: a.tenantId, status: { in: ['PUBLICADO', 'PARCIAL'] }, publishedAt: { gte: week } } }),
+    prisma.socialPost.count({ where: { tenantId: a.tenantId, status: { in: ['PUBLICADO', 'PARCIAL'] }, publishedAt: { gte: shown }, NOT: { media: { equals: [] } } } }),
     prisma.socialPost.count({ where: { tenantId: a.tenantId, status: 'FALHA', updatedAt: { gte: week } } }),
   ])
   const next = columns.agendados[0] ?? null
   return NextResponse.json({
-    success: true, columns, totals, timezone: settings.timezone, can,
+    success: true, columns, totals, timezone: settings.timezone, can, keepDays,
     kpis: {
       publicados7: pub7 + postPub7,
       agendados7: sched7 + posts.filter((p) => p.status === 'AGENDADO' && p.scheduledAt && p.scheduledAt.getTime() <= now + 7 * DAY).length,

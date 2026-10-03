@@ -17,6 +17,7 @@ import { isArtTemplate, isSocialFormat, type ArtTemplate, type SocialFormat } fr
 import { musicOf, type MusicChoice } from './social/music-core'
 import { EMPTY_TERMS, sanitizeTerms, type StoreTerms } from './social/text-core'
 import { DEFAULT_PROGRAM, sanitizeProgram, type AutoProgram } from './social/autoprog-core'
+import { DEFAULT_POSTING, sanitizePosting, type PostingRules } from './social/cadence-core'
 
 export interface AutoPublishRule {
   enabled: boolean
@@ -42,6 +43,8 @@ export interface PublicationSettings {
   perConnectionPerMinute: number
   /** Tratamento automático das fotos enviadas (luz, contraste, cor e nitidez). */
   photoEnhance: boolean
+  /** Regras de disparo nas redes: janela, intervalo de 2–3 h, quantidade por dia e retenção das mídias. */
+  posting: PostingRules
 }
 
 const key = (tenantId: string) => `t:${tenantId}:publications:v1`
@@ -86,6 +89,7 @@ export function sanitizeSettings(input: unknown, fallback: PublicationSettings):
     terms: sanitizeTerms(i.terms, fallback.terms),
     photoEnhance: typeof i.photoEnhance === 'boolean' ? i.photoEnhance : fallback.photoEnhance,
     autoProgram: sanitizeProgram(i.autoProgram, fallback.autoProgram),
+    posting: sanitizePosting(i.posting, fallback.posting),
   }
 }
 
@@ -111,6 +115,7 @@ async function defaults(tenantId: string): Promise<PublicationSettings> {
     terms: EMPTY_TERMS,
     autoProgram: DEFAULT_PROGRAM,
     photoEnhance: true,
+    posting: DEFAULT_POSTING,
   }
 }
 

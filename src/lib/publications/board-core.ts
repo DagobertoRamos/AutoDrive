@@ -12,7 +12,7 @@ export const COLUMN_INFO: Record<BoardColumn, { label: string; hint: string }> =
   rascunhos: { label: 'Rascunhos', hint: 'Montados e ainda não enviados. Somem após 2 dias.' },
   agendados: { label: 'Agendados', hint: 'Saem sozinhos no dia e hora marcados.' },
   publicando: { label: 'Publicando', hint: 'Na fila, enviando ou a rede está processando (vídeos levam alguns minutos).' },
-  publicados: { label: 'Publicados', hint: 'No ar nos últimos 7 dias.' },
+  publicados: { label: 'Publicados', hint: 'No ar dentro do prazo de guarda das mídias (padrão 5 dias, em Canais conectados). Depois, só no Histórico.' },
   atencao: { label: 'Precisam de atenção', hint: 'Com erro, recusados pela rede ou esperando uma ação da loja.' },
 }
 

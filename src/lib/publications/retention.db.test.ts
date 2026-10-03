@@ -76,10 +76,14 @@ describe.skipIf(!RUN)('Retenção e histórico — banco local', () => {
     expect(got.data).toMatchObject({ step: 3, selected: [T.v1.id], targets: [T.ig.id], social: { format: 'REELS' } })
   })
 
-  it('retenção (2 dias depois): rascunhos somem, enviados viram só histórico', async () => {
+  it('retenção: rascunhos somem em 2 dias; publicado guarda as mídias 5 dias (para baixar) e depois vira só histórico', async () => {
     const r = await ret.applyRetention(later(), [T.t.id])
-    expect(r).toMatchObject({ rascunhos: 1, enviados: 1, anuncios: 1, progresso: 1 })
+    expect(r).toMatchObject({ rascunhos: 1, enviados: 0, anuncios: 1, progresso: 1 })
     expect(await prisma.socialPost.findUnique({ where: { id: T.draft } })).toBeNull()
+    // 2 dias depois de publicado: mídias ainda guardadas.
+    expect((await prisma.socialPost.findUnique({ where: { id: T.sent } })).media).toHaveLength(1)
+    const r5 = await ret.applyRetention(new Date(Date.now() + 5 * 86_400_000 + 60_000), [T.t.id])
+    expect(r5.enviados).toBe(1)
     const sent = await prisma.socialPost.findUnique({ where: { id: T.sent } })
     expect(sent.media).toEqual([]); expect(sent.caption.length).toBeLessThanOrEqual(141); expect(sent.results[T.ig.id].remoteUrl).toContain('instagram')
     expect(await prisma.publication.findUnique({ where: { id: T.pubDraft.id } })).toBeNull()

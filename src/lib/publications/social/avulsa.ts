@@ -298,9 +298,9 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
         ...(status === 'PUBLICADO' || status === 'PARCIAL' ? { publishedAt: now } : {}),
       },
     })
-    // Publicado em todas as redes: o vídeo não serve mais. Com falha, fica
-    // guardado para "Tentar de novo" e "Baixar" (limpeza após KEEP_FAILED_DAYS).
-    if (!pendingOrRetry && status === 'PUBLICADO') await deleteVideoParts(post.tenantId, media)
+    // Publicado: a mídia fica guardada pelos dias configurados (Canais conectados ›
+    // "Guardar mídias", padrão 5) para "Baixar" e postar fora; depois a retenção
+    // apaga e o post fica só no histórico. Com falha, fica para "Tentar de novo".
   }
   return { processed }
 }
@@ -312,6 +312,8 @@ const KEEP_VIDEO_WHERE = () => ({
   OR: [
     { status: { in: ['RASCUNHO', 'AGENDADO', 'ENVIANDO'] } },
     { status: { in: ['FALHA', 'PARCIAL'] }, updatedAt: { gte: new Date(Date.now() - KEEP_FAILED_DAYS * 86_400_000) } },
+    // Publicado e ainda no prazo de guarda (a retenção esvazia `media` ao vencer).
+    { status: { in: ['PUBLICADO', 'PARCIAL'] }, NOT: { media: { equals: [] } } },
   ],
 })
 

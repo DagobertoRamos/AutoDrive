@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { campaignKeyFor, formatsFor, socialOf } from './social/formats'
-import { descriptionTemplate, termsBlock } from './social/text-core'
+import { DESC_STYLES, descriptionTemplate, termsBlock } from './social/text-core'
 import { finishCaption } from './social/caption-core'
 import { effectiveOrigin } from '@/lib/stock/origin-core'
 import { Prisma } from '@prisma/client'
@@ -155,13 +155,20 @@ export async function buildFor(tenantId: string, v: VehicleRow, externalRef: str
   return p
 }
 
+/** Estilo do texto automático: varia por carro e formato (posts em lote não saem iguais). */
+export function styleFor(seed: string): (typeof DESC_STYLES)[number] {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  return DESC_STYLES[h % DESC_STYLES.length]
+}
+
 export function autoSocialCaption(v: VehicleRow, p: ListingPayload, c: PayloadContext): string {
   const gear = gearLabel(v.transmission); const fuel = fuelLabel(v.fuel)
   const text = descriptionTemplate({
     brand: v.brand, model: v.model, version: v.version, year: v.year, modelYear: v.modelYear, km: v.km, gear, fuel, color: v.color, doors: v.doors, engine: v.engine,
     price: p.price, oldPrice: p.oldPrice, options: p.options, origin: effectiveOrigin(v), inspected: v.cautelarStatus === 'APROVADA', isNew: p.isNew,
-    storeName: p.storeName, city: p.location.city, terms: c.settings.terms, vehicleType: v.vehicleType, bodyType: v.bodyType, seed: v.id,
-  }, 'EMOCIONAL')
+    storeName: p.storeName, city: p.location.city, terms: c.settings.terms, vehicleType: v.vehicleType, bodyType: v.bodyType, seed: `${v.id}:${p.social?.format ?? ''}`,
+  }, styleFor(`${v.id}:${p.social?.format ?? ''}`))
   return finishCaption(text, {
     format: p.social?.format ?? 'POST', tone: 'VENDEDOR', brand: v.brand, model: v.model, version: v.version, year: v.year, modelYear: v.modelYear, km: v.km,
     gear, fuel, color: v.color, price: p.price, oldPrice: p.oldPrice, options: p.options, storeName: p.storeName, city: p.location.city,
@@ -586,7 +593,7 @@ export async function approveMedia(tenantId: string, vehicleId: string, photos: 
     // Instagram/Facebook: um envio por formato, espalhado nos horários de pico.
     const socialConns = conns.filter((c) => isSocial(c.channel))
     if (socialConns.length) {
-      // Agenda inteligente: 07:00–20:00, sem repetir horário, dentro do limite seguro por dia.
+      // Agenda inteligente: janela da loja, 2–3 h entre posts, sem repetir horário, dentro do limite seguro por dia.
       // Sem duplicar: Post/Carrossel uma vez por conta; Story/Reels/Vídeo uma vez por dia.
       const dayAgo = Date.now() - 86_400_000
       const has = (connId: string, f: string) => pubs.some((p) => p.connectionId === connId && (p.campaignKey === f.toLowerCase() || (p.campaignKey.startsWith(`${f.toLowerCase()}-`) && p.createdAt.getTime() > dayAgo)))

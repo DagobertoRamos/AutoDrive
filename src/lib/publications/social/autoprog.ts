@@ -56,7 +56,7 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
 
   const results: CreateResult[] = []
   // Cada conta ganha o seu horário (a partir do horário da grade), sem repetir
-  // horário, dentro de 07:00–20:00 e da quantidade segura por dia.
+  // horário, dentro da janela da loja e da quantidade segura por dia.
   const fits = (c: { channel: string }, f: SocialFormat) => formatsFor(c.channel).includes(f)
   const reqs = plan.flatMap((slot) => conns.filter((c) => fits(c, slot.format) && !taken.has(`${c.id}:${autoKey(slot.format, slot.local)}`)).map((c) => ({ key: `${slot.vehicleId}|${c.id}|${slot.format}|${slot.local}`, connectionId: c.id, format: slot.format, notBeforeLocal: slot.local })))
   const slots = await allocateSlots(tenantId, reqs)

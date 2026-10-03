@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { localToUtc, utcToLocalInput } from '../schedule-core'
 import { loadPublicationSettings } from '../settings'
 import { SOCIAL_CHANNELS } from '../channels'
-import { allocate, localToMinutes, minutesToLocal, type Busy, type SlotRequest } from './cadence-core'
+import { allocate, cadenceFrom, localToMinutes, minutesToLocal, type Busy, type SlotRequest } from './cadence-core'
 
 const LIVE = ['AGENDADO', 'NA_FILA', 'ENVIANDO', 'EM_ANALISE', 'PUBLICADO', 'ATUALIZACAO_PENDENTE']
 
@@ -42,11 +42,11 @@ export async function busySlots(tenantId: string, tz: string): Promise<Busy[]> {
 
 /** Horário (local "AAAA-MM-DDTHH:MM" e UTC) de cada pedido, sem colidir com a agenda. */
 export async function allocateSlots(tenantId: string, requests: Array<Omit<SlotRequest, 'notBefore'> & { notBeforeLocal?: string }>, startLocal?: string): Promise<Record<string, { local: string; at: Date }>> {
-  const { timezone } = await loadPublicationSettings(tenantId)
+  const { timezone, posting } = await loadPublicationSettings(tenantId)
   const nowLocal = utcToLocalInput(new Date(), timezone)
   const start = Math.max(localToMinutes(nowLocal)!, (startLocal && localToMinutes(startLocal)) || 0)
   const busy = await busySlots(tenantId, timezone)
-  const minutes = allocate(requests.map((r) => ({ key: r.key, connectionId: r.connectionId, format: r.format, also: r.also, notBefore: r.notBeforeLocal ? localToMinutes(r.notBeforeLocal) ?? undefined : undefined })), busy, start)
+  const minutes = allocate(requests.map((r) => ({ key: r.key, connectionId: r.connectionId, format: r.format, also: r.also, notBefore: r.notBeforeLocal ? localToMinutes(r.notBeforeLocal) ?? undefined : undefined })), busy, start, cadenceFrom(posting))
   const out: Record<string, { local: string; at: Date }> = {}
   for (const [k, m] of Object.entries(minutes)) { const local = minutesToLocal(m); out[k] = { local, at: localToUtc(local, timezone)! } }
   return out

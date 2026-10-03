@@ -184,7 +184,7 @@ export default function PainelPage() {
       {!data ? <div className="flex h-40 items-center justify-center"><Loader2 className="animate-spin text-gray-400" /></div> : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <Kpi icon={CheckCircle2} tone="text-green-700 bg-green-50" label="Publicados" sub="últimos 7 dias" value={k.publicados7} />
+            <Kpi icon={CheckCircle2} tone="text-green-700 bg-green-50" label="Publicados" sub={`últimos ${data.keepDays ?? 5} dias (depois, só no Histórico)`} value={k.publicados7} />
             <Kpi icon={CalendarClock} tone="text-sky-700 bg-sky-50" label="Agendados" sub={k.proximo ? `Próximo: ${whenLabel(k.proximo.when, tz)} · ${k.proximo.title}` : 'próximos 7 dias'} value={k.agendados7} />
             <Kpi icon={Send} tone="text-indigo-700 bg-indigo-50" label="Publicando agora" sub="na fila ou processando" value={k.publicando} />
             <Kpi icon={AlertTriangle} tone={k.atencao ? 'text-red-700 bg-red-50' : 'text-gray-500 bg-gray-50'} label="Precisam de atenção" sub={k.atencao ? 'erro ou ação da loja' : 'tudo certo'} value={k.atencao} onClick={k.atencao ? () => document.getElementById('col-atencao')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }) : undefined} />

@@ -449,7 +449,7 @@ export default function PostAvulsoPage() {
     if (lines.length) setCaption((c) => `${c.trimEnd()}\n\n${lines.join('\n')}`.trimStart())
   }
 
-  // Agendamento: automático (melhor horário livre 07:00–20:00, sem repetir) ou dia/hora escolhidos.
+  // Agendamento: automático (melhor horário livre na janela da loja, sem repetir) ou dia/hora escolhidos.
   const [whenMode, setWhenMode] = useState<'AUTO' | 'MANUAL'>('AUTO')
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     setBusy(mode); setMsg(null)
@@ -617,7 +617,7 @@ export default function PostAvulsoPage() {
             <div className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-200 px-2 py-1.5">
               <fieldset className="space-y-0.5 text-xs text-gray-700">
                 <legend className="sr-only">Quando agendar</legend>
-                <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'AUTO'} onChange={() => setWhenMode('AUTO')} /><b>Automático</b> — melhor horário livre entre 07:00 e 20:00</label>
+                <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'AUTO'} onChange={() => setWhenMode('AUTO')} /><b>Automático</b> — melhor horário livre no horário de disparo da loja</label>
                 <label className="flex items-center gap-1.5"><input type="radio" name="quando" checked={whenMode === 'MANUAL'} onChange={() => setWhenMode('MANUAL')} />Escolher dia e hora</label>
               </fieldset>
               {whenMode === 'MANUAL' && <input type="datetime-local" aria-label={`Dia e hora (${tz.replace('_', ' ')})`} className={cn(inputCls, 'w-auto')} value={when} onChange={(e) => setWhen(e.target.value)} />}
@@ -662,7 +662,7 @@ export default function PostAvulsoPage() {
               <button type="button" onClick={() => { if (confirm('Esvaziar o lote?')) setBatch([]) }} className="text-xs text-gray-500 underline">Esvaziar</button>
             </div>
           )}
-          <p className="text-[11px] text-gray-600">O sistema escolhe o horário de cada post entre 07:00 e 20:00, sem repetir horário com nada que já está na agenda (anúncios e outros posts) e respeitando o limite seguro por dia — o que passar vai para o dia seguinte. {CADENCE_NOTICE}</p>
+          <p className="text-[11px] text-gray-600">O sistema escolhe o horário de cada post dentro do horário de disparo da loja (Canais conectados), com 2 a 3 h entre posts da mesma conta, sem repetir horário com nada que já está na agenda (anúncios e outros posts) e respeitando o limite seguro por dia — o que passar vai para o dia seguinte. {CADENCE_NOTICE}</p>
           {batchResult && (
             <div role="status" className="rounded-lg border border-gray-200 bg-white p-3 text-xs">
               <p className="font-semibold text-gray-800">{batchResult.message}</p>

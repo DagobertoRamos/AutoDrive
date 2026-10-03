@@ -20,9 +20,10 @@ import { DEFAULT_SOCIAL, SocialStudio, type SocialChoice } from '@/components/pu
 import { TextAssist } from '@/components/publications/TextAssist'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
+import { BatchContent } from '@/components/publications/BatchContent'
 import { campaignKeyFor, formatsFor, isArtTemplate, isSocialFormat, type SocialFormat } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
-import { DAILY_IDEAL, KIND_LABEL, kindOf } from '@/lib/publications/social/cadence-core'
+import { DEFAULT_POSTING, KIND_LABEL, kindOf, type PostingRules } from '@/lib/publications/social/cadence-core'
 import { VehiclePhotosManager, type VehiclePhotoItem } from '@/components/estoque/VehiclePhotosManager'
 import { isSocialChannel } from '@/lib/publications/channels'
 
@@ -57,6 +58,9 @@ function Wizard() {
   const [can, setCan] = useState({ prepare: false, approve: false, publish: false, connections: false })
   const [err, setErr] = useState<string | null>(null)
   const [tz, setTz] = useState('America/Sao_Paulo')
+  const [posting, setPosting] = useState<PostingRules>(DEFAULT_POSTING)
+  // Recarrega o conteúdo do carro aberto depois da montagem em lote.
+  const [contentRev, setContentRev] = useState(0)
   // Progresso salvo (retoma de onde parou). Autosalvar só depois de decidir.
   const [resume, setResume] = useState<{ data: any; savedAt: string } | null>(null)
   const [autosave, setAutosave] = useState(false)
@@ -89,7 +93,7 @@ function Wizard() {
       setChannels(Object.fromEntries(j.data.channels.map((c: ChannelInfo) => [c.id, c])))
       setCan(j.data.can)
     }).catch((e) => setErr((e as Error).message))
-    api('/api/publications/settings').then((j) => setTz(j.data.timezone)).catch(() => undefined)
+    api('/api/publications/settings').then((j) => { setTz(j.data.timezone); if (j.data.posting) setPosting(j.data.posting) }).catch(() => undefined)
   }, [])
 
   const loadVehicles = useCallback(async (ids: string[]) => {
@@ -143,6 +147,7 @@ function Wizard() {
       {err && <ErrorNote message={err} />}
 
       {step === 0 && <StepVehicles selected={selected} setSelected={setSelected} vehicles={vehicles} onLoaded={(list) => setVehicles((v) => ({ ...v, ...Object.fromEntries(list.map((x) => [x.id, x])) }))} />}
+      {step === 3 && selected.length > 1 && <BatchContent vehicles={selected.map((id) => ({ id, title: vehicles[id]?.title ?? '…' }))} onDone={() => setContentRev((n) => n + 1)} />}
       {step >= 1 && step <= 3 && selected.length > 1 && (
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Veículo em edição">
           {selected.map((id) => <button key={id} role="tab" aria-selected={cur === id} onClick={() => setCurrent(id)} className={cn('flex items-center gap-2 rounded-lg border px-2 py-1 text-xs', cur === id ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-gray-200 text-gray-600')}><Thumb src={vehicles[id]?.cover} className="h-6 w-8" />{vehicles[id]?.title ?? '…'}{vehicles[id]?.mediaApproved && <CheckCircle2 size={12} className="text-green-600" />}</button>)}
@@ -150,9 +155,9 @@ function Wizard() {
       )}
       {step === 1 && cur && <StepPhotos key={cur} vehicleId={cur} canApprove={can.approve} onApproved={() => loadVehicles([cur])} />}
       {step === 2 && cur && <ListingProfileStep key={cur} vehicleId={cur} canEdit={can.prepare} />}
-      {step === 3 && cur && <StepContent key={cur} vehicleId={cur} />}
+      {step === 3 && cur && <StepContent key={`${cur}:${contentRev}`} vehicleId={cur} />}
       {step === 4 && <StepChannels conns={conns} channels={channels} targets={targets} setTargets={setTargets} campaign={campaign} setCampaign={setCampaign} social={social} setSocial={setSocial} vehicles={selected.map((id) => ({ id, title: vehicles[id]?.title ?? '…' }))} />}
-      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} social={social} setSocial={setSocial} channels={channels} conns={conns} can={can} tz={tz} goTo={go} onDone={() => router.push('/marketing/publicacoes')} onSubmitted={() => { setAutosave(false); void api('/api/publications/wizard', { method: 'DELETE' }).catch(() => undefined) }} />}
+      {step === 5 && <StepReview vehicleIds={selected} connectionIds={[...targets]} vehicles={vehicles} campaign={campaign} social={social} setSocial={setSocial} channels={channels} conns={conns} can={can} tz={tz} posting={posting} goTo={go} onDone={() => router.push('/marketing/publicacoes')} onSubmitted={() => { setAutosave(false); void api('/api/publications/wizard', { method: 'DELETE' }).catch(() => undefined) }} />}
 
       {step < 5 && (
         <div className="sticky bottom-2 z-10 flex items-center justify-between rounded-xl border border-gray-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
@@ -404,7 +409,10 @@ function StepChannels({ conns, channels, targets, setTargets, campaign, setCampa
 }
 
 // ── 5. Revisão + publicar ───────────────────────────────────────────────────
-function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, setSocial, channels, conns, can, tz, goTo, onDone, onSubmitted }: { setSocial: (s: SocialChoice) => void; onSubmitted: () => void; vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; social: SocialChoice; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
+function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social: socialIn, setSocial, channels, conns, can, tz, posting, goTo, onDone, onSubmitted }: { posting: PostingRules; setSocial: (s: SocialChoice) => void; onSubmitted: () => void; vehicleIds: string[]; connectionIds: string[]; vehicles: Record<string, Veh>; campaign: string; social: SocialChoice; channels: Record<string, ChannelInfo>; conns: Conn[]; can: { prepare: boolean; publish: boolean }; tz: string; goTo: (n: number) => void; onDone: () => void }) {
+  // Lote (2+ carros): sempre distribuído pela agenda automática — nunca tudo de uma vez.
+  const batch = vehicleIds.length > 1
+  const social = batch ? { ...socialIn, spread: true } : socialIn
   const [items, setItems] = useState<any[] | null>(null)
   const [checks, setChecks] = useState<Record<string, any[]>>({})
   const [err, setErr] = useState<string | null>(null)
@@ -423,9 +431,9 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
   const blocked = items?.filter((i) => i.blocked).length ?? 0
   // Anti-spam: sem "Espalhar", quantos saem de uma vez por conta (por tipo) × o seguro por dia.
   const socialConnIds = connectionIds.filter((c) => isSocialChannel(conns.find((x) => x.id === c)?.channel))
-  const perKind = (['FEED', 'REELS', 'STORY'] as const).map((k) => ({ k, n: vehicleIds.length * social.formats.filter((f) => kindOf(f) === k).length })).filter((x) => x.n > DAILY_IDEAL[x.k])
+  const perKind = (['FEED', 'REELS', 'STORY'] as const).map((k) => ({ k, n: vehicleIds.length * social.formats.filter((f) => kindOf(f) === k).length })).filter((x) => x.n > posting.perDay[x.k])
   const overload = !social.spread && socialConnIds.length > 0 && perKind.length > 0
-    ? `Isto publica de uma vez, em cada conta: ${perKind.map((x) => `${x.n} ${KIND_LABEL[x.k]} (seguro: até ${DAILY_IDEAL[x.k]} por dia)`).join('; ')}. Acima disso a rede (Instagram/Facebook/TikTok) pode tratar como spam e limitar ou bloquear a conta. Ligue “Espalhar automaticamente” na etapa Canais.`
+    ? `Isto publica de uma vez, em cada conta: ${perKind.map((x) => `${x.n} ${KIND_LABEL[x.k]} (seguro: até ${posting.perDay[x.k]} por dia)`).join('; ')}. Acima disso a rede (Instagram/Facebook/TikTok) pode tratar como spam e limitar ou bloquear a conta. Ligue “Espalhar automaticamente” na etapa Canais.`
     : null
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     if (sending) return // clique duplo
@@ -441,7 +449,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
       }))))
       const calls: Array<{ targets: unknown[]; mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO'; scheduledLocal?: string }> = []
       if (social.spread && mode !== 'RASCUNHO') {
-        // Agenda inteligente: cada carro × conta × formato no seu horário, entre 07:00 e 20:00,
+        // Agenda inteligente: cada carro × conta × formato no seu horário, na janela da loja (2–3 h entre posts),
         // sem repetir horário (considera o que já está agendado) e no limite seguro por dia.
         const start = mode === 'AGENDAR' && when ? when : nowLocal
         if (plain.length) calls.push({ targets: plain, mode, scheduledLocal: mode === 'AGENDAR' ? when : undefined })
@@ -510,8 +518,8 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social, set
           ))}
           {socialConnIds.length > 0 && social.formats.length > 0 && (
             <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3 text-xs text-gray-700">
-              <label className="flex items-center gap-2 font-medium text-gray-900"><input type="checkbox" checked={social.spread} onChange={(e) => setSocial({ ...social, spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Instagram/Facebook: espalhar automaticamente entre 07:00 e 20:00</label>
-              <p className="mt-1 text-[11px] text-gray-600">{social.spread ? `Cada carro × formato × conta ganha o seu horário, sem repetir com o que já está na agenda e no limite seguro por dia (${vehicleIds.length * social.formats.length * socialConnIds.length} envio(s) nas redes). Site e portais saem na hora.` : 'Desligado: tudo sai de uma vez (ou no horário escolhido). Use só para poucos posts.'}</p>
+              <label className="flex items-center gap-2 font-medium text-gray-900"><input type="checkbox" checked={social.spread} disabled={batch} onChange={(e) => setSocial({ ...socialIn, spread: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Redes: distribuir automaticamente entre {posting.windowStart} e {posting.windowEnd}, de {Math.round(posting.gapMin / 6) / 10} a {Math.round(posting.gapMax / 6) / 10} h entre posts da mesma conta</label>
+              <p className="mt-1 text-[11px] text-gray-600">{social.spread ? `${batch ? 'Lote: sempre distribuído. ' : ''}Cada carro × formato × conta ganha o seu horário dentro da configuração da loja (Canais conectados), sem encostar no que já está agendado e no limite por dia (${vehicleIds.length * social.formats.length * socialConnIds.length} envio(s) nas redes). Site e portais saem na hora.` : 'Desligado: tudo sai de uma vez (ou no horário escolhido). Use só para poucos posts.'}</p>
             </div>
           )}
           {overload && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"><b>Risco de bloqueio:</b> {overload} <button type="button" onClick={() => goTo(4)} className="ml-1 font-medium underline">Ir para Canais</button></div>}

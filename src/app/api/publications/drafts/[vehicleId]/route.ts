@@ -56,7 +56,9 @@ export async function PUT(req: Request, ctx: Ctx) {
   const s = (x: unknown, max: number) => (typeof x === 'string' ? x.trim().slice(0, max) || null : null)
   const price = b.price === null || b.price === '' || b.price === undefined ? null : Number(b.price)
   if (price !== null && (!Number.isFinite(price) || price <= 0 || price > 50_000_000)) return bad('Preço inválido.')
-  const data = { title: s(b.title, 150), description: s(b.description, 6000), conditions: s(b.conditions, 1000), price: price == null ? null : new Prisma.Decimal(price) }
+  const full = { title: s(b.title, 150), description: s(b.description, 6000), conditions: s(b.conditions, 1000), price: price == null ? null : new Prisma.Decimal(price) }
+  // partial: true → grava só os campos enviados (montagem em lote não apaga título/preço/condições).
+  const data = b.partial === true ? (Object.fromEntries(Object.entries(full).filter(([k]) => k in b)) as Partial<typeof full>) : full
   // Vídeo do carro: fica no anúncio do site (site, Facebook e formato "Vídeo do carro").
   const rawVideo = typeof b.videoUrl === 'string' ? b.videoUrl.trim() : undefined
   const video = rawVideo ? classifyVideo(rawVideo) : null
@@ -67,7 +69,7 @@ export async function PUT(req: Request, ctx: Ctx) {
     }
     const before = await prisma.publicationDraft.findUnique({ where: { vehicleId } })
     await prisma.publicationDraft.upsert({ where: { vehicleId }, create: { tenantId: a.tenantId, vehicleId, ...data, updatedById: a.user.id }, update: { ...data, updatedById: a.user.id } })
-    await logEvent(prisma, { tenantId: a.tenantId, vehicleId, type: 'CONTEUDO', message: 'Conteúdo do anúncio atualizado.', actor: a.actor, data: { antes: before ? { title: before.title, price: before.price, conditions: before.conditions } : null, depois: { title: data.title, price, conditions: data.conditions } } })
+    await logEvent(prisma, { tenantId: a.tenantId, vehicleId, type: 'CONTEUDO', message: 'Conteúdo do anúncio atualizado.', actor: a.actor, data: { antes: before ? { title: before.title, price: before.price, conditions: before.conditions } : null, depois: { title: data.title, price: 'price' in data ? price : undefined, conditions: data.conditions } } })
     await audit(a, 'UPDATE', 'PublicationDraft', vehicleId, data, before)
     const updates = await syncLive(a.tenantId, vehicleId, a.actor)
     if (updates) kickWorker()

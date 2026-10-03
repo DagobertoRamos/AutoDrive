@@ -137,8 +137,9 @@ describe.skipIf(!RUN)('Posts avulsos — banco local + Meta simulada', () => {
     expect(new URLSearchParams(feed.body).get('link')).toBe('https://youtu.be/dQw4w9WgXcQ')
   }, 60_000)
 
-  it('espaço: pedaços do vídeo somem ao publicar; fotos órfãs e de posts antigos são limpas; contador por tipo', async () => {
-    expect(await prisma.siteAsset.count({ where: { tenantId: T.t.id, kind: 'SOCIAL_VPART' } })).toBe(0)
+  it('espaço: vídeo publicado fica guardado (para baixar) até a retenção; fotos órfãs e de posts antigos são limpas; contador por tipo', async () => {
+    // Publicado: os pedaços do vídeo continuam guardados (a retenção apaga depois do prazo).
+    expect(await prisma.siteAsset.count({ where: { tenantId: T.t.id, kind: 'SOCIAL_VPART' } })).toBeGreaterThan(0)
     const sharp = (await import('sharp')).default
     const jpg = await sharp({ create: { width: 10, height: 10, channels: 3, background: '#000' } }).jpeg().toBuffer()
     const old = new Date(Date.now() - 2 * 86_400_000)
