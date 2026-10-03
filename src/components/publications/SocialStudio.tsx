@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { useState } from 'react'
-import { Clapperboard, Eye, Images, Layers, Loader2, ShieldAlert, Smartphone, Sparkles, Square, Video } from 'lucide-react'
+import { Clapperboard, Eye, Images, Layers, Loader2, Shuffle, ShieldAlert, Smartphone, Sparkles, Square, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api, inputCls } from '@/components/publications/ui'
 import { pool } from '@/components/publications/BatchContent'
@@ -22,6 +22,7 @@ import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal
 import { PhotoEnhanceToggle } from '@/components/publications/PhotoEnhanceToggle'
 import { DesignPicker, VideoSecondsPicker } from '@/components/publications/DesignPicker'
 import type { DesignStyle, VideoSeconds } from '@/lib/publications/social/design-styles'
+import { limitDesigns, MAX_DESIGNS } from '@/lib/publications/social/variety-core'
 
 export interface SocialChoice {
   formats: SocialFormat[]
@@ -34,11 +35,15 @@ export interface SocialChoice {
   music: MusicChoice | null
   /** Modelo visual (12 estilos) do vídeo e das artes. */
   design: DesignStyle
+  /** Até 2 modelos: cada carro sai com um deles, sorteado. */
+  designs?: DesignStyle[]
+  /** Variar por carro a chamada da arte e o clima da música (sorteio). */
+  vary?: boolean
   /** Duração do Reels (30 s já marcado). */
   seconds: VideoSeconds
 }
 
-export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: true, music: { mode: 'AUTO', mood: 'ANIMADA' }, design: 'CLASSICO', seconds: 30 }
+export const DEFAULT_SOCIAL: SocialChoice = { formats: ['POST', 'REELS'], template: 'OFERTA', tone: 'VENDEDOR', captions: {}, spread: true, music: { mode: 'AUTO', mood: 'ANIMADA' }, design: 'CLASSICO', designs: ['CLASSICO'], vary: true, seconds: 30 }
 
 const ICON: Record<SocialFormat, typeof Square> = { POST: Square, CARROSSEL: Images, STORY: Smartphone, REELS: Clapperboard, VIDEO: Video }
 
@@ -108,14 +113,17 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
 
       {value.formats.length > 0 && (
         <>
-          <DesignPicker value={value.design} onChange={(design) => set({ design })} />
+          <DesignPicker value={value.design} onChange={(design) => set({ design })} many={{ values: value.designs?.length ? value.designs : [value.design], max: MAX_DESIGNS, onChange: (designs) => set({ designs: limitDesigns(designs), design: designs[0] }) }} />
           {value.formats.includes('REELS') && <VideoSecondsPicker value={value.seconds} onChange={(seconds) => set({ seconds })} />}
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Chamada da arte">
             <span className="mr-1 text-xs font-medium text-gray-600">Chamada:</span>
+            <button type="button" aria-pressed={!!value.vary} onClick={() => set({ vary: true })} title="Cada carro sai com uma chamada e um clima de música diferentes"
+              className={cn('rounded-full border px-2.5 py-0.5 text-xs', value.vary ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}><Shuffle size={11} className="mr-1 inline" />Variar (aleatório)</button>
             {ART_TEMPLATES.map((t) => (
-              <button key={t} type="button" aria-pressed={value.template === t} onClick={() => set({ template: t })}
-                className={cn('rounded-full border px-2.5 py-0.5 text-xs', value.template === t ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}>{TEMPLATE_INFO[t].label}</button>
+              <button key={t} type="button" aria-pressed={!value.vary && value.template === t} onClick={() => set({ template: t, vary: false })}
+                className={cn('rounded-full border px-2.5 py-0.5 text-xs', !value.vary && value.template === t ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 bg-white text-gray-600')}>{TEMPLATE_INFO[t].label}</button>
             ))}
+            {value.vary && <span className="w-full text-[11px] text-gray-500">Variar: cada carro sai com uma chamada, um modelo (entre os escolhidos) e um clima de música sorteados — e a legenda também muda. Música escolhida a dedo não é trocada.</span>}
           </div>
 
           {vehicles.length > 1 && value.formats.some((f) => f !== 'STORY') && (

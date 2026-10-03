@@ -26,15 +26,24 @@ const SWATCH: Record<DesignStyle, { bg: string; fg: string; font: string; tag: s
   REVISTA: { bg: 'linear-gradient(180deg,#c1121f 0 26%,#f4f1ea 26%)', fg: '#111111', font: 'Georgia, serif', tag: 'Revista' },
 }
 
-export function DesignPicker({ value, onChange, className }: { value: DesignStyle; onChange: (d: DesignStyle) => void; className?: string }) {
+export function DesignPicker({ value, onChange, className, many }: { value: DesignStyle; onChange: (d: DesignStyle) => void; className?: string; /** Escolha de até `max` modelos (sorteados por carro). */ many?: { values: DesignStyle[]; max: number; onChange: (list: DesignStyle[]) => void } }) {
+  const chosen = many ? many.values : [value]
+  const click = (d: DesignStyle) => {
+    if (!many) return onChange(d)
+    const has = many.values.includes(d)
+    if (has && many.values.length === 1) return
+    const next = has ? many.values.filter((x) => x !== d) : [...many.values, d].slice(-many.max)
+    many.onChange(next)
+    onChange(next[0])
+  }
   return (
     <div className={cn('space-y-1.5', className)}>
-      <p className="text-xs font-medium text-gray-600">Modelo visual (vídeo e artes)</p>
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6" role="radiogroup" aria-label="Modelo visual">
+      <p className="text-xs font-medium text-gray-600">Modelo visual (vídeo e artes){many ? ` — escolha até ${many.max}; cada carro sai com um deles, sorteado` : ''}</p>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6" role={many ? 'group' : 'radiogroup'} aria-label="Modelo visual">
         {DESIGN_STYLES.map((d) => {
-          const sw = SWATCH[d]; const on = value === d
+          const sw = SWATCH[d]; const on = chosen.includes(d)
           return (
-            <button key={d} type="button" role="radio" aria-checked={on} onClick={() => onChange(d)} title={DESIGNS[d].description}
+            <button key={d} type="button" role={many ? 'checkbox' : 'radio'} aria-checked={on} onClick={() => click(d)} title={DESIGNS[d].description}
               className={cn('overflow-hidden rounded-xl border bg-white text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600', on ? 'border-brand-600 ring-2 ring-brand-600' : 'border-gray-200 hover:border-gray-300')}>
               <span className="flex h-14 items-center justify-center" style={{ background: sw.bg }}>
                 <span className="rounded px-1.5 text-sm font-bold" style={{ color: sw.fg, fontFamily: sw.font, textShadow: sw.fg === '#ffffff' || sw.fg === '#ffe14d' ? '0 1px 3px #000' : undefined }}>{sw.tag}</span>
@@ -44,7 +53,7 @@ export function DesignPicker({ value, onChange, className }: { value: DesignStyl
           )
         })}
       </div>
-      <p className="text-[11px] text-gray-500">{DESIGNS[value].description}</p>
+      <p className="text-[11px] text-gray-500">{chosen.map((d) => `“${DESIGNS[d].label}”: ${DESIGNS[d].description}`).join(' · ')}</p>
     </div>
   )
 }

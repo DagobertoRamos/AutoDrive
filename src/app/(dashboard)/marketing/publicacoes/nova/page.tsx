@@ -21,6 +21,7 @@ import { TextAssist } from '@/components/publications/TextAssist'
 import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal'
 import { VideoLinkHint } from '@/components/publications/VideoLinkHint'
 import { BatchContent } from '@/components/publications/BatchContent'
+import { variantFor } from '@/lib/publications/social/variety-core'
 import { campaignKeyFor, formatsFor, isArtTemplate, isSocialFormat, type SocialFormat } from '@/lib/publications/social/formats'
 import { utcToLocalInput } from '@/lib/publications/schedule-core'
 import { DEFAULT_POSTING, KIND_LABEL, kindOf, type PostingRules } from '@/lib/publications/social/cadence-core'
@@ -435,6 +436,12 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social: soc
   const overload = !social.spread && socialConnIds.length > 0 && perKind.length > 0
     ? `Isto publica de uma vez, em cada conta: ${perKind.map((x) => `${x.n} ${KIND_LABEL[x.k]} (seguro: até ${posting.perDay[x.k]} por dia)`).join('; ')}. Acima disso a rede (Instagram/Facebook/TikTok) pode tratar como spam e limitar ou bloquear a conta. Ligue “Espalhar automaticamente” na etapa Canais.`
     : null
+  // Variedade: cada carro com o seu modelo (entre os escolhidos), chamada e clima de música sorteados.
+  const socialOv = (v: string, f: string) => {
+    const x = variantFor(`${v}:${requestKey.current.slice(0, 8)}`, { designs: social.designs?.length ? social.designs : [social.design], template: social.template, vary: !!social.vary, music: social.music })
+    const cap = social.captions[`${v}:${f}`]?.trim()
+    return { social: { format: f, template: x.template, design: x.design, seconds: social.seconds, ...(x.music ? { music: x.music } : {}) }, ...(cap ? { caption: cap } : {}) }
+  }
   const submit = async (mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO') => {
     if (sending) return // clique duplo
     setSending(true); setErr(null)
@@ -445,7 +452,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social: soc
       const nowLocal = utcToLocalInput(new Date(), tz)
       const socialTargets = (local: string, formats = social.formats) => vehicleIds.flatMap((v) => connectionIds.filter(isSocial).flatMap((c) => formats.filter((f) => formatsFor(conns.find((x) => x.id === c)?.channel ?? '').includes(f)).map((f) => ({
         vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f, local),
-        overrides: { social: { format: f, template: social.template, design: social.design, seconds: social.seconds, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) },
+        overrides: socialOv(v, f),
       }))))
       const calls: Array<{ targets: unknown[]; mode: 'AGORA' | 'AGENDAR' | 'RASCUNHO'; scheduledLocal?: string }> = []
       if (social.spread && mode !== 'RASCUNHO') {
@@ -460,7 +467,7 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social: soc
           const local = slots[r.key]
           if (!local) continue
           const [v, c, f] = r.key.split('|')
-          const t = { vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f as SocialFormat, local), overrides: { social: { format: f, template: social.template, design: social.design, seconds: social.seconds, ...(social.music ? { music: social.music } : {}) }, ...(social.captions[`${v}:${f}`]?.trim() ? { caption: social.captions[`${v}:${f}`].trim() } : {}) } }
+          const t = { vehicleId: v, connectionId: c, campaignKey: campaignKeyFor(f as SocialFormat, local), overrides: socialOv(v, f) }
           byTime.set(local, [...(byTime.get(local) ?? []), t])
         }
         for (const [local, targets] of byTime) calls.push({ targets, mode: 'AGENDAR', scheduledLocal: local })
