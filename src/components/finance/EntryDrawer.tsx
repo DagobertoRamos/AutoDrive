@@ -91,10 +91,6 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
       fetch('/api/suppliers?ativos=1', { credentials: 'include' }).then((r) => r.json()).catch(() => null),
     ]).then(([a, s]) => { setAccounts(a?.data ?? []); setSuppliers(s?.data ?? []) })
   }, [])
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const e = d?.entry
   const editableCost = !!e && e.type === 'DESPESA' && !e.commissionLinked && !e.serviceLinked
@@ -145,7 +141,7 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-modal="true">
       <div className="flex h-full w-full max-w-2xl flex-col bg-gray-50 shadow-2xl" onClick={(ev) => ev.stopPropagation()}>
         {/* Cabeçalho */}
         <div className="border-b border-gray-200 bg-white px-5 py-4">

@@ -119,7 +119,7 @@ export const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 
 export function Drawer({ open, onClose, title, subtitle, children, wide }: { open: boolean; onClose: () => void; title: string; subtitle?: string; children: React.ReactNode; wide?: boolean }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') onClose() }} role="presentation">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="presentation">
       <div role="dialog" aria-modal="true" aria-label={title} className={cn('flex h-full w-full flex-col bg-white shadow-2xl', wide ? 'max-w-3xl' : 'max-w-xl')} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="min-w-0"><h2 className="truncate text-lg font-bold text-gray-900">{title}</h2>{subtitle && <p className="truncate text-xs text-gray-500">{subtitle}</p>}</div>

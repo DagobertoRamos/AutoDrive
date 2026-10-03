@@ -177,7 +177,7 @@ function PromoEditor({ row, onClose, onSaved }: { row: Row; onClose: () => void;
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
       <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-2">
           <div><h2 className="text-lg font-bold text-gray-900">{hasPromo ? 'Editar promoção' : 'Criar promoção'}</h2><p className="text-xs text-gray-500">{row.title}</p></div>

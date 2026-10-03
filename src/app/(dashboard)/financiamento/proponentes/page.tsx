@@ -200,7 +200,7 @@ export default function ProponentesPage() {
       </div>
 
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
           <div className="my-4 w-full max-w-3xl rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar proponente' : 'Novo proponente'}</h2>

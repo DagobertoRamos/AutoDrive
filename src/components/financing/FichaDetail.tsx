@@ -250,7 +250,7 @@ export default function FichaDetail({ id }: { id: string }) {
 
       {/* Análise de documento por IA */}
       {docAnalysis && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setDocAnalysis(null)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
           <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-base font-bold text-gray-900"><Bot size={16} className="text-brand-600" />Análise: {docAnalysis.type}</h2>

@@ -164,13 +164,6 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
     } catch { setError('Erro de rede. Tente de novo.') } finally { setLoading(false) }
   }
 
-  // Fechar com Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
-
   const handleResolve = async () => {
     setLoading(true)
     setError('')
@@ -214,7 +207,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden p-2 sm:p-4">
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
       {/* Modal */}
       <div className="relative z-10 flex max-h-[90dvh] w-full max-w-[calc(100vw-1rem)] flex-col rounded-xl bg-white shadow-2xl sm:max-w-2xl">

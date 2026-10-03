@@ -248,7 +248,7 @@ export default function MinhaVezPanel() {
 
       {/* Popup — atender cliente (registrar chegada / chamar responsável / pós-vendas / agendamento) */}
       {customerOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3" onClick={() => setCustomerOpen(false)}>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-3">
           <div className="mx-auto my-4 w-full max-w-[min(28rem,calc(100vw-1.5rem))]" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-base font-bold text-white drop-shadow">Atender cliente</h3>
@@ -260,7 +260,7 @@ export default function MinhaVezPanel() {
       )}
 
       {finishOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
           <div className="max-h-[92vh] w-full max-w-[min(28rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-5" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-3 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
             <div className="space-y-3">

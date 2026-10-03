@@ -83,7 +83,7 @@ export default function FinancingContractsPage() {
       </div>
 
       {contract && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 print:bg-white print:p-0" onClick={() => setContract(null)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 print:bg-white print:p-0">
           <div className="my-6 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl print:my-0 print:max-w-none print:shadow-none" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between print:hidden">
               <h2 className="text-lg font-bold text-gray-900">Resumo do contrato</h2>

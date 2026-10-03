@@ -29,7 +29,7 @@ export default function CloseReasonModal({ outcome, leadName, onClose, onConfirm
   }
 
   return (
-    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4">
       <div role="dialog" aria-modal="true" aria-label={TITLES[outcome]} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white">{TITLES[outcome]}</h3>

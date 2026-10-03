@@ -102,7 +102,7 @@ function TransferModal({ leadId, currentName, onClose, onDone }: { leadId: strin
   }
 
   return (
-    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900 dark:text-white">Transferir lead</h3>
@@ -775,7 +775,7 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
   }
 
   return (
-    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-800" onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-bold text-gray-900 dark:text-white">{titles[action] ?? action}</h3>

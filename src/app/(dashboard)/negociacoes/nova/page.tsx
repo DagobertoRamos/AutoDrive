@@ -493,6 +493,25 @@ function Field({
 
 // ── VehicleCard — card rico com detalhes do veículo ──────────────────────────
 
+/**
+ * Reconstrói o card do veículo do estoque a partir do que já está no form.
+ * O objeto rico da busca vive só enquanto a etapa está montada; sem isto o
+ * veículo "sumia" ao voltar de etapa, editar a negociação ou abrir rascunho —
+ * e só o usuário pode remover um veículo selecionado.
+ */
+function stockFromForm(v: VehicleFields): StockVehicle | null {
+  if (!v.vehicleId) return null
+  const year = v.year ? Number(v.year) : null
+  return {
+    id: v.vehicleId, plate: v.plate || null, brand: v.brand || null, model: v.model || null,
+    version: v.version || null, year, modelYear: year, km: v.km ? Number(v.km) : null,
+    color: v.color || null, fuel: v.fuel || null, conditionType: null,
+    salePrice: parseBRLInput(v.vehicleValue) ?? null, fipeValue: parseBRLInput(v.fipeValue) ?? null,
+    stockStatus: '', cautelarStatus: null, mainPhotoUrl: null, entryDate: null,
+    stockPendencies: [], _count: { photos: 0, stockPendencies: 0 },
+  }
+}
+
 function VehicleCard({
   v,
   onSelect,
@@ -1992,8 +2011,14 @@ function StepVeiculos({
   lockVehicleValue?: boolean
 }) {
   // Veículo do estoque selecionado (objeto rico com cautelar etc.)
-  const [selectedStock, setSelectedStock]       = useState<StockVehicle | null>(null)
-  const [selectedTradeStock, setSelectedTradeStock] = useState<StockVehicle | null>(null)
+  const [pickedStock, setSelectedStock] = useState<StockVehicle | null>(null)
+  const selectedStock = form.vehicle.vehicleId
+    ? (pickedStock?.id === form.vehicle.vehicleId ? pickedStock : stockFromForm(form.vehicle))
+    : null
+  // Veículos vindos de avaliação: na edição/rascunho o evaluationId pode não
+  // vir junto, então "tem veículo" = há dados do veículo no form.
+  const hasMainVehicle  = !!(form.vehicle.evaluationId || form.vehicle.plate || form.vehicle.brand)
+  const hasTradeVehicle = !!(form.tradeVehicle.evaluationId || form.tradeVehicle.plate || form.tradeVehicle.brand)
   // Placa da troca: editável só quando a avaliação veio sem placa válida
   // (mantém o campo aberto enquanto o usuário digita).
   const [plateEditEvalId, setPlateEditEvalId] = useState<string | null>(null)
@@ -2257,7 +2282,7 @@ function StepVeiculos({
               <h3 className="font-semibold text-purple-900">Veículo Recebido na Troca <RequiredMark /></h3>
             </div>
 
-            {!form.tradeVehicle.evaluationId ? (
+            {!hasTradeVehicle ? (
               <div className="rounded-xl border-2 border-dashed border-purple-300 bg-purple-50/40 p-6 text-center space-y-3">
                 <p className="text-sm text-purple-900 font-medium">Nenhum veículo da troca adicionado.</p>
                 <p className="text-xs text-purple-700/80">
@@ -2311,6 +2336,7 @@ function StepVeiculos({
                     onClick={() => {
                       if (!confirm('Remover este veículo da troca?')) return
                       setTradeVehicleField('evaluationId', null)
+                      setTradeVehicleField('vehicleId', null)
                       setTradeVehicleField('plate', '')
                       setTradeVehicleField('brand', '')
                       setTradeVehicleField('model', '')
@@ -2406,7 +2432,7 @@ function StepVeiculos({
           </div>
 
           {/* Avaliação já selecionada: card resumo + ações de trocar/remover */}
-          {form.vehicle.evaluationId && (
+          {hasMainVehicle && (
             <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50/40 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -2430,6 +2456,7 @@ function StepVeiculos({
                   onClick={() => {
                     if (!confirm('Trocar avaliação selecionada?')) return
                     setVehicleField('evaluationId', '')
+                    setVehicleField('vehicleId', null)
                     setVehicleField('plate', '')
                     setVehicleField('brand', '')
                     setVehicleField('model', '')
@@ -2450,7 +2477,7 @@ function StepVeiculos({
           )}
 
           {/* Seleção: busca avaliação OU faz nova */}
-          {!form.vehicle.evaluationId && (
+          {!hasMainVehicle && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
@@ -2474,7 +2501,7 @@ function StepVeiculos({
           {/* Quando avaliação está selecionada, mostramos APENAS o toggle de
               financiamento — os dados do veículo já estão no card acima.
               Mantemos o VehicleFormBlock só pra reusar a lógica do quitação. */}
-          {form.vehicle.evaluationId && (
+          {hasMainVehicle && (
             <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
@@ -2539,14 +2566,14 @@ function StepVeiculos({
                 onClose={() => setShowEvalModalConsig(false)}
               />
             )}
-            {form.vehicle.evaluationId ? (
+            {hasMainVehicle ? (
               <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 px-4 py-3">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Veículo liberado selecionado</p>
                   <p className="text-sm font-bold text-gray-900">{[form.vehicle.brand, form.vehicle.model, form.vehicle.year].filter(Boolean).join(' ')}{form.vehicle.plate && <span className="ml-2 font-mono text-xs text-gray-500">{form.vehicle.plate}</span>}</p>
                   {form.vehicle.vehicleId && <p className="text-[11px] text-emerald-700">Já está no estoque: a negociação de entrada será vinculada a ele.</p>}
                 </div>
-                <button type="button" onClick={() => { setVehicleField('evaluationId', ''); setVehicleField('vehicleId', null) }} className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Trocar</button>
+                <button type="button" onClick={() => { for (const k of ['plate', 'brand', 'model', 'year', 'km', 'color', 'fuel', 'vehicleValue', 'evaluatedValue', 'fipeValue'] as const) setVehicleField(k, ''); setVehicleField('evaluationId', ''); setVehicleField('vehicleId', null) }} className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Trocar</button>
               </div>
             ) : (
               <button type="button" onClick={() => setShowEvalModalConsig(true)}
@@ -3001,7 +3028,7 @@ function PaymentModal({
   const needsAgConta     = entry.type === 'TRANSFERENCIA'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
           <h3 className="text-base font-semibold text-gray-900">
@@ -3259,7 +3286,7 @@ function ChangeModal({
   onClose:   () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
           <h3 className="text-base font-semibold text-gray-900">Cadastrar Troco</h3>
@@ -4416,11 +4443,11 @@ export default function NovaNegociacaoPage() {
           plate:          v?.plate   ?? '',
           brand:          v?.brand   ?? '',
           model:          v?.model   ?? '',
-          version:        '',
+          version:        v?.vehicle?.version ?? '',
           year:           v?.year    ? String(v.year) : '',
           color:          v?.color   ?? '',
           km:             v?.km      ? String(v.km)  : '',
-          fuel:           '',
+          fuel:           v?.vehicle?.fuel ?? '',
           condition:      v?.condition ?? 'USADO',
           vehicleValue:   num(v?.agreedValue),
           fipeValue:      num(v?.fipeValue),

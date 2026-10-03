@@ -131,7 +131,7 @@ function ListingEditor({ row, onClose, onSave, busy, error }: { row: Row; onClos
   const set = (p: Partial<Listing>) => setL((x) => ({ ...x, ...p }))
   const autoSeo = `${row.title}${row.modelYear ? ` ${row.modelYear}` : ''} — ${money(row.price)}`
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
       <div className="h-full w-full max-w-lg overflow-y-auto bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-2">
           <div><h2 className="text-lg font-bold text-gray-900">Anúncio no site</h2><p className="text-xs text-gray-500">{row.title}</p></div>

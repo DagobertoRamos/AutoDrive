@@ -34,7 +34,7 @@ export default function SummarizeReportButton({ title, data, className }: { titl
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
           <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-base font-bold text-gray-900"><Sparkles size={16} className="text-brand-600" />Resumo: {title}</h2>

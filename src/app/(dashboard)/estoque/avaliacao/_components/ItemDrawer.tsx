@@ -145,7 +145,7 @@ export function ItemDrawer({ item, isReopen, readOnly, existingPhotos = [], onSa
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={() => onClose(dirty)} />
+      <div className="fixed inset-0 z-40 bg-black/40" />
       <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[460px] flex-col bg-white shadow-2xl">
         <header className="flex items-center justify-between gap-3 border-b border-gray-200 px-5 py-3.5">
           <div className="min-w-0">

@@ -335,7 +335,7 @@ function QuickCreateDrawer({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/30" />
       <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-xl flex flex-col">
         <header className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
           <h3 className="text-base font-semibold text-gray-900">Cadastrar cliente rápido</h3>

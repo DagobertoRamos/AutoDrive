@@ -45,7 +45,7 @@ export default function RequestAttendanceAuth() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900">Pedir autorização de atendimento</h3>

@@ -195,7 +195,7 @@ export default function SimulationManager() {
 
       {/* ── Detalhe ── */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setDetail(null)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
           <div className="my-4 w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <div><h2 className="text-lg font-bold text-gray-900">{detail.vehicle ?? 'Simulação'}</h2><p className="text-xs text-gray-500">{detail.proponentNome ?? 'Sem proponente'} · {fmt(detail.financedAmount)} financiado · {detail.installments}x</p></div>

@@ -333,7 +333,7 @@ function Drawer({ open, onClose, title, children, width = 'max-w-xl' }: {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" />
       <div className={`relative ml-auto h-full w-full ${width} bg-white shadow-2xl flex flex-col`}>
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
           <h3 className="text-sm font-semibold text-gray-900">{title}</h3>

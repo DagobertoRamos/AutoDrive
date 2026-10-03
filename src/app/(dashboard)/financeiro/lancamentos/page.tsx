@@ -177,7 +177,7 @@ export default function FinanceEntriesPage() {
       {detailId && <EntryDrawer entryId={detailId} onClose={() => setDetailId(null)} onChanged={() => void load()} />}
 
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editing ? 'Editar lançamento' : 'Novo lançamento'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">

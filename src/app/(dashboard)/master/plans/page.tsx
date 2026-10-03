@@ -598,7 +598,6 @@ export default function MasterPlansPage() {
           {/* Overlay */}
           <div
             className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
-            onClick={closeDrawer}
           />
 
           {/* Painel */}

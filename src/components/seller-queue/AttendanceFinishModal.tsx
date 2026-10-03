@@ -88,7 +88,7 @@ export default function AttendanceFinishModal({ attendanceId, visitType, arrival
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 sm:items-center">
       <div className="max-h-[92vh] w-full max-w-[min(28rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-3 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
         {err && <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={15} />{err}</div>}
