@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Shield, X, Save, CheckCircle, AlertCircle, Power } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -72,10 +73,10 @@ function inputClass(extra?: string) {
   )
 }
 
-function MoneyField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function MoneyField({ label, value, onChange, required }: { label: string; value: number; onChange: (v: number) => void; required?: boolean }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-medium text-gray-700">{label}</label>
+      <label className="mb-1.5 block text-xs font-medium text-gray-700">{label}{required && <RequiredMark className="ml-0.5" />}</label>
       <input
         type="text" inputMode="numeric" className={inputClass()}
         value={maskBRL(value ? Math.round(value * 100).toString() : '')}
@@ -115,9 +116,11 @@ function Modal({
   error: string | null
 }) {
   const [form, setForm] = useState<WarrantyForm>(emptyForm)
+  const [formErr, setFormErr] = useState('')
 
   useEffect(() => {
     if (!open) return
+    setFormErr('')
     if (initial) {
       setForm({
         name: initial.name, provider: initial.provider ?? '', coverageType: initial.coverageType ?? '',
@@ -137,8 +140,19 @@ function Modal({
 
   if (!open) return null
 
-  const set = <K extends keyof WarrantyForm>(key: K, value: WarrantyForm[K]) =>
+  const set = <K extends keyof WarrantyForm>(key: K, value: WarrantyForm[K]) => {
+    setFormErr('')
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const validate = (): string => {
+    if (form.name.trim().length < 2) return 'Informe o nome da garantia.'
+    if (form.fullPrice <= 0 || form.reducedPrice <= 0) return 'Informe o valor cheio e o valor com desconto.'
+    if (form.reducedPrice > form.fullPrice) return 'Valor com desconto não pode ser maior que o valor cheio.'
+    if (form.fullSaleCommissionValue < form.reducedSaleCommissionValue) return 'Comissão cheia deve ser maior ou igual à comissão com desconto.'
+    if (form.hasPremiumAddon && (!form.premiumAddonName.trim() || form.premiumAddonValue <= 0)) return 'Informe o nome e o valor do adicional.'
+    return ''
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -156,30 +170,39 @@ function Modal({
           </button>
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); onSave(form) }} className="space-y-4 px-6 py-5">
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            const msg = validate()
+            if (msg) { setFormErr(msg); return }
+            onSave(form)
+          }}
+          className="space-y-4 px-6 py-5"
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome da garantia *</label>
-              <input required className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Garantia Excelente" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome da garantia<RequiredMark className="ml-0.5" /></label>
+              <input className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Tempo *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Tempo<RequiredMark className="ml-0.5" /></label>
               <select className={inputClass()} value={form.durationYears} onChange={(e) => set('durationYears', Number(e.target.value) === 2 ? 2 : 1)}>
                 <option value={1}>01 ano</option>
                 <option value={2}>02 anos</option>
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Descrição / cobertura</label>
-              <input className={inputClass()} value={form.coverageType} onChange={(e) => set('coverageType', e.target.value)} placeholder="Ex: 150 itens" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cobertura</label>
+              <input className={inputClass()} value={form.coverageType} onChange={(e) => set('coverageType', e.target.value)} />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Fornecedor / Seguradora</label>
-              <input className={inputClass()} value={form.provider} onChange={(e) => set('provider', e.target.value)} placeholder="Nome do fornecedor" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Fornecedor / seguradora</label>
+              <input className={inputClass()} value={form.provider} onChange={(e) => set('provider', e.target.value)} />
             </div>
 
-            <MoneyField label="Valor cheio (R$) *" value={form.fullPrice} onChange={(v) => set('fullPrice', v)} />
-            <MoneyField label="Valor com desconto (R$) *" value={form.reducedPrice} onChange={(v) => set('reducedPrice', v)} />
+            <MoneyField required label="Valor cheio (R$)" value={form.fullPrice} onChange={(v) => set('fullPrice', v)} />
+            <MoneyField required label="Valor com desconto (R$)" value={form.reducedPrice} onChange={(v) => set('reducedPrice', v)} />
             <MoneyField label="Comissão valor cheio (R$)" value={form.fullSaleCommissionValue} onChange={(v) => set('fullSaleCommissionValue', v)} />
             <MoneyField label="Comissão valor com desconto (R$)" value={form.reducedSaleCommissionValue} onChange={(v) => set('reducedSaleCommissionValue', v)} />
           </div>
@@ -190,10 +213,10 @@ function Modal({
             {form.hasPremiumAddon && (
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do adicional *</label>
-                  <input className={inputClass()} value={form.premiumAddonName} onChange={(e) => set('premiumAddonName', e.target.value)} placeholder="Prêmio/Luxo" />
+                  <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do adicional<RequiredMark className="ml-0.5" /></label>
+                  <input className={inputClass()} value={form.premiumAddonName} onChange={(e) => set('premiumAddonName', e.target.value)} />
                 </div>
-                <MoneyField label="Valor adicional (R$) *" value={form.premiumAddonValue} onChange={(v) => set('premiumAddonValue', v)} />
+                <MoneyField required label="Valor adicional (R$)" value={form.premiumAddonValue} onChange={(v) => set('premiumAddonValue', v)} />
                 <MoneyField label="Comissão adicional (R$)" value={form.premiumAddonCommissionValue} onChange={(v) => set('premiumAddonCommissionValue', v)} />
               </div>
             )}
@@ -201,14 +224,14 @@ function Modal({
 
           <div>
             <label className="mb-1.5 block text-xs font-medium text-gray-700">Observações</label>
-            <textarea rows={2} className={inputClass('resize-none')} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Condições, vigência..." />
+            <textarea rows={2} className={inputClass('resize-none')} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
           </div>
 
           <ToggleRow label="Garantia ativa" checked={form.active} onChange={(v) => set('active', v)} />
 
-          {error && (
+          {(formErr || error) && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-              <AlertCircle className="h-4 w-4 shrink-0" />{error}
+              <AlertCircle className="h-4 w-4 shrink-0" />{formErr || error}
             </div>
           )}
 
@@ -261,7 +284,7 @@ export default function GarantiasPage() {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) })
       if (!res.ok) throw new Error((await res.json())?.error ?? 'Erro ao salvar')
       setModalOpen(false)
-      flash(editing ? 'Garantia atualizada!' : 'Garantia criada!')
+      flash(editing ? 'Garantia atualizada.' : 'Garantia criada.')
       await fetchData()
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Erro ao salvar.')
@@ -289,7 +312,6 @@ export default function GarantiasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Garantias</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure garantias com tempo, valor cheio, valor com desconto e comissões fixas.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800">
           <Plus className="h-4 w-4" />Nova Garantia
@@ -324,7 +346,7 @@ export default function GarantiasPage() {
               ) : warranties.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
-                    Nenhuma garantia cadastrada. <button onClick={openCreate} className="text-brand-600 hover:underline">Criar agora</button>
+                    Nenhuma garantia cadastrada.
                   </td>
                 </tr>
               ) : (

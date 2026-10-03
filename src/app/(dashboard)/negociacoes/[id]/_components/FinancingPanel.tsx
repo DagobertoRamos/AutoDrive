@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Banknote, Plus, FolderOpen, CheckCircle2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Proposal { id: string; status: string; proponentNome: string; bankNome: string | null; amountRequested: number; approvedValue: number; monthlyPayment: number; installments: number | null; createdAt: string }
 interface Proponent { id: string; name: string }
@@ -113,10 +114,9 @@ export default function FinancingPanel({ dealId, canEdit, onReload, onToast }: {
           <div className="my-8 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">Nova ficha de F&amp;I</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Proponente <span className="text-red-500">*</span></label><select className={inputCls} value={form.proponentId} onChange={(e) => setForm((f) => ({ ...f, proponentId: e.target.value }))}><option value="">Selecione...</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>{proponents.length === 0 && <p className="mt-1 text-[11px] text-amber-600">Cadastre um proponente em F&amp;I &gt; Proponentes primeiro.</p>}</div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco (opcional)</label><select className={inputCls} value={form.bankId} onChange={(e) => setForm((f) => ({ ...f, bankId: e.target.value }))}><option value="">—</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcelas (opcional)</label><input type="number" min={1} className={inputCls} value={form.installments} onChange={(e) => setForm((f) => ({ ...f, installments: e.target.value }))} placeholder="Ex: 48" /></div>
-              <p className="text-[11px] text-gray-400">O valor financiado é puxado da negociação. Ajuste os detalhes na ficha.</p>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Proponente <RequiredMark /></label><select className={inputCls} value={form.proponentId} onChange={(e) => setForm((f) => ({ ...f, proponentId: e.target.value }))}><option value="">Selecione...</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>{proponents.length === 0 && <p className="mt-1 text-[11px] text-amber-600">Nenhum proponente cadastrado.</p>}</div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco</label><select className={inputCls} value={form.bankId} onChange={(e) => setForm((f) => ({ ...f, bankId: e.target.value }))}><option value="">—</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcelas</label><input type="number" min={1} className={inputCls} value={form.installments} onChange={(e) => setForm((f) => ({ ...f, installments: e.target.value }))} placeholder="48" /></div>
             </div>
             <div className="mt-5 flex justify-end gap-2"><button onClick={() => setModal(false)} className="btn-secondary text-sm">Cancelar</button><button onClick={create} disabled={saving} className="btn-primary text-sm">{saving ? 'Criando...' : 'Criar ficha'}</button></div>
           </div>

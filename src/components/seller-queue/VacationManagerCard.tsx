@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Palmtree, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Vacation {
   id: string
@@ -83,6 +84,7 @@ export default function VacationManagerCard() {
   const create = async () => {
     setError(''); setOk('')
     if (!sellerId) { setError('Selecione o colaborador.'); return }
+    if (!startAt || !endAt) { setError('Informe o período.'); return }
     if (endAt < startAt) { setError('A data final deve ser igual ou depois da inicial.'); return }
     setBusy('create')
     try {
@@ -114,10 +116,7 @@ export default function VacationManagerCard() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Palmtree size={17} className="text-brand-600" />Férias e Ausências</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Colaborador com ausência em vigor não entra na fila, não vira vendedor da vez e não recebe chamada.</p>
-        </div>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Palmtree size={17} className="text-brand-600" />Férias e Ausências</h2>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
 
@@ -127,24 +126,24 @@ export default function VacationManagerCard() {
       {/* Formulário de nova ausência */}
       <div className="mt-4 grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-2 lg:grid-cols-6">
         <div className="lg:col-span-2">
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Colaborador</label>
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Colaborador <RequiredMark /></label>
           <select value={sellerId} onChange={(e) => setSellerId(e.target.value)} className={inputCls}>
             <option value="">Selecione…</option>
             {sellers.map((s) => <option key={s.sellerId} value={s.sellerId}>{s.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Tipo</label>
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Tipo <RequiredMark /></label>
           <select value={type} onChange={(e) => setType(e.target.value)} className={inputCls}>
             {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Início</label>
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Início <RequiredMark /></label>
           <input type="date" value={startAt} onChange={(e) => setStartAt(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Fim</label>
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Fim <RequiredMark /></label>
           <input type="date" value={endAt} onChange={(e) => setEndAt(e.target.value)} className={inputCls} />
         </div>
         <div className="flex items-end">
@@ -153,7 +152,7 @@ export default function VacationManagerCard() {
           </button>
         </div>
         <div className="lg:col-span-5">
-          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo (opcional)" className={inputCls} />
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo" className={inputCls} />
         </div>
         <label className="flex items-center gap-2 text-xs text-gray-600 lg:col-span-1">
           <input type="checkbox" checked={autoReturn} onChange={(e) => setAutoReturn(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />

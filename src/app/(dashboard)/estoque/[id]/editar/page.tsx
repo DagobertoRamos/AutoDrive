@@ -12,6 +12,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
+import { RequiredMark } from '@/components/ui/field'
+import { isValidPlate } from '@/lib/vehicles/plate'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const labelCls = 'block text-xs font-medium text-gray-600'
@@ -46,7 +48,14 @@ export default function EditarVeiculoPage({ params }: { params: Promise<{ id: st
   async function save(e: React.FormEvent) {
     e.preventDefault()
     if (!form || !initial) return
-    if (!form.brand.trim() || !form.model.trim()) { setError('Marca e modelo são obrigatórios.'); return }
+    if (!form.brand.trim()) { setError('Informe a marca.'); return }
+    if (!form.model.trim()) { setError('Informe o modelo.'); return }
+    // Ano e placa: obrigatórios, mas fichas legadas/importadas sem o dado
+    // continuam editáveis (só não se pode apagar um valor existente).
+    if (!form.year.trim() && initial.year.trim()) { setError('Informe o ano de fabricação.'); return }
+    if (!form.modelYear.trim() && initial.modelYear.trim()) { setError('Informe o ano do modelo.'); return }
+    if (!form.plate.trim() && initial.plate.trim()) { setError('Informe a placa.'); return }
+    if (form.plate.trim() && form.plate !== initial.plate && !isValidPlate(form.plate)) { setError('Placa inválida.'); return }
     // Envia só o que mudou; número vazio não é enviado (não zera o campo).
     const body: Record<string, string | number> = {}
     for (const k of FIELDS) {
@@ -72,8 +81,8 @@ export default function EditarVeiculoPage({ params }: { params: Promise<{ id: st
     return <p className="p-6 text-sm text-gray-600">Sem permissão para editar veículos.</p>
   }
 
-  const text = (k: keyof Form, label: string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
-    <label className={labelCls}>{label}<input className={inputCls} value={form?.[k] ?? ''} onChange={(e) => set(k, e.target.value)} autoComplete="off" {...extra} /></label>
+  const text = (k: keyof Form, label: string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}, req = false) => (
+    <label className={labelCls}>{label}{req && <> <RequiredMark /></>}<input className={inputCls} value={form?.[k] ?? ''} onChange={(e) => set(k, e.target.value)} autoComplete="off" {...extra} /></label>
   )
   const select = (k: keyof Form, label: string, opts: string[][]) => (
     <label className={labelCls}>{label}
@@ -88,10 +97,7 @@ export default function EditarVeiculoPage({ params }: { params: Promise<{ id: st
   return (
     <div className="max-w-3xl space-y-5">
       <Link href={`/estoque/${id}`} className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"><ArrowLeft className="h-4 w-4" />Voltar à ficha</Link>
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Editar veículo</h1>
-        <p className="text-sm text-gray-500">Corrija a identificação e os dados técnicos. Preço e fotos ficam na ficha do veículo.</p>
-      </div>
+      <h1 className="text-xl font-bold text-gray-900">Editar veículo</h1>
 
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
@@ -100,11 +106,11 @@ export default function EditarVeiculoPage({ params }: { params: Promise<{ id: st
           <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-gray-800">Modelo</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {text('brand', 'Marca *')}
-              {text('model', 'Modelo *')}
-              <div className="sm:col-span-2">{text('version', 'Versão', { placeholder: 'Ex.: 2.0 TSI 16V Turbo Automático' })}</div>
-              {text('year', 'Ano de fabricação', { inputMode: 'numeric', maxLength: 4 })}
-              {text('modelYear', 'Ano do modelo', { inputMode: 'numeric', maxLength: 4 })}
+              {text('brand', 'Marca', {}, true)}
+              {text('model', 'Modelo', {}, true)}
+              <div className="sm:col-span-2">{text('version', 'Versão', { placeholder: 'Ex.: 2.0 TSI Automático' })}</div>
+              {text('year', 'Ano de fabricação', { inputMode: 'numeric', maxLength: 4 }, true)}
+              {text('modelYear', 'Ano do modelo', { inputMode: 'numeric', maxLength: 4 }, true)}
             </div>
           </section>
 
@@ -122,7 +128,7 @@ export default function EditarVeiculoPage({ params }: { params: Promise<{ id: st
           <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-gray-800">Documentação</h2>
             <div className="grid gap-3 sm:grid-cols-3">
-              {text('plate', 'Placa', { maxLength: 8, style: { textTransform: 'uppercase' } })}
+              {text('plate', 'Placa', { maxLength: 8, style: { textTransform: 'uppercase' } }, true)}
               {text('chassi', 'Chassi', { maxLength: 17, style: { textTransform: 'uppercase' } })}
               {text('renavam', 'Renavam', { inputMode: 'numeric', maxLength: 11 })}
             </div>

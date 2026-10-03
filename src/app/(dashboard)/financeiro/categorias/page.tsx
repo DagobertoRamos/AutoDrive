@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Tags, X, Save, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import SearchBox from '@/components/reports/SearchBox'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Category { id: string; name: string; kind: 'RECEITA' | 'DESPESA'; color: string | null; active: boolean }
 interface Form { name: string; kind: 'RECEITA' | 'DESPESA'; color: string; active: boolean }
@@ -71,7 +72,7 @@ export default function FinanceCategoriesPage() {
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${filtered.length}${term ? ` de ${items.length}` : ''} categorias`}</p>
         </div>
         <div className="flex items-center gap-2">
-          <SearchBox value={q} onChange={setQ} placeholder="Buscar categoria..." className="w-56" />
+          <SearchBox value={q} onChange={setQ} placeholder="Buscar categoria" className="w-56" />
           <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova categoria</button>
         </div>
       </div>
@@ -83,7 +84,7 @@ export default function FinanceCategoriesPage() {
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 4 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={4} className="py-14 text-center"><Tags size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">{term ? 'Nenhuma categoria encontrada para a busca.' : 'Nenhuma categoria. Crie a primeira.'}</p></td></tr>
+              <tr><td colSpan={4} className="py-14 text-center"><Tags size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">{term ? 'Nenhuma categoria encontrada para a busca.' : 'Nenhuma categoria.'}</p></td></tr>
             ) : (
               filtered.map((c) => (
                 <tr key={c.id} className={cn('hover:bg-gray-50', !c.active && 'opacity-50')}>
@@ -106,8 +107,8 @@ export default function FinanceCategoriesPage() {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editing ? 'Editar categoria' : 'Nova categoria'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Nome</label><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Aluguel, Comissões, Vendas..." /></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo</label><select className={inputClass} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as Form['kind'] })}><option value="DESPESA">Despesa</option><option value="RECEITA">Receita</option></select></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Nome<RequiredMark className="ml-0.5" /></label><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo<RequiredMark className="ml-0.5" /></label><select className={inputClass} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as Form['kind'] })}><option value="DESPESA">Despesa</option><option value="RECEITA">Receita</option></select></div>
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
             <div className="mt-5 flex justify-end gap-2">

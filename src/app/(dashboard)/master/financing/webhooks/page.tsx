@@ -49,7 +49,7 @@ export default function MasterWebhooksPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Webhook size={20} className="text-brand-600" />Webhooks F&amp;I</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Receptor de retorno dos provedores. {summary.total} evento(s){summary.pending > 0 ? ` · ${summary.pending} não processado(s)` : ''}.</p>
+          <p className="mt-0.5 text-sm text-gray-500">{summary.total} evento(s){summary.pending > 0 ? ` · ${summary.pending} não processado(s)` : ''}.</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
@@ -59,12 +59,11 @@ export default function MasterWebhooksPage() {
         {enabled ? <ShieldCheck size={18} className="mt-0.5 shrink-0 text-green-600" /> : <ShieldAlert size={18} className="mt-0.5 shrink-0 text-amber-600" />}
         <div className="text-sm">
           <p className={cn('font-semibold', enabled ? 'text-green-800' : 'text-amber-800')}>{enabled ? 'Receptor ativo' : 'Receptor desativado'}</p>
-          <p className="mt-0.5 text-gray-600">{enabled ? 'O endpoint aceita retornos autenticados pelo segredo.' : 'Defina FINANCE_WEBHOOK_SECRET (≥8 caracteres) no ambiente para ativar.'}</p>
+          <p className="mt-0.5 text-gray-600">Defina FINANCE_WEBHOOK_SECRET (≥8 caracteres) no ambiente para ativar.</p>
           <div className="mt-2 rounded-lg bg-white/70 px-3 py-2 font-mono text-xs text-gray-700">
             POST <span className="text-brand-700">/api/webhook/financing/&lt;provedor&gt;</span>
             <span className="ml-2 text-gray-400">· header <code>x-webhook-secret</code> ou <code>?secret=</code></span>
           </div>
-          <p className="mt-1.5 text-[11px] text-gray-400">A assinatura oficial do provedor (HMAC) substitui o segredo compartilhado quando a integração for homologada.</p>
         </div>
       </div>
 
@@ -77,7 +76,7 @@ export default function MasterWebhooksPage() {
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
               ) : events.length === 0 ? (
-                <tr><td colSpan={6} className="py-14 text-center"><Webhook size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum webhook recebido ainda.</p></td></tr>
+                <tr><td colSpan={6} className="py-14 text-center"><Webhook size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum webhook recebido.</p></td></tr>
               ) : events.map((e) => (
                 <tr key={e.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">{e.provider ?? '—'}</td>

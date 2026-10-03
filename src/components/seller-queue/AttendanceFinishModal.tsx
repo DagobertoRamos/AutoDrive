@@ -11,6 +11,7 @@
 import { useState } from 'react'
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
+import { RequiredMark } from '@/components/ui/field'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base md:text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const TYPES = [['SALE', 'Venda'], ['EXCHANGE', 'Troca'], ['PURCHASE', 'Compra'], ['CONSIGNMENT', 'Consignação'], ['FINANCING', 'Financiamento'], ['AFTER_SALES', 'Pós-venda'], ['OTHER', 'Outro']] as const
@@ -52,9 +53,9 @@ export default function AttendanceFinishModal({ attendanceId, visitType, arrival
     setPickedCustomerId(m.customerId); setPickedLeadId(m.leadId)
   }
 
+  const isInfoRapida = visitType === 'INFORMACAO_RAPIDA'
   const finish = async () => {
     const name = capName(form.customerName.trim())
-    const isInfoRapida = visitType === 'INFORMACAO_RAPIDA'
     setErr(null)
     const validateCustomer = () => {
       if (!name) { setErr('Informe o nome do cliente.'); return false }
@@ -89,20 +90,19 @@ export default function AttendanceFinishModal({ attendanceId, visitType, arrival
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-[min(28rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-5" onClick={(e) => e.stopPropagation()}>
-        <h2 className="mb-1 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
-        <p className="mb-3 text-xs text-gray-500">Registre os dados do cliente e o resultado. Gera um lead de atendimento no seu nome.</p>
+        <h2 className="mb-3 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
         {err && <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={15} />{err}</div>}
         <div className="space-y-3">
-          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={form.customerName} onChange={(e) => { setForm((f) => ({ ...f, customerName: e.target.value })); clearPick() }} onBlur={() => setForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Ex.: Dagoberto Ramos de Francisco" /><CustomerLookup query={form.customerName} onPick={pickMatch} /></div>
-          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => { setForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) })); clearPick() }} placeholder="(11)9.9999-9999" /><CustomerLookup query={form.customerPhone} onPick={pickMatch} /></div>
-          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail (opcional)</label><input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => { setForm((f) => ({ ...f, customerEmail: e.target.value })); clearPick() }} placeholder="cliente@email.com" /><CustomerLookup query={form.customerEmail} onPick={pickMatch} /></div>
-          {pickedCustomerId && <p className="-mt-1 text-[11px] font-medium text-green-600">✓ Cliente existente selecionado — não vai duplicar.</p>}
+          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente {!isInfoRapida && <RequiredMark />}</label><input className={inputCls} value={form.customerName} onChange={(e) => { setForm((f) => ({ ...f, customerName: e.target.value })); clearPick() }} onBlur={() => setForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Nome completo" /><CustomerLookup query={form.customerName} onPick={pickMatch} /></div>
+          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone {!isInfoRapida && <RequiredMark />}</label><input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => { setForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) })); clearPick() }} placeholder="(11)9.9999-9999" /><CustomerLookup query={form.customerPhone} onPick={pickMatch} /></div>
+          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail</label><input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => { setForm((f) => ({ ...f, customerEmail: e.target.value })); clearPick() }} placeholder="cliente@email.com" /><CustomerLookup query={form.customerEmail} onPick={pickMatch} /></div>
+          {pickedCustomerId && <p className="-mt-1 text-[11px] font-medium text-green-600">Cliente existente selecionado.</p>}
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Resultado</label><select className={inputCls} value={form.result} onChange={(e) => setForm((f) => ({ ...f, result: e.target.value }))}>{RESULTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
           {closeReasons.length > 0 && (
             <div><label className="mb-1 block text-xs font-medium text-gray-700">Motivo</label><select className={inputCls} value={form.motivo} onChange={(e) => setForm((f) => ({ ...f, motivo: e.target.value }))}><option value="">— selecione —</option>{closeReasons.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
           )}
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações *</label><textarea rows={2} className={inputCls} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Obrigatório — resumo do atendimento" /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações <RequiredMark /></label><textarea rows={2} className={inputCls} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Resumo do atendimento" /></div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-[auto_auto] sm:justify-end">
           <button onClick={onClose} className="btn-secondary justify-center text-sm">Cancelar</button>

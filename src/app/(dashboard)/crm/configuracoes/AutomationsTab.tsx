@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import { Pencil, Plus, Trash2, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import { CRM_STAGE_OPTIONS } from '@/lib/crm/shared'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { describeAction, MAX_ACTIONS_PER_RULE, type AutomationAction, type AutomationRule, type AutomationTrigger } from '@/lib/crm/automations-core'
@@ -87,7 +88,7 @@ export default function AutomationsTab({ canManage }: { canManage: boolean }) {
   }
 
   return (
-    <Card title="Automações" hint="QUANDO algo acontece com o lead, SE ele atender às condições, ENTÃO o sistema executa as ações. Use {lead} nos textos para o nome do cliente.">
+    <Card title="Automações" hint="Use {lead} nos textos para o nome do cliente.">
       {s.items.length === 0 && !editing && <p className="py-6 text-center text-sm text-gray-400">Nenhuma automação. Exemplo: “Entrou em Proposta → criar tarefa de retorno em 24h e avisar o gerente”.</p>}
       <ul className="space-y-2">
         {s.items.map((r) => {
@@ -157,7 +158,10 @@ function RuleEditor({ rule, pipelines, tags, users, sources, leadTypes, temperat
 
   return (
     <div className="mt-3 space-y-4 rounded-xl border border-brand-200 bg-brand-50/40 p-4">
-      <input className={inputCls} placeholder="Nome da automação (ex.: Proposta enviada → retorno em 24h)" value={r.name} onChange={(e) => set({ name: e.target.value })} />
+      <div className="relative">
+        <input aria-required="true" className={cn(inputCls, 'pr-6')} placeholder="Nome da automação" value={r.name} onChange={(e) => set({ name: e.target.value })} />
+        <RequiredMark className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+      </div>
 
       <section>
         <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">Quando</h4>

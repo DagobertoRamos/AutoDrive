@@ -50,7 +50,7 @@ export default function AtendimentosPanel({ from, to }: { from?: string; to?: st
     try {
       const res = await fetch(`/api/seller-queue/attendances/${id}/manage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action }) })
       const j = await res.json().catch(() => ({}))
-      flash(res.ok ? `Atendimento: ${labels[action]} ✓` : (j?.error ?? 'Falha.'), res.ok); await load()
+      flash(res.ok ? `Atendimento: ${labels[action]}.` : (j?.error ?? 'Falha.'), res.ok); await load()
     } catch { flash('Erro de rede.', false) } finally { setBusy(null) }
   }
 

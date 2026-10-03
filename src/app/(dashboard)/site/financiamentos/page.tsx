@@ -51,10 +51,7 @@ export default function SiteFinancingPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><CircleDollarSign size={20} className="text-brand-600" />Financiamentos do site</h1>
-          <p className="text-sm text-gray-500">Pedidos de simulação feitos no site. Cada um já é um lead no CRM; o atendimento segue por lá.</p>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><CircleDollarSign size={20} className="text-brand-600" />Financiamentos do site</h1>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
             {[30, 90, 365].map((n) => <button key={n} onClick={() => setDays(n)} className={cn('rounded-md px-2.5 py-1 text-xs font-medium', days === n ? 'bg-brand-600 text-white' : 'text-gray-600 hover:bg-gray-50')}>{n === 365 ? '12 meses' : `${n} dias`}</button>)}

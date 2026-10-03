@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Entry {
   id: string; type: 'RECEITA' | 'DESPESA'; status: string; description: string; amount: number
@@ -78,6 +79,11 @@ export default function FinanceEntriesPage() {
   }
 
   const save = async () => {
+    const msg = form.description.trim().length < 2 ? 'Informe a descrição.'
+      : form.amount <= 0 ? 'Informe o valor.'
+      : !form.dueDate ? 'Informe o vencimento.'
+      : ''
+    if (msg) { setError(msg); return }
     setSaving(true); setError(null)
     try {
       const payload: Record<string, unknown> = {
@@ -132,7 +138,7 @@ export default function FinanceEntriesPage() {
       <div className="flex flex-wrap items-center gap-2">
         <select className={cn(inputClass, 'w-auto')} value={fType} onChange={(e) => setFType(e.target.value)}><option value="">Todos os tipos</option><option value="RECEITA">Receitas</option><option value="DESPESA">Despesas</option></select>
         <select className={cn(inputClass, 'w-auto')} value={fStatus} onChange={(e) => setFStatus(e.target.value)}><option value="">Todos os status</option><option value="PREVISTO">Previsto</option><option value="PAGO">Pago</option><option value="RECEBIDO">Recebido</option><option value="CANCELADO">Cancelado</option></select>
-        <SearchBox value={q} onChange={setQ} placeholder="Buscar: placa, negociação, nome, fornecedor, valor..." className="min-w-[280px] flex-1" />
+        <SearchBox value={q} onChange={setQ} placeholder="Placa, negociação, nome, fornecedor ou valor" className="min-w-[280px] flex-1" />
         <button onClick={load} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
 
@@ -144,10 +150,10 @@ export default function FinanceEntriesPage() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (<tr key={i}>{Array.from({ length: 8 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
               ) : items.length === 0 ? (
-                <tr><td colSpan={8} className="py-14 text-center"><Wallet size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum lançamento. Crie um ou use “Sincronizar”.</p></td></tr>
+                <tr><td colSpan={8} className="py-14 text-center"><Wallet size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum lançamento.</p></td></tr>
               ) : (
                 items.map((e) => (
-                  <tr key={e.id} onClick={() => setDetailId(e.id)} className="cursor-pointer hover:bg-gray-50" title="Abrir lançamento: detalhar custos e dar baixa">
+                  <tr key={e.id} onClick={() => setDetailId(e.id)} className="cursor-pointer hover:bg-gray-50">
                     <td className="px-4 py-3"><p className="font-medium text-gray-900">{e.description}</p>{e.source && e.source !== 'MANUAL' && <span className="text-[10px] uppercase tracking-wide text-brand-600">{sourceLabel(e.source)}</span>}</td>
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', e.type === 'RECEITA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600')}>{e.type === 'RECEITA' ? 'Receita' : 'Despesa'}</span></td>
                     <td className="px-4 py-3 text-gray-600">{e.category ?? '—'}</td>
@@ -175,21 +181,21 @@ export default function FinanceEntriesPage() {
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editing ? 'Editar lançamento' : 'Novo lançamento'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo</label><select className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Form['type'] })}><option value="DESPESA">Despesa</option><option value="RECEITA">Receita</option></select></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Status</label><select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Form['status'] })}><option value="PREVISTO">Previsto</option><option value="PAGO">Pago</option><option value="RECEBIDO">Recebido</option><option value="CANCELADO">Cancelado</option></select></div>
-              <div className="col-span-2"><label className="mb-1.5 block text-xs font-medium text-gray-700">Descrição</label><input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Ex: Conta de luz, Venda à vista..." /></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Valor</label><input type="text" inputMode="numeric" className={inputClass} value={maskBRL(form.amount ? Math.round(form.amount * 100).toString() : '')} onChange={(e) => setForm({ ...form, amount: parseBRL(maskBRL(e.target.value)) ?? 0 })} placeholder="0,00" /></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Vencimento</label><input type="date" className={inputClass} value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo<RequiredMark className="ml-0.5" /></label><select className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Form['type'] })}><option value="DESPESA">Despesa</option><option value="RECEITA">Receita</option></select></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Status<RequiredMark className="ml-0.5" /></label><select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Form['status'] })}><option value="PREVISTO">Previsto</option><option value="PAGO">Pago</option><option value="RECEBIDO">Recebido</option><option value="CANCELADO">Cancelado</option></select></div>
+              <div className="col-span-2"><label className="mb-1.5 block text-xs font-medium text-gray-700">Descrição<RequiredMark className="ml-0.5" /></label><input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Valor<RequiredMark className="ml-0.5" /></label><input type="text" inputMode="numeric" className={inputClass} value={maskBRL(form.amount ? Math.round(form.amount * 100).toString() : '')} onChange={(e) => setForm({ ...form, amount: parseBRL(maskBRL(e.target.value)) ?? 0 })} placeholder="0,00" /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Vencimento<RequiredMark className="ml-0.5" /></label><input type="date" className={inputClass} value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Categoria</label><select className={inputClass} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}><option value="">—</option>{categories.filter((c) => !c.kind || c.kind === form.type).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Conta</label><select className={inputClass} value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })}><option value="">—</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Competência</label><input type="date" className={inputClass} value={form.competenceDate} onChange={(e) => setForm({ ...form, competenceDate: e.target.value })} /></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Contraparte</label><input className={inputClass} value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} placeholder="Fornecedor / cliente" /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Fornecedor / cliente</label><input className={inputClass} value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} /></div>
               <div className="col-span-2"><label className="mb-1.5 block text-xs font-medium text-gray-700">Observações</label><input className={inputClass} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setModal(false)} className="btn-secondary text-sm">Cancelar</button>
-              <button onClick={save} disabled={saving || !form.description.trim() || form.amount <= 0} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button>
+              <button onClick={save} disabled={saving} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button>
             </div>
           </div>
         </div>

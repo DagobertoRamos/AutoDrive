@@ -61,7 +61,7 @@ export function CautelarPanel({ vehicleId, cautelarStatus, cautelarNumber, caute
     <div className="space-y-4">
       <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${ready.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
         {ready.ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <ShieldAlert size={16} className="mt-0.5 shrink-0" />}
-        <span>{ready.ok ? 'Perícia registrada com laudo: pendência resolvida.' : `Para resolver a perícia falta: ${ready.missing.join(' e ')}.`}</span>
+        <span>{ready.ok ? 'Perícia registrada com laudo.' : `Falta: ${ready.missing.join(' e ')}.`}</span>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -85,7 +85,7 @@ export function CautelarPanel({ vehicleId, cautelarStatus, cautelarNumber, caute
       )}
 
       <div className="rounded-xl border border-gray-200 p-3">
-        <p className="mb-2 text-sm font-semibold text-gray-900">Laudo cautelar (PDF ou imagens)</p>
+        <p className="mb-2 text-sm font-semibold text-gray-900">Laudo cautelar</p>
         <VehicleFilesField vehicleId={vehicleId} kind="LAUDO_CAUTELAR" files={files} canEdit={canEdit} onChange={async () => { await loadFiles(); await onSaved() }} />
         {evaluationLaudos.length > 0 && (
           <p className="mt-2 text-xs text-gray-500">

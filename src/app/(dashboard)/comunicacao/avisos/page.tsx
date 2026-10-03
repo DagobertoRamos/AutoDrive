@@ -42,13 +42,13 @@ export default function AvisosPage() {
     <div className="space-y-5">
       <div>
         <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Megaphone size={20} className="text-brand-600" />Avisos</h1>
-        <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} aviso(s) ativo(s) da plataforma`}</p>
+        <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} aviso(s) ativo(s)`}</p>
       </div>
 
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="h-20 animate-pulse rounded-xl bg-gray-100" />))}</div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><Megaphone size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum aviso ativo. 🎉</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><Megaphone size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum aviso ativo.</p></div>
       ) : (
         <div className="space-y-3">
           {items.map((n) => {

@@ -20,6 +20,9 @@ import {
   ChevronLeft, ChevronRight, X, Save, Plus, Eye, EyeOff,
   ExternalLink, Trash2,
 } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
+import { isValidCPF } from '@/lib/br-docs/cpf'
+import { isValidPhone } from '@/lib/br-docs/phone'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -168,6 +171,13 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    const msg =
+      !form.name.trim()  ? 'Informe o nome.' :
+      !form.email.trim() ? 'Informe o e-mail.' :
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) ? 'E-mail inválido.' :
+      form.phone && !isValidPhone(form.phone) ? 'Telefone inválido.' :
+      form.cpf && !isValidCPF(form.cpf) ? 'CPF inválido.' : ''
+    if (msg) { setError(msg); setTab('pessoal'); return }
     setSaving(true)
     try {
       const payload: Record<string, unknown> = {
@@ -253,12 +263,12 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
             {tab === 'pessoal' && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="md:col-span-2">
-                  <label className={labelCls}>Nome completo</label>
+                  <label className={labelCls}>Nome completo <RequiredMark /></label>
                   <input className={inputCls} value={form.name}
                     onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
                 </div>
                 <div>
-                  <label className={labelCls}>E-mail</label>
+                  <label className={labelCls}>E-mail <RequiredMark /></label>
                   <input type="email" className={inputCls} value={form.email}
                     onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
                 </div>
@@ -295,21 +305,21 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Papel (Role)</label>
+                  <label className={labelCls}>Papel <RequiredMark /></label>
                   <select className={inputCls} value={form.role}
                     onChange={e => setForm(p => ({ ...p, role: e.target.value }))}>
                     {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Status</label>
+                  <label className={labelCls}>Status <RequiredMark /></label>
                   <select className={inputCls} value={form.status}
                     onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
                     {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className={labelCls}>Cargo (Position)</label>
+                  <label className={labelCls}>Cargo</label>
                   <select className={inputCls} value={form.positionId}
                     onChange={e => setForm(p => ({ ...p, positionId: e.target.value }))}>
                     <option value="">— sem cargo —</option>
@@ -333,7 +343,7 @@ function EditModal({ user, positions, onClose, onSaved }: { user: UserRecord; po
               seller.loaded ? (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div>
-                    <label className={labelCls}>Nome no contrato (fullName)</label>
+                    <label className={labelCls}>Nome no contrato</label>
                     <input className={inputCls} value={seller.fullName ?? ''}
                       onChange={e => setSeller(s => ({ ...s, fullName: e.target.value }))} />
                   </div>
@@ -410,7 +420,8 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: UserRecord; onCl
   async function handleReset(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (pwd.length < 6) { setError('Mínimo 6 caracteres.'); return }
+    if (!pwd) { setError('Informe a nova senha.'); return }
+    if (pwd.length < 6) { setError('A senha deve ter no mínimo 6 caracteres.'); return }
     setSaving(true)
     try {
       const res  = await fetch(`/api/master/users/${user.id}`, {
@@ -441,7 +452,7 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: UserRecord; onCl
         <form onSubmit={handleReset} className="space-y-4 px-5 py-4">
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={13} />{error}</div>}
           <div>
-            <label className={labelCls}>Nova senha</label>
+            <label className={labelCls}>Nova senha <RequiredMark /></label>
             <div className="relative">
               <input
                 type={showPwd ? 'text' : 'password'}
@@ -456,7 +467,7 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: UserRecord; onCl
                 {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
-            <p className="mt-1 text-xs text-amber-600">O usuário será obrigado a trocar na próxima sessão.</p>
+            <p className="mt-1 text-xs text-amber-600">Troca obrigatória no próximo acesso.</p>
           </div>
           <div className="flex gap-3 pt-2 border-t border-gray-100">
             <button type="submit" disabled={saving}
@@ -538,9 +549,7 @@ function DeleteUserModal({
           </div>
 
           <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-            O usuário será <strong>inativado</strong> (status → INATIVO). Não poderá mais logar,
-            mas todos os dados históricos (logs, negociações, comissões) ficam preservados.
-            Para reativar depois, basta usar o botão <em>Reativar</em> na linha.
+            O usuário será <strong>inativado</strong> e não poderá mais entrar. O histórico é preservado.
           </p>
 
           <div>
@@ -627,11 +636,8 @@ function PurgeUserModal({
 
         <div className="space-y-3 p-5 text-sm">
           <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
-            <strong>⚠️ Atenção:</strong> esta ação é <strong>irreversível</strong>.
-            Vai apagar o usuário e <strong>todos os dados pessoais vinculados</strong> do banco
-            (notificações, preferências, comentários, comissões, sellers/managers).
-            Históricos auditáveis (logs, deals, pendências) terão a referência do usuário
-            substituída por <em>NULL</em>.
+            <strong>Ação irreversível:</strong> apaga o usuário e todos os dados pessoais vinculados.
+            Históricos auditáveis perdem a referência ao usuário.
           </div>
 
           {isSelf && (
@@ -650,8 +656,7 @@ function PurgeUserModal({
 
           {user.status !== 'INATIVO' && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Usuário precisa estar <strong>INATIVO</strong> para purgar. Inative primeiro
-              pelo botão padrão (lixeira cinza).
+              Inative o usuário antes de excluir permanentemente.
             </div>
           )}
 

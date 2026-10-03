@@ -12,6 +12,8 @@ import {
   Mail, Phone, Link as LinkIcon, Clock,
 } from 'lucide-react'
 import { maskPhone } from '@/lib/masks'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Identity {
   id:             string
@@ -76,6 +78,8 @@ export default function SystemIdentityPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setError(''); setSuccess('')
+    if (!form.systemName?.trim()) { setError('Informe o nome do sistema.'); return }
+    if (form.supportPhone && !isValidPhone(form.supportPhone)) { setError('Telefone de suporte inválido.'); return }
     setSaving(true)
     try {
       const res  = await fetch('/api/master/system-identity', {
@@ -105,10 +109,7 @@ export default function SystemIdentityPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-600">
           <Palette size={18} className="text-white" />
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Identidade do Sistema</h1>
-          <p className="text-xs text-gray-400">Nome, marca, cores e informações globais da plataforma</p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900">Identidade do Sistema</h1>
       </div>
 
       {error   && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertCircle size={15} />{error}</div>}
@@ -121,12 +122,12 @@ export default function SystemIdentityPage() {
           <h2 className="font-semibold text-gray-800 text-sm">Identidade da Plataforma</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Nome do sistema *</label>
-              <input className={inputCls} value={form.systemName ?? ''} onChange={set('systemName')} placeholder="AutoDrive" />
+              <label className={labelCls}>Nome do sistema <RequiredMark /></label>
+              <input className={inputCls} value={form.systemName ?? ''} onChange={set('systemName')} placeholder="AutoDrive" required />
             </div>
             <div>
               <label className={labelCls}>Slogan</label>
-              <input className={inputCls} value={form.systemSlogan ?? ''} onChange={set('systemSlogan')} placeholder="Sua loja no piloto automático" />
+              <input className={inputCls} value={form.systemSlogan ?? ''} onChange={set('systemSlogan')} placeholder="Ex.: Sua loja no piloto automático" />
             </div>
             <div>
               <label className={labelCls}>URL do logotipo</label>
@@ -139,7 +140,7 @@ export default function SystemIdentityPage() {
           </div>
           <div>
             <label className={labelCls}>Rodapé (footer)</label>
-            <input className={inputCls} value={form.footerText ?? ''} onChange={set('footerText')} placeholder="© 2026 AutoDrive — Todos os direitos reservados" />
+            <input className={inputCls} value={form.footerText ?? ''} onChange={set('footerText')} placeholder="© 2026 AutoDrive" />
           </div>
         </div>
 

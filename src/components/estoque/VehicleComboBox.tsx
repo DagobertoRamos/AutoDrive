@@ -14,6 +14,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, Loader2, Search, AlertCircle } from 'lucide-react'
 import type { FipePrice, VehicleCategory } from '@/lib/vehicle-lookup/types'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipo flexível que aceita o que vier da API ────────────────────────────────
 
@@ -140,7 +141,7 @@ function ComboBox({
     <div className="flex flex-col gap-1">
       <label className="text-xs font-medium text-gray-600">
         {label}
-        {required && <span className="ml-0.5 text-red-500">*</span>}
+        {required && <RequiredMark className="ml-0.5" />}
       </label>
 
       <div ref={ref} className="relative">

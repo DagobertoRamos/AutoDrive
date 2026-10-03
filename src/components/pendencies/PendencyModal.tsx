@@ -11,6 +11,7 @@ import { PriorityBadge, StatusBadge } from './PendencyStatusBadge'
 import { cn, formatDate, formatRelativeTime } from '@/lib/utils'
 import { canAccessModule, type UserRole } from '@/lib/permissions'
 import type { PendencyWithRelations } from '@/types'
+import { RequiredMark } from '@/components/ui/field'
 
 interface PendencyModalProps {
   pendency: PendencyWithRelations
@@ -55,9 +56,8 @@ type Tab = 'detalhes' | 'historico' | 'respostas' | 'envios'
 interface PushLog { id: string; channel: string; status: string; sentCount: number; detail: string | null; createdAt: string }
 interface ModalMessageReturn { profileName?: string | null; messageBody?: string | null; createdAt: string | Date }
 
-// Cor do marcador e ícone por grupo de evento da timeline unificada.
+// Cor do marcador por grupo de evento da timeline unificada.
 const TIMELINE_DOT: Record<string, string> = { status: 'bg-brand-400', comment: 'bg-gray-300', event: 'bg-amber-400', send: 'bg-sky-400' }
-const TIMELINE_ICON: Record<string, string> = { status: '🔄', comment: '💬', event: '⚡', send: '🔔' }
 
 const ARCHIVE_ROLES = new Set(['MASTER', 'ADM', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE'])
 const DELETE_ROLES = new Set(['MASTER', 'ADM', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'GERENTE_GERAL'])
@@ -132,7 +132,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Tem certeza que deseja excluir esta pendência? Esta ação deve ser usada somente quando necessário.')) return
+    if (!window.confirm('Excluir esta pendência? Esta ação não pode ser desfeita.')) return
     const reason = window.prompt('Informe o motivo da exclusão.')
     if (reason === null) return
     if (reason.trim().length < 5) { setError('Informe o motivo da exclusão.'); return }
@@ -346,7 +346,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                         {it.by && <span className="text-gray-400"> · {it.by}</span>}
                       </p>
                       <p className="text-sm font-medium text-gray-700">
-                        <span className="mr-1">{TIMELINE_ICON[it.kind] ?? '•'}</span>{it.title}
+                        {it.title}
                       </p>
                       {it.detail && <p className="text-xs text-gray-500 mt-0.5 italic">&quot;{it.detail}&quot;</p>}
                     </div>
@@ -406,13 +406,13 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
         {showUnresolved && (
           <div className="mx-4 mb-3 sm:mx-6">
             <label className="mb-1 block text-xs font-medium text-gray-700">
-              Motivo da não resolução *
+              Motivo da não resolução <RequiredMark />
             </label>
             <textarea
               value={unresolvedReason}
               onChange={e => setUnresolvedReason(e.target.value)}
               rows={2}
-              placeholder="Explique o motivo..."
+              placeholder="Motivo"
               className="input resize-none"
             />
           </div>
@@ -421,15 +421,15 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
         {/* Aviso: aguardando conferência do gerente */}
         {pendingReview && !rejectMode && (
           <div className="mx-4 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 sm:mx-6">
-            🕒 O responsável marcou como <strong>resolvido</strong>. {canReview ? 'Confira e aprove ou reprove abaixo.' : 'Aguardando a conferência do gerente.'}
+            O responsável marcou como <strong>resolvido</strong>. {canReview ? 'Confira e aprove ou reprove abaixo.' : 'Aguardando a conferência do gerente.'}
           </div>
         )}
 
         {/* Motivo da reprovação (gerente) */}
         {pendingReview && rejectMode && (
           <div className="mx-4 mb-3 sm:mx-6">
-            <label className="mb-1 block text-xs font-medium text-gray-700">Motivo da reprovação *</label>
-            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={2} placeholder="Explique o que precisa ser refeito..." className="input resize-none" />
+            <label className="mb-1 block text-xs font-medium text-gray-700">Motivo da reprovação <RequiredMark /></label>
+            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={2} placeholder="O que precisa ser refeito" className="input resize-none" />
           </div>
         )}
 
@@ -460,7 +460,7 @@ export function PendencyModal({ pendency, onClose, onRefresh }: PendencyModalPro
                 </div>
               )
             ) : (
-              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600">🕒 Aguardando conferência do gerente</span>
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600">Aguardando conferência do gerente</span>
             )
           ) : !isResolved ? (
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">

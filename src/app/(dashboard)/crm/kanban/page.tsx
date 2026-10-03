@@ -8,6 +8,7 @@ import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { evaluateLeadSla, sourceLabelOf, temperatureOf, type CloseOutcome, type CrmSettings } from '@/lib/crm/settings-core'
 import CloseReasonModal from '@/components/crm/CloseReasonModal'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -190,13 +191,13 @@ function DeleteModal({ lead, onClose, onDeleted }: { lead: LeadRow; onClose: () 
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X size={16} /></button>
         </div>
         {lead.name && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{lead.name}</p>}
-        <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">O histórico e as atividades serão preservados para auditoria. Esta ação não apaga negociações vinculadas.</p>
+        <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">Histórico e negociações vinculadas são preservados.</p>
         <label className="mt-3 block">
-          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Motivo *</span>
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Motivo <RequiredMark /></span>
           <textarea
             value={reason} onChange={e => setReason(e.target.value)}
             rows={2}
-            placeholder="Informe o motivo da exclusão"
+            placeholder="Motivo da exclusão"
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-700 dark:text-white"
           />
         </label>

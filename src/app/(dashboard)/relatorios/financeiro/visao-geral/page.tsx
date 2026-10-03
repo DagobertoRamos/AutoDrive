@@ -41,7 +41,6 @@ export default function VisaoGeralFinanceiraPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Visão Geral Financeira</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Indicadores consolidados</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
@@ -56,8 +55,6 @@ export default function VisaoGeralFinanceiraPage() {
           </div>
         ))}
       </div>
-
-      <p className="text-xs text-gray-400">Receitas/despesas consideram lançamentos liquidados (recebido/pago). “A receber/A pagar” são lançamentos previstos. Use a sincronização (vendas/comissões) ou lançamentos manuais para popular.</p>
     </div>
   )
 }

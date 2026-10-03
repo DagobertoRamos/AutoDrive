@@ -15,6 +15,7 @@ import AlertSetupBanner from '@/components/seller-queue/AlertSetupBanner'
 import ClienteNaLojaPanel from '@/components/seller-queue/ClienteNaLojaPanel'
 import RequestAttendanceAuth from '@/components/seller-queue/RequestAttendanceAuth'
 import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
+import { RequiredMark } from '@/components/ui/field'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 import { unlockAudio, ensureNotifyPermission, stopCriticalAlert, criticalAlert } from '@/lib/seller-queue/alert-client'
 
@@ -123,7 +124,7 @@ export default function MinhaVezPanel() {
   // Trava IMEDIATA (busy) antes do GPS → o botão desabilita no 1º toque e mostra
   // "Iniciando…"; evita o duplo-toque no celular (antes o GPS rodava sem travar).
   const accept = async () => { if (!att || busy) return; setBusy(true); stopCriticalAlert(); const pos = await getPosition(); await post(`attendances/${att.id}/accept`, pos, 'Atendimento iniciado!') }
-  const reject = async () => { if (!att || busy) return; stopCriticalAlert(); const reason = prompt('Motivo da recusa:'); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
+  const reject = async () => { if (!att || busy) return; stopCriticalAlert(); const reason = prompt('Motivo da recusa:')?.trim(); if (!reason) return; await post(`attendances/${att.id}/reject`, { reason }, 'Recusado.') }
   const finish = async () => {
     if (!att) return
     const name = capName(finForm.customerName.trim())
@@ -184,26 +185,26 @@ export default function MinhaVezPanel() {
 
       {/* Modo férias ativo */}
       {data?.onVacation && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">🏖️ Você está em <strong>modo férias</strong> — fora da fila e sem ser chamado. Desative em Configurações para voltar.</div>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">Você está em <strong>modo férias</strong> — fora da fila.</div>
       )}
 
       {/* Aviso: removido automaticamente por pausa/ausência prolongada */}
       {data?.autoRemovedNotice && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">⏱️ {data.autoRemovedNotice}</div>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{data.autoRemovedNotice}</div>
       )}
       {data?.queueOpen === false && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">🔒 A fila está fechada agora (fora do horário de funcionamento).</div>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">Fila fechada (fora do horário).</div>
       )}
 
       {/* Pós-vendas — pausado, pede para voltar à fila (autorização do gestor) */}
       {data?.myPosVenda && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
-          <p className="font-semibold text-amber-800">🛠️ Você está em pós-vendas (pausado na fila)</p>
+          <p className="font-semibold text-amber-800">Você está em pós-vendas (pausado na fila)</p>
           {data.myPosVenda.status === 'RETURN_REQUESTED' ? (
             <p className="mt-1 text-amber-700">Retorno solicitado — aguardando autorização do gestor.</p>
           ) : (
             <>
-              <p className="mt-1 text-amber-700">Ao terminar o pós-vendas, peça para voltar à fila (você volta à mesma posição).</p>
+              <p className="mt-1 text-amber-700">Ao terminar, peça para voltar à fila (mesma posição).</p>
               <button onClick={pedirVoltar} disabled={busy} className="mt-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60">Pedir para voltar à fila</button>
             </>
           )}
@@ -213,7 +214,7 @@ export default function MinhaVezPanel() {
       {/* Bloqueio por reincidência (cooldown/diário) */}
       {data?.myBlock && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm">
-          <p className="font-semibold text-red-700">🚫 Você está fora da fila</p>
+          <p className="font-semibold text-red-700">Você está fora da fila</p>
           <p className="mt-0.5 text-red-600">{blockText(data.myBlock, now)}</p>
         </div>
       )}
@@ -261,19 +262,18 @@ export default function MinhaVezPanel() {
       {finishOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setFinishOpen(false)}>
           <div className="max-h-[92vh] w-full max-w-[min(28rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-5" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-1 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
-            <p className="mb-3 text-xs text-gray-500">Registre os dados do cliente e o resultado. Gera um lead de atendimento no seu nome.</p>
+            <h2 className="mb-3 text-lg font-bold text-gray-900">Cadastrar cliente e finalizar</h2>
             <div className="space-y-3">
-              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={finForm.customerName} onChange={(e) => { setFinForm((f) => ({ ...f, customerName: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} onBlur={() => setFinForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Ex.: Dagoberto Ramos de Francisco" /><CustomerLookup query={finForm.customerName} onPick={pickMatch} /></div>
-              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={finForm.customerPhone} onChange={(e) => { setFinForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="(11)9.9999-9999" /><CustomerLookup query={finForm.customerPhone} onPick={pickMatch} /></div>
-              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail (opcional)</label><input type="email" className={inputCls} value={finForm.customerEmail} onChange={(e) => { setFinForm((f) => ({ ...f, customerEmail: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="cliente@email.com" /><CustomerLookup query={finForm.customerEmail} onPick={pickMatch} /></div>
-              {pickedCustomerId && <p className="-mt-1 text-[11px] font-medium text-green-600">✓ Cliente existente selecionado — não vai duplicar.</p>}
+              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente {att?.visitType !== 'INFORMACAO_RAPIDA' && <RequiredMark />}</label><input className={inputCls} value={finForm.customerName} onChange={(e) => { setFinForm((f) => ({ ...f, customerName: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} onBlur={() => setFinForm((f) => ({ ...f, customerName: capName(f.customerName) }))} placeholder="Nome completo" /><CustomerLookup query={finForm.customerName} onPick={pickMatch} /></div>
+              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone {att?.visitType !== 'INFORMACAO_RAPIDA' && <RequiredMark />}</label><input type="tel" inputMode="numeric" className={inputCls} value={finForm.customerPhone} onChange={(e) => { setFinForm((f) => ({ ...f, customerPhone: maskPhoneBR(e.target.value) })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="(11)9.9999-9999" /><CustomerLookup query={finForm.customerPhone} onPick={pickMatch} /></div>
+              <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail</label><input type="email" className={inputCls} value={finForm.customerEmail} onChange={(e) => { setFinForm((f) => ({ ...f, customerEmail: e.target.value })); setPickedCustomerId(null); setPickedLeadId(null) }} placeholder="cliente@email.com" /><CustomerLookup query={finForm.customerEmail} onPick={pickMatch} /></div>
+              {pickedCustomerId && <p className="-mt-1 text-[11px] font-medium text-green-600">Cliente existente selecionado.</p>}
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={finForm.type} onChange={(e) => setFinForm((f) => ({ ...f, type: e.target.value }))}>{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Resultado</label><select className={inputCls} value={finForm.result} onChange={(e) => setFinForm((f) => ({ ...f, result: e.target.value }))}>{RESULTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               {(data?.closeReasons?.length ?? 0) > 0 && (
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Motivo</label><select className={inputCls} value={finForm.motivo} onChange={(e) => setFinForm((f) => ({ ...f, motivo: e.target.value }))}><option value="">— selecione —</option>{data!.closeReasons!.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
               )}
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações *</label><textarea rows={2} className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Obrigatório — resumo do atendimento" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações <RequiredMark /></label><textarea rows={2} className={inputCls} value={finForm.notes} onChange={(e) => setFinForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Resumo do atendimento" /></div>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-[auto_auto] sm:justify-end"><button onClick={() => setFinishOpen(false)} className="btn-secondary justify-center text-sm">Cancelar</button><button onClick={finish} disabled={busy} className="btn-primary justify-center text-sm"><CheckCircle2 size={15} />Finalizar</button></div>
           </div>
@@ -287,10 +287,8 @@ export default function MinhaVezPanel() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 animate-bounce">
               <Bell size={24} />
             </span>
-            <h2 className="mt-4 text-xl font-bold text-gray-900">Teste de Atenção! ⚠️</h2>
-            <p className="mt-2 text-sm text-gray-500">
-              A gerência solicitou uma validação de sua atenção operacional. Responda imediatamente.
-            </p>
+            <h2 className="mt-4 text-xl font-bold text-gray-900">Teste de atenção</h2>
+            <p className="mt-2 text-sm text-gray-500">Responda imediatamente.</p>
             <p className="mt-4 text-2xl font-black tabular-nums text-red-600">
               {Math.max(1, Math.round((now - new Date(data.activeAttentionTest.sentAt).getTime()) / 1000))}s
             </p>

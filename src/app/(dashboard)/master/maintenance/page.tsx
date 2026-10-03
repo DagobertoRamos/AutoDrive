@@ -14,6 +14,7 @@ import {
   Construction, AlertTriangle, CheckCircle2, Loader2,
   AlertCircle, Power, PowerOff, Clock, Info,
 } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -112,6 +113,7 @@ export default function MaintenancePage() {
     e.preventDefault()
     setError('')
     setSuccess('')
+    if (form.active && !form.message.trim()) { setError('Informe a mensagem para os usuários.'); return }
     setSaving(true)
     try {
       const res  = await fetch('/api/master/maintenance', {
@@ -164,10 +166,7 @@ export default function MaintenancePage() {
         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${isActive ? 'bg-amber-500' : 'bg-gray-400'}`}>
           <Construction size={18} className="text-white" />
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Modo de Manutenção</h1>
-          <p className="text-xs text-gray-400">Controle o acesso à plataforma durante janelas de manutenção</p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900">Modo de Manutenção</h1>
       </div>
 
       {/* Status atual */}
@@ -219,13 +218,12 @@ export default function MaintenancePage() {
 
       {/* Form de configuração */}
       <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white p-5 space-y-5">
-        <h2 className="font-semibold text-gray-800 text-sm">Configurar nova entrada de manutenção</h2>
+        <h2 className="font-semibold text-gray-800 text-sm">Nova entrada de manutenção</h2>
 
         {/* Ativar / desativar */}
         <div className="flex items-center gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4">
           <div className="flex-1">
             <p className="text-sm font-medium text-gray-800">Estado da manutenção</p>
-            <p className="text-xs text-gray-500">Ativar bloqueará o acesso para papéis não permitidos</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -255,11 +253,11 @@ export default function MaintenancePage() {
 
         {/* Mensagem */}
         <div>
-          <label className={labelCls}>Mensagem para os usuários</label>
+          <label className={labelCls}>Mensagem para os usuários {form.active && <RequiredMark />}</label>
           <textarea
             rows={3}
             className={inputCls}
-            placeholder="Ex: Sistema em manutenção para atualização. Retornaremos às 08:00."
+            placeholder="Ex.: Retornaremos às 08:00."
             value={form.message}
             onChange={e => setForm(p => ({ ...p, message: e.target.value }))}
           />
@@ -312,7 +310,7 @@ export default function MaintenancePage() {
           </div>
           <p className="mt-1 flex items-center gap-1 text-xs text-gray-400">
             <Info size={11} />
-            MASTER sempre tem acesso, independentemente da seleção.
+            MASTER sempre tem acesso.
           </p>
         </div>
 

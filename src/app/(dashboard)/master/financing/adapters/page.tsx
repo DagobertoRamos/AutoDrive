@@ -48,19 +48,14 @@ export default function MasterAdaptersPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Plug size={20} className="text-brand-600" />Adaptadores de API</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : 'Estado da camada de adapters por provedor.'}</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
-      </div>
-
-      <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs text-gray-500">
-        Os adapters reais (chamadas à API do banco) só operam com documentação e credenciais oficiais homologadas — sem isso, ficam “preparados”. O <strong>Manual</strong> é sempre operante (registro supervisionado). Nenhuma automação oculta de tela de banco.
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="h-36 animate-pulse rounded-xl bg-gray-100" />))}</div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><Plug size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor cadastrado. Cadastre em Provedores F&amp;I.</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><Plug size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor.</p></div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((r) => {

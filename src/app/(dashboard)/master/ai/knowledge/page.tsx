@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { BookOpen, Plus, Pencil, Trash2, X, Save, Lock, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 const SOURCES = ['manual_text', 'pdf', 'docx', 'image', 'url', 'system_doc'] as const
 type Source = (typeof SOURCES)[number]
@@ -42,7 +43,7 @@ export default function MasterAiKnowledgePage() {
   const openNew = () => { setEditingId(null); setForm(empty); setError(null); setModal(true) }
   const openEdit = (r: Row) => { setEditingId(r.id); setForm({ title: r.title, description: r.description ?? '', sourceType: r.sourceType, content: '', status: r.status as 'ATIVO' | 'INATIVO' }); setError(null); setModal(true) }
   const save = async () => {
-    if (!form.title.trim()) { setError('Título é obrigatório.'); return }
+    if (!form.title.trim()) { setError('Informe o título.'); return }
     setSaving(true); setError(null)
     try {
       const url = editingId ? `/api/master/ai/knowledge/${editingId}` : '/api/master/ai/knowledge'
@@ -64,7 +65,7 @@ export default function MasterAiKnowledgePage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><BookOpen size={20} className="text-brand-600" />Base de Conhecimento</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} base(s) global(is) — origem rastreável`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} base(s)`}</p>
         </div>
         <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova base</button>
       </div>
@@ -75,7 +76,7 @@ export default function MasterAiKnowledgePage() {
             <thead className="bg-gray-50"><tr>{['Título', 'Origem', 'Chunks', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? Array.from({ length: 3 }).map((_, i) => (<tr key={i}>{Array.from({ length: 5 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
-              : items.length === 0 ? (<tr><td colSpan={5} className="py-14 text-center"><BookOpen size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhuma base. Cadastre o primeiro conteúdo.</p></td></tr>)
+              : items.length === 0 ? (<tr><td colSpan={5} className="py-14 text-center"><BookOpen size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhuma base.</p></td></tr>)
               : items.map((r) => (
                 <tr key={r.id} className={cn('hover:bg-gray-50', r.status !== 'ATIVO' && 'opacity-50')}>
                   <td className="px-4 py-3"><p className="font-medium text-gray-900">{r.title}</p>{r.description && <p className="max-w-md truncate text-xs text-gray-500">{r.description}</p>}</td>
@@ -99,13 +100,13 @@ export default function MasterAiKnowledgePage() {
           <div className="my-4 w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar base' : 'Nova base de conhecimento'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Título <span className="text-red-500">*</span></label><input className={inputCls} value={form.title} onChange={(e) => set('title', e.target.value)} /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Título <RequiredMark /></label><input className={inputCls} value={form.title} onChange={(e) => set('title', e.target.value)} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo de origem</label><select className={inputCls} value={form.sourceType} onChange={(e) => set('sourceType', e.target.value as Source)}>{SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Status</label><select className={inputCls} value={form.status} onChange={(e) => set('status', e.target.value as 'ATIVO' | 'INATIVO')}><option value="ATIVO">Ativo</option><option value="INATIVO">Inativo</option></select></div>
               </div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Descrição</label><input className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Conteúdo {editingId && <span className="text-[11px] text-gray-400">(em branco = manter)</span>}</label><textarea className={cn(inputCls, 'min-h-[120px] resize-y')} value={form.content} onChange={(e) => set('content', e.target.value)} placeholder="Cole o manual/política/FAQ. Depois use “Reprocessar” para gerar os chunks." /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Conteúdo {editingId && <span className="text-[11px] text-gray-400">(em branco = manter)</span>}</label><textarea className={cn(inputCls, 'min-h-[120px] resize-y')} value={form.content} onChange={(e) => set('content', e.target.value)} /></div>
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
             <div className="mt-5 flex justify-end gap-2"><button onClick={() => setModal(false)} className="btn-secondary text-sm">Cancelar</button><button onClick={save} disabled={saving} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button></div>

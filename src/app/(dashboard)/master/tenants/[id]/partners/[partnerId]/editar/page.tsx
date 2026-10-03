@@ -20,6 +20,8 @@ import {
   UserCheck, Clock,
 } from 'lucide-react'
 import { maskPhone } from '@/lib/masks'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -237,11 +239,9 @@ export default function EditarPartnerPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.nomeCompleto.trim()) { setError('Nome completo é obrigatório.'); return }
-    if (willCreateUser && !form.email.trim()) {
-      setError('E-mail é obrigatório para sócio-administrador ou sócio principal.')
-      return
-    }
+    if (!form.nomeCompleto.trim()) { setError('Informe o nome completo.'); return }
+    if (form.celular && !isValidPhone(form.celular)) { setError('Celular inválido.'); return }
+    if (willCreateUser && !form.email.trim()) { setError('Informe o e-mail.'); return }
 
     setSaving(true)
     try {
@@ -308,7 +308,7 @@ export default function EditarPartnerPage() {
               </div>
               <div>
                 <h2 className="font-bold text-base">Sócio e acesso criados!</h2>
-                <p className="text-xs text-emerald-100">Usuário ADM gerado automaticamente</p>
+                <p className="text-xs text-emerald-100">Usuário ADM criado</p>
               </div>
             </div>
             <div className="p-6 space-y-4">
@@ -330,7 +330,7 @@ export default function EditarPartnerPage() {
               <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5">
                 <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700">
-                  O sócio será obrigado a criar uma nova senha no primeiro acesso ao sistema.
+                  Troca de senha obrigatória no primeiro acesso.
                 </p>
               </div>
               <button
@@ -421,9 +421,7 @@ export default function EditarPartnerPage() {
           <div className="space-y-0.5">
             <p className="text-sm font-semibold text-brand-800">Acesso será criado ao salvar</p>
             <p className="text-xs text-brand-700">
-              Este sócio receberá um usuário <strong>ADM</strong> da loja.
-              Login: e-mail informado &bull; Senha inicial: CPF sem pontuação.
-              Troca de senha obrigatória no 1.º acesso.
+              Usuário <strong>ADM</strong>: login pelo e-mail, senha inicial = CPF sem pontuação.
             </p>
           </div>
         </div>
@@ -439,7 +437,7 @@ export default function EditarPartnerPage() {
 
           {/* CPF (somente leitura) */}
           <div>
-            <label className={labelCls}>CPF (não editável)</label>
+            <label className={labelCls}>CPF</label>
             <input
               readOnly
               value={cpfDisplay}
@@ -449,8 +447,8 @@ export default function EditarPartnerPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className={labelCls}>Nome completo *</label>
-              <input className={inputCls} value={form.nomeCompleto} onChange={set('nomeCompleto')} placeholder="Nome como no documento" />
+              <label className={labelCls}>Nome completo <RequiredMark /></label>
+              <input className={inputCls} value={form.nomeCompleto} onChange={set('nomeCompleto')} />
             </div>
             <div>
               <label className={labelCls}>RG</label>
@@ -466,7 +464,7 @@ export default function EditarPartnerPage() {
             </div>
             <div>
               <label className={labelCls}>
-                E-mail{willCreateUser && <span className="ml-1 text-red-500">*</span>}
+                E-mail{willCreateUser && <RequiredMark className="ml-1" />}
               </label>
               <input
                 type="email"
@@ -475,11 +473,8 @@ export default function EditarPartnerPage() {
                 onChange={set('email')}
                 placeholder="nome@empresa.com.br"
               />
-              {willCreateUser && !form.email && (
-                <p className="mt-1 text-xs text-amber-600">Obrigatório — será o login do usuário ADM</p>
-              )}
               {partnerUser && (
-                <p className="mt-1 text-xs text-gray-400">Alterar o e-mail aqui também atualizará o login do usuário</p>
+                <p className="mt-1 text-xs text-gray-400">Também altera o login.</p>
               )}
             </div>
           </div>
@@ -502,7 +497,7 @@ export default function EditarPartnerPage() {
                 className={inputCls}
                 value={form.participacao}
                 onChange={set('participacao')}
-                placeholder="Ex: 50.00"
+                placeholder="Ex.: 50"
               />
             </div>
           </div>
@@ -543,7 +538,7 @@ export default function EditarPartnerPage() {
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
               <label className={labelCls}>Logradouro</label>
-              <input className={inputCls} value={form.logradouro} onChange={set('logradouro')} placeholder="Rua, Av., etc." />
+              <input className={inputCls} value={form.logradouro} onChange={set('logradouro')} placeholder="Ex.: Rua das Flores" />
             </div>
             <div>
               <label className={labelCls}>Número</label>
@@ -553,7 +548,7 @@ export default function EditarPartnerPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Complemento</label>
-              <input className={inputCls} value={form.complemento} onChange={set('complemento')} placeholder="Apto, sala..." />
+              <input className={inputCls} value={form.complemento} onChange={set('complemento')} placeholder="Ex.: Apto 12" />
             </div>
             <div>
               <label className={labelCls}>Bairro</label>

@@ -8,6 +8,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search, UserPlus, X, CheckCircle, User as UserIcon, Phone, Mail } from 'lucide-react'
 import { maskCPF, maskCNPJ, maskPhone } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
+import { isValidCPF } from '@/lib/br-docs/cpf'
+import { isValidCNPJ } from '@/lib/br-docs/cnpj'
+import { isValidPhone } from '@/lib/br-docs/phone'
 
 export interface CustomerLite {
   id:    string
@@ -105,7 +109,7 @@ export function StepCliente({ selected, onSelect }: StepClienteProps) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className={inputCls + ' pl-9'}
-            placeholder="Buscar por CPF, CNPJ, telefone ou nome..."
+            placeholder="CPF, CNPJ, telefone ou nome"
           />
         </div>
         <button
@@ -126,12 +130,7 @@ export function StepCliente({ selected, onSelect }: StepClienteProps) {
       )}
       {!loading && q.trim().length >= 2 && results.length === 0 && (
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-500 text-center">
-          Nenhum cliente encontrado. Use &quot;Cadastrar cliente rápido&quot; para criar um novo.
-        </div>
-      )}
-      {!loading && q.trim().length < 2 && results.length === 0 && (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 px-3 py-4 text-xs text-gray-500 text-center">
-          Digite para buscar ou cadastre um novo cliente.
+          Nenhum cliente encontrado.
         </div>
       )}
       {!loading && results.length > 0 && (
@@ -190,7 +189,11 @@ function QuickCreateDrawer({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || name.trim().length < 2) { onError('Nome é obrigatório.'); return }
+    if (!name.trim() || name.trim().length < 2) { onError('Informe o nome.'); return }
+    if (!doc.replace(/\D/g, '')) { onError(tipo === 'JURIDICA' ? 'Informe o CNPJ.' : 'Informe o CPF.'); return }
+    if (tipo === 'JURIDICA' ? !isValidCNPJ(doc) : !isValidCPF(doc)) { onError(tipo === 'JURIDICA' ? 'CNPJ inválido.' : 'CPF inválido.'); return }
+    if (!phone.replace(/\D/g, '')) { onError('Informe o telefone.'); return }
+    if (!isValidPhone(phone)) { onError('Telefone inválido.'); return }
     setSubmitting(true)
     onError('')
     try {
@@ -222,18 +225,15 @@ function QuickCreateDrawer({
       <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
       <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-xl flex flex-col">
         <header className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">Cadastrar cliente rápido</h3>
-            <p className="text-xs text-gray-500">Preencha os dados mínimos. Você pode completar depois.</p>
-          </div>
+          <h3 className="text-base font-semibold text-gray-900">Cadastrar cliente rápido</h3>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
             <X className="h-4 w-4" />
           </button>
         </header>
         <form onSubmit={submit} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Nome <span className="text-red-500">*</span></span>
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome completo / Razão social" autoFocus />
+            <span className="text-xs font-medium text-gray-600">Nome <RequiredMark /></span>
+            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome ou razão social" autoFocus />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-600">Tipo</span>
@@ -243,7 +243,7 @@ function QuickCreateDrawer({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">{tipo === 'JURIDICA' ? 'CNPJ' : 'CPF'}</span>
+            <span className="text-xs font-medium text-gray-600">{tipo === 'JURIDICA' ? 'CNPJ' : 'CPF'} <RequiredMark /></span>
             <input
               className={inputCls + ' font-mono'}
               value={tipo === 'JURIDICA' ? maskCNPJ(doc) : maskCPF(doc)}
@@ -253,7 +253,7 @@ function QuickCreateDrawer({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Telefone / WhatsApp</span>
+            <span className="text-xs font-medium text-gray-600">Telefone / WhatsApp <RequiredMark /></span>
             <input className={inputCls} value={maskPhone(phone)} onChange={(e) => setPhone(e.target.value)} placeholder="(00) 00000-0000" inputMode="tel" />
           </label>
           <label className="flex flex-col gap-1">

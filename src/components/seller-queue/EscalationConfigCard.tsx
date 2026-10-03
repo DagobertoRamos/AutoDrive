@@ -10,6 +10,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { GitBranch, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
+import { ESCALATION_LIMITS } from '@/lib/seller-queue/escalation-config'
 
 interface Level { id: string; name: string; targetType: string; role: string | null; targetUserIds: string[]; timeoutSeconds: number; maxAttempts: number; notifyAll: boolean; active: boolean }
 interface Config { active: boolean; firstAcceptWins: boolean; onNoResponse: string; onDecline: string; levels: Level[] }
@@ -65,6 +67,12 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
 
   const save = async () => {
     if (!cfg) return
+    const invalid = cfg.levels.find((l) => !l.name.trim()
+      || l.timeoutSeconds < ESCALATION_LIMITS.timeoutMin || l.timeoutSeconds > ESCALATION_LIMITS.timeoutMax
+      || l.maxAttempts < ESCALATION_LIMITS.attemptsMin || l.maxAttempts > ESCALATION_LIMITS.attemptsMax
+      || (l.targetType === 'CARGO' && !l.role)
+      || (l.targetType === 'COLABORADORES' && l.targetUserIds.length === 0))
+    if (invalid) { setSaved(false); setError(`Revise o nível "${invalid.name.trim() || 'sem nome'}": nome, tempo (${ESCALATION_LIMITS.timeoutMin}–${ESCALATION_LIMITS.timeoutMax}s), tentativas (${ESCALATION_LIMITS.attemptsMin}–${ESCALATION_LIMITS.attemptsMax}) e destino.`); return }
     setSaving(true); setError(''); setSaved(false)
     try {
       const res = await fetch(`/api/seller-queue/escalation-config${qs}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(cfg) })
@@ -77,10 +85,7 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><GitBranch size={17} className="text-brand-600" />Escalonamento da chamada</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Se o vendedor da vez não aceita no tempo, sobe os níveis. Vários por nível: o 1º que aceita assume.</p>
-        </div>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><GitBranch size={17} className="text-brand-600" />Escalonamento da chamada</h2>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
 
@@ -119,15 +124,15 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
                 </div>
                 <div className="mt-2 grid gap-2 md:grid-cols-4">
                   <div>
-                    <label className="mb-0.5 block text-[11px] text-gray-500">Destino</label>
+                    <label className="mb-0.5 block text-[11px] text-gray-500">Destino <RequiredMark /></label>
                     <select value={l.targetType} onChange={(e) => setLevel(i, { targetType: e.target.value })} className={inputCls}>{TARGETS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}</select>
                   </div>
                   <div>
-                    <label className="mb-0.5 block text-[11px] text-gray-500">Tempo (s)</label>
+                    <label className="mb-0.5 block text-[11px] text-gray-500">Tempo (s) <RequiredMark /></label>
                     <input inputMode="numeric" value={l.timeoutSeconds} onChange={(e) => setLevel(i, { timeoutSeconds: Number(e.target.value) || 0 })} className={cn(inputCls, 'text-right')} />
                   </div>
                   <div>
-                    <label className="mb-0.5 block text-[11px] text-gray-500">Tentativas</label>
+                    <label className="mb-0.5 block text-[11px] text-gray-500">Tentativas <RequiredMark /></label>
                     <input inputMode="numeric" value={l.maxAttempts} onChange={(e) => setLevel(i, { maxAttempts: Number(e.target.value) || 1 })} className={cn(inputCls, 'text-right')} />
                   </div>
                   <div className="flex items-end gap-3 pb-1">
@@ -136,13 +141,13 @@ export default function EscalationConfigCard({ unitId }: { unitId?: string | nul
                   </div>
                 </div>
                 {l.targetType === 'CARGO' && (
-                  <div className="mt-2"><label className="mb-0.5 block text-[11px] text-gray-500">Cargo/perfil</label>
+                  <div className="mt-2"><label className="mb-0.5 block text-[11px] text-gray-500">Cargo/perfil <RequiredMark /></label>
                     <select value={l.role ?? ''} onChange={(e) => setLevel(i, { role: e.target.value || null })} className={cn(inputCls, 'max-w-xs')}><option value="">Selecione…</option>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select>
                   </div>
                 )}
                 {l.targetType === 'COLABORADORES' && (
                   <div className="mt-2">
-                    <label className="mb-1 block text-[11px] text-gray-500">Colaboradores ({l.targetUserIds.length})</label>
+                    <label className="mb-1 block text-[11px] text-gray-500">Colaboradores ({l.targetUserIds.length}) <RequiredMark /></label>
                     <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto">
                       {people.map((p) => {
                         const on = l.targetUserIds.includes(p.userId)

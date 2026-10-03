@@ -25,7 +25,7 @@ import {
   type EvaluationAttachmentLike, type EvaluationItemLike, type EvaluationRuleContext,
   type PendingRequirement, type SectionProgress,
 } from '@/lib/evaluation/rules'
-import { FieldLabel, RequiredTag } from '@/components/ui/field'
+import { FieldLabel, RequiredMark } from '@/components/ui/field'
 import { ItemDrawer, type DrawerItem } from './ItemDrawer'
 import { ServicesSection } from './ServicesSection'
 import { PhotoLightbox, type LightboxPhoto } from './PhotoLightbox'
@@ -545,19 +545,15 @@ export function EvaluationSections({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate flex items-center gap-1">
                       {cat?.name ?? it.name}
-                      {answerRequired && <span aria-hidden="true" className="text-error font-semibold">*</span>}
+                      {answerRequired && <RequiredMark />}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       {statusBadge(it.status || 'PENDING')}
-                      {answerRequired && <RequiredTag />}
                       {photoRequired && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-medium">
-                          <span className={photoMissing ? 'text-error' : 'text-emerald-700'}>
-                            Foto <span aria-hidden="true">*</span>
-                          </span>
                           {photoMissing
-                            ? <RequiredTag />
-                            : <span className="text-emerald-700">enviada</span>}
+                            ? <span className="text-error">Foto <RequiredMark /></span>
+                            : <span className="text-emerald-700">Foto enviada</span>}
                         </span>
                       )}
                       {photos.length > 0 && (

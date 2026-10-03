@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Wrench, X, Save, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn, formatMoney } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -80,9 +81,11 @@ function Modal({
   error: string | null
 }) {
   const [form, setForm] = useState<ServiceForm>(emptyForm)
+  const [formErr, setFormErr] = useState('')
 
   useEffect(() => {
     if (open) {
+      setFormErr('')
       setForm(initial ? { ...initial } : { ...emptyForm })
     }
   }, [open, initial])
@@ -90,6 +93,7 @@ function Modal({
   if (!open) return null
 
   const set = <K extends keyof ServiceForm>(key: K, value: ServiceForm[K]) => {
+    setFormErr('')
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -112,17 +116,22 @@ function Modal({
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); onSave(form) }}
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!form.name.trim()) { setFormErr('Informe o nome do serviço.'); return }
+            onSave(form)
+          }}
           className="px-6 py-5 space-y-4"
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do serviço *</label>
-              <input required className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Revisão completa" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do serviço<RequiredMark className="ml-0.5" /></label>
+              <input className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Categoria</label>
-              <input className={inputClass()} value={form.category} onChange={(e) => set('category', e.target.value)} placeholder="Ex: Manutenção, Estética, Documentação..." />
+              <input className={inputClass()} value={form.category} onChange={(e) => set('category', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Valor padrão (R$)</label>
@@ -153,17 +162,16 @@ function Modal({
                 className={inputClass('resize-none')}
                 value={form.notes}
                 onChange={(e) => set('notes', e.target.value)}
-                placeholder="Informações adicionais sobre o serviço..."
               />
             </div>
           </div>
 
           <ToggleRow label="Serviço ativo" checked={form.active} onChange={(v) => set('active', v)} />
 
-          {error && (
+          {(formErr || error) && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+              {formErr || error}
             </div>
           )}
 
@@ -226,10 +234,10 @@ export default function ServicosPage() {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
       if (!res.ok) {
         const json = await res.json()
-        throw new Error(json?.message ?? 'Erro ao salvar')
+        throw new Error(json?.error ?? json?.message ?? 'Erro ao salvar')
       }
       setModalOpen(false)
-      setSuccessMsg(editing ? 'Serviço atualizado!' : 'Serviço criado!')
+      setSuccessMsg(editing ? 'Serviço atualizado.' : 'Serviço criado.')
       setTimeout(() => setSuccessMsg(null), 3000)
       await fetchData()
     } catch (err: unknown) {
@@ -244,7 +252,6 @@ export default function ServicosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Serviços</h1>
-          <p className="mt-1 text-sm text-gray-500">Gerencie os serviços disponíveis para venda.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800 transition-colors">
           <Plus className="h-4 w-4" />
@@ -281,8 +288,7 @@ export default function ServicosPage() {
               ) : services.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
-                    Nenhum serviço cadastrado.{' '}
-                    <button onClick={openCreate} className="text-brand-600 hover:underline">Criar agora</button>
+                    Nenhum serviço cadastrado.
                   </td>
                 </tr>
               ) : (

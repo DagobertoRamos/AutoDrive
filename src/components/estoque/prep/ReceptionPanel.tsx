@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, PackageCheck, RotateCcw, Save } from 'lucide-react'
 import { VehicleFilesField, type VFile } from './VehicleFilesField'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Item { key: string; status: 'OK' | 'NAO_POSSUI' | 'PENDENTE'; note: string | null }
 interface State {
@@ -51,6 +52,8 @@ export function ReceptionPanel({ vehicleId, canEdit, onChanged }: { vehicleId: s
     } catch (e) { setMsg({ ok: false, t: (e as Error).message }); return false } finally { setBusy(null) }
   }
   async function act(action: 'confirm' | 'reopen') {
+    if (action === 'confirm' && !date) { setMsg({ ok: false, t: 'Informe a data da chegada.' }); return }
+    if (action === 'confirm' && !km) { setMsg({ ok: false, t: 'Informe o km na chegada.' }); return }
     if (action === 'confirm' && !(await save(true))) return
     setBusy(action); setMsg(null)
     try {
@@ -73,19 +76,17 @@ export function ReceptionPanel({ vehicleId, canEdit, onChanged }: { vehicleId: s
           <span className="flex items-center gap-2"><CheckCircle2 size={16} />Recebido em {new Date(s.receivedAt ?? s.confirmedAt).toLocaleDateString('pt-BR')}{s.confirmedByName ? ` por ${s.confirmedByName}` : ''} · km {s.km?.toLocaleString('pt-BR') ?? '—'}</span>
           {canEdit && <button type="button" onClick={() => void act('reopen')} disabled={!!busy} className="inline-flex items-center gap-1 text-xs font-medium underline"><RotateCcw size={12} />Reabrir</button>}
         </div>
-      ) : (
-        <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">Fotografe cada item ao receber o carro. Se o carro não tiver o item, marque “não possui” e justifique. Com tudo preenchido, confirme o recebimento.</p>
-      )}
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="block text-xs font-medium text-gray-600">Data da chegada
+        <label className="block text-xs font-medium text-gray-600">Data da chegada <RequiredMark />
           <input type="date" value={date} disabled={locked} onChange={(e) => setDate(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
         </label>
-        <label className="block text-xs font-medium text-gray-600">Km na chegada
+        <label className="block text-xs font-medium text-gray-600">Km na chegada <RequiredMark />
           <input inputMode="numeric" value={km} disabled={locked} onChange={(e) => setKm(e.target.value.replace(/\D/g, ''))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
         </label>
         <label className="block text-xs font-medium text-gray-600">Observações
-          <input value={notes} disabled={locked} onChange={(e) => setNotes(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Ex.: 2 chaves, documentos no porta-luvas" />
+          <input value={notes} disabled={locked} onChange={(e) => setNotes(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Ex.: 2 chaves" />
         </label>
       </div>
 

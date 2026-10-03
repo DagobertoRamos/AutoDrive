@@ -56,7 +56,7 @@ export function PermissionsTab() {
   const nChanged = Object.values(overrides).reduce((n, r) => n + Object.keys(r).length, 0)
 
   return (
-    <Card title="Permissões" hint="O que cada perfil pode fazer no CRM desta loja. Células com ponto laranja foram alteradas em relação ao padrão do sistema. Exceções por colaborador (tela de Colaboradores) continuam valendo por cima disto.">
+    <Card title="Permissões" hint="Ponto laranja = alterado em relação ao padrão.">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-xs">
           <thead>
@@ -92,7 +92,7 @@ export function PermissionsTab() {
           </tbody>
         </table>
       </div>
-      <p className="mt-2 flex items-center gap-1 text-[11px] text-gray-400"><Lock size={11} />O administrador sempre pode acessar e configurar o CRM (evita a loja ficar sem acesso). O MASTER não é afetado.</p>
+      <p className="mt-2 flex items-center gap-1 text-[11px] text-gray-400"><Lock size={11} />O administrador sempre tem acesso ao CRM.</p>
       {canManage && (
         <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
           {msg && <span className={cn('text-sm', msg.ok ? 'text-green-600' : 'text-red-600')}>{msg.text}</span>}
@@ -153,7 +153,7 @@ export function AuditTab() {
   const selCls = cn(inputCls, 'w-auto py-1.5 text-xs')
 
   return (
-    <Card title="Auditoria" hint="Quem fez o quê no CRM: leads, tarefas, funis, configurações e o que as automações executaram.">
+    <Card title="Auditoria">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <select value={f.entity} onChange={(e) => set({ entity: e.target.value })} className={selCls} aria-label="Tipo">
           <option value="">Tudo</option>

@@ -199,7 +199,7 @@ export default function ExtratoDetalheModal({ entry, onClose, onChanged }: { ent
                           <span className="hidden tabular-nums text-xs text-gray-400 sm:inline">base {fmt(it.baseValue)}</span>
                           <span className={cn('w-24 text-right font-semibold tabular-nums', canc ? 'text-red-400 line-through' : 'text-brand-700')}>{fmt(it.commissionValue)}</span>
                           {canAdjust && !canc && (
-                            <button onClick={() => cancelItem(it)} disabled={busy} className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-600" title="Cancelar este lançamento (com motivo)"><Ban size={14} /></button>
+                            <button onClick={() => cancelItem(it)} disabled={busy} className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-600" title="Cancelar lançamento"><Ban size={14} /></button>
                           )}
                         </li>
                       )
@@ -220,7 +220,7 @@ export default function ExtratoDetalheModal({ entry, onClose, onChanged }: { ent
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <MoneyInput value={textToMoney(manual.value)} onChange={(n) => setManual((m) => ({ ...m, value: moneyToText(n) }))} placeholder="Valor" className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-                  <input value={manual.description} onChange={(e) => setManual((m) => ({ ...m, description: e.target.value }))} placeholder="Descrição (ex: garantia X)" className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                  <input value={manual.description} onChange={(e) => setManual((m) => ({ ...m, description: e.target.value }))} placeholder="Descrição" className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                 </div>
                 <input value={manual.reason} onChange={(e) => setManual((m) => ({ ...m, reason: e.target.value }))} placeholder="Motivo (opcional)" className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                 <div className="flex justify-end gap-2">

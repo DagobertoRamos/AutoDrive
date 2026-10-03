@@ -19,6 +19,7 @@ import {
   Link as LinkIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import { canAccessModule } from '@/lib/permissions'
 import type { UserRole } from '@/lib/permissions'
 import type { GoogleSheetConfig, GoogleSheetTab } from '@/types'
@@ -62,22 +63,22 @@ function SheetConfigModal({ initial, onSave, onClose }: SheetConfigModalProps) {
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="label">Nome interno</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Planilha Principal" />
+            <label className="label">Nome interno <RequiredMark /></label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Planilha Principal" />
           </div>
           <div>
-            <label className="label">ID da planilha Google Sheets</label>
-            <input className="input font-mono text-xs" value={spreadsheetId} onChange={(e) => setSpreadsheetId(e.target.value)} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
-            <p className="mt-1 text-xs text-gray-400">Extraia da URL: docs.google.com/spreadsheets/d/<strong>ID</strong>/edit</p>
+            <label className="label">ID da planilha Google Sheets <RequiredMark /></label>
+            <input className="input font-mono text-xs" value={spreadsheetId} onChange={(e) => setSpreadsheetId(e.target.value)} />
+            <p className="mt-1 text-xs text-gray-400">URL: …/spreadsheets/d/<strong>ID</strong>/edit</p>
           </div>
           <div>
             <label className="label">Descrição</label>
-            <textarea className="input resize-none" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Finalidade desta planilha..." />
+            <textarea className="input resize-none" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button type="button" onClick={() => onSave({ name, spreadsheetId, description })} className="btn-primary">Salvar</button>
+          <button type="button" onClick={() => onSave({ name: name.trim(), spreadsheetId: spreadsheetId.trim(), description })} disabled={!name.trim() || !spreadsheetId.trim()} className="btn-primary disabled:opacity-50">Salvar</button>
         </div>
       </div>
     </div>
@@ -116,21 +117,21 @@ function SheetTabModal({ configId, initial, onSave, onClose }: SheetTabModalProp
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="label">Nome interno (no sistema)</label>
-            <input className="input" value={internalName} onChange={(e) => setInternalName(e.target.value)} placeholder="Ex: Vendas do Mês" />
+            <label className="label">Nome interno <RequiredMark /></label>
+            <input className="input" value={internalName} onChange={(e) => setInternalName(e.target.value)} placeholder="Ex.: Vendas do Mês" />
           </div>
           <div>
-            <label className="label">Nome real na planilha</label>
-            <input className="input font-mono" value={sheetName} onChange={(e) => setSheetName(e.target.value)} placeholder="Ex: VENDAS" />
+            <label className="label">Nome real na planilha <RequiredMark /></label>
+            <input className="input font-mono" value={sheetName} onChange={(e) => setSheetName(e.target.value)} placeholder="Ex.: VENDAS" />
           </div>
           <div>
-            <label className="label">Tipo da aba</label>
+            <label className="label">Tipo da aba <RequiredMark /></label>
             <select className="input" value={tabType} onChange={(e) => setTabType(e.target.value as any)}>
               {TAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label className="label">Linha do cabeçalho</label>
+            <label className="label">Linha do cabeçalho <RequiredMark /></label>
             <input type="number" min={1} className="input" value={headerRow} onChange={(e) => setHeaderRow(Number(e.target.value))} />
           </div>
           <div>
@@ -140,7 +141,7 @@ function SheetTabModal({ configId, initial, onSave, onClose }: SheetTabModalProp
         </div>
         <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button type="button" onClick={() => onSave({ configId, internalName, sheetName, tabType: tabType as any, description, headerRow })} className="btn-primary">Salvar</button>
+          <button type="button" onClick={() => onSave({ configId, internalName: internalName.trim(), sheetName: sheetName.trim(), tabType: tabType as any, description, headerRow })} disabled={!internalName.trim() || !sheetName.trim() || !(headerRow >= 1)} className="btn-primary disabled:opacity-50">Salvar</button>
         </div>
       </div>
     </div>
@@ -251,12 +252,7 @@ export default function SheetsConfigPage() {
     <div className="max-w-4xl space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Google Sheets</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Configure planilhas e abas para importação de dados.
-          </p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900">Google Sheets</h1>
         <div className="flex items-center gap-2">
           <button type="button" onClick={loadConfigs} className="btn-secondary text-xs">
             <RefreshCw size={13} />
@@ -292,8 +288,7 @@ export default function SheetsConfigPage() {
       ) : configs.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-16 text-center">
           <TableProperties size={40} className="text-gray-200 mb-3" />
-          <p className="text-sm font-medium text-gray-500">Nenhuma planilha configurada</p>
-          <p className="text-xs text-gray-400 mt-1">Clique em &quot;Adicionar planilha&quot; para começar.</p>
+          <p className="text-sm font-medium text-gray-500">Nenhuma planilha.</p>
         </div>
       ) : (
         <div className="space-y-3">

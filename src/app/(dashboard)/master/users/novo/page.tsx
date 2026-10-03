@@ -12,6 +12,7 @@ import {
   UserPlus, Loader2, AlertCircle, CheckCircle2, Save,
   ChevronLeft, Eye, EyeOff, Building2, Search,
 } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -155,10 +156,12 @@ export default function NewUserPage() {
     setError('')
     setSuccess('')
 
-    if (!name.trim())        { setError('Nome é obrigatório.'); return }
-    if (!email.trim())       { setError('E-mail é obrigatório.'); return }
-    if (password.length < 6) { setError('Senha deve ter no mínimo 6 caracteres.'); return }
-    if (!selectedTenantId)   { setError('Selecione um tenant para este usuário.'); return }
+    if (!name.trim())        { setError('Informe o nome.'); return }
+    if (!email.trim())       { setError('Informe o e-mail.'); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('E-mail inválido.'); return }
+    if (!password)           { setError('Informe a senha inicial.'); return }
+    if (password.length < 6) { setError('A senha deve ter no mínimo 6 caracteres.'); return }
+    if (!selectedTenantId)   { setError('Selecione o tenant.'); return }
 
     setSaving(true)
     try {
@@ -209,10 +212,7 @@ export default function NewUserPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
           <UserPlus size={18} className="text-white" />
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Novo Usuário</h1>
-          <p className="text-xs text-gray-400">Criar usuário em qualquer tenant da plataforma</p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900">Novo Usuário</h1>
       </div>
 
       {error   && (
@@ -234,30 +234,30 @@ export default function NewUserPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 sm:col-span-1">
-              <label className={labelCls}>Nome completo *</label>
+              <label className={labelCls}>Nome completo <RequiredMark /></label>
               <input
                 className={inputCls}
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="João da Silva"
+                placeholder="Ex.: João da Silva"
                 autoComplete="off"
               />
             </div>
             <div className="col-span-2 sm:col-span-1">
-              <label className={labelCls}>E-mail *</label>
+              <label className={labelCls}>E-mail <RequiredMark /></label>
               <input
                 type="email"
                 className={inputCls}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="joao@loja.com.br"
+                placeholder="Ex.: joao@loja.com.br"
                 autoComplete="off"
               />
             </div>
           </div>
 
           <div>
-            <label className={labelCls}>Senha inicial *</label>
+            <label className={labelCls}>Senha inicial <RequiredMark /></label>
             <div className="relative">
               <input
                 type={showPwd ? 'text' : 'password'}
@@ -278,7 +278,7 @@ export default function NewUserPage() {
           </div>
 
           <div>
-            <label className={labelCls}>Papel (Role) *</label>
+            <label className={labelCls}>Papel <RequiredMark /></label>
             <select
               className={inputCls}
               value={role}
@@ -288,9 +288,6 @@ export default function NewUserPage() {
                 <option key={r} value={r}>{ROLE_LABELS[r] ?? r} — {r}</option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-400">
-              Define as permissões do usuário dentro do tenant.
-            </p>
           </div>
 
           <div>
@@ -305,9 +302,6 @@ export default function NewUserPage() {
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-400">
-              Cargo organizacional (opcional). Usado para regras de comissão e relatórios.
-            </p>
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">
@@ -327,7 +321,7 @@ export default function NewUserPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-800">
             <Building2 size={14} className="text-brand-600" />
-            Tenant *
+            Tenant <RequiredMark />
           </h2>
 
           {/* Search */}
@@ -335,7 +329,7 @@ export default function NewUserPage() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               className="w-full rounded-lg border border-gray-300 pl-8 pr-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-              placeholder="Buscar tenant por nome ou ID..."
+              placeholder="Buscar tenant"
               value={tenantSearch}
               onChange={e => setTenantSearch(e.target.value)}
             />
@@ -379,7 +373,6 @@ export default function NewUserPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3">
             <h2 className="text-sm font-semibold text-gray-800">
               Unidade
-              <span className="ml-1.5 text-xs font-normal text-gray-400">(opcional)</span>
             </h2>
 
             {loadingUnits ? (
@@ -387,7 +380,7 @@ export default function NewUserPage() {
                 <Loader2 size={14} className="animate-spin" />Carregando unidades...
               </div>
             ) : units.length === 0 ? (
-              <p className="text-sm text-gray-400">Este tenant não possui unidades cadastradas.</p>
+              <p className="text-sm text-gray-400">Nenhuma unidade.</p>
             ) : (
               <select
                 className={inputCls}
@@ -400,9 +393,6 @@ export default function NewUserPage() {
                 ))}
               </select>
             )}
-            <p className="text-xs text-gray-400">
-              Associar a uma unidade restringe o acesso do usuário àquela unidade no tenant.
-            </p>
           </div>
         )}
 

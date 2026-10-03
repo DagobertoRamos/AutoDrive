@@ -26,7 +26,7 @@ import {
   type SectionKey, type PositionGroup,
 } from '@/lib/evaluation/catalog'
 import { isItemAnswered } from '@/lib/evaluation/rules'
-import { FieldLabel, FieldError, RequiredTag, FIELD_ERROR_CLASS } from '@/components/ui/field'
+import { FieldLabel, FieldError, FIELD_ERROR_CLASS } from '@/components/ui/field'
 import { PhotoLightbox } from './PhotoLightbox'
 
 export interface DrawerItem {
@@ -300,7 +300,7 @@ export function ItemDrawer({
               className={inputCls + ' min-h-[60px] resize-y'}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex: trocar capa do banco, reparar amassado"
+              placeholder="Ex.: reparar amassado"
               disabled={readOnly}
             />
           </label>
@@ -440,8 +440,7 @@ export function ItemDrawer({
             </div>
             {photos.length === 0 ? (
               <p className="text-[11px] text-gray-400 italic">
-                Nenhuma foto. Use câmera ou arquivo.
-                {photoRequired && <> Este item <RequiredTag className="align-middle" /> tem foto.</>}
+                Nenhuma foto.
               </p>
             ) : (
               <ul className="grid grid-cols-3 gap-2">

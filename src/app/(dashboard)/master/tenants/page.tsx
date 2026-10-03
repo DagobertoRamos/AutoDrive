@@ -197,7 +197,7 @@ export default function MasterTenantsPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             className="input pl-9 text-sm"
-            placeholder="Buscar por nome, razão social, CNPJ, slug, ID..."
+            placeholder="Buscar por nome, CNPJ ou slug"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

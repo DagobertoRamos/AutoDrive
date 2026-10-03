@@ -203,11 +203,16 @@ describe('Financeiro — RBAC e tenant', () => {
   })
   it('entries POST: 201 grava source=MANUAL e tenantId', async () => {
     authMock.mockResolvedValue(session('ADM', 't1'))
-    const res = await entPOST(jsonReq('http://x/api/finance/entries', 'POST', { type: 'DESPESA', description: 'Luz', amount: 200 }))
+    const res = await entPOST(jsonReq('http://x/api/finance/entries', 'POST', { type: 'DESPESA', description: 'Luz', amount: 200, dueDate: '2026-10-10' }))
     expect(res.status).toBe(201)
     const data = prismaMock.financialEntry.create.mock.calls[0][0].data
     expect(data.tenantId).toBe('t1')
     expect(data.source).toBe('MANUAL')
+  })
+  it('entries POST: 400 sem vencimento', async () => {
+    authMock.mockResolvedValue(session('ADM', 't1'))
+    const res = await entPOST(jsonReq('http://x/api/finance/entries', 'POST', { type: 'DESPESA', description: 'Luz', amount: 200 }))
+    expect(res.status).toBe(400)
   })
   it('entries POST: 400 valor <= 0', async () => {
     const res = await entPOST(jsonReq('http://x/api/finance/entries', 'POST', { type: 'DESPESA', description: 'x', amount: 0 }))

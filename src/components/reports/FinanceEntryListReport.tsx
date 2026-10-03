@@ -59,7 +59,7 @@ export default function FinanceEntryListReport({
 
       <div className="flex flex-wrap items-center gap-3">
         <PeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
-        <SearchBox value={q} onChange={setQ} placeholder="Buscar: placa, negociação, nome, fornecedor, valor..." className="min-w-[280px] flex-1" />
+        <SearchBox value={q} onChange={setQ} placeholder="Placa, negociação, nome, fornecedor ou valor" className="min-w-[280px] flex-1" />
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -82,7 +82,7 @@ export default function FinanceEntryListReport({
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-14 text-center"><Icon size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum lançamento. Rode a sincronização ou crie lançamentos manuais.</p></td></tr>
+                <tr><td colSpan={6} className="py-14 text-center"><Icon size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum lançamento.</p></td></tr>
               ) : (
                 rows.map((e) => (
                   <tr key={e.id} className={cn('hover:bg-gray-50', e.vencida && 'bg-red-50/40')}>

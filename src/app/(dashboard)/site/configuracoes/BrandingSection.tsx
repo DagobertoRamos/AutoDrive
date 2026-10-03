@@ -88,7 +88,7 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
       ])
       onApply({ logoUrl, footerLogoUrl, faviconUrl, primaryColor: primary, darkColor: dark })
       setResult(null)
-      setDone('Marca aplicada. Clique em “Salvar site” para publicar.')
+      setDone('Marca aplicada. Salve o site para publicar.')
     } catch (e) { setErr(e instanceof Error ? e.message : 'Falha ao aplicar.') } finally { setBusy(null) }
   }
 
@@ -99,8 +99,7 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Sparkles size={15} className="text-brand-600" />Marca da loja</h2>
-      <p className="mb-3 text-xs text-gray-500">Envie a logo e o site se configura sozinho: cores, versão para fundo escuro e ícone da aba. Você confere e aplica.</p>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900"><Sparkles size={15} className="text-brand-600" />Marca da loja</h2>
 
       {canManage && (
         <div
@@ -111,7 +110,7 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
           {busy === 'analyze' ? <Loader2 size={26} className="animate-spin text-brand-600" /> : <ImagePlus size={26} className="text-gray-400" />}
           <p className="text-sm text-gray-700"><b>Arraste a logo aqui</b> ou</p>
           <button type="button" onClick={() => fileRef.current?.click()} disabled={!!busy} className="btn-secondary text-xs">Escolher arquivo</button>
-          <p className="text-[11px] text-gray-400">PNG com fundo transparente é o ideal · também aceita JPG, WebP e SVG · até 8 MB</p>
+          <p className="text-[11px] text-gray-400">PNG, JPG, WebP ou SVG · até 8 MB</p>
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => { void handle(e.target.files?.[0]); e.target.value = '' }} />
         </div>
       )}
@@ -120,13 +119,7 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
 
       {result && (
         <div className="mt-4 space-y-3 rounded-xl border border-brand-200 bg-brand-50/40 p-3">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-brand-800"><Wand2 size={14} />Pronto! Veja como fica:</p>
-          <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-gray-600">
-            {result.removedBackground && <li>Removemos o fundo branco da logo.</li>}
-            <li>Recortamos as sobras e ajustamos o tamanho ({result.width}×{result.height}px).</li>
-            {result.light && <li>Criamos uma versão branca da logo para o rodapé escuro.</li>}
-            <li>Geramos o ícone da aba do navegador.</li>
-          </ul>
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-brand-800"><Wand2 size={14} />Logo processada ({result.width}×{result.height}px). Confira a prévia e aplique.</p>
           {result.suggestion.warnings.map((w) => <p key={w} className="flex items-start gap-1.5 text-[11px] text-amber-800"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{w}</p>)}
         </div>
       )}
@@ -165,7 +158,7 @@ export function BrandingSection({ identity, canManage, onApply }: { identity: Id
             </div>
           )}
           {canManage && !result && identity.logoUrl && (
-            <button type="button" onClick={() => onApply({ logoUrl: '', footerLogoUrl: '', faviconUrl: '' })} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600"><Trash2 size={12} />Remover logo (usar o nome da loja em texto)</button>
+            <button type="button" onClick={() => onApply({ logoUrl: '', footerLogoUrl: '', faviconUrl: '' })} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600"><Trash2 size={12} />Remover logo</button>
           )}
         </div>
         <Preview identity={identity} logo={logoShown} footerLogo={footerShown} favicon={faviconShown} primary={primary} dark={dark} />

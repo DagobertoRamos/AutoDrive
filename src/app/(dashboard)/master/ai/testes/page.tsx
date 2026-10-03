@@ -40,15 +40,12 @@ export default function MasterAiTestsPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><FlaskConical size={20} className="text-brand-600" />Testes de IA</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Teste a conexão dos provedores. O MockAI responde sem custo; provedores reais exigem integração oficial.</p>
-      </div>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><FlaskConical size={20} className="text-brand-600" />Testes de IA</h1>
 
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100" />))}</div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><FlaskConical size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor. Cadastre um em Provedores / Conectores.</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><FlaskConical size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor.</p></div>
       ) : (
         <div className="space-y-2">
           {items.map((p) => {

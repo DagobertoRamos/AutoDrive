@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import { canAccessModule } from '@/lib/permissions'
 import AlertSetup from '@/components/seller-queue/AlertSetup'
 import EscalationConfigCard from '@/components/seller-queue/EscalationConfigCard'
@@ -460,7 +461,7 @@ function SettingsSection({
   action,
 }: {
   title: string
-  description: string
+  description?: string
   scope?: string
   children: ReactNode
   action?: ReactNode
@@ -473,7 +474,7 @@ function SettingsSection({
             <h2 className="text-base font-semibold text-gray-900">{title}</h2>
             {scope && <ScopeBadge>{scope}</ScopeBadge>}
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-gray-500">{description}</p>
+          {description && <p className="mt-1 max-w-3xl text-sm text-gray-500">{description}</p>}
         </div>
         {action}
       </div>
@@ -589,7 +590,7 @@ function UnsavedChangesBar({
       >
         <div>
           <p className="text-sm font-semibold text-gray-900">Alterações não salvas</p>
-          <p className="text-sm text-gray-500">Revise esta seção e salve quando estiver tudo certo.</p>
+
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onDiscard} className="btn-secondary text-sm">
@@ -1103,7 +1104,6 @@ export default function ConfiguracoesFilaPage() {
       <div className="space-y-5">
         <SettingsSection
           title="Status da fila"
-          description="Veja o que está ativo agora neste aparelho e o que depende das configurações da unidade."
         >
           <div className="grid gap-4 md:grid-cols-2">
             {overviewCards.map((card) => (
@@ -1119,43 +1119,6 @@ export default function ConfiguracoesFilaPage() {
             ))}
           </div>
         </SettingsSection>
-
-        <SettingsSection
-          title="Como usar esta tela"
-          description="As seções abaixo separam o que é configuração permanente, o que é ajuste deste aparelho e o que serve apenas para teste e diagnóstico."
-        >
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm font-semibold text-gray-900">Configurações permanentes</p>
-              <p className="mt-1 text-sm text-gray-500">
-                Alterações de unidade, presença, chamadas, conformidade e permissões só entram em vigor quando você salvar.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm font-semibold text-gray-900">Testes e verificações</p>
-              <p className="mt-1 text-sm text-gray-500">
-                Enviar alerta de teste, conferir dispositivos e tocar sons não mudam a regra da fila; servem apenas para validação operacional.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm font-semibold text-gray-900">Escopos desta página</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <ScopeBadge>Neste aparelho</ScopeBadge>
-                <ScopeBadge>Minha disponibilidade</ScopeBadge>
-                {canSettings && <ScopeBadge>Configuração da unidade</ScopeBadge>}
-                {canSettings && <ScopeBadge>Somente administradores</ScopeBadge>}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm font-semibold text-gray-900">Alterações pendentes</p>
-              <p className="mt-1 text-sm text-gray-500">
-                {hasPendingChanges
-                  ? 'Há mudanças aguardando confirmação. Use a barra fixa no final da tela para salvar ou descartar.'
-                  : 'No momento não há alterações pendentes nesta configuração.'}
-              </p>
-            </div>
-          </div>
-        </SettingsSection>
       </div>
     )
   }
@@ -1165,7 +1128,6 @@ export default function ConfiguracoesFilaPage() {
       <div className="space-y-5">
         <SettingsSection
           title="Alertas neste aparelho"
-          description="Ative e valide como este aparelho recebe as chamadas da fila sem alterar as regras gerais da unidade."
           scope="Neste aparelho"
         >
           <SettingRow
@@ -1184,13 +1146,12 @@ export default function ConfiguracoesFilaPage() {
         {canSettings && (
           <SettingsSection
             title="Canais e comportamento do alerta"
-            description="Define como a unidade avisa o vendedor da vez e a gestão quando a chamada acontece ou fica sem resposta."
             scope="Configuração da unidade"
           >
             <SettingRow
               icon={<Bell size={16} />}
               title="Som em loop no app do vendedor"
-              description="Toca o alerta dentro do app quando o vendedor da vez for chamado."
+              description="Toca ao chamar o vendedor da vez."
               status={cfg.alertSound ? 'Ativado' : 'Desativado'}
               statusTone={cfg.alertSound ? 'success' : 'neutral'}
               scope="Configuração da unidade"
@@ -1224,7 +1185,7 @@ export default function ConfiguracoesFilaPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Repetir o som a cada</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Repetir o som a cada <RequiredMark /></label>
                   <input
                     type="number"
                     min={5}
@@ -1240,7 +1201,7 @@ export default function ConfiguracoesFilaPage() {
 
             <SettingRow
               title="Notificações do navegador"
-              description="Permite alertar o vendedor mesmo com a aba minimizada no desktop ou no PWA."
+              description="Alerta com a aba minimizada."
               status={cfg.alertBrowserPush ? 'Ativado' : 'Desativado'}
               statusTone={cfg.alertBrowserPush ? 'success' : 'neutral'}
               scope="Configuração da unidade"
@@ -1259,7 +1220,7 @@ export default function ConfiguracoesFilaPage() {
 
             <SettingRow
               title="WhatsApp do vendedor da vez"
-              description="Usa o provedor já configurado da loja para complementar o alerta da fila."
+              description="Usa o provedor de WhatsApp da loja."
               status={cfg.alertWhatsapp ? 'Ativado' : 'Desativado'}
               statusTone={cfg.alertWhatsapp ? 'success' : 'neutral'}
               scope="Configuração da unidade"
@@ -1278,7 +1239,7 @@ export default function ConfiguracoesFilaPage() {
 
             <SettingRow
               title="WhatsApp da gestão"
-              description="Avisa a gestão quando não há vendedor disponível ou quando a chamada expira."
+              description="Sem vendedor disponível ou chamada expirada."
               status={cfg.alertWhatsappManagers ? 'Ativado' : 'Desativado'}
               statusTone={cfg.alertWhatsappManagers ? 'success' : 'neutral'}
               scope="Configuração da unidade"
@@ -1295,9 +1256,7 @@ export default function ConfiguracoesFilaPage() {
               }
             />
 
-            <p className="pt-2 text-[11px] text-gray-400">
-              O aviso interno da central continua existindo. Se a loja não tiver provedor de WhatsApp ativo, esse envio é simplesmente ignorado.
-            </p>
+
           </SettingsSection>
         )}
       </div>
@@ -1309,13 +1268,12 @@ export default function ConfiguracoesFilaPage() {
       <div className="space-y-5">
         <SettingsSection
           title="Modo férias"
-          description="Quando ativo, você fica fora da fila e não recebe novas chamadas como vendedor da vez."
           scope="Minha disponibilidade"
         >
           <SettingRow
             icon={<Palmtree size={16} />}
             title="Afastamento temporário da fila"
-            description={onVacation ? 'Seu usuário está fora da fila desta unidade até você desativar esse modo.' : 'Use quando não puder receber novas chamadas nesta unidade.'}
+            description={onVacation ? 'Você está fora da fila.' : 'Sai da fila e não recebe chamadas.'}
             status={onVacation ? 'Modo férias ativo' : 'Disponível'}
             statusTone={onVacation ? 'warning' : 'success'}
             scope="Minha disponibilidade"
@@ -1344,7 +1302,6 @@ export default function ConfiguracoesFilaPage() {
           <>
             <SettingsSection
               title="Equipe apta a operar a fila"
-              description="Gerencie participação, férias e elegibilidade dos colaboradores sem mudar a lógica de rotação da fila."
               scope="Configuração da unidade"
             >
               <div className="space-y-4">
@@ -1355,13 +1312,12 @@ export default function ConfiguracoesFilaPage() {
 
             <SettingsSection
               title="Horários automáticos e pausa prolongada"
-              description="Define quando a fila abre ou fecha sozinha e quando um colaborador ausente deixa a fila automaticamente."
               scope="Configuração da unidade"
             >
               <SettingRow
                 icon={<Clock size={16} />}
                 title="Abrir e fechar a fila por horário"
-                description="Ative para seguir a rotina operacional da unidade sem depender de ação manual todos os dias."
+                description="Segue o horário da unidade."
                 status={cfg.autoSchedule ? 'Ativado' : 'Desativado'}
                 statusTone={cfg.autoSchedule ? 'success' : 'neutral'}
                 scope="Configuração da unidade"
@@ -1417,13 +1373,13 @@ export default function ConfiguracoesFilaPage() {
 
               <SettingRow
                 title="Saída automática por pausa ou ausência"
-                description="Remove da fila quem permanecer pausado ou ausente por muito tempo."
+                description="Remove quem ficar pausado ou ausente por muito tempo."
                 status={cfg.maxPauseMinutes > 0 ? `${cfg.maxPauseMinutes} min` : 'Desativado'}
                 statusTone={cfg.maxPauseMinutes > 0 ? 'warning' : 'neutral'}
                 scope="Configuração da unidade"
               >
                 <div className="max-w-[180px]">
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Tempo máximo</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Tempo máximo <RequiredMark /></label>
                   <input
                     type="number"
                     min={limits.maxPauseMinutes.min}
@@ -1447,13 +1403,12 @@ export default function ConfiguracoesFilaPage() {
       <div className="space-y-5">
         <SettingsSection
           title="Presença na unidade"
-          description="Defina como o sistema confirma que o vendedor está fisicamente autorizado a entrar na fila desta unidade."
           scope="Configuração da unidade"
         >
           <SettingRow
             icon={<MapPin size={16} />}
             title="Exigir validação de presença nesta unidade"
-            description="Quando desativado, os métodos abaixo ficam preservados, porém sem efeito na entrada da fila."
+            description="Desativado, os métodos abaixo não são exigidos."
             status={cfg.active ? 'Ativada' : 'Desativada'}
             statusTone={cfg.active ? 'success' : 'neutral'}
             scope="Configuração da unidade"
@@ -1510,7 +1465,7 @@ export default function ConfiguracoesFilaPage() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Tempo de aceite da chamada</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Tempo de aceite da chamada <RequiredMark /></label>
                   <input
                     type="number"
                     min={10}
@@ -1569,9 +1524,7 @@ export default function ConfiguracoesFilaPage() {
               </span>
               <ChevronRight size={16} className={cn('transition', advancedGeoOpen && 'rotate-90')} />
             </summary>
-            <p className="mt-2 text-sm text-gray-500">
-              Esses campos são técnicos e ficam reservados para quem administra a presença física da unidade.
-            </p>
+
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-700">Latitude</label>
@@ -1596,7 +1549,7 @@ export default function ConfiguracoesFilaPage() {
                 {geoErrors.lng && <p id="geo-lng-error" className="mt-1 text-xs text-red-600">{geoErrors.lng}</p>}
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Raio permitido</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Raio permitido <RequiredMark /></label>
                 <input
                   type="number"
                   min={10}
@@ -1638,13 +1591,12 @@ export default function ConfiguracoesFilaPage() {
       <div className="space-y-5">
         <SettingsSection
           title="Lembretes de atendimento aberto"
-          description="Controla quando o sistema volta a cobrar resposta do vendedor e quando escalar a gestão."
           scope="Configuração da unidade"
         >
           <SettingRow
             icon={<BellRing size={16} />}
             title="Lembretes automáticos"
-            description="Acompanha atendimentos abertos por muito tempo e força um retorno operacional."
+            description="Cobra atendimentos abertos há muito tempo."
             status={cfg.attendanceReminder.enabled ? 'Ativado' : 'Desativado'}
             statusTone={cfg.attendanceReminder.enabled ? 'success' : 'neutral'}
             scope="Configuração da unidade"
@@ -1701,7 +1653,7 @@ export default function ConfiguracoesFilaPage() {
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Primeiro lembrete</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Primeiro lembrete <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.attendanceFirstAfterMinutes.min}
@@ -1713,7 +1665,7 @@ export default function ConfiguracoesFilaPage() {
                 <p className="mt-1 text-[11px] text-gray-400">Em minutos.</p>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Repetir a cada</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Repetir a cada <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.attendanceRepeatIntervalSeconds.min}
@@ -1725,7 +1677,7 @@ export default function ConfiguracoesFilaPage() {
                 <p className="mt-1 text-[11px] text-gray-400">Em segundos.</p>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Máx. de lembretes</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Máx. de lembretes <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.attendanceMaxReminders.min}
@@ -1736,7 +1688,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Escalar após</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Escalar após <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.attendanceEscalateAfter.min}
@@ -1752,13 +1704,12 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Push complementar da fila"
-          description="Usa push ou mobile além da central interna, com limites anti-spam e regras de horário."
           scope="Configuração da unidade"
         >
           <SettingRow
             icon={<Bell size={16} />}
             title="Enviar push complementar"
-            description="Serve como reforço para a chamada da fila, sem trocar o fluxo principal da central."
+            description="Reforço da chamada da fila."
             status={cfg.queuePush.enabled ? 'Ativado' : 'Desativado'}
             statusTone={cfg.queuePush.enabled ? 'success' : 'neutral'}
             scope="Configuração da unidade"
@@ -1808,7 +1759,7 @@ export default function ConfiguracoesFilaPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Intervalo mínimo</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Intervalo mínimo <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.queuePushIntervalSeconds.min}
@@ -1820,7 +1771,7 @@ export default function ConfiguracoesFilaPage() {
                 <p className="mt-1 text-[11px] text-gray-400">Em segundos.</p>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Máx. de tentativas</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Máx. de tentativas <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.queuePushMaxRetries.min}
@@ -1834,7 +1785,7 @@ export default function ConfiguracoesFilaPage() {
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Limite por vendedor</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Limite por vendedor <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.queuePushAntiSpamUserLimit.min}
@@ -1845,7 +1796,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Limite por atendimento</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Limite por atendimento <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.queuePushAntiSpamAttendanceLimit.min}
@@ -1856,7 +1807,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Limite por fila</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Limite por fila <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.queuePushAntiSpamQueueLimit.min}
@@ -1867,7 +1818,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Janela anti-spam</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Janela anti-spam <RequiredMark /></label>
                 <input
                   type="number"
                   min={limits.queuePushAntiSpamWindowMinutes.min}
@@ -1920,7 +1871,6 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Painel da loja"
-          description="Controla o som e a cadência do painel grande da unidade quando existe uma chamada aguardando aceite."
           scope="Configuração da unidade"
         >
           <div className="grid gap-4">
@@ -1959,7 +1909,7 @@ export default function ConfiguracoesFilaPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Toque a cada</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Toque a cada <RequiredMark /></label>
                 <input
                   type="number"
                   min={1}
@@ -1971,7 +1921,7 @@ export default function ConfiguracoesFilaPage() {
                 <p className="mt-1 text-[11px] text-gray-400">Em segundos.</p>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Atualizar painel</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Atualizar painel <RequiredMark /></label>
                 <input
                   type="number"
                   min={3}
@@ -1983,7 +1933,7 @@ export default function ConfiguracoesFilaPage() {
                 <p className="mt-1 text-[11px] text-gray-400">Em segundos.</p>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Volume</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Volume <RequiredMark /></label>
                 <input
                   type="number"
                   min={0}
@@ -2003,7 +1953,6 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Regras de chamada rápida e convivência"
-          description="Define quando a vez é consumida, quando o vendedor pode ficar aguardando na fila e qual o limite para atendimento rápido."
           scope="Configuração da unidade"
         >
           <div className="space-y-4">
@@ -2026,7 +1975,7 @@ export default function ConfiguracoesFilaPage() {
             </div>
 
             <div className="max-w-[180px]">
-              <label className="mb-1 block text-xs font-semibold text-gray-700">Limite para informação rápida</label>
+              <label className="mb-1 block text-xs font-semibold text-gray-700">Limite para informação rápida <RequiredMark /></label>
               <input
                 type="number"
                 min={1}
@@ -2048,7 +1997,6 @@ export default function ConfiguracoesFilaPage() {
       <div className="space-y-5">
         <SettingsSection
           title="Permissões de operação"
-          description="Ajuste o que a equipe pode fazer na fila sem alterar o escopo de tenant ou quebrar o controle do servidor."
           scope="Somente administradores"
         >
           <div className="grid gap-3 md:grid-cols-2">
@@ -2075,7 +2023,6 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Responsáveis extras pela fila"
-          description="Além dos cargos padrão da loja, escolha colaboradores que poderão operar esta fila com poderes de gestão."
           scope="Somente administradores"
         >
           <div className="grid max-h-56 gap-2 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50/60 p-3 md:grid-cols-2">
@@ -2106,7 +2053,6 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Conformidade operacional"
-          description="Transforma suspeitas e reincidências da fila em revisão gerencial, pendência rastreável e impacto controlado no ranking."
           scope="Somente administradores"
         >
           <div className="grid gap-3 md:grid-cols-2">
@@ -2150,7 +2096,7 @@ export default function ConfiguracoesFilaPage() {
 
           <div className={cn('mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4', !cfg.compliancePilot.enabled && 'pointer-events-none opacity-50')}>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Pontos por timeout</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Pontos por timeout <RequiredMark /></label>
               <input
                 type="number"
                 min={limits.complianceTimeoutPoints.min}
@@ -2161,7 +2107,7 @@ export default function ConfiguracoesFilaPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Fraude média confirmada</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Fraude média confirmada <RequiredMark /></label>
               <input
                 type="number"
                 min={limits.complianceFraudMediumPoints.min}
@@ -2172,7 +2118,7 @@ export default function ConfiguracoesFilaPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Fraude alta confirmada</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Fraude alta confirmada <RequiredMark /></label>
               <input
                 type="number"
                 min={limits.complianceFraudHighPoints.min}
@@ -2183,7 +2129,7 @@ export default function ConfiguracoesFilaPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Janela de revisão</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Janela de revisão <RequiredMark /></label>
               <input
                 type="number"
                 min={limits.complianceReviewWindowDays.min}
@@ -2199,7 +2145,6 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Score de qualidade"
-          description="Sistema global de pontos que pode restringir módulos quando o score operacional cair demais."
           scope="Somente administradores"
           action={
             <a
@@ -2233,7 +2178,7 @@ export default function ConfiguracoesFilaPage() {
                 Descontar automaticamente
               </label>
               <div className="md:col-span-1">
-                <label className="mb-1 block text-xs font-medium text-gray-700">Janela de análise</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Janela de análise <RequiredMark /></label>
                 <input
                   type="number"
                   min={7}
@@ -2251,13 +2196,13 @@ export default function ConfiguracoesFilaPage() {
                 <p className="border-t border-gray-100 pt-4 text-sm font-semibold text-gray-900">Limiares de restrição</p>
                 <p className="mt-1 text-[11px] text-gray-400">Valores negativos. Quanto menor o score, mais severa a restrição.</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Pop-up de aviso</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.popupAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, popupAt: Number(e.target.value) || -5 } })} /></div>
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Destaque vermelho</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.warnAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, warnAt: Number(e.target.value) || -10 } })} /></div>
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear pendências</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockPendencyCreateAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockPendencyCreateAt: Number(e.target.value) || -20 } })} /></div>
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear leads</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockLeadsAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockLeadsAt: Number(e.target.value) || -30 } })} /></div>
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear negociações</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockNewSalesAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockNewSalesAt: Number(e.target.value) || -35 } })} /></div>
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Retirar da fila</label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockQueueAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockQueueAt: Number(e.target.value) || -50 } })} /></div>
-                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Máx. pendências abertas</label><input type="number" min={1} max={100} className={inputCls} value={cfg.quality.thresholds.maxUnresolvedPendencies} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, maxUnresolvedPendencies: Number(e.target.value) || 8 } })} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Pop-up de aviso <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.popupAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, popupAt: Number(e.target.value) || -5 } })} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Destaque vermelho <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.warnAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, warnAt: Number(e.target.value) || -10 } })} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear pendências <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockPendencyCreateAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockPendencyCreateAt: Number(e.target.value) || -20 } })} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear leads <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockLeadsAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockLeadsAt: Number(e.target.value) || -30 } })} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Bloquear negociações <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockNewSalesAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockNewSalesAt: Number(e.target.value) || -35 } })} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Retirar da fila <RequiredMark /></label><input type="number" max={0} className={inputCls} value={cfg.quality.thresholds.blockQueueAt} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, blockQueueAt: Number(e.target.value) || -50 } })} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-gray-700">Máx. pendências abertas <RequiredMark /></label><input type="number" min={1} max={100} className={inputCls} value={cfg.quality.thresholds.maxUnresolvedPendencies} onChange={(e) => set('quality', { ...cfg.quality, thresholds: { ...cfg.quality.thresholds, maxUnresolvedPendencies: Number(e.target.value) || 8 } })} /></div>
                 </div>
               </div>
 
@@ -2296,13 +2241,12 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Bloqueio por reincidência"
-          description="Retira o vendedor da fila quando o padrão de perdas e timeouts ultrapassa os limites definidos pela unidade."
           scope="Somente administradores"
         >
           <SettingRow
             icon={<ShieldAlert size={16} />}
             title="Ativar bloqueio automático"
-            description="Aplica bloqueio temporário ou diário conforme a reincidência de timeouts."
+            description="Bloqueio temporário ou diário por reincidência de timeouts."
             status={cfg.autoBlock.enabled ? 'Ativado' : 'Desativado'}
             statusTone={cfg.autoBlock.enabled ? 'warning' : 'neutral'}
             scope="Configuração da unidade"
@@ -2320,7 +2264,7 @@ export default function ConfiguracoesFilaPage() {
           >
             <div className={cn('grid gap-3 md:grid-cols-3', !cfg.autoBlock.enabled && 'pointer-events-none opacity-50')}>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para bloqueio temporário</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para bloqueio temporário <RequiredMark /></label>
                 <input
                   type="number"
                   min={1}
@@ -2331,7 +2275,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Duração do bloqueio</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Duração do bloqueio <RequiredMark /></label>
                 <input
                   type="number"
                   min={1}
@@ -2343,7 +2287,7 @@ export default function ConfiguracoesFilaPage() {
                 <p className="mt-1 text-[11px] text-gray-400">Em horas.</p>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para bloqueio diário</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para bloqueio diário <RequiredMark /></label>
                 <input
                   type="number"
                   min={2}
@@ -2365,7 +2309,7 @@ export default function ConfiguracoesFilaPage() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-900">Vendedores bloqueados</p>
-                <p className="mt-1 text-sm text-gray-500">A gestão pode liberar manualmente e zerar as perdas do dia quando necessário.</p>
+
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={loadBlocks} className="btn-secondary text-xs">
@@ -2417,7 +2361,6 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Motivos cadastrados"
-          description="Padroniza os encerramentos de atendimento ou lead e os motivos de negociação na rotina da unidade."
           scope="Configuração da unidade"
         >
           <div className="space-y-4">
@@ -2445,7 +2388,6 @@ export default function ConfiguracoesFilaPage() {
       <div className="space-y-5">
         <SettingsSection
           title="Diagnóstico dos colaboradores"
-          description="Consolida presença, dispositivos e indicadores de conformidade. Use para verificar se cada pessoa está operacionalmente pronta."
           scope="Somente administradores"
         >
           <QueueDiagnosticsCard />
@@ -2453,13 +2395,12 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Testes rápidos"
-          description="Ações de validação que não alteram permanentemente a configuração da fila."
           scope="Somente administradores"
         >
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
               <p className="text-sm font-semibold text-gray-900">Som do painel da loja</p>
-              <p className="mt-1 text-sm text-gray-500">Use este teste para confirmar o áudio configurado no painel sem mexer na rotina de chamadas.</p>
+
               <button type="button" onClick={() => { unlockAudio(); playSound(cfg.panelSound.soundType) }} className="btn-secondary mt-4 text-sm">
                 <Volume2 size={14} />
                 Testar som do painel
@@ -2467,7 +2408,7 @@ export default function ConfiguracoesFilaPage() {
             </div>
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
               <p className="text-sm font-semibold text-gray-900">Alertas neste aparelho</p>
-              <p className="mt-1 text-sm text-gray-500">Os testes de push e das permissões deste aparelho continuam disponíveis na seção de alertas.</p>
+
               <button type="button" onClick={() => setActiveSection('alerts')} className="btn-secondary mt-4 text-sm">
                 <BellRing size={14} />
                 Ir para alertas
@@ -2478,7 +2419,6 @@ export default function ConfiguracoesFilaPage() {
 
         <SettingsSection
           title="Zona de perigo"
-          description="Comandos administrativos para reiniciar a fila do dia ou limpar histórico. Use apenas quando a operação exigir esse reset."
           scope="Somente administradores"
         >
           <div className="rounded-2xl border border-red-200 bg-red-50/40 p-4">
@@ -2559,9 +2499,7 @@ export default function ConfiguracoesFilaPage() {
               <Settings size={22} className="text-brand-600" />
               Configurações da fila
             </h1>
-            <p className="mt-1 max-w-3xl text-sm text-gray-500">
-              Gerencie alertas, disponibilidade, presença e comportamento das chamadas.
-            </p>
+
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => { void load(); void refreshDeviceAlertSummary(); void loadBlocks() }} className="btn-secondary text-sm">

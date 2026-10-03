@@ -12,6 +12,7 @@ import {
   CheckCircle2, AlertCircle, X, RefreshCw, ShieldAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -147,10 +148,8 @@ export default function NotificationRulesPage() {
   // ── Save ──────────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.conditionType.trim()) {
-      setFeedback({ ok: false, msg: 'Nome e tipo de condição são obrigatórios.' })
-      return
-    }
+    if (!form.name.trim()) { setFeedback({ ok: false, msg: 'Informe o nome da regra.' }); return }
+    if (!form.conditionType.trim()) { setFeedback({ ok: false, msg: 'Informe o tipo de condição.' }); return }
 
     setSaving(true)
     setFeedback(null)
@@ -233,9 +232,6 @@ export default function NotificationRulesPage() {
             <ShieldAlert size={20} className="text-brand-600" />
             Regras de Notificação
           </h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Regras globais que determinam quando e como pendências são criadas e alertas disparados.
-          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={fetchRules} disabled={loading} className="btn-secondary text-xs">
@@ -256,7 +252,7 @@ export default function NotificationRulesPage() {
         ) : rules.length === 0 ? (
           <div className="py-14 text-center">
             <Bell size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} />
-            <p className="text-sm text-gray-400">Nenhuma regra configurada</p>
+            <p className="text-sm text-gray-400">Nenhuma regra.</p>
             <button onClick={openCreate} className="mt-3 btn-primary text-sm">
               <Plus size={14} /> Criar primeira regra
             </button>
@@ -359,11 +355,11 @@ export default function NotificationRulesPage() {
             <div className="max-h-[70vh] overflow-y-auto px-6 py-5 space-y-4">
               {/* Nome */}
               <div>
-                <label className="label">Nome da regra *</label>
+                <label className="label">Nome da regra <RequiredMark /></label>
                 <input
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="ex: Negociação parada há +24h"
+                  placeholder="Ex.: Negociação parada há +24h"
                   className="input"
                 />
               </div>
@@ -376,14 +372,13 @@ export default function NotificationRulesPage() {
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   rows={2}
                   className="input resize-none"
-                  placeholder="Explique quando esta regra dispara..."
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 {/* Módulo */}
                 <div>
-                  <label className="label">Módulo *</label>
+                  <label className="label">Módulo <RequiredMark /></label>
                   <select
                     value={form.module}
                     onChange={(e) => setForm((f) => ({ ...f, module: e.target.value }))}
@@ -397,11 +392,11 @@ export default function NotificationRulesPage() {
 
                 {/* Tipo de condição */}
                 <div>
-                  <label className="label">Tipo de condição *</label>
+                  <label className="label">Tipo de condição <RequiredMark /></label>
                   <input
                     value={form.conditionType}
                     onChange={(e) => setForm((f) => ({ ...f, conditionType: e.target.value }))}
-                    placeholder="ex: DEAL_STUCK_24H"
+                    placeholder="Ex.: DEAL_STUCK_24H"
                     className="input"
                   />
                 </div>
@@ -441,7 +436,7 @@ export default function NotificationRulesPage() {
                     type="number" min={0}
                     value={form.slaMinutes}
                     onChange={(e) => setForm((f) => ({ ...f, slaMinutes: e.target.value }))}
-                    placeholder="ex: 240 (= 4h)"
+                    placeholder="Ex.: 240"
                     className="input"
                   />
                 </div>
@@ -464,7 +459,7 @@ export default function NotificationRulesPage() {
                     type="number" min={0}
                     value={form.escalationAfterMinutes}
                     onChange={(e) => setForm((f) => ({ ...f, escalationAfterMinutes: e.target.value }))}
-                    placeholder="ex: 60"
+                    placeholder="Ex.: 60"
                     className="input"
                   />
                 </div>

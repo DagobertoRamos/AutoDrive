@@ -85,7 +85,6 @@ export default function PlanoComissaoPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><SlidersHorizontal size={20} className="text-brand-600" />Plano de Comissão</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Gestão profissional do comissionamento por cargo e por vendedor.</p>
         </div>
         <Link href="/comissoes/regras" className="btn-secondary text-xs"><ExternalLink size={13} />Cadastro completo de regras</Link>
       </div>
@@ -104,7 +103,7 @@ export default function PlanoComissaoPage() {
       {tab === 1 && <RulesTab rules={rules} loading={loading} onReload={loadRules} />}
       {tab === 2 && <DocumentoConfigCard />}
       {tab === 3 && <GarantiaConfigCard />}
-      {tab === 4 && <div className="space-y-5"><RetornoPercentuais /><p className="text-xs text-gray-400">ILA / IOF e faixa de retorno ficam em <Link href="/comissoes/retornos" className="text-brand-600 underline">Retorno (ILA/IOF)</Link>.</p></div>}
+      {tab === 4 && <div className="space-y-5"><RetornoPercentuais /><Link href="/comissoes/retornos" className="text-xs text-brand-600 underline">Retorno (ILA/IOF)</Link></div>}
       {tab === 5 && <BonusPeriodoCard />}
     </div>
   )
@@ -127,10 +126,6 @@ function OverviewTab({ rules, loading, error, onReload }: { rules: Rule[]; loadi
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-700">
-        Resumo do plano lido das regras cadastradas. Documento, garantia e bônus de período têm cards próprios nas outras abas.
-        Regras a partir de valores/faixas — edite na aba <strong>Regras por cargo</strong>.
-      </div>
       {grouped.map(([cargo, rs]) => (
         <div key={cargo} className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Layers size={15} className="text-brand-600" />{cargo}</h3>
@@ -215,9 +210,6 @@ function RulesTab({ rules, loading, onReload }: { rules: Rule[]; loading: boolea
           {err ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}{err || msg}
         </div>
       )}
-      <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-700">
-        Edite aqui o <strong>valor</strong> de cada regra e ligue/desligue. Para criar regra nova, faixas ou vínculos, use o <Link href="/comissoes/regras" className="underline">cadastro completo</Link>.
-      </div>
 
       {groups.map(([cargo, rs]) => (
         <div key={cargo} className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">

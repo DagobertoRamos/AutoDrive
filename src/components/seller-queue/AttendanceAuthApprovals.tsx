@@ -32,9 +32,9 @@ export default function AttendanceAuthApprovals() {
   const decide = async (id: string, decision: 'approve' | 'reject') => {
     let reason = ''
     if (decision === 'reject') {
-      const r = window.prompt('Motivo da recusa (mín. 3 caracteres):')
+      const r = window.prompt('Motivo da recusa:')
       if (r === null) return
-      if (r.trim().length < 3) { alert('Motivo muito curto.'); return }
+      if (r.trim().length < 3) { alert('Informe o motivo (mín. 3 caracteres).'); return }
       reason = r.trim()
     }
     setBusy(id)

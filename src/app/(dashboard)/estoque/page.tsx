@@ -304,7 +304,7 @@ export default function EstoquePage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por placa, marca, modelo, chassi..."
+            placeholder="Placa, marca, modelo ou chassi"
             className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-4 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
           {search && (
@@ -502,11 +502,6 @@ export default function EstoquePage() {
           <h3 className="text-lg font-semibold text-gray-600">
             {hasActiveFilters ? 'Nenhum veículo encontrado' : 'Estoque vazio'}
           </h3>
-          <p className="mt-1 text-sm text-gray-400 max-w-sm">
-            {hasActiveFilters
-              ? 'Tente ajustar os filtros ou limpe a busca para ver mais resultados.'
-              : 'Ainda não há veículos cadastrados no estoque.'}
-          </p>
           {hasActiveFilters ? (
             <button
               onClick={clearFilters}

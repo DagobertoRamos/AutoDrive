@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { RequiredMark } from '@/components/ui/field'
 import {
   ShieldAlert,
   Building2,
@@ -655,13 +656,13 @@ export function ManagerDashboard({ firstName, greeting }: ManagerDashboardProps)
           </p>
           <form onSubmit={handleQueueAction} className="mt-4 space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Motivo / Justificativa:</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Motivo <RequiredMark /></label>
               <input
                 type="text"
                 value={actionReason}
                 onChange={(e) => setActionReason(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs focus:ring-1 focus:ring-brand-500 outline-none"
-                placeholder="Ex: Vendedor em almoço, erro de checkout..."
+                placeholder="Motivo"
                 required
               />
             </div>

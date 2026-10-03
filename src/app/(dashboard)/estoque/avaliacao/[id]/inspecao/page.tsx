@@ -22,6 +22,7 @@ import { needsManagerReview, SITE_PRE_EVAL_SOURCE } from '@/lib/evaluation/site-
 import { StockEntryPanel } from '../../_components/StockEntryPanel'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
 import { getStatusDef } from '@/components/estoque/avaliacoes/status'
+import { RequiredMark } from '@/components/ui/field'
 import {
   ArrowLeft, Loader2, Sofa, ArrowUp, ArrowRight, ArrowDown, ArrowLeftRight,
   Gauge, Wrench, FileText, CheckCircle2, AlertTriangle, Plus,
@@ -367,12 +368,12 @@ export default function InspecaoPage() {
           <Globe size={18} className={`mt-0.5 shrink-0 ${siteReview ? 'text-sky-700' : 'text-emerald-700'}`} />
           <div className="text-sm">
             <p className={`font-bold ${siteReview ? 'text-sky-900' : 'text-emerald-900'}`}>
-              {siteReview ? 'Pré-avaliação enviada pelo cliente no site — liberada automaticamente pelo sistema' : 'Pré-avaliação do site conferida pela gerência'}
+              {siteReview ? 'Pré-avaliação enviada pelo cliente no site' : 'Pré-avaliação do site conferida pela gerência'}
             </p>
             <p className={`mt-0.5 text-xs ${siteReview ? 'text-sky-800' : 'text-emerald-800'}`}>
               {siteReview
-                ? 'As fotos e respostas vieram do cliente. Antes de usar este carro em compra, troca ou consignação, a gerência precisa conferir as fotos e informar os valores.'
-                : 'Valores definidos pela gerência. O carro já pode seguir para a negociação quando o cliente aceitar.'}
+                ? 'A gerência precisa conferir as fotos e informar os valores antes da negociação.'
+                : 'Valores definidos pela gerência.'}
             </p>
           </div>
         </div>
@@ -560,7 +561,6 @@ function DocumentosTab({
   const outros = attachments
   return (
     <div className="space-y-6">
-      <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900">A perícia/cautelar é feita depois, na ficha do veículo (aba Cautelar), com o laudo anexado — faz parte da esteira de entrada no estoque.</p>
 
       <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -650,7 +650,7 @@ function ServicosGeraisTab({
           <select className={inputCls} value={type} onChange={(e) => setType(e.target.value)}>
             {SERVICE_TYPES.map((t) => <option key={t} value={t}>{SERVICE_TYPE_LABELS[t]}</option>)}
           </select>
-          <input className={inputCls} placeholder="Descrição (ex: Higienização interna)" value={desc} onChange={(e) => setDesc(e.target.value)} />
+          <input className={inputCls} placeholder="Descrição *" aria-required="true" value={desc} onChange={(e) => setDesc(e.target.value)} />
           <input className={inputCls} placeholder="0,00" value={cost} onChange={(e) => setCost(maskBRLInput(e.target.value))} />
           <button onClick={add} disabled={busy} className="flex items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60">
             <Plus size={13} /> Adicionar
@@ -949,12 +949,12 @@ function PrecificarPanel({
       </div>
       <p className="text-xs text-amber-800 mb-3">
         {siteReview
-          ? 'Confira as fotos e respostas do cliente nas abas de Inspeção e defina os valores. Sem esta conferência o carro não entra em negociação.'
-          : 'Defina os valores de avaliação. Ao liberar, o vendedor é notificado e pode prosseguir com a negociação.'}
+          ? 'Confira fotos e respostas do cliente e defina os valores.'
+          : 'Ao liberar, o vendedor é notificado.'}
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-700">Valor Avaliado (R$) *</span>
+          <span className="text-xs font-medium text-gray-700">Valor Avaliado (R$) <RequiredMark /></span>
           <input className={inputCls} placeholder="0,00" value={avaliado} onChange={(e) => setAvaliado(maskBRLInput(e.target.value))} inputMode="numeric" />
         </label>
         <label className="flex flex-col gap-1">
@@ -971,7 +971,7 @@ function PrecificarPanel({
         </label>
         <label className="flex flex-col gap-1 sm:col-span-2">
           <span className="text-xs font-medium text-gray-700">Observações para o vendedor</span>
-          <textarea className={inputCls + ' min-h-[72px] resize-y'} placeholder="Justificativa / condições..." value={feedback} onChange={(e) => setFeedback(e.target.value)} />
+          <textarea className={inputCls + ' min-h-[72px] resize-y'} placeholder="Justificativa / condições" value={feedback} onChange={(e) => setFeedback(e.target.value)} />
         </label>
       </div>
       <div className="flex justify-end mt-3">
@@ -1028,13 +1028,13 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
   }
 
   // Status visual baseado na decisão
-  const statusInfo: Record<string, { label: string; color: string; emoji: string }> = {
-    PENDENTE:   { label: 'Cliente não aceitou a proposta', color: 'border-amber-300 bg-amber-50 text-amber-900',     emoji: '⏳' },
-    ACEITA:     { label: 'Cliente aceitou a proposta',     color: 'border-emerald-300 bg-emerald-50 text-emerald-900', emoji: '✅' },
-    RECUSADA:   { label: 'Cliente recusou a proposta',     color: 'border-red-300 bg-red-50 text-red-900',           emoji: '❌' },
-    ANALISANDO: { label: 'Cliente está analisando',         color: 'border-blue-300 bg-blue-50 text-blue-900',        emoji: '🤔' },
-    EXPIRADA:   { label: 'Proposta vencida',                color: 'border-gray-300 bg-gray-50 text-gray-700',        emoji: '⏰' },
-    CANCELADA:  { label: 'Proposta cancelada',              color: 'border-gray-300 bg-gray-50 text-gray-700',        emoji: '🚫' },
+  const statusInfo: Record<string, { label: string; color: string }> = {
+    PENDENTE:   { label: 'Cliente não aceitou a proposta', color: 'border-amber-300 bg-amber-50 text-amber-900' },
+    ACEITA:     { label: 'Cliente aceitou a proposta',     color: 'border-emerald-300 bg-emerald-50 text-emerald-900' },
+    RECUSADA:   { label: 'Cliente recusou a proposta',     color: 'border-red-300 bg-red-50 text-red-900' },
+    ANALISANDO: { label: 'Cliente está analisando',         color: 'border-blue-300 bg-blue-50 text-blue-900' },
+    EXPIRADA:   { label: 'Proposta vencida',                color: 'border-gray-300 bg-gray-50 text-gray-700' },
+    CANCELADA:  { label: 'Proposta cancelada',              color: 'border-gray-300 bg-gray-50 text-gray-700' },
   }
   const status = statusInfo[decision] ?? statusInfo.PENDENTE
 
@@ -1047,14 +1047,13 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
       <div className="space-y-3 p-4">
         {!released && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            ⚠️ Avaliação ainda não foi liberada pelo gerente. A decisão do cliente só vale após liberação.
+            Aguardando liberação do gerente.
           </p>
         )}
 
         {/* Status atual */}
         <div className={`rounded-lg border-2 ${status.color} px-4 py-3`}>
           <p className="text-base font-semibold">
-            <span className="mr-2">{status.emoji}</span>
             {status.label}
           </p>
           {evaluation.customerDecisionAt && (
@@ -1081,14 +1080,14 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Observação / motivo (opcional)"
+              placeholder="Observação / motivo"
             />
 
             {/* Modal mini: escolher availableFor antes de marcar ACEITA */}
             {showAvail ? (
               <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                 <p className="text-xs font-medium text-emerald-900">
-                  Quais operações o veículo pode entrar? (gerente+ define)
+                  Operações permitidas
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {(['COMPRA', 'TROCA', 'CONSIGNACAO'] as const).map((op) => {
@@ -1134,7 +1133,7 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
                     onClick={() => isManagerPlus ? setShowAvail(true) : setDecision('ACEITA')}
                     className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    ✅ Cliente aceitou
+                    Cliente aceitou
                   </button>
                 )}
                 {decision !== 'RECUSADA' && (
@@ -1144,7 +1143,7 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
                     onClick={() => setDecision('RECUSADA')}
                     className="flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
                   >
-                    ❌ Cliente recusou
+                    Cliente recusou
                   </button>
                 )}
                 {decision !== 'ANALISANDO' && (
@@ -1154,7 +1153,7 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
                     onClick={() => setDecision('ANALISANDO')}
                     className="flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
                   >
-                    🤔 Está analisando
+                    Está analisando
                   </button>
                 )}
                 {isManagerPlus && decision !== 'EXPIRADA' && decision !== 'CANCELADA' && (
@@ -1164,7 +1163,7 @@ function CustomerDecisionCard({ evaluation }: { evaluation: Evaluation }) {
                     onClick={() => setDecision('CANCELADA')}
                     className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                   >
-                    🚫 Cancelar proposta
+                    Cancelar proposta
                   </button>
                 )}
               </div>

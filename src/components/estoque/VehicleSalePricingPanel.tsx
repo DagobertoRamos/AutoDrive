@@ -14,6 +14,7 @@ import {
   CheckCircle2, XCircle, AlertCircle,
 } from 'lucide-react'
 import { maskBRL, parseBRL, numberToBRLMask, formatBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 interface PricingState {
   salePrice:          number | null
@@ -129,9 +130,11 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
   useEffect(() => { load() }, [load])
 
   async function handleSave() {
-    setSaving(true)
     setError(null)
     setSuccess(null)
+    if (!((parseBRL(salePriceMask) ?? 0) > 0)) { setError('Informe o preço de venda.'); return }
+    if (isPromo && !((parseBRL(promoPriceMask) ?? 0) > 0)) { setError('Informe o preço promocional.'); return }
+    setSaving(true)
     try {
       const body = {
         salePrice:          parseBRL(salePriceMask),
@@ -250,6 +253,7 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
                 label="Preço promocional"
                 value={promoPriceMask}
                 onChange={(v) => setPromoPriceMask(maskBRL(v))}
+                required
               />
             )}
           </div>
@@ -270,7 +274,7 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
           )}
 
           <ToggleField
-            label="Disponível para venda (publicar no estoque)"
+            label="Disponível para venda"
             icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
             checked={isAvailableForSale}
             onChange={setIsAvailableForSale}
@@ -283,17 +287,17 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
               onChange={(e) => setPricingNotes(e.target.value)}
               rows={3}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder="Notas visíveis apenas para a equipe..."
+              placeholder="Uso interno"
             />
           </div>
 
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Motivo da alteração (opcional)</label>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Motivo da alteração</label>
             <input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder="Ex.: ajuste de margem, alinhamento com FIPE..."
+              placeholder="Ex.: ajuste de margem"
             />
           </div>
         </div>
@@ -341,7 +345,7 @@ function FieldMoney({
   return (
     <div>
       <label className="mb-1 block text-xs font-medium text-gray-600">
-        {label} {required && <span className="text-red-500">*</span>}
+        {label} {required && <RequiredMark />}
       </label>
       <div className="relative">
         {icon && <div className="absolute left-3 top-1/2 -translate-y-1/2">{icon}</div>}

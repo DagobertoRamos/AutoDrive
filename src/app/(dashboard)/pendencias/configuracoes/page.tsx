@@ -15,6 +15,7 @@ import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { Settings, Plus, Pencil, Trash2, X, Save, Lock, Power, Clock, Send, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'GERENTE']
 
@@ -120,27 +121,20 @@ export default function PendencyConfigPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
-        <div><p className="text-lg font-semibold text-gray-800">Configuração restrita</p><p className="mt-1 max-w-md text-sm text-gray-500">As configurações de pendências são definidas pela administração da loja.</p></div>
+        <p className="text-lg font-semibold text-gray-800">Acesso restrito</p>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Settings size={20} className="text-brand-600" />Configurações de Pendências</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Defina os tipos de pendência, os SLAs padrão por prioridade e a janela de envio automático.</p>
-      </div>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Settings size={20} className="text-brand-600" />Configurações de Pendências</h1>
 
       {info === 'central-indisponivel' && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          A área <strong>Central e automações</strong> fica disponível apenas para perfis com acesso à administração geral da Central. Nesta tela você continua podendo ajustar os <strong>tipos de pendência</strong>, os <strong>SLAs padrão</strong> e os <strong>avisos automáticos</strong> da loja.
+          Sem acesso a <strong>Central e automações</strong>.
         </div>
       )}
-
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        <strong>Como funciona:</strong> <span className="font-medium">Tipos e avisos</span> controla cadastro de tipos, SLA e regras de envio. Já <span className="font-medium">Central e automações</span> controla o comportamento geral da Central, como arquivamento automático e motor de SLA.
-      </div>
 
       {/* ── Seção A: Tipos/opções de pendência ── */}
       <section className="space-y-3">
@@ -257,7 +251,7 @@ export default function PendencyConfigPage() {
           <div className="my-8 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar tipo' : 'Novo tipo'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.label} onChange={(e) => setF('label', e.target.value)} placeholder="Ex: Falta laudo de vistoria" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.label} onChange={(e) => setF('label', e.target.value)} placeholder="Ex.: Falta laudo" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Categoria</label><select className={inputCls} value={form.category} onChange={(e) => setF('category', e.target.value)}>{CATEGORIES.map((c) => <option key={c} value={c}>{CAT_LABEL[c]}</option>)}</select></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Ordem</label><input type="number" className={inputCls} value={form.order} onChange={(e) => setF('order', Number(e.target.value) || 0)} /></div>

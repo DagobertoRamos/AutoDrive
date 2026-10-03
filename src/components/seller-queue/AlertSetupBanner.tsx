@@ -39,7 +39,7 @@ export default function AlertSetupBanner() {
       <BellRing size={20} className="shrink-0 text-amber-600" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">Ative os alertas do seu celular</p>
-        <p className="text-xs text-amber-700">Para não perder nenhuma chamada com a tela bloqueada. Toque para configurar.</p>
+        <p className="text-xs text-amber-700">Toque para configurar.</p>
       </div>
       <ChevronRight size={18} className="shrink-0" />
     </Link>

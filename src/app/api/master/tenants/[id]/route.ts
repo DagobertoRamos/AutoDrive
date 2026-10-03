@@ -77,6 +77,10 @@ export async function PUT(
       responsavel, responsavelEmail, responsavelPhone, notes, trialEndsAt,
     } = body
 
+    if (name != null && !String(name).trim()) {
+      return NextResponse.json({ success: false, error: 'Informe o nome de exibição.' }, { status: 400 })
+    }
+
     const existing = await prisma.tenant.findUnique({ where: { id: params.id } })
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Tenant não encontrado.' }, { status: 404 })

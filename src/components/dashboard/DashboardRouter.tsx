@@ -224,9 +224,6 @@ function RoleDashboardView({
       {!hasContent && (
         <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-card">
           <h2 className="text-sm font-semibold text-gray-800">Nenhum bloco ativo para este perfil.</h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Os módulos disponíveis para este usuário ainda não possuem widgets habilitados no dashboard.
-          </p>
         </div>
       )}
 

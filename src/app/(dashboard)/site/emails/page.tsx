@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2, Mail, Save, Send, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EMAIL_RE, MAX_RECIPIENTS } from '@/lib/site/lead-email-core'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Settings { enabled: boolean; recipients: string[]; notifyCustomer: boolean }
 interface LogEntry { at: string; kind: 'INTERNO' | 'CLIENTE' | 'TESTE'; to: string; subject: string; status: 'ENVIADO' | 'FALHOU' | 'DESLIGADO'; error?: string }
@@ -46,6 +47,7 @@ export default function SiteEmailsPage() {
   const tooMany = typed.length > MAX_RECIPIENTS
 
   const save = async () => {
+    if (s.enabled && !typed.some((x) => EMAIL_RE.test(x))) { setMsg({ ok: false, text: 'Informe ao menos um e-mail válido.' }); return }
     setBusy('save'); setMsg(null)
     try {
       const r = await fetch('/api/site-admin/config', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ emails: { ...s, recipients: typed } }) })
@@ -59,36 +61,32 @@ export default function SiteEmailsPage() {
     try {
       const r = await fetch('/api/site-admin/emails', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ to: testTo }) })
       const j = await r.json().catch(() => ({}))
-      setMsg(r.ok ? { ok: true, text: `Teste enviado para ${testTo}. Confira a caixa de entrada (e o spam).` } : { ok: false, text: j?.error ?? 'Falha no envio.' })
+      setMsg(r.ok ? { ok: true, text: `Teste enviado para ${testTo}.` } : { ok: false, text: j?.error ?? 'Falha no envio.' })
       await load()
     } finally { setBusy(null) }
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Mail size={20} className="text-brand-600" />E-mails de aviso</h1>
-        <p className="text-sm text-gray-500">A cada lead do site, a equipe recebe um e-mail com os dados e os botões “Abrir no CRM” e “Chamar no WhatsApp”. O lead chega no CRM de qualquer jeito.</p>
-      </div>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Mail size={20} className="text-brand-600" />E-mails de aviso</h1>
 
       {d.server
         ? <p className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-800"><CheckCircle2 size={14} />Servidor de e-mail disponível ({d.server === 'LOJA' ? 'da loja' : 'da plataforma'}).</p>
-        : <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"><AlertTriangle size={14} />Não há servidor de e-mail configurado. Peça ao administrador da plataforma para configurar em Comunicação; até lá, os avisos ficam só no CRM e no sininho.</p>}
+        : <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"><AlertTriangle size={14} />Nenhum servidor de e-mail configurado (administrador: Comunicação).</p>}
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-card">
         <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
           <input type="checkbox" disabled={dis} checked={s.enabled} onChange={(e) => { setS({ ...s, enabled: e.target.checked }); setMsg(null) }} className="rounded border-gray-300 text-brand-600" />Enviar e-mail a cada novo lead do site
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-gray-600">Quem recebe (até {MAX_RECIPIENTS}, um por linha)</span>
+          <span className="mb-1 block text-xs font-medium text-gray-600">Quem recebe (até {MAX_RECIPIENTS}, um por linha){s.enabled && <> <RequiredMark /></>}</span>
           <textarea disabled={dis} rows={3} className={cn(input, (invalid.length > 0 || tooMany) && 'border-red-300')} value={text} placeholder={'vendas@minhaloja.com.br\ngerente@minhaloja.com.br'} onChange={(e) => { setText(e.target.value); setMsg(null) }} />
           {invalid.length > 0 && <span className="mt-1 block text-[11px] text-red-600">Inválido: {invalid.join(', ')} (não será salvo).</span>}
           {tooMany && <span className="mt-1 block text-[11px] text-red-600">Só os {MAX_RECIPIENTS} primeiros serão salvos.</span>}
-          {s.enabled && typed.length === 0 && <span className="mt-1 block text-[11px] text-amber-700">Informe ao menos um e-mail para receber os avisos.</span>}
         </label>
         <label className="flex items-start gap-2 text-sm text-gray-800">
           <input type="checkbox" disabled={dis} checked={s.notifyCustomer} onChange={(e) => { setS({ ...s, notifyCustomer: e.target.checked }); setMsg(null) }} className="mt-0.5 rounded border-gray-300 text-brand-600" />
-          <span>Confirmar ao cliente por e-mail<span className="block text-xs text-gray-500">Quando ele informar e-mail: “Recebemos sua solicitação”, com o protocolo e o botão do WhatsApp.</span></span>
+          <span>Confirmar ao cliente por e-mail</span>
         </label>
         {d.canManage && <div className="flex justify-end"><button onClick={() => void save()} disabled={!!busy} className="btn-primary text-sm">{busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Salvar</button></div>}
       </section>

@@ -14,6 +14,7 @@ import { formatCNPJ, normalizeCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
 import { formatCEP, normalizeCEP, isCEPComplete } from '@/lib/br-docs/cep'
 import { BankCombo } from '@/components/forms/BankCombo'
+import { RequiredMark } from '@/components/ui/field'
 import { draftTitle } from '@/lib/negotiation-drafts'
 import {
   ArrowLeft,
@@ -334,8 +335,6 @@ const DEAL_TYPES = [
     selectedColor: 'border-green-500 bg-green-50 ring-2 ring-green-200',
     textColor: 'text-green-700',
     badgeCls: 'bg-green-100 text-green-800',
-    infoBg: 'bg-green-50 border-green-200 text-green-800',
-    info: 'Um veículo do estoque da loja será vendido ao cliente. Defina o veículo, os valores e as condições de pagamento.',
   },
   {
     value: 'COMPRA' as DealType,
@@ -346,8 +345,6 @@ const DEAL_TYPES = [
     selectedColor: 'border-blue-500 bg-blue-50 ring-2 ring-blue-200',
     textColor: 'text-blue-700',
     badgeCls: 'bg-blue-100 text-blue-800',
-    infoBg: 'bg-blue-50 border-blue-200 text-blue-800',
-    info: 'A loja está comprando um veículo do cliente. O veículo entrará no estoque após a negociação.',
   },
   {
     value: 'TROCA' as DealType,
@@ -358,8 +355,6 @@ const DEAL_TYPES = [
     selectedColor: 'border-purple-500 bg-purple-50 ring-2 ring-purple-200',
     textColor: 'text-purple-700',
     badgeCls: 'bg-purple-100 text-purple-800',
-    infoBg: 'bg-purple-50 border-purple-200 text-purple-800',
-    info: 'O cliente entrega um veículo e recebe outro da loja. Pode haver diferença de valores a pagar ou receber.',
   },
   {
     value: 'CONSIGNACAO' as DealType,
@@ -370,8 +365,6 @@ const DEAL_TYPES = [
     selectedColor: 'border-amber-500 bg-amber-50 ring-2 ring-amber-200',
     textColor: 'text-amber-700',
     badgeCls: 'bg-amber-100 text-amber-800',
-    infoBg: 'bg-amber-50 border-amber-200 text-amber-800',
-    info: 'O veículo do cliente ficará com a loja para venda. Defina o valor mínimo ao proprietário, a comissão e o prazo.',
   },
 ]
 
@@ -490,7 +483,7 @@ function Field({
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-gray-700">
-        {label} {required && <span className="text-red-500">*</span>}
+        {label} {required && <RequiredMark />}
       </label>
       {children}
     </div>
@@ -1068,20 +1061,15 @@ function StepTipo({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const selectedDef = DEAL_TYPES.find((d) => d.value === type)
-
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="mb-1 text-lg font-semibold text-gray-900">Tipo de Negociação</h2>
-        <p className="text-sm text-gray-500">Escolha o tipo e a unidade responsável por esta negociação.</p>
-      </div>
+      <h2 className="text-lg font-semibold text-gray-900">Tipo de Negociação</h2>
 
       {/* Unidade */}
       {units.length > 1 && (
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-100 pb-1">
-            Unidade responsável <span className="text-red-500">*</span>
+            Unidade responsável <RequiredMark />
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {units.map((u) => (
@@ -1113,7 +1101,7 @@ function StepTipo({
       {/* Tipo */}
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-100 pb-1">
-          Tipo de negociação <span className="text-red-500">*</span>
+          Tipo de negociação <RequiredMark />
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {DEAL_TYPES.map((dt) => {
@@ -1142,12 +1130,6 @@ function StepTipo({
             )
           })}
         </div>
-        {selectedDef && (
-          <div className={`mt-4 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${selectedDef.infoBg}`}>
-            <Info size={14} className="mt-0.5 shrink-0" />
-            <span>{selectedDef.info}</span>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -1343,19 +1325,11 @@ function StepCliente({
 
   const title = form.type === 'COMPRA' || form.type === 'CONSIGNACAO'
     ? 'Proprietário / Vendedor' : 'Dados do Cliente'
-  const subtitle = form.type === 'COMPRA'
-    ? 'Informe os dados de quem está vendendo o veículo.'
-    : form.type === 'CONSIGNACAO'
-    ? 'Informe os dados do proprietário que consigna o veículo.'
-    : 'Informe os dados do cliente comprador.'
 
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
-      <div>
-        <h2 className="mb-1 text-lg font-semibold text-gray-900">{title}</h2>
-        <p className="text-sm text-gray-500">{subtitle}</p>
-      </div>
+      <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
 
       {/* Toggle PF / PJ */}
       <div className="flex gap-3">
@@ -1382,7 +1356,7 @@ function StepCliente({
       {/* Documento + Busca */}
       <div className="space-y-1">
         <label className="block text-sm font-medium text-gray-700">
-          {isPF ? 'CPF' : 'CNPJ'} <span className="text-red-500">*</span>
+          {isPF ? 'CPF' : 'CNPJ'} <RequiredMark />
         </label>
         <div className="flex gap-2">
           <input
@@ -1420,10 +1394,7 @@ function StepCliente({
       {docStatus === 'found' && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <CheckCircle2 size={14} className="shrink-0 text-green-600" />
-          <span>
-            Cliente já cadastrado. Dados preenchidos automaticamente.{' '}
-            <span className="font-medium">Você pode editar os campos abaixo.</span>
-          </span>
+          <span>Cliente já cadastrado.</span>
         </div>
       )}
 
@@ -1431,7 +1402,7 @@ function StepCliente({
       {docStatus === 'not_found' && (
         <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
           <Info size={14} className="shrink-0" />
-          <span>Documento não encontrado. Preencha os dados abaixo para cadastrar o cliente.</span>
+          <span>Cliente não cadastrado.</span>
         </div>
       )}
 
@@ -1450,7 +1421,7 @@ function StepCliente({
             />
           </Field>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="RG">
+            <Field label="RG" required>
               <input
                 className={inputCls}
                 value={form.rg}
@@ -1458,7 +1429,7 @@ function StepCliente({
                 placeholder="00.000.000-0"
               />
             </Field>
-            <Field label="Data de nascimento">
+            <Field label="Data de nascimento" required>
               <input
                 className={inputCls}
                 type="date"
@@ -1557,13 +1528,13 @@ function StepCliente({
           {socioAdmCpfStatus === 'found' && (
             <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
               <CheckCircle2 size={13} className="shrink-0" />
-              Responsável legal já cadastrado. Dados carregados automaticamente.
+              Responsável já cadastrado.
             </div>
           )}
           {socioAdmCpfStatus === 'not_found' && (
             <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
               <Info size={13} className="shrink-0" />
-              Responsável legal não encontrado. Preencha os dados para cadastrar.
+              Responsável não cadastrado.
             </div>
           )}
           <div className="grid grid-cols-2 gap-4">
@@ -1587,7 +1558,7 @@ function StepCliente({
 
           {/* Contato do sócio */}
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Celular">
+            <Field label="Celular" required>
               <input
                 className={inputCls}
                 value={form.socioAdmPhone}
@@ -1595,7 +1566,7 @@ function StepCliente({
                 placeholder="(00) 00000-0000"
               />
             </Field>
-            <Field label="E-mail">
+            <Field label="E-mail" required>
               <input
                 className={inputCls}
                 type="email"
@@ -1618,7 +1589,7 @@ function StepCliente({
           {/* Endereço do sócio */}
           <div className="flex items-end gap-3">
             <div className="w-44">
-              <Field label="CEP">
+              <Field label="CEP" required>
                 <input
                   className={inputCls}
                   placeholder="00000-000"
@@ -1630,7 +1601,7 @@ function StepCliente({
             </div>
             {socioAdmCepLoading && <Loader2 size={16} className="mb-2.5 animate-spin text-gray-400" />}
           </div>
-          <Field label="Logradouro">
+          <Field label="Logradouro" required>
             <input
               className={inputCls}
               placeholder="Rua, Avenida..."
@@ -1639,7 +1610,7 @@ function StepCliente({
             />
           </Field>
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Número">
+            <Field label="Número" required>
               <input
                 className={inputCls}
                 placeholder="N.º"
@@ -1659,7 +1630,7 @@ function StepCliente({
             </div>
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Bairro">
+            <Field label="Bairro" required>
               <input
                 className={inputCls}
                 value={form.socioAdmBairro}
@@ -1667,7 +1638,7 @@ function StepCliente({
                 placeholder="Bairro"
               />
             </Field>
-            <Field label="Cidade">
+            <Field label="Cidade" required>
               <input
                 className={inputCls}
                 value={form.socioAdmCidade}
@@ -1675,7 +1646,7 @@ function StepCliente({
                 placeholder="Cidade"
               />
             </Field>
-            <Field label="Estado">
+            <Field label="Estado" required>
               <select
                 className={inputCls}
                 value={form.socioAdmEstado}
@@ -1697,7 +1668,7 @@ function StepCliente({
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">
-              Celular <span className="text-red-500">*</span>
+              Celular <RequiredMark />
             </label>
             <input
               className={celularError ? inputErr : inputCls}
@@ -1708,7 +1679,7 @@ function StepCliente({
             {celularError && <p className="text-xs text-red-600">{celularError}</p>}
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">E-mail</label>
+            <label className="block text-sm font-medium text-gray-700">E-mail <RequiredMark /></label>
             <input
               className={emailError ? inputErr : inputCls}
               type="email"
@@ -1737,7 +1708,7 @@ function StepCliente({
         </p>
         <div className="flex items-end gap-3">
           <div className="w-44">
-            <Field label="CEP">
+            <Field label="CEP" required>
               <input
                 className={inputCls}
                 placeholder="00000-000"
@@ -1749,7 +1720,7 @@ function StepCliente({
           </div>
           {cepLoading && <Loader2 size={16} className="mb-2.5 animate-spin text-gray-400" />}
         </div>
-        <Field label="Logradouro">
+        <Field label="Logradouro" required>
           <input
             className={inputCls}
             placeholder="Rua, Avenida, etc."
@@ -1758,7 +1729,7 @@ function StepCliente({
           />
         </Field>
         <div className="grid grid-cols-3 gap-4">
-          <Field label="Número">
+          <Field label="Número" required>
             <input
               className={inputCls}
               placeholder="N.º"
@@ -1778,7 +1749,7 @@ function StepCliente({
           </div>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <Field label="Bairro">
+          <Field label="Bairro" required>
             <input
               className={inputCls}
               placeholder="Bairro"
@@ -1786,7 +1757,7 @@ function StepCliente({
               onChange={(e) => setField('bairro', e.target.value)}
             />
           </Field>
-          <Field label="Cidade">
+          <Field label="Cidade" required>
             <input
               className={inputCls}
               placeholder="Cidade"
@@ -1794,7 +1765,7 @@ function StepCliente({
               onChange={(e) => setField('cidade', e.target.value)}
             />
           </Field>
-          <Field label="Estado">
+          <Field label="Estado" required>
             <select
               className={inputCls}
               value={form.estado}
@@ -1990,9 +1961,7 @@ function VehicleFormBlock({
             onChange={(e) => { if (lockValue) return; onChange('vehicleValue', maskBRLInput(e.target.value)) }}
           />
           {lockValue && (
-            <p className="mt-1 text-xs text-gray-500">
-              Valor protegido. Solicite desconto para alterar (workflow disponível em breve).
-            </p>
+            <p className="mt-1 text-xs text-gray-500">Solicite desconto para alterar o valor.</p>
           )}
         </Field>
       )}
@@ -2175,10 +2144,7 @@ function StepVeiculos({
       {/* ── VENDA: somente busca no estoque (veículos LIBERADOS) ── */}
       {form.type === 'VENDA' && (
         <div className="space-y-4">
-          <div>
-            <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo a Vender</h2>
-            <p className="text-sm text-gray-500">Somente veículos liberados no estoque (precificados pelo gerente) podem ser vendidos.</p>
-          </div>
+          <h2 className="text-lg font-semibold text-gray-900">Veículo a Vender <RequiredMark /></h2>
           <VehicleInlineSearch
             label="Estoque disponível"
             selected={selectedStock}
@@ -2219,7 +2185,7 @@ function StepVeiculos({
               </div>
               {selectedStock.salePrice == null && (
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  Veículo ainda sem preço de venda. Peça ao gerente para precificar no módulo Estoque antes de iniciar a venda.
+                  Sem preço de venda. Peça ao gerente para precificar.
                 </p>
               )}
             </div>
@@ -2232,13 +2198,7 @@ function StepVeiculos({
         <div className="space-y-6">
           {/* Veículo que sai (estoque) — mesmo padrão da VENDA */}
           <div className="space-y-4">
-            <div>
-              <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo que Sai da Loja</h2>
-              <p className="text-sm text-gray-500">
-                Somente veículos liberados no estoque (precificados pelo gerente)
-                e fora de outra negociação ativa podem ser trocados.
-              </p>
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900">Veículo que Sai da Loja <RequiredMark /></h2>
             <VehicleInlineSearch
               label="Estoque disponível"
               selected={selectedStock}
@@ -2277,7 +2237,7 @@ function StepVeiculos({
                 </div>
                 {selectedStock.salePrice == null && (
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Veículo ainda sem preço de venda. Peça ao gerente para precificar no módulo Estoque antes de iniciar a troca.
+                    Sem preço de venda. Peça ao gerente para precificar.
                   </p>
                 )}
               </div>
@@ -2425,10 +2385,7 @@ function StepVeiculos({
 
           <div>
             <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo a Comprar</h2>
-            <p className="text-sm text-gray-500">
-              Compras só podem ser feitas a partir de avaliações <strong>finalizadas e liberadas pelo gerente</strong>.
-              Se o veículo ainda não foi avaliado, faça uma nova avaliação antes.
-            </p>
+            <p className="text-sm text-gray-500">Somente avaliações liberadas pelo gerente.</p>
           </div>
 
           {/* Avaliação já selecionada: card resumo + ações de trocar/remover */}
@@ -2557,10 +2514,7 @@ function StepVeiculos({
       {form.type === 'CONSIGNACAO' && (
         <div className="space-y-6">
           <div className="space-y-4">
-            <div>
-              <h2 className="mb-1 text-lg font-semibold text-gray-900">Veículo em Consignação</h2>
-              <p className="text-sm text-gray-500">Selecione o veículo avaliado e liberado (já no estoque) — os dados vêm preenchidos. Sem avaliação, preencha à mão.</p>
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900">Veículo em Consignação</h2>
             {showEvalModalConsig && (
               <EvaluationSearchModal
                 operation="CONSIGNACAO"
@@ -2588,7 +2542,7 @@ function StepVeiculos({
           <div className="border-t border-gray-200 pt-6 space-y-4">
             <h3 className="font-semibold text-gray-900">Parâmetros da Consignação</h3>
             <div className="grid grid-cols-3 gap-4">
-              <Field label="Valor Mínimo ao Proprietário (R$)">
+              <Field label="Valor Mínimo ao Proprietário (R$)" required>
                 <input
                   className={inputCls}
                   placeholder="0,00"
@@ -2730,14 +2684,11 @@ function StepDebitos({
 
   return (
     <div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">Débitos</h2>
-      <p className="mb-5 text-sm text-gray-500">
-        Registre multas, IPVA, financiamentos e outros débitos relacionados aos veículos desta negociação.
-      </p>
+      <h2 className="mb-5 text-lg font-semibold text-gray-900">Débitos</h2>
 
       {form.debts.length === 0 && !adding && (
         <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-400 justify-center mb-4">
-          Nenhum débito cadastrado. Clique em + Adicionar Débito se houver.
+          Nenhum débito cadastrado.
         </div>
       )}
 
@@ -2786,7 +2737,7 @@ function StepDebitos({
                 </select>
               </Field>
             )}
-            <Field label="Tipo">
+            <Field label="Tipo" required>
               <select className={inputCls} value={draft.type} onChange={(e) => setDraftField('type', e.target.value)}>
                 <option value="">Selecione</option>
                 {DEBT_TYPES.map((dt) => <option key={dt.value} value={dt.value}>{dt.label}</option>)}
@@ -2799,10 +2750,10 @@ function StepDebitos({
             </Field>
           </div>
           <Field label="Descrição">
-            <input className={inputCls} placeholder="Ex: Multa por excesso de velocidade" value={draft.description} onChange={(e) => setDraftField('description', e.target.value)} />
+            <input className={inputCls} placeholder="Descrição" value={draft.description} onChange={(e) => setDraftField('description', e.target.value)} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Valor (R$)">
+            <Field label="Valor (R$)" required>
               <input className={inputCls} placeholder="0,00" value={draft.value} onChange={(e) => setDraftField('value', maskBRLInput(e.target.value))} />
             </Field>
             <Field label="Vencimento">
@@ -2811,7 +2762,7 @@ function StepDebitos({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Notas">
-              <input className={inputCls} placeholder="Observação opcional" value={draft.notes} onChange={(e) => setDraftField('notes', e.target.value)} />
+              <input className={inputCls} value={draft.notes} onChange={(e) => setDraftField('notes', e.target.value)} />
             </Field>
             <Field label="Boleto / comprovante">
               {draft.receipt ? (
@@ -3070,10 +3021,8 @@ function PaymentModal({
               </Field>
             )}
           </div>
-          {!isCompra && (
-            <p className="-mt-1 text-[11px] text-gray-500">
-              {initial && initial.status !== 'PENDENTE' ? `Situação: ${PAYMENT_STATUS_LABELS[initial.status]} (definida pelo financeiro).` : 'Entra como pendente — o financeiro confirma no módulo Financeiro › Recebimentos.'}
-            </p>
+          {!isCompra && initial && initial.status !== 'PENDENTE' && (
+            <p className="-mt-1 text-[11px] text-gray-500">Situação: {PAYMENT_STATUS_LABELS[initial.status]}</p>
           )}
 
           {/* Placa: sempre a do veículo vendido (preenchida sozinha) */}
@@ -3091,7 +3040,7 @@ function PaymentModal({
                 onChange={(e) => update('amount', maskBRLInput(e.target.value))}
               />
             </Field>
-            <Field label="Data de pagamento (pode preencher depois)">
+            <Field label="Data de pagamento">
               <input
                 className={inputCls}
                 type="date"
@@ -3144,14 +3093,13 @@ function PaymentModal({
             </Field>
           )}
           {isCardPay && (
-            <Field label={`Código de autorização${entry.receipt ? ' *' : ''}`}>
+            <Field label="Código de autorização" required={!!entry.receipt}>
               <input
                 className={inputCls}
-                placeholder="Nº de autorização do comprovante do cartão"
+                placeholder="Nº de autorização"
                 value={entry.authorizationCode ?? ''}
                 onChange={(e) => update('authorizationCode', e.target.value.replace(/[^\w-]/g, '').slice(0, 40))}
               />
-              <p className="mt-1 text-[11px] text-gray-400">Obrigatório quando o comprovante do cartão for anexado.</p>
             </Field>
           )}
 
@@ -3190,9 +3138,6 @@ function PaymentModal({
                   />
                 </Field>
               </div>
-              <p className="text-[11px] text-gray-500 -mt-1">
-                Valor e prazo devem ser cadastrados conforme retornar da financeira (sem cálculo automático).
-              </p>
             </>
           )}
 
@@ -3268,7 +3213,6 @@ function PaymentModal({
                 <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) void uploadReceipt(fl); e.target.value = '' }} />
               </label>
             )}
-            <p className="mt-1 text-[11px] text-brand-700/80">Pode anexar agora ou depois, no detalhe da negociação. JPG, PNG, WEBP ou PDF.</p>
           </div>
         </div>
 
@@ -3308,7 +3252,7 @@ function ChangeModal({
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-5 space-y-3">
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-            Valor excedente detectado: <strong>{fmtBRL(excedente)}</strong>. Cadastre os dados do beneficiário.
+            Valor excedente: <strong>{fmtBRL(excedente)}</strong>
           </div>
           <Field label="Valor do Troco (R$)" required>
             <input
@@ -3320,7 +3264,7 @@ function ChangeModal({
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Beneficiário">
+            <Field label="Beneficiário" required>
               <input className={inputCls} placeholder="Nome do titular"
                 value={form.changeBeneficiary}
                 onChange={(e) => setField('changeBeneficiary', e.target.value)} />
@@ -3346,7 +3290,7 @@ function ChangeModal({
                 onChange={(e) => setField('changeAccount', e.target.value)} />
             </Field>
           </div>
-          <Field label="Chave PIX (opcional)">
+          <Field label="Chave PIX">
             <input className={inputCls} placeholder="CPF, e-mail, telefone ou chave aleatória"
               value={form.changePix}
               onChange={(e) => setField('changePix', e.target.value)} />
@@ -3484,10 +3428,7 @@ function StepPagamento({
 
   return (
     <div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">Pagamentos</h2>
-      <p className="mb-5 text-sm text-gray-500">
-        Confira os itens à esquerda e cadastre os pagamentos à direita. O sistema calcula automaticamente o saldo.
-      </p>
+      <h2 className="mb-5 text-lg font-semibold text-gray-900">Pagamentos</h2>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         {/* ─── COLUNA ESQUERDA: ITENS DA NEGOCIAÇÃO ─────────────────────── */}
@@ -3857,9 +3798,6 @@ function StepAgendamento({
         : form.type === 'TROCA'      ? 'Agendamento de Entrega e Recebimento'
         : 'Agendamento da Consignação'}
       </h2>
-      <p className="mb-5 text-sm text-gray-500">
-        Defina as datas previstas. Este campo é opcional — pode ser preenchido depois.
-      </p>
 
       {!hasDates && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-5 text-center text-sm text-gray-400 justify-center">
@@ -4001,8 +3939,7 @@ function StepResumo({
 
   return (
     <div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">Revisar e Confirmar</h2>
-      <p className="mb-5 text-sm text-gray-500">Verifique todos os dados antes de salvar ou enviar para aprovação.</p>
+      <h2 className="mb-5 text-lg font-semibold text-gray-900">Revisar e Confirmar</h2>
 
       <div className="space-y-4">
         {/* Tipo */}
@@ -4301,13 +4238,6 @@ function StepResumo({
           )}
         </div>
 
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <Info size={14} className="mt-0.5 shrink-0" />
-          <span>
-            Salve como <strong>Rascunho</strong> para continuar depois, ou{' '}
-            <strong>Envie para Aprovação</strong> quando estiver tudo certo.
-          </span>
-        </div>
       </div>
     </div>
   )
@@ -4328,23 +4258,18 @@ function StepComentarios({
 
   return (
     <div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-900">Comentários Internos</h2>
-      <p className="mb-5 text-sm text-gray-500">Adicione observações internas sobre esta negociação. Campo opcional.</p>
+      <h2 className="mb-5 text-lg font-semibold text-gray-900">Comentários Internos</h2>
       <div className="space-y-4">
-        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          <Info size={14} className="mt-0.5 shrink-0" />
-          <span>Este campo ficará registrado como observação interna da negociação.</span>
-        </div>
         <Field label="Tipo do comentário">
           <select className={inputCls} value={form.commentType} onChange={fi('commentType')}>
-            <option value="">Selecione (opcional)</option>
+            <option value="">Selecione</option>
             {COMMENT_TYPES.map((ct) => <option key={ct.value} value={ct.value}>{ct.label}</option>)}
           </select>
         </Field>
         <Field label="Observações gerais">
           <textarea
             className={`${inputCls} min-h-32 resize-y`}
-            placeholder="Condições especiais, notas para a equipe, histórico do cliente..."
+           
             value={form.notes}
             onChange={fi('notes')}
           />

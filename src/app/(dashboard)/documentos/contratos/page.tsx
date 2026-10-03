@@ -101,7 +101,6 @@ export default function ContratosPage() {
                   <td colSpan={8} className="py-14 text-center">
                     <FileText size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} />
                     <p className="text-sm text-gray-400">Nenhum contrato encontrado</p>
-                    <p className="text-xs text-gray-400 mt-1">Use a leitura de PDF para importar contratos.</p>
                   </td>
                 </tr>
               ) : (

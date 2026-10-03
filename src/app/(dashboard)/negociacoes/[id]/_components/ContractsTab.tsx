@@ -189,8 +189,8 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
               </div>
             </div>
           ))}
-          {saleDocs && !saleDocs.outorgados && <p className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">Cadastre os outorgados (procuradores) em <a href="/documentos/configuracoes" className="font-medium underline">Documentos › Configurações</a> — sem eles as procurações saem com o procurador em branco.</p>}
-          {saleDocs && <p className="text-[11px] text-gray-500">{saleDocs.intermediated ? 'Veículo de parceiro/particular: a loja entra como INTERMEDIADORA e o dono do veículo como vendedor.' : 'Veículo próprio da loja: a loja entra como VENDEDORA. O termo de intermediação é para veículos de parceiros/particulares.'} Campos sem cadastro (ex.: estado civil, profissão) saem em branco para preencher à mão.</p>}
+          {saleDocs && !saleDocs.outorgados && <p className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">Sem outorgados cadastrados: as procurações saem com o procurador em branco. <a href="/documentos/configuracoes" className="font-medium underline">Cadastrar</a></p>}
+          {saleDocs && <p className="text-[11px] text-gray-500">{saleDocs.intermediated ? 'Loja como intermediadora.' : 'Loja como vendedora.'}</p>}
         </div>
       </div>
 
@@ -206,7 +206,7 @@ export default function ContractsTab({ dealId, dealType, attachments, onReloadAt
         <div className="p-4">
           {relevantTemplates.length === 0 ? (
             <p className="text-sm italic text-gray-400">
-              Nenhum modelo cadastrado. O administrador deve cadastrar os modelos em <span className="font-medium">Admin → Documentos</span>.
+              Nenhum modelo cadastrado.
             </p>
           ) : (
             <ul className="divide-y divide-gray-50">

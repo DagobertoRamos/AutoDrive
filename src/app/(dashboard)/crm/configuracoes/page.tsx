@@ -21,9 +21,8 @@ const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 te
 
 interface Tag { id: string; name: string; color: string | null; description: string | null; active: boolean }
 
-type TabId = 'overview' | 'channels' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'automations' | 'permissions' | 'audit' | 'duplicates'
+type TabId = 'channels' | 'pipelines' | 'tags' | 'temperatures' | 'leadTypes' | 'sources' | 'closeReasons' | 'requiredFields' | 'sla' | 'distribution' | 'automations' | 'permissions' | 'audit' | 'duplicates'
 const TABS: { id: TabId; label: string; icon: typeof Settings }[] = [
-  { id: 'overview', label: 'Visão geral', icon: Settings },
   { id: 'channels', label: 'Canais de captação', icon: Megaphone },
   { id: 'pipelines', label: 'Funis e etapas', icon: Columns3 },
   { id: 'tags', label: 'Etiquetas', icon: TagIcon },
@@ -46,14 +45,11 @@ export default function CrmConfiguracoesPage() {
   useEffect(() => {
     fetch('/api/crm/permissions', { credentials: 'include' }).then((r) => r.json()).then((j) => setCanManage(!!j?.data?.canManage)).catch(() => {})
   }, [])
-  const [tab, setTab] = useState<TabId>('overview')
+  const [tab, setTab] = useState<TabId>('channels')
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Settings size={20} className="text-brand-600" />Central de Configurações do CRM</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Configure o funcionamento real do CRM. Reaproveita os leads (MarketingLead) e as etapas existentes — sem CRM paralelo.</p>
-      </div>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Settings size={20} className="text-brand-600" />Configurações do CRM</h1>
 
       <div className="flex flex-wrap gap-1.5 border-b border-gray-200">
         {TABS.map((t) => (
@@ -63,7 +59,6 @@ export default function CrmConfiguracoesPage() {
         ))}
       </div>
 
-      {tab === 'overview' && <Overview />}
       {tab === 'channels' && <ChannelsTab canManage={canManage} />}
       {tab === 'pipelines' && <PipelinesTab canManage={canManage} />}
       {tab === 'tags' && <TagsTab canManage={canManage} />}
@@ -107,11 +102,11 @@ function DuplicatesTab() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between">
-        <div><h2 className="text-sm font-semibold text-gray-900">Duplicidades para revisar</h2><p className="text-xs text-gray-500">Detecção em modo alerta — o sistema NÃO mescla nem apaga sozinho. Você revisa e decide.</p></div>
+        <h2 className="text-sm font-semibold text-gray-900">Duplicidades para revisar</h2>
         <button onClick={load} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
       {loading ? <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-100" />)}</div> : items.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-400">Nenhuma duplicidade pendente. 🎉</p>
+        <p className="py-8 text-center text-sm text-gray-400">Nenhuma duplicidade pendente.</p>
       ) : (
         <ul className="space-y-2">
           {items.map((it) => (
@@ -133,29 +128,6 @@ function DuplicatesTab() {
   )
 }
 
-function Overview() {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-        <h2 className="text-sm font-semibold text-gray-900">O que já dá para configurar</h2>
-        <ul className="mt-2 list-disc pl-5 text-sm text-gray-600 space-y-1">
-          <li><b>Funis e etapas</b> — vários funis (ex.: Vendas, Repasse, Consórcio), cada um com etapas livres, cor, ordem, regras de avanço e campos obrigatórios. Cada etapa define o status do lead, que integrações e relatórios continuam usando.</li>
-          <li><b>Etiquetas</b> — cadastro de múltiplas etiquetas por lead (cliente com troca, financiamento, PCD, sem retorno, etc.).</li>
-          <li><b>Temperaturas</b> — nome, cor e ativação de cada nível (Fervendo/Quente/Morno/Frio), aplicados no card e no detalhe do lead.</li>
-          <li><b>Tipos de lead</b> — classificação do interesse (compra, troca, consignação…), escolhida no lead e usada como filtro.</li>
-          <li><b>Origens</b> — nome de cada origem (inclusive das integrações) e origens próprias da loja.</li>
-          <li><b>Motivos de encerramento</b> — listas de motivos para perdido, desqualificado e reciclado.</li>
-          <li><b>Campos obrigatórios</b> — o que é exigido ao cadastrar e ao converter um lead.</li>
-          <li><b>SLA e follow-up</b> — prazo do 1º contato, alerta de lead parado, tarefa automática e aviso aos gestores.</li>
-          <li><b>Distribuição</b> — leads novos do CRM entram no motor da Mesa SDR (roleta, carga, desempenho).</li>
-          <li><b>Automações</b> — quando o lead é criado, entra numa etapa ou fica parado: criar tarefa, avisar, etiquetar, mudar temperatura, atribuir.</li>
-          <li><b>Permissões</b> — o que cada perfil pode fazer no CRM desta loja.</li>
-          <li><b>Auditoria</b> — quem fez o quê no CRM, inclusive as automações.</li>
-        </ul>
-      </div>
-    </div>
-  )
-}
 
 function TagsTab({ canManage }: { canManage: boolean }) {
   const [tags, setTags] = useState<Tag[]>([])
@@ -183,11 +155,11 @@ function TagsTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-      <div className="mb-3"><h2 className="text-sm font-semibold text-gray-900">Etiquetas</h2><p className="text-xs text-gray-500">Um lead pode ter várias. Etiquetas usadas não são apagadas — são desativadas.</p></div>
+      <h2 className="mb-3 text-sm font-semibold text-gray-900">Etiquetas</h2>
       {canManage && (
         <div className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-3">
           <input type="color" value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} className="h-9 w-9 rounded border border-gray-200" />
-          <input className={cn(inputCls, 'flex-1 min-w-[160px]')} placeholder="Nome da etiqueta (ex.: Financiamento, PCD, Sem retorno)" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && create()} />
+          <input className={cn(inputCls, 'flex-1 min-w-[160px]')} placeholder="Nome da etiqueta" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && create()} />
           <button onClick={create} disabled={busy || !form.name.trim()} className="btn-primary text-sm"><Plus size={15} />Adicionar</button>
         </div>
       )}

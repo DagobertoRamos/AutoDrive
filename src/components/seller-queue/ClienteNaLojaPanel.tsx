@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Bell, Send, RefreshCw, UserCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import CustomerLookup, { type CustomerMatch } from '@/components/seller-queue/CustomerLookup'
+import { RequiredMark } from '@/components/ui/field'
 import { queueStatusLabel } from '@/lib/seller-queue/labels'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base md:text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -116,7 +117,7 @@ export default function ClienteNaLojaPanel() {
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {mode !== 'NORMAL' && (
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-700">Colaborador *</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Colaborador <RequiredMark /></label>
               <select className={inputCls} value={targetSellerId} onChange={(e) => setTargetSellerId(e.target.value)}>
                 <option value="">— selecione —</option>
                 {callable.map((c) => (
@@ -125,14 +126,14 @@ export default function ClienteNaLojaPanel() {
               </select>
               <label className="mt-2 flex items-start gap-2 text-xs text-gray-600">
                 <input type="checkbox" checked={toPersonalQueue} onChange={(e) => setToPersonalQueue(e.target.checked)} className="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-                <span>Colocar na <b>fila individual</b> do colaborador (não chamar agora — a gestão inicia depois). Use para montar a fila de um vendedor mesmo que ele esteja livre.</span>
+                <span>Colocar na <b>fila individual</b> do colaborador (não chamar agora)</span>
               </label>
             </div>
           )}
-          <div className="relative sm:col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={form.customerName} onChange={(e) => typeField('customerName', e.target.value)} onBlur={() => set('customerName', capitalizeName(form.customerName))} placeholder="Ex.: Dagoberto Ramos de Francisco" /><CustomerLookup query={form.customerName} onPick={pickMatch} /></div>
-          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone *</label><input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => typeField('customerPhone', maskPhoneBR(e.target.value))} placeholder="(11)9.9999-9999" /><CustomerLookup query={form.customerPhone} onPick={pickMatch} /></div>
-          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail *</label><input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => typeField('customerEmail', e.target.value)} placeholder="cliente@email.com" /><CustomerLookup query={form.customerEmail} onPick={pickMatch} /></div>
-          {pickedCustomerId && <p className="text-[11px] font-medium text-green-600 sm:col-span-2">✓ Cliente existente selecionado — não vai duplicar.</p>}
+          <div className="relative sm:col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente <RequiredMark /></label><input className={inputCls} value={form.customerName} onChange={(e) => typeField('customerName', e.target.value)} onBlur={() => set('customerName', capitalizeName(form.customerName))} placeholder="Nome completo" /><CustomerLookup query={form.customerName} onPick={pickMatch} /></div>
+          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">Telefone <RequiredMark /></label><input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => typeField('customerPhone', maskPhoneBR(e.target.value))} placeholder="(11)9.9999-9999" /><CustomerLookup query={form.customerPhone} onPick={pickMatch} /></div>
+          <div className="relative"><label className="mb-1 block text-xs font-medium text-gray-700">E-mail <RequiredMark /></label><input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => typeField('customerEmail', e.target.value)} placeholder="cliente@email.com" /><CustomerLookup query={form.customerEmail} onPick={pickMatch} /></div>
+          {pickedCustomerId && <p className="text-[11px] font-medium text-green-600 sm:col-span-2">Cliente existente selecionado.</p>}
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.isWhatsapp} onChange={(e) => setForm((f) => ({ ...f, isWhatsapp: e.target.checked }))} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />É WhatsApp?</label>
           <div className="sm:col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>

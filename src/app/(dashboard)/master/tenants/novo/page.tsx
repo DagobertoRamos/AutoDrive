@@ -11,14 +11,15 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, ArrowRight, Building2, MapPin, Users, Package,
-  ClipboardCheck, CheckCircle2, AlertTriangle, Info,
+  ClipboardCheck, CheckCircle2, AlertTriangle,
   Loader2, Search, XCircle, AlertCircle, Plus, Trash2,
   RefreshCw, ShieldCheck, KeyRound,
 } from 'lucide-react'
 import { normalizeCNPJ, formatCNPJ, isValidCNPJ, isCNPJComplete } from '@/lib/br-docs/cnpj'
 import { normalizeCPF, formatCPF, isValidCPF, isCPFComplete } from '@/lib/br-docs/cpf'
 import { normalizeCEP, formatCEP, isValidCEP } from '@/lib/br-docs/cep'
-import { formatPhone, normalizePhone } from '@/lib/br-docs/phone'
+import { formatPhone, normalizePhone, isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 import { MODULE_CATALOG, ALL_FEATURE_KEYS, FEATURE_LABEL } from '@/lib/modules-catalog'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ function Field({ label, required, hint, error, children }: {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-medium text-gray-600">
-        {label}{required && <span className="ml-0.5 text-red-500">*</span>}
+        {label}{required && <RequiredMark className="ml-0.5" />}
       </label>
       {children}
       {error && <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="h-3 w-3 shrink-0" />{error}</p>}
@@ -281,7 +282,7 @@ function NovoTenantForm() {
   const [cnpjRaw,      setCnpjRaw]      = useState('')
   const [cnpjStatus,   setCnpjStatus]   = useState<CnpjStatus>('idle')
   const [cnpjMessage,  setCnpjMessage]  = useState('')
-  const [lookupSource, setLookupSource] = useState('')
+  const [, setLookupSource] = useState('')
 
   const [razaoSocial,    setRazaoSocial]    = useState('')
   const [nomeFantasia,   setNomeFantasia]   = useState('')
@@ -356,7 +357,7 @@ function NovoTenantForm() {
       if (lookupData.found && lookupData.data) {
         const d = lookupData.data
         setCnpjStatus('found')
-        setCnpjMessage('Dados carregados automaticamente. Revise e corrija se necessário.')
+        setCnpjMessage('Dados carregados. Revise antes de prosseguir.')
         setLookupSource(lookupData.source ?? 'api')
 
         if (d.razaoSocial)  setRazaoSocial(d.razaoSocial)
@@ -382,7 +383,7 @@ function NovoTenantForm() {
 
         // Alerta se empresa não está ATIVA
         if (d.situacaoCadastral && d.situacaoCadastral !== 'ATIVA') {
-          setCnpjMessage(`⚠️ Empresa com situação cadastral: ${d.situacaoCadastral}. Verifique antes de prosseguir.`)
+          setCnpjMessage(`Situação cadastral: ${d.situacaoCadastral}.`)
         }
         return
       }
@@ -527,19 +528,22 @@ function NovoTenantForm() {
   // ── Validação por etapa ───────────────────────────────────────────────────
 
   function validateStep1(): string {
+    if (!cnpjRaw)                    return 'Informe o CNPJ.'
     if (!isValidCNPJ(cnpjRaw))       return 'CNPJ inválido.'
     if (cnpjStatus === 'duplicate')   return 'CNPJ já cadastrado em outro tenant.'
-    if (!razaoSocial.trim())          return 'Razão social é obrigatória.'
+    if (!razaoSocial.trim())          return 'Informe a razão social.'
+    if (telefone && !isValidPhone(telefone)) return 'Telefone da empresa inválido.'
     return ''
   }
 
   function validateStep2(): string {
-    if (!address.cep || !isValidCEP(normalizeCEP(address.cep))) return 'CEP inválido.'
-    if (!address.logradouro.trim()) return 'Logradouro é obrigatório.'
-    if (!address.numero.trim())     return 'Número é obrigatório.'
-    if (!address.bairro.trim())     return 'Bairro é obrigatório.'
-    if (!address.cidade.trim())     return 'Cidade é obrigatória.'
-    if (!address.estado.trim())     return 'Estado é obrigatório.'
+    if (!address.cep)               return 'Informe o CEP.'
+    if (!isValidCEP(normalizeCEP(address.cep))) return 'CEP inválido.'
+    if (!address.logradouro.trim()) return 'Informe o logradouro.'
+    if (!address.numero.trim())     return 'Informe o número.'
+    if (!address.bairro.trim())     return 'Informe o bairro.'
+    if (!address.cidade.trim())     return 'Informe a cidade.'
+    if (!address.estado.trim())     return 'Informe o estado.'
     return ''
   }
 
@@ -547,10 +551,13 @@ function NovoTenantForm() {
     if (partners.length === 0) return 'Pelo menos um sócio é obrigatório.'
     for (let i = 0; i < partners.length; i++) {
       const p = partners[i]
+      if (!p.cpf)                        return `Sócio ${i + 1}: informe o CPF.`
       if (!isValidCPF(p.cpf))          return `Sócio ${i + 1}: CPF inválido.`
-      if (!p.nomeCompleto.trim())        return `Sócio ${i + 1}: Nome completo é obrigatório.`
-      if (!p.email.trim())               return `Sócio ${i + 1}: E-mail é obrigatório (usado como login do ADM).`
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return `Sócio ${i + 1}: E-mail inválido.`
+      if (!p.nomeCompleto.trim())        return `Sócio ${i + 1}: informe o nome completo.`
+      if (p.principal && !p.celular)     return `Sócio ${i + 1}: informe o celular.`
+      if (p.celular && !isValidPhone(p.celular)) return `Sócio ${i + 1}: celular inválido.`
+      if (!p.email.trim())               return `Sócio ${i + 1}: informe o e-mail.`
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return `Sócio ${i + 1}: e-mail inválido.`
     }
     return ''
   }
@@ -738,10 +745,7 @@ function NovoTenantForm() {
             <ShieldCheck className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-semibold text-amber-700">Troca de senha obrigatória</p>
-              <p className="text-xs text-amber-600 mt-1">
-                O sócio será solicitado a criar uma senha segura no primeiro acesso ao sistema,
-                respeitando os critérios mínimos de segurança (maiúsculas, números e caracteres especiais).
-              </p>
+              <p className="text-xs text-amber-600 mt-1">Exigida no primeiro acesso.</p>
             </div>
           </div>
         </div>
@@ -847,17 +851,16 @@ function NovoTenantForm() {
                 <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-semibold text-red-700">Empresa com situação: {situacao}</p>
-                  <p className="text-xs text-red-600 mt-0.5">Verifique com o cliente antes de prosseguir. O MASTER pode continuar ciente desta situação.</p>
                 </div>
               </div>
             )}
 
             <Grid>
               <Field label="Razão Social" required>
-                <input value={razaoSocial} onChange={e => setRazaoSocial(e.target.value)} className={inputCls} placeholder="EMPRESA EXEMPLO LTDA" />
+                <input value={razaoSocial} onChange={e => setRazaoSocial(e.target.value)} className={inputCls} placeholder="Ex.: EMPRESA EXEMPLO LTDA" />
               </Field>
               <Field label="Nome Fantasia">
-                <input value={nomeFantasia} onChange={e => setNomeFantasia(e.target.value)} className={inputCls} placeholder="Empresa Exemplo" />
+                <input value={nomeFantasia} onChange={e => setNomeFantasia(e.target.value)} className={inputCls} placeholder="Ex.: Empresa Exemplo" />
               </Field>
             </Grid>
 
@@ -885,7 +888,7 @@ function NovoTenantForm() {
                   )}
                 </div>
               </Field>
-              <Field label="Situação Cadastral" hint="Preenchida automaticamente via consulta">
+              <Field label="Situação Cadastral">
                 <select value={situacao} onChange={e => setSituacao(e.target.value)} className={selectCls}>
                   <option value="">Não informado</option>
                   <option value="ATIVA">Ativa</option>
@@ -911,12 +914,6 @@ function NovoTenantForm() {
               </Field>
             </Grid>
 
-            {cnpjStatus === 'found' && lookupSource && (
-              <div className="flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-xs text-brand-700">
-                <Info className="h-3.5 w-3.5 shrink-0" />
-                Dados obtidos via {lookupSource}. Revise e edite se necessário.
-              </div>
-            )}
           </Section>
 
           <div className="flex justify-end">
@@ -948,13 +945,13 @@ function NovoTenantForm() {
 
             <Grid>
               <Field label="Logradouro" required>
-                <input value={address.logradouro} onChange={e => setAddress(p => ({ ...p, logradouro: e.target.value }))} className={inputCls} placeholder="Rua, Avenida, Travessa..." />
+                <input value={address.logradouro} onChange={e => setAddress(p => ({ ...p, logradouro: e.target.value }))} className={inputCls} placeholder="Ex.: Rua das Flores" />
               </Field>
               <Field label="Número" required>
                 <input value={address.numero} onChange={e => setAddress(p => ({ ...p, numero: e.target.value }))} className={inputCls} placeholder="100" />
               </Field>
               <Field label="Complemento">
-                <input value={address.complemento} onChange={e => setAddress(p => ({ ...p, complemento: e.target.value }))} className={inputCls} placeholder="Sala 1, Andar 3..." />
+                <input value={address.complemento} onChange={e => setAddress(p => ({ ...p, complemento: e.target.value }))} className={inputCls} placeholder="Ex.: Sala 1" />
               </Field>
               <Field label="Bairro" required>
                 <input value={address.bairro} onChange={e => setAddress(p => ({ ...p, bairro: e.target.value }))} className={inputCls} placeholder="Centro" />
@@ -988,13 +985,9 @@ function NovoTenantForm() {
       {step === 3 && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
           <Section title="Sócios / Responsáveis" icon={<Users className="h-5 w-5" />}>
-            <div className="flex items-start gap-3 rounded-lg border border-brand-100 bg-brand-50 px-4 py-3">
-              <Info className="h-4 w-4 text-brand-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-brand-700">
-                O <strong>primeiro sócio marcado como principal</strong> será criado automaticamente como usuário <strong>ADM</strong> do tenant.
-                A senha inicial será o <strong>CPF sem pontuação</strong>. O sistema exigirá troca no primeiro acesso.
-              </p>
-            </div>
+            <p className="text-xs text-gray-500">
+              O sócio principal vira o usuário <strong>ADM</strong>. Senha inicial: CPF sem pontuação.
+            </p>
 
             {partners.map((partner, idx) => (
               <div key={idx} className="rounded-xl border border-gray-200 p-5 flex flex-col gap-4">
@@ -1072,7 +1065,6 @@ function NovoTenantForm() {
                       value={partner.nomeCompleto}
                       onChange={e => updatePartner(idx, { nomeCompleto: e.target.value })}
                       className={inputCls}
-                      placeholder="Nome como no documento"
                     />
                   </Field>
                   <Field label="RG">
@@ -1090,7 +1082,7 @@ function NovoTenantForm() {
                       placeholder="(11) 99999-9999"
                     />
                   </Field>
-                  <Field label="E-mail" required hint={partner.principal ? 'Será o login do usuário ADM' : ''}>
+                  <Field label="E-mail" required hint={partner.principal ? 'Login do ADM' : ''}>
                     <input
                       type="email"
                       value={partner.email}
@@ -1118,7 +1110,7 @@ function NovoTenantForm() {
                       onChange={e => updatePartner(idx, { participacao: e.target.value })}
                       min={0} max={100} step={0.01}
                       className={inputCls}
-                      placeholder="60.00"
+                      placeholder="Ex.: 60"
                     />
                   </Field>
                 </Grid>
@@ -1231,7 +1223,6 @@ function NovoTenantForm() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Funcionalidades liberadas</p>
                 <span className="text-xs text-gray-500">{activeModules.length} de {ALL_FEATURE_KEYS.length} ligadas</span>
               </div>
-              <p className="mb-4 text-xs text-gray-400">Tudo começa ligado. Desligue item por item o que esta loja não deve acessar — depois você ainda pode ajustar em Master › Funcionalidades.</p>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {MODULE_CATALOG.map(group => {
                   const keys = group.features.map(f => f.key)
@@ -1360,8 +1351,7 @@ function NovoTenantForm() {
               <div className="text-sm">
                 <p className="font-semibold text-amber-700">Senha inicial do ADM</p>
                 <p className="text-xs text-amber-600 mt-0.5">
-                  O usuário ADM (<strong>{(partners.find(p => p.principal) ?? partners[0])?.email}</strong>) receberá como senha inicial o CPF sem pontuação.
-                  O sistema exigirá troca obrigatória no primeiro acesso, com critérios mínimos de segurança.
+                  <strong>{(partners.find(p => p.principal) ?? partners[0])?.email}</strong>: CPF sem pontuação. Troca obrigatória no primeiro acesso.
                 </p>
               </div>
             </div>

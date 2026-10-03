@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canAccessModule, ROLE_LABELS, type UserRole } from '@/lib/permissions'
+import { RequiredMark } from '@/components/ui/field'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -102,9 +103,11 @@ function Modal({
   error:   string | null
 }) {
   const [form, setForm] = useState<PositionForm>(EMPTY_FORM)
+  const [formErr, setFormErr] = useState('')
 
   useEffect(() => {
     if (open) {
+      setFormErr('')
       setForm(
         initial
           ? {
@@ -122,6 +125,7 @@ function Modal({
   if (!open) return null
 
   const set = <K extends keyof PositionForm>(key: K, value: PositionForm[K]) => {
+    setFormErr('')
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -143,11 +147,20 @@ function Modal({
           </button>
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); onSave(form) }} className="px-6 py-5 space-y-4">
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            const msg = !form.name.trim() ? 'Informe o nome do cargo.' : !form.baseRole ? 'Selecione o perfil de acesso.' : ''
+            if (msg) { setFormErr(msg); return }
+            onSave(form)
+          }}
+          className="px-6 py-5 space-y-4"
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do cargo *</label>
-              <input required className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Vendedor Sênior" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do cargo<RequiredMark className="ml-0.5" /></label>
+              <input className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Descrição</label>
@@ -156,17 +169,16 @@ function Modal({
                 className={inputClass('resize-none')}
                 value={form.description}
                 onChange={(e) => set('description', e.target.value)}
-                placeholder="Descreva as responsabilidades..."
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Role base (sistema)</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Perfil de acesso<RequiredMark className="ml-0.5" /></label>
               <select
                 className={inputClass()}
                 value={form.baseRole}
                 onChange={(e) => set('baseRole', e.target.value as UserRole | '')}
               >
-                <option value="">— Nenhum —</option>
+                <option value="">Selecione</option>
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r} value={r}>{ROLE_LABELS[r]}</option>
                 ))}
@@ -186,10 +198,10 @@ function Modal({
 
           <ToggleRow label="Cargo ativo" checked={form.active} onChange={(v) => set('active', v)} />
 
-          {error && (
+          {(formErr || error) && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+              {formErr || error}
             </div>
           )}
 
@@ -331,7 +343,6 @@ export default function CargosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Cargos</h1>
-          <p className="mt-1 text-sm text-gray-500">Gerencie os cargos do time e vincule-os às regras de comissão.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800 transition-colors">
           <Plus className="h-4 w-4" />
@@ -358,7 +369,7 @@ export default function CargosPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                {['Nome', 'Descrição', 'Role base', 'Origem', 'Status', 'Ações'].map((h) => (
+                {['Nome', 'Descrição', 'Perfil de acesso', 'Origem', 'Status', 'Ações'].map((h) => (
                   <th key={h} className="px-4 py-3 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -375,8 +386,7 @@ export default function CargosPage() {
               ) : positions.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
-                    Nenhum cargo cadastrado.{' '}
-                    <button onClick={openCreate} className="text-brand-600 hover:underline">Criar agora</button>
+                    Nenhum cargo cadastrado.
                   </td>
                 </tr>
               ) : (
@@ -436,7 +446,7 @@ export default function CargosPage() {
                           onClick={() => handleDelete(p)}
                           disabled={p.isSystem}
                           className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
-                          title={p.isSystem ? 'Cargo do sistema — não pode ser excluído' : 'Excluir'}
+                          title={p.isSystem ? 'Cargo do sistema' : 'Excluir'}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

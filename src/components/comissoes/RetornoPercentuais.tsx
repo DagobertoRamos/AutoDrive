@@ -98,7 +98,6 @@ export default function RetornoPercentuais() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Percent size={17} className="text-brand-600" />Percentual de comissão do retorno</h2>
-          <p className="mt-0.5 text-xs text-gray-500">% do colaborador sobre o retorno líquido. Vendedor específico tem prioridade sobre o cargo.</p>
         </div>
         <button onClick={load} className="rounded p-1.5 text-gray-400 hover:bg-gray-100" title="Atualizar"><RefreshCw size={14} /></button>
       </div>
@@ -137,12 +136,12 @@ export default function RetornoPercentuais() {
               </select>
             ) : (
               <select value={form.sellerId} onChange={(e) => setForm((f) => ({ ...f, sellerId: e.target.value }))} className={inputCls}>
-                <option value="">Escolha o vendedor…</option>
+                <option value="">Vendedor</option>
                 {sellers.map((s) => <option key={s.id} value={s.id}>{s.shortName || s.fullName}</option>)}
               </select>
             )}
             <div className="flex items-center gap-1">
-              <input inputMode="decimal" value={form.pct} onChange={(e) => setForm((f) => ({ ...f, pct: e.target.value }))} placeholder="Ex: 5" className={cn(inputCls, 'w-full text-right')} />
+              <input inputMode="decimal" value={form.pct} onChange={(e) => setForm((f) => ({ ...f, pct: e.target.value }))} placeholder="%" className={cn(inputCls, 'w-full text-right')} />
               <span className="text-sm text-gray-500">%</span>
             </div>
           </div>
@@ -152,7 +151,7 @@ export default function RetornoPercentuais() {
           </div>
         </div>
       ) : (
-        <button onClick={() => setAdding(true)} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-600"><Plus size={15} />Adicionar percentual (cargo ou vendedor)</button>
+        <button onClick={() => setAdding(true)} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-600"><Plus size={15} />Adicionar percentual</button>
       )}
     </div>
   )

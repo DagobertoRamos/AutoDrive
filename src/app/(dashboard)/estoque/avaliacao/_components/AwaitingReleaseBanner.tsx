@@ -38,12 +38,9 @@ export function AwaitingReleaseBanner({
         <div className="flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-amber-700 shrink-0" />
           <p className="text-sm font-bold text-amber-900">
-            Aguardando liberação do resultado da avaliação.
+            Aguardando liberação do resultado.
           </p>
         </div>
-        <p className="mt-1 text-xs text-amber-800">
-          O gerente está revisando a precificação. Você será notificado assim que o resultado for liberado.
-        </p>
       </div>
     </div>
   )

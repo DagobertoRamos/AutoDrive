@@ -12,6 +12,7 @@ import { ArrowDown, ArrowUp, ExternalLink, ImagePlus, Images, Loader2, Plus, Quo
 import { cn } from '@/lib/utils'
 import { SITE_MAX_BANNERS, SITE_MAX_TESTIMONIALS, type SiteBanner, type SiteConfig, type SiteTestimonial } from '@/lib/site/config-core'
 import { compressPhoto } from '@/lib/stock/photo-compress'
+import { RequiredMark } from '@/components/ui/field'
 
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50'
 const label = 'mb-1 block text-xs font-medium text-gray-600'
@@ -78,6 +79,9 @@ export default function SiteBannersPage() {
   }
 
   const save = async () => {
+    if (d.banners.some((b) => !b.title.trim()) || d.testimonials.some((t) => !t.name.trim() || !t.text.trim())) {
+      setMsg({ ok: false, text: 'Preencha os campos obrigatórios.' }); return
+    }
     setSaving(true); setMsg(null)
     try {
       const r = await fetch('/api/site-admin/config', {
@@ -85,7 +89,7 @@ export default function SiteBannersPage() {
         body: JSON.stringify({
           services: { banners: d.bannersOn, depoimentos: d.testimonialsOn },
           banners: { intervalSeconds: d.intervalSeconds, items: d.banners },
-          testimonials: d.testimonials.filter((t) => t.name.trim() && t.text.trim()),
+          testimonials: d.testimonials,
         }),
       })
       const j = await r.json().catch(() => ({}))
@@ -94,15 +98,10 @@ export default function SiteBannersPage() {
     } catch { setMsg({ ok: false, text: 'Erro de rede.' }) } finally { setSaving(false) }
   }
 
-  const incompleteTesti = d.testimonials.some((t) => !t.name.trim() || !t.text.trim())
-
   return (
     <div className="space-y-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Images size={20} className="text-brand-600" />Banners e depoimentos</h1>
-          <p className="text-sm text-gray-500">O que aparece na página inicial do site, além do estoque.</p>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Images size={20} className="text-brand-600" />Banners e depoimentos</h1>
         {slug && <a href={`/s/${slug}`} target="_blank" rel="noreferrer" className="btn-secondary text-xs"><ExternalLink size={13} />Ver site</a>}
       </div>
 
@@ -110,7 +109,7 @@ export default function SiteBannersPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Banners da home</h2>
-            <p className="text-xs text-gray-500">Carrossel ao lado do título da página inicial. Use artes na proporção 2:1 (ex.: 1916×821 px), com o texto já na imagem.</p>
+            <p className="text-xs text-gray-500">Proporção 2:1 (ex.: 1916×821 px).</p>
           </div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
             <input type="checkbox" disabled={dis} checked={d.bannersOn} onChange={(e) => set({ bannersOn: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Mostrar no site
@@ -131,21 +130,21 @@ export default function SiteBannersPage() {
         </div>
 
         {d.banners.length === 0
-          ? <p className="mt-3 rounded-lg border border-dashed border-gray-200 py-8 text-center text-sm text-gray-400">Nenhum banner. Sem banners, a home mostra só o título e os botões.</p>
+          ? <p className="mt-3 rounded-lg border border-dashed border-gray-200 py-8 text-center text-sm text-gray-400">Nenhum banner.</p>
           : (
           <ul className="mt-3 space-y-2">
             {d.banners.map((b, i) => (
               <li key={b.id} className={cn('flex flex-col gap-3 rounded-lg border p-3 sm:flex-row', b.active ? 'border-gray-200' : 'border-gray-100 bg-gray-50 opacity-70')}>
                 <img src={b.imageUrl} alt="" className="aspect-[2/1] w-full shrink-0 rounded-md bg-gray-900 object-contain sm:w-56" />
                 <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-                  <label className="block"><span className={label}>Título {b.showText ? '(aparece sobre a imagem)' : '(texto alternativo)'}</span><input disabled={dis} className={input} value={b.title} maxLength={120} onChange={(e) => setBanner(i, { title: e.target.value })} /></label>
-                  <label className="block"><span className={label}>Link ao clicar <span className="text-gray-400">(opcional)</span></span><input disabled={dis} className={input} value={b.linkUrl} placeholder="/veiculos ou https://wa.me/..." onChange={(e) => setBanner(i, { linkUrl: e.target.value })} /></label>
-                  <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 sm:col-span-2"><input type="checkbox" disabled={dis} checked={b.showText} onChange={(e) => setBanner(i, { showText: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Mostrar texto e botão sobre a imagem <span className="font-normal text-gray-400">(use em artes sem texto; como no modelo “Oportunidades de vários parceiros”)</span></label>
+                  <label className="block"><span className={label}>Título <RequiredMark /></span><input disabled={dis} className={input} value={b.title} maxLength={120} onChange={(e) => setBanner(i, { title: e.target.value })} /></label>
+                  <label className="block"><span className={label}>Link ao clicar</span><input disabled={dis} className={input} value={b.linkUrl} placeholder="/veiculos ou https://wa.me/..." onChange={(e) => setBanner(i, { linkUrl: e.target.value })} /></label>
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 sm:col-span-2"><input type="checkbox" disabled={dis} checked={b.showText} onChange={(e) => setBanner(i, { showText: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Mostrar texto e botão sobre a imagem</label>
                   {b.showText && (
                     <>
-                      <label className="block"><span className={label}>Etiqueta</span><input disabled={dis} className={input} value={b.eyebrow} maxLength={60} placeholder="Ex.: Estoque atualizado" onChange={(e) => setBanner(i, { eyebrow: e.target.value })} /></label>
-                      <label className="block"><span className={label}>Texto do botão</span><input disabled={dis} className={input} value={b.buttonLabel} maxLength={40} placeholder="Ex.: Ver veículos (leva ao link acima)" onChange={(e) => setBanner(i, { buttonLabel: e.target.value })} /></label>
-                      <label className="block sm:col-span-2"><span className={label}>Texto</span><textarea disabled={dis} rows={2} className={input} value={b.text} maxLength={240} placeholder="Ex.: Compare modelos e encontre uma opção que combine com o seu momento." onChange={(e) => setBanner(i, { text: e.target.value })} /></label>
+                      <label className="block"><span className={label}>Etiqueta</span><input disabled={dis} className={input} value={b.eyebrow} maxLength={60} placeholder="Estoque atualizado" onChange={(e) => setBanner(i, { eyebrow: e.target.value })} /></label>
+                      <label className="block"><span className={label}>Texto do botão</span><input disabled={dis} className={input} value={b.buttonLabel} maxLength={40} placeholder="Ver veículos" onChange={(e) => setBanner(i, { buttonLabel: e.target.value })} /></label>
+                      <label className="block sm:col-span-2"><span className={label}>Texto</span><textarea disabled={dis} rows={2} className={input} value={b.text} maxLength={240} onChange={(e) => setBanner(i, { text: e.target.value })} /></label>
                     </>
                   )}
                   <div className="flex flex-wrap items-center gap-4 text-xs text-gray-700 sm:col-span-2">
@@ -170,7 +169,7 @@ export default function SiteBannersPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Depoimentos de clientes</h2>
-            <p className="text-xs text-gray-500">Cadastre só avaliações autorizadas pelos clientes. Até {SITE_MAX_TESTIMONIALS}.</p>
+            <p className="text-xs text-gray-500">Somente avaliações autorizadas. Até {SITE_MAX_TESTIMONIALS}.</p>
           </div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
             <input type="checkbox" disabled={dis} checked={d.testimonialsOn} onChange={(e) => set({ testimonialsOn: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Mostrar no site
@@ -181,16 +180,15 @@ export default function SiteBannersPage() {
             <fieldset key={i} className="space-y-2 rounded-lg border border-gray-200 p-3">
               <div className="flex items-center justify-between"><legend className="flex items-center gap-1 text-xs font-semibold text-gray-700"><Quote size={12} />Depoimento {i + 1}</legend>
                 {canManage && <button onClick={() => set({ testimonials: d.testimonials.filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500" aria-label="Remover depoimento"><Trash2 size={13} /></button>}</div>
-              <input disabled={dis} className={input} value={t.name} maxLength={80} placeholder="Nome do cliente" onChange={(e) => setTesti(i, { name: e.target.value })} />
-              <textarea disabled={dis} className={input} rows={3} value={t.text} maxLength={360} placeholder="O que o cliente disse" onChange={(e) => setTesti(i, { text: e.target.value })} />
-              <input disabled={dis} className={input} value={t.vehicle} maxLength={100} placeholder="Veículo ou contexto (ex.: Compra de um Corolla)" onChange={(e) => setTesti(i, { vehicle: e.target.value })} />
+              <label className="block"><span className={label}>Nome do cliente <RequiredMark /></span><input disabled={dis} className={input} value={t.name} maxLength={80} onChange={(e) => setTesti(i, { name: e.target.value })} /></label>
+              <label className="block"><span className={label}>Depoimento <RequiredMark /></span><textarea disabled={dis} className={input} rows={3} value={t.text} maxLength={360} onChange={(e) => setTesti(i, { text: e.target.value })} /></label>
+              <label className="block"><span className={label}>Veículo</span><input disabled={dis} className={input} value={t.vehicle} maxLength={100} placeholder="Corolla 2022" onChange={(e) => setTesti(i, { vehicle: e.target.value })} /></label>
             </fieldset>
           ))}
         </div>
         {canManage && d.testimonials.length < SITE_MAX_TESTIMONIALS && (
           <button onClick={() => set({ testimonials: [...d.testimonials, { name: '', text: '', vehicle: '' }], testimonialsOn: d.testimonialsOn || d.testimonials.length === 0 })} className="btn-secondary mt-3 text-sm"><Plus size={14} />Adicionar depoimento</button>
         )}
-        {incompleteTesti && <p className="mt-2 text-xs text-amber-700">Depoimentos sem nome ou texto não são salvos.</p>}
       </section>
 
       {canManage && (

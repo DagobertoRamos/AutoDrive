@@ -50,7 +50,6 @@ export default function HelpChat() {
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-brand-700"><Bot size={17} /></div>
         <div>
           <p className="text-sm font-semibold text-gray-900">Assistente AutoDrive</p>
-          <p className="text-[11px] text-gray-400">Tira dúvidas de uso do sistema — não executa ações.</p>
         </div>
       </div>
 

@@ -133,7 +133,7 @@ export default function CrmAttendancesPage() {
           {search && !loading && <button onClick={() => { setSearch(''); setDebSearch('') }} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
           <input
             value={search} onChange={e => handleSearch(e.target.value)}
-            placeholder="Buscar por cliente, telefone…"
+            placeholder="Cliente ou telefone"
             className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-white/15 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
           />
         </div>

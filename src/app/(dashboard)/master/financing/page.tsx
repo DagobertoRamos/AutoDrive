@@ -12,14 +12,14 @@ import { useSession } from 'next-auth/react'
 import { Boxes, Landmark, Plug, GitCompareArrows, Webhook, ScrollText, Activity, ToggleRight, Lock } from 'lucide-react'
 
 const AREAS = [
-  { href: '/master/financing/providers', title: 'Provedores F&I', desc: 'Credere, banco direto, integradores — cadastro global.', icon: Boxes },
-  { href: '/master/financing/banks', title: 'Bancos Homologados', desc: 'Bancos suportados e capabilities (simulação, envio, retorno).', icon: Landmark },
-  { href: '/master/financing/adapters', title: 'Adaptadores de API', desc: 'Configuração técnica dos adapters por provedor.', icon: Plug },
-  { href: '/master/financing/mappings', title: 'Mapeamento de Campos', desc: 'De/para entre dados do AutoDrive e a API do banco.', icon: GitCompareArrows },
-  { href: '/master/financing/webhooks', title: 'Webhooks', desc: 'Endpoints, assinatura e validação de retorno.', icon: Webhook },
-  { href: '/master/financing/logs', title: 'Logs Técnicos', desc: 'Histórico técnico das integrações (sem segredos).', icon: ScrollText },
-  { href: '/master/financing/health', title: 'Saúde das Integrações', desc: 'Status, fila, retentativas e erros.', icon: Activity },
-  { href: '/master/financing/flags', title: 'Feature Flags F&I', desc: 'Ativar/desativar integrações globalmente.', icon: ToggleRight },
+  { href: '/master/financing/providers', title: 'Provedores F&I', desc: 'Credere, banco direto e integradores.', icon: Boxes },
+  { href: '/master/financing/banks', title: 'Bancos Homologados', desc: 'Bancos suportados e capacidades.', icon: Landmark },
+  { href: '/master/financing/adapters', title: 'Adaptadores de API', desc: 'Adapters por provedor.', icon: Plug },
+  { href: '/master/financing/mappings', title: 'Mapeamento de Campos', desc: 'De/para com a API do banco.', icon: GitCompareArrows },
+  { href: '/master/financing/webhooks', title: 'Webhooks', desc: 'Eventos de retorno.', icon: Webhook },
+  { href: '/master/financing/logs', title: 'Logs Técnicos', desc: 'Histórico das integrações.', icon: ScrollText },
+  { href: '/master/financing/health', title: 'Saúde das Integrações', desc: 'Status e erros.', icon: Activity },
+  { href: '/master/financing/flags', title: 'Feature Flags F&I', desc: 'Ativar/desativar integrações.', icon: ToggleRight },
 ]
 
 export default function MasterFinancingHub() {
@@ -29,20 +29,14 @@ export default function MasterFinancingHub() {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
-        <div>
-          <p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p>
-          <p className="mt-1 max-w-md text-sm text-gray-500">A configuração técnica do F&amp;I (provedores, adapters, webhooks) é da plataforma. A loja configura seus bancos e credenciais em Configurações &gt; F&amp;I.</p>
-        </div>
+        <p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p>
       </div>
     )
   }
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">F&amp;I — Painel técnico (MASTER)</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Provedores, bancos homologados, adapters, webhooks e saúde das integrações. As credenciais são da loja, nunca cadastradas/visíveis aqui.</p>
-      </div>
+      <h1 className="text-xl font-bold text-gray-900">F&amp;I — Painel técnico</h1>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {AREAS.map((a) => (
           <Link key={a.href} href={a.href} className="group rounded-xl border border-gray-200 bg-white p-4 shadow-card transition-colors hover:border-brand-300 hover:bg-brand-50/30">

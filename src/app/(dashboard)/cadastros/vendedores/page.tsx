@@ -8,6 +8,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, User, X, Save, CheckCircle, AlertCircle, KeyRound, Search } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import { maskCPF, maskPhone } from '@/lib/masks'
+import { isValidCPF } from '@/lib/br-docs/cpf'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -175,7 +178,7 @@ function ModulesPicker({ positionId, userId, onChange }: { positionId: string | 
       {needsReason && (
         <div>
           <label className="mb-1 block text-[11px] font-semibold text-gray-700">Motivo da alteração sensível</label>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: colaborador atuará como líder da loja" className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500" />
+          <input value={reason} onChange={(e) => setReason(e.target.value)}  className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500" />
         </div>
       )}
       {filtered.map((g) => (
@@ -224,9 +227,11 @@ function Modal({
   const [form, setForm] = useState<SellerForm>(emptyForm)
   const [moduleSelection, setModuleSelection] = useState<ModuleSelection>({ allowed: [], denied: [], reason: '' })
   const [rankingOn, setRankingOn] = useState(true)
+  const [formErr, setFormErr] = useState('')
 
   useEffect(() => {
     if (open) {
+      setFormErr('')
       if (initial) {
         const { id: _id, userId: _uid, unitName: _unitName, position: _p, ...rest } = initial
         // Colaboradores antigos/de gestão podem ter campos de texto nulos no banco
@@ -264,7 +269,18 @@ function Modal({
   if (!open) return null
 
   const set = <K extends keyof SellerForm>(key: K, value: SellerForm[K]) => {
+    setFormErr('')
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const validate = (): string => {
+    if (!form.fullName.trim()) return 'Informe o nome completo.'
+    if (!isValidCPF(form.cpf)) return 'CPF inválido.'
+    if (!isValidPhone(form.whatsapp)) return 'WhatsApp inválido.'
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return 'Informe um e-mail válido.'
+    if (!form.unitId) return 'Selecione a unidade.'
+    if (!form.positionId) return 'Selecione o cargo.'
+    return ''
   }
 
   return (
@@ -286,47 +302,53 @@ function Modal({
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); onSave(form, moduleSelection, rankingOn) }}
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            const msg = validate()
+            if (msg) { setFormErr(msg); return }
+            onSave(form, moduleSelection, rankingOn)
+          }}
           className="px-6 py-5 space-y-4"
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome completo *</label>
-              <input required className={inputClass()} value={form.fullName} onChange={(e) => set('fullName', e.target.value)} placeholder="João da Silva" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome completo<RequiredMark className="ml-0.5" /></label>
+              <input className={inputClass()} value={form.fullName} onChange={(e) => set('fullName', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Apelido / Nome curto</label>
-              <input className={inputClass()} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} placeholder="João" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Apelido</label>
+              <input className={inputClass()} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">CPF</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">CPF<RequiredMark className="ml-0.5" /></label>
               <input className={inputClass()} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">WhatsApp *</label>
-              <input required type="tel" className={inputClass()} value={maskPhone(form.whatsapp)} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 99999-9999" inputMode="numeric" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">WhatsApp<RequiredMark className="ml-0.5" /></label>
+              <input type="tel" className={inputClass()} value={maskPhone(form.whatsapp)} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 99999-9999" inputMode="numeric" />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail * <span className="font-normal text-gray-400">(usado como login)</span></label>
-              <input required type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="vendedor@autodrive.com.br" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail (login)<RequiredMark className="ml-0.5" /></label>
+              <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade *</label>
-              <select required className={inputClass()} value={form.unitId} onChange={(e) => set('unitId', e.target.value)}>
-                <option value="">Selecione uma unidade</option>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade<RequiredMark className="ml-0.5" /></label>
+              <select className={inputClass()} value={form.unitId} onChange={(e) => set('unitId', e.target.value)}>
+                <option value="">Selecione</option>
                 {units.map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo<RequiredMark className="ml-0.5" /></label>
               <select
                 className={inputClass()}
                 value={form.positionId ?? ''}
                 onChange={(e) => set('positionId', e.target.value || null)}
               >
-                <option value="">— selecione —</option>
+                <option value="">Selecione</option>
                 {positions.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
@@ -338,31 +360,24 @@ function Modal({
             <Toggle label="Colaborador ativo" checked={form.active} onChange={(v) => set('active', v)} />
             <Toggle label="Recebe cobranças" checked={form.receivesCharge} onChange={(v) => set('receivesCharge', v)} />
             <Toggle label="Participa do ranking" checked={rankingOn} onChange={setRankingOn} />
-            {!rankingOn && (
-              <p className="text-[11px] text-amber-600">Fora do ranking: este colaborador não aparece no ranking geral nem no da unidade (vale para qualquer cargo, inclusive ADM).</p>
-            )}
           </div>
 
           <div className="rounded-lg border border-gray-200 p-3">
             <p className="mb-2 text-xs font-semibold text-gray-700">Permissões do colaborador</p>
-            <p className="-mt-1 mb-2 text-[11px] text-gray-400">Essas permissões são adicionais ao cargo base. Também é possível bloquear algo que o cargo normalmente permite.</p>
             <ModulesPicker positionId={form.positionId} userId={initial?.userId} onChange={setModuleSelection} />
           </div>
 
           {!initial && (
             <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-700">
               <KeyRound className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span>
-                Um acesso ao sistema será criado automaticamente.{' '}
-                <strong>Login:</strong> e-mail &nbsp;|&nbsp; <strong>Senha inicial:</strong> CPF (sem pontuação) ou dígitos do WhatsApp
-              </span>
+              <span><strong>Login:</strong> e-mail &nbsp;|&nbsp; <strong>Senha inicial:</strong> CPF sem pontuação</span>
             </div>
           )}
 
-          {error && (
+          {(formErr || error) && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+              {formErr || error}
             </div>
           )}
 
@@ -467,7 +482,7 @@ export default function VendedoresPage() {
           passwordHint: json.initialPasswordHint ?? 'CPF sem pontuação',
         })
       }
-      setSuccessMsg(editing ? 'Vendedor atualizado com sucesso!' : 'Vendedor cadastrado com sucesso!')
+      setSuccessMsg(editing ? 'Colaborador atualizado.' : 'Colaborador cadastrado.')
       setTimeout(() => setSuccessMsg(null), 8000)
       await fetchData()
     } catch (err: unknown) {
@@ -488,11 +503,10 @@ export default function VendedoresPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Colaboradores</h1>
-          <p className="mt-1 text-sm text-gray-500">Cadastre colaboradores (vendedor, auxiliar, financeiro, pós-vendas…). O cargo define o acesso.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800 transition-colors">
           <Plus className="h-4 w-4" />
-          Novo Vendedor
+          Novo colaborador
         </button>
       </div>
 
@@ -507,7 +521,7 @@ export default function VendedoresPage() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
-            <p className="text-sm font-semibold text-amber-800">Acesso criado para o vendedor</p>
+            <p className="text-sm font-semibold text-amber-800">Acesso criado</p>
             <button
               onClick={() => setCreatedCredentials(null)}
               className="ml-auto text-amber-500 hover:text-amber-700"
@@ -526,7 +540,7 @@ export default function VendedoresPage() {
             </div>
           </div>
           <p className="text-xs text-amber-700">
-            ⚠️ O vendedor deverá trocar a senha no primeiro acesso. Compartilhe essas credenciais com segurança.
+            Troca de senha obrigatória no primeiro acesso.
           </p>
         </div>
       )}
@@ -538,7 +552,7 @@ export default function VendedoresPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nome, e-mail, CPF, cargo ou loja…"
+              placeholder="Nome, e-mail, CPF, cargo ou loja"
               className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
             {search && (
@@ -573,7 +587,7 @@ export default function VendedoresPage() {
                     {q ? (
                       <>Nenhum colaborador encontrado para “{search.trim()}”.</>
                     ) : (
-                      <>Nenhum vendedor cadastrado.{' '}<button onClick={openCreate} className="text-brand-600 hover:underline">Adicionar agora</button></>
+                      <>Nenhum colaborador cadastrado.</>
                     )}
                   </td>
                 </tr>

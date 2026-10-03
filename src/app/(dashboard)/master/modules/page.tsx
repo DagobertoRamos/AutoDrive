@@ -60,7 +60,7 @@ export default function MasterModulesPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
-        <div><p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p><p className="mt-1 text-sm text-gray-500">A liberação de funcionalidades por loja é controlada pela plataforma.</p></div>
+        <p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p>
       </div>
     )
   }
@@ -70,7 +70,6 @@ export default function MasterModulesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Funcionalidades por Loja</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Ligue/desligue cada item do AutoDrive para a loja. Desligado some do menu e é bloqueado nas APIs.</p>
         </div>
         <div className="flex items-center gap-2">
           <select value={sel} onChange={(e) => setSel(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">

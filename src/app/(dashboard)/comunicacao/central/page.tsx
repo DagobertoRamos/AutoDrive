@@ -26,14 +26,11 @@ export default function CentralComunicacaoPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Inbox size={20} className="text-brand-600" />Central de Comunicação</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Disparos, templates, avisos e histórico de comunicação da loja.</p>
-      </div>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Inbox size={20} className="text-brand-600" />Central de Comunicação</h1>
 
       {avisos !== null && avisos > 0 && (
         <Link href="/comunicacao/avisos" className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 hover:bg-amber-100">
-          <Megaphone size={16} className="shrink-0" /><span>Você tem <strong>{avisos}</strong> aviso(s) ativo(s) da plataforma — toque para ver.</span>
+          <Megaphone size={16} className="shrink-0" /><span><strong>{avisos}</strong> aviso(s) ativo(s)</span>
         </Link>
       )}
 

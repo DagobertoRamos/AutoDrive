@@ -24,6 +24,9 @@ import {
 } from 'lucide-react'
 import { useImpersonationStore } from '@/store/impersonationStore'
 import { maskCNPJ, maskPhone } from '@/lib/masks'
+import { isValidCNPJ } from '@/lib/br-docs/cnpj'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -134,9 +137,7 @@ function RetentionCard({ tenantId, retention }: { tenantId: string; retention: N
             Loja desativada — dados guardados até {fmt(retention.effectivePurgeAt)} ({daysLeft > 0 ? `${daysLeft} dias` : 'vencido'})
           </p>
           <p className="mt-1 text-gray-600">
-            Desativada em {fmt(retention.deactivatedAt)}. Até a data acima os dados e documentos ficam intactos e a loja pode
-            ser reativada. Depois, o sistema apaga tudo automaticamente. O Master recebe avisos (notificação e e-mail)
-            a 180, 90, 60, 30, 15, 7, 3 e 1 dia(s) da exclusão.
+            Desativada em {fmt(retention.deactivatedAt)}. Após o prazo, os dados são apagados automaticamente.
           </p>
           <p className="mt-1 text-gray-600">
             Backup completo (dados + arquivos): <code className="rounded bg-gray-100 px-1 py-0.5 break-all">npx tsx scripts/tenant-backup.ts {tenantId}</code>
@@ -170,12 +171,11 @@ function ReasonModal({ title, description, required, loading, onConfirm, onCance
         <p className="text-sm text-gray-500">{description}</p>
         <div>
           <label className="text-xs font-medium text-gray-600 block mb-1">
-            Motivo {required ? '*' : '(opcional)'}
+            Motivo {required && <RequiredMark />}
           </label>
           <textarea
             rows={3}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"
-            placeholder="Descreva o motivo desta ação..."
             value={reason}
             onChange={e => setReason(e.target.value)}
           />
@@ -321,9 +321,17 @@ export default function TenantDetailPage() {
   // ── Save ──────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    setSaving(true)
     setError('')
     setSuccess('')
+    const msg =
+      !form.name.trim()        ? 'Informe o nome de exibição.' :
+      !form.razaoSocial.trim() ? 'Informe a razão social.' :
+      !form.cnpj.trim()        ? 'Informe o CNPJ.' :
+      !isValidCNPJ(form.cnpj)  ? 'CNPJ inválido.' :
+      form.phone && !isValidPhone(form.phone) ? 'Telefone inválido.' :
+      form.responsavelPhone && !isValidPhone(form.responsavelPhone) ? 'Telefone do responsável inválido.' : ''
+    if (msg) { setError(msg); return }
+    setSaving(true)
     try {
       const res  = await fetch(`/api/master/tenants/${id}`, {
         method:  'PUT',
@@ -348,22 +356,22 @@ export default function TenantDetailPage() {
     const configs: Record<string, { title: string; description: string; required: boolean }> = {
       SUSPENDER: {
         title:       'Suspender tenant',
-        description: 'O tenant ficará inacessível até ser reativado. Informe o motivo.',
+        description: 'O tenant ficará inacessível até ser reativado.',
         required:    true,
       },
       REATIVAR: {
         title:       'Reativar loja',
-        description: 'A loja volta ao status ATIVO e os usuários voltam a entrar. Se estava desativada, o prazo de exclusão é cancelado e todos os dados continuam lá.',
+        description: 'A loja volta ao status ATIVO. O prazo de exclusão, se houver, é cancelado.',
         required:    false,
       },
       DESATIVAR: {
         title:       'Desativar loja',
-        description: '⚠️ Todos os usuários da loja perdem o acesso na hora (inclusive quem já estava logado). Os dados e documentos ficam guardados por 5 anos; nesse prazo a loja pode ser reativada. Vencidos os 5 anos, o sistema APAGA TUDO automaticamente — o Master será avisado antes para fazer o backup. Informe o motivo.',
+        description: 'Todos os usuários perdem o acesso na hora. Os dados ficam guardados por 5 anos e depois são APAGADOS automaticamente.',
         required:    true,
       },
       CANCELAR: {
         title:       'Cancelar tenant',
-        description: 'O contrato do tenant será encerrado. Informe o motivo.',
+        description: 'O contrato do tenant será encerrado.',
         required:    true,
       },
       TESTE: {
@@ -507,14 +515,14 @@ export default function TenantDetailPage() {
               </div>
             </div>
             <p className="text-sm text-gray-600">
-              Você irá acessar o sistema como o administrador deste tenant. Toda a sessão será registrada para auditoria.
+              A sessão será registrada para auditoria.
             </p>
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-1">Motivo *</label>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Motivo <RequiredMark /></label>
               <textarea
                 rows={3}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"
-                placeholder="Ex: Suporte ao cliente, investigação de problema..."
+                placeholder="Ex.: Suporte ao cliente"
                 value={impReason}
                 onChange={e => setImpReason(e.target.value)}
               />
@@ -684,11 +692,11 @@ export default function TenantDetailPage() {
           </h2>
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-1">Nome de exibição *</label>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Nome de exibição <RequiredMark /></label>
               <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.name} onChange={f('name')} />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-1">Razão Social</label>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Razão Social <RequiredMark /></label>
               <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.razaoSocial} onChange={f('razaoSocial')} />
             </div>
             <div>
@@ -696,7 +704,7 @@ export default function TenantDetailPage() {
               <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={form.nomeFantasia} onChange={f('nomeFantasia')} />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-1">CNPJ</label>
+              <label className="text-xs font-medium text-gray-600 block mb-1">CNPJ <RequiredMark /></label>
               <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="00.000.000/0001-00" value={maskCNPJ(form.cnpj)} onChange={(e) => setForm(prev => ({ ...prev, cnpj: maskCNPJ(e.target.value) }))} inputMode="numeric" />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -711,7 +719,7 @@ export default function TenantDetailPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">Slogan</label>
-              <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="Ex: Sua loja no piloto automático" value={form.slogan} onChange={f('slogan')} />
+              <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="Ex.: Sua loja no piloto automático" value={form.slogan} onChange={f('slogan')} />
             </div>
           </div>
         </div>
@@ -801,7 +809,7 @@ export default function TenantDetailPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
             <label className="text-xs font-medium text-gray-600 block mb-1">Logradouro</label>
-            <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="Rua, Av., etc." value={form.logradouro} onChange={f('logradouro')} />
+            <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="Ex.: Rua das Flores" value={form.logradouro} onChange={f('logradouro')} />
           </div>
           <div>
             <label className="text-xs font-medium text-gray-600 block mb-1">Número</label>
@@ -916,7 +924,6 @@ export default function TenantDetailPage() {
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm resize-y focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           value={form.notes}
           onChange={f('notes')}
-          placeholder="Notas internas sobre o tenant, histórico, acordos comerciais, etc."
         />
       </div>
 
@@ -930,8 +937,7 @@ export default function TenantDetailPage() {
       <div className="rounded-xl border border-red-200 bg-red-50 p-5">
         <h3 className="text-sm font-bold text-red-700 mb-1">Zona de Perigo</h3>
         <p className="text-xs text-red-600 mb-3">
-          A exclusão é permanente e remove todos os dados do tenant (usuários, unidades, negociações).
-          Use as ações de status acima para suspender ou desativar sem perder dados.
+          A exclusão é permanente e remove todos os dados do tenant.
         </p>
         <button
           onClick={handleDelete}

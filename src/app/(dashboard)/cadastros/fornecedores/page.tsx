@@ -16,6 +16,7 @@ import { formatCPF } from '@/lib/br-docs/cpf'
 import { formatCNPJ, isValidCNPJ } from '@/lib/br-docs/cnpj'
 import { formatPhone } from '@/lib/br-docs/phone'
 import { formatCEP } from '@/lib/br-docs/cep'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Supplier {
   id: string; name: string; legalName: string | null; kind: string; personType: string; document: string | null
@@ -252,7 +253,7 @@ export default function FornecedoresPage() {
 function L({ label, req, hint, children }: { label: string; req?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block text-xs font-medium text-gray-700">
-      <span className="flex items-center justify-between">{label}{req && <span className="text-red-500"> *</span>}<span className="ml-auto font-normal text-gray-400">{hint}</span></span>
+      <span className="flex items-center justify-between"><span>{label}{req && <RequiredMark className="ml-0.5" />}</span><span className="ml-auto font-normal text-gray-400">{hint}</span></span>
       {children}
     </label>
   )

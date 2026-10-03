@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Plus, Edit2, Trash2, Shield, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 interface WarrantyRule {
   id:                 string
@@ -50,6 +51,7 @@ export default function GarantiasComissoesPage() {
   const [form, setForm]       = useState<FormState>(EMPTY_FORM)
   const [saving, setSaving]   = useState(false)
   const [toast, setToast]     = useState<{ ok: boolean; msg: string } | null>(null)
+  const [formErr, setFormErr] = useState('')
 
   const fetchRules = useCallback(async () => {
     setLoading(true)
@@ -77,15 +79,16 @@ export default function GarantiasComissoesPage() {
     return () => clearTimeout(t)
   }, [toast])
 
-  const openModal = () => { setForm(EMPTY_FORM); setOpen(true) }
+  const openModal = () => { setForm(EMPTY_FORM); setFormErr(''); setOpen(true) }
   const closeModal = () => { if (!saving) setOpen(false) }
 
   const handleSave = async () => {
+    setFormErr('')
     if (!form.name.trim()) {
-      setToast({ ok: false, msg: 'Informe o nome da regra.' }); return
+      setFormErr('Informe o nome da regra.'); return
     }
     if (!form.warrantyId) {
-      setToast({ ok: false, msg: 'Selecione a garantia.' }); return
+      setFormErr('Selecione a garantia.'); return
     }
     const defaultValue       = parseBRL(form.defaultValue) ?? 0
     const minValue           = parseBRL(form.minValue) ?? 0
@@ -93,7 +96,7 @@ export default function GarantiasComissoesPage() {
     const commissionDiscount = Number(String(form.commissionDiscount).replace(',', '.')) || 0
 
     if (commissionDefault <= 0 && commissionDiscount <= 0 && defaultValue <= 0) {
-      setToast({ ok: false, msg: 'Informe ao menos um valor numérico.' }); return
+      setFormErr('Informe ao menos um valor.'); return
     }
 
     setSaving(true)
@@ -118,10 +121,10 @@ export default function GarantiasComissoesPage() {
         setOpen(false)
         fetchRules()
       } else {
-        setToast({ ok: false, msg: data.error ?? 'Erro ao salvar.' })
+        setFormErr(data.error ?? 'Erro ao salvar.')
       }
     } catch {
-      setToast({ ok: false, msg: 'Erro de conexão.' })
+      setFormErr('Erro de conexão.')
     } finally {
       setSaving(false)
     }
@@ -132,9 +135,6 @@ export default function GarantiasComissoesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Regras de Garantia</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Descontos aplicados na comissão com base no número de garantias acionadas no período.
-          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={fetchRules} disabled={loading} className="btn-secondary text-xs">
@@ -155,14 +155,6 @@ export default function GarantiasComissoesPage() {
           {toast.msg}
         </div>
       )}
-
-      <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
-        <p className="font-semibold">Como funciona?</p>
-        <p className="mt-1 text-xs text-amber-600">
-          Quando o vendedor possui garantias acionadas dentro de uma faixa configurada,
-          um percentual de desconto é aplicado sobre a comissão bruta do período.
-        </p>
-      </div>
 
       {loading ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100" />)}</div>
@@ -223,22 +215,21 @@ export default function GarantiasComissoesPage() {
             </div>
             <div className="mt-4 space-y-3">
               <div>
-                <label className="label">Nome *</label>
+                <label className="label">Nome<RequiredMark className="ml-0.5" /></label>
                 <input
                   className="input"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex.: Faixa Premium"
                 />
               </div>
               <div>
-                <label className="label">Garantia *</label>
+                <label className="label">Garantia<RequiredMark className="ml-0.5" /></label>
                 <select
                   className="input"
                   value={form.warrantyId}
                   onChange={(e) => setForm({ ...form, warrantyId: e.target.value })}
                 >
-                  <option value="">Selecione...</option>
+                  <option value="">Selecione</option>
                   {warranties.map((w) => (
                     <option key={w.id} value={w.id}>{w.name}</option>
                   ))}
@@ -273,7 +264,6 @@ export default function GarantiasComissoesPage() {
                     className="input"
                     value={form.commissionDefault}
                     onChange={(e) => setForm({ ...form, commissionDefault: e.target.value })}
-                    placeholder="Ex.: 5"
                     inputMode="decimal"
                   />
                 </div>
@@ -283,12 +273,12 @@ export default function GarantiasComissoesPage() {
                     className="input"
                     value={form.commissionDiscount}
                     onChange={(e) => setForm({ ...form, commissionDiscount: e.target.value })}
-                    placeholder="Ex.: 2"
                     inputMode="decimal"
                   />
                 </div>
               </div>
             </div>
+            {formErr && <p className="mt-4 text-sm text-red-600">{formErr}</p>}
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={closeModal} disabled={saving} className="btn-secondary text-sm">Cancelar</button>
               <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">

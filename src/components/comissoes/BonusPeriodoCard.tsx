@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Trophy, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Rate { key: string; nome: string; rate: string }
 interface Config {
@@ -64,6 +65,8 @@ export default function BonusPeriodoCard() {
 
   const save = async () => {
     if (!cfg) return
+    if (cfg.metaLoja.active && pnum(cfg.metaLoja.targetUnitSales) <= 0) { setError('Informe o alvo da meta da loja.'); return }
+    if (cfg.dezenaCombo.active && pnum(cfg.dezenaCombo.value) <= 0) { setError('Informe o valor do bônus das 3 dezenas.'); return }
     setSaving(true); setError(''); setSaved(false)
     try {
       const payload = {
@@ -89,8 +92,7 @@ export default function BonusPeriodoCard() {
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Trophy size={17} className="text-brand-600" />Bônus de período (produção · meta · dezenas)</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Agregados por mês/unidade. Aplicados no recálculo do período.</p>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Trophy size={17} className="text-brand-600" />Bônus de período</h2>
         </div>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
@@ -101,10 +103,10 @@ export default function BonusPeriodoCard() {
         <div className="mt-4 space-y-5">
           {/* Produção da loja */}
           <div className="space-y-2">
-            {chk(cfg.producaoLoja.active, (b) => setCfg({ ...cfg, producaoLoja: { ...cfg.producaoLoja, active: b } }), 'Produção da loja — R$ por carro da UNIDADE, por colaborador')}
+            {chk(cfg.producaoLoja.active, (b) => setCfg({ ...cfg, producaoLoja: { ...cfg.producaoLoja, active: b } }), 'Produção da loja (R$ por carro da unidade)')}
             <div className="flex gap-2">
               <select value={pick} onChange={(e) => setPick(e.target.value)} className={inputCls}>
-                <option value="">Adicionar colaborador…</option>
+                <option value="">Colaborador</option>
                 {sellers.filter((s) => !cfg.producaoLoja.rates.some((r) => r.key === s.id)).map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
               </select>
               <button onClick={addRate} className="btn-secondary whitespace-nowrap text-xs"><Plus size={13} />Adicionar</button>
@@ -129,18 +131,18 @@ export default function BonusPeriodoCard() {
 
           {/* Meta da loja */}
           <div className="space-y-2">
-            {chk(cfg.metaLoja.active, (b) => setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, active: b } }), 'Meta da loja — quando a unidade atinge o alvo de vendas no mês')}
+            {chk(cfg.metaLoja.active, (b) => setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, active: b } }), 'Meta da loja')}
             <div className="grid gap-3 md:grid-cols-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Alvo (carros da unidade)</label><input inputMode="numeric" value={cfg.metaLoja.targetUnitSales} onChange={(e) => { dirty(); setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, targetUnitSales: e.target.value } }) }} placeholder="Ex: 30" className={inputNum} /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Bônus vendedor (R$)</label><input inputMode="decimal" value={cfg.metaLoja.vendedor} onChange={(e) => { dirty(); setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, vendedor: e.target.value } }) }} placeholder="250" className={inputNum} /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Bônus gerente (R$)</label><input inputMode="decimal" value={cfg.metaLoja.gerente} onChange={(e) => { dirty(); setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, gerente: e.target.value } }) }} placeholder="500" className={inputNum} /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Alvo (carros da unidade){cfg.metaLoja.active && <RequiredMark className="ml-0.5" />}</label><input inputMode="numeric" value={cfg.metaLoja.targetUnitSales} onChange={(e) => { dirty(); setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, targetUnitSales: e.target.value } }) }} className={inputNum} /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Bônus vendedor (R$)</label><input inputMode="decimal" value={cfg.metaLoja.vendedor} onChange={(e) => { dirty(); setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, vendedor: e.target.value } }) }} className={inputNum} /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Bônus gerente (R$)</label><input inputMode="decimal" value={cfg.metaLoja.gerente} onChange={(e) => { dirty(); setCfg({ ...cfg, metaLoja: { ...cfg.metaLoja, gerente: e.target.value } }) }} className={inputNum} /></div>
             </div>
           </div>
 
           {/* Bônus 3 dezenas */}
           <div className="space-y-2">
-            {chk(cfg.dezenaCombo.active, (b) => setCfg({ ...cfg, dezenaCombo: { ...cfg.dezenaCombo, active: b } }), 'Bônus das 3 dezenas — quando o vendedor fecha as 3 dezenas do mês')}
-            <div className="max-w-xs"><label className="mb-1 block text-xs font-medium text-gray-700">Valor do bônus (R$)</label><MoneyInput value={textToMoney(cfg.dezenaCombo.value)} onChange={(n) => { dirty(); setCfg({ ...cfg, dezenaCombo: { ...cfg.dezenaCombo, value: moneyToText(n) } }) }} className={inputNum} /></div>
+            {chk(cfg.dezenaCombo.active, (b) => setCfg({ ...cfg, dezenaCombo: { ...cfg.dezenaCombo, active: b } }), 'Bônus das 3 dezenas')}
+            <div className="max-w-xs"><label className="mb-1 block text-xs font-medium text-gray-700">Valor do bônus (R$){cfg.dezenaCombo.active && <RequiredMark className="ml-0.5" />}</label><MoneyInput value={textToMoney(cfg.dezenaCombo.value)} onChange={(n) => { dirty(); setCfg({ ...cfg, dezenaCombo: { ...cfg.dezenaCombo, value: moneyToText(n) } }) }} className={inputNum} /></div>
           </div>
 
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={14} />{error}</div>}

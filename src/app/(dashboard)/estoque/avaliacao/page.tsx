@@ -12,7 +12,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, ArrowRight, Car, CheckCircle,
   ClipboardCheck, DollarSign, User,
-  FileCheck, AlertTriangle, Info, XCircle,
+  FileCheck, AlertTriangle, XCircle,
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 import { PlateInput } from '@/components/estoque/PlateInput'
@@ -723,7 +723,7 @@ function AvaliacaoForm() {
     const brand = brandName || manualBrand || lookupData?.brand || ''
     const model = modelName || manualModel || lookupData?.model || ''
     if (!plate && !(brand && model)) {
-      setError('Preencha placa ou marca/modelo antes de avançar.')
+      setError('Informe a placa ou marca e modelo.')
       return null
     }
     setAutoSavingDraft(true)
@@ -1087,8 +1087,8 @@ function AvaliacaoForm() {
     const brand = combo.brandName  || manualBrand  || lookupData?.brand  || ''
     const model = combo.modelName  || manualModel  || lookupData?.model  || ''
 
-    if (!plate) { setError('Placa é obrigatória.'); return }
-    if (!brand || !model) { setError('Marca e modelo são obrigatórios. Preencha na etapa Veículo (combo ou campos manuais).'); return }
+    if (!plate) { setError('Informe a placa.'); return }
+    if (!brand || !model) { setError('Informe marca e modelo na etapa Veículo.'); return }
 
     setSaving(true)
     setError('')
@@ -1285,15 +1285,6 @@ function AvaliacaoForm() {
         </div>
       </div>
 
-      {/* Aviso de fluxo obrigatório */}
-      <div className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
-        <Info className="h-5 w-5 shrink-0 text-brand-600 mt-0.5" />
-        <p className="text-sm text-brand-700">
-          <strong>Avaliação obrigatória.</strong> Todo veículo deve ser avaliado antes de entrar no estoque.
-          Após salvar, você poderá aprovar e cadastrar automaticamente.
-        </p>
-      </div>
-
       {/* Step Bar */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm overflow-x-auto">
         <StepBar current={step} onNavigate={setStep} />
@@ -1310,7 +1301,7 @@ function AvaliacaoForm() {
       {/* ── Etapa 0 — Cliente (busca / cadastro rápido) ── */}
       {step === 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
-          <Section title="Quem é o cliente desta avaliação?" icon={<User className="h-5 w-5" />}>
+          <Section title="Cliente" icon={<User className="h-5 w-5" />}>
             <StepCliente
               selected={customer}
               onSelect={(c) => {
@@ -1371,7 +1362,7 @@ function AvaliacaoForm() {
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Placa do veículo" icon={<Car className="h-5 w-5" />}>
             <div className="max-w-md">
-              <Field label="Placa" required hint="Digite a placa (formato XXX-XXXX antiga ou XXX1X23 Mercosul). Buscamos os dados automaticamente." badge={getFieldBadge('plate', plate)}>
+              <Field label="Placa" required badge={getFieldBadge('plate', plate)}>
                 <PlateInput
                   value={plate}
                   onChange={(normal, display) => { 
@@ -1465,8 +1456,8 @@ function AvaliacaoForm() {
                   ))}
                 </select>
               </Field>
-              <Field label="Versão / Trim (opcional)" badge={getFieldBadge('version', version)}>
-                <input value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} placeholder="Ex: TSI 1.0 Flex Aut." />
+              <Field label="Versão" badge={getFieldBadge('version', version)}>
+                <input value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} placeholder="Ex.: TSI 1.0 Flex Aut." />
               </Field>
               <Field label="Cor" badge={getFieldBadge('predominantColor', color)}>
                 <input value={color} onChange={(e) => setColor(e.target.value)} className={inputCls} placeholder="Prata" />
@@ -1521,10 +1512,10 @@ function AvaliacaoForm() {
                 label="Motorização"
                 hint={
                   tipoVeiculo === 'MOTO'
-                    ? 'Cilindrada em cc (50cc — 2.500cc+)'
+                    ? 'Em cc'
                     : tipoVeiculo === 'CAMINHAO'
-                      ? 'Cilindrada em cc (150cc — 1.000cc+)'
-                      : 'Cilindrada em litros (1.0 — 6.0+)'
+                      ? 'Em cc'
+                      : 'Em litros'
                 }
                 badge={getFieldBadge('displacement', engine)}
               >
@@ -1535,7 +1526,7 @@ function AvaliacaoForm() {
                   ))}
                 </select>
               </Field>
-              <Field label="Potência" hint="Em cv (cavalo-vapor)" badge={getFieldBadge('power', power)}>
+              <Field label="Potência" hint="Em cv" badge={getFieldBadge('power', power)}>
                 <select className={selectCls} value={power} onChange={(e) => setPower(e.target.value)}>
                   <option value="">Selecione</option>
                   {POWER_OPTIONS.map((opt) => (
@@ -1589,7 +1580,7 @@ function AvaliacaoForm() {
                   <option value="USADO">Usado</option>
                 </select>
               </Field>
-              <Field label="Unidade que está avaliando" required hint="O veículo ficará vinculado a esta unidade.">
+              <Field label="Unidade" required>
                 <select className={selectCls} value={unitId} onChange={(e) => setUnitId(e.target.value)}>
                   <option value="">Selecione a unidade</option>
                   {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -1639,7 +1630,7 @@ function AvaliacaoForm() {
               </div>
               {!fipeCode && (
                 <p className="text-xs text-gray-500 mt-2">
-                  FIPE não detectada automaticamente. Você pode informar manualmente na próxima etapa.
+                  FIPE não detectada.
                 </p>
               )}
             </Section>
@@ -1682,12 +1673,12 @@ function AvaliacaoForm() {
               Observações (último)
           ────────────────────────────────────────────────────────────────── */}
           <Section title="Observações">
-            <Field label="Observações sobre o veículo (opcional)">
+            <Field label="Observações sobre o veículo">
               <textarea
                 value={evaluationNotes}
                 onChange={(e) => setEvaluationNotes(e.target.value)}
                 className={inputCls + ' min-h-[88px] resize-y'}
-                placeholder="Histórico, detalhes técnicos, particularidades do veículo, etc."
+                placeholder="Histórico e particularidades"
               />
             </Field>
           </Section>
@@ -1731,7 +1722,7 @@ function AvaliacaoForm() {
               type="button"
               disabled={missingVehicleFields().length > 0 || autoSavingDraft}
               title={missingVehicleFields().length
-                ? `Preencha os campos obrigatórios: ${missingVehicleFields().join(', ')}. (O documento/CRLV é opcional — a IA o preenche automaticamente quando enviado.)`
+                ? `Preencha: ${missingVehicleFields().join(', ')}.`
                 : ''}
               onClick={async () => {
                 // Persiste manualBrand/manualModel a partir das combos FIPE
@@ -1817,18 +1808,13 @@ function AvaliacaoForm() {
       {step === 6 && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col gap-6">
           <Section title="Enviar para aprovação" icon={<FileCheck className="h-5 w-5" />}>
-            <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-              Revise os dados e envie a avaliação para o gerente. O gerente fará a precificação
-              (valor avaliado, mínimo, sugerido) e liberará o resultado de volta para você.
-            </div>
-
-            <Field label="Observações finais (opcional)">
+            <Field label="Observações finais">
               <textarea
                 value={evaluationNotes}
                 onChange={(e) => setEvaluationNotes(e.target.value)}
                 rows={4}
                 className={inputCls + ' resize-none'}
-                placeholder="Registre detalhes, pendências, condições da avaliação..."
+                placeholder="Detalhes e condições da avaliação"
               />
             </Field>
 

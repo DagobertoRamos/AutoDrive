@@ -68,7 +68,7 @@ export default function FinancingDashboardPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><LayoutDashboard size={20} className="text-brand-600" />Dashboard F&amp;I</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : 'Visão geral do financiamento da loja.'}</p>
+          {loading && <p className="mt-0.5 text-sm text-gray-500">Carregando...</p>}
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>

@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, Pencil, Trash2, X, Save, KeyRound, Lock, ShieldAlert, Plug } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 
@@ -113,7 +114,7 @@ export default function FiCredentialsPage() {
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
         <div>
           <p className="text-lg font-semibold text-gray-800">Configuração restrita</p>
-          <p className="mt-1 max-w-md text-sm text-gray-500">As credenciais de F&amp;I são gerenciadas por administração/gerência/financeiro.</p>
+          <p className="mt-1 max-w-md text-sm text-gray-500">Acesso restrito à administração, gerência e financeiro.</p>
         </div>
       </div>
     )
@@ -124,7 +125,7 @@ export default function FiCredentialsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Credenciais e Integrações</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} credencial(is) — segredos criptografados e mascarados`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} credencial(is)`}</p>
         </div>
         <button onClick={openNew} disabled={!cryptoReady} className="btn-primary text-sm disabled:opacity-50"><Plus size={15} />Nova credencial</button>
       </div>
@@ -182,12 +183,11 @@ export default function FiCredentialsPage() {
           <div className="my-4 w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar credencial' : 'Nova credencial'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco <span className="text-red-500">*</span></label><select className={inputCls} value={form.bankId} onChange={(e) => set('bankId', e.target.value)}><option value="">Selecione...</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}{editingId && form.bankId && !banks.some((b) => b.id === form.bankId) && <option value={form.bankId}>Banco atual</option>}</select></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco <RequiredMark /></label><select className={inputCls} value={form.bankId} onChange={(e) => set('bankId', e.target.value)}><option value="">Selecione...</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}{editingId && form.bankId && !banks.some((b) => b.id === form.bankId) && <option value={form.bankId}>Banco atual</option>}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Ambiente</label><select className={inputCls} value={form.environment} onChange={(e) => set('environment', e.target.value as Env)}><option value="HOMOLOGACAO">Homologação</option><option value="PRODUCAO">Produção</option></select></div>
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Identificação (opcional)</label><input className={inputCls} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder="Ex: Conta principal, Filial centro..." /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Identificação</label><input className={inputCls} value={form.label} onChange={(e) => set('label', e.target.value)} placeholder="Ex.: Conta principal" /></div>
 
               <div className="col-span-2 mt-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400"><span>Segredos</span><span className="h-px flex-1 bg-gray-100" /></div>
-              {editingId && <p className="col-span-2 -mt-1 text-[11px] text-gray-500">Deixe em branco para manter o segredo atual. Preencha apenas o que deseja substituir.</p>}
 
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Usuário</label><input className={inputCls} value={form.usuario} onChange={(e) => set('usuario', e.target.value)} autoComplete="off" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Senha</label><input type="password" className={inputCls} value={form.senha} onChange={(e) => set('senha', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>

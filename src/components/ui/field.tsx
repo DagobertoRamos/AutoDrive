@@ -6,11 +6,10 @@
 // Padrão único do AutoDrive (usar em qualquer formulário):
 //
 //   Quilometragem *
-//   Obrigatório
 //
-// com o "*" e a palavra "Obrigatório" no token semântico de erro do design
-// system (`text-error` = #DC2626 no tailwind.config.ts) — nunca em vermelho
-// hardcoded e nunca repetindo este JSX em cada tela.
+// com o "*" no token semântico de erro do design system (`text-error` =
+// #DC2626 no tailwind.config.ts) — nunca em vermelho hardcoded e nunca
+// repetindo este JSX em cada tela. Tela limpa: só o asterisco.
 // =============================================================================
 
 import type { ReactNode } from 'react'
@@ -32,7 +31,7 @@ export function RequiredTag({ className = '' }: { className?: string }) {
 
 interface FieldLabelProps {
   children:  ReactNode
-  /** Marca o campo como obrigatório: "*" + etiqueta "Obrigatório". */
+  /** Marca o campo como obrigatório ("*"). */
   required?: boolean
   htmlFor?:  string
   /** Texto auxiliar exibido abaixo do rótulo (ex.: "Mínimo de 1 foto."). */
@@ -51,7 +50,6 @@ export function FieldLabel({ children, required, htmlFor, hint, className = '' }
         {children}
         {required && <RequiredMark />}
       </label>
-      {required && <RequiredTag />}
       {hint && <span className="text-[10px] text-gray-500">{hint}</span>}
     </span>
   )

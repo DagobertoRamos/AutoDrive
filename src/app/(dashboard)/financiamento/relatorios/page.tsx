@@ -70,7 +70,7 @@ export default function FinancingReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Relatórios de Financiamento</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : 'Visão consolidada de fichas, simulações, produção e funil'}</p>
+          {loading && <p className="mt-0.5 text-sm text-gray-500">Carregando...</p>}
         </div>
         <div className="flex items-center gap-2">
           <SummarizeReportButton title="Relatório de Financiamento (F&I)" data={{ resumo: s, funil: funnel, porStatus: byStatus, porBanco: byBank, porVendedor: bySeller, enviosPorBanco: bySubBank, docsPendentes: pendingDocs, retorno: margin }} />

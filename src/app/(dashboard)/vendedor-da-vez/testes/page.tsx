@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { Volume2, Bell, ShieldAlert, RefreshCw, Play, CheckCircle2, History, User } from 'lucide-react'
 import { SOUND_OPTIONS, playSound, unlockAudio } from '@/lib/seller-queue/alert-client'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface CallableSeller {
   sellerId: string
@@ -29,7 +30,7 @@ function parseEventStatus(reason: string | null) {
   if (reason.includes('respondido')) {
     const match = reason.match(/tempo de resposta:\s*(\d+s)/i)
     const time = match ? match[1] : ''
-    return { status: 'RESPONDED', text: `Respondido em ${time || 'alguns segundos'} ✓`, color: 'bg-green-100 text-green-800 border-green-200' }
+    return { status: 'RESPONDED', text: `Respondido em ${time || 'alguns segundos'}`, color: 'bg-green-100 text-green-800 border-green-200' }
   }
   if (reason.includes('enviado')) {
     return { status: 'SENT', text: 'Pendente (aguardando vendedor)', color: 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse' }
@@ -113,7 +114,7 @@ export default function QueueTestsPage() {
         } else {
           const d = j?.devices
           const detail = d ? ` (Android ${d.android} · iPhone/PWA ${d.webpush + d.ios})` : ''
-          flash(`Teste de atenção enviado!${detail} ⚠️`, true)
+          flash(`Teste de atenção enviado!${detail}`, true)
         }
         loadHistory()
       } else {
@@ -146,9 +147,7 @@ export default function QueueTestsPage() {
             <Volume2 size={24} className="text-brand-600 animate-pulse" />
             Painel de Diagnóstico e Testes
           </h1>
-          <p className="text-xs text-gray-500">
-            Valide o áudio, som de chamadas, sirenes e testes de atenção operacional dos vendedores.
-          </p>
+
         </div>
       </div>
 
@@ -159,9 +158,6 @@ export default function QueueTestsPage() {
             <Bell size={18} className="text-brand-600" />
             Teste de Áudio Local
           </h2>
-          <p className="text-xs text-gray-500">
-            Clique no botão abaixo para destravar o contexto de áudio do navegador e testar os toques.
-          </p>
 
           {!audioUnlocked ? (
             <button
@@ -173,7 +169,7 @@ export default function QueueTestsPage() {
             </button>
           ) : (
             <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-xs font-semibold text-green-700 text-center">
-              ✓ Áudio destravado com sucesso!
+              Áudio destravado.
             </div>
           )}
 
@@ -201,19 +197,16 @@ export default function QueueTestsPage() {
               <ShieldAlert size={18} className="text-amber-500" />
               Enviar Teste de Atenção
             </h2>
-            <p className="text-xs text-gray-500">
-              Dispare uma notificação persistente na tela de um vendedor específico para testar o tempo de reação.
-            </p>
 
             <div className="space-y-3 pt-2">
               <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-700">Vendedor</label>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Vendedor <RequiredMark /></label>
                 <select
                   value={selectedSeller}
                   onChange={(e) => setSelectedSeller(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 >
-                  <option value="">— selecione o vendedor —</option>
+                  <option value="">— selecione —</option>
                   {sellers.map((s) => (
                     <option key={s.sellerId} value={s.sellerId}>
                       {s.name} {s.queueStatus ? `(${s.queueStatus})` : '(fora da fila)'}
@@ -224,7 +217,7 @@ export default function QueueTestsPage() {
 
               <button
                 onClick={triggerTest}
-                disabled={busy}
+                disabled={busy || !selectedSeller}
                 className="btn-primary w-full justify-center py-3 text-sm font-bold bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
               >
                 <ShieldAlert size={16} />

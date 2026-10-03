@@ -16,6 +16,7 @@ import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-inpu
 import { EXPENSE_CATEGORIES, parseMoneyInput, REVENUE_CATEGORIES } from '@/lib/stock/prep-core'
 import { VehicleFilesField, type VFile } from './VehicleFilesField'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Line {
   id: string; origin: 'ENTRY' | 'SALE' | 'COMMISSION' | 'TRADE'; entryId: string | null; type: 'RECEITA' | 'DESPESA'; category: string; categoryLabel: string
@@ -91,7 +92,7 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
         ))}
       </div>
       {d.documentation && <DocCard doc={d.documentation} />}
-      {sale === 0 && <p className="text-[11px] text-gray-500">Ainda sem venda: lucro e margem ficam completos quando a negociação de venda for registrada (anúncio: {brl(d.vehicle.salePrice)}).</p>}
+      {sale === 0 && <p className="text-[11px] text-gray-500">Sem venda registrada · anúncio {brl(d.vehicle.salePrice)}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1 text-xs">
@@ -153,7 +154,6 @@ export function LedgerPanel({ vehicleId }: { vehicleId: string }) {
       {receipts && (
         <Modal title={`Comprovantes — ${receipts.description}`} onClose={() => setReceipts(null)}>
           <VehicleFilesField vehicleId={vehicleId} kind="COMPROVANTE" refKey={receipts.entryId} files={receipts.receipts} canEdit onChange={async () => { await load(); setReceipts(null) }} />
-          <p className="mt-2 text-[11px] text-gray-500"><FileText size={11} className="mr-1 inline" />PDF ou foto do comprovante de pagamento, nota fiscal ou recibo.</p>
         </Modal>
       )}
       {adding && <NewEntryModal vehicleId={vehicleId} accounts={d.accounts} onClose={() => setAdding(false)} onSaved={async () => { setAdding(false); await load() }} />}
@@ -178,6 +178,9 @@ function NewEntryModal({ vehicleId, accounts, onClose, onSaved }: { vehicleId: s
   const [busy, setBusy] = useState(false)
   const cats = f.type === 'DESPESA' ? EXPENSES_MANUAL : REVENUES_MANUAL
   async function save() {
+    if (!f.description.trim()) { setErr('Informe a descrição.'); return }
+    if (!parseMoneyInput(f.amount)) { setErr('Informe o valor.'); return }
+    if (!f.dueDate) { setErr('Informe o vencimento.'); return }
     setBusy(true); setErr('')
     const r = await fetch(`/api/vehicles/${vehicleId}/ledger`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -191,11 +194,11 @@ function NewEntryModal({ vehicleId, accounts, onClose, onSaved }: { vehicleId: s
   return (
     <Modal title="Novo lançamento do veículo" onClose={onClose}>
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs text-gray-600">Tipo<select className={input} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value, category: e.target.value === 'DESPESA' ? 'DOCUMENTACAO' : 'OUTRA_RECEITA' })}><option value="DESPESA">Despesa / custo</option><option value="RECEITA">Receita</option></select></label>
-        <label className="text-xs text-gray-600">Categoria<select className={input} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{cats.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
-        <label className="text-xs text-gray-600 sm:col-span-2">Descrição<input className={input} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Ex.: transferência DETRAN, multa AIT 123, pneu dianteiro" maxLength={200} /></label>
-        <label className="text-xs text-gray-600">Valor<MoneyInput className={input} value={textToMoney(f.amount)} onChange={(n) => setF({ ...f, amount: moneyToText(n) })} /></label>
-        <label className="text-xs text-gray-600">Vencimento<input type="date" className={input} value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} /></label>
+        <label className="text-xs text-gray-600">Tipo <RequiredMark /><select className={input} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value, category: e.target.value === 'DESPESA' ? 'DOCUMENTACAO' : 'OUTRA_RECEITA' })}><option value="DESPESA">Despesa / custo</option><option value="RECEITA">Receita</option></select></label>
+        <label className="text-xs text-gray-600">Categoria <RequiredMark /><select className={input} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{cats.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+        <label className="text-xs text-gray-600 sm:col-span-2">Descrição <RequiredMark /><input className={input} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Ex.: transferência DETRAN" maxLength={200} /></label>
+        <label className="text-xs text-gray-600">Valor <RequiredMark /><MoneyInput className={input} value={textToMoney(f.amount)} onChange={(n) => setF({ ...f, amount: moneyToText(n) })} /></label>
+        <label className="text-xs text-gray-600">Vencimento <RequiredMark /><input type="date" className={input} value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} /></label>
         <label className="text-xs text-gray-600 sm:col-span-2">Fornecedor / favorecido<input className={input} value={f.counterparty} onChange={(e) => setF({ ...f, counterparty: e.target.value })} maxLength={120} /></label>
         <label className="flex items-center gap-2 text-xs text-gray-700 sm:col-span-2"><input type="checkbox" checked={f.paid} onChange={(e) => setF({ ...f, paid: e.target.checked })} className="rounded border-gray-300" />Já está pago</label>
         {f.paid && (
@@ -208,7 +211,7 @@ function NewEntryModal({ vehicleId, accounts, onClose, onSaved }: { vehicleId: s
       {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
       <div className="mt-3 flex justify-end gap-2">
         <button onClick={onClose} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button>
-        <button disabled={busy || !f.description.trim() || !f.amount} onClick={() => void save()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}Lançar</button>
+        <button disabled={busy || !f.description.trim() || !f.amount || !f.dueDate} onClick={() => void save()} className="btn-primary px-3 py-1.5 text-xs">{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}Lançar</button>
       </div>
     </Modal>
   )
@@ -233,7 +236,7 @@ function DocCard({ doc }: { doc: DocSummary }) {
       {doc.items.length > 0 && (
         <p className="mt-2 text-[11px] text-gray-600">Custo detalhado: {doc.items.map((i) => `${i.label} ${brl(i.amount)}`).join(' · ')}</p>
       )}
-      {doc.costIsEstimate && <p className="mt-1 text-[11px] text-amber-700">Custo ainda previsto — abra o lançamento de documentação e lance o que foi pago (licenciamento, placa, laudo…).</p>}
+      {doc.costIsEstimate && <p className="mt-1 text-[11px] text-amber-700">Custo ainda previsto.</p>}
     </div>
   )
 }

@@ -17,6 +17,7 @@ import {
   Flag, Plus, Trash2, Loader2, AlertCircle, CheckCircle2,
   ChevronDown, ChevronRight, X, Save, ToggleLeft, ToggleRight,
 } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -65,10 +66,9 @@ function CreateModal({ onClose, onSaved }: CreateModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.key.trim() || !form.name.trim()) {
-      setError('Chave e nome são obrigatórios.')
-      return
-    }
+    if (!form.key.trim()) { setError('Informe a chave.'); return }
+    if (!/^[A-Za-z0-9_]+$/.test(form.key.trim())) { setError('Chave: use apenas letras, números e _.'); return }
+    if (!form.name.trim()) { setError('Informe o nome.'); return }
     setSaving(true)
     try {
       const res  = await fetch('/api/master/feature-flags', {
@@ -113,18 +113,17 @@ function CreateModal({ onClose, onSaved }: CreateModalProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Chave (key) *</label>
+              <label className={labelCls}>Chave <RequiredMark /></label>
               <input
                 className={`${inputCls} font-mono`}
-                placeholder="nome_da_flag"
+                placeholder="Ex.: nome_da_flag"
                 value={form.key}
                 onChange={set('key')}
               />
-              <p className="mt-1 text-xs text-gray-400">Somente letras, números e _</p>
             </div>
             <div>
-              <label className={labelCls}>Nome exibição *</label>
-              <input className={inputCls} placeholder="Ex: Relatório Beta" value={form.name} onChange={set('name')} />
+              <label className={labelCls}>Nome de exibição <RequiredMark /></label>
+              <input className={inputCls} placeholder="Ex.: Relatório Beta" value={form.name} onChange={set('name')} />
             </div>
           </div>
 
@@ -134,7 +133,6 @@ function CreateModal({ onClose, onSaved }: CreateModalProps) {
               className={inputCls} rows={2}
               value={form.description}
               onChange={set('description')}
-              placeholder="Opcional — o que essa flag controla"
             />
           </div>
 
@@ -167,7 +165,6 @@ function CreateModal({ onClose, onSaved }: CreateModalProps) {
               className={inputCls} rows={2}
               value={form.notes}
               onChange={set('notes')}
-              placeholder="Contexto, links de ticket, etc."
             />
           </div>
 
@@ -486,7 +483,7 @@ export default function FeatureFlagsPage() {
       {filtered.length === 0 ? (
         <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
           <Flag size={24} />
-          <p className="text-sm">Nenhuma flag encontrada</p>
+          <p className="text-sm">Nenhuma flag.</p>
         </div>
       ) : (
         <div className="space-y-2">

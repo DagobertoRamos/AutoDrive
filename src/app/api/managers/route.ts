@@ -17,6 +17,7 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import bcrypt from 'bcryptjs'
+import { isValidCPF } from '@/lib/br-docs/cpf'
 
 // ── GET — Listar gerentes ────────────────────────────────────────────────────
 
@@ -78,6 +79,10 @@ export async function POST(req: Request) {
         { success: false, error: 'Nome completo, WhatsApp e unidade são obrigatórios.' },
         { status: 400 },
       )
+    }
+
+    if (!isValidCPF(cpf)) {
+      return NextResponse.json({ success: false, error: 'CPF inválido.' }, { status: 400 })
     }
 
     // Valida que a unidade pertence ao tenant do usuário

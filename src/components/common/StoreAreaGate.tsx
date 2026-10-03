@@ -67,7 +67,6 @@ export function StoreAreaGate({ children, area = 'esta área' }: { children: Rea
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 py-16 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600"><AlertCircle size={22} /></div>
           <p className="text-sm font-medium text-gray-700">{`Selecione uma loja acima para operar ${area}.`}</p>
-          <p className="max-w-md text-xs text-gray-500">As configurações são por loja. A camada técnica global fica nos painéis do MASTER.</p>
         </div>
       )}
     </div>

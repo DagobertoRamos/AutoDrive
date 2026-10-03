@@ -29,17 +29,17 @@ const STATUS_CONFIG: Record<LookupStatus, { icon: React.ReactNode; text: string;
   },
   found: {
     icon:      <CheckCircle2 className="h-4 w-4" />,
-    text:      'Dados carregados automaticamente.',
+    text:      'Dados carregados.',
     className: 'text-emerald-600',
   },
   not_found: {
     icon:      <AlertCircle className="h-4 w-4" />,
-    text:      'Não encontramos os dados automaticamente. Preencha manualmente.',
+    text:      'Dados não encontrados. Preencha manualmente.',
     className: 'text-amber-600',
   },
   error: {
     icon:      <XCircle className="h-4 w-4" />,
-    text:      'Não foi possível consultar a placa agora. Preencha manualmente ou tente novamente.',
+    text:      'Consulta indisponível. Preencha manualmente.',
     className: 'text-red-600',
   },
 }

@@ -27,7 +27,7 @@ const EVENT_LABEL: Record<string, string> = {
   CUSTOMER_ARRIVED: 'Cliente registrado', CALLED: 'Chamado', ACCEPTED: 'Aceitou', REJECTED: 'Recusou',
   TIMEOUT: 'Não aceitou (timeout)', SKIPPED: 'Pulado', ATTENDANCE_STARTED: 'Atendimento iniciado',
   ATTENDANCE_FINISHED: 'Atendimento finalizado', MOVED_TO_END: 'Foi pro fim', MANAGER_OVERRIDE: 'Override gerente',
-  LEADER_OVERRIDE: 'Override líder', QUEUE_REORDERED: 'Fila reordenada', FRAUD_FLAGGED: '⚠️ Suspeita de fraude',
+  LEADER_OVERRIDE: 'Override líder', QUEUE_REORDERED: 'Fila reordenada', FRAUD_FLAGGED: 'Suspeita de fraude',
 }
 
 export default function PainelUnidadePage() {
@@ -75,7 +75,7 @@ export default function PainelUnidadePage() {
   const callNext = async (a: Arrival, sellerId?: string) => {
     let body: { sellerId?: string; reason?: string } = {}
     if (sellerId) {
-      const reason = prompt('Justificativa para escolher este vendedor (fura a ordem da fila — será auditado):')
+      const reason = prompt('Justificativa (fura a ordem da fila):')
       if (!reason?.trim()) return
       body = { sellerId, reason: reason.trim() }
     }
@@ -138,7 +138,7 @@ export default function PainelUnidadePage() {
   // Reiniciar a fila pela tela (gerente+/ADM = dia; MASTER = tudo).
   const resetQueue = async (action: 'resetToday' | 'wipe') => {
     const msg = action === 'wipe'
-      ? '⚠️ APAGAR TODO o histórico da fila desta unidade? Não dá para desfazer.'
+      ? 'APAGAR TODO o histórico da fila desta unidade? Não dá para desfazer.'
       : 'Reiniciar a fila de hoje? Tira todos da fila, cancela os clientes pendentes e apaga o log/atendimentos/penalidades de hoje.'
     if (!confirm(msg)) return
     setBusy('reset')
@@ -240,7 +240,7 @@ export default function PainelUnidadePage() {
               <li key={pv.sellerId} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
                 <div className="min-w-0">
                   <p className="truncate font-medium text-gray-900">{pv.name}</p>
-                  <p className="text-xs text-gray-500">{pv.status === 'RETURN_REQUESTED' ? `🔔 pediu para voltar (${dt(pv.returnRequestedAt)})` : 'em pós-vendas (pausado)'}</p>
+                  <p className="text-xs text-gray-500">{pv.status === 'RETURN_REQUESTED' ? `Pediu para voltar (${dt(pv.returnRequestedAt)})` : 'em pós-vendas (pausado)'}</p>
                 </div>
                 <button onClick={() => authorizeReturn(pv.sellerId)} disabled={busy === pv.sellerId}
                   className={cn('shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60', pv.status === 'RETURN_REQUESTED' ? 'bg-brand-600 hover:bg-brand-700' : 'bg-gray-400 hover:bg-gray-500')}>
@@ -253,7 +253,7 @@ export default function PainelUnidadePage() {
       )}
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card">
-        <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">Fila atual {canManage && <span className="font-normal text-gray-400">— gerência: pausar/voltar/retirar/colocar/bloquear/reordenar</span>}</p></div>
+        <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-sm font-semibold text-gray-700">Fila atual</p></div>
         {canManage && (() => {
           const fora = callable.filter((c) => !c.inQueue || c.queueStatus === 'LEFT' || c.queueStatus === null)
           return fora.length > 0 ? (

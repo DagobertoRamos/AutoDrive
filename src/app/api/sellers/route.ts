@@ -25,6 +25,7 @@ import {
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { isValidCPF } from '@/lib/br-docs/cpf'
 
 // ── GET — Listar vendedores ──────────────────────────────────────────────────
 
@@ -104,6 +105,10 @@ export async function POST(req: Request) {
         { success: false, error: 'E-mail é obrigatório (usado como login do vendedor).' },
         { status: 400 },
       )
+    }
+
+    if (!isValidCPF(cpf)) {
+      return NextResponse.json({ success: false, error: 'CPF inválido.' }, { status: 400 })
     }
 
     // ── Valida que a unidade pertence ao tenant ──────────────────────────────

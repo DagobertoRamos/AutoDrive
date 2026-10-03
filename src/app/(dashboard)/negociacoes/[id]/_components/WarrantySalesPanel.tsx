@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ShieldCheck, RefreshCw, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Props {
   dealId:   string
@@ -163,7 +164,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
           <div className="space-y-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Garantia</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Garantia <RequiredMark /></label>
                 <select className={inputCls} value={warrantyId} onChange={(e) => {
                   const id = e.target.value
                   const next = catalog.find((w) => w.id === id)
@@ -176,7 +177,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Valor vendido</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Valor vendido <RequiredMark /></label>
                 <input
                   type="text"
                   inputMode="numeric"

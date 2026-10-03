@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Landmark, X, Save, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import SearchBox from '@/components/reports/SearchBox'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Bank { id: string; name: string; code: string | null; active: boolean; notes: string | null; proposals: number }
 interface Form { name: string; code: string; active: boolean; notes: string }
@@ -106,8 +107,8 @@ export default function FinancingBanksPage() {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editing ? 'Editar banco' : 'Novo banco'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do banco <span className="text-red-500">*</span></label><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Banco Santander, BV, Itaú..." /></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Código (opcional)</label><input className={inputClass} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="Ex: 033" /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do banco <RequiredMark /></label><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Banco Santander, BV, Itaú..." /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Código</label><input className={inputClass} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="033" /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Observações</label><textarea className={cn(inputClass, 'min-h-[60px] resize-y')} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Contato, condições, taxas..." /></div>
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>

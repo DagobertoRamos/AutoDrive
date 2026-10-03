@@ -18,17 +18,17 @@ export function RequiredFieldsTab({ canManage }: { canManage: boolean }) {
   const s = useSection('requiredFields')
   const toggle = (moment: keyof RequiredFieldsCfg, key: string, on: boolean) =>
     s.update({ ...s.items, [moment]: on ? [...s.items[moment], key] : s.items[moment].filter((k) => k !== key) })
-  const moments: { key: keyof RequiredFieldsCfg; label: string; hint: string }[] = [
-    { key: 'onCreate', label: 'Ao cadastrar um lead', hint: 'Vale para o cadastro manual no CRM. Leads de integrações (AutoConf, fila, SDR) não são barrados.' },
-    { key: 'onConvert', label: 'Ao converter (venda/sucesso)', hint: 'Vale para "Marcar como sucesso" e para mover a uma etapa de status Convertido.' },
+  const moments: { key: keyof RequiredFieldsCfg; label: string; hint?: string }[] = [
+    { key: 'onCreate', label: 'Ao cadastrar um lead', hint: 'Só no cadastro manual. Integrações não são barradas.' },
+    { key: 'onConvert', label: 'Ao converter (venda/sucesso)' },
   ]
   return (
-    <Card title="Campos obrigatórios" hint="O que precisa estar preenchido em cada momento. Os campos exigidos para ENTRAR em cada etapa ficam em Funis e etapas.">
+    <Card title="Campos obrigatórios">
       <div className="grid gap-4 md:grid-cols-2">
         {moments.map((m) => (
           <div key={m.key} className="rounded-lg border border-gray-100 p-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-700">{m.label}</h3>
-            <p className="mb-2 text-[11px] text-gray-400">{m.hint}</p>
+            {m.hint ? <p className="mb-2 text-[11px] text-gray-400">{m.hint}</p> : <div className="mb-2" />}
             <div className="space-y-1.5">
               {LEAD_FIELDS.map((f) => (
                 <label key={f.key} className="flex items-center gap-2 text-sm text-gray-700">
@@ -40,7 +40,6 @@ export function RequiredFieldsTab({ canManage }: { canManage: boolean }) {
           </div>
         ))}
       </div>
-      <p className="mt-3 text-[11px] text-gray-400">No cadastro, o sistema continua exigindo pelo menos nome, telefone ou e-mail.</p>
       <SaveBar canManage={canManage} {...s} />
     </Card>
   )
@@ -64,7 +63,7 @@ export function SlaTab({ canManage }: { canManage: boolean }) {
   const set = (patch: Partial<SlaCfg>) => s.update({ ...s.items, ...patch })
   const off = !canManage || !s.items.enabled
   return (
-    <Card title="SLA e follow-up" hint="Prazos de atendimento dos leads abertos. O sistema confere a cada minuto e avisa uma vez por ocorrência.">
+    <Card title="SLA e follow-up">
       <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
         <input type="checkbox" disabled={!canManage} checked={s.items.enabled} onChange={(e) => set({ enabled: e.target.checked })} className={checkCls} />
         Ativar SLA do CRM
@@ -83,7 +82,6 @@ export function SlaTab({ canManage }: { canManage: boolean }) {
           Avisar os gestores com um resumo quando houver leads fora do SLA
         </label>
       </div>
-      <p className="mt-3 text-[11px] text-gray-400">O responsável recebe o aviso no app. Registrar um contato (interação, ligação, visita) zera o relógio de &quot;lead parado&quot;. O Kanban marca os cards fora do prazo.</p>
       <SaveBar canManage={canManage} {...s} />
     </Card>
   )
@@ -109,24 +107,24 @@ export function DistributionTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <Card title="Distribuição de leads" hint="Quem recebe os leads novos. O motor é o da Mesa SDR — as políticas (roleta, carga, desempenho…) são editadas lá.">
+      <Card title="Distribuição de leads">
         <div className="space-y-2">
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" disabled={!canManage} checked={s.items.autoAssignNew} onChange={(e) => set({ autoAssignNew: e.target.checked })} className={cn(checkCls, 'mt-0.5')} />
-            <span>Distribuir automaticamente os leads cadastrados no CRM sem responsável<span className="block text-[11px] text-gray-400">Se ninguém estiver apto a receber, o lead fica com quem cadastrou.</span></span>
+            <span>Distribuir automaticamente os leads cadastrados no CRM sem responsável</span>
           </label>
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" disabled={!canManage} checked={s.items.runSdrInTick} onChange={(e) => set({ runSdrInTick: e.target.checked })} className={cn(checkCls, 'mt-0.5')} />
-            <span>Redistribuir sozinho: rodar o SLA e a distribuição da Mesa SDR a cada minuto<span className="block text-[11px] text-gray-400">Leads não atendidos dentro do SLA da política voltam para a fila e vão para o próximo.</span></span>
+            <span>Redistribuir sozinho: rodar o SLA e a distribuição da Mesa SDR a cada minuto</span>
           </label>
         </div>
         {(s.items.autoAssignNew || s.items.runSdrInTick) && info && !activeAuto && (
-          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Nenhuma política automática ativa — sem ela nada é distribuído. Ative uma em Mesa SDR → Políticas.</p>
+          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Nenhuma política automática ativa. Ative uma em Mesa SDR → Políticas.</p>
         )}
         <SaveBar canManage={canManage} {...s} />
       </Card>
 
-      <Card title="Políticas da Mesa SDR" hint="Somente leitura aqui. A política ativa de maior prioridade é a usada.">
+      <Card title="Políticas da Mesa SDR">
         {!info ? <div className="h-16 animate-pulse rounded-lg bg-gray-100" /> : (
           <>
             <div className="mb-3 flex flex-wrap gap-2 text-xs">

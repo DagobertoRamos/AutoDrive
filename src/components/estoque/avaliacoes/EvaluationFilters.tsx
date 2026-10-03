@@ -51,7 +51,7 @@ export function EvaluationFilters({ value, onChange, units = [] }: Props) {
           <input
             value={value.search}
             onChange={(e) => set('search', e.target.value)}
-            placeholder="Buscar por placa, cliente, marca ou modelo..."
+            placeholder="Placa, cliente, marca ou modelo"
             className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
           {value.search && (

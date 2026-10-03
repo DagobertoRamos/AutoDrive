@@ -4,13 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Archive,
   Bell,
-  CheckCircle2,
   Clock,
   Columns3,
   Loader2,
   Lock,
   RefreshCw,
-  RotateCcw,
   Save,
   Settings,
   ShieldCheck,
@@ -160,13 +158,10 @@ export function PendencyGeneralSettings() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">
-            <ShieldCheck size={20} className="text-brand-600" />
-            Configurações Gerais da Central
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">Ajustes globais da Central de Pendências para a loja.</p>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">
+          <ShieldCheck size={20} className="text-brand-600" />
+          Configurações Gerais da Central
+        </h1>
         <button
           type="button"
           onClick={() => void loadSettings()}
@@ -286,7 +281,6 @@ export function PendencyGeneralSettings() {
                   <input type="checkbox" checked={slaEngine.enabled} onChange={(e) => setSlaEngine('enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
                   <span className="text-sm font-semibold text-gray-800">Pop-up de prazo para Alta/Urgente (motor de SLA)</span>
                 </label>
-                <p className="text-xs text-gray-500">Ao entrar no sistema, o responsável por uma pendência <b>Alta</b> ou <b>Urgente</b> sem prazo comprometido vê um pop-up bloqueante pedindo o prazo. Urgente com prazo estourado gera cobrança automática.</p>
                 <div className={cn('grid grid-cols-1 gap-4 sm:grid-cols-3', !slaEngine.enabled && 'opacity-55')}>
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Máx. de adiamentos</label>
@@ -303,21 +297,6 @@ export function PendencyGeneralSettings() {
                 </div>
               </div>
             )}
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div className="flex items-center gap-2 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
-                <CheckCircle2 size={16} />
-                Status elegível: Finalizada
-              </div>
-              <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                <RotateCcw size={16} />
-                Reabertas ficam fora por padrão
-              </div>
-              <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                <Archive size={16} />
-                Arquivo permanece pesquisável
-              </div>
-            </div>
           </div>
         )}
 

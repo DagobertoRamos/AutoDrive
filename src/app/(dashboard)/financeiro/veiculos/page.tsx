@@ -35,7 +35,6 @@ export default function CustosVeiculosPage() {
     <div className="mx-auto max-w-7xl space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Custos de veículos</h1>
-        <p className="text-sm text-gray-500">Gastos por carro — serviços, documentação, multas, débitos, peças, combustível, laudos, terceiros, compra e repasse. Clique para conciliar, pagar e anexar comprovantes.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {([['Total lançado', totals.total, ''], ['Pago', totals.paid, 'text-emerald-700'], ['A pagar', totals.pending, 'text-amber-700']] as Array<[string, number, string]>).map(([l, v, c]) => (

@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Phone, Plus, Pencil, Trash2, X, Save, Power, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 const KINDS = [['ASTERISK', 'Asterisk'], ['THREE_CX', '3CX'], ['TWILIO', 'Twilio'], ['GENERIC_WEBHOOK', 'Webhook genérico'], ['MANUAL', 'Manual']] as const
@@ -64,7 +65,7 @@ export default function MasterTelephonyProvidersPage() {
   if (denied) return (
     <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
-      <div><p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p><p className="mt-1 max-w-md text-sm text-gray-500">Os provedores de telefonia são a camada técnica global da plataforma.</p></div>
+      <p className="text-lg font-semibold text-gray-800">Área exclusiva do MASTER</p>
     </div>
   )
 
@@ -73,7 +74,7 @@ export default function MasterTelephonyProvidersPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Phone size={20} className="text-brand-600" />Telefonia (global)</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} provedor(es) homologado(s). As lojas conectam com as próprias credenciais (BYOC).`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} provedor(es)`}</p>
         </div>
         <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Novo provedor</button>
       </div>
@@ -110,11 +111,11 @@ export default function MasterTelephonyProvidersPage() {
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar provedor' : 'Novo provedor'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Twilio Brasil" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex.: Twilio Brasil" /></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value)}>{KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Base URL (opcional)</label><input className={inputCls} value={form.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} /></div>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Base URL</label><input className={inputCls} value={form.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} /></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Versão da API</label><input className={inputCls} value={form.apiVersion} onChange={(e) => set('apiVersion', e.target.value)} /></div>
               </div>
               <div>
@@ -127,7 +128,6 @@ export default function MasterTelephonyProvidersPage() {
               </div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativo</label>
-              <p className="rounded-lg bg-gray-50 px-3 py-2 text-[11px] text-gray-500">As credenciais de acesso são cadastradas pela própria loja (BYOC) em Marketing › Telefonia › Conexões. O MASTER nunca vê credencial de tenant.</p>
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
             <div className="mt-5 flex justify-end gap-2"><button onClick={() => setModal(false)} className="btn-secondary text-sm">Cancelar</button><button onClick={save} disabled={saving} className="btn-primary text-sm"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button></div>

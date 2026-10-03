@@ -76,16 +76,12 @@ export default function AutoconfProdutosPage() {
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div>
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Produtos AutoConf</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Mapeamento de tipos de débito/produto importados do AutoConf para categorias canônicas do AutoDrive.
-          Itens marcados como &quot;auto&quot; foram classificados por regra e podem ser reclassificados.
-        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
         <input
           type="text"
-          placeholder="Filtrar por nome ou categoria..."
+          placeholder="Filtrar"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
@@ -101,7 +97,7 @@ export default function AutoconfProdutosPage() {
         <div className="py-12 text-center text-sm text-gray-400">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="py-12 text-center text-sm text-gray-400">
-          {items.length === 0 ? 'Nenhum produto importado ainda. Importe negociações com a extensão V2 ativa.' : 'Nenhum resultado para o filtro.'}
+          {items.length === 0 ? 'Nenhum produto importado.' : 'Nenhum resultado para o filtro.'}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">

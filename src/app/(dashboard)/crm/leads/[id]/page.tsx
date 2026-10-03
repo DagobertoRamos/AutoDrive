@@ -17,6 +17,7 @@ import {
   Plus, RefreshCw, Trash2, User, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { reasonsFor, sourceLabelOf, temperatureOf, type CloseOutcome } from '@/lib/crm/settings-core'
 import CloseReasonModal from '@/components/crm/CloseReasonModal'
@@ -110,14 +111,14 @@ function TransferModal({ leadId, currentName, onClose, onDone }: { leadId: strin
         <p className="mb-4 text-[11px] text-gray-500 dark:text-gray-400">Responsável atual: <b>{currentName ?? '—'}</b></p>
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Novo responsável *</label>
+            <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Novo responsável <RequiredMark /></label>
             <select value={toUserId} onChange={e => setToUserId(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
               <option value="">— Selecione —</option>
               {sellers.map(s => <option key={s.id} value={s.id}>{s.name ?? s.id}</option>)}
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo *</label>
+            <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo <RequiredMark /></label>
             <select value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
               <option value="">— Selecione —</option>
               {TRANSFER_REASONS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
@@ -152,6 +153,7 @@ function InteractionForm({ leadId, onSaved }: { leadId: string; onSaved: () => v
   const [err, setErr] = useState('')
 
   const save = async () => {
+    if (!summary.trim()) { setErr('Descreva a interação.'); return }
     setBusy(true); setErr('')
     try {
       const res = await fetch(`/api/crm/leads/${leadId}/interactions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ type, result: result || null, summary: summary || null, nextAction: nextAction || null, nextActionAt: nextActionAt || null, occurredAt: new Date().toISOString() }) })
@@ -180,9 +182,10 @@ function InteractionForm({ leadId, onSaved }: { leadId: string; onSaved: () => v
           </select>
         </div>
       </div>
-      <textarea rows={3} value={summary} onChange={e => setSummary(e.target.value)} placeholder="O que aconteceu? (objeções, interesse, proposta…)" className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white dark:placeholder-gray-500" />
+      <label className="block text-[10px] font-semibold uppercase text-gray-400">Resumo <RequiredMark /></label>
+      <textarea rows={3} value={summary} onChange={e => setSummary(e.target.value)} placeholder="O que aconteceu" className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white dark:placeholder-gray-500" />
       <div className="grid gap-3 sm:grid-cols-2">
-        <input value={nextAction} onChange={e => setNextAction(e.target.value)} placeholder="Próxima ação (opcional)" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white" />
+        <input value={nextAction} onChange={e => setNextAction(e.target.value)} placeholder="Próxima ação" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white" />
         <input type="datetime-local" value={nextActionAt} onChange={e => setNextActionAt(e.target.value)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white" />
       </div>
       {err && <p className="text-[11px] text-red-600">{err}</p>}
@@ -196,7 +199,6 @@ function InteractionForm({ leadId, onSaved }: { leadId: string; onSaved: () => v
 // ── SummaryTab — Resumo editável + histórico + próximas ações + veículos ─────
 const ROLE_LABELS: Record<string,string> = { COMPRA:'Compra', TROCA:'Troca', VENDA:'Venda p/ loja', CONSIGNACAO:'Consignação', AVALIACAO:'Avaliação' }
 const ROLE_CLS:   Record<string,string>  = { COMPRA:'bg-blue-50 text-blue-700', TROCA:'bg-amber-50 text-amber-700', VENDA:'bg-emerald-50 text-emerald-700', CONSIGNACAO:'bg-purple-50 text-purple-700', AVALIACAO:'bg-gray-100 text-gray-600' }
-const TASK_TYPE_ICONS: Record<string,string> = { CALL:'📞', EMAIL:'✉️', WHATSAPP:'💬', FOLLOW_UP:'📋', VISIT:'🚗', OTHER:'•' }
 const PEND_TYPE_LABELS: Record<string,string> = { VISITA_AGENDADA:'Visita agendada', FOLLOWUP:'Follow-up', ALIMENTAR_SISTEMA:'Alimentar sistema', ACOMPANHAMENTO:'Acompanhamento', PENDENCIA:'Pendência' }
 
 function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, relations, onRefresh }: {
@@ -264,7 +266,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
   }
 
   const createPendency = async () => {
-    if (!pendencyForm.title.trim()) return
+    if (!pendencyForm.title.trim() || !pendencyForm.dueDate) return
     setSavingPend(true)
     try {
       const res = await fetch(`/api/crm/leads/${leadId}/pendency`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(pendencyForm) })
@@ -275,6 +277,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
   }
 
   const createVehicle = async () => {
+    if (!vehicleForm.model.trim()) return
     setSavingVehicle(true)
     try {
       await fetch(`/api/crm/leads/${leadId}/vehicles`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(vehicleForm) })
@@ -310,7 +313,10 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
             <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-3 space-y-2 dark:border-brand-900/30 dark:bg-brand-950/20">
               <div className="grid grid-cols-2 gap-2">
                 <input placeholder="Marca" value={vehicleForm.brand} onChange={e => setVehicleForm(f => ({...f, brand: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-                <input placeholder="Modelo / versão" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({...f, model: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                <div className="relative">
+                  <input placeholder="Modelo / versão" aria-required="true" value={vehicleForm.model} onChange={e => setVehicleForm(f => ({...f, model: e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-2 pr-5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                  <RequiredMark className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
+                </div>
                 <input placeholder="Placa" value={vehicleForm.plate} onChange={e => setVehicleForm(f => ({...f, plate: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
                 <select value={vehicleForm.role} onChange={e => setVehicleForm(f => ({...f, role: e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
                   {Object.entries(ROLE_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
@@ -318,7 +324,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
               </div>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={vehicleForm.isPrimary} onChange={e => setVehicleForm(f => ({...f, isPrimary: e.target.checked}))} className="rounded border-gray-300" />Principal</label>
-                <button onClick={createVehicle} disabled={savingVehicle} className="ml-auto rounded-lg bg-brand-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{savingVehicle ? <Loader2 size={11} className="animate-spin inline" /> : 'Salvar'}</button>
+                <button onClick={createVehicle} disabled={savingVehicle || !vehicleForm.model.trim()} className="ml-auto rounded-lg bg-brand-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{savingVehicle ? <Loader2 size={11} className="animate-spin inline" /> : 'Salvar'}</button>
                 <button onClick={() => setShowVehicleForm(false)} className="text-[11px] text-gray-500 hover:text-gray-700">Cancelar</button>
               </div>
             </div>
@@ -351,7 +357,8 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
 
           {showTaskForm && (
             <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-3 space-y-2 dark:border-brand-900/30 dark:bg-brand-950/20">
-              <input placeholder="Título da ação *" value={taskForm.title} onChange={e => setTaskForm(f=>({...f,title:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <label className="block text-[10px] font-semibold uppercase text-gray-400">Título <RequiredMark /></label>
+              <input placeholder="Ex.: Ligar para o cliente" value={taskForm.title} onChange={e => setTaskForm(f=>({...f,title:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
               <div className="grid grid-cols-2 gap-2">
                 <select value={taskForm.type} onChange={e => setTaskForm(f=>({...f,type:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
                   {[['FOLLOW_UP','Follow-up'],['CALL','Ligação'],['WHATSAPP','WhatsApp'],['EMAIL','E-mail'],['VISIT','Visita'],['OTHER','Outro']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
@@ -370,7 +377,6 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
             <div key={t.id} className="mb-2 rounded-lg border border-amber-100 bg-amber-50/60 p-3 dark:border-amber-900/30 dark:bg-amber-950/20">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2 min-w-0">
-                  <span className="shrink-0 text-base leading-none mt-0.5">{TASK_TYPE_ICONS[t.type] ?? '•'}</span>
                   <div className="min-w-0">
                     <p className="text-[13px] font-medium text-gray-900 dark:text-white">{t.title}</p>
                     {t.assignedToUserName && <p className="text-[11px] text-gray-500 dark:text-gray-400"><User size={10} className="inline mr-0.5" />{t.assignedToUserName}</p>}
@@ -384,7 +390,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
               </div>
               {/* Caixa de interação do vendedor/gerente/SDR */}
               <div className="mt-2 flex gap-1.5">
-                <input value={taskComment[t.id] ?? ''} onChange={e => setTaskComment(prev => ({...prev, [t.id]: e.target.value}))} placeholder="Comentário ou resultado…" className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-white/15 dark:bg-slate-700 dark:text-white" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); completeTask(t) } }} />
+                <input value={taskComment[t.id] ?? ''} onChange={e => setTaskComment(prev => ({...prev, [t.id]: e.target.value}))} placeholder="Comentário" className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-white/15 dark:bg-slate-700 dark:text-white" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); completeTask(t) } }} />
                 <button onClick={() => completeTask(t)} className="rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700">OK</button>
               </div>
             </div>
@@ -403,7 +409,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
           )}
 
           {tasksList.length === 0 && !showTaskForm && (
-            <p className="text-[12px] text-gray-400 italic">Nenhuma próxima ação. Crie uma acima.</p>
+            <p className="text-[12px] text-gray-400 italic">Nenhuma próxima ação.</p>
           )}
         </div>
 
@@ -416,7 +422,8 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
 
           {showPendencyForm && (
             <div className="mb-3 rounded-lg border border-purple-100 bg-purple-50/40 p-3 space-y-2 dark:border-purple-900/30 dark:bg-purple-950/20">
-              <input placeholder="Título *" value={pendencyForm.title} onChange={e => setPendencyForm(f=>({...f,title:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <label className="block text-[10px] font-semibold uppercase text-gray-400">Título <RequiredMark /></label>
+              <input value={pendencyForm.title} onChange={e => setPendencyForm(f=>({...f,title:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
               <div className="grid grid-cols-2 gap-2">
                 <select value={pendencyForm.type} onChange={e => setPendencyForm(f=>({...f,type:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
                   {Object.entries(PEND_TYPE_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
@@ -425,10 +432,11 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
                   {[['URGENTE','Urgente'],['ALTA','Alta'],['MEDIA','Média'],['BAIXA','Baixa']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
+              <label className="block text-[10px] font-semibold uppercase text-gray-400">Vencimento <RequiredMark /></label>
               <input type="date" value={pendencyForm.dueDate} onChange={e => setPendencyForm(f=>({...f,dueDate:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
               <label className="flex items-center gap-2 text-[12px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={pendencyForm.remind} onChange={e => setPendencyForm(f=>({...f,remind:e.target.checked}))} className="rounded border-gray-300" />Lembrete automático por push</label>
               <div className="flex gap-2">
-                <button onClick={createPendency} disabled={savingPend||!pendencyForm.title.trim()} className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 disabled:opacity-50">{savingPend ? <Loader2 size={11} className="animate-spin" /> : 'Criar pendência'}</button>
+                <button onClick={createPendency} disabled={savingPend||!pendencyForm.title.trim()||!pendencyForm.dueDate} className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-700 disabled:opacity-50">{savingPend ? <Loader2 size={11} className="animate-spin" /> : 'Criar pendência'}</button>
                 <button onClick={() => setShowPendencyForm(false)} className="text-[11px] text-gray-500">Cancelar</button>
               </div>
             </div>
@@ -473,7 +481,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
             rows={4}
             value={narrative}
             onChange={e => setNarrative(e.target.value)}
-            placeholder="Escreva aqui o que aconteceu na conversa, objeções, interesse do cliente, próximos passos…"
+            placeholder="Resumo da conversa"
             className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm placeholder-gray-400 focus:border-brand-400 focus:outline-none dark:border-white/10 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
           />
           <div className="mt-2 flex items-center gap-2">
@@ -520,7 +528,7 @@ function SummaryTab({ leadId, lead, workspace, tasks, interactions, timeline, re
               </div>
             ))}
             {(!interactions.length && !timeline?.length) && (
-              <p className="py-4 text-center text-[12px] text-gray-400">Nenhuma interação registrada ainda.</p>
+              <p className="py-4 text-center text-[12px] text-gray-400">Nenhuma interação registrada.</p>
             )}
           </div>
         </div>
@@ -551,6 +559,7 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
   useEffect(()=>{ reloadEvals() },[reloadEvals])
 
   const saveVehicle = async () => {
+    if (!vehForm.model.trim()) return
     setVehBusy(true)
     try {
       if (editVeh) {
@@ -573,6 +582,7 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
   }
 
   const startEval = async () => {
+    if (!evalForm.plate.trim()) { setEvalErr('Informe a placa.'); return }
     setEvalBusy(true); setEvalErr('')
     try {
       const res = await fetch(`/api/crm/leads/${leadId}/evaluations`,{ method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({...evalForm, km: evalForm.km ? Number(evalForm.km):undefined}) })
@@ -599,7 +609,10 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
             <p className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">{editVeh ? 'Editar veículo' : 'Novo veículo de interesse'}</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {[['brand','Marca'],['model','Modelo'],['version','Versão'],['plate','Placa']].map(([k,l])=>(
-                <input key={k} placeholder={l} value={(vehForm as unknown as Record<string,string>)[k]} onChange={e=>setVehForm(f=>({...f,[k]:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                <div key={k}>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">{l}{k==='model' && <> <RequiredMark /></>}</label>
+                  <input value={(vehForm as unknown as Record<string,string>)[k]} onChange={e=>setVehForm(f=>({...f,[k]:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                </div>
               ))}
               <select value={vehForm.role} onChange={e=>setVehForm(f=>({...f,role:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
                 {Object.entries(ROLE_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
@@ -607,14 +620,14 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
             </div>
             <label className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={vehForm.isPrimary} onChange={e=>setVehForm(f=>({...f,isPrimary:e.target.checked}))} className="rounded border-gray-300" />Veículo principal</label>
             <div className="flex gap-2">
-              <button onClick={saveVehicle} disabled={vehBusy} className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{vehBusy?<Loader2 size={11} className="animate-spin"/>:<CheckCircle2 size={11}/>}Salvar</button>
+              <button onClick={saveVehicle} disabled={vehBusy || !vehForm.model.trim()} className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{vehBusy?<Loader2 size={11} className="animate-spin"/>:<CheckCircle2 size={11}/>}Salvar</button>
               <button onClick={()=>{setShowVehForm(false);setEditVeh(null)}} className="text-[11px] text-gray-500">Cancelar</button>
             </div>
           </div>
         )}
 
         {active.length === 0 && !showVehForm ? (
-          <p className="text-[12px] text-gray-400 italic">Nenhum veículo cadastrado. Clique em Adicionar.</p>
+          <p className="text-[12px] text-gray-400 italic">Nenhum veículo cadastrado.</p>
         ) : active.map(v => (
           <div key={v.id} className="mb-2 group flex items-center gap-3 rounded-lg border border-gray-100 p-2.5 hover:border-gray-200 dark:border-white/5 dark:hover:border-white/10">
             <Car size={16} className="shrink-0 text-gray-400" />
@@ -645,9 +658,15 @@ function VehiclesTab({ leadId, workspace, onRefresh }: { leadId:string; workspac
             <p className="mb-2 text-[11px] font-semibold text-brand-700 dark:text-brand-300">Veículo do cliente para avaliação</p>
             <div className="grid gap-2 sm:grid-cols-3">
               {[['plate','Placa'],['brand','Marca'],['model','Modelo'],['ownerName','Proprietário']].map(([k,l])=>(
-                <input key={k} placeholder={l} value={(evalForm as Record<string,string>)[k]} onChange={e=>setEvalForm(f=>({...f,[k]:e.target.value}))} className={cn('rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white', k==='ownerName'&&'sm:col-span-2')} />
+                <div key={k} className={cn(k==='ownerName'&&'sm:col-span-2')}>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">{l}{k==='plate' && <> <RequiredMark /></>}</label>
+                  <input value={(evalForm as Record<string,string>)[k]} onChange={e=>setEvalForm(f=>({...f,[k]:k==='plate'?e.target.value.toUpperCase():e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                </div>
               ))}
-              <input type="number" placeholder="KM" value={evalForm.km} onChange={e=>setEvalForm(f=>({...f,km:e.target.value}))} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">KM</label>
+                <input type="number" value={evalForm.km} onChange={e=>setEvalForm(f=>({...f,km:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              </div>
             </div>
             {evalErr && <p className="mt-1 text-[11px] text-red-600">{evalErr}</p>}
             <div className="mt-2 flex gap-2">
@@ -714,7 +733,7 @@ function DealsTab({ leadId, workspace, lead, onRefresh }: { leadId: string; work
 
       {/* Vincular existente */}
       <div className="flex gap-2">
-        <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID ou número da negociação existente" className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white" />
+        <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="Número da negociação" className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-700 dark:text-white" />
         <button onClick={linkDeal} disabled={linking || !linkId.trim()} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:bg-slate-800 dark:text-gray-300">Vincular</button>
       </div>
     </div>
@@ -738,6 +757,8 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
   const titles: Record<string,string> = { convert:'Marcar como sucesso', lose:'Marcar como perdido', recycle:'Reciclar / Compra futura', archive:'Arquivar lead', merge:'Unificar leads' }
 
   const submit = async () => {
+    if ((action === 'lose' || action === 'archive' || action === 'merge') && !reason.trim()) { setErr('Informe o motivo.'); return }
+    if (action === 'merge' && !mergeId.trim()) { setErr('Informe o lead secundário.'); return }
     setBusy(true); setErr('')
     try {
       let url = '', body: Record<string,unknown> = {}
@@ -766,8 +787,8 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
             <>
               <p className="text-[12px] text-gray-500 dark:text-gray-400">Sucesso = conversão em negociação. Não libera comissão ou ranking.</p>
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">ID da negociação (opcional)</label>
-                <input value={dealId} onChange={e => setDealId(e.target.value)} placeholder="ID ou número da negociação" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Negociação</label>
+                <input value={dealId} onChange={e => setDealId(e.target.value)} placeholder="Número da negociação" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
               </div>
             </>
           )}
@@ -775,14 +796,14 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
           {(action === 'lose' || action === 'recycle') && (
             <>
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo *</label>
+                <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo{action === 'lose' && <> <RequiredMark /></>}</label>
                 <select value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
                   <option value="">— Selecione —</option>
                   {reasonOptions.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
               {action === 'lose' && (
-                <input value={competitor} onChange={e => setCompetitor(e.target.value)} placeholder="Concorrente (opcional)" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+                <input value={competitor} onChange={e => setCompetitor(e.target.value)} placeholder="Concorrente" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
               )}
               {action === 'recycle' && (
                 <div>
@@ -795,21 +816,21 @@ function ActionModal({ action, lead, onClose, onDone }: { action: string; lead: 
 
           {(action === 'archive' || action === 'merge') && (
             <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo *</label>
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Motivo <RequiredMark /></label>
               <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
             </div>
           )}
 
           {action === 'merge' && (
             <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">ID do lead secundário (que será absorvido) *</label>
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Lead secundário <RequiredMark /></label>
               <input value={mergeId} onChange={e => setMergeId(e.target.value)} placeholder="ID do lead duplicado" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-              <p className="mt-1 text-[10px] text-gray-400">O lead secundário será marcado como UNIFICADO. Todo o histórico e atividades migrarão para este lead.</p>
+              <p className="mt-1 text-[10px] text-gray-400">O histórico do lead secundário passa para este lead.</p>
             </div>
           )}
 
           {action !== 'merge' && (
-            <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Observação (opcional)" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Observação" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
           )}
 
           {err && <p className="text-[11px] text-red-600">{err}</p>}
@@ -906,7 +927,7 @@ function ActivitiesTab({ leadId, workspace, tasks, onRefresh }: { leadId: string
           <h4 className="mb-3 text-sm font-semibold text-brand-800 dark:text-brand-300">Nova visita</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Data e hora *</label>
+              <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Data e hora <RequiredMark /></label>
               <input type="datetime-local" value={schedForm.scheduledAt} onChange={e => setSchedForm(f => ({ ...f, scheduledAt: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
             </div>
             <div>
@@ -919,7 +940,7 @@ function ActivitiesTab({ leadId, workspace, tasks, onRefresh }: { leadId: string
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Objetivo</label>
-              <input placeholder="Ex.: Teste drive, apresentação de proposta…" value={schedForm.objective} onChange={e => setSchedForm(f => ({ ...f, objective: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+              <input placeholder="Ex.: Test drive" value={schedForm.objective} onChange={e => setSchedForm(f => ({ ...f, objective: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Observações</label>
@@ -985,7 +1006,7 @@ function ActivitiesTab({ leadId, workspace, tasks, onRefresh }: { leadId: string
                 <p className="mb-2 text-[11px] font-semibold text-amber-800 dark:text-amber-300">Reagendar visita</p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Nova data e hora *</label>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase text-gray-400">Nova data e hora <RequiredMark /></label>
                     <input type="datetime-local" value={reschedForm.scheduledAt} onChange={e => setReschedForm(f => ({ ...f, scheduledAt: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
                   </div>
                   <div>

@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plug, Plus, Pencil, Trash2, X, Save, Lock, Power, ShieldAlert, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 const KINDS = ['GEMINI', 'OPENAI', 'ANTHROPIC', 'CUSTOM'] as const
 type Kind = (typeof KINDS)[number]
@@ -101,7 +102,7 @@ export default function MasterAiProvidersPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Plug size={20} className="text-brand-600" />Provedores / Conectores de IA</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} provedor(es) — chaves cifradas e mascaradas`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} provedor(es)`}</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={testGemini} disabled={testingGemini} className="btn-secondary text-sm disabled:opacity-50"><Zap size={15} />{testingGemini ? 'Testando...' : 'Testar conexão Gemini'}</button>
@@ -118,7 +119,7 @@ export default function MasterAiProvidersPage() {
             <thead className="bg-gray-50"><tr>{['Prior.', 'Provedor', 'Tipo', 'Ambiente', 'Capacidades', 'Chave', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? Array.from({ length: 3 }).map((_, i) => (<tr key={i}>{Array.from({ length: 8 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
-              : items.length === 0 ? (<tr><td colSpan={8} className="py-14 text-center"><Plug size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor. Crie um (use “Customizado (Mock)” para testar sem custo).</p></td></tr>)
+              : items.length === 0 ? (<tr><td colSpan={8} className="py-14 text-center"><Plug size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor.</p></td></tr>)
               : items.map((p) => (
                 <tr key={p.id} className={cn('hover:bg-gray-50', !p.active && 'opacity-50')}>
                   <td className="px-4 py-3 text-center"><span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">{p.priority}</span></td>
@@ -146,14 +147,14 @@ export default function MasterAiProvidersPage() {
           <div className="my-4 w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar provedor' : 'Novo provedor'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Gemini Produção" /></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Código interno <span className="text-red-500">*</span></label><input className={cn(inputCls, 'font-mono')} value={form.code} onChange={(e) => set('code', e.target.value)} disabled={!!editingId} placeholder="gemini-prod" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex.: Gemini Produção" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Código interno <RequiredMark /></label><input className={cn(inputCls, 'font-mono')} value={form.code} onChange={(e) => set('code', e.target.value)} disabled={!!editingId} placeholder="gemini-prod" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Provedor</label><select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade (failover)</label><input type="number" min={1} max={999} className={inputCls} value={form.priority} onChange={(e) => set('priority', e.target.value)} placeholder="1 = tentado primeiro" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade (failover)</label><input type="number" min={1} max={999} className={inputCls} value={form.priority} onChange={(e) => set('priority', e.target.value)} placeholder="Ex.: 1" /></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Modelo padrão</label><input className={inputCls} value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="gemini-2.0-flash" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo de auth</label><input className={inputCls} value={form.authType} onChange={(e) => set('authType', e.target.value)} placeholder="API_KEY" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Ambiente</label><select className={inputCls} value={form.environment} onChange={(e) => set('environment', e.target.value as 'SANDBOX' | 'PRODUCAO')}><option value="SANDBOX">Sandbox</option><option value="PRODUCAO">Produção</option></select></div>
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Endpoint customizado (opcional)</label><input className={inputCls} value={form.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} placeholder="https://api..." /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Endpoint customizado</label><input className={inputCls} value={form.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} placeholder="https://api..." /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">API Key</label><input type="password" className={inputCls} value={form.apiKey} onChange={(e) => set('apiKey', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Client Secret</label><input type="password" className={inputCls} value={form.clientSecret} onChange={(e) => set('clientSecret', e.target.value)} autoComplete="new-password" placeholder={editingId ? '•••••••• (manter)' : ''} /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Máx. tokens/req</label><input type="number" min={1} className={inputCls} value={form.maxTokensPerRequest} onChange={(e) => set('maxTokensPerRequest', e.target.value)} placeholder="4000" /></div>

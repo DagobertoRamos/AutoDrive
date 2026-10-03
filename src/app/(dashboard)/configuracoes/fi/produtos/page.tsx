@@ -12,6 +12,7 @@ import { useSession } from 'next-auth/react'
 import { Package, Plus, Pencil, Trash2, X, Save, Lock, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL, numberToBRLMask } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
 const KINDS = ['GARANTIA', 'SEGURO', 'PROTECAO', 'RASTREADOR', 'OUTRO'] as const
@@ -49,7 +50,7 @@ export default function FiProductsPage() {
   const openNew = () => { setEditingId(null); setForm(emptyForm); setError(null); setModal(true) }
   const openEdit = (r: Row) => { setEditingId(r.id); setForm({ name: r.name, kind: (r.kind as Kind) ?? 'OUTRO', defaultValue: r.defaultValue ?? 0, active: r.active }); setError(null); setModal(true) }
   const save = async () => {
-    if (!form.name.trim()) { setError('Informe o nome do produto.'); return }
+    if (!form.name.trim()) { setError('Informe o nome.'); return }
     setSaving(true); setError(null)
     try {
       const payload = { name: form.name, kind: form.kind, defaultValue: form.defaultValue || null, active: form.active }
@@ -67,7 +68,7 @@ export default function FiProductsPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
-        <div><p className="text-lg font-semibold text-gray-800">Configuração restrita</p><p className="mt-1 max-w-md text-sm text-gray-500">Os produtos agregados são definidos pela loja (administração/gerência/financeiro).</p></div>
+        <div><p className="text-lg font-semibold text-gray-800">Configuração restrita</p><p className="mt-1 max-w-md text-sm text-gray-500">Acesso restrito à administração, gerência e financeiro.</p></div>
       </div>
     )
   }
@@ -77,7 +78,7 @@ export default function FiProductsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Package size={20} className="text-brand-600" />Produtos Agregados</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} produto(s) — garantia, seguro, proteção, rastreador`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} produto(s)`}</p>
         </div>
         <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Novo produto</button>
       </div>
@@ -90,7 +91,7 @@ export default function FiProductsPage() {
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 5 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
               ) : items.length === 0 ? (
-                <tr><td colSpan={5} className="py-14 text-center"><Package size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum produto agregado cadastrado.</p></td></tr>
+                <tr><td colSpan={5} className="py-14 text-center"><Package size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum produto.</p></td></tr>
               ) : items.map((r) => (
                 <tr key={r.id} className={cn('hover:bg-gray-50', !r.active && 'opacity-50')}>
                   <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
@@ -114,7 +115,7 @@ export default function FiProductsPage() {
           <div className="my-8 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar produto' : 'Novo produto'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Garantia estendida 12 meses" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex.: Garantia 12 meses" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Valor padrão</label><input type="text" inputMode="numeric" className={inputCls} value={numberToBRLMask(form.defaultValue || '')} onChange={(e) => set('defaultValue', parseBRL(maskBRL(e.target.value)) ?? 0)} placeholder="0,00" /></div>

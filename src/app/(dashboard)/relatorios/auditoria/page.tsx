@@ -104,7 +104,7 @@ export default function AuditoriaPage() {
           <input
             value={filters.search}
             onChange={(e) => setFilter('search', e.target.value)}
-            placeholder="Buscar por usuário, entidade..."
+            placeholder="Usuário ou entidade"
             className="input pl-9"
           />
         </div>

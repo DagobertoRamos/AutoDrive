@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Save, CheckCircle, AlertCircle } from 'lucide-react'
-import { cn, formatMoney } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 
 // Helper: serialize a numeric BRL value (in reais) back to the digits-string form
@@ -213,8 +213,16 @@ export default function ConfiguracoesComissoesPage() {
 
   // ── Save ──
   const handleSave = async () => {
-    setSaving(true)
     setAlert(null)
+    if (serviceCommissions.some((sc) => !sc.serviceId)) {
+      setAlert({ type: 'error', message: 'Selecione o serviço.' })
+      return
+    }
+    if (warrantyCommissions.some((wc) => !wc.warrantyId)) {
+      setAlert({ type: 'error', message: 'Selecione a garantia.' })
+      return
+    }
+    setSaving(true)
     try {
       const res = await fetch('/api/settings/commissions', {
         method: 'PUT',
@@ -241,12 +249,10 @@ export default function ConfiguracoesComissoesPage() {
     <div className="pb-24 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Configurações de Comissões</h1>
-        <p className="mt-1 text-sm text-gray-500">Defina as regras de comissionamento do sistema.</p>
       </div>
 
       {/* ── 1. Faixas de vendas ── */}
       <SectionCard title="1. Faixas de Vendas">
-        <p className="mb-3 text-xs text-gray-500">Defina o valor de comissão para cada faixa de quantidade de vendas.</p>
         <div className="space-y-2">
           {saleRanges.map((range) => (
             <div key={range.id} className="flex items-center gap-3">
@@ -295,7 +301,6 @@ export default function ConfiguracoesComissoesPage() {
 
       {/* ── 2. Comissão por compra ── */}
       <SectionCard title="2. Comissão por Compra">
-        <p className="mb-3 text-xs text-gray-500">Valor fixo de comissão por cada veículo comprado.</p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-700">R$</span>
           <input
@@ -307,12 +312,10 @@ export default function ConfiguracoesComissoesPage() {
           />
           <span className="text-sm text-gray-500">por compra</span>
         </div>
-        <p className="mt-2 text-xs text-gray-400">Valor atual: {formatMoney(purchaseCommission)}</p>
       </SectionCard>
 
       {/* ── 3. Comissão por documento ── */}
       <SectionCard title="3. Comissão por Documento">
-        <p className="mb-3 text-xs text-gray-500">Valor fixo de comissão por documento vendido.</p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-700">R$</span>
           <input
@@ -324,12 +327,10 @@ export default function ConfiguracoesComissoesPage() {
           />
           <span className="text-sm text-gray-500">por documento</span>
         </div>
-        <p className="mt-2 text-xs text-gray-400">Valor atual: {formatMoney(documentCommission)}</p>
       </SectionCard>
 
       {/* ── 4. Serviços ── */}
       <SectionCard title="4. Comissão por Serviço">
-        <p className="mb-3 text-xs text-gray-500">Configure o valor de comissão para cada tipo de serviço.</p>
         <div className="space-y-2">
           {serviceCommissions.map((sc) => (
             <div key={sc.id} className="flex items-center gap-3">
@@ -368,7 +369,6 @@ export default function ConfiguracoesComissoesPage() {
 
       {/* ── 5. Garantias ── */}
       <SectionCard title="5. Comissão por Garantia">
-        <p className="mb-3 text-xs text-gray-500">Configure o valor de comissão para cada tipo de garantia.</p>
         <div className="space-y-2">
           {warrantyCommissions.map((wc) => (
             <div key={wc.id} className="flex items-center gap-3">
@@ -407,7 +407,6 @@ export default function ConfiguracoesComissoesPage() {
 
       {/* ── 6. Retornos ── */}
       <SectionCard title="6. Comissão por Retorno">
-        <p className="mb-3 text-xs text-gray-500">Configure as comissões para cada tipo de retorno (R1 a R5).</p>
         <div className="space-y-2">
           {returnCommissions.map((rc) => (
             <div key={rc.id} className="flex items-center gap-3">
@@ -436,7 +435,7 @@ export default function ConfiguracoesComissoesPage() {
                   className={inputClass('w-36')}
                   value={rc.value}
                   onChange={(e) => updateReturnCommission(rc.id, 'value', Number(e.target.value))}
-                  placeholder="Ex: 5 (%)"
+                  placeholder="5"
                 />
               ) : (
                 <input
@@ -475,7 +474,7 @@ export default function ConfiguracoesComissoesPage() {
               {alert.message}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">Lembre-se de salvar as alterações.</p>
+            <span />
           )}
           <button
             type="button"

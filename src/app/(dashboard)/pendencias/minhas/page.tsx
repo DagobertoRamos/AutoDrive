@@ -120,8 +120,7 @@ export default function MinhasPendenciasPage() {
         <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 animate-fade-in">
           <AlertTriangle size={16} className="shrink-0 text-red-500" />
           <p className="text-sm font-medium text-red-700">
-            Você tem <span className="font-bold">{urgentes.length}</span> pendência{urgentes.length > 1 ? 's' : ''} urgente{urgentes.length > 1 ? 's' : ''}
-            {' '}que requer{urgentes.length > 1 ? 'em' : ''} atenção imediata.
+            <span className="font-bold">{urgentes.length}</span> pendência{urgentes.length > 1 ? 's' : ''} urgente{urgentes.length > 1 ? 's' : ''}
           </p>
         </div>
       )}
@@ -143,7 +142,7 @@ export default function MinhasPendenciasPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por cliente, placa, veículo..."
+            placeholder="Cliente, placa ou veículo"
             className="input pl-9"
           />
         </div>
@@ -178,11 +177,6 @@ export default function MinhasPendenciasPage() {
         <div className="flex flex-col items-center justify-center py-16 text-gray-400">
           <CheckCircle2 size={40} strokeWidth={1} className="text-brand-300" />
           <p className="mt-3 text-base font-medium text-gray-500">Nenhuma pendência encontrada</p>
-          <p className="text-sm text-gray-400">
-            {search || statusFilter || priorityFilter
-              ? 'Tente ajustar os filtros de busca.'
-              : 'Você não possui pendências no momento.'}
-          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -89,12 +89,7 @@ export default function DisparoManualPage() {
   return (
     <div className="max-w-3xl space-y-6">
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Disparo Manual</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Busque uma pendência pelo nome do cliente, placa ou veículo e envie uma mensagem avulsa.
-        </p>
-      </div>
+      <h1 className="text-xl font-bold text-gray-900">Disparo Manual</h1>
 
       {/* ── Busca ─────────────────────────────────────────────────────────── */}
       <div className="card">
@@ -110,7 +105,7 @@ export default function DisparoManualPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Cliente, placa ou veículo..."
+                placeholder="Cliente, placa ou veículo"
                 className="input pl-9"
               />
             </div>
@@ -170,7 +165,7 @@ export default function DisparoManualPage() {
           )}
 
           {!searching && query.length >= 2 && results.length === 0 && (
-            <p className="text-center py-6 text-sm text-gray-400">Nenhuma pendência encontrada para &quot;{query}&quot;</p>
+            <p className="text-center py-6 text-sm text-gray-400">Nenhuma pendência encontrada.</p>
           )}
         </div>
       </div>
@@ -216,14 +211,12 @@ export default function DisparoManualPage() {
 
             {/* Mensagem customizada */}
             <div>
-              <label className="label">
-                Mensagem personalizada <span className="text-gray-400 font-normal">(opcional — usa template padrão se vazio)</span>
-              </label>
+              <label className="label">Mensagem personalizada</label>
               <textarea
                 value={customMsg}
                 onChange={(e) => setCustomMsg(e.target.value)}
                 rows={4}
-                placeholder="Digite uma mensagem personalizada para este cliente..."
+                placeholder="Em branco: template padrão"
                 className="input resize-none"
               />
             </div>

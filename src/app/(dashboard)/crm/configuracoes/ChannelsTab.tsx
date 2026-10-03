@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import type { ChannelCatalogItem, ChannelGroup, LeadChannel } from '@/lib/crm/channels-core'
 import { Card, checkCls, inputCls } from './ListsTabs'
+import { RequiredMark } from '@/components/ui/field'
 
 interface LogEntry { at: string; channelId: string; ok: boolean; outcome: string; message: string; leadId?: string; leadNumber?: number | null; name?: string; test?: boolean }
 interface Data { channels: LeadChannel[]; log: LogEntry[]; catalog: ChannelCatalogItem[]; groups: Record<ChannelGroup, string>; baseUrl: string }
@@ -86,12 +87,13 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
   }
 
   const save = async () => {
+    if (items.some((c) => !c.name?.trim())) { setMsg({ ok: false, text: 'Informe o nome de todos os canais.' }); return }
     setSaving(true); setMsg(null)
     try {
       const r = await fetch('/api/crm/channels', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ channels: items }) })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg({ ok: false, text: j?.error ?? 'Falha ao salvar.' }); return }
-      await load(); setMsg({ ok: true, text: 'Salvo. Copie a URL de entrada de cada canal.' })
+      await load(); setMsg({ ok: true, text: 'Salvo.' })
     } catch { setMsg({ ok: false, text: 'Erro de rede.' }) } finally { setSaving(false) }
   }
 
@@ -101,21 +103,21 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
     try {
       const r = await fetch(`/api/crm/channels/${c.id}/test`, { method: 'POST', credentials: 'include' })
       const j = await r.json().catch(() => ({}))
-      setMsg(r.ok ? { ok: true, text: `Lead de teste #${j.leadNumber ?? '?'} criado pelo canal "${c.name}". Confira no CRM e descarte depois.` } : { ok: false, text: j?.error ?? 'O teste falhou.' })
+      setMsg(r.ok ? { ok: true, text: `Lead de teste #${j.leadNumber ?? '?'} criado pelo canal "${c.name}". ` } : { ok: false, text: j?.error ?? 'O teste falhou.' })
       await load()
     } finally { setTesting(null) }
   }
 
-  if (error) return <Card title="Canais de captação" hint=""><p className="text-sm text-red-600">{error}</p></Card>
-  if (!data) return <Card title="Canais de captação" hint=""><p className="text-sm text-gray-500">Carregando…</p></Card>
+  if (error) return <Card title="Canais de captação"><p className="text-sm text-red-600">{error}</p></Card>
+  if (!data) return <Card title="Canais de captação"><p className="text-sm text-gray-500">Carregando…</p></Card>
 
   const realPipelines = pipelines.filter((p) => !p.virtual && p.active)
   const groups = Object.entries(data.groups) as [ChannelGroup, string][]
 
   return (
     <div className="space-y-4">
-      <Card title="Canais de captação" hint="Conecte Facebook, Instagram, TikTok, Google Ads, portais de veículos e outras ferramentas. Cada canal tem uma URL de entrada própria: todo lead enviado para ela cai aqui no CRM, com a origem, o funil e a distribuição configurados.">
-        {items.length === 0 && <p className="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">Nenhum canal ainda. Clique em <b>Adicionar canal</b> e escolha de onde vêm os seus leads.</p>}
+      <Card title="Canais de captação">
+        {items.length === 0 && <p className="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">Nenhum canal cadastrado.</p>}
 
         <ul className="space-y-3">
           {items.map((c, idx) => {
@@ -161,15 +163,15 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
                           <CopyBtn value={url} />
                         </div>
                       ) : <p className="text-xs text-amber-700">Clique em Salvar para gerar a URL deste canal.</p>}
-                      <p className="mt-1 text-[11px] text-gray-500">Trate a URL como senha: quem tem, consegue criar leads. Se vazar, remova o canal e crie outro.</p>
+                      <p className="mt-1 text-[11px] text-gray-500">Trate a URL como senha. Se vazar, remova o canal.</p>
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-2">
-                      <label className="text-xs font-medium text-gray-700">Nome do canal
+                      <label className="text-xs font-medium text-gray-700">Nome do canal <RequiredMark />
                         <input className={cn(inputCls, 'mt-1')} disabled={!canManage} value={c.name} maxLength={80} onChange={(e) => update(idx, { name: e.target.value })} />
                       </label>
                       <label className="text-xs font-medium text-gray-700">{cat?.secretLabel ?? 'Chave secreta (opcional)'}
-                        <input className={cn(inputCls, 'mt-1')} disabled={!canManage} value={c.secret ?? ''} maxLength={200} placeholder={cat?.secretLabel ? 'Cole a mesma chave configurada na plataforma' : 'Se preenchida, o lead precisa enviar esta chave'} onChange={(e) => update(idx, { secret: e.target.value })} />
+                        <input className={cn(inputCls, 'mt-1')} disabled={!canManage} value={c.secret ?? ''} maxLength={200} placeholder={cat?.secretLabel ? 'Mesma chave da plataforma' : ''} onChange={(e) => update(idx, { secret: e.target.value })} />
                       </label>
                       <label className="text-xs font-medium text-gray-700">Origem no CRM
                         <select className={cn(inputCls, 'mt-1')} disabled={!canManage} value={c.sourceCode ?? cat?.sourceCode ?? ''} onChange={(e) => update(idx, { sourceCode: e.target.value })}>
@@ -195,7 +197,6 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
                         </select>
                       </label>
                     </div>
-                    <p className="text-[11px] text-gray-500">Quem recebe o lead segue a <b>Distribuição</b> do CRM; sem ninguém configurado, os gestores são avisados. O mesmo cliente com lead aberto não duplica: vira um novo contato no lead existente.</p>
 
                     {cat && (
                       <div className="rounded-lg bg-brand-50/50 px-3 py-2.5 text-xs text-gray-700">
@@ -223,7 +224,7 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
       </Card>
 
       {picker && (
-        <Card title="Escolha o canal" hint="De onde vêm os leads? Você pode ter mais de um canal do mesmo tipo (ex.: um por formulário ou por campanha).">
+        <Card title="Escolha o canal">
           <button type="button" onClick={() => setPicker(false)} className="float-right -mt-12 text-gray-400 hover:text-gray-700" aria-label="Fechar"><X size={16} /></button>
           <div className="space-y-4">
             {groups.map(([g, label]) => (
@@ -243,7 +244,7 @@ export default function ChannelsTab({ canManage }: { canManage: boolean }) {
         </Card>
       )}
 
-      <Card title="Registro de recebimentos" hint="Os últimos leads que chegaram pelos canais (e os recusados, com o motivo).">
+      <Card title="Registro de recebimentos">
         {data.log.length === 0 ? <p className="text-sm text-gray-500">Nada recebido ainda.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-xs">

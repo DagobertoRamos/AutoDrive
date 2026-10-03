@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus, RefreshCw, RotateCcw, Settings, Shield, ShieldCheck, Star, TrendingDown, User, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import Link from 'next/link'
 
 // ── Constantes de tipos disponíveis para o formulário de aplicação manual ──
@@ -67,9 +68,7 @@ export default function QualidadePage() {
         <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
           <Star size={20} className="text-brand-600" />Score de Qualidade
         </h1>
-        <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-          Pontuação global de qualidade: atendimento, leads, pendências e procedimentos administrativos.
-        </p>
+
       </div>
 
       <div className="flex flex-wrap gap-0.5 border-b border-gray-200 dark:border-white/10">
@@ -165,7 +164,7 @@ function OverviewTab() {
                         <span key={r.action} className="rounded bg-red-50 px-1.5 py-0.5 text-[9px] font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-400">{r.label}</span>
                       ))}
                       {s.restrictions.length > 2 && <span className="text-[10px] text-gray-400">+{s.restrictions.length-2}</span>}
-                      {s.restrictions.length === 0 && <span className="text-[10px] text-emerald-600">✓ Sem restrições</span>}
+                      {s.restrictions.length === 0 && <span className="text-[10px] text-emerald-600">Sem restrições</span>}
                     </div>
                   </td>
                   <td className="px-4 py-2.5">
@@ -222,7 +221,8 @@ function EventsTab({ isManager }: { isManager: boolean }) {
       {reversingId && (
         <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 space-y-2 dark:border-brand-900/50 dark:bg-brand-950/30">
           <p className="text-sm font-semibold text-brand-800 dark:text-brand-300">Estornar evento</p>
-          <input value={reverseReason} onChange={e=>setReverseReason(e.target.value)} placeholder="Motivo do estorno (mín. 5 caracteres)…" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">Motivo do estorno <RequiredMark /></label>
+          <input value={reverseReason} onChange={e=>setReverseReason(e.target.value)} placeholder="Mín. 5 caracteres" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
           <div className="flex gap-2">
             <button onClick={reverse} disabled={busy||reverseReason.trim().length<5} className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{busy?<RefreshCw size={10} className="animate-spin"/>:<CheckCircle2 size={10}/>}Estornar</button>
             <button onClick={()=>{setReversingId(null);setReverseReason('')}} className="text-xs text-gray-500">Cancelar</button>
@@ -274,11 +274,11 @@ function ApplyTab() {
     fetch('/api/seller-queue/callable', { credentials:'include' }).then(r=>r.json()).then(j=>{ if(j?.data) setSellers(j.data) }).catch(()=>{})
   }, [])
 
-  const selType = MANUAL_TYPE_OPTIONS.find(o => o.value === form.type)
+
   const isReversal = form.type === 'MANUAL_REVERSAL'
 
   const submit = async () => {
-    if (!form.sellerId || !form.reason.trim() || form.reason.trim().length < 5) { setMsg({ ok:false, text:'Preencha vendedor e motivo (mín. 5 chars).' }); return }
+    if (!form.sellerId || !form.reason.trim() || form.reason.trim().length < 5) { setMsg({ ok:false, text:'Preencha vendedor e motivo (mín. 5 caracteres).' }); return }
     setBusy(true); setMsg(null)
     const body: Record<string,unknown> = { sellerId: form.sellerId, type: form.type, reason: form.reason.trim() }
     if (form.points) body.points = Number(form.points) * (isReversal ? 1 : -1) // reversal = positivo, penalidade = negativo
@@ -298,7 +298,7 @@ function ApplyTab() {
     <div className="space-y-5 max-w-lg">
       <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4 dark:border-white/10 dark:bg-slate-900">
         <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2"><AlertTriangle size={16} className="text-amber-500"/>Aplicar evento de qualidade</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">Eventos de penalidade descontam pontos (sinal negativo). Estornos devolvem pontos (sinal positivo). Suporta data retroativa.</p>
+
 
         {msg && (
           <div className={cn('flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm', msg.ok?'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400':'border border-red-200 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400')}>
@@ -308,15 +308,15 @@ function ApplyTab() {
 
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Vendedor *</label>
+            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Vendedor <RequiredMark /></label>
             <select value={form.sellerId} onChange={e=>setForm(f=>({...f,sellerId:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
-              <option value="">Selecione o vendedor…</option>
+              <option value="">Selecione…</option>
               {sellers.map(s=><option key={s.sellerId} value={s.sellerId}>{s.name}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Tipo de evento *</label>
+            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Tipo de evento <RequiredMark /></label>
             <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
               {['Atendimento','Administrativo','Leads','Manual'].map(cat => (
                 <optgroup key={cat} label={cat}>
@@ -324,24 +324,24 @@ function ApplyTab() {
                 </optgroup>
               ))}
             </select>
-            {selType && <p className="mt-1 text-[11px] text-gray-400">Categoria: {selType.category} {isReversal ? '— pontos positivos (verde)' : '— desconta pontos'}</p>}
+
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Pontos {isReversal ? '(positivo — padrão: 10)' : '(negativo — padrão do tipo)'}</label>
-            <input type="number" value={form.points} onChange={e=>setForm(f=>({...f,points:e.target.value}))} placeholder="Deixe vazio para usar o padrão do tipo" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-            <p className="mt-0.5 text-[11px] text-gray-400">Informe o valor absoluto; o sistema aplica o sinal correto automaticamente.</p>
+            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Pontos</label>
+            <input type="number" min={0} value={form.points} onChange={e=>setForm(f=>({...f,points:e.target.value}))} placeholder={isReversal ? 'Padrão: 10' : 'Padrão do tipo'} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Motivo / descrição do ocorrido *</label>
-            <textarea rows={3} value={form.reason} onChange={e=>setForm(f=>({...f,reason:e.target.value}))} placeholder="Ex: Não cadastrou e não finalizou 4 atendimentos no dia 10/07, confirmado pessoalmente…" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white"/>
+            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Motivo / descrição do ocorrido <RequiredMark /></label>
+            <textarea rows={3} value={form.reason} onChange={e=>setForm(f=>({...f,reason:e.target.value}))} placeholder="Mín. 5 caracteres" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white"/>
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Data de aplicação (retroativo — opcional)</label>
+            <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">Data de aplicação</label>
             <input type="datetime-local" value={form.appliedAt} onChange={e=>setForm(f=>({...f,appliedAt:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white"/>
-            <p className="mt-0.5 text-[11px] text-gray-400">Deixe vazio para aplicar na data/hora atual. Para retroativo (ex.: ontem), informe a data.</p>
+
           </div>
 
           <button onClick={submit} disabled={busy||!form.sellerId||form.reason.trim().length<5} className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
@@ -415,7 +415,7 @@ function MyScoreTab() {
         <div className="space-y-2">
           {activeRestrictions.map(r => (
             <div key={r.action} className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/20">
-              <p className="text-sm font-semibold text-red-700 dark:text-red-400">🚫 {r.label}</p>
+              <p className="text-sm font-semibold text-red-700 dark:text-red-400">{r.label}</p>
               <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">{r.message}</p>
             </div>
           ))}

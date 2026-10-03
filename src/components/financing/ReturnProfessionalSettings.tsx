@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, Save, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 type ValueType = 'PERCENTUAL' | 'FIXO'
 type DeductionBase = 'GROSS_RETURN' | 'FINANCED_AMOUNT'
@@ -100,10 +101,7 @@ function IlaEditor({ rows, onChange, canEdit }: { rows: CompetenceRow[]; onChang
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">ILA mensal</h3>
-          <p className="mt-0.5 text-xs text-gray-500">Informe o percentual interno de ILA para cada mês de competência.</p>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-900">ILA mensal</h3>
         {canEdit && <button type="button" onClick={() => onChange([...rows, emptyIlaRow()])} className="btn-secondary text-xs"><Plus size={14} />Adicionar</button>}
       </div>
 
@@ -142,10 +140,7 @@ function IofEditor({ rows, onChange, canEdit }: { rows: CompetenceRow[]; onChang
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">IOF periódico</h3>
-          <p className="mt-0.5 text-xs text-gray-500">Cadastre regras internas por vigência. O sistema bloqueia períodos ativos sobrepostos.</p>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-900">IOF periódico</h3>
         {canEdit && <button type="button" onClick={() => onChange([...rows, emptyIofRow()])} className="btn-secondary text-xs"><Plus size={14} />Adicionar</button>}
       </div>
 
@@ -202,7 +197,16 @@ export function ReturnProfessionalSettings({ canEdit }: { canEdit: boolean }) {
   }
 
   const save = async () => {
-    setSaving(true); setError(null); setMessage(null)
+    setError(null); setMessage(null)
+    const { minReturnPercent: min, maxReturnPercent: max } = bundle.range
+    const invalid =
+      !(min > 0) || !(max > 0)                              ? 'Informe o retorno mínimo e máximo.'
+      : max < min                                           ? 'Retorno máximo deve ser maior que o mínimo.'
+      : bundle.ila.some((r) => !r.month || !r.year)         ? 'Informe mês e ano do ILA.'
+      : bundle.iof.some((r) => !r.startsAt)                 ? 'Informe o início da vigência do IOF.'
+      : null
+    if (invalid) { setError(invalid); return }
+    setSaving(true)
     try {
       const res = await fetch('/api/settings/financing/return-config', {
         method: 'PUT',
@@ -227,7 +231,7 @@ export function ReturnProfessionalSettings({ canEdit }: { canEdit: boolean }) {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Configuração Geral de Retorno / F&amp;I</h2>
-            <p className="mt-0.5 text-xs text-gray-500">{loading ? 'Carregando...' : 'ILA e IOF aqui são parâmetros internos de desconto do retorno bruto da loja.'}</p>
+            {loading && <p className="mt-0.5 text-xs text-gray-500">Carregando...</p>}
           </div>
           {canEdit && (
             <button type="button" onClick={save} disabled={saving} className="btn-primary text-sm">
@@ -238,11 +242,11 @@ export function ReturnProfessionalSettings({ canEdit }: { canEdit: boolean }) {
 
         <div className="grid gap-3 sm:grid-cols-5">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Retorno mínimo (%)</label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Retorno mínimo (%) <RequiredMark /></label>
             <input disabled={!canEdit} type="number" min={0.01} max={20} step="0.01" className={inputCls} value={bundle.range.minReturnPercent} onChange={(e) => setRange({ minReturnPercent: Math.max(0, Number(e.target.value) || 0) })} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Retorno máximo (%)</label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Retorno máximo (%) <RequiredMark /></label>
             <input disabled={!canEdit} type="number" min={0.01} max={20} step="0.01" className={inputCls} value={bundle.range.maxReturnPercent} onChange={(e) => setRange({ maxReturnPercent: Math.max(0, Number(e.target.value) || 0) })} />
           </div>
           <div>

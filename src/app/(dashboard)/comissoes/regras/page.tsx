@@ -9,6 +9,7 @@ import { useSession } from 'next-auth/react'
 import { RefreshCw, Plus, Edit2, Trash2, Percent, X, Save, AlertCircle, Settings, Building2, Calculator, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 // Papéis que podem recalcular um período (espelha commissions.recalc no back-end).
 const RECALC_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'FINANCEIRO']
@@ -196,10 +197,10 @@ const ROLE_LABELS: Record<string, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-gray-700">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-gray-700">{label}{required && <RequiredMark className="ml-0.5" />}</label>
       {children}
     </div>
   )
@@ -555,12 +556,11 @@ function RuleModal({
               <Settings size={14} /> Identificação
             </div>
             <div className="grid gap-3 md:grid-cols-[1.4fr_0.6fr]">
-              <Field label="Nome da regra *">
+              <Field label="Nome da regra" required>
                 <input
                   className={inputCls()}
                   value={form.name}
                   onChange={(e) => set('name', e.target.value)}
-                  placeholder="Ex: Venda vendedor base"
                   autoFocus
                 />
               </Field>
@@ -570,7 +570,6 @@ function RuleModal({
                   className={inputCls()}
                   value={form.priority}
                   onChange={(e) => set('priority', Number(e.target.value))}
-                  placeholder="0"
                 />
               </Field>
             </div>
@@ -580,7 +579,6 @@ function RuleModal({
                 className={inputCls('resize-none')}
                 value={form.description ?? ''}
                 onChange={(e) => set('description', e.target.value || null)}
-                placeholder="Ex: Comissão padrão para vendas aprovadas"
               />
             </Field>
           </section>
@@ -590,7 +588,7 @@ function RuleModal({
               <Building2 size={14} /> Aplicação
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Operação *">
+              <Field label="Operação" required>
                 <select
                   className={inputCls()}
                   value={form.ruleType}
@@ -657,20 +655,17 @@ function RuleModal({
                 </select>
               </Field>
               <div className="md:col-span-2">
-                <Field label="Vendedor específico (opcional)">
+                <Field label="Vendedor específico">
                   <select
                     className={inputCls()}
                     value={form.sellerId ?? ''}
                     onChange={(e) => set('sellerId', e.target.value || null)}
                   >
-                    <option value="">Nenhum — vale por cargo/perfil</option>
+                    <option value="">Nenhum</option>
                     {sellers.map((s) => (
                       <option key={s.id} value={s.id}>{s.shortName || s.fullName}</option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs text-gray-400">
-                    Se escolher um vendedor, a regra vale só para ele e tem prioridade sobre cargo/perfil.
-                  </p>
                 </Field>
               </div>
               <Field label="Vigência inicial">
@@ -719,7 +714,7 @@ function RuleModal({
                         </span>
                       </label>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <Field label="Quantidade mínima de vendas">
+                        <Field label="Quantidade mínima de vendas" required={row.enabled}>
                           <input
                             type="number"
                             min={1}
@@ -728,27 +723,24 @@ function RuleModal({
                             className={inputCls(!row.enabled ? 'bg-gray-100 text-gray-400' : undefined)}
                             value={row.minSalesQuantity ?? ''}
                             onChange={(e) => setDecendRow(def.code, 'minSalesQuantity', e.target.value ? Number(e.target.value) : null)}
-                            placeholder={def.code === 'THIRD_DECEND' ? 'Ex: 5' : 'Ex: 4'}
                           />
                         </Field>
-                        <Field label="Valor do bônus">
+                        <Field label="Valor do bônus" required={row.enabled}>
                           <input
                             inputMode="numeric"
                             disabled={!row.enabled}
                             className={inputCls(!row.enabled ? 'bg-gray-100 text-gray-400' : undefined)}
                             value={brlInputValue(row.bonusAmount)}
                             onChange={(e) => setDecendRow(def.code, 'bonusAmount', parseBRL(e.target.value))}
-                            placeholder={def.code === 'THIRD_DECEND' ? 'Ex: 700,00' : 'Ex: 500,00'}
                           />
                         </Field>
                         <div className="md:col-span-2">
-                          <Field label="Observação opcional">
+                          <Field label="Observação">
                             <input
                               className={inputCls(!row.enabled ? 'bg-gray-100 text-gray-400' : undefined)}
                               disabled={!row.enabled}
                               value={row.notes}
                               onChange={(e) => setDecendRow(def.code, 'notes', e.target.value)}
-                              placeholder="Opcional"
                             />
                           </Field>
                         </div>
@@ -760,7 +752,7 @@ function RuleModal({
             ) : (
               <>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="Tipo de comissão *">
+                  <Field label="Tipo de comissão" required>
                     <select
                       className={inputCls()}
                       value={form.commissionType}
@@ -772,7 +764,7 @@ function RuleModal({
                     </select>
                   </Field>
                   {form.commissionType === 'ESCALONADA' && (
-                    <Field label="Pagamento da faixa">
+                    <Field label="Pagamento da faixa" required>
                       <select
                         className={inputCls()}
                         value={payoutMode}
@@ -784,24 +776,22 @@ function RuleModal({
                     </Field>
                   )}
                   {(form.commissionType === 'PERCENTUAL' || (form.commissionType === 'ESCALONADA' && payoutMode === 'PERCENTUAL')) && (
-                    <Field label="Percentual (%)">
+                    <Field label="Percentual (%)" required>
                       <input
                         type="number" min={0} max={100} step={0.01}
                         className={inputCls()}
                         value={form.percentage ?? ''}
                         onChange={(e) => set('percentage', e.target.value ? Number(e.target.value) : null)}
-                        placeholder="Ex: 2.5"
                       />
                     </Field>
                   )}
                   {(form.commissionType === 'FIXO' || form.commissionType === 'BONUS_QTD' || (form.commissionType === 'ESCALONADA' && payoutMode === 'FIXO')) && (
-                    <Field label={form.commissionType === 'BONUS_QTD' ? 'Valor do bônus (R$)' : 'Valor fixo (R$)'}>
+                    <Field label={form.commissionType === 'BONUS_QTD' ? 'Valor do bônus (R$)' : 'Valor fixo (R$)'} required>
                       <input
                         inputMode="numeric"
                         className={inputCls()}
                         value={brlInputValue(form.fixedValue)}
                         onChange={(e) => set('fixedValue', parseBRL(e.target.value))}
-                        placeholder="Ex: 500,00"
                       />
                     </Field>
                   )}
@@ -809,13 +799,12 @@ function RuleModal({
 
                 {usesRanges(form.ruleType) ? (
                   <div className="grid gap-3 md:grid-cols-2">
-                    <Field label={form.commissionType === 'BONUS_QTD' ? 'Quantidade mínima para bônus' : 'Quantidade mínima'}>
+                    <Field label={form.commissionType === 'BONUS_QTD' ? 'Quantidade mínima para bônus' : 'Quantidade mínima'} required={form.commissionType === 'BONUS_QTD'}>
                       <input
                         type="number" min={0}
                         className={inputCls()}
                         value={form.fromQuantity ?? ''}
                         onChange={(e) => set('fromQuantity', e.target.value ? Number(e.target.value) : null)}
-                        placeholder="Ex: 1"
                       />
                     </Field>
                     <Field label="Quantidade máxima">
@@ -833,7 +822,6 @@ function RuleModal({
                         className={inputCls()}
                         value={brlInputValue(form.fromValue)}
                         onChange={(e) => set('fromValue', parseBRL(e.target.value))}
-                        placeholder="Ex: 50.000,00"
                       />
                     </Field>
                     <Field label="Valor máximo da venda">
@@ -846,11 +834,7 @@ function RuleModal({
                       />
                     </Field>
                   </div>
-                ) : (
-                  <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                    {RULE_TYPE_LABELS[form.ruleType]} não usa faixa de quantidade/valor — a comissão vale por cargo/vendedor sobre a base ({form.ruleType === 'RETORNO' ? 'retorno líquido' : form.ruleType === 'DOCUMENTO' ? 'taxa de documentação' : form.ruleType === 'GARANTIA' ? 'preço da garantia' : 'valor do serviço'}).
-                  </p>
-                )}
+                ) : null}
               </>
             )}
           </section>
@@ -929,7 +913,7 @@ function DeleteModal({
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
         <h3 className="text-base font-semibold text-gray-900">Excluir regra</h3>
         <p className="mt-2 text-sm text-gray-600">
-          Tem certeza que deseja excluir a regra <strong>&quot;{rule.name}&quot;</strong>? Se ela já tiver histórico, será apenas inativada.
+          Excluir a regra <strong>&quot;{rule.name}&quot;</strong>? Com histórico, ela será apenas inativada.
         </p>
         {error && (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -1025,12 +1009,11 @@ function RecalcModal({ units, onClose }: { units: UnitLite[]; onClose: () => voi
 
         <div className="max-h-[78vh] space-y-4 overflow-y-auto px-6 py-5">
           <p className="text-sm text-gray-600">
-            Reajusta as comissões <strong>PREVISTAS</strong> dos vendedores para a faixa correta do período.
-            Comissões já pagas, aprovadas ou ajustadas <strong>não são tocadas</strong>. Veja a prévia antes de aplicar.
+            Só comissões <strong>previstas</strong> são reajustadas. Pagas, aprovadas ou ajustadas não mudam.
           </p>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Período (mês) *">
+            <Field label="Período (mês)" required>
               <input
                 type="month"
                 className={inputCls()}
@@ -1182,6 +1165,8 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
 
   const save = async () => {
     if (!cfg) return
+    if (cfg.active && [text.ila, text.iof, text.min, text.max].some((v) => !v.trim())) { setError('Preencha ILA, IOF e a faixa de retorno.'); return }
+    if (text.min.trim() && text.max.trim() && pnum(text.min) > pnum(text.max)) { setError('Faixa de retorno inválida.'); return }
     setSaving(true); setError(''); setSaved(false)
     try {
       const payload = {
@@ -1219,11 +1204,6 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="max-h-[78vh] space-y-4 overflow-y-auto px-6 py-5">
-          <p className="text-sm text-gray-600">
-            Vale para todos os financiamentos. O retorno bruto vem da negociação (ou financiado × % padrão);
-            o líquido = bruto − ILA − IOF. A <strong>comissão</strong> do retorno sai de uma regra do tipo <strong>Retorno</strong> (por cargo/vendedor).
-          </p>
-
           {loading ? (
             <div className="h-40 animate-pulse rounded-lg bg-gray-100" />
           ) : cfg ? (
@@ -1231,29 +1211,29 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
               <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
                 <input type="checkbox" checked={cfg.active} onChange={(e) => setActive(e.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-                <span className="text-sm font-medium text-gray-800">Ativar cálculo automático de retorno nas importações</span>
+                <span className="text-sm font-medium text-gray-800">Calcular retorno nas importações</span>
               </label>
 
               <div className="grid gap-3 md:grid-cols-2">
-                <Field label="ILA (%)">
+                <Field label="ILA (%)" required={cfg.active}>
                   <input inputMode="decimal" className={inputCls()} value={text.ila}
-                    onChange={(e) => setField('ila', e.target.value)} placeholder="Ex: 26,1" />
+                    onChange={(e) => setField('ila', e.target.value)} />
                 </Field>
-                <Field label="IOF (%)">
+                <Field label="IOF (%)" required={cfg.active}>
                   <input inputMode="decimal" className={inputCls()} value={text.iof}
-                    onChange={(e) => setField('iof', e.target.value)} placeholder="Ex: 1,5" />
+                    onChange={(e) => setField('iof', e.target.value)} />
                 </Field>
-                <Field label="Faixa de retorno — mínimo (%)">
+                <Field label="Retorno mínimo (%)" required={cfg.active}>
                   <input inputMode="decimal" className={inputCls()} value={text.min}
-                    onChange={(e) => setField('min', e.target.value)} placeholder="Ex: 0,01" />
+                    onChange={(e) => setField('min', e.target.value)} />
                 </Field>
-                <Field label="Faixa de retorno — máximo (%)">
+                <Field label="Retorno máximo (%)" required={cfg.active}>
                   <input inputMode="decimal" className={inputCls()} value={text.max}
-                    onChange={(e) => setField('max', e.target.value)} placeholder="Ex: 20" />
+                    onChange={(e) => setField('max', e.target.value)} />
                 </Field>
-                <Field label="% padrão (quando a negociação não traz o valor)">
+                <Field label="Retorno padrão (%)">
                   <input inputMode="decimal" className={inputCls()} value={text.def}
-                    onChange={(e) => setField('def', e.target.value)} placeholder="Opcional. Ex: 6" />
+                    onChange={(e) => setField('def', e.target.value)} />
                 </Field>
               </div>
 
@@ -1264,7 +1244,7 @@ function RetornoConfigModal({ onClose }: { onClose: () => void }) {
               )}
               {saved && (
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                  <Save size={14} /> Cadastro salvo. Reimporte as vendas para aplicar o retorno.
+                  <Save size={14} /> Salvo. Reimporte as vendas para aplicar.
                 </div>
               )}
             </>
@@ -1413,7 +1393,6 @@ export default function RegrasComissoesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Regras de Comissão</h1>
-            <p className="mt-0.5 text-sm text-gray-500">Gerencie as faixas e percentuais de comissionamento.</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -1446,9 +1425,6 @@ export default function RegrasComissoesPage() {
         <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-card md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Comissão gerencial em venda própria</h2>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Padrão seguro: gerente não recebe a comissão gerencial quando ele mesmo é o vendedor.
-            </p>
           </div>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
             <input
@@ -1510,7 +1486,6 @@ export default function RegrasComissoesPage() {
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-16">
             <Percent size={36} strokeWidth={1} className="text-gray-300" />
             <p className="mt-3 text-sm font-medium text-gray-500">Nenhuma regra configurada</p>
-            <p className="text-xs text-gray-400">Crie regras de comissão para que o cálculo automático funcione.</p>
             <button onClick={() => setEditing('new')} className="btn-primary mt-4 text-xs">
               <Plus size={13} />
               Criar primeira regra
@@ -1520,9 +1495,6 @@ export default function RegrasComissoesPage() {
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-14">
             <Percent size={32} strokeWidth={1} className="text-gray-300" />
             <p className="mt-3 text-sm font-medium text-gray-500">Nenhuma regra nesta família</p>
-            <p className="text-xs text-gray-400">
-              Crie uma regra de {FAMILY_DEFS.find((f) => f.key === activeFamily)?.label.toLowerCase() ?? 'comissão'} ou veja todas na aba “Todas”.
-            </p>
             <button onClick={() => setEditing('new')} className="btn-primary mt-4 text-xs">
               <Plus size={13} />
               Nova regra

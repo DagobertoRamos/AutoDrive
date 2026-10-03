@@ -44,14 +44,11 @@ export default function AnalisarDocumentoPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Bot size={20} className="text-brand-600" />Analisar documento com IA</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Envie um PDF ou imagem (CRLV, contrato, comprovante, laudo, RG/CNH…). A IA resume e identifica os dados principais.</p>
-      </div>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Bot size={20} className="text-brand-600" />Analisar documento com IA</h1>
 
       <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
         <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" />
-        <span>A IA <strong>auxilia</strong> a leitura — não substitui conferência humana nem validação jurídica/contábil/financeira. Não toma decisões nem aprova nada.</span>
+        <span>A IA auxilia a leitura e não substitui a conferência humana.</span>
       </div>
 
       {!file ? (

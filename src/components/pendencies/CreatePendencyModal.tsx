@@ -10,6 +10,7 @@
 import { useState, useEffect } from 'react'
 import { X, BellRing, Save, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Seller { id: string; fullName: string; unit?: { id: string; name: string } | null }
 interface Unit { id: string; name: string }
@@ -44,8 +45,8 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
         plate: d.plate || p.plate,
         negotiation: d.negotiation || p.negotiation,
       }))
-      const base = `✓ ${d.source === 'deal' ? `Negociação ${d.negotiation ?? ''}` : `Veículo ${d.vehicle ?? ''}`}${d.customerName ? ` — ${d.customerName}` : ''} carregado.`
-      setLookupMsg(d.otherUnitName ? `${base} ⚠️ Está em outra unidade: ${d.otherUnitName}.` : base)
+      const base = `${d.source === 'deal' ? `Negociação ${d.negotiation ?? ''}` : `Veículo ${d.vehicle ?? ''}`}${d.customerName ? ` — ${d.customerName}` : ''} carregado.`
+      setLookupMsg(d.otherUnitName ? `${base} Está em outra unidade: ${d.otherUnitName}.` : base)
     } catch { setLookupMsg('') }
   }
   const [remind, setRemind] = useState(true)
@@ -100,29 +101,29 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <div className="rounded-lg border border-brand-100 bg-brand-50/40 p-2.5">
-            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-brand-600"><Search size={11} />Buscar por placa ou negociação (preenche automático)</p>
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-brand-600"><Search size={11} />Buscar por placa ou negociação</p>
             <div className="grid grid-cols-2 gap-2">
-              <div><label className="mb-0.5 block text-[10px] text-gray-500">Placa *</label><input className={cn(inputCls, 'uppercase')} value={f.plate} onChange={(e) => set('plate', e.target.value.toUpperCase())} onBlur={() => doLookup('plate')} placeholder="ABC1D23" maxLength={8} /></div>
+              <div><label className="mb-0.5 block text-[10px] text-gray-500">Placa <RequiredMark /></label><input className={cn(inputCls, 'uppercase')} value={f.plate} onChange={(e) => set('plate', e.target.value.toUpperCase())} onBlur={() => doLookup('plate')} placeholder="ABC1D23" maxLength={8} /></div>
               <div><label className="mb-0.5 block text-[10px] text-gray-500">Negociação</label><input className={inputCls} value={f.negotiation} onChange={(e) => set('negotiation', e.target.value)} onBlur={() => doLookup('negotiation')} placeholder="NEG-2026-001" /></div>
             </div>
             {lookupMsg && <p className="mt-1 text-[11px] font-medium text-brand-700">{lookupMsg}</p>}
           </div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade</label><select className={inputCls} value={f.priority} onChange={(e) => set('priority', e.target.value)}>{PRIORITIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Cliente / Assunto *</label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Ex.: João da Silva — documento do veículo" /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Cliente / Assunto <RequiredMark /></label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Nome do cliente" /></div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Tipo *</label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Tipo <RequiredMark /></label>
             {types.length > 0 ? (
               <select className={inputCls} value={f.type} onChange={(e) => set('type', e.target.value)}><option value="">— selecione —</option>{types.map((t) => <option key={t.id} value={t.label}>{t.label}</option>)}</select>
             ) : (
-              <input className={inputCls} value={f.type} onChange={(e) => set('type', e.target.value)} placeholder="Documento, Financeira, Processo… (cadastre em Configurações)" />
+              <input className={inputCls} value={f.type} onChange={(e) => set('type', e.target.value)} placeholder="Ex.: Documento" />
             )}
           </div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Descrição *</label><textarea rows={2} className={inputCls} value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="O que precisa ser resolvido" /></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Descrição <RequiredMark /></label><textarea rows={2} className={inputCls} value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="O que precisa ser resolvido" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Unidade *</label><select className={inputCls} value={f.unitId} onChange={(e) => { set('unitId', e.target.value); set('responsibleId', '') }}><option value="">— selecione —</option>{units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
-            <div><label className="mb-1 block text-xs font-medium text-gray-700">Vencimento *</label><input type="date" className={inputCls} value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Unidade <RequiredMark /></label><select className={inputCls} value={f.unitId} onChange={(e) => { set('unitId', e.target.value); set('responsibleId', '') }}><option value="">— selecione —</option>{units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+            <div><label className="mb-1 block text-xs font-medium text-gray-700">Vencimento <RequiredMark /></label><input type="date" className={inputCls} value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></div>
           </div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Responsável *</label><select className={inputCls} value={f.responsibleId} onChange={(e) => set('responsibleId', e.target.value)}><option value="">— selecione o colaborador —</option>{sellersOfUnit.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}</select></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Responsável <RequiredMark /></label><select className={inputCls} value={f.responsibleId} onChange={(e) => set('responsibleId', e.target.value)}><option value="">— selecione —</option>{sellersOfUnit.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}</select></div>
 
           {/* Lembrete automático por push */}
           <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-3">
@@ -131,7 +132,6 @@ export function CreatePendencyModal({ onClose, onCreated }: { onClose: () => voi
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Frequência</label><select className={inputCls} value={remindFrequency} onChange={(e) => setRemindFrequency(e.target.value)}>{FREQS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Máx. de lembretes</label><input type="number" min={1} max={100} className={inputCls} value={remindMaxSends} onChange={(e) => setRemindMaxSends(Math.max(1, Number(e.target.value) || 1))} /></div>
-                <p className="col-span-2 text-[11px] text-gray-500">O push vai pro celular (Android) e iPhone/PWA do responsável, na janela de horário configurada em Pendências → Configurações, até a pendência ser baixada.</p>
               </div>
             )}
           </div>

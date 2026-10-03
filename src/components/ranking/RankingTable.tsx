@@ -134,9 +134,6 @@ export function RankingTable({ period, unitId = '', highlightUserId, reloadKey =
       {data?.notes && data.notes.length > 0 && (
         <p className="text-xs text-gray-400">Observações: {data.notes.join(' · ')}</p>
       )}
-      {data?.entries?.some((entry) => (entry.compliancePoints ?? 0) !== 0) && (
-        <p className="text-xs text-gray-500">`Conform.` mostra o impacto do piloto de conformidade operacional já aplicado no total de pontos.</p>
-      )}
     </>
   )
 }

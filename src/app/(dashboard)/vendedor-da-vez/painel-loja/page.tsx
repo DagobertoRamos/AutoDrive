@@ -405,7 +405,7 @@ export default function StorePanelPage() {
                     Aguardando Cliente
                   </h2>
                   <p className="mt-3 text-sm text-gray-400 leading-relaxed">
-                    Nenhum vendedor está sendo chamado no momento. A fila do AutoDrive está ativa e operando em tempo real.
+                    Nenhum vendedor sendo chamado.
                   </p>
                 </div>
                 <div className="mt-8 flex items-center gap-4 text-sm text-gray-400">

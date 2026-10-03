@@ -362,7 +362,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         fieldsApplied = countFilledFields(vehicle)
 
         if (!d.extracted || fieldsApplied === 0) {
-          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'Não foi possível preencher automaticamente este documento. Você pode preencher os dados manualmente ou tentar outro arquivo.' })
+          setUiState({ machine: 'MANUAL_REQUIRED', file, message: 'Não foi possível ler o documento. Preencha manualmente ou envie outro arquivo.' })
           return
         }
 
@@ -699,7 +699,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
         setUiState({
           machine: 'MANUAL_REQUIRED',
           file,
-          message: 'Não foi possível preencher automaticamente este documento. Você pode preencher os dados manualmente ou tentar outro arquivo.',
+          message: 'Não foi possível ler o documento. Preencha manualmente ou envie outro arquivo.',
         })
         return
       }
@@ -775,13 +775,7 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-2">
         <FileText className="h-5 w-5 text-brand-600 mt-0.5" />
-        <div>
-          <h3 className="font-semibold text-gray-800">CRLV do veículo</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Envie o <strong>CRLV / CRLV-e / ATPV-e</strong> em PDF ou imagem. Aceitamos apenas documentos
-            oficiais do veículo (PDF, JPG, PNG, WEBP — máx 8MB).
-          </p>
-        </div>
+        <h3 className="font-semibold text-gray-800">CRLV do veículo</h3>
       </div>
 
       {/* ── IDLE: dropzone ── */}
@@ -840,13 +834,6 @@ export function StepDocumentoVeiculo(props: StepDocumentoVeiculoProps) {
             <span>{(uiState as { message: string }).message}</span>
           </div>
           <FileChip file={(uiState as { file: File }).file} onRemove={onReset} onRetry={() => onRetry((uiState as { file: File }).file)} />
-          {props.evaluationId && (
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
-              <strong>CRLV salvo com sucesso.</strong> Este documento ficará disponível na
-              aba <em>Documentação</em> do veículo para consultas futuras — não precisa reenviar
-              em novas negociações.
-            </p>
-          )}
         </>
       )}
 

@@ -68,10 +68,7 @@ export default function SiteListingsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Megaphone size={20} className="text-brand-600" />Anúncios do site</h1>
-          <p className="text-sm text-gray-500">Todo carro Disponível do estoque entra no site. Com fotos é publicado; sem fotos aparece como “Em breve”.</p>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Megaphone size={20} className="text-brand-600" />Anúncios do site</h1>
         <button onClick={() => void load()} className="btn-secondary text-xs"><RefreshCw size={13} className={cn(loading && 'animate-spin')} />Atualizar</button>
       </div>
 
@@ -87,7 +84,7 @@ export default function SiteListingsPage() {
       {err && !editing && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{err}</p>}
 
       {loading && !rows.length ? <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-gray-100" />)}</div>
-        : shown.length === 0 ? <p className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">Nenhum carro aqui. Os carros cadastrados no Estoque aparecem nesta lista.</p>
+        : shown.length === 0 ? <p className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">Nenhum carro.</p>
         : (
         <ul className="space-y-2">
           {shown.map((r) => {
@@ -142,17 +139,17 @@ function ListingEditor({ row, onClose, onSave, busy, error }: { row: Row; onClos
         </div>
         <div className="space-y-4">
           <div className="flex flex-wrap gap-4 text-sm">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={l.featured} onChange={(e) => set({ featured: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Destaque (aparece primeiro)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={l.featured} onChange={(e) => set({ featured: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Destaque</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={l.hidden} onChange={(e) => set({ hidden: e.target.checked })} className="rounded border-gray-300 text-brand-600" />Esconder do site</label>
           </div>
-          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Título do anúncio <span className="text-gray-400">(vazio = marca, modelo e versão)</span></span><input className={input} value={l.title} placeholder={row.title} onChange={(e) => set({ title: e.target.value })} /></label>
-          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Descrição</span><textarea rows={6} className={input} value={l.description} placeholder="Ex.: Único dono, revisões na concessionária, IPVA pago, pneus novos." onChange={(e) => set({ description: e.target.value })} /></label>
-          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Opcionais <span className="text-gray-400">(um por linha ou separados por vírgula)</span></span><textarea rows={4} className={input} value={optText} placeholder={'Ar-condicionado\nCentral multimídia\nCâmera de ré'} onChange={(e) => setOptText(e.target.value)} /></label>
-          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Vídeo <span className="text-gray-400">(link do YouTube ou .mp4)</span></span><input className={input} value={l.videoUrl} placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => set({ videoUrl: e.target.value })} /></label>
+          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Título do anúncio</span><input className={input} value={l.title} placeholder={row.title} onChange={(e) => set({ title: e.target.value })} /></label>
+          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Descrição</span><textarea rows={6} className={input} value={l.description} onChange={(e) => set({ description: e.target.value })} /></label>
+          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Opcionais <span className="text-gray-400">(um por linha)</span></span><textarea rows={4} className={input} value={optText} placeholder={'Ar-condicionado\nCentral multimídia\nCâmera de ré'} onChange={(e) => setOptText(e.target.value)} /></label>
+          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Vídeo <span className="text-gray-400">(YouTube ou .mp4)</span></span><input className={input} value={l.videoUrl} placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => set({ videoUrl: e.target.value })} /></label>
           <div className="rounded-lg border border-gray-100 p-3">
             <p className="mb-2 text-xs font-semibold text-gray-700">Como aparece no Google</p>
             <label className="block"><span className="mb-1 flex justify-between text-xs text-gray-600">Título <span className="text-gray-400">{l.seoTitle.length}/70</span></span><input maxLength={70} className={input} value={l.seoTitle} placeholder={autoSeo} onChange={(e) => set({ seoTitle: e.target.value })} /></label>
-            <label className="mt-2 block"><span className="mb-1 flex justify-between text-xs text-gray-600">Descrição <span className="text-gray-400">{l.seoDescription.length}/170</span></span><textarea rows={2} maxLength={170} className={input} value={l.seoDescription} placeholder="Gerada automaticamente com ano, km e preço." onChange={(e) => set({ seoDescription: e.target.value })} /></label>
+            <label className="mt-2 block"><span className="mb-1 flex justify-between text-xs text-gray-600">Descrição <span className="text-gray-400">{l.seoDescription.length}/170</span></span><textarea rows={2} maxLength={170} className={input} value={l.seoDescription} placeholder="Automática" onChange={(e) => set({ seoDescription: e.target.value })} /></label>
             <div className="mt-3 rounded-md bg-gray-50 p-2">
               <p className="truncate text-sm text-[#1a0dab]">{l.seoTitle || autoSeo}</p>
               <p className="line-clamp-2 text-xs text-gray-600">{l.seoDescription || `${row.title}, ${row.km != null ? `${row.km.toLocaleString('pt-BR')} km, ` : ''}${money(row.price)}. Financiamento e atendimento pela loja.`}</p>

@@ -21,6 +21,7 @@ import {
   Server, Layers, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import NoticesTab from './NoticesTab'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -210,7 +211,7 @@ function TestPanel({ channel, placeholder, label, inputType = 'text', icon: Icon
             <div className="flex-1 min-w-0">
               {result.success ? (
                 <>
-                  <p className="font-semibold text-emerald-800">✅ Enviado com sucesso!</p>
+                  <p className="font-semibold text-emerald-800">Enviado com sucesso.</p>
                   {result.message && <p className="text-emerald-700 mt-0.5">{result.message}</p>}
                   <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-emerald-600">
                     {result.messageId && (
@@ -225,7 +226,7 @@ function TestPanel({ channel, placeholder, label, inputType = 'text', icon: Icon
                 </>
               ) : (
                 <>
-                  <p className="font-semibold text-red-800">❌ Falha no envio</p>
+                  <p className="font-semibold text-red-800">Falha no envio</p>
                   <p className="text-red-700 mt-0.5">{result.error}</p>
                   {result.errorCode && (
                     <p className="mt-1 text-xs">
@@ -389,11 +390,11 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
     >
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Nome *</label>
-          <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} placeholder="Servidor principal" required />
+          <label className={labelCls}>Nome <RequiredMark /></label>
+          <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} placeholder="Ex.: Servidor principal" required />
         </div>
         <div>
-          <label className={labelCls}>Propósito *</label>
+          <label className={labelCls}>Propósito <RequiredMark /></label>
           <select className={inputCls} value={form.purpose ?? 'SYSTEM'} onChange={e => up('purpose', e.target.value as EmailPurpose)}>
             {EMAIL_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label} — {p.desc}</option>)}
           </select>
@@ -401,7 +402,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
       </div>
 
       <div>
-        <label className={labelCls}>Provedor *</label>
+        <label className={labelCls}>Provedor <RequiredMark /></label>
         <select className={inputCls} value={provider} onChange={e => up('provider', e.target.value as EmailProvider)}>
           {EMAIL_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
@@ -410,7 +411,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
       {provider === 'smtp' && (
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
-            <label className={labelCls}>Host SMTP *</label>
+            <label className={labelCls}>Host SMTP <RequiredMark /></label>
             <input className={inputCls} value={form.smtpHost ?? ''} onChange={e => up('smtpHost', e.target.value)} placeholder="smtp.exemplo.com" required />
           </div>
           <div>
@@ -423,7 +424,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
             }} />
           </div>
           <div className="col-span-2">
-            <label className={labelCls}>Usuário SMTP *</label>
+            <label className={labelCls}>Usuário SMTP <RequiredMark /></label>
             <input className={inputCls} value={form.smtpUser ?? ''} onChange={e => up('smtpUser', e.target.value)} placeholder="user@dominio.com" required />
           </div>
           <div>
@@ -439,7 +440,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
             </select>
           </div>
           <div className="col-span-3">
-            <label className={labelCls}>Senha SMTP {isMaskedPass ? '(configurada)' : '*'}</label>
+            <label className={labelCls}>Senha SMTP {isMaskedPass ? '(configurada)' : <RequiredMark />}</label>
             <div className="relative">
               <input
                 type={reveal && !isMaskedPass ? 'text' : 'password'}
@@ -462,7 +463,7 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
 
       {(provider === 'sendgrid' || provider === 'resend') && (
         <div>
-          <label className={labelCls}>API Key {isMaskedApi ? '(configurada)' : '*'}</label>
+          <label className={labelCls}>API Key {isMaskedApi ? '(configurada)' : <RequiredMark />}</label>
           <div className="relative">
             <input
               type={revealApi && !isMaskedApi ? 'text' : 'password'}
@@ -485,11 +486,11 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
       {provider === 'mailgun' && (
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>Domínio Mailgun *</label>
+            <label className={labelCls}>Domínio Mailgun <RequiredMark /></label>
             <input className={inputCls} value={form.domain ?? ''} onChange={e => up('domain', e.target.value)} placeholder="mg.suaempresa.com" required />
           </div>
           <div>
-            <label className={labelCls}>API Key {isMaskedApi ? '(configurada)' : '*'}</label>
+            <label className={labelCls}>API Key {isMaskedApi ? '(configurada)' : <RequiredMark />}</label>
             <div className="relative">
               <input
                 type={revealApi && !isMaskedApi ? 'text' : 'password'}
@@ -513,15 +514,15 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
       {provider === 'ses' && (
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className={labelCls}>Region *</label>
+            <label className={labelCls}>Region <RequiredMark /></label>
             <input className={inputCls} value={form.region ?? ''} onChange={e => up('region', e.target.value)} placeholder="us-east-1" required />
           </div>
           <div>
-            <label className={labelCls}>Access Key (IAM) *</label>
+            <label className={labelCls}>Access Key (IAM) <RequiredMark /></label>
             <input className={inputCls} value={form.smtpUser ?? ''} onChange={e => up('smtpUser', e.target.value)} placeholder="AKIA..." required />
           </div>
           <div>
-            <label className={labelCls}>Secret Key {isMaskedPass ? '(configurada)' : '*'}</label>
+            <label className={labelCls}>Secret Key {isMaskedPass ? '(configurada)' : <RequiredMark />}</label>
             <div className="relative">
               <input
                 type={reveal && !isMaskedPass ? 'text' : 'password'}
@@ -544,11 +545,11 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className={labelCls}>Nome do remetente *</label>
+          <label className={labelCls}>Nome do remetente <RequiredMark /></label>
           <input className={inputCls} value={form.fromName ?? ''} onChange={e => up('fromName', e.target.value)} placeholder="AutoDrive" required />
         </div>
         <div>
-          <label className={labelCls}>E-mail remetente *</label>
+          <label className={labelCls}>E-mail remetente <RequiredMark /></label>
           <input type="email" className={inputCls} value={form.fromEmail ?? ''} onChange={e => up('fromEmail', e.target.value)} placeholder="noreply@autodrive.com.br" required />
         </div>
         <div>
@@ -571,8 +572,8 @@ function EmailConfigForm({ initial, onSubmit, onCancel, submitting }: {
       </div>
 
       <div className="border-t border-gray-100 pt-3">
-        <label className={labelCls}>E-mail para teste (opcional)</label>
-        <input type="email" className={inputCls} value={form.testEmail ?? ''} onChange={e => up('testEmail' as never, e.target.value as never)} placeholder="destinatario@exemplo.com — disparado após salvar via 'Testar'" />
+        <label className={labelCls}>E-mail para teste</label>
+        <input type="email" className={inputCls} value={form.testEmail ?? ''} onChange={e => up('testEmail' as never, e.target.value as never)} placeholder="Ex.: destinatario@exemplo.com" />
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
@@ -676,18 +677,18 @@ function EmailTemplateForm({ initial, onSubmit, onCancel, submitting }: {
         <>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Propósito *</label>
+              <label className={labelCls}>Propósito <RequiredMark /></label>
               <select className={inputCls} value={form.purpose ?? 'SYSTEM'} onChange={e => up('purpose', e.target.value as EmailPurpose)}>
                 {EMAIL_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Key (identificador) *</label>
+              <label className={labelCls}>Key (identificador) <RequiredMark /></label>
               <input className={`${inputCls} font-mono`} value={form.key ?? ''} onChange={e => up('key', e.target.value)} placeholder="password_reset" required pattern="[a-zA-Z0-9_]+" />
             </div>
           </div>
           <div>
-            <label className={labelCls}>Nome *</label>
+            <label className={labelCls}>Nome <RequiredMark /></label>
             <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} required />
           </div>
           <div>
@@ -695,11 +696,11 @@ function EmailTemplateForm({ initial, onSubmit, onCancel, submitting }: {
             <input className={inputCls} value={form.description ?? ''} onChange={e => up('description', e.target.value)} />
           </div>
           <div>
-            <label className={labelCls}>Assunto * <span className="text-gray-400 font-normal">— use {`{{var}}`} para variáveis</span></label>
+            <label className={labelCls}>Assunto <RequiredMark /></label>
             <input className={inputCls} value={form.subject ?? ''} onChange={e => up('subject', e.target.value)} required />
           </div>
           <div>
-            <label className={labelCls}>Corpo HTML *</label>
+            <label className={labelCls}>Corpo HTML <RequiredMark /></label>
             <textarea
               className={`${inputCls} font-mono text-xs`}
               rows={10}
@@ -735,7 +736,7 @@ function EmailTemplateForm({ initial, onSubmit, onCancel, submitting }: {
               <iframe srcDoc={preview.html} className="w-full h-[480px] rounded-lg border border-gray-200 bg-white" title="Preview" />
             </>
           ) : (
-            <p className="text-xs text-gray-400">Salve o template primeiro para gerar o preview com o layout completo.</p>
+            <p className="text-xs text-gray-400">Salve o template para ver o preview.</p>
           )}
         </div>
       )}
@@ -919,7 +920,6 @@ function EmailTab() {
           <div className="rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
             <Mail size={28} className="mx-auto text-gray-300 mb-2" />
             <p className="text-sm text-gray-500">Nenhum servidor cadastrado.</p>
-            <p className="text-xs text-gray-400 mt-1">Crie pelo menos um servidor para o propósito SYSTEM.</p>
           </div>
         ) : (
           <div className="space-y-5">
@@ -1024,7 +1024,6 @@ function EmailTab() {
           <div className="rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
             <FileText size={28} className="mx-auto text-gray-300 mb-2" />
             <p className="text-sm text-gray-500">Nenhum template criado.</p>
-            <p className="text-xs text-gray-400 mt-1">Clique em &quot;Criar padrões&quot; para gerar os templates base do AutoDrive.</p>
           </div>
         ) : (
           <div className="space-y-5">
@@ -1166,8 +1165,9 @@ interface MetaTemplate {
   qualityScore:  string | null
 }
 
-function SecretInput({ label, name, value, onChange, placeholder, helpText }: {
+function SecretInput({ label, name, value, onChange, placeholder, helpText, required }: {
   label: string
+  required?: boolean
   name:  string
   value: string
   onChange: (val: string) => void
@@ -1180,7 +1180,7 @@ function SecretInput({ label, name, value, onChange, placeholder, helpText }: {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className={labelCls}>{label}</label>
+        <label className={labelCls}>{label}{required && <> <RequiredMark /></>}</label>
         {isMasked && (
           <button
             type="button"
@@ -1197,7 +1197,7 @@ function SecretInput({ label, name, value, onChange, placeholder, helpText }: {
           name={name}
           value={value}
           onChange={e => onChange(e.target.value)}
-          placeholder={isMasked ? '(configurado — clique em "Substituir" para alterar)' : (placeholder ?? '••••••••')}
+          placeholder={isMasked ? '(configurado)' : (placeholder ?? '••••••••')}
           disabled={isMasked}
           className={`${inputCls} pr-9 ${isMasked ? 'bg-gray-50 text-gray-400' : ''}`}
         />
@@ -1243,6 +1243,11 @@ function WhatsAppTab() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setFeedback(null)
+    if (!config.provider || config.provider === 'meta') {
+      if (!config.phoneNumberId?.trim())     { setFeedback({ type: 'error', msg: 'Informe o Phone Number ID.' }); return }
+      if (!config.businessAccountId?.trim()) { setFeedback({ type: 'error', msg: 'Informe o WABA ID.' }); return }
+      if (!config.token?.trim())             { setFeedback({ type: 'error', msg: 'Informe o Access Token.' }); return }
+    }
     setSaving(true)
     try {
       const res  = await fetch('/api/master/communication/whatsapp', {
@@ -1357,7 +1362,7 @@ function WhatsAppTab() {
             )}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">Clique em &quot;Testar conexão Meta&quot; para validar token e Phone Number ID sem enviar mensagem.</p>
+          <p className="text-xs text-gray-400">Não testado.</p>
         )}
       </div>
 
@@ -1407,12 +1412,10 @@ function WhatsAppTab() {
               onChange={setField('apiUrl')}
               placeholder="https://graph.facebook.com"
             />
-            <p className="mt-1 text-xs text-gray-400">Deve ser HTTPS. Para Meta, usar https://graph.facebook.com</p>
-          </div>
+                      </div>
           <div>
             <label className={labelCls}>Versão da API</label>
-            <input className={inputCls} value={config.apiVersion ?? ''} onChange={setField('apiVersion')} placeholder="v20.0" />
-            <p className="mt-1 text-xs text-gray-400">Ex: v20.0, v21.0, v25.0</p>
+            <input className={inputCls} value={config.apiVersion ?? ''} onChange={setField('apiVersion')} placeholder="Ex.: v20.0" />
           </div>
         </div>
       </div>
@@ -1423,11 +1426,11 @@ function WhatsAppTab() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>Phone Number ID *</label>
-            <input className={`${inputCls} font-mono`} value={config.phoneNumberId ?? ''} onChange={setField('phoneNumberId')} placeholder="123456789012345 (somente números)" />
+            <label className={labelCls}>Phone Number ID <RequiredMark /></label>
+            <input className={`${inputCls} font-mono`} value={config.phoneNumberId ?? ''} onChange={setField('phoneNumberId')} placeholder="Ex.: 123456789012345" />
           </div>
           <div>
-            <label className={labelCls}>WABA ID (Business Account ID) *</label>
+            <label className={labelCls}>WABA ID (Business Account ID) <RequiredMark /></label>
             <input className={`${inputCls} font-mono`} value={config.businessAccountId ?? ''} onChange={setField('businessAccountId')} placeholder="123456789012345" />
           </div>
           <div>
@@ -1441,19 +1444,18 @@ function WhatsAppTab() {
         </div>
 
         <SecretInput
-          label="Access Token *"
+          label="Access Token"
+          required
           name="token"
           value={config.token ?? ''}
           onChange={val => setConfig(p => ({ ...p, token: val }))}
           placeholder="EAAxxxxxxx..."
-          helpText="Token de acesso permanente ou temporário. Armazenado criptografado."
         />
         <SecretInput
           label="App Secret"
           name="appSecret"
           value={config.appSecret ?? ''}
           onChange={val => setConfig(p => ({ ...p, appSecret: val }))}
-          helpText="Necessário para verificação de assinatura do webhook. Armazenado criptografado."
         />
       </div>
 
@@ -1478,7 +1480,6 @@ function WhatsAppTab() {
             name="webhookVerifyToken"
             value={config.webhookVerifyToken ?? ''}
             onChange={val => setConfig(p => ({ ...p, webhookVerifyToken: val }))}
-            helpText="Token de verificação enviado pela Meta no handshake do webhook."
           />
           <div>
             <label className={labelCls}>Webhook Callback URL</label>
@@ -1489,7 +1490,7 @@ function WhatsAppTab() {
         <div>
           <label className={labelCls}>Webhook Fields</label>
           <input className={inputCls} value={config.webhookFields ?? 'messages,message_template_status_update'} onChange={setField('webhookFields')} />
-          <p className="mt-1 text-xs text-gray-400">Campos assinados no webhook Meta (separados por vírgula)</p>
+          <p className="mt-1 text-xs text-gray-400">Separados por vírgula</p>
         </div>
 
         {webhookResult && (
@@ -1684,18 +1685,18 @@ function WhatsappTemplateForm({ initial, onSubmit, onCancel, submitting }: {
     <form onSubmit={async e => { e.preventDefault(); await onSubmit(form) }} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Nome (exibição) *</label>
+          <label className={labelCls}>Nome (exibição) <RequiredMark /></label>
           <input className={inputCls} value={form.name ?? ''} onChange={e => up('name', e.target.value)} required />
         </div>
         <div>
-          <label className={labelCls}>Propósito *</label>
+          <label className={labelCls}>Propósito <RequiredMark /></label>
           <select className={inputCls} value={form.purpose ?? 'GENERAL'} onChange={e => up('purpose', e.target.value as WhatsappPurpose)}>
             {WHATSAPP_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
       </div>
       <div>
-        <label className={labelCls}>Nome técnico (template Meta aprovado) *</label>
+        <label className={labelCls}>Nome técnico (template Meta aprovado) <RequiredMark /></label>
         <input className={`${inputCls} font-mono`} value={form.templateName ?? ''} onChange={e => up('templateName', e.target.value)} placeholder="welcome_message" required />
       </div>
       <div>
@@ -1950,7 +1951,7 @@ function LogsTab() {
       ) : logs.length === 0 ? (
         <div className="flex h-36 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
           <ClipboardList size={24} />
-          <p className="text-sm">Nenhum log encontrado</p>
+          <p className="text-sm">Nenhum log.</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-200">
@@ -2103,10 +2104,7 @@ export default function CommunicationPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600">
           <Mail size={18} className="text-white" />
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Central de Comunicação</h1>
-          <p className="text-xs text-gray-400">Configure canais de e-mail, WhatsApp, avisos internos e veja os logs de testes</p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900">Central de Comunicação</h1>
       </div>
 
       {/* Tabs */}

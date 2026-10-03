@@ -65,7 +65,7 @@ export default function PendencyPenaltiesPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
-        <div><p className="text-lg font-semibold text-gray-800">Painel restrito</p><p className="mt-1 max-w-md text-sm text-gray-500">As penalidades são geridas pela administração da loja.</p></div>
+        <p className="text-lg font-semibold text-gray-800">Acesso restrito</p>
       </div>
     )
   }
@@ -75,10 +75,7 @@ export default function PendencyPenaltiesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ShieldAlert size={20} className="text-red-600" />Penalidades</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Vendedores com pendência crítica não tratada. A penalidade <b>avisa e marca no relatório</b> — não bloqueia a fila de leads.</p>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ShieldAlert size={20} className="text-red-600" />Penalidades</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setIncludeRemoved((v) => !v)} className="btn-secondary text-xs"><History size={14} />{includeRemoved ? 'Só ativas' : 'Ver histórico'}</button>
           <button onClick={() => load()} disabled={loading} className="btn-secondary text-xs"><RefreshCw size={14} className={cn(loading && 'animate-spin')} />Atualizar</button>
@@ -100,7 +97,7 @@ export default function PendencyPenaltiesPage() {
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
               ) : items.length === 0 ? (
-                <tr><td colSpan={6} className="py-12 text-center"><ShieldAlert size={28} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Ninguém penalizado. 🎉</p></td></tr>
+                <tr><td colSpan={6} className="py-12 text-center"><ShieldAlert size={28} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Ninguém penalizado.</p></td></tr>
               ) : items.map((p) => (
                 <tr key={p.id} className={cn('hover:bg-gray-50', !p.active && 'opacity-55')}>
                   <td className="px-4 py-3"><p className="font-medium text-gray-900">{p.sellerName}</p>{p.unitName && <p className="text-[11px] text-gray-400">{p.unitName}</p>}</td>

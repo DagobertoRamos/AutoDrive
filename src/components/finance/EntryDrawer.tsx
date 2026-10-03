@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { AlertCircle, Ban, Car, CheckCircle2, FileText, Handshake, Loader2, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MoneyInput } from '@/components/ui/money-input'
+import { RequiredMark } from '@/components/ui/field'
 import { COST_ITEM_KINDS, COST_ITEM_LABEL, chargeResult, itemsTotal } from '@/lib/finance/entry-settlement-core'
 
 interface Detail {
@@ -109,7 +110,8 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
 
   async function submit(settle: boolean) {
     if (!e) return
-    if (settle && !(realCost > 0)) { setErr('Informe o valor real (itens ou valor) antes de dar a baixa.'); return }
+    if (settle && !(realCost > 0)) { setErr('Informe o valor antes de dar a baixa.'); return }
+    if (settle && !paidDate) { setErr('Informe a data da baixa.'); return }
     setBusy(settle ? 'settle' : 'save'); setErr('')
     const body: Record<string, unknown> = {
       settle, paidDate: settle ? paidDate : undefined,
@@ -195,7 +197,6 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                         <Car size={15} className="mt-0.5 text-gray-400" />
                         <div>
                           <Link href={`/financeiro/veiculos/${d.vehicle.id}`} className="font-medium text-brand-700 hover:underline">{d.vehicle.plate ?? ''} {d.vehicle.title}</Link>
-                          <p className="text-xs text-gray-500">Entra no extrato financeiro do veículo</p>
                         </div>
                       </div>
                     )}
@@ -230,7 +231,7 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                   </div>
                   {d.debt?.isDocumentation && (
                     <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                      <p className="mb-1.5 text-xs font-semibold text-gray-700">Comissões de documento <span className="font-normal text-gray-500">(conforme configuração da loja)</span></p>
+                      <p className="mb-1.5 text-xs font-semibold text-gray-700">Comissões de documento</p>
                       {d.commissions.length ? (
                         <ul className="space-y-1 text-xs">
                           {d.commissions.map((c) => (
@@ -242,7 +243,7 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                           <li className="flex justify-between border-t border-gray-200 pt-1 font-semibold"><span>Total</span><span className="tabular-nums">− {brl(live.commissions)}</span></li>
                         </ul>
                       ) : (
-                        <p className="text-xs text-gray-500">Nenhuma comissão de documento gerada para esta negociação ainda (elas nascem na aprovação/finalização — Comissões › Retornos e documentação).</p>
+                        <p className="text-xs text-gray-500">Nenhuma comissão de documento gerada.</p>
                       )}
                     </div>
                   )}
@@ -269,14 +270,14 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                         <select disabled={readOnly} className={cn(inputCls, 'col-span-4')} value={i.kind} onChange={(ev) => setItem(i.key, { kind: ev.target.value })}>
                           {COST_ITEM_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                         </select>
-                        <input disabled={readOnly} className={cn(inputCls, 'col-span-4')} value={i.description} onChange={(ev) => setItem(i.key, { description: ev.target.value })} placeholder="Detalhe (opcional)" />
+                        <input disabled={readOnly} className={cn(inputCls, 'col-span-4')} value={i.description} onChange={(ev) => setItem(i.key, { description: ev.target.value })} placeholder="Detalhe" />
                         <div className="col-span-3"><MoneyInput disabled={readOnly} className={inputCls} value={i.amount} onChange={(v) => setItem(i.key, { amount: v })} /></div>
                         {!readOnly && <button type="button" onClick={() => setItems((xs) => xs.filter((x) => x.key !== i.key))} className="col-span-1 justify-self-center rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label="Remover item"><Trash2 size={14} /></button>}
                       </div>
                     ))}
                     {!items.length && (
                       <div className="grid grid-cols-12 items-center gap-2">
-                        <p className="col-span-8 text-xs text-gray-500">Sem itens: o valor do lançamento é o total. Detalhe o que foi pago (licenciamento, placa, laudo…) para o extrato do veículo.</p>
+                        <p className="col-span-8 text-xs text-gray-500">Valor total<RequiredMark className="ml-0.5" /></p>
                         <div className="col-span-4"><MoneyInput disabled={readOnly} className={inputCls} value={amount} onChange={setAmount} /></div>
                       </div>
                     )}
@@ -290,9 +291,9 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                 <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{settled ? 'Dados da baixa' : 'Baixa'}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {e.type === 'RECEITA' && (
-                    <Field label="Valor recebido"><MoneyInput disabled={readOnly} className={inputCls} value={amount} onChange={setAmount} /></Field>
+                    <Field label="Valor recebido" required><MoneyInput disabled={readOnly} className={inputCls} value={amount} onChange={setAmount} /></Field>
                   )}
-                  <Field label={e.type === 'RECEITA' ? 'Data do recebimento' : 'Data do pagamento'}><input type="date" disabled={readOnly} className={inputCls} value={paidDate} onChange={(ev) => setPaidDate(ev.target.value)} /></Field>
+                  <Field label={e.type === 'RECEITA' ? 'Data do recebimento' : 'Data do pagamento'} required={!settled}><input type="date" disabled={readOnly} className={inputCls} value={paidDate} onChange={(ev) => setPaidDate(ev.target.value)} /></Field>
                   <Field label="Conta"><select disabled={readOnly} className={inputCls} value={accountId} onChange={(ev) => setAccountId(ev.target.value)}><option value="">—</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
                   <Field label="Forma"><select disabled={readOnly} className={inputCls} value={method} onChange={(ev) => setMethod(ev.target.value)}><option value="">—</option>{[...new Set([...(method ? [method] : []), ...METHODS])].map((m) => <option key={m} value={m}>{m}</option>)}</select></Field>
                   {e.type === 'DESPESA' && (
@@ -343,6 +344,6 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-1 block text-xs font-medium text-gray-700">{label}</span>{children}</label>
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return <label className="block"><span className="mb-1 block text-xs font-medium text-gray-700">{label}{required && <RequiredMark className="ml-0.5" />}</span>{children}</label>
 }

@@ -55,8 +55,7 @@ export function LayoutSection({ cfg, dis, onChange }: { cfg: SiteConfig; dis: bo
   return (
     <>
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-        <h2 className="text-sm font-semibold text-gray-900">Menu do topo</h2>
-        <p className="mb-3 text-xs text-gray-500">Escolha o que aparece no menu, a ordem (setas) e o nome de cada item. Todos os itens marcados ficam visíveis no topo; no celular viram o menu ☰. Hoje aparecem <b>{shown}</b> itens.</p>
+        <h2 className="mb-3 flex items-baseline justify-between text-sm font-semibold text-gray-900">Menu do topo<span className="text-[11px] font-normal text-gray-500">{shown} visíveis</span></h2>
         <ul className="space-y-1.5">
           {menu.map((m, i) => {
             const note = menuNote(m)
@@ -82,8 +81,7 @@ export function LayoutSection({ cfg, dis, onChange }: { cfg: SiteConfig; dis: bo
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-        <h2 className="text-sm font-semibold text-gray-900">Página inicial em blocos</h2>
-        <p className="mb-3 text-xs text-gray-500">Monte a página inicial: ligue ou desligue cada bloco, mude a ordem com as setas e edite os textos em “Editar”. Use <b>Pré-visualizar</b> (embaixo) para ver antes de salvar.</p>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Página inicial em blocos</h2>
         <ul className="space-y-1.5">
           {blocks.map((b, i) => {
             const def = HOME_BLOCKS.find((d) => d.type === b.type)
@@ -112,7 +110,7 @@ export function LayoutSection({ cfg, dis, onChange }: { cfg: SiteConfig; dis: bo
                     {def.fields.includes('bullets') && <label className="md:col-span-2"><span className={small}>Tópicos (um por linha, até 6)</span><textarea disabled={dis} rows={3} className={input} value={b.bullets.join('\n')} onChange={(e) => setBlock(i, { bullets: e.target.value.split('\n').slice(0, 6) })} /></label>}
                     {def.fields.includes('cards') && (
                       <div className="md:col-span-2">
-                        <span className={small}>Cartões (marque os que aparecem; setas mudam a ordem)</span>
+                        <span className={small}>Cartões</span>
                         <ul className="space-y-1.5">
                           {b.cards.map((c, ci) => {
                             const ad = ACTION_DEFS.find((a) => a.kind === c.kind)

@@ -9,6 +9,8 @@
 import { useState } from 'react'
 import { CalendarClock, X, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
+import { maskPhoneInput } from '@/lib/br-docs/phone'
 
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
 
@@ -49,22 +51,21 @@ export default function RequestAttendanceAuth() {
               <h3 className="text-base font-bold text-gray-900">Pedir autorização de atendimento</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <p className="mb-3 text-xs text-gray-500">Agendamento/retorno fura a rotação da fila, então precisa da autorização de um líder ou da gerência. Você será avisado quando decidirem.</p>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Tipo *</label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Tipo <RequiredMark /></label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['AGENDAMENTO', 'RETORNO'] as const).map((t) => (
                     <button key={t} type="button" onClick={() => set('visitType', t)} className={cn('rounded-lg border px-2 py-2 text-xs font-semibold', f.visitType === t ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-500 hover:border-gray-300')}>{t === 'AGENDAMENTO' ? 'Agendamento' : 'Retorno'}</button>
                   ))}
                 </div>
               </div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente *</label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Ex.: João da Silva" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome do cliente <RequiredMark /></label><input className={inputCls} value={f.customerName} onChange={(e) => set('customerName', e.target.value)} placeholder="Nome completo" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone</label><input className={inputCls} value={f.customerPhone} onChange={(e) => set('customerPhone', e.target.value)} placeholder="(11)9.9999-9999" /></div>
-                <div><label className="mb-1 block text-xs font-medium text-gray-700">E-mail</label><input className={inputCls} value={f.customerEmail} onChange={(e) => set('customerEmail', e.target.value)} placeholder="cliente@email.com" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">Telefone</label><input type="tel" inputMode="numeric" className={inputCls} value={f.customerPhone} onChange={(e) => set('customerPhone', maskPhoneInput(e.target.value))} placeholder="(11) 99999-9999" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-gray-700">E-mail</label><input type="email" className={inputCls} value={f.customerEmail} onChange={(e) => set('customerEmail', e.target.value)} placeholder="cliente@email.com" /></div>
               </div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Ex.: cliente agendou às 14h" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Observações</label><input className={inputCls} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setOpen(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>

@@ -63,10 +63,7 @@ export default function DesempenhoPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Desempenho</h1>
-          <p className="mt-1 text-sm text-gray-500">Ranking da equipe e metas agregadas por período.</p>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Desempenho</h1>
         <div className="flex flex-wrap items-center gap-2">
           <Filter size={15} className="text-gray-400" />
           <select value={period} onChange={(e) => setPeriod(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">

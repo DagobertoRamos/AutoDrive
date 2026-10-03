@@ -10,6 +10,7 @@ import { Plus, Pencil, Landmark, X, Save, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Account { id: string; name: string; type: string; openingBalance: number | string; active: boolean }
 interface Form { name: string; type: 'CAIXA' | 'BANCO' | 'CARTAO' | 'OUTRO'; openingBalance: number; active: boolean }
@@ -74,7 +75,7 @@ export default function FinanceAccountsPage() {
           <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${filtered.length}${term ? ` de ${items.length}` : ''} contas`}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SearchBox value={q} onChange={setQ} placeholder="Buscar conta..." className="w-56" />
+          <SearchBox value={q} onChange={setQ} placeholder="Buscar conta" className="w-56" />
           <button onClick={() => open()} className="btn-primary text-sm"><Plus size={15} />Nova conta</button>
         </div>
       </div>
@@ -86,7 +87,7 @@ export default function FinanceAccountsPage() {
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 5 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="py-14 text-center"><Landmark size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">{term ? 'Nenhuma conta encontrada para a busca.' : 'Nenhuma conta. Crie a primeira.'}</p></td></tr>
+              <tr><td colSpan={5} className="py-14 text-center"><Landmark size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">{term ? 'Nenhuma conta encontrada para a busca.' : 'Nenhuma conta.'}</p></td></tr>
             ) : (
               filtered.map((a) => (
                 <tr key={a.id} className={cn('hover:bg-gray-50', !a.active && 'opacity-50')}>
@@ -110,8 +111,8 @@ export default function FinanceAccountsPage() {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editing ? 'Editar conta' : 'Nova conta'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Nome</label><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Caixa loja, Banco Itaú..." /></div>
-              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo</label><select className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Form['type'] })}><option value="CAIXA">Caixa</option><option value="BANCO">Banco</option><option value="CARTAO">Cartão</option><option value="OUTRO">Outro</option></select></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Nome<RequiredMark className="ml-0.5" /></label><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo<RequiredMark className="ml-0.5" /></label><select className={inputClass} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Form['type'] })}><option value="CAIXA">Caixa</option><option value="BANCO">Banco</option><option value="CARTAO">Cartão</option><option value="OUTRO">Outro</option></select></div>
               <div><label className="mb-1.5 block text-xs font-medium text-gray-700">Saldo inicial</label><input type="text" inputMode="numeric" className={inputClass} value={maskBRL(form.openingBalance ? Math.round(form.openingBalance * 100).toString() : '')} onChange={(e) => setForm({ ...form, openingBalance: parseBRL(maskBRL(e.target.value)) ?? 0 })} placeholder="0,00" /></div>
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>

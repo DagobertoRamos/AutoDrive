@@ -34,7 +34,7 @@ export default function FiConfigHub() {
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
         <div>
           <p className="text-lg font-semibold text-gray-800">Configuração restrita</p>
-          <p className="mt-1 max-w-md text-sm text-gray-500">As configurações de F&amp;I da loja são gerenciadas por administração/gerência/financeiro.</p>
+          <p className="mt-1 max-w-md text-sm text-gray-500">Acesso restrito à administração, gerência e financeiro.</p>
         </div>
       </div>
     )
@@ -44,7 +44,6 @@ export default function FiConfigHub() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Configurações de F&amp;I da Loja</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Bancos, credenciais, prioridades, retornos e regras operacionais da sua loja.</p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {AREAS.map((a) => (

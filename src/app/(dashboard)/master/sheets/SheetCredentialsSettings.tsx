@@ -10,6 +10,7 @@ import {
   KeyRound, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff,
   RefreshCw, ChevronDown, ChevronUp, ShieldCheck, FileKey2, Wand2,
 } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
 
 // Espelha exatamente src/lib/crypto.ts — isMasked() usa essa string no backend
 const BACKEND_MASKED = '••••••••' as const
@@ -302,7 +303,7 @@ export default function SheetCredentialsSettings() {
           ) : (
             <p className="text-xs text-amber-600">
               <AlertCircle size={10} className="inline mr-1" />
-              Credencial não configurada no banco — usando variável de ambiente como fallback
+              Não configurada — usando variável de ambiente
             </p>
           )}
         </div>
@@ -337,13 +338,10 @@ export default function SheetCredentialsSettings() {
               type="text"
               value={form.masterSheetId}
               onChange={e => setForm(f => ({ ...f, masterSheetId: e.target.value }))}
-              placeholder="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+              placeholder="ID na URL da planilha"
               className={inputCls}
               disabled={saving}
             />
-            <p className="mt-1 text-[11px] text-gray-400">
-              ID na URL da planilha: docs.google.com/spreadsheets/d/<strong>ID</strong>/edit
-            </p>
           </div>
 
           {/* Service Account JSON */}
@@ -351,6 +349,7 @@ export default function SheetCredentialsSettings() {
             <div className="flex items-center justify-between mb-1">
               <label className={`${labelCls} mb-0`}>
                 Service Account JSON
+                {!configured && <> <RequiredMark /></>}
                 {configured && !replacing && (
                   <span className="ml-2 text-[10px] font-normal text-emerald-600">(configurada)</span>
                 )}
@@ -445,11 +444,6 @@ export default function SheetCredentialsSettings() {
               </div>
             )}
 
-            <p className="mt-1.5 text-[11px] text-gray-400">
-              Cole o arquivo <code className="rounded bg-gray-100 px-0.5">.json</code> baixado do Google Cloud Console
-              (IAM → Contas de serviço → Chaves). O formato identado padrão é aceito.
-              Criptografado com AES-256 antes de armazenar.
-            </p>
           </div>
 
           {/* Ações */}

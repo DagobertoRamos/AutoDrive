@@ -9,7 +9,7 @@ import { useSession }          from 'next-auth/react'
 import { useRouter }           from 'next/navigation'
 import {
   ShieldCheck, Loader2, AlertCircle, CheckCircle2, Save,
-  Lock, Clock, Users, Key, Globe, Info,
+  Lock, Clock, Users, Key, Globe,
 } from 'lucide-react'
 
 interface Policy {
@@ -117,10 +117,7 @@ export default function SecurityPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800">
           <ShieldCheck size={18} className="text-white" />
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Segurança Global</h1>
-          <p className="text-xs text-gray-400">Políticas de senha, sessão, bloqueio e 2FA para toda a plataforma</p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900">Segurança Global</h1>
       </div>
 
       {error   && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertCircle size={15} />{error}</div>}
@@ -177,9 +174,7 @@ export default function SecurityPage() {
                 onChange={setNum('sessionMaxAgeSecs')}
               />
               <p className="mt-1 text-xs text-gray-400">
-                {Math.round((policy.sessionMaxAgeSecs ?? 28800) / 3600)}h ociosas. A sessão é <b>deslizante</b>: enquanto houver
-                atividade ela se renova sozinha (o Painel de Atendimento fica logado direto p/ a fila funcionar). Só expira após
-                esse tempo <b>sem uso</b>.
+                Expira após {Math.round((policy.sessionMaxAgeSecs ?? 28800) / 3600)}h sem uso.
               </p>
             </div>
             <div>
@@ -228,13 +223,11 @@ export default function SecurityPage() {
               checked={policy.require2FAForMaster ?? true}
               onChange={setFlag('require2FAForMaster')}
               label="2FA obrigatório para MASTER"
-              sublabel="Recomendado: sempre habilitado"
             />
             <Toggle
               checked={policy.require2FA ?? false}
               onChange={setFlag('require2FA')}
               label="2FA obrigatório para todos os usuários"
-              sublabel="Afeta todos os roles, incluindo ADM, GERENTE e VENDEDOR"
             />
           </div>
         </div>
@@ -251,10 +244,6 @@ export default function SecurityPage() {
               onChange={e => setIpInput(e.target.value)}
               placeholder={"192.168.1.0/24\n203.0.113.5"}
             />
-            <p className="mt-1 flex items-center gap-1 text-xs text-gray-400">
-              <Info size={11} />
-              Suporte a IPs individuais e ranges CIDR. Deixe vazio para permitir acesso de qualquer IP.
-            </p>
           </div>
         </div>
 

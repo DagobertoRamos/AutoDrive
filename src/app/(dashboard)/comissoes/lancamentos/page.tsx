@@ -110,7 +110,6 @@ export default function LancamentosComissaoPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Lançamentos de Comissão</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Comissões geradas por venda, retorno, garantia e serviços.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowManual(true)} className="btn-primary text-xs">

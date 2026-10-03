@@ -84,7 +84,7 @@ export default function VeiculosParadosPage() {
                   <tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>
                 ))
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-14 text-center"><Clock size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum veículo parado há {minDays}+ dias. 👍</p></td></tr>
+                <tr><td colSpan={6} className="py-14 text-center"><Clock size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum veículo parado há {minDays}+ dias.</p></td></tr>
               ) : (
                 rows.map((v) => (
                   <tr key={v.id} className="hover:bg-gray-50">

@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { ToggleRight, Plus, Trash2, X, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Flag { id: string; key: string; name: string; enabled: boolean; rolloutPct: number; notes: string | null }
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -36,6 +37,8 @@ export default function MasterFlagsPage() {
     await fetch(`/api/master/financing/flags/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) }); await load()
   }
   const create = async () => {
+    if (!/^fi_[a-z0-9_]+$/.test(form.key.trim())) { setError('Informe a chave no formato fi_minha_flag.'); return }
+    if (!form.name.trim()) { setError('Informe o nome.'); return }
     setSaving(true); setError(null)
     try {
       const res = await fetch('/api/master/financing/flags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(form) })
@@ -55,7 +58,7 @@ export default function MasterFlagsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><ToggleRight size={20} className="text-brand-600" />Feature Flags F&amp;I</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} flag(s) globais (fi_*)`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} flag(s)`}</p>
         </div>
         <button onClick={() => { setError(null); setModal(true) }} className="btn-primary text-sm"><Plus size={15} />Nova flag</button>
       </div>
@@ -91,8 +94,8 @@ export default function MasterFlagsPage() {
           <div className="my-8 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">Nova feature flag</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="space-y-3">
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Chave <span className="text-red-500">*</span></label><input className={cn(inputCls, 'font-mono')} value={form.key} onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))} placeholder="fi_credere_simulacao" /><p className="mt-1 text-[11px] text-gray-400">Formato fi_minha_flag (minúsculas e _).</p></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Simulação via Credere" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Chave <RequiredMark /></label><input className={cn(inputCls, 'font-mono')} value={form.key} onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))} placeholder="fi_credere_simulacao" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex.: Simulação via Credere" /></div>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.enabled} onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />Ativa</label>
                 <div className="flex items-center gap-1.5 text-sm text-gray-600"><span>Rollout</span><input type="number" min={0} max={100} value={form.rolloutPct} onChange={(e) => setForm((f) => ({ ...f, rolloutPct: Number(e.target.value) }))} className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm" /><span>%</span></div>

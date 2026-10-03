@@ -116,7 +116,7 @@ export default function PendenciasVendedorPage() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por cliente, placa ou negociação..."
+            placeholder="Cliente, placa ou negociação"
             className="input pl-9"
           />
         </div>
@@ -139,7 +139,6 @@ export default function PendenciasVendedorPage() {
         <div className="flex flex-col items-center justify-center py-16 text-gray-400">
           <Filter size={40} strokeWidth={1} />
           <p className="mt-3 text-base font-medium">Nenhuma pendência encontrada</p>
-          <p className="text-sm">Tente ajustar os filtros ou aguarde novas pendências.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

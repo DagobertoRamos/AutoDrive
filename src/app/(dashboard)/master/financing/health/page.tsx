@@ -80,7 +80,7 @@ export default function MasterHealthPage() {
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (<tr key={i}><td className="px-4 py-3" colSpan={3}><div className="h-4 animate-pulse rounded bg-gray-200" /></td></tr>))
             ) : !h || h.recentErrors.length === 0 ? (
-              <tr><td className="py-10 text-center text-sm text-gray-400" colSpan={3}>Nenhum erro recente. 🎉</td></tr>
+              <tr><td className="py-10 text-center text-sm text-gray-400" colSpan={3}>Nenhum erro recente.</td></tr>
             ) : h.recentErrors.map((e) => (
               <tr key={e.id} className="hover:bg-gray-50">
                 <td className="whitespace-nowrap px-4 py-2.5 text-xs text-gray-500">{dt(e.createdAt)}</td>

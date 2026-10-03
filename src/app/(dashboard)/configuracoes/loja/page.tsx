@@ -10,6 +10,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Building2, Save, RefreshCw, CheckCircle, AlertCircle, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
+import { isValidCNPJ } from '@/lib/br-docs/cnpj'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { isValidCEP } from '@/lib/br-docs/cep'
 
 interface StoreForm {
   nomeFantasia: string; razaoSocial: string; cnpj: string; inscricaoEstadual: string
@@ -31,10 +35,10 @@ const STATUS_LABEL: Record<string, string> = { ATIVO: 'Ativo', TESTE: 'Em teste'
 function inputCls(extra?: string) {
   return cn('w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500', extra)
 }
-function Field({ label, value, onChange, ph, span }: { label: string; value: string; onChange: (v: string) => void; ph?: string; span?: boolean }) {
+function Field({ label, value, onChange, ph, span, required }: { label: string; value: string; onChange: (v: string) => void; ph?: string; span?: boolean; required?: boolean }) {
   return (
     <div className={span ? 'sm:col-span-2' : ''}>
-      <label className="mb-1 block text-xs font-medium text-gray-700">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-gray-700">{label}{required && <> <RequiredMark /></>}</label>
       <input className={inputCls()} value={value} onChange={(e) => onChange(e.target.value)} placeholder={ph} />
     </div>
   )
@@ -71,7 +75,31 @@ export default function ConfiguracaoLojaPage() {
 
   useEffect(() => { load() }, [load])
 
+  const validate = (): string | null => {
+    const req: [keyof StoreForm, string][] = [
+      ['nomeFantasia', 'Informe o nome fantasia.'],
+      ['razaoSocial', 'Informe a razão social.'],
+      ['cnpj', 'Informe o CNPJ.'],
+      ['phone', 'Informe o telefone.'],
+      ['email', 'Informe o e-mail.'],
+      ['zipCode', 'Informe o CEP.'],
+      ['logradouro', 'Informe o logradouro.'],
+      ['numero', 'Informe o número.'],
+      ['bairro', 'Informe o bairro.'],
+      ['city', 'Informe a cidade.'],
+      ['state', 'Informe a UF.'],
+    ]
+    for (const [k, m] of req) if (!String(form[k] ?? '').trim()) return m
+    if (!isValidCNPJ(form.cnpj)) return 'CNPJ inválido.'
+    if (!isValidPhone(form.phone)) return 'Telefone inválido.'
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return 'E-mail inválido.'
+    if (!isValidCEP(form.zipCode)) return 'CEP inválido.'
+    return null
+  }
+
   const save = async () => {
+    const invalid = validate()
+    if (invalid) { flash(false, invalid); return }
     setSaving(true)
     try {
       const res = await fetch('/api/settings/store', {
@@ -86,10 +114,7 @@ export default function ConfiguracaoLojaPage() {
   return (
     <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Configuração da Loja</h1>
-          <p className="mt-1 text-sm text-gray-500">Dados cadastrais da sua loja. Plano e status são gerenciados pelo suporte (MASTER).</p>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Configuração da Loja</h1>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs">
           <RefreshCw size={13} className={cn(loading && 'animate-spin')} />Recarregar
         </button>
@@ -104,7 +129,7 @@ export default function ConfiguracaoLojaPage() {
       {/* Contrato (somente leitura — MASTER) */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
         <Lock size={14} className="text-gray-400" />
-        <span className="text-gray-600">Contrato (gerenciado pelo MASTER):</span>
+        <span className="text-gray-600">Contrato:</span>
         <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-gray-700">ID {meta.publicId ?? '—'}</span>
         <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">Plano: {meta.plan ? (PLAN_LABEL[meta.plan] ?? meta.plan) : '—'}</span>
         <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Status: {meta.status ? (STATUS_LABEL[meta.status] ?? meta.status) : '—'}</span>
@@ -113,12 +138,12 @@ export default function ConfiguracaoLojaPage() {
       <div className="card">
         <div className="section-header"><Building2 size={16} className="text-brand-700" /><h2 className="text-sm font-semibold text-gray-800">Dados da loja</h2></div>
         <div className="grid gap-4 p-5 sm:grid-cols-2">
-          <Field label="Nome fantasia" value={form.nomeFantasia} onChange={(v) => set('nomeFantasia', v)} ph="Nome comercial" />
-          <Field label="Razão social" value={form.razaoSocial} onChange={(v) => set('razaoSocial', v)} />
-          <Field label="CNPJ" value={form.cnpj} onChange={(v) => set('cnpj', v)} ph="00.000.000/0000-00" />
+          <Field label="Nome fantasia" required value={form.nomeFantasia} onChange={(v) => set('nomeFantasia', v)} />
+          <Field label="Razão social" required value={form.razaoSocial} onChange={(v) => set('razaoSocial', v)} />
+          <Field label="CNPJ" required value={form.cnpj} onChange={(v) => set('cnpj', v)} ph="00.000.000/0000-00" />
           <Field label="Inscrição estadual" value={form.inscricaoEstadual} onChange={(v) => set('inscricaoEstadual', v)} />
-          <Field label="Telefone" value={form.phone} onChange={(v) => set('phone', v)} />
-          <Field label="E-mail" value={form.email} onChange={(v) => set('email', v)} ph="contato@loja.com" />
+          <Field label="Telefone" required value={form.phone} onChange={(v) => set('phone', v)} />
+          <Field label="E-mail" required value={form.email} onChange={(v) => set('email', v)} ph="contato@loja.com" />
           <Field label="Slogan" value={form.slogan} onChange={(v) => set('slogan', v)} span />
         </div>
       </div>
@@ -126,13 +151,13 @@ export default function ConfiguracaoLojaPage() {
       <div className="card">
         <div className="section-header"><Building2 size={16} className="text-brand-700" /><h2 className="text-sm font-semibold text-gray-800">Endereço</h2></div>
         <div className="grid gap-4 p-5 sm:grid-cols-2">
-          <Field label="CEP" value={form.zipCode} onChange={(v) => set('zipCode', v)} />
-          <Field label="Logradouro" value={form.logradouro} onChange={(v) => set('logradouro', v)} />
-          <Field label="Número" value={form.numero} onChange={(v) => set('numero', v)} />
+          <Field label="CEP" required value={form.zipCode} onChange={(v) => set('zipCode', v)} />
+          <Field label="Logradouro" required value={form.logradouro} onChange={(v) => set('logradouro', v)} />
+          <Field label="Número" required value={form.numero} onChange={(v) => set('numero', v)} />
           <Field label="Complemento" value={form.complemento} onChange={(v) => set('complemento', v)} />
-          <Field label="Bairro" value={form.bairro} onChange={(v) => set('bairro', v)} />
-          <Field label="Cidade" value={form.city} onChange={(v) => set('city', v)} />
-          <Field label="UF" value={form.state} onChange={(v) => set('state', v)} />
+          <Field label="Bairro" required value={form.bairro} onChange={(v) => set('bairro', v)} />
+          <Field label="Cidade" required value={form.city} onChange={(v) => set('city', v)} />
+          <Field label="UF" required value={form.state} onChange={(v) => set('state', v)} />
         </div>
       </div>
 

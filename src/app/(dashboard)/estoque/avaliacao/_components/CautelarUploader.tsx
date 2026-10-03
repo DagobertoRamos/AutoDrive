@@ -147,9 +147,8 @@ export function CautelarUploader({
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {uploading
               ? `Enviando ${progress.done}/${progress.total}...`
-              : 'Adicionar arquivos (PDF, JPG, PNG, WebP)'}
+              : 'Adicionar arquivos'}
           </button>
-          <p className="mt-2 text-[11px] text-gray-500">Múltiplos arquivos. Tamanho máximo definido pelo servidor.</p>
         </div>
       )}
 
@@ -160,7 +159,7 @@ export function CautelarUploader({
       )}
 
       {existingFiles.length === 0 ? (
-        <p className="text-xs text-gray-500 italic">Nenhum arquivo cautelar enviado ainda.</p>
+        <p className="text-xs text-gray-500 italic">Nenhum arquivo enviado.</p>
       ) : (
         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {existingFiles.map((f) => (

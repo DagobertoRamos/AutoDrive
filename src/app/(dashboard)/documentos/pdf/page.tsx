@@ -104,12 +104,7 @@ export default function PdfPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Leitura de Contrato PDF</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Faça upload de um contrato em PDF para extração automática dos dados.
-        </p>
-      </div>
+      <h1 className="text-xl font-bold text-gray-900">Leitura de Contrato PDF</h1>
 
       {/* ── Upload area ──────────────────────────────────────────────────── */}
       {!file ? (

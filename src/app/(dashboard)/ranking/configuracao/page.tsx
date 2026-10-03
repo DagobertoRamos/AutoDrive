@@ -6,8 +6,9 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Trophy, Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Users, Search, SlidersHorizontal } from 'lucide-react'
+import { Trophy, Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Users, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface RuleWeights {
   weightSale:            number
@@ -54,9 +55,9 @@ const FIELDS: { key: WeightKey; label: string; hint?: string }[] = [
   { key: 'weightDocumentation',   label: 'Documento / despachante concluído' },
   { key: 'weightWarranty',        label: 'Garantia estendida vendida' },
   { key: 'weightService',         label: 'Serviço vendido' },
-  { key: 'weightOverduePendency', label: 'Pendência vencida', hint: 'penalização (negativo)' },
-  { key: 'weightCanceledSale',    label: 'Venda cancelada', hint: 'penalização (negativo)' },
-  { key: 'weightLateDocument',    label: 'Documento atrasado', hint: 'penalização (negativo)' },
+  { key: 'weightOverduePendency', label: 'Pendência vencida', hint: 'Penalização' },
+  { key: 'weightCanceledSale',    label: 'Venda cancelada', hint: 'Penalização' },
+  { key: 'weightLateDocument',    label: 'Documento atrasado', hint: 'Penalização' },
 ]
 
 const DEFAULTS: RuleWeights = {
@@ -156,6 +157,7 @@ export default function RankingConfigPage() {
   }, [includeInactive, rankingType, roleFilter, search, selectedType.unitScoped, unitId])
 
   const save = async () => {
+    if (!name.trim()) { flash('Informe o nome da configuração.', false); return }
     setSaving(true)
     try {
       const res = await fetch('/api/ranking/rules', {
@@ -183,6 +185,7 @@ export default function RankingConfigPage() {
   }
 
   const saveParticipants = async () => {
+    if (selectedType.unitScoped && !unitId) { flash('Selecione a unidade.', false); return }
     setParticipantsSaving(true)
     try {
       const res = await fetch('/api/ranking/participants', {
@@ -231,10 +234,7 @@ export default function RankingConfigPage() {
   return (
     <div className="max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Configurações do Ranking</h1>
-          <p className="mt-1 text-sm text-gray-500">Pesos gerais e participação por tipo de ranking.</p>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Configurações do Ranking</h1>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs">
           <RefreshCw size={13} className={cn(loading && 'animate-spin')} />Recarregar
         </button>
@@ -253,7 +253,7 @@ export default function RankingConfigPage() {
         </div>
         <div className="p-5 space-y-1">
           <div className="mb-4">
-            <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome da configuração</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome da configuração <RequiredMark /></label>
             <input className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           {FIELDS.map((f) => (
@@ -309,7 +309,7 @@ export default function RankingConfigPage() {
             </label>
 
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-gray-700">Unidade</span>
+              <span className="mb-1.5 block text-xs font-medium text-gray-700">Unidade {selectedType.unitScoped && <RequiredMark />}</span>
               <select
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 value={unitId}
@@ -384,7 +384,7 @@ export default function RankingConfigPage() {
                 <RefreshCw className="h-4 w-4 animate-spin" />Carregando participantes...
               </div>
             ) : participantUsers.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-gray-500">Nenhum colaborador encontrado para este filtro.</div>
+              <div className="px-4 py-6 text-sm text-gray-500">Nenhum colaborador.</div>
             ) : (
               <div className="divide-y divide-gray-100">
                 {participantUsers.map((user) => (
@@ -414,10 +414,7 @@ export default function RankingConfigPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <SlidersHorizontal size={14} />
-              Sem marcação explícita, o colaborador participa por padrão.
-            </div>
+            <span />
             <button
               type="button"
               onClick={saveParticipants}

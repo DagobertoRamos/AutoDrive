@@ -739,7 +739,6 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
         {/* ── Fotos da avaliação (antigas; as do anúncio ficam em Fotos) ── */}
         {activeTab === 'fotos-avaliacao' && (
           <div className="space-y-2">
-            <p className="text-xs text-gray-500">Fotos tiradas nas avaliações deste carro (inclusive de passagens anteriores pela loja), guardadas para comparação. As fotos do anúncio ficam na aba Fotos.</p>
             <VehicleHistoryPanel vehicleId={vehicle.id} mode="photos" />
           </div>
         )}
@@ -747,7 +746,6 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
         {/* ── Histórico do carro na loja (mesma placa/chassi/renavam) ── */}
         {activeTab === 'historico' && (
           <div className="space-y-2">
-            <p className="text-xs text-gray-500">Todas as avaliações e passagens deste carro pelo estoque. Se ele voltar numa troca, o histórico aparece aqui e na avaliação nova.</p>
             <VehicleHistoryPanel vehicleId={vehicle.id} mode="timeline" />
           </div>
         )}
@@ -884,10 +882,6 @@ function VehicleDocumentsTab({ vehicleId }: { vehicleId: string }) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400">
         <p className="text-sm">Nenhum documento vinculado a este veículo.</p>
-        <p className="text-xs text-gray-500">
-          O CRLV enviado na avaliação aparece aqui automaticamente.
-          Contratos, NFe e comprovantes aparecem quando vinculados a negociações.
-        </p>
       </div>
     )
   }

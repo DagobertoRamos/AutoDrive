@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Mail, Save, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle, Send, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface EmailConfig {
   id?:          string
@@ -39,6 +40,7 @@ export default function EmailConfigPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [testEmail, setTestEmail]       = useState('')
   const [feedback, setFeedback]         = useState<{ ok: boolean; msg: string } | null>(null)
+  const [hasPassword, setHasPassword]   = useState(false)
 
   const fetchConfig = useCallback(async () => {
     setLoading(true)
@@ -47,6 +49,7 @@ export default function EmailConfigPage() {
       const data = await res.json()
       if (data.success && data.data) {
         setConfig({ ...DEFAULTS, ...data.data, password: '' })
+        setHasPassword(!!data.data.password)
       }
     } catch { /* silent */ }
     finally { setLoading(false) }
@@ -64,8 +67,7 @@ export default function EmailConfigPage() {
         <div>
           <p className="text-lg font-semibold text-gray-800">Configuração centralizada</p>
           <p className="mt-1 max-w-md text-sm text-gray-500">
-            As configurações de e-mail são gerenciadas globalmente pelo administrador da plataforma.
-            Entre em contato com o suporte se precisar alterar as configurações.
+            Gerenciada pelo administrador da plataforma.
           </p>
         </div>
       </div>
@@ -76,17 +78,29 @@ export default function EmailConfigPage() {
     setConfig((p) => ({ ...p, [key]: value }))
 
   const handleSave = async () => {
-    setSaving(true)
     setFeedback(null)
+    const missing =
+      !config.host.trim()                 ? 'Informe o host SMTP.'
+      : !(config.port > 0)                ? 'Informe a porta.'
+      : !config.user.trim()               ? 'Informe o usuário.'
+      : !hasPassword && !config.password  ? 'Informe a senha.'
+      : null
+    if (missing) {
+      setFeedback({ ok: false, msg: missing })
+      return
+    }
+    setSaving(true)
     try {
       const res  = await fetch('/api/settings/email', {
         method:  config.id ? 'PATCH' : 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        // Senha vazia com senha já salva = mantém a atual (não envia o campo).
+        body: JSON.stringify({ ...config, password: config.password || undefined }),
       })
       const data = await res.json()
       setFeedback({ ok: data.success, msg: data.success ? 'Configuração salva com sucesso.' : (data.error ?? 'Erro ao salvar.') })
+      if (data.success && config.password) setHasPassword(true)
       if (data.success && data.data) setConfig((p) => ({ ...p, id: data.data.id, password: '' }))
     } catch {
       setFeedback({ ok: false, msg: 'Erro de conexão.' })
@@ -129,9 +143,6 @@ export default function EmailConfigPage() {
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Configuração de E-mail</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Configure o servidor SMTP para envio de notificações e relatórios por e-mail.
-        </p>
       </div>
 
       {/* ── Feedback ──────────────────────────────────────────────────────── */}
@@ -156,7 +167,7 @@ export default function EmailConfigPage() {
         <div className="p-4 space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="sm:col-span-2">
-              <label className="label">Host SMTP *</label>
+              <label className="label">Host SMTP <RequiredMark /></label>
               <input
                 value={config.host}
                 onChange={(e) => set('host', e.target.value)}
@@ -165,7 +176,7 @@ export default function EmailConfigPage() {
               />
             </div>
             <div>
-              <label className="label">Porta *</label>
+              <label className="label">Porta <RequiredMark /></label>
               <input
                 type="number"
                 value={config.port}
@@ -178,7 +189,7 @@ export default function EmailConfigPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="label">Usuário / E-mail *</label>
+              <label className="label">Usuário / E-mail <RequiredMark /></label>
               <input
                 value={config.user}
                 onChange={(e) => set('user', e.target.value)}
@@ -188,12 +199,12 @@ export default function EmailConfigPage() {
               />
             </div>
             <div>
-              <label className="label">Senha / App Password *</label>
+              <label className="label">Senha / App Password {!hasPassword && <RequiredMark />}</label>
               <div className="relative">
                 <input
                   value={config.password}
                   onChange={(e) => set('password', e.target.value)}
-                  placeholder={config.id ? '(mantém a senha atual)' : 'senha do app'}
+                  placeholder={hasPassword ? 'Manter atual' : ''}
                   type={showPassword ? 'text' : 'password'}
                   className="input pr-10"
                 />
@@ -267,9 +278,6 @@ export default function EmailConfigPage() {
               <label htmlFor="active" className="text-sm font-medium text-gray-700">
                 Envio de e-mail ativo
               </label>
-              <p className="text-xs text-gray-400">
-                Desativando, nenhum e-mail será enviado pelo sistema.
-              </p>
             </div>
           </div>
         </div>
@@ -292,9 +300,6 @@ export default function EmailConfigPage() {
             <h2 className="text-sm font-semibold text-gray-800">Testar Configuração</h2>
           </div>
           <div className="p-4 space-y-3">
-            <p className="text-sm text-gray-500">
-              Envie um e-mail de teste para verificar se as configurações estão corretas.
-            </p>
             <div className="flex gap-2">
               <input
                 value={testEmail}

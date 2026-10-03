@@ -20,6 +20,7 @@ import {
   ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -429,8 +430,9 @@ export default function PlanilhaConfigModal({
     setGlobalErr('')
     setGlobalOk('')
 
-    if (!planilha.name.trim()) { setGlobalErr('Nome do importador é obrigatório.'); setActiveTab('planilha'); return }
-    if (!planilha.spreadsheetId.trim()) { setGlobalErr('Spreadsheet ID é obrigatório.'); setActiveTab('planilha'); return }
+    if (!planilha.name.trim()) { setGlobalErr('Informe o nome do importador.'); setActiveTab('planilha'); return }
+    if (!planilha.spreadsheetId.trim()) { setGlobalErr('Informe o Spreadsheet ID.'); setActiveTab('planilha'); return }
+    if (tabs.some(t => !t.sheetName.trim())) { setGlobalErr('Informe o nome de todas as abas.'); setActiveTab('abas'); return }
 
     setSaving(true)
     try {
@@ -671,9 +673,9 @@ function PlanilhaSection({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={lbl}>Nome do importador *</label>
+            <label className={lbl}>Nome do importador <RequiredMark /></label>
             <input className={inp} value={value.name} onChange={e => set('name', e.target.value)}
-              placeholder="Painel Master — EasyCar" />
+              placeholder="Ex.: Planilha Matriz" />
           </div>
           <div className="flex flex-col justify-end pb-0.5">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -687,7 +689,7 @@ function PlanilhaSection({
         <div>
           <label className={lbl}>Descrição</label>
           <input className={inp} value={value.description} onChange={e => set('description', e.target.value)}
-            placeholder="Planilha principal de controle de vendas e comissões" />
+            />
         </div>
       </div>
 
@@ -699,15 +701,14 @@ function PlanilhaSection({
 
         <div>
           <label className={lbl}>
-            Spreadsheet ID *
-            <span className="ml-1 font-normal text-gray-400">(da URL da planilha)</span>
+            Spreadsheet ID <RequiredMark />
           </label>
           <div className="flex gap-2">
             <input
               className={`${inp} font-mono flex-1`}
               value={value.spreadsheetId}
               onChange={e => set('spreadsheetId', e.target.value)}
-              placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+              placeholder="ID na URL da planilha"
             />
             <button
               type="button"
@@ -719,9 +720,6 @@ function PlanilhaSection({
               Testar conexão
             </button>
           </div>
-          <p className="mt-1 text-xs text-gray-400">
-            Encontrado na URL: docs.google.com/spreadsheets/d/<strong>[ID]</strong>/edit
-          </p>
         </div>
 
         {/* Resultado do teste */}
@@ -733,7 +731,7 @@ function PlanilhaSection({
             {testResult.success ? (
               <>
                 <p className="font-semibold text-emerald-800 flex items-center gap-2">
-                  <CheckCircle2 size={15} /> Conexão estabelecida com sucesso!
+                  <CheckCircle2 size={15} /> Conexão OK
                 </p>
                 {testResult.spreadsheetTitle && (
                   <p className="text-emerald-700">
@@ -772,10 +770,7 @@ function PlanilhaSection({
 
         {/* Dica de compartilhamento */}
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
-          <p className="font-semibold">⚠️ Pré-requisito: compartilhar a planilha</p>
-          <p>
-            Vá em <strong>Arquivo → Compartilhar</strong> e adicione o e-mail da Service Account como <strong>Leitor</strong>:
-          </p>
+          <p className="font-semibold">Compartilhe a planilha como Leitor com:</p>
           <code className="block mt-1 rounded bg-amber-100 px-2 py-1 text-amber-900">
             easycar@newagent-irof.iam.gserviceaccount.com
           </code>
@@ -832,9 +827,6 @@ function AbasSection({
           <div>
             <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
               <RefreshCw size={14} className="text-emerald-600" /> Auto-descoberta de abas
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Conecta ao Google Sheets e lista todas as abas disponíveis automaticamente.
             </p>
           </div>
           <button
@@ -920,16 +912,16 @@ function AbasSection({
               <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={lbl}>Nome da aba (exato, como no Google) *</label>
+                    <label className={lbl}>Nome da aba (exato) <RequiredMark /></label>
                     <input className={inp} value={tab.sheetName}
                       onChange={e => updateTab(tab._key, { sheetName: e.target.value })}
-                      placeholder="Janeiro" />
+                      placeholder="Ex.: Janeiro" />
                   </div>
                   <div>
-                    <label className={lbl}>Nome interno (exibição no sistema)</label>
+                    <label className={lbl}>Nome interno</label>
                     <input className={inp} value={tab.internalName}
                       onChange={e => updateTab(tab._key, { internalName: e.target.value })}
-                      placeholder="Vendas de Janeiro" />
+                      placeholder="Ex.: Vendas de Janeiro" />
                   </div>
                 </div>
 
@@ -938,8 +930,7 @@ function AbasSection({
                     <label className={lbl}>GID numérico</label>
                     <input className={`${inp} font-mono`} value={tab.gid}
                       onChange={e => updateTab(tab._key, { gid: e.target.value })}
-                      placeholder="107306894" />
-                    <p className="mt-0.5 text-[10px] text-gray-400">Número após ?gid= na URL</p>
+                      placeholder="Ex.: 107306894" />
                   </div>
                   <div>
                     <label className={lbl}>Mês referência</label>
@@ -1039,7 +1030,7 @@ function MapeamentoSection({
     return (
       <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
         <GitMerge size={24} strokeWidth={1} />
-        <p className="text-sm">Ative pelo menos uma aba na seção &quot;Abas&quot; para configurar o mapeamento.</p>
+        <p className="text-sm">Nenhuma aba ativa.</p>
       </div>
     )
   }
@@ -1074,7 +1065,6 @@ function MapeamentoSection({
           <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
             <div>
               <p className="text-sm font-medium text-gray-700">Carregar colunas do Google Sheets</p>
-              <p className="text-xs text-gray-400">Busca os cabeçalhos da planilha e sugere o mapeamento automaticamente.</p>
             </div>
             <button
               type="button"
@@ -1305,7 +1295,7 @@ function AutomacaoSection({
           <div className="flex items-center gap-2">
             <input type="number" min={1} max={1440}
               className={`${inp} w-32`}
-              placeholder="Ex: 45"
+              placeholder="Ex.: 45"
               value={value.frequencyMinutes || ''}
               onChange={e => set('frequencyMinutes', Number(e.target.value))}
             />
@@ -1401,7 +1391,7 @@ function AutomacaoSection({
             <label className={lbl}>Destino das notificações de erro</label>
             <input className={inp} value={value.errorNotifyTarget}
               onChange={e => set('errorNotifyTarget', e.target.value)}
-              placeholder="erro@empresa.com ou +5511999990000" />
+              placeholder="Ex.: erro@empresa.com" />
           </div>
         )}
       </div>

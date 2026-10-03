@@ -69,10 +69,7 @@ export default function SiteVisitsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><BarChart3 size={20} className="text-brand-600" />Visitas do site</h1>
-          <p className="text-sm text-gray-500">Contador próprio e anônimo (sem cookies de terceiros). Acessos da equipe logada no painel não contam.</p>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><BarChart3 size={20} className="text-brand-600" />Visitas do site</h1>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
             {PERIODS.map(([k, l]) => <button key={k} onClick={() => setPeriod(k)} className={cn('rounded-md px-2.5 py-1 text-xs font-medium', period === k ? 'bg-brand-600 text-white' : 'text-gray-600 hover:bg-gray-50')}>{l}</button>)}
@@ -138,7 +135,7 @@ export default function SiteVisitsPage() {
             <Bars title="Páginas mais vistas" rows={d.sections} labels={SECTION_LABELS} empty="Sem visitas no período." />
             <Bars title="Aparelhos (visitantes)" rows={d.devices} labels={DEVICE_LABELS} empty="Sem visitas no período." />
             <Bars title="O que buscaram no estoque" rows={d.searches} empty="Nenhuma busca no período." />
-            <Bars title="Cidades (aproximado)" rows={d.cities} empty="Aparece com o site publicado (a hospedagem informa a cidade)." />
+            <Bars title="Cidades (aproximado)" rows={d.cities} empty="Sem dados no período." />
           </div>
         </>
       )}

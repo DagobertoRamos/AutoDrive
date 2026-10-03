@@ -339,7 +339,7 @@ export default function CentralAvisosPage() {
           </p>
           {complianceOnly && (
             <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-amber-700">
-              <p>Mostrando somente ocorrências de conformidade da fila.</p>
+              <p>Somente conformidade da fila.</p>
               {sellerScoped && <p>Filtro por vendedor ativo.</p>}
               <Link
                 href="/vendedor-da-vez/relatorios"
@@ -373,8 +373,8 @@ export default function CentralAvisosPage() {
               onClick={handleToggleOpen}
               disabled={togglingOpen}
               title={openToAll
-                ? 'A Central está liberada para todos os colaboradores. Clique para restringir ao gerente+.'
-                : 'A Central aparece só para o gerente+. Clique para liberar a todos os colaboradores.'}
+                ? 'Liberada para todos os colaboradores'
+                : 'Restrita a gerente+'}
               className={cn(
                 'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition',
                 openToAll
@@ -505,7 +505,7 @@ export default function CentralAvisosPage() {
           <input
             value={filters.search}
             onChange={(e) => setFilter('search', e.target.value)}
-            placeholder="Buscar cliente, placa, assunto, responsável..."
+            placeholder="Cliente, placa, assunto ou responsável"
             className="input pl-9"
           />
         </div>
@@ -515,10 +515,10 @@ export default function CentralAvisosPage() {
           className="input w-auto"
         >
           <option value="">Prioridade</option>
-          <option value="URGENTE">🔴 Urgente</option>
-          <option value="ALTA">🟠 Alta</option>
-          <option value="MEDIA">🟡 Média</option>
-          <option value="BAIXA">⚪ Baixa</option>
+          <option value="URGENTE">Urgente</option>
+          <option value="ALTA">Alta</option>
+          <option value="MEDIA">Média</option>
+          <option value="BAIXA">Baixa</option>
         </select>
         <select
           value={filters.severity}
@@ -602,11 +602,6 @@ export default function CentralAvisosPage() {
                   <td colSpan={colSpan} className="py-14 text-center">
                     <Filter size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} />
                     <p className="text-sm text-gray-400">{isArchiveView ? 'Nenhuma pendência arquivada' : 'Nenhuma pendência encontrada'}</p>
-                    {isManager && (
-                      <p className="mt-1 text-xs text-gray-400">
-                        {isArchiveView ? 'Pendências arquivadas aparecerão aqui para consulta.' : 'Tente executar uma varredura automática para detectar novas pendências.'}
-                      </p>
-                    )}
                   </td>
                 </tr>
               ) : (

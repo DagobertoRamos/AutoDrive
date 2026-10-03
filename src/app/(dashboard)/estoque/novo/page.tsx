@@ -22,10 +22,7 @@ export default function EstoqueNovoPage() {
     <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
       <ClipboardCheck className="h-14 w-14 text-brand-500 animate-pulse" />
       <h2 className="text-xl font-bold text-gray-800">Avaliação obrigatória</h2>
-      <p className="text-sm text-gray-500 max-w-sm">
-        Para cadastrar um veículo no estoque é necessário realizar uma avaliação primeiro.
-        Redirecionando...
-      </p>
+      <p className="text-sm text-gray-500">Redirecionando...</p>
     </div>
   )
 }

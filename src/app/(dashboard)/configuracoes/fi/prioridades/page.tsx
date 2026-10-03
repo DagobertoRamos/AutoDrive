@@ -63,7 +63,7 @@ export default function FiPrioritiesPage() {
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
         <div>
           <p className="text-lg font-semibold text-gray-800">Configuração restrita</p>
-          <p className="mt-1 max-w-md text-sm text-gray-500">As prioridades de envio são definidas pela loja (administração/gerência/financeiro).</p>
+          <p className="mt-1 max-w-md text-sm text-gray-500">Acesso restrito à administração, gerência e financeiro.</p>
         </div>
       </div>
     )
@@ -74,7 +74,7 @@ export default function FiPrioritiesPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Prioridades de Envio</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : 'Ordene os bancos: as fichas seguem de cima para baixo.'}</p>
+          {loading && <p className="mt-0.5 text-sm text-gray-500">Carregando...</p>}
         </div>
         <button onClick={save} disabled={saving || loading || rows.length === 0} className="btn-primary text-sm disabled:opacity-50"><Save size={15} />{saving ? 'Salvando...' : 'Salvar ordem'}</button>
       </div>
@@ -87,7 +87,7 @@ export default function FiPrioritiesPage() {
         {loading ? (
           <div className="divide-y divide-gray-100">{Array.from({ length: 4 }).map((_, i) => (<div key={i} className="px-4 py-3"><div className="h-5 animate-pulse rounded bg-gray-200" /></div>))}</div>
         ) : rows.length === 0 ? (
-          <div className="py-14 text-center"><ListOrdered size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum banco ativo. Cadastre bancos em Configurações &gt; F&amp;I &gt; Bancos da Loja.</p></div>
+          <div className="py-14 text-center"><ListOrdered size={32} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum banco ativo.</p></div>
         ) : (
           <ul className="divide-y divide-gray-100">
             {rows.map((r, i) => (

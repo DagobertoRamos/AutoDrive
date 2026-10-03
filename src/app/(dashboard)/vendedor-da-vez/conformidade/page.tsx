@@ -16,6 +16,7 @@ import {
   Settings, Shield, ShieldAlert, ShieldCheck, User, X, FileWarning,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import Link from 'next/link'
 
 type TabId = 'overview' | 'occurrences' | 'penalties' | 'restrictions' | 'my'
@@ -61,9 +62,7 @@ export default function ConformidadePage() {
         <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
           <Shield size={20} className="text-brand-600" />Conformidade e Penalidades
         </h1>
-        <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-          Central de ocorrências, penalidades confirmadas e restrições da fila de atendimento.
-        </p>
+
       </div>
 
       {/* ── Item 1: Banner de módulo desativado ─────────────────────────────── */}
@@ -145,7 +144,7 @@ function OverviewTab({ isManager, onComplianceStatus }: { isManager: boolean; on
 
       {restrictions.length > 0 && (
         <div className="rounded-xl border border-red-200 bg-white dark:border-red-900 dark:bg-slate-900">
-          <div className="border-b border-red-100 px-4 py-3 dark:border-red-900/50"><p className="text-sm font-semibold text-red-700 dark:text-red-400">🚫 Restrições ativas da fila</p></div>
+          <div className="border-b border-red-100 px-4 py-3 dark:border-red-900/50"><p className="text-sm font-semibold text-red-700 dark:text-red-400">Restrições ativas da fila</p></div>
           <div className="divide-y divide-gray-50 dark:divide-white/5">
             {restrictions.map(r => (
               <div key={r.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
@@ -254,20 +253,20 @@ function OccurrencesTab({ isManager }: { isManager: boolean }) {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Vendedor *</label>
+              <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Vendedor <RequiredMark /></label>
               <select value={newForm.sellerId} onChange={e => setNewForm(f=>({...f,sellerId:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
                 <option value="">Selecione…</option>
                 {sellers.map(s => <option key={s.sellerId} value={s.sellerId}>{s.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Tipo *</label>
+              <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Tipo <RequiredMark /></label>
               <select value={newForm.kind} onChange={e => setNewForm(f=>({...f,kind:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
                 {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Gravidade *</label>
+              <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Gravidade <RequiredMark /></label>
               <select value={newForm.severity} onChange={e => setNewForm(f=>({...f,severity:e.target.value}))} className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white">
                 <option value="LOW">Baixa</option>
                 <option value="MEDIUM">Média</option>
@@ -277,8 +276,8 @@ function OccurrencesTab({ isManager }: { isManager: boolean }) {
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Descrição do ocorrido *</label>
-            <textarea rows={3} value={newForm.detail} onChange={e => setNewForm(f=>({...f,detail:e.target.value}))} placeholder="Descreva o que foi observado (mín. 10 caracteres)…" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+            <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Descrição do ocorrido <RequiredMark /></label>
+            <textarea rows={3} value={newForm.detail} onChange={e => setNewForm(f=>({...f,detail:e.target.value}))} placeholder="Mín. 10 caracteres" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
           </div>
 
           {createErr && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-400">{createErr}</p>}
@@ -301,7 +300,8 @@ function OccurrencesTab({ isManager }: { isManager: boolean }) {
               <button key={d} onClick={() => setDecision(d)} className={cn('rounded-lg border px-3 py-1.5 text-xs font-semibold', decision === d ? (d==='CONFIRMED'?'border-red-500 bg-red-600 text-white':'border-emerald-500 bg-emerald-600 text-white') : 'border-gray-300 bg-white text-gray-700')}>{d==='CONFIRMED'?'Confirmar penalidade':'Descartar ocorrência'}</button>
             ))}
           </div>
-          <textarea rows={2} value={decisionReason} onChange={e => setDecisionReason(e.target.value)} placeholder="Motivo obrigatório" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+          <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-gray-300">Motivo <RequiredMark /></label>
+          <textarea rows={2} value={decisionReason} onChange={e => setDecisionReason(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white" />
           <div className="mt-2 flex gap-2">
             <button onClick={() => setDecidingId(null)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-white/10">Cancelar</button>
             <button onClick={decide} disabled={busy || !decisionReason.trim()} className="rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">Confirmar decisão</button>
@@ -418,8 +418,7 @@ function RestrictionsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Vendedores com restrição operacional ativa na fila de atendimento.</p>
+      <div className="flex items-center justify-end">
         <button onClick={() => void load()} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500 dark:border-white/10 dark:bg-slate-800"><RefreshCw size={12} className={cn(loading && 'animate-spin')} /></button>
       </div>
       {loading ? <div className="h-40 animate-pulse rounded-xl bg-gray-100" /> : restrictions.length === 0 ? (
@@ -511,7 +510,7 @@ function MyTab() {
 
       {restriction && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/20">
-          <p className="text-sm font-semibold text-red-700 dark:text-red-400">🚫 Restrição operacional ativa</p>
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400">Restrição operacional ativa</p>
           {(restriction as {reason:string|null}).reason && <p className="mt-0.5 text-xs text-red-600">{(restriction as {reason:string|null}).reason}</p>}
           <p className="mt-0.5 text-[11px] tabular-nums text-red-600 dark:text-red-400">Válida até {fmtDT((restriction as {endsAt:string}).endsAt)}</p>
         </div>
@@ -542,9 +541,9 @@ function MyTab() {
               {/* Form de recurso inline */}
               {appealingId === p.id && (
                 <div className="mt-3 rounded-lg border border-brand-200 bg-brand-50/60 p-3 space-y-2 dark:border-brand-900/40 dark:bg-brand-950/20">
-                  <p className="text-[11px] font-semibold text-brand-800 dark:text-brand-300">Solicitar revisão desta penalidade</p>
-                  <textarea rows={3} value={appealReason} onChange={e => setAppealReason(e.target.value)} placeholder="Descreva o motivo do seu recurso (mín. 10 caracteres)…" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
-                  <p className="text-[10px] text-gray-400">Seu recurso gera uma pendência para a gestão analisar. Você receberá uma notificação quando for revisado.</p>
+                  <p className="text-[11px] font-semibold text-brand-800 dark:text-brand-300">Motivo do recurso <RequiredMark /></p>
+                  <textarea rows={3} value={appealReason} onChange={e => setAppealReason(e.target.value)} placeholder="Mín. 10 caracteres" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs dark:border-white/20 dark:bg-slate-700 dark:text-white" />
+
                   <div className="flex gap-2">
                     <button onClick={submitAppeal} disabled={appealBusy || appealReason.trim().length < 10} className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
                       {appealBusy ? <RefreshCw size={10} className="animate-spin" /> : <CheckCircle2 size={10} />}Enviar recurso

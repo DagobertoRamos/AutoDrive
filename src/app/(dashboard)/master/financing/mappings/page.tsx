@@ -71,7 +71,6 @@ export default function MasterMappingsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><GitCompareArrows size={20} className="text-brand-600" />Mapeamento de Campos</h1>
-          <p className="mt-0.5 text-sm text-gray-500">De/para entre o dado do AutoDrive e o caminho na API do provedor.</p>
         </div>
         <div className="flex items-center gap-2">
           <select className={cn(inputCls, 'w-auto')} value={selected} onChange={(e) => setSelected(e.target.value)} disabled={providers.length === 0}><option value="">Selecione o provedor...</option>{providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
@@ -82,14 +81,14 @@ export default function MasterMappingsPage() {
       {toast && <div className={cn('rounded-lg border px-4 py-2.5 text-sm', toast.ok ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700')}>{toast.msg}</div>}
 
       {providers.length === 0 && !loading ? (
-        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><GitCompareArrows size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Cadastre um provedor primeiro em Provedores F&amp;I.</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white py-14 text-center shadow-card"><GitCompareArrows size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum provedor.</p></div>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
           <div className="mb-2 grid grid-cols-[1fr_1fr_auto] gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
             <span>Campo AutoDrive</span><span>Caminho na API do provedor</span><span></span>
           </div>
           {pairs.length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-400">Nenhum mapeamento. Adicione o primeiro de/para.</p>
+            <p className="py-6 text-center text-sm text-gray-400">Nenhum mapeamento.</p>
           ) : (
             <div className="space-y-2">
               {pairs.map((p, i) => (

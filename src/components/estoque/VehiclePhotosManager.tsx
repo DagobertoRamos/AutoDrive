@@ -106,7 +106,7 @@ export function VehiclePhotosManager({ vehicleId, photos, onChange }: Props) {
         {busy && progress ? <Loader2 size={26} className="animate-spin text-brand-600" /> : <ImagePlus size={26} className="text-gray-400" />}
         <p className="text-sm text-gray-700">{progress ? `Enviando ${progress.done} de ${progress.total}…` : <><b>Arraste as fotos aqui</b> ou</>}</p>
         {!progress && <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className="btn-secondary text-xs"><Camera size={13} />Escolher fotos</button>}
-        <p className="text-[11px] text-gray-400">Várias de uma vez · JPG, PNG ou WebP · reduzimos o tamanho automaticamente · até 40 fotos</p>
+        <p className="text-[11px] text-gray-400">JPG, PNG ou WebP · até 40 fotos</p>
         <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files) void upload(e.target.files); e.target.value = '' }} />
       </div>
 
@@ -114,7 +114,7 @@ export function VehiclePhotosManager({ vehicleId, photos, onChange }: Props) {
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
         <Globe size={13} />
-        <span className="min-w-0 flex-1">{sorted.length ? 'Com fotos, este carro aparece publicado no site da loja. A foto marcada como Capa é a principal do anúncio.' : 'Sem fotos, o carro aparece no site como “Em breve”. Envie as fotos para publicá-lo.'}</span>
+        <span className="min-w-0 flex-1">{sorted.length ? 'Publicado no site da loja.' : 'Sem fotos: no site aparece como “Em breve”.'}</span>
         {sorted.length > 0 && (
           <button type="button" onClick={() => void prepare()} disabled={busy || preparing} className="btn-primary px-3 py-1.5 text-xs" title="Levar este veículo e as fotos para a Central de Publicações">
             {preparing ? <Loader2 size={13} className="animate-spin" /> : <Rocket size={13} />}Preparar publicação

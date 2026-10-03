@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react'
 import { FileText, Printer } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import { templatesByCategory, type DocCategory } from '@/lib/documents/templates'
 
 export default function DocumentGeneratorPanel({ category }: { category: DocCategory }) {
@@ -20,7 +21,10 @@ export default function DocumentGeneratorPanel({ category }: { category: DocCate
   const set = (k: string, v: string) => setValues((s) => ({ ...s, [k]: v }))
   const html = tpl ? tpl.render(values) : ''
 
+  const missing = tpl ? tpl.fields.some((f) => f.required && !(values[f.key] ?? '').trim()) : false
+
   const print = () => {
+    if (missing) return
     const w = window.open('', '_blank', 'width=820,height=900')
     if (!w) return
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${tpl?.title ?? 'Documento'}</title><style>@media print{@page{margin:18mm}} body{margin:24px}</style></head><body>${html}<script>window.onload=function(){window.print()}</script></body></html>`)
@@ -44,7 +48,7 @@ export default function DocumentGeneratorPanel({ category }: { category: DocCate
         <div className="grid grid-cols-2 gap-3">
           {tpl.fields.map((f) => (
             <div key={f.key} className={cn(f.full || f.type === 'textarea' ? 'col-span-2' : 'col-span-1')}>
-              <label className="mb-1 block text-xs font-medium text-gray-700">{f.label}{f.required && <span className="ml-0.5 text-red-500">*</span>}</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">{f.label}{f.required && <> <RequiredMark /></>}</label>
               {f.type === 'textarea' ? (
                 <textarea value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} className="min-h-[64px] w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
               ) : (
@@ -54,10 +58,11 @@ export default function DocumentGeneratorPanel({ category }: { category: DocCate
           ))}
         </div>
 
-        <div className="flex justify-end">
-          <button onClick={print} className="btn-primary text-sm"><Printer size={15} />Imprimir / Salvar PDF</button>
+        <div className="flex items-center justify-end gap-3">
+          {missing && <span className="text-xs text-red-600">Preencha os campos obrigatórios.</span>}
+          <button onClick={print} disabled={missing} className="btn-primary text-sm disabled:opacity-50"><Printer size={15} />Imprimir / Salvar PDF</button>
         </div>
-        <p className="text-[11px] text-gray-400">Modelo genérico para conveniência — confira o conteúdo e adapte conforme a necessidade jurídica. Campos em branco aparecem como linha para preenchimento manual.</p>
+        <p className="text-[11px] text-gray-400">Modelo genérico: confira o conteúdo antes de usar.</p>
       </div>
 
       {/* Pré-visualização */}

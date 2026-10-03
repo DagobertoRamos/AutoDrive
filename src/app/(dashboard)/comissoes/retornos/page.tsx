@@ -9,12 +9,13 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Percent, Save, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Save, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import RetornoPercentuais from '@/components/comissoes/RetornoPercentuais'
 import DocumentoConfigCard from '@/components/comissoes/DocumentoConfigCard'
 import GarantiaConfigCard from '@/components/comissoes/GarantiaConfigCard'
 import BonusPeriodoCard from '@/components/comissoes/BonusPeriodoCard'
+import { RequiredMark } from '@/components/ui/field'
 
 interface RetornoConfig {
   active: boolean
@@ -71,6 +72,8 @@ export default function RetornosPage() {
 
   const save = async () => {
     if (!cfg) return
+    if (cfg.active && [text.ila, text.iof, text.min, text.max].some((v) => !v.trim())) { setError('Preencha ILA, IOF e a faixa de retorno.'); return }
+    if (text.min.trim() && text.max.trim() && pnum(text.min) > pnum(text.max)) { setError('Faixa de retorno inválida.'); return }
     setSaving(true); setError(''); setSaved(false)
     try {
       const payload = {
@@ -101,7 +104,6 @@ export default function RetornosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Retorno (ILA / IOF)</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Cadastro global — vale para todos os financiamentos.</p>
         </div>
         <button onClick={load} disabled={loading} className="btn-secondary text-xs">
           <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
@@ -109,41 +111,36 @@ export default function RetornosPage() {
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
-        <p className="text-sm text-gray-600">
-          O retorno bruto vem da negociação (ou <strong>financiado × % padrão</strong>); o líquido = bruto − ILA − IOF.
-          A <strong>comissão</strong> do retorno sai de uma regra do tipo <strong>Retorno</strong> (por cargo/vendedor), em Regras de Comissão.
-        </p>
-
         {loading ? (
-          <div className="mt-4 h-40 animate-pulse rounded-lg bg-gray-100" />
+          <div className="h-40 animate-pulse rounded-lg bg-gray-100" />
         ) : cfg ? (
-          <div className="mt-4 space-y-4">
+          <div className="space-y-4">
             <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
               <input type="checkbox" checked={cfg.active} onChange={(e) => setActive(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-              <span className="text-sm font-medium text-gray-800">Ativar cálculo automático de retorno nas importações</span>
+              <span className="text-sm font-medium text-gray-800">Calcular retorno nas importações</span>
             </label>
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">ILA (%)</label>
-                <input inputMode="decimal" className={inputCls()} value={text.ila} onChange={(e) => setField('ila', e.target.value)} placeholder="Ex: 26,1" />
+                <label className="mb-1 block text-xs font-medium text-gray-700">ILA (%){cfg.active && <RequiredMark className="ml-0.5" />}</label>
+                <input inputMode="decimal" className={inputCls()} value={text.ila} onChange={(e) => setField('ila', e.target.value)} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">IOF (%)</label>
-                <input inputMode="decimal" className={inputCls()} value={text.iof} onChange={(e) => setField('iof', e.target.value)} placeholder="Ex: 1,5" />
+                <label className="mb-1 block text-xs font-medium text-gray-700">IOF (%){cfg.active && <RequiredMark className="ml-0.5" />}</label>
+                <input inputMode="decimal" className={inputCls()} value={text.iof} onChange={(e) => setField('iof', e.target.value)} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Faixa de retorno — mínimo (%)</label>
-                <input inputMode="decimal" className={inputCls()} value={text.min} onChange={(e) => setField('min', e.target.value)} placeholder="Ex: 0,01" />
+                <label className="mb-1 block text-xs font-medium text-gray-700">Retorno mínimo (%){cfg.active && <RequiredMark className="ml-0.5" />}</label>
+                <input inputMode="decimal" className={inputCls()} value={text.min} onChange={(e) => setField('min', e.target.value)} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Faixa de retorno — máximo (%)</label>
-                <input inputMode="decimal" className={inputCls()} value={text.max} onChange={(e) => setField('max', e.target.value)} placeholder="Ex: 20" />
+                <label className="mb-1 block text-xs font-medium text-gray-700">Retorno máximo (%){cfg.active && <RequiredMark className="ml-0.5" />}</label>
+                <input inputMode="decimal" className={inputCls()} value={text.max} onChange={(e) => setField('max', e.target.value)} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">% padrão (quando a negociação não traz o valor)</label>
-                <input inputMode="decimal" className={inputCls()} value={text.def} onChange={(e) => setField('def', e.target.value)} placeholder="Opcional. Ex: 6" />
+                <label className="mb-1 block text-xs font-medium text-gray-700">Retorno padrão (%)</label>
+                <input inputMode="decimal" className={inputCls()} value={text.def} onChange={(e) => setField('def', e.target.value)} />
               </div>
             </div>
 
@@ -154,7 +151,7 @@ export default function RetornosPage() {
             )}
             {saved && (
               <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                <CheckCircle2 size={14} /> Cadastro salvo. Reimporte as vendas para aplicar o retorno.
+                <CheckCircle2 size={14} /> Salvo. Reimporte as vendas para aplicar.
               </div>
             )}
 
@@ -165,7 +162,7 @@ export default function RetornosPage() {
             </div>
           </div>
         ) : (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             <AlertCircle size={14} /> {error || 'Não foi possível carregar a configuração.'}
           </div>
         )}
@@ -183,10 +180,6 @@ export default function RetornosPage() {
       {/* Bônus de período — produção da loja, meta da loja, 3 dezenas */}
       <BonusPeriodoCard />
 
-      <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-700">
-        <Percent size={14} />
-        O retorno bruto vem da negociação; o líquido = bruto − ILA − IOF; e a comissão = líquido × o percentual acima (por cargo, ou por vendedor específico quando ele recebe diferente).
-      </div>
     </div>
   )
 }

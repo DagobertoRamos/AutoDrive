@@ -29,9 +29,9 @@ export function IntakeTimeline({ entryDate, pendencies, photosAt, stockStatus, o
           <p className="text-sm font-semibold text-gray-900">Esteira de entrada</p>
           <p className="text-xs text-gray-500">
             {state.missingGates.length
-              ? `Falta: ${state.missingGates.join(', ')}. Resolvendo tudo, o carro vai sozinho para Em serviço e aparece no site como “Em breve”.`
+              ? `Falta: ${state.missingGates.join(', ')}.`
               : state.servicesOpen
-                ? 'Portões concluídos: carro em serviço (já aparece no site como “Em breve”). Concluindo os serviços, fica Disponível.'
+                ? 'Em serviço (site: “Em breve”).'
                 : 'Entrada concluída.'}
           </p>
         </div>

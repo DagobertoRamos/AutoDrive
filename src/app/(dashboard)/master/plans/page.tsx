@@ -20,6 +20,7 @@ import {
   ToggleRight, AlertTriangle, X, Save, DollarSign,
   LayoutGrid, ShieldCheck, Zap,
 } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 
@@ -296,8 +297,8 @@ export default function MasterPlansPage() {
     e.preventDefault()
     setFormError('')
 
-    if (!form.code.trim())  { setFormError('Código é obrigatório.'); return }
-    if (!form.name.trim())  { setFormError('Nome é obrigatório.');   return }
+    if (!form.code.trim())  { setFormError('Informe o código.'); return }
+    if (!form.name.trim())  { setFormError('Informe o nome.');   return }
     if (form.modules.length === 0) { setFormError('Selecione ao menos um módulo do menu.'); return }
 
     setSaving(true)
@@ -379,12 +380,7 @@ export default function MasterPlansPage() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Globe size={22} className="text-brand-700" />
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Planos da Plataforma</h1>
-            <p className="text-sm text-gray-500">
-              Configure preços, limites, recursos e módulos do menu por plano
-            </p>
-          </div>
+          <h1 className="text-xl font-bold text-gray-900">Planos da Plataforma</h1>
         </div>
         <button
           onClick={openNew}
@@ -412,7 +408,6 @@ export default function MasterPlansPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-20 text-center">
           <Globe size={36} className="text-gray-300 mb-3" />
           <p className="text-base font-semibold text-gray-500">Nenhum plano cadastrado</p>
-          <p className="text-sm text-gray-400 mt-1">Crie o primeiro plano da plataforma</p>
           <button
             onClick={openNew}
             className="mt-4 flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
@@ -615,9 +610,6 @@ export default function MasterPlansPage() {
                 <h2 className="text-base font-bold text-gray-900">
                   {editingPlan ? `Editar — ${editingPlan.name}` : 'Novo Plano'}
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {editingPlan ? 'Atualize as configurações do plano' : 'Configure o novo plano da plataforma'}
-                </p>
               </div>
               <button
                 onClick={closeDrawer}
@@ -647,25 +639,22 @@ export default function MasterPlansPage() {
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Código *</label>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Código <RequiredMark /></label>
                         <input
                           value={form.code}
                           onChange={e => set('code', e.target.value.toUpperCase())}
-                          placeholder="BASICO"
+                          placeholder="Ex.: BASICO"
                           disabled={Boolean(editingPlan)}
                           className={cn(inputCls, editingPlan && 'bg-gray-50 cursor-not-allowed font-mono text-gray-500')}
                           maxLength={20}
                         />
-                        {editingPlan && (
-                          <p className="text-[11px] text-gray-400 mt-0.5">Código não pode ser alterado</p>
-                        )}
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Nome *</label>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Nome <RequiredMark /></label>
                         <input
                           value={form.name}
                           onChange={e => set('name', e.target.value)}
-                          placeholder="Plano Básico"
+                          placeholder="Ex.: Plano Básico"
                           className={inputCls}
                         />
                       </div>
@@ -675,7 +664,6 @@ export default function MasterPlansPage() {
                       <input
                         value={form.description}
                         onChange={e => set('description', e.target.value)}
-                        placeholder="Para pequenas equipes que estão começando"
                         className={inputCls}
                       />
                     </div>
@@ -684,7 +672,6 @@ export default function MasterPlansPage() {
                         checked={form.active}
                         onChange={v => set('active', v)}
                         label="Plano ativo"
-                        desc="Disponível para novos tenants"
                       />
                       <InputNum
                         label="Ordem de exibição"
@@ -708,7 +695,7 @@ export default function MasterPlansPage() {
                         inputMode="numeric"
                         value={maskBRL(form.priceMonthly)}
                         onChange={e => set('priceMonthly', maskBRL(e.target.value))}
-                        placeholder="299,00"
+                        placeholder="Ex.: 299,00"
                         className={inputCls}
                       />
                     </div>
@@ -718,7 +705,7 @@ export default function MasterPlansPage() {
                         inputMode="numeric"
                         value={maskBRL(form.priceYearly)}
                         onChange={e => set('priceYearly', maskBRL(e.target.value))}
-                        placeholder="2990,00"
+                        placeholder="Ex.: 2.990,00"
                         className={inputCls}
                       />
                     </div>
@@ -756,43 +743,35 @@ export default function MasterPlansPage() {
                       checked={form.allowGoogleSheets}
                       onChange={v => set('allowGoogleSheets', v)}
                       label="Google Sheets"
-                      desc="Integração com planilhas Google"
                     />
                     <Toggle
                       checked={form.allowAdvancedReports}
                       onChange={v => set('allowAdvancedReports', v)}
                       label="Relatórios avançados"
-                      desc="Exportações e dashboards extras"
                     />
                     <Toggle
                       checked={form.allowApiAccess}
                       onChange={v => set('allowApiAccess', v)}
                       label="Acesso à API"
-                      desc="Permite uso de API tokens"
                     />
                     <Toggle
                       checked={form.allowWhiteLabel}
                       onChange={v => set('allowWhiteLabel', v)}
                       label="White Label"
-                      desc="Oculta marca AutoDrive da interface"
                     />
                     <Toggle
                       checked={form.allowCustomDomain}
                       onChange={v => set('allowCustomDomain', v)}
                       label="Domínio personalizado"
-                      desc="Acesso via subdomínio próprio"
                     />
                   </div>
                 </section>
 
                 {/* ── Módulos do menu ───────────────────────────────────────── */}
                 <section className="border-t border-gray-100 pt-5">
-                  <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">
-                    <LayoutGrid size={12} /> Módulos visíveis no menu
+                  <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
+                    <LayoutGrid size={12} /> Módulos visíveis no menu <RequiredMark />
                   </h3>
-                  <p className="text-xs text-gray-400 mb-3">
-                    Selecione quais itens aparecerão na barra lateral para tenants neste plano.
-                  </p>
 
                   <div className="space-y-4">
                     {MODULE_GROUPS.map(group => {
@@ -857,12 +836,11 @@ export default function MasterPlansPage() {
 
                 {/* ── Observações ──────────────────────────────────────────── */}
                 <section className="border-t border-gray-100 pt-5">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Observações internas (opcional)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Observações internas</label>
                   <textarea
                     value={form.notes}
                     onChange={e => set('notes', e.target.value)}
                     rows={2}
-                    placeholder="Notas sobre este plano..."
                     className={cn(inputCls, 'resize-none')}
                   />
                 </section>

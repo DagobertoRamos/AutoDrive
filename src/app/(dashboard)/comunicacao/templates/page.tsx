@@ -11,6 +11,7 @@ import {
   CheckCircle2, X, Loader2, Info,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Template {
   id:         string
@@ -72,8 +73,12 @@ export default function TemplatesPage() {
   const closeForm = () => { setShowForm(false); setEditing(null); setForm(EMPTY_FORM) }
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.content.trim()) {
-      setFeedback({ ok: false, msg: 'Nome e conteúdo são obrigatórios.' })
+    if (!form.name.trim()) {
+      setFeedback({ ok: false, msg: 'Informe o nome.' })
+      return
+    }
+    if (!form.content.trim()) {
+      setFeedback({ ok: false, msg: 'Informe o conteúdo.' })
       return
     }
     setSaving(true)
@@ -160,16 +165,16 @@ export default function TemplatesPage() {
           <div className="p-4 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="label">Nome do template *</label>
+                <label className="label">Nome do template <RequiredMark /></label>
                 <input
                   value={form.name}
                   onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="Ex.: Lembrete de pendência vencida"
+                  placeholder="Ex.: Lembrete de vencimento"
                   className="input"
                 />
               </div>
               <div>
-                <label className="label">Categoria</label>
+                <label className="label">Categoria <RequiredMark /></label>
                 <select
                   value={form.category}
                   onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
@@ -186,14 +191,13 @@ export default function TemplatesPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="label mb-0">Conteúdo da mensagem *</label>
+                <label className="label mb-0">Conteúdo da mensagem <RequiredMark /></label>
                 <span className="text-xs text-gray-400">{form.content.length} caracteres</span>
               </div>
               <textarea
                 value={form.content}
                 onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))}
                 rows={6}
-                placeholder="Olá {{nome_cliente}}, sua pendência referente ao veículo {{veiculo}} venceu em {{vencimento}}..."
                 className="input resize-none font-mono text-xs"
               />
             </div>
@@ -202,7 +206,7 @@ export default function TemplatesPage() {
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
               <div className="flex items-center gap-2 mb-2">
                 <Info size={13} className="text-blue-600 shrink-0" />
-                <span className="text-xs font-semibold text-blue-700">Variáveis disponíveis — clique para inserir</span>
+                <span className="text-xs font-semibold text-blue-700">Variáveis</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {VARIABLE_HINTS.map((v) => (
@@ -259,8 +263,7 @@ export default function TemplatesPage() {
       ) : templates.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-gray-400">
           <MessageSquare size={36} strokeWidth={1} />
-          <p className="mt-3 text-sm font-medium">Nenhum template cadastrado</p>
-          <p className="text-xs">Crie seu primeiro template para usar nos disparos.</p>
+          <p className="mt-3 text-sm font-medium">Nenhum template.</p>
         </div>
       ) : (
         <div className="space-y-3">

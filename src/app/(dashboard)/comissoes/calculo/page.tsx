@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import { Calculator, Loader2, CheckCircle2, AlertCircle, DollarSign } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface CalcResult {
   sellerId:     string
@@ -81,9 +82,6 @@ export default function CalculoComissoesPage() {
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Cálculo de Comissões</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Calcule as comissões dos vendedores com base nas regras configuradas para o período selecionado.
-        </p>
       </div>
 
       {/* ── Parâmetros ──────────────────────────────────────────────────────── */}
@@ -95,17 +93,16 @@ export default function CalculoComissoesPage() {
         <div className="p-4 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="label">Período *</label>
+              <label className="label">Período<RequiredMark className="ml-0.5" /></label>
               <input
                 type="month"
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
                 className="input"
               />
-              <p className="mt-1 text-xs text-gray-400">Selecione o mês/ano de referência.</p>
             </div>
             <div>
-              <label className="label">Unidade <span className="text-gray-400 font-normal">(opcional)</span></label>
+              <label className="label">Unidade</label>
               <input
                 value={unitId}
                 onChange={(e) => setUnitId(e.target.value)}

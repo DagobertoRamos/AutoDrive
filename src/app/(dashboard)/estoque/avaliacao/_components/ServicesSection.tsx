@@ -164,9 +164,6 @@ export function ServicesSection({ evaluationId, readOnly, onBack, onComplete }: 
         <Wrench className="h-5 w-5 text-brand-600" />
         <h3 className="text-lg font-semibold text-gray-900">Serviços a executar</h3>
       </div>
-      <p className="text-xs text-gray-500">
-        Marque os serviços necessários. O custo estimado entra na conta total da avaliação.
-      </p>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
 

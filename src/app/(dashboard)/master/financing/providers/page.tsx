@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Boxes, Plus, Pencil, Trash2, X, Save, Lock, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 const KINDS = ['CREDERE', 'BANCO_DIRETO', 'INTEGRADOR', 'MANUAL', 'OUTRO'] as const
 type Kind = (typeof KINDS)[number]
@@ -81,7 +82,7 @@ export default function MasterProvidersPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Boxes size={20} className="text-brand-600" />Provedores F&amp;I</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} provedor(es) — cadastro global da plataforma`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} provedor(es)`}</p>
         </div>
         <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Novo provedor</button>
       </div>
@@ -124,9 +125,9 @@ export default function MasterProvidersPage() {
           <div className="my-4 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar provedor' : 'Novo provedor'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome <span className="text-red-500">*</span></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex: Credere, Santander Direto..." /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Nome <RequiredMark /></label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex.: Credere" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label><select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Versão da API</label><input className={inputCls} value={form.apiVersion} onChange={(e) => set('apiVersion', e.target.value)} placeholder="Ex: 1.0" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Versão da API</label><input className={inputCls} value={form.apiVersion} onChange={(e) => set('apiVersion', e.target.value)} placeholder="Ex.: 1.0" /></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Base URL (homologação)</label><input className={inputCls} value={form.baseUrlHomolog} onChange={(e) => set('baseUrlHomolog', e.target.value)} placeholder="https://homolog.api..." /></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Base URL (produção)</label><input className={inputCls} value={form.baseUrlProd} onChange={(e) => set('baseUrlProd', e.target.value)} placeholder="https://api..." /></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Capabilities</label>

@@ -21,14 +21,13 @@ export default function FiBanksConfigPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Bancos da Loja</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Cadastro de bancos e as configurações de F&amp;I que dependem deles.</p>
       </div>
 
       <Link href="/financiamento/bancos" className="group flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-5 shadow-card transition-colors hover:border-brand-300 hover:bg-brand-50/30">
         <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-50 text-brand-700"><Landmark size={20} /></div>
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-gray-900 group-hover:text-brand-800">Gerenciar bancos</p>
-          <p className="mt-0.5 text-sm text-gray-500">Cadastrar, editar, ativar/inativar os bancos com que a loja trabalha.</p>
+          <p className="mt-0.5 text-sm text-gray-500">Cadastrar, editar e inativar bancos.</p>
         </div>
         <ArrowRight size={18} className="shrink-0 text-gray-300 group-hover:text-brand-600" />
       </Link>

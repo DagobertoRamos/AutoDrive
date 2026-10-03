@@ -10,6 +10,8 @@ import { Eye, ExternalLink, Globe, Plus, RefreshCw, Save, Trash2 } from 'lucide-
 import { cn } from '@/lib/utils'
 import type { SiteConfig } from '@/lib/site/config-core'
 import { cleanGoogleTagId, cleanMetaPixelId } from '@/lib/site/tracking-core'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 import { BrandingSection } from './BrandingSection'
 import { ComingSoonImageField } from './ComingSoonImageField'
 import { DomainsSection } from './DomainsSection'
@@ -33,8 +35,14 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   )
 }
 
-function Field({ l, children, className }: { l: string; children: React.ReactNode; className?: string }) {
-  return <label className={cn('block', className)}><span className={label}>{l}</span>{children}</label>
+function Field({ l, children, className, required }: { l: string; children: React.ReactNode; className?: string; required?: boolean }) {
+  return <label className={cn('block', className)}><span className={label}>{l}{required && <> <RequiredMark /></>}</span>{children}</label>
+}
+
+/** WhatsApp aceita DDD + número, com ou sem o 55 do país. */
+function whatsappOk(v: string): boolean {
+  const d = v.replace(/\D/g, '')
+  return isValidPhone(d.length > 11 && d.startsWith('55') ? d.slice(2) : d)
 }
 
 export default function SiteConfigPage() {
@@ -60,7 +68,10 @@ export default function SiteConfigPage() {
   const set = (patch: Partial<SiteConfig>) => { setCfg({ ...cfg, ...patch }); setDirty(true); setMsg(null) }
   const setIn = <K extends 'identity' | 'contact' | 'home' | 'about' | 'seo' | 'tracking'>(k: K, patch: Partial<SiteConfig[K]>) => set({ [k]: { ...cfg[k], ...patch } } as Partial<SiteConfig>)
 
+  const missing = !cfg.slug.trim() || !cfg.identity.name.trim() || !whatsappOk(cfg.contact.whatsapp)
+
   const save = async () => {
+    if (missing) { setMsg({ ok: false, text: 'Preencha endereço, nome da loja e WhatsApp válido.' }); return }
     setSaving(true); setMsg(null)
     try {
       const r = await fetch('/api/site-admin/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ...cfg, banners: undefined, testimonials: undefined, catalog: undefined, emails: undefined }) })
@@ -80,7 +91,7 @@ export default function SiteConfigPage() {
       const j = await r.json().catch(() => ({}))
       if (!r.ok) { w?.close(); setMsg({ ok: false, text: j?.error ?? 'Não foi possível pré-visualizar.' }); return }
       if (w) w.location.href = j.url; else window.open(j.url, 'site-preview')
-      setMsg({ ok: true, text: 'Pré-visualização aberta em outra aba. Nada foi salvo ainda.' })
+      setMsg({ ok: true, text: 'Pré-visualização aberta (não salva).' })
     } catch { w?.close(); setMsg({ ok: false, text: 'Erro de rede.' }) } finally { setPreviewing(false) }
   }
 
@@ -90,10 +101,7 @@ export default function SiteConfigPage() {
   return (
     <div className="space-y-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Globe size={20} className="text-brand-600" />Site da loja</h1>
-          <p className="text-sm text-gray-500">Vitrine pública do seu estoque. Os contatos feitos no site chegam no CRM.</p>
-        </div>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><Globe size={20} className="text-brand-600" />Site da loja</h1>
         <div className="flex gap-2">
           <button onClick={() => void load()} className="btn-secondary text-xs"><RefreshCw size={13} />Atualizar</button>
           {cfg.enabled && <a href={previewUrl} target="_blank" rel="noreferrer" className="btn-secondary text-xs"><ExternalLink size={13} />Ver site</a>}
@@ -106,18 +114,18 @@ export default function SiteConfigPage() {
         ))}
       </div>
 
-      <Section title="Publicação e endereço" hint="Todo carro Disponível ou Em serviço (preparação depois de recebido) aparece no site como “Em breve”; quando ganha as fotos novas, é publicado automaticamente.">
+      <Section title="Publicação e endereço">
         <label className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-800">
           <input type="checkbox" disabled={dis} checked={cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
           Site no ar
         </label>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field l="Endereço grátis da loja (subdomínio)">
+          <Field l="Endereço da loja (subdomínio)" required>
             <div className="flex items-center gap-1">
               <input disabled={dis} className={input} value={cfg.slug} onChange={(e) => set({ slug: e.target.value.toLowerCase() })} />
               {data.siteBaseDomain && <span className="whitespace-nowrap text-xs text-gray-500">.{data.siteBaseDomain}</span>}
             </div>
-            <span className="mt-1 block text-[11px] text-gray-400">{publicUrl ? `Endereço público: ${publicUrl}` : `Teste agora em ${previewUrl} (o subdomínio público é ativado na publicação).`}</span>
+            <span className="mt-1 block text-[11px] text-gray-400">{publicUrl ?? previewUrl}</span>
           </Field>
         </div>
         <ComingSoonImageField value={cfg.identity.comingSoonImage} disabled={dis} onChange={(url) => setIn('identity', { comingSoonImage: url })} />
@@ -128,7 +136,7 @@ export default function SiteConfigPage() {
 
       <BrandingSection identity={cfg.identity} canManage={data.canManage} onApply={(patch) => setIn('identity', patch)} />
 
-      <Section title="Serviços do site" hint="Os padrões já vêm ligados. Os demais você ativa quando quiser.">
+      <Section title="Serviços do site">
         <div className="grid gap-2 md:grid-cols-2">
           {data.services.map((s) => (
             <label key={s.key} className={cn('flex items-start gap-2 rounded-lg border border-gray-100 p-2.5 text-sm', !s.available && 'opacity-60')}>
@@ -144,14 +152,14 @@ export default function SiteConfigPage() {
 
       <Section title="Nome e frase">
         <div className="grid gap-3 md:grid-cols-2">
-          <Field l="Nome da loja no site"><input disabled={dis} className={input} value={cfg.identity.name} onChange={(e) => setIn('identity', { name: e.target.value })} /></Field>
+          <Field l="Nome da loja no site" required><input disabled={dis} className={input} value={cfg.identity.name} onChange={(e) => setIn('identity', { name: e.target.value })} /></Field>
           <Field l="Frase curta (rodapé)"><input disabled={dis} className={input} value={cfg.identity.tagline} onChange={(e) => setIn('identity', { tagline: e.target.value })} /></Field>
         </div>
       </Section>
 
       <Section title="Contato">
         <div className="grid gap-3 md:grid-cols-2">
-          <Field l="WhatsApp (com DDD)"><input disabled={dis} className={input} placeholder="11999999999" value={cfg.contact.whatsapp} onChange={(e) => setIn('contact', { whatsapp: e.target.value })} /></Field>
+          <Field l="WhatsApp (com DDD)" required><input disabled={dis} className={input} placeholder="11999999999" value={cfg.contact.whatsapp} onChange={(e) => setIn('contact', { whatsapp: e.target.value })} /></Field>
           <Field l="Telefone exibido"><input disabled={dis} className={input} placeholder="(11) 99999-9999" value={cfg.contact.phone} onChange={(e) => setIn('contact', { phone: e.target.value })} /></Field>
           <Field l="E-mail"><input disabled={dis} className={input} value={cfg.contact.email} onChange={(e) => setIn('contact', { email: e.target.value })} /></Field>
           <Field l="Horário de atendimento"><input disabled={dis} className={input} placeholder="Seg a sex 9h–18h, sáb 9h–13h" value={cfg.contact.hours} onChange={(e) => setIn('contact', { hours: e.target.value })} /></Field>
@@ -159,7 +167,7 @@ export default function SiteConfigPage() {
           <Field l="Endereço (linha 2)"><input disabled={dis} className={input} value={cfg.contact.addressLine2} onChange={(e) => setIn('contact', { addressLine2: e.target.value })} /></Field>
           <Field l="Link do Google Maps"><input disabled={dis} className={input} value={cfg.contact.mapsUrl} onChange={(e) => setIn('contact', { mapsUrl: e.target.value })} /></Field>
           <Field l="Link do Waze"><input disabled={dis} className={input} value={cfg.contact.wazeUrl} onChange={(e) => setIn('contact', { wazeUrl: e.target.value })} /></Field>
-          <Field l="Mapa incorporado (URL de “Incorporar mapa” do Google)" className="md:col-span-2"><input disabled={dis} className={input} placeholder="https://www.google.com/maps/embed?..." value={cfg.contact.mapsEmbedUrl} onChange={(e) => setIn('contact', { mapsEmbedUrl: e.target.value })} /></Field>
+          <Field l="Mapa incorporado (URL do Google Maps)" className="md:col-span-2"><input disabled={dis} className={input} placeholder="https://www.google.com/maps/embed?..." value={cfg.contact.mapsEmbedUrl} onChange={(e) => setIn('contact', { mapsEmbedUrl: e.target.value })} /></Field>
         </div>
       </Section>
 
@@ -228,28 +236,28 @@ export default function SiteConfigPage() {
         </div>
       </Section>
 
-      <Section title="Páginas por marca e cidade (Google)" hint="Com o serviço “Páginas por marca e cidade” ligado, o site cria sozinho uma página para cada marca com carro no estoque e uma para cada cidade abaixo, além do sitemap para o Google.">
-        <Field l={`Cidades que a loja atende (uma por linha; opcional: “Cidade | texto da página”) — até 12`}>
+      <Section title="Páginas por marca e cidade (Google)">
+        <Field l="Cidades atendidas (uma por linha, até 12; opcional: “Cidade | texto”)">
           <textarea disabled={dis} rows={4} className={input}
             value={cfg.seoCities.map((c) => (c.text ? `${c.name} | ${c.text}` : c.name)).join('\n')}
             placeholder={'Osasco | A poucos minutos da loja, com visita combinada pelo WhatsApp.\nBarueri\nCarapicuíba'}
             onChange={(e) => set({ seoCities: e.target.value.split('\n').map((l) => { const [name, ...t] = l.split('|'); return { name: name.trimStart(), slug: '', text: t.join('|').trim() } }).slice(0, 13) })} />
         </Field>
-        {!cfg.services.seoLandings && <p className="mt-1 text-[11px] text-amber-700">Ligue o serviço “Páginas por marca e cidade” em Serviços do site para publicar as páginas.</p>}
+        {!cfg.services.seoLandings && <p className="mt-1 text-[11px] text-amber-700">Serviço “Páginas por marca e cidade” desligado.</p>}
       </Section>
 
-      <Section title="Medição de anúncios (Pixel da Meta e Google)" hint="Com os IDs preenchidos, o site mostra o aviso de cookies e, com o aceite do visitante, mede visitas, carros vistos, contatos pelo WhatsApp e formulários enviados (Lead). Nenhum dado pessoal do cliente é enviado.">
+      <Section title="Medição de anúncios (Pixel da Meta e Google)">
         <div className="grid gap-3 md:grid-cols-2">
           {([
-            ['metaPixelId', 'ID do Pixel da Meta', '1234567890123456', 'Cole o ID (só números) ou o código inteiro que a Meta mandou — o sistema pega o ID sozinho.', cleanMetaPixelId],
-            ['googleTagId', 'ID da tag do Google', 'G-XXXXXXXXXX ou AW-XXXXXXXXX', 'G-… (Analytics) ou AW-… (Ads). Pode colar o código inteiro do Google — o sistema pega o ID.', cleanGoogleTagId],
-          ] as const).map(([k, l, ph, help, clean]) => {
+            ['metaPixelId', 'ID do Pixel da Meta', '1234567890123456', cleanMetaPixelId],
+            ['googleTagId', 'ID da tag do Google', 'G-XXXXXXXXXX ou AW-XXXXXXXXX', cleanGoogleTagId],
+          ] as const).map(([k, l, ph, clean]) => {
             const v = cfg.tracking[k]
             const bad = v.trim() !== '' && !clean(v)
             return (
               <Field key={k} l={l}>
                 <input disabled={dis} className={cn(input, bad && 'border-red-300')} value={v} placeholder={ph} onChange={(e) => setIn('tracking', { [k]: clean(e.target.value) || e.target.value.trim() })} />
-                <span className={cn('mt-1 block text-[11px]', bad ? 'text-red-600' : v ? 'text-green-700' : 'text-gray-400')}>{bad ? 'Formato inválido: não será salvo.' : v ? 'Ativo no site.' : help}</span>
+                <span className={cn('mt-1 block text-[11px]', bad ? 'text-red-600' : v ? 'text-green-700' : 'text-gray-400')}>{bad ? 'Formato inválido: não será salvo.' : v ? 'Ativo no site.' : ''}</span>
               </Field>
             )
           })}

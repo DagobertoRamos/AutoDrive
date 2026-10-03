@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { CheckCircle2, XCircle, SkipForward, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import { unlockAudio, ensureNotifyPermission, criticalAlert, stopCriticalAlert } from '@/lib/seller-queue/alert-client'
 import { registerPushToken, consumePushAction, isNativeAndroid, stopNativeRinger } from '@/lib/mobile/push-bridge'
 import { refreshWebPushIfGranted } from '@/lib/mobile/web-push-client'
@@ -250,7 +251,6 @@ export default function QueueAlertWatcher() {
       <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-4 ring-brand-500/40">
         {/* Cabeçalho urgente */}
         <div className="animate-pulse bg-brand-600 px-5 py-4 text-center">
-          <p className="text-2xl">🔔</p>
           <h2 className="text-lg font-black uppercase tracking-wide text-white">Você é o vendedor da vez</h2>
         </div>
 
@@ -279,8 +279,8 @@ export default function QueueAlertWatcher() {
           </div>
         ) : (
           <div className="space-y-2">
-            <label className="block text-xs font-medium text-gray-700">Motivo da recusa *</label>
-            <textarea autoFocus value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Ex.: já estou em atendimento / cliente não é meu perfil…" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+            <label className="block text-xs font-medium text-gray-700">Motivo da recusa <RequiredMark /></label>
+            <textarea autoFocus value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Motivo" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
             <div className="flex gap-2">
               <button onClick={() => { setRejectMode(false); setErr(null) }} disabled={busy} className="flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">Voltar</button>
               <button onClick={reject} disabled={busy} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">{busy ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}Confirmar recusa</button>

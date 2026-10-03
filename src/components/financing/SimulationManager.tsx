@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Trash2, Calculator, X, Save, Eye, Landmark } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 import { financedAmount, priceInstallment } from '@/lib/finance/simulation-service'
 
 interface Bank { id: string; name: string }
@@ -104,10 +105,7 @@ export default function SimulationManager() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Simulações</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Compare a parcela por banco a partir da taxa mensal informada.</p>
-      </div>
+      <h1 className="text-xl font-bold text-gray-900">Simulações</h1>
 
       {/* ── Simulador ── */}
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
@@ -115,8 +113,8 @@ export default function SimulationManager() {
           <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Veículo</label><input className={inputCls} value={header.vehicle} onChange={(e) => setH('vehicle', e.target.value)} placeholder="Marca/modelo/ano" /></div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Valor do veículo</label>{money(header.vehicleValue, (v) => setH('vehicleValue', v))}</div>
           <div><label className="mb-1 block text-xs font-medium text-gray-700">Entrada</label>{money(header.downPayment, (v) => setH('downPayment', v))}</div>
-          <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcelas</label><input type="number" min={1} className={inputCls} value={header.installments || ''} onChange={(e) => setH('installments', Number(e.target.value))} placeholder="48" /></div>
-          <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Proponente (opcional)</label><select className={inputCls} value={header.proponentId} onChange={(e) => setH('proponentId', e.target.value)}><option value="">—</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+          <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcelas <RequiredMark /></label><input type="number" min={1} className={inputCls} value={header.installments || ''} onChange={(e) => setH('installments', Number(e.target.value))} placeholder="48" /></div>
+          <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Proponente</label><select className={inputCls} value={header.proponentId} onChange={(e) => setH('proponentId', e.target.value)}><option value="">—</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
           <div className="col-span-1 flex items-end"><div className="rounded-lg bg-brand-50 px-3 py-2 text-sm"><span className="text-gray-500">Financiado: </span><span className="font-semibold text-brand-800">{fmt(financed)}</span></div></div>
         </div>
 
@@ -141,7 +139,7 @@ export default function SimulationManager() {
                     return (
                       <tr key={r.bankId}>
                         <td className="px-4 py-2.5 font-medium text-gray-900">{bankName(r.bankId)}</td>
-                        <td className="px-4 py-2.5"><input type="text" inputMode="decimal" className={cn(inputCls, 'w-28')} value={r.rate} onChange={(e) => setRate(r.bankId, e.target.value)} placeholder="Ex: 1,99" /></td>
+                        <td className="px-4 py-2.5"><input type="text" inputMode="decimal" className={cn(inputCls, 'w-28')} value={r.rate} onChange={(e) => setRate(r.bankId, e.target.value)} placeholder="1,99" /></td>
                         <td className="px-4 py-2.5 tabular-nums text-gray-700">{parcela > 0 ? fmt(parcela) : '—'}</td>
                         <td className="px-4 py-2.5 text-right"><button onClick={() => removeBank(r.bankId)} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover"><Trash2 size={15} /></button></td>
                       </tr>

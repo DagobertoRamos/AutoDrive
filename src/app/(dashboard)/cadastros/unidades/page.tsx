@@ -9,6 +9,9 @@ import { Plus, Pencil, Building2, X, Save, CheckCircle, AlertCircle, Coins, Trop
 import { cn, formatCNPJ } from '@/lib/utils'
 import { maskCNPJ, maskPhone } from '@/lib/masks'
 import { ROLE_LABELS } from '@/lib/permissions'
+import { isValidCNPJ } from '@/lib/br-docs/cnpj'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 // Cargos que podem receber comissão (para a chave da unidade). ADM incluído:
 // ADM também pode vender (em qualquer unidade) e receber comissão.
@@ -95,9 +98,11 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
   const [commEnabled, setCommEnabled] = useState(true)
   const [commRoles, setCommRoles] = useState<string[]>([])
   const [rankingOn, setRankingOn] = useState(true)
+  const [formErr, setFormErr] = useState('')
 
   useEffect(() => {
     if (!open) return
+    setFormErr('')
     // A API devolve null em campos opcionais; sem coerção, maskCNPJ/maskPhone
     // fazem null.replace(...) e o modal quebra (ex.: unidade sem telefone).
     setForm(initial ? {
@@ -132,6 +137,7 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
   if (!open) return null
 
   const set = <K extends keyof UnitForm>(key: K, value: UnitForm[K]) => {
+    setFormErr('')
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -141,6 +147,11 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const msg = !form.name.trim() ? 'Informe o nome da unidade.'
+      : form.cnpj.replace(/\D/g, '') && !isValidCNPJ(form.cnpj) ? 'CNPJ inválido.'
+      : form.phone.replace(/\D/g, '') && !isValidPhone(form.phone) ? 'Telefone inválido.'
+      : ''
+    if (msg) { setFormErr(msg); return }
     onSave(form, { enabled: commEnabled, roles: commEnabled ? commRoles : [] }, rankingOn)
   }
 
@@ -167,43 +178,43 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome fantasia *</label>
-              <input required className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="AutoDrive Centro" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome fantasia<RequiredMark className="ml-0.5" /></label>
+              <input className={inputClass()} value={form.name} onChange={(e) => set('name', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Razão social</label>
-              <input className={inputClass()} value={form.razaoSocial} onChange={(e) => set('razaoSocial', e.target.value)} placeholder="AutoDrive Comércio Ltda." />
+              <input className={inputClass()} value={form.razaoSocial} onChange={(e) => set('razaoSocial', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">CNPJ</label>
-              <input className={inputClass()} value={maskCNPJ(form.cnpj)} onChange={(e) => set('cnpj', maskCNPJ(e.target.value))} placeholder="00.000.000/0001-00" inputMode="numeric" />
+              <input className={inputClass()} value={maskCNPJ(form.cnpj)} onChange={(e) => set('cnpj', maskCNPJ(e.target.value))} inputMode="numeric" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Telefone</label>
-              <input type="tel" className={inputClass()} value={maskPhone(form.phone)} onChange={(e) => set('phone', maskPhone(e.target.value))} placeholder="(11) 3000-0000" inputMode="numeric" />
+              <input type="tel" className={inputClass()} value={maskPhone(form.phone)} onChange={(e) => set('phone', maskPhone(e.target.value))} inputMode="numeric" />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Endereço</label>
-              <input className={inputClass()} value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Rua das Flores, 123" />
+              <input className={inputClass()} value={form.address} onChange={(e) => set('address', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Cidade</label>
-              <input className={inputClass()} value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="São Paulo" />
+              <input className={inputClass()} value={form.city} onChange={(e) => set('city', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Estado (UF)</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">UF</label>
               <input maxLength={2} className={inputClass()} value={form.state} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="SP" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail</label>
-              <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="unidade@autodrive.com.br" />
+              <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Responsável</label>
-              <input className={inputClass()} value={form.responsavel} onChange={(e) => set('responsavel', e.target.value)} placeholder="Nome do responsável" />
+              <input className={inputClass()} value={form.responsavel} onChange={(e) => set('responsavel', e.target.value)} />
             </div>
           </div>
 
@@ -223,7 +234,7 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
             </div>
             {commEnabled ? (
               <div>
-                <p className="mb-2 text-xs text-gray-500">Selecione os <b>cargos que recebem comissão</b> nesta unidade (o gerente vende, mas a comissão dele segue as regras do cargo dele).</p>
+                <p className="mb-2 text-xs text-gray-500">Cargos que recebem comissão</p>
                 <div className="grid grid-cols-2 gap-1.5">
                   {COMMISSION_ROLES.map((role) => (
                     <label key={role} className={cn('flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs', commRoles.includes(role) ? 'border-brand-300 bg-brand-50 text-brand-800' : 'border-gray-200 bg-white text-gray-600')}>
@@ -233,16 +244,16 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
                   ))}
                 </div>
                 {commRoles.length === 0 && (
-                  <p className="mt-2 text-xs text-amber-600">Nenhum cargo marcado = <b>todos os cargos elegíveis</b> recebem. Marque para restringir.</p>
+                  <p className="mt-2 text-xs text-gray-500">Nenhum marcado: todos os cargos recebem.</p>
                 )}
               </div>
             ) : (
-              <p className="text-xs text-red-600">Comissões <b>desligadas</b>: nenhum vendedor ou gerente recebe comissão nesta unidade (ex.: galpão).</p>
+              <p className="text-xs text-red-600">Nenhum colaborador recebe comissão nesta unidade.</p>
             )}
           </div>
 
           {/* ── Ranking da unidade ───────────────────────────────────────── */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Trophy className="h-4 w-4 text-amber-500" />
@@ -250,17 +261,12 @@ function Modal({ open, onClose, onSave, initial, saving, error }: ModalProps) {
               </span>
               <Toggle checked={rankingOn} onChange={setRankingOn} />
             </div>
-            <p className="text-xs text-gray-500">
-              {rankingOn
-                ? 'As negociações e atendimentos desta unidade contam para o ranking geral e da unidade.'
-                : 'Fora do ranking: as negociações desta unidade não pontuam para ninguém e os colaboradores lotados nela não aparecem no ranking.'}
-            </p>
           </div>
 
-          {error && (
+          {(formErr || error) && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+              {formErr || error}
             </div>
           )}
 
@@ -359,7 +365,7 @@ export default function UnidadesPage() {
         }).catch(() => {})
       }
       setModalOpen(false)
-      setSuccessMsg(editing ? 'Unidade atualizada com sucesso!' : 'Unidade criada com sucesso!')
+      setSuccessMsg(editing ? 'Unidade atualizada.' : 'Unidade criada.')
       setTimeout(() => setSuccessMsg(null), 3000)
       await fetchUnits()
     } catch (err: unknown) {
@@ -375,7 +381,6 @@ export default function UnidadesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Unidades</h1>
-          <p className="mt-1 text-sm text-gray-500">Gerencie as lojas e filiais do sistema.</p>
         </div>
         <button
           onClick={openCreate}
@@ -418,8 +423,7 @@ export default function UnidadesPage() {
               ) : units.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
-                    Nenhuma unidade cadastrada.{' '}
-                    <button onClick={openCreate} className="text-brand-600 hover:underline">Criar agora</button>
+                    Nenhuma unidade cadastrada.
                   </td>
                 </tr>
               ) : (

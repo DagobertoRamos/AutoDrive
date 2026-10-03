@@ -79,15 +79,15 @@ export default function AlertSetup({
       const r = await fetch('/api/mobile/push-test', { credentials: 'include' })
       const j = await r.json()
       const total = (j?.devicesNativos ?? 0) + (j?.webPushInscricoes ?? 0)
-      if (j?.enviados > 0) setTestMsg('✅ Alerta enviado! Em alguns segundos deve aparecer a notificação.')
-      else if (total === 0) setTestMsg('⚠️ Este aparelho ainda não está inscrito. Toque em "Ativar notificações" primeiro.')
+      if (j?.enviados > 0) setTestMsg('Alerta enviado! Em alguns segundos deve aparecer a notificação.')
+      else if (total === 0) setTestMsg('Este aparelho ainda não está inscrito. Toque em "Ativar notificações" primeiro.')
       else setTestMsg(
         isNativeAndroid()
-          ? '⚠️ Não foi possível enviar (a inscrição pode ter expirado). Feche o app completamente e abra de novo para renovar a inscrição.'
-          : '⚠️ Não foi possível enviar (a inscrição pode ter expirado). Toque em "Ativar notificações" de novo.',
+          ? 'Não foi possível enviar (a inscrição pode ter expirado). Feche o app completamente e abra de novo para renovar a inscrição.'
+          : 'Não foi possível enviar (a inscrição pode ter expirado). Toque em "Ativar notificações" de novo.',
       )
     } catch {
-      setTestMsg('⚠️ Erro de rede ao testar.')
+      setTestMsg('Erro de rede ao testar.')
     } finally { setTesting(false) }
   }
 
@@ -188,7 +188,7 @@ function WebPushSetup({
 
   useEffect(() => {
     if (env.standalone && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      void enableWebPush().then((r) => { if (r.ok) setMsg('✅ Notificações ativas neste aparelho.'); else setMsg('⚠️ ' + (r.reason || 'reative as notificações abaixo.')) })
+      void enableWebPush().then((r) => { if (r.ok) setMsg('Notificações ativas neste aparelho.'); else setMsg((r.reason || 'reative as notificações abaixo.')) })
     }
   }, [env.standalone])
 
@@ -196,7 +196,7 @@ function WebPushSetup({
     setBusy(true); setMsg(null)
     const r = await enableWebPush()
     setPerm(notificationPermission())
-    setMsg(r.ok ? '✅ Notificações ativadas neste aparelho!' : r.reason === 'denied' ? '⚠️ Permissão negada. Ative em Ajustes do iPhone › Notificações › AutoDrive.' : '⚠️ ' + (r.reason || 'Não foi possível ativar agora. Tente de novo.'))
+    setMsg(r.ok ? 'Notificações ativadas neste aparelho!' : r.reason === 'denied' ? 'Permissão negada. Ative em Ajustes do iPhone › Notificações › AutoDrive.' : (r.reason || 'Não foi possível ativar agora. Tente de novo.'))
     setBusy(false)
   }
 
@@ -218,7 +218,7 @@ function WebPushSetup({
 
       {precisaInstalar ? (
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          <p className="font-semibold">📲 Primeiro, instale o app na Tela de Início</p>
+          <p className="font-semibold">Primeiro, instale o app na Tela de Início</p>
           <p className="mt-1">No iPhone, a notificação só funciona com o app adicionado à Tela de Início. Faça uma vez:</p>
           <ol className="mt-2 list-decimal space-y-1 pl-5">
             <li>Toque no botão <strong>Compartilhar</strong> <Share size={14} className="inline" /> (barra inferior do Safari).</li>

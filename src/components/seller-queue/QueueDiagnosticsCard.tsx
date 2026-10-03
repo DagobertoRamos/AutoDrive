@@ -67,10 +67,7 @@ export default function QueueDiagnosticsCard() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Stethoscope size={17} className="text-brand-600" />Diagnóstico dos colaboradores</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Dispositivos/push e presença. Para enviar testes, use "Testes da fila".</p>
-        </div>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Stethoscope size={17} className="text-brand-600" />Diagnóstico dos colaboradores</h2>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
 

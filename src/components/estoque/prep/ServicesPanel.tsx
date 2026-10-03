@@ -84,28 +84,28 @@ export function ServicesPanel({ vehicleId, canEdit, onChanged }: { vehicleId: st
           </div>
         ))}
       </div>
-      {s.done && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">Preparação concluída: o marketing (fotógrafos/gestor de mídias) foi avisado para fotografar e publicar.</p>}
+      {s.done && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">Preparação concluída. Marketing avisado.</p>}
       {!d.suppliers.length && canEdit && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Nenhum fornecedor cadastrado. <Link href="/cadastros/fornecedores" target="_blank" className="font-semibold underline">Cadastre oficinas e prestadores</Link> para colocar os serviços em andamento.</p>
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Nenhum fornecedor cadastrado. <Link href="/cadastros/fornecedores" target="_blank" className="font-semibold underline">Cadastrar fornecedor</Link></p>
       )}
 
       {/* Novo serviço */}
       {canEdit && (adding ? (
         <div className="rounded-xl border border-brand-200 bg-brand-50/30 p-3">
           <div className="grid gap-2 sm:grid-cols-6">
-            <input className={cn(input, 'sm:col-span-2')} placeholder="Serviço (ex.: martelinho de ouro porta traseira)" value={nw.description} onChange={(e) => setNw({ ...nw, description: e.target.value })} maxLength={200} />
+            <input className={cn(input, 'sm:col-span-2')} placeholder="Descrição do serviço *" aria-required="true" value={nw.description} onChange={(e) => setNw({ ...nw, description: e.target.value })} maxLength={200} />
             <select className={input} value={nw.serviceType} onChange={(e) => setNw({ ...nw, serviceType: e.target.value })}>
               {Object.entries(SERVICE_TYPE_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
             <MoneyInput className={input} placeholder="Valor previsto" value={textToMoney(nw.estimatedCost)} onChange={(n) => setNw({ ...nw, estimatedCost: moneyToText(n) })} />
             <select className={input} value={nw.supplierId} onChange={(e) => setNw({ ...nw, supplierId: e.target.value })}>
-              <option value="">Fornecedor (opcional)</option>
+              <option value="">Fornecedor</option>
               {d.suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
             <input type="date" className={input} value={nw.dueAt} onChange={(e) => setNw({ ...nw, dueAt: e.target.value })} title="Previsão de entrega" />
           </div>
           <div className="mt-2 flex gap-2">
-            <button type="button" onClick={() => void create()} disabled={!nw.description.trim()} className="btn-primary px-3 py-1.5 text-xs"><Plus size={13} />Adicionar serviço</button>
+            <button type="button" onClick={() => void create()} disabled={!nw.description.trim()} title={nw.description.trim() ? undefined : 'Informe a descrição do serviço.'} className="btn-primary px-3 py-1.5 text-xs"><Plus size={13} />Adicionar serviço</button>
             <button type="button" onClick={() => setAdding(false)} className="btn-secondary px-3 py-1.5 text-xs">Cancelar</button>
           </div>
         </div>
@@ -195,7 +195,7 @@ function ServiceCard({ s, suppliers, canEdit, onPatch }: { s: Svc; suppliers: Da
         <label className="text-[11px] text-gray-500">Entrada no prestador<input type="date" className={input} disabled={!canEdit} value={f.sentAt} onChange={(e) => setF({ ...f, sentAt: e.target.value })} /></label>
         <label className="text-[11px] text-gray-500">Previsão de entrega<input type="date" className={input} disabled={!canEdit} value={f.dueAt} onChange={(e) => setF({ ...f, dueAt: e.target.value })} /></label>
         <label className="text-[11px] text-gray-500 sm:col-span-3 lg:col-span-3">Notas<textarea rows={1} className={input} disabled={!canEdit} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
-        <label className="text-[11px] text-gray-500 sm:col-span-3 lg:col-span-3">Acompanhamento (registra no histórico)<input className={input} disabled={!canEdit} value={follow} placeholder="Ex.: liguei na oficina, falta a peça, entrega sexta" onChange={(e) => setFollow(e.target.value)} /></label>
+        <label className="text-[11px] text-gray-500 sm:col-span-3 lg:col-span-3">Acompanhamento<input className={input} disabled={!canEdit} value={follow} placeholder="Ex.: falta a peça" onChange={(e) => setFollow(e.target.value)} /></label>
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3 text-[11px] text-gray-500">

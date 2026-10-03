@@ -13,6 +13,7 @@ import {
   FileText, Coins,
 } from 'lucide-react'
 import { formatBRL, maskBRL, parseBRL, numberToBRLMask, maskCPF, maskCNPJ } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -845,7 +846,7 @@ function PaymentModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const amount = parseBRL(valueStr)
-    if (!amount || amount <= 0) { onError('Informe um valor valido'); return }
+    if (!amount || amount <= 0) { onError('Informe um valor válido.'); return }
     if (isSignal && !signalMethod) { onError('Informe como o cliente pagou o sinal (Pix, dinheiro, cartão…).'); return }
     setSaving(true)
     try {
@@ -881,12 +882,12 @@ function PaymentModal({
     <Modal title={initial ? 'Editar pagamento' : 'Novo pagamento'} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Forma de pagamento">
+          <Field label="Forma de pagamento" required>
             <select value={type} onChange={e => setType(e.target.value)} className="input">
               {PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </Field>
-          <Field label="Valor">
+          <Field label="Valor" required>
             <input
               value={valueStr}
               onChange={e => setValueStr(maskBRL(e.target.value))}
@@ -897,7 +898,7 @@ function PaymentModal({
         </div>
 
         {isSignal && (
-          <Field label="Forma do sinal / entrada">
+          <Field label="Forma do sinal / entrada" required>
             <select value={signalMethod} onChange={e => setSignalMethod(e.target.value)} className="input">
               <option value="">Selecione</option>
               <option value="PIX">Pix</option>
@@ -910,16 +911,15 @@ function PaymentModal({
           </Field>
         )}
 
-        <Field label="Data de pagamento (pode preencher depois)">
+        <Field label="Data de pagamento">
           <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="input" />
         </Field>
 
         {isCard && (
-          <Field label="Código de autorização do cartão">
-            <input value={authCode} onChange={e => setAuthCode(e.target.value.replace(/[^\w-]/g, '').slice(0, 40))} className="input" placeholder="Obrigatório quando o comprovante for anexado" />
+          <Field label="Código de autorização">
+            <input value={authCode} onChange={e => setAuthCode(e.target.value.replace(/[^\w-]/g, '').slice(0, 40))} className="input" placeholder="Nº de autorização" />
           </Field>
         )}
-        <p className="text-[11px] text-gray-500">O pagamento entra como pendente; o financeiro confirma em Financeiro › Recebimentos. Anexe o comprovante na linha do pagamento.</p>
 
         {/* Conditional fields */}
         {isPix && (
@@ -929,7 +929,7 @@ function PaymentModal({
         )}
 
         {isCash && (
-          <Field label="Responsavel pelo recebimento">
+          <Field label="Responsável pelo recebimento">
             <input value={bank} onChange={e => setBank(e.target.value)} className="input" placeholder="Nome de quem recebeu" />
           </Field>
         )}
@@ -949,7 +949,7 @@ function PaymentModal({
               </select>
             </Field>
             <Field label="Adquirente / banco">
-              <input value={bank} onChange={e => setBank(e.target.value)} className="input" placeholder="Ex: Stone, Cielo" />
+              <input value={bank} onChange={e => setBank(e.target.value)} className="input" placeholder="Stone, Cielo..." />
             </Field>
           </div>
         )}
@@ -961,10 +961,10 @@ function PaymentModal({
                 value={installments}
                 onChange={e => setInstallments(e.target.value.replace(/\D/g, ''))}
                 className="input"
-                placeholder="Ex: 12"
+                placeholder="12"
               />
             </Field>
-            <Field label="1o vencimento">
+            <Field label="1º vencimento">
               <input type="date" value={firstDueDate} onChange={e => setFirstDueDate(e.target.value)} className="input" />
             </Field>
             {parcelaValor > 0 && (
@@ -976,7 +976,7 @@ function PaymentModal({
           </div>
         )}
 
-        <Field label="Observacoes">
+        <Field label="Observações">
           <textarea value={notes} onChange={e => setNotes(e.target.value)} className="input" rows={2} />
         </Field>
 
@@ -999,7 +999,7 @@ function DiscountModal({
     e.preventDefault()
     const requestedValue = parseBRL(valueStr)
     if (!requestedValue || requestedValue <= 0) { onError('Informe o valor solicitado'); return }
-    if (reason.trim().length < 5) { onError('Motivo e obrigatorio'); return }
+    if (reason.trim().length < 5) { onError('Informe o motivo.'); return }
     setSaving(true)
     try {
       const r = await fetch(`/api/negotiations/${dealId}/discount-requests`, {
@@ -1014,10 +1014,10 @@ function DiscountModal({
   return (
     <Modal title="Solicitar desconto" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
-        <Field label="Valor solicitado">
+        <Field label="Valor solicitado" required>
           <input value={valueStr} onChange={e => setValueStr(maskBRL(e.target.value))} className="input" placeholder="0,00" />
         </Field>
-        <Field label="Motivo">
+        <Field label="Motivo" required>
           <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="input" />
         </Field>
         <ModalFooter onClose={onClose} loading={saving} confirmLabel="Solicitar" />
@@ -1036,10 +1036,10 @@ function ApproveDiscountModal({
       <div className="mb-3 text-sm text-gray-600">
         Valor solicitado: <strong>{formatBRL(toN(request.requestedValue))}</strong>
       </div>
-      <Field label="Valor aprovado (pode ajustar)">
+      <Field label="Valor aprovado" required>
         <input value={valueStr} onChange={e => setValueStr(maskBRL(e.target.value))} className="input" />
       </Field>
-      <Field label="Observacao (opcional)">
+      <Field label="Observação">
         <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} className="input" />
       </Field>
       <ModalFooter
@@ -1064,7 +1064,7 @@ function RejectDiscountModal({
       <div className="mb-3 text-sm text-gray-600">
         Valor solicitado: <strong>{formatBRL(toN(request.requestedValue))}</strong>
       </div>
-      <Field label="Motivo da recusa (obrigatorio)">
+      <Field label="Motivo da recusa" required>
         <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} className="input" />
       </Field>
       <ModalFooter
@@ -1103,8 +1103,8 @@ function TrocoModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const value = parseBRL(valueStr)
-    if (!value || value <= 0) { onError('Valor invalido'); return }
-    if (!beneficiary.trim()) { onError('Favorecido obrigatorio'); return }
+    if (!value || value <= 0) { onError('Valor inválido.'); return }
+    if (!beneficiary.trim()) { onError('Informe o favorecido.'); return }
     setSaving(true)
     try {
       const r = await fetch(`/api/negotiations/${dealId}/changes`, {
@@ -1124,15 +1124,15 @@ function TrocoModal({
   return (
     <Modal title="Cadastrar troco" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
-        <Field label="Favorecido"><input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} className="input" /></Field>
+        <Field label="Favorecido" required><input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} className="input" /></Field>
         <Field label="CPF/CNPJ"><input value={document} onChange={e => setDocument(maskDoc(e.target.value))} className="input" /></Field>
         <div className="grid grid-cols-3 gap-2">
           <Field label="Banco"><input value={bank} onChange={e => setBank(e.target.value)} className="input" /></Field>
-          <Field label="Agencia"><input value={agency} onChange={e => setAgency(e.target.value)} className="input" /></Field>
+          <Field label="Agência"><input value={agency} onChange={e => setAgency(e.target.value)} className="input" /></Field>
           <Field label="Conta"><input value={account} onChange={e => setAccount(e.target.value)} className="input" /></Field>
         </div>
         <Field label="Chave PIX"><input value={pixKey} onChange={e => setPixKey(e.target.value)} className="input" /></Field>
-        <Field label="Valor"><input value={valueStr} onChange={e => setValueStr(maskBRL(e.target.value))} className="input" /></Field>
+        <Field label="Valor" required><input value={valueStr} onChange={e => setValueStr(maskBRL(e.target.value))} className="input" /></Field>
         <Field label="Motivo"><input value={reason} onChange={e => setReason(e.target.value)} className="input" /></Field>
         <ModalFooter onClose={onClose} loading={saving} />
       </form>
@@ -1149,7 +1149,7 @@ function ReopenModal({
   const [saving, setSaving] = useState(false)
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (reason.trim().length < 10) { onError('Motivo deve ter ao menos 10 caracteres'); return }
+    if (reason.trim().length < 10) { onError('Motivo: mínimo de 10 caracteres.'); return }
     setSaving(true)
     try {
       const r = await fetch(`/api/negotiations/${dealId}/reopen`, {
@@ -1161,12 +1161,10 @@ function ReopenModal({
     } finally { setSaving(false) }
   }
   return (
-    <Modal title="Reabrir negociacao" onClose={onClose}>
+    <Modal title="Reabrir negociação" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
-        <p className="text-sm text-gray-600">
-          Esta acao reabrira a negociacao para edicao. Informe o motivo (min. 10 caracteres).
-        </p>
-        <Field label="Motivo">
+        <p className="text-sm text-gray-600">A negociação voltará para edição.</p>
+        <Field label="Motivo" required>
           <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className="input" />
         </Field>
         <ModalFooter onClose={onClose} loading={saving} confirmLabel="Reabrir" />
@@ -1203,10 +1201,10 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-gray-600">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-600">{label}{required && <> <RequiredMark /></>}</span>
       {children}
     </label>
   )

@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { GraduationCap, Plus, Pencil, Trash2, X, Save, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 const SCOPES = ['global', 'ajuda', 'relatorios', 'documentos', 'f&i', 'estoque', 'vendas', 'financeiro', 'pos-venda', 'marketing'] as const
 type Scope = (typeof SCOPES)[number]
@@ -50,7 +51,8 @@ export default function MasterAiInstructionsPage() {
   const openNew = () => { setEditingId(null); setForm(empty); setError(null); setModal(true) }
   const openEdit = (r: Row) => { setEditingId(r.id); setForm({ title: r.title, area: r.area ?? '', scope: r.scope, content: r.content, status: r.status as 'ATIVO' | 'INATIVO', priority: r.priority }); setError(null); setModal(true) }
   const save = async () => {
-    if (!form.title.trim() || !form.content.trim()) { setError('Título e conteúdo são obrigatórios.'); return }
+    if (!form.title.trim()) { setError('Informe o título.'); return }
+    if (!form.content.trim()) { setError('Informe o conteúdo.'); return }
     setSaving(true); setError(null)
     try {
       const url = editingId ? `/api/master/ai/instructions/${editingId}` : '/api/master/ai/instructions'
@@ -69,7 +71,7 @@ export default function MasterAiInstructionsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><GraduationCap size={20} className="text-brand-600" />Instruções da IA</h1>
-          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} instrução(ões) globais — como a IA deve se comportar`}</p>
+          <p className="mt-0.5 text-sm text-gray-500">{loading ? 'Carregando...' : `${items.length} instrução(ões)`}</p>
         </div>
         <button onClick={openNew} className="btn-primary text-sm"><Plus size={15} />Nova instrução</button>
       </div>
@@ -80,7 +82,7 @@ export default function MasterAiInstructionsPage() {
             <thead className="bg-gray-50"><tr>{['Título', 'Escopo', 'Prioridade', 'Versões', 'Status', ''].map((h) => (<th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>))}</tr></thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? Array.from({ length: 4 }).map((_, i) => (<tr key={i}>{Array.from({ length: 6 }).map((_, j) => (<td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-gray-200" /></td>))}</tr>))
-              : items.length === 0 ? (<tr><td colSpan={6} className="py-14 text-center"><GraduationCap size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhuma instrução. Ensine a IA com as primeiras regras.</p></td></tr>)
+              : items.length === 0 ? (<tr><td colSpan={6} className="py-14 text-center"><GraduationCap size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhuma instrução.</p></td></tr>)
               : items.map((r) => (
                 <tr key={r.id} className={cn('hover:bg-gray-50', r.status !== 'ATIVO' && 'opacity-50')}>
                   <td className="px-4 py-3"><p className="font-medium text-gray-900">{r.title}</p><p className="max-w-md truncate text-xs text-gray-500">{r.content}</p></td>
@@ -104,14 +106,14 @@ export default function MasterAiInstructionsPage() {
           <div className="my-4 w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar instrução' : 'Nova instrução'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Título <span className="text-red-500">*</span></label><input className={inputCls} value={form.title} onChange={(e) => set('title', e.target.value)} /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Título <RequiredMark /></label><input className={inputCls} value={form.title} onChange={(e) => set('title', e.target.value)} /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Escopo</label><select className={inputCls} value={form.scope} onChange={(e) => set('scope', e.target.value as Scope)}>{SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Área (opcional)</label><input className={inputCls} value={form.area} onChange={(e) => set('area', e.target.value)} placeholder="ex.: atendimento" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Área</label><input className={inputCls} value={form.area} onChange={(e) => set('area', e.target.value)} placeholder="Ex.: atendimento" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Prioridade</label><input type="number" min={0} max={100} className={inputCls} value={form.priority} onChange={(e) => set('priority', Number(e.target.value))} /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Status</label><select className={inputCls} value={form.status} onChange={(e) => set('status', e.target.value as 'ATIVO' | 'INATIVO')}><option value="ATIVO">Ativo</option><option value="INATIVO">Inativo</option></select></div>
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Conteúdo <span className="text-red-500">*</span></label><textarea className={cn(inputCls, 'min-h-[100px] resize-y')} value={form.content} onChange={(e) => set('content', e.target.value)} placeholder="Descreva a regra de comportamento da IA..." /></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Conteúdo <RequiredMark /></label><textarea className={cn(inputCls, 'min-h-[100px] resize-y')} value={form.content} onChange={(e) => set('content', e.target.value)}  /></div>
               {!editingId && (
-                <div className="col-span-2"><p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sugestões (clique para usar)</p><div className="flex flex-wrap gap-1">{SUGGESTIONS.map((s) => (<button key={s} type="button" onClick={() => set('content', s)} className="rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-600 hover:bg-brand-50 hover:text-brand-700">{s.slice(0, 38)}…</button>))}</div></div>
+                <div className="col-span-2"><p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sugestões</p><div className="flex flex-wrap gap-1">{SUGGESTIONS.map((s) => (<button key={s} type="button" onClick={() => set('content', s)} className="rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-600 hover:bg-brand-50 hover:text-brand-700">{s.slice(0, 38)}…</button>))}</div></div>
               )}
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
             </div>

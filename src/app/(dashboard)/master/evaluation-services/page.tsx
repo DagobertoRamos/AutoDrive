@@ -11,6 +11,7 @@ import { useSession } from 'next-auth/react'
 import { Loader2, Plus, Trash2, GripVertical, Save, RotateCcw, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { MoneyInput } from '@/components/ui/money-input'
+import { RequiredMark } from '@/components/ui/field'
 
 interface ServiceCatalogItem {
   key:            string
@@ -98,6 +99,7 @@ export default function MasterEvaluationServicesPage() {
   }
 
   async function save() {
+    if (items.some((it) => !it.label.trim())) { setError('Informe o nome de todos os serviços.'); setOk(''); return }
     setSaving(true); setError(''); setOk('')
     try {
       const r = await fetch('/api/master/evaluation-services-catalog', {
@@ -127,15 +129,11 @@ export default function MasterEvaluationServicesPage() {
         <h1 className="text-xl font-bold text-gray-900">Serviços da avaliação</h1>
       </div>
 
-      <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-        Configure os serviços que aparecem na aba <strong>Serviços</strong> da avaliação de veículo (troca de óleo, revisão, higienização, etc). Cada avaliação marca quais serão executados e informa o custo estimado.
-      </div>
-
       {canGlobal && (
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-gray-700">Escopo:</span>
           <button type="button" onClick={() => setScope('tenant')} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === 'tenant' ? 'bg-brand-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}>Minha loja</button>
-          <button type="button" onClick={() => setScope('global')} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === 'global' ? 'bg-brand-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}>Global (padrão de todas as lojas)</button>
+          <button type="button" onClick={() => setScope('global')} className={`rounded-full px-3 py-1 text-xs font-medium ${scope === 'global' ? 'bg-brand-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}>Global (padrão)</button>
         </div>
       )}
 
@@ -152,7 +150,7 @@ export default function MasterEvaluationServicesPage() {
             <thead className="bg-gray-50 text-xs uppercase text-gray-600">
               <tr>
                 <th className="px-2 py-2 text-left">Ordem</th>
-                <th className="px-3 py-2 text-left">Nome</th>
+                <th className="px-3 py-2 text-left">Nome <RequiredMark /></th>
                 <th className="px-3 py-2 text-left">Tipo</th>
                 <th className="px-3 py-2 text-right">Custo sugerido</th>
                 <th className="px-3 py-2 text-center">Ativo</th>
@@ -172,6 +170,7 @@ export default function MasterEvaluationServicesPage() {
                     <input
                       value={it.label}
                       onChange={(e) => updateItem(idx, { label: e.target.value })}
+                      required
                       className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
                     />
                     {it.isBuiltIn && <span className="text-[10px] text-gray-400">padrão</span>}

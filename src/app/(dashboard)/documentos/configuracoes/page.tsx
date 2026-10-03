@@ -10,6 +10,8 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Plus, Save, Trash2, Upload, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
+import { isValidCPF } from '@/lib/br-docs/cpf'
 import type { DocSettings, Outorgado } from '@/lib/negotiation/contracts/doc-settings-core'
 
 interface Defaults { nome: string; cnpj: string; logoUrl: string; endereco: string; telefone: string; email: string; cidade: string; uf: string }
@@ -38,12 +40,15 @@ export default function DocumentosConfiguracoesPage() {
   const setO = (id: string, patch: Partial<Outorgado>) => set('outorgados', s.outorgados.map((o) => (o.id === id ? { ...o, ...patch } : o)))
 
   const save = async () => {
+    if (s.outorgados.some((o) => !o.nome.trim() || !isValidCPF(o.cpf))) {
+      setMsg({ ok: false, text: 'Preencha nome e CPF válido de todos os outorgados.' }); return
+    }
     setBusy('save'); setMsg(null)
     try {
       const r = await fetch('/api/settings/documents', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) })
       const j = await r.json()
       if (!r.ok || !j.success) throw new Error(j.error ?? 'Falha ao salvar.')
-      setS(j.settings); setMsg({ ok: true, text: 'Configurações salvas. Os próximos documentos já saem com elas.' })
+      setS(j.settings); setMsg({ ok: true, text: 'Configurações salvas.' })
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(null) }
   }
 
@@ -63,10 +68,7 @@ export default function DocumentosConfiguracoesPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Configurações dos documentos</h1>
-        <p className="text-sm text-gray-500">Cabeçalho e outorgados usados no contrato de compra e venda, termos de sinal, entrega e intermediação e nas procurações geradas pela negociação.</p>
-      </div>
+      <h1 className="text-xl font-bold text-gray-900">Configurações dos documentos</h1>
       {msg && <p role="status" className={cn('rounded-lg px-3 py-2 text-sm', msg.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>{msg.text}</p>}
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-5">
@@ -82,11 +84,10 @@ export default function DocumentosConfiguracoesPage() {
                 <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); e.target.value = '' }} />
               </label>
               {s.logoUrl && <button type="button" onClick={() => set('logoUrl', '')} className="block text-gray-500 underline">Voltar a usar o logo da loja</button>}
-              <p className="text-gray-500">Padrão: o logo do cadastro da loja/site. PNG com fundo transparente fica melhor.</p>
             </div>
           )}
         </div>
-        <p className="text-xs text-gray-500">Empresa: <b>{def.nome || '—'}</b>{def.cnpj ? ` · CNPJ ${def.cnpj}` : ''} (vem do cadastro da loja em Configurações › Loja).</p>
+        <p className="text-xs text-gray-500">Empresa: <b>{def.nome || '—'}</b>{def.cnpj ? ` · CNPJ ${def.cnpj}` : ''}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs font-medium text-gray-600 sm:col-span-2">Endereço
             <input disabled={!canEdit} className={inputCls} value={s.endereco} onChange={(e) => set('endereco', e.target.value)} placeholder={def.endereco || 'Rua, número, bairro, cidade/UF, CEP'} />
@@ -96,18 +97,14 @@ export default function DocumentosConfiguracoesPage() {
           <label className="text-xs font-medium text-gray-600">Cidade (local de assinatura)<input disabled={!canEdit} className={inputCls} value={s.cidade} onChange={(e) => set('cidade', e.target.value)} placeholder={def.cidade} /></label>
           <label className="text-xs font-medium text-gray-600">UF<input disabled={!canEdit} className={inputCls} maxLength={2} value={s.uf} onChange={(e) => set('uf', e.target.value.toUpperCase())} placeholder={def.uf} /></label>
         </div>
-        <p className="text-[11px] text-gray-500">Campos vazios usam os dados do cadastro da loja (mostrados em cinza).</p>
       </section>
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="font-semibold text-gray-900">Outorgados das procurações</h2>
-            <p className="text-xs text-gray-500">Pessoas que o cliente nomeia como procuradoras (ex.: sócio, gerente, despachante). Todos os ativos saem nas procurações, podendo agir em conjunto ou separadamente.</p>
-          </div>
+          <h2 className="font-semibold text-gray-900">Outorgados das procurações</h2>
           {canEdit && <button type="button" onClick={() => set('outorgados', [...s.outorgados, newOutorgado()])} className="btn-secondary px-3 py-1.5 text-xs"><Plus size={13} />Adicionar outorgado</button>}
         </div>
-        {!s.outorgados.length && <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">Nenhum outorgado cadastrado — as procurações sairão com o campo do procurador em branco.</p>}
+        {!s.outorgados.length && <p className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">Nenhum outorgado cadastrado: as procurações sairão com o procurador em branco.</p>}
         {s.outorgados.map((o) => (
           <div key={o.id} className={cn('space-y-3 rounded-lg border p-4', o.ativo ? 'border-gray-200' : 'border-gray-100 opacity-60')}>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -118,8 +115,8 @@ export default function DocumentosConfiguracoesPage() {
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <label className="text-xs font-medium text-gray-600 sm:col-span-2">Nome completo *<input disabled={!canEdit} className={inputCls} value={o.nome} onChange={(e) => setO(o.id, { nome: e.target.value })} /></label>
-              <label className="text-xs font-medium text-gray-600">CPF *<input disabled={!canEdit} className={inputCls} value={maskCpf(o.cpf)} onChange={(e) => setO(o.id, { cpf: e.target.value.replace(/\D/g, '') })} /></label>
+              <label className="text-xs font-medium text-gray-600 sm:col-span-2">Nome completo <RequiredMark /><input disabled={!canEdit} className={inputCls} value={o.nome} onChange={(e) => setO(o.id, { nome: e.target.value })} /></label>
+              <label className="text-xs font-medium text-gray-600">CPF <RequiredMark /><input disabled={!canEdit} className={inputCls} value={maskCpf(o.cpf)} onChange={(e) => setO(o.id, { cpf: e.target.value.replace(/\D/g, '') })} /></label>
               <label className="text-xs font-medium text-gray-600">RG<input disabled={!canEdit} className={inputCls} value={o.rg ?? ''} onChange={(e) => setO(o.id, { rg: e.target.value })} /></label>
               <label className="text-xs font-medium text-gray-600">Órgão emissor<input disabled={!canEdit} className={inputCls} value={o.orgaoRg ?? ''} onChange={(e) => setO(o.id, { orgaoRg: e.target.value })} placeholder="SSP/SP" /></label>
               <label className="text-xs font-medium text-gray-600">Nacionalidade<input disabled={!canEdit} className={inputCls} value={o.nacionalidade ?? ''} onChange={(e) => setO(o.id, { nacionalidade: e.target.value })} /></label>
@@ -132,7 +129,7 @@ export default function DocumentosConfiguracoesPage() {
               <label className="text-xs font-medium text-gray-600">Função na loja<input disabled={!canEdit} className={inputCls} value={o.cargo ?? ''} onChange={(e) => setO(o.id, { cargo: e.target.value })} placeholder="sócio, gerente, despachante" /></label>
               <label className="text-xs font-medium text-gray-600 sm:col-span-3">Endereço completo<input disabled={!canEdit} className={inputCls} value={o.endereco ?? ''} onChange={(e) => setO(o.id, { endereco: e.target.value })} placeholder="Rua, número, bairro, cidade/UF, CEP" /></label>
             </div>
-            {missing(o).length > 0 && <p className="text-[11px] text-amber-700">Falta: {missing(o).join(', ')} — a procuração precisa da qualificação completa (art. 654, §1º, do Código Civil).</p>}
+            {missing(o).length > 0 && <p className="text-[11px] text-amber-700">Falta: {missing(o).join(', ')} (qualificação exigida pelo art. 654, §1º, do Código Civil).</p>}
           </div>
         ))}
       </section>
@@ -143,7 +140,6 @@ export default function DocumentosConfiguracoesPage() {
           <input disabled={!canEdit} type="number" min={30} max={730} className={inputCls} value={s.validadeProcuracaoDias} onChange={(e) => set('validadeProcuracaoDias', Number(e.target.value) || 180)} />
         </label>
         <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" disabled={!canEdit} checked={s.exigirFirmaReconhecida} onChange={(e) => set('exigirFirmaReconhecida', e.target.checked)} />Incluir o aviso de reconhecimento de firma (exigido pelo DETRAN para procuração particular)</label>
-        <p className="text-[11px] text-gray-500">A procuração do veículo da troca/compra é em causa própria, irrevogável, e não tem prazo (arts. 684 e 685 do Código Civil).</p>
       </section>
 
       {canEdit && (

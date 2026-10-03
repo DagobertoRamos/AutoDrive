@@ -52,6 +52,7 @@ export default function GarantiaConfigCard() {
 
   const save = async () => {
     if (!cfg) return
+    if (cfg.produtos.some((p) => !p.match.trim())) { setError('Informe o nome de cada produto.'); return }
     setSaving(true); setError(''); setSaved(false)
     try {
       const payload = {
@@ -70,8 +71,7 @@ export default function GarantiaConfigCard() {
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><ShieldCheck size={17} className="text-brand-600" />Comissão de garantia (produto · cheia/desconto)</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Loja paga = cortesia. O tier (cheia/desconto) é pelo valor cobrado real vs o valor cheio.</p>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><ShieldCheck size={17} className="text-brand-600" />Comissão de garantia</h2>
         </div>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
@@ -82,22 +82,22 @@ export default function GarantiaConfigCard() {
         <div className="mt-4 space-y-3">
           <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
             <input type="checkbox" checked={cfg.active} onChange={(e) => { setSaved(false); setCfg({ ...cfg, active: e.target.checked }) }} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-            <span className="text-sm font-medium text-gray-800">Usar este modelo de comissão de garantia (por produto)</span>
+            <span className="text-sm font-medium text-gray-800">Comissão por produto</span>
           </label>
           <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
             <input type="checkbox" checked={cfg.lojaPagaSemComissao} onChange={(e) => { setSaved(false); setCfg({ ...cfg, lojaPagaSemComissao: e.target.checked }) }} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-            <span className="text-sm font-medium text-gray-800">Quando a LOJA paga a garantia, não pagar comissão (cortesia)</span>
+            <span className="text-sm font-medium text-gray-800">Sem comissão quando a loja paga a garantia</span>
           </label>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
-                <tr>{['Produto (trecho do nome)', 'Valor cheio (R$)', 'Vend. cheia', 'Vend. desconto', 'Gerente', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr>
+                <tr>{['Produto *', 'Valor cheio (R$)', 'Vend. cheia', 'Vend. desconto', 'Gerente', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {cfg.produtos.map((p, i) => (
                   <tr key={i}>
-                    <td className="px-2 py-1.5"><input value={p.match} onChange={(e) => setProd(i, 'match', e.target.value)} placeholder="Ex: 150EX 2anos" className={inputCls} /></td>
+                    <td className="px-2 py-1.5"><input value={p.match} onChange={(e) => setProd(i, 'match', e.target.value)} placeholder="Trecho do nome" className={inputCls} /></td>
                     <td className="px-2 py-1.5"><MoneyInput value={textToMoney(p.valorCheia)} onChange={(n) => setProd(i, 'valorCheia', moneyToText(n))} className={inputNum} /></td>
                     <td className="px-2 py-1.5"><MoneyInput value={textToMoney(p.vendedorCheia)} onChange={(n) => setProd(i, 'vendedorCheia', moneyToText(n))} className={inputNum} /></td>
                     <td className="px-2 py-1.5"><MoneyInput value={textToMoney(p.vendedorDesconto)} onChange={(n) => setProd(i, 'vendedorDesconto', moneyToText(n))} className={inputNum} /></td>
@@ -105,7 +105,7 @@ export default function GarantiaConfigCard() {
                     <td className="px-2 py-1.5 text-center"><button onClick={() => delProd(i)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover produto"><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
-                {cfg.produtos.length === 0 && <tr><td colSpan={6} className="px-3 py-4 text-center text-sm text-gray-400">Sem produtos — usa os defaults abaixo.</td></tr>}
+                {cfg.produtos.length === 0 && <tr><td colSpan={6} className="px-3 py-4 text-center text-sm text-gray-400">Nenhum produto. Valem os valores padrão.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -113,19 +113,18 @@ export default function GarantiaConfigCard() {
 
           <div className="grid gap-3 md:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Default vend. cheia</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Padrão vendedor (cheia)</label>
               <MoneyInput value={textToMoney(cfg.defaultVendedorCheia)} onChange={(n) => { setSaved(false); setCfg({ ...cfg, defaultVendedorCheia: moneyToText(n) }) }} className={inputNum} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Default vend. desconto</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Padrão vendedor (desconto)</label>
               <MoneyInput value={textToMoney(cfg.defaultVendedorDesconto)} onChange={(n) => { setSaved(false); setCfg({ ...cfg, defaultVendedorDesconto: moneyToText(n) }) }} className={inputNum} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Default gerente</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Padrão gerente</label>
               <MoneyInput value={textToMoney(cfg.defaultGerente)} onChange={(n) => { setSaved(false); setCfg({ ...cfg, defaultGerente: moneyToText(n) }) }} className={inputNum} />
             </div>
           </div>
-          <p className="text-xs text-gray-400">Cobrado ≥ “valor cheio” → comissão cheia; abaixo → desconto. Sem valor cheio cadastrado, paga cheia. O produto é casado por trecho do nome (ex.: “150EX 2anos” casa “Gestauto - +150EX 2anos”).</p>
 
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={14} />{error}</div>}
           {saved && <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"><CheckCircle2 size={14} />Salvo. Reimporte/regenere as vendas para aplicar.</div>}

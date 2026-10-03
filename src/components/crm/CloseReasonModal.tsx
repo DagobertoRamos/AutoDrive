@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { reasonsFor, type CloseOutcome } from '@/lib/crm/settings-core'
+import { RequiredMark } from '@/components/ui/field'
 
 const TITLES: Record<CloseOutcome, string> = { LOST: 'Motivo da perda', DISCARDED: 'Motivo da desqualificação', RECYCLED: 'Motivo da reciclagem' }
 
@@ -36,7 +37,7 @@ export default function CloseReasonModal({ outcome, leadName, onClose, onConfirm
         </div>
         {leadName && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{leadName}</p>}
         <label className="mt-3 block">
-          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Motivo *</span>
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Motivo <RequiredMark /></span>
           <select value={reason} onChange={(e) => { setReason(e.target.value); setErr('') }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-700 dark:text-white">
             <option value="">Selecione…</option>
             {reasons.map((r) => <option key={r.id} value={r.label}>{r.label}</option>)}

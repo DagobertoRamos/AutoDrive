@@ -7,10 +7,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Target, X, Save, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-interface GoalLevel { level: number; targetValue: number; label?: string | null }
 interface GoalLevel { level: number; targetValue: number; label?: string | null }
 interface Goal {
   id:          string
@@ -173,13 +173,13 @@ function Modal({
         <form onSubmit={(e) => { e.preventDefault(); onSave(form) }} className="space-y-4 px-6 py-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Tipo <RequiredMark /></label>
               <select className={inputClass()} value={form.type} onChange={(e) => set('type', e.target.value)}>
                 {TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Escopo *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Escopo <RequiredMark /></label>
               <select className={inputClass()} value={form.scope} onChange={(e) => set('scope', e.target.value)}>
                 {SCOPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -187,7 +187,7 @@ function Modal({
 
             {form.scope === 'UNIT' && (
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade *</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade <RequiredMark /></label>
                 <select className={inputClass()} value={form.unitId} onChange={(e) => set('unitId', e.target.value)}>
                   <option value="">Selecione...</option>
                   {units.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -196,7 +196,7 @@ function Modal({
             )}
             {form.scope === 'USER' && (
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Vendedor *</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Vendedor <RequiredMark /></label>
                 <select className={inputClass()} value={form.userId} onChange={(e) => set('userId', e.target.value)}>
                   <option value="">Selecione...</option>
                   {sellers.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -205,7 +205,7 @@ function Modal({
             )}
             {form.scope === 'ROLE' && (
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo/Função *</label>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo/Função <RequiredMark /></label>
                 <select className={inputClass()} value={form.targetRole} onChange={(e) => set('targetRole', e.target.value)}>
                   <option value="">Selecione...</option>
                   {ROLES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -214,29 +214,29 @@ function Modal({
             )}
 
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Título (opcional)</label>
-              <input className={inputClass()} value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Ex: Meta de vendas — junho" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Título</label>
+              <input className={inputClass()} value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Ex.: Vendas junho" />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Período *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Período <RequiredMark /></label>
               <select className={inputClass()} value={form.period} onChange={(e) => set('period', e.target.value)}>
                 {PERIODS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade de medida *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade de medida <RequiredMark /></label>
               <select className={inputClass()} value={form.measureUnit} onChange={(e) => set('measureUnit', e.target.value)}>
                 {UNITS_MEASURE.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Início *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Início <RequiredMark /></label>
               <input type="date" className={inputClass()} value={form.startDate} onChange={(e) => set('startDate', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Fim *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Fim {form.period !== 'MONTHLY' && <RequiredMark />}</label>
               {form.period === 'MONTHLY' ? (
                 <input type="text" className={cn(inputClass(), 'bg-gray-50 cursor-not-allowed')} value="Recorrente (Sem data final)" disabled />
               ) : (
@@ -246,15 +246,13 @@ function Modal({
 
             {previewCiclo && (
               <div className="sm:col-span-2 rounded-xl bg-brand-50 p-4 border border-brand-100 text-sm text-brand-900 space-y-1 shadow-sm">
-                <p className="font-semibold text-brand-800 flex items-center gap-1.5">✨ Meta mensal ativa (recorrente)</p>
                 <p><strong>Ciclo atual:</strong> {previewCiclo.cicloInicio} até {previewCiclo.cicloFim}</p>
-                <p><strong>Próximo reset:</strong> {previewCiclo.cicloFim}:59</p>
                 <p><strong>Próximo ciclo:</strong> {previewCiclo.proxCiclo}</p>
               </div>
             )}
 
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Alvo base *</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Alvo base <RequiredMark /></label>
               <input
                 type="number" min={0} step="any" className={inputClass()}
                 value={form.targetValue}
@@ -288,7 +286,7 @@ function Modal({
                       onChange={(e) => setLevel(i, { targetValue: Number(e.target.value) })}
                     />
                     <input
-                      placeholder="Rótulo (ex: Bronze)"
+                      placeholder="Ex.: Bronze"
                       className={inputClass('flex-1')}
                       value={lvl.label ?? ''}
                       onChange={(e) => setLevel(i, { label: e.target.value })}
@@ -365,6 +363,17 @@ export default function MetasPage() {
   const openEdit = (g: Goal) => { setEditing(g); setSaveError(null); setModalOpen(true) }
 
   const handleSave = async (data: GoalForm) => {
+    const invalid =
+      data.scope === 'UNIT' && !data.unitId       ? 'Selecione a unidade.'
+      : data.scope === 'USER' && !data.userId     ? 'Selecione o vendedor.'
+      : data.scope === 'ROLE' && !data.targetRole ? 'Selecione o cargo.'
+      : !data.startDate                           ? 'Informe o início.'
+      : data.period !== 'MONTHLY' && !data.endDate ? 'Informe o fim.'
+      : data.period !== 'MONTHLY' && data.endDate < data.startDate ? 'Fim deve ser igual ou posterior ao início.'
+      : !(data.targetValue > 0)                   ? 'Informe o alvo.'
+      : data.progressive && data.levels.some((l) => !(l.targetValue > 0)) ? 'Informe o alvo de cada nível.'
+      : null
+    if (invalid) { setSaveError(invalid); return }
     setSaving(true); setSaveError(null)
     try {
       const body = {
@@ -431,10 +440,7 @@ export default function MetasPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Metas</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure metas por vendedor, cargo, unidade ou loja, com níveis progressivos.</p>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Metas</h1>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800">
           <Plus className="h-4 w-4" />Nova Meta
         </button>
@@ -468,7 +474,7 @@ export default function MetasPage() {
               ) : goals.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
-                    Nenhuma meta cadastrada. <button onClick={openCreate} className="text-brand-600 hover:underline">Criar agora</button>
+                    Nenhuma meta. <button onClick={openCreate} className="text-brand-600 hover:underline">Criar agora</button>
                   </td>
                 </tr>
               ) : (

@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, FileText, X, Save, FolderOpen } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL, maskCPF } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
+import { RequiredMark } from '@/components/ui/field'
 import { useFiPermissions } from '@/components/financing/useFiPermissions'
 
 type Status = 'SIMULACAO' | 'ENVIADA' | 'APROVADA' | 'RECUSADA' | 'CANCELADA'
@@ -171,13 +172,13 @@ export default function ProposalsManager({
           <div className="my-4 w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-gray-900">{editingId ? 'Editar ficha' : 'Nova ficha'}</h2><button onClick={() => setModal(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Proponente <span className="text-red-500">*</span></label><select className={inputCls} value={form.proponentId} onChange={(e) => set('proponentId', e.target.value)} disabled={!!editingId}><option value="">Selecione...</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}{editingId && !proponents.some((p) => p.id === form.proponentId) && <option value={form.proponentId}>Proponente atual</option>}</select></div>
+              <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Proponente <RequiredMark /></label><select className={inputCls} value={form.proponentId} onChange={(e) => set('proponentId', e.target.value)} disabled={!!editingId}><option value="">Selecione...</option>{proponents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}{editingId && !proponents.some((p) => p.id === form.proponentId) && <option value={form.proponentId}>Proponente atual</option>}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Banco</label><select className={inputCls} value={form.bankId} onChange={(e) => set('bankId', e.target.value)}><option value="">—</option>{banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Status{!perms.aprovar && <span className="ml-1 text-[10px] font-normal text-gray-400">(aprovar/recusar restrito)</span>}</label><select className={inputCls} value={form.status} onChange={(e) => set('status', e.target.value as Status)}>{(['SIMULACAO', 'ENVIADA', 'APROVADA', 'RECUSADA', 'CANCELADA'] as Status[]).filter((s) => perms.aprovar || s === form.status || (s !== 'APROVADA' && s !== 'RECUSADA')).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
               <div className="col-span-2"><label className="mb-1 block text-xs font-medium text-gray-700">Veículo</label><input className={inputCls} value={form.vehicle} onChange={(e) => set('vehicle', e.target.value)} placeholder="Marca/modelo/ano" /></div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Valor solicitado</label>{money(form.amountRequested, (v) => set('amountRequested', v))}</div>
               <div><label className="mb-1 block text-xs font-medium text-gray-700">Entrada</label>{money(form.downPayment, (v) => set('downPayment', v))}</div>
-              <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcelas</label><input type="number" min={0} className={inputCls} value={form.installments || ''} onChange={(e) => set('installments', Number(e.target.value))} placeholder="Ex: 48" /></div>
+              <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcelas</label><input type="number" min={0} className={inputCls} value={form.installments || ''} onChange={(e) => set('installments', Number(e.target.value))} placeholder="48" /></div>
               {form.status === 'APROVADA' && <>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Valor aprovado</label>{money(form.approvedValue, (v) => set('approvedValue', v))}</div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-700">Parcela mensal</label>{money(form.monthlyPayment, (v) => set('monthlyPayment', v))}</div>

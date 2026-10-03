@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { FileText, Plus, Loader2, Save, Trash2, Copy, X, AlertCircle } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Template {
   id:          string
@@ -101,6 +102,8 @@ export default function MasterDocumentosPage() {
 
   async function save() {
     if (!editing) return
+    if (!editing.name.trim()) { showToast('Informe o nome.', false); return }
+    if (!editing.bodyHtml.trim()) { showToast('Informe o conteúdo.', false); return }
     setSaving(true)
     try {
       const isNew = !editing.id
@@ -164,10 +167,7 @@ export default function MasterDocumentosPage() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100">
             <FileText size={20} className="text-brand-700" />
           </div>
-          <div>
-            <h1 className="font-bold text-gray-900">Documentos e Templates</h1>
-            <p className="text-xs text-gray-500">Modelos de contratos, procurações e termos disponíveis no sistema</p>
-          </div>
+          <h1 className="font-bold text-gray-900">Documentos e Templates</h1>
         </div>
         <button
           onClick={() => setEditing({ ...EMPTY })}
@@ -186,7 +186,7 @@ export default function MasterDocumentosPage() {
         ) : list.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400">
             <FileText size={28} />
-            <p className="text-sm">Nenhum template cadastrado</p>
+            <p className="text-sm">Nenhum template.</p>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -262,7 +262,7 @@ export default function MasterDocumentosPage() {
               <div className="flex-1 space-y-3 overflow-auto p-5">
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-gray-700">Nome *</span>
+                    <span className="mb-1 block font-medium text-gray-700">Nome <RequiredMark /></span>
                     <input
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                       value={editing.name}
@@ -270,7 +270,7 @@ export default function MasterDocumentosPage() {
                     />
                   </label>
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-gray-700">Tipo *</span>
+                    <span className="mb-1 block font-medium text-gray-700">Tipo <RequiredMark /></span>
                     <select
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                       value={editing.type}
@@ -292,14 +292,12 @@ export default function MasterDocumentosPage() {
 
                 <label className="block text-sm">
                   <span className="mb-1 flex items-center justify-between font-medium text-gray-700">
-                    <span>Conteúdo (HTML) *</span>
-                    <span className="text-xs font-normal text-gray-400">Aceita HTML. Use variáveis ao lado.</span>
+                    <span>Conteúdo (HTML) <RequiredMark /></span>
                   </span>
                   <textarea
                     className="h-[40vh] w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     value={editing.bodyHtml}
                     onChange={(e) => setEditing({ ...editing, bodyHtml: e.target.value })}
-                    placeholder={'<h1>Contrato de Compra e Venda</h1>\n<p>Pelo presente instrumento, {{cliente.nome}} (CPF {{cliente.cpf}})...</p>'}
                   />
                 </label>
 
@@ -316,14 +314,13 @@ export default function MasterDocumentosPage() {
 
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                   <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                  Templates criados aqui ficam <strong>globais</strong> (disponíveis para todos os tenants).
+                  Template <strong>global</strong> (todas as lojas).
                 </div>
               </div>
 
               {/* Painel de variáveis */}
               <aside className="w-72 shrink-0 overflow-auto border-l border-gray-200 bg-gray-50 p-4">
                 <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Variáveis disponíveis</h4>
-                <p className="mb-3 text-xs text-gray-500">Clique para inserir no documento.</p>
                 <ul className="space-y-1">
                   {VARIABLES.map((v) => (
                     <li key={v.key}>
@@ -346,7 +343,7 @@ export default function MasterDocumentosPage() {
               </button>
               <button
                 onClick={save}
-                disabled={saving || !editing.name || !editing.bodyHtml}
+                disabled={saving || !editing.name.trim() || !editing.bodyHtml.trim()}
                 className="flex items-center gap-1.5 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
               >
                 {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}

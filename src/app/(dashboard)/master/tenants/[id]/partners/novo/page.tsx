@@ -18,6 +18,9 @@ import {
   AlertTriangle, User, MapPin, Search, KeyRound, ShieldCheck,
 } from 'lucide-react'
 import { maskPhone } from '@/lib/masks'
+import { isValidCPF } from '@/lib/br-docs/cpf'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -192,12 +195,11 @@ export default function NovoPartnerPage() {
     setError('')
 
     const cpfDigits = normalizeCPF(form.cpf)
-    if (cpfDigits.length !== 11) { setError('CPF inválido.'); return }
-    if (!form.nomeCompleto.trim()) { setError('Nome completo é obrigatório.'); return }
-    if (willCreateUser && !form.email.trim()) {
-      setError('E-mail é obrigatório para sócio-administrador ou sócio principal.')
-      return
-    }
+    if (!cpfDigits) { setError('Informe o CPF.'); return }
+    if (!isValidCPF(cpfDigits)) { setError('CPF inválido.'); return }
+    if (!form.nomeCompleto.trim()) { setError('Informe o nome completo.'); return }
+    if (form.celular && !isValidPhone(form.celular)) { setError('Celular inválido.'); return }
+    if (willCreateUser && !form.email.trim()) { setError('Informe o e-mail.'); return }
 
     setSaving(true)
     try {
@@ -262,7 +264,7 @@ export default function NovoPartnerPage() {
             </div>
             <div>
               <h2 className="font-bold text-base">Sócio e acesso criados!</h2>
-              <p className="text-xs text-emerald-100">Usuário ADM gerado automaticamente</p>
+              <p className="text-xs text-emerald-100">Usuário ADM criado</p>
             </div>
           </div>
           <div className="p-6 space-y-4">
@@ -284,7 +286,7 @@ export default function NovoPartnerPage() {
             <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5">
               <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700">
-                O sócio será obrigado a criar uma nova senha no primeiro acesso ao sistema.
+                Troca de senha obrigatória no primeiro acesso.
               </p>
             </div>
             <button
@@ -310,10 +312,7 @@ export default function NovoPartnerPage() {
         >
           <ArrowLeft size={16} />
         </Link>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Adicionar sócio</h1>
-          <p className="text-xs text-gray-400">Preencha os dados do novo sócio / responsável</p>
-        </div>
+        <h1 className="text-xl font-bold text-gray-900">Adicionar sócio</h1>
       </div>
 
       {error && (
@@ -330,9 +329,7 @@ export default function NovoPartnerPage() {
           <div className="space-y-0.5">
             <p className="text-sm font-semibold text-brand-800">Acesso ao sistema será criado</p>
             <p className="text-xs text-brand-700">
-              Este sócio receberá um usuário <strong>ADM</strong> da loja.
-              Login: e-mail informado &bull; Senha inicial: CPF sem pontuação.
-              Troca de senha obrigatória no 1.º acesso.
+              Usuário <strong>ADM</strong>: login pelo e-mail, senha inicial = CPF sem pontuação.
             </p>
           </div>
         </div>
@@ -347,7 +344,7 @@ export default function NovoPartnerPage() {
           </h2>
 
           <div>
-            <label className={labelCls}>CPF *</label>
+            <label className={labelCls}>CPF <RequiredMark /></label>
             <div className="relative">
               <input
                 className={`${inputCls} pr-8 font-mono ${cpfBorderCls}`}
@@ -372,8 +369,8 @@ export default function NovoPartnerPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className={labelCls}>Nome completo *</label>
-              <input className={inputCls} value={form.nomeCompleto} onChange={set('nomeCompleto')} placeholder="Nome como no documento" />
+              <label className={labelCls}>Nome completo <RequiredMark /></label>
+              <input className={inputCls} value={form.nomeCompleto} onChange={set('nomeCompleto')} />
             </div>
             <div>
               <label className={labelCls}>RG</label>
@@ -389,7 +386,7 @@ export default function NovoPartnerPage() {
             </div>
             <div>
               <label className={labelCls}>
-                E-mail{willCreateUser && <span className="ml-1 text-red-500">*</span>}
+                E-mail{willCreateUser && <RequiredMark className="ml-1" />}
               </label>
               <input
                 type="email"
@@ -399,9 +396,6 @@ export default function NovoPartnerPage() {
                 placeholder="nome@empresa.com.br"
                 required={willCreateUser}
               />
-              {willCreateUser && !form.email && (
-                <p className="mt-1 text-xs text-amber-600">Obrigatório — será o login do usuário ADM</p>
-              )}
             </div>
           </div>
         </div>
@@ -423,7 +417,7 @@ export default function NovoPartnerPage() {
                 className={inputCls}
                 value={form.participacao}
                 onChange={set('participacao')}
-                placeholder="Ex: 50.00"
+                placeholder="Ex.: 50"
               />
             </div>
           </div>
@@ -441,7 +435,7 @@ export default function NovoPartnerPage() {
         {/* ── Endereço ─────────────────────────────────────────────────── */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
           <h2 className="flex items-center gap-2 font-semibold text-gray-800 text-sm">
-            <MapPin size={14} className="text-brand-600" /> Endereço (opcional)
+            <MapPin size={14} className="text-brand-600" /> Endereço
           </h2>
 
           {/* CEP */}
@@ -466,7 +460,7 @@ export default function NovoPartnerPage() {
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
               <label className={labelCls}>Logradouro</label>
-              <input className={inputCls} value={form.logradouro} onChange={set('logradouro')} placeholder="Rua, Av., etc." />
+              <input className={inputCls} value={form.logradouro} onChange={set('logradouro')} placeholder="Ex.: Rua das Flores" />
             </div>
             <div>
               <label className={labelCls}>Número</label>
@@ -476,7 +470,7 @@ export default function NovoPartnerPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Complemento</label>
-              <input className={inputCls} value={form.complemento} onChange={set('complemento')} placeholder="Apto, sala..." />
+              <input className={inputCls} value={form.complemento} onChange={set('complemento')} placeholder="Ex.: Apto 12" />
             </div>
             <div>
               <label className={labelCls}>Bairro</label>

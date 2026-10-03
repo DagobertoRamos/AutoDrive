@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, GripVertical, Plus, RefreshCw, Save, Star, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import { CRM_REQUIRABLE_FIELDS, CRM_STAGE_OPTIONS } from '@/lib/crm/shared'
 import type { Pipeline, PipelineStage } from '@/lib/crm/pipelines-core'
 
@@ -93,6 +94,7 @@ export default function PipelinesTab({ canManage }: { canManage: boolean }) {
 
   const save = async () => {
     if (!draft) return
+    if (!draft.name.trim() || draft.stages.some((st) => !st.name.trim())) { setMsg({ ok: false, text: 'Informe o nome do funil e de todas as etapas.' }); return }
     setSaving(true); setMsg(null)
     try {
       const isNew = draft.id === NEW_ID
@@ -167,8 +169,11 @@ export default function PipelinesTab({ canManage }: { canManage: boolean }) {
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
           <div className="grid gap-3 sm:grid-cols-[auto_1fr_1fr]">
             <input type="color" disabled={!canManage} value={draft.color} onChange={(e) => edit({ color: e.target.value })} className="h-10 w-10 rounded border border-gray-200" aria-label="Cor do funil" />
-            <input disabled={!canManage} className={inputCls} placeholder="Nome do funil (ex.: Repasse, Consórcio, Pós-venda)" value={draft.name} onChange={(e) => edit({ name: e.target.value })} />
-            <input disabled={!canManage} className={inputCls} placeholder="Descrição (opcional)" value={draft.description} onChange={(e) => edit({ description: e.target.value })} />
+            <div className="relative">
+              <input disabled={!canManage} aria-required="true" className={cn(inputCls, 'pr-6')} placeholder="Nome do funil" value={draft.name} onChange={(e) => edit({ name: e.target.value })} />
+              <RequiredMark className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+            </div>
+            <input disabled={!canManage} className={inputCls} placeholder="Descrição" value={draft.description} onChange={(e) => edit({ description: e.target.value })} />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-600">
             {draft.isDefault ? (
@@ -179,7 +184,6 @@ export default function PipelinesTab({ canManage }: { canManage: boolean }) {
           </div>
 
           <h3 className="mt-5 text-sm font-semibold text-gray-900">Etapas</h3>
-          <p className="text-xs text-gray-500">A ordem aqui é a ordem das colunas no Kanban. O <b>status</b> é o que o lead passa a ter ao entrar na etapa — é ele que integrações, relatórios e conversão enxergam.</p>
 
           <ul className="mt-3 space-y-2">
             {draft.stages.map((s, i) => (

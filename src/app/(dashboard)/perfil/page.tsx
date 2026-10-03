@@ -9,6 +9,8 @@ import { useSession } from 'next-auth/react'
 import { User, Lock, Bell, Camera, Save, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskPhone } from '@/lib/masks'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -188,8 +190,18 @@ export default function PerfilPage() {
     const userId = (session?.user as { id?: string })?.id
     if (!userId) return
 
-    setSavingPersonal(true)
     setPersonalAlert(null)
+    const invalid =
+      !personal.name.trim()           ? 'Informe o nome.'
+      : !personal.phone.trim()        ? 'Informe o telefone.'
+      : !isValidPhone(personal.phone) ? 'Telefone inválido.'
+      : null
+    if (invalid) {
+      setPersonalAlert({ type: 'error', message: invalid })
+      return
+    }
+
+    setSavingPersonal(true)
     try {
       const res  = await fetch(`/api/users/${userId}`, {
         method: 'PUT',
@@ -275,10 +287,7 @@ export default function PerfilPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Meu Perfil</h1>
-        <p className="mt-1 text-sm text-gray-500">Gerencie suas informações pessoais e preferências.</p>
-      </div>
+      <h1 className="text-2xl font-bold text-gray-900">Meu Perfil</h1>
 
       {/* ── Dados Pessoais ── */}
       <SectionCard icon={User} title="Dados Pessoais">
@@ -305,17 +314,16 @@ export default function PerfilPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome completo</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome completo <RequiredMark /></label>
               <input
                 type="text"
                 className={inputClass}
                 value={personal.name}
                 onChange={(e) => setPersonal((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Seu nome"
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Telefone / WhatsApp</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Telefone / WhatsApp <RequiredMark /></label>
               <input
                 type="tel"
                 inputMode="numeric"
@@ -336,7 +344,6 @@ export default function PerfilPage() {
               disabled
               title="O e-mail não pode ser alterado"
             />
-            <p className="mt-1 text-xs text-gray-400">O e-mail não pode ser alterado por aqui.</p>
           </div>
 
           {personalAlert && (
@@ -360,7 +367,7 @@ export default function PerfilPage() {
       <SectionCard icon={Lock} title="Alterar Senha">
         <form onSubmit={handleSavePassword} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-700">Senha atual</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700">Senha atual <RequiredMark /></label>
             <div className="relative">
               <input
                 type={showCurrentPwd ? 'text' : 'password'}
@@ -381,7 +388,7 @@ export default function PerfilPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-700">Nova senha</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700">Nova senha <RequiredMark /></label>
             <div className="relative">
               <input
                 type={showNewPwd ? 'text' : 'password'}
@@ -389,7 +396,7 @@ export default function PerfilPage() {
                 value={password.newPassword}
                 onChange={(e) => setPassword((p) => ({ ...p, newPassword: e.target.value }))}
                 placeholder="••••••••"
-                minLength={6}
+                minLength={8}
                 required
               />
               <button
@@ -403,7 +410,7 @@ export default function PerfilPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-gray-700">Confirmar nova senha</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700">Confirmar nova senha <RequiredMark /></label>
             <div className="relative">
               <input
                 type={showConfirmPwd ? 'text' : 'password'}

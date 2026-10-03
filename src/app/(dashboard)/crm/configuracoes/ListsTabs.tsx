@@ -41,10 +41,10 @@ export function useSection<K extends keyof CrmSettings>(section: K) {
   return { items, update, save, saving, dirty, msg }
 }
 
-export function Card({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+export function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
-      <div className="mb-3"><h2 className="text-sm font-semibold text-gray-900">{title}</h2><p className="text-xs text-gray-500">{hint}</p></div>
+      <div className="mb-3"><h2 className="text-sm font-semibold text-gray-900">{title}</h2>{hint && <p className="text-xs text-gray-500">{hint}</p>}</div>
       {children}
     </div>
   )
@@ -65,7 +65,7 @@ export function TemperaturesTab({ canManage }: { canManage: boolean }) {
   const s = useSection('temperatures')
   const set = (value: string, patch: Partial<TemperatureCfg>) => s.update(s.items.map((t) => t.value === value ? { ...t, ...patch } : t))
   return (
-    <Card title="Temperaturas" hint="Nome e cor de cada nível. Temperatura desativada some dos botões do lead (leads que já a têm continuam mostrando).">
+    <Card title="Temperaturas">
       <ul className="space-y-2">
         {s.items.map((t) => (
           <li key={t.value} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
@@ -86,7 +86,7 @@ export function LeadTypesTab({ canManage }: { canManage: boolean }) {
   const s = useSection('leadTypes')
   const set = (i: number, patch: Partial<LeadTypeCfg>) => s.update(s.items.map((t, idx) => idx === i ? { ...t, ...patch } : t))
   return (
-    <Card title="Tipos de lead" hint="Classifica o interesse do cliente (compra, troca, consignação…). Escolhido no lead e usado como filtro na lista.">
+    <Card title="Tipos de lead">
       <ul className="space-y-2">
         {s.items.map((t, i) => (
           <li key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
@@ -100,7 +100,7 @@ export function LeadTypesTab({ canManage }: { canManage: boolean }) {
       {canManage && (
         <button onClick={() => s.update([...s.items, { id: '', label: '', color: '#6b7280', active: true }])} className="mt-2 flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"><Plus size={13} />Adicionar tipo</button>
       )}
-      <p className="mt-2 text-[11px] text-gray-400">Prefira desativar a remover: leads que já usam um tipo removido ficam sem tipo.</p>
+      <p className="mt-2 text-[11px] text-gray-400">Leads com tipo removido ficam sem tipo. Prefira desativar.</p>
       <SaveBar canManage={canManage} {...s} />
     </Card>
   )
@@ -111,11 +111,11 @@ export function SourcesTab({ canManage }: { canManage: boolean }) {
   const s = useSection('sources')
   const set = (i: number, patch: Partial<SourceCfg>) => s.update(s.items.map((t, idx) => idx === i ? { ...t, ...patch } : t))
   return (
-    <Card title="Origens" hint="De onde o lead veio. As origens do sistema (integrações) podem ser renomeadas, não removidas. Origens ativas aparecem ao cadastrar um lead.">
+    <Card title="Origens">
       <ul className="space-y-2">
         {s.items.map((t, i) => (
           <li key={t.code || `new-${i}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2">
-            <input disabled={!canManage} className={cn(inputCls, 'flex-1 min-w-[140px]')} placeholder="Nome da origem (ex.: Instagram, Indicação)" value={t.label} onChange={(e) => set(i, { label: e.target.value })} />
+            <input disabled={!canManage} className={cn(inputCls, 'flex-1 min-w-[140px]')} placeholder="Nome da origem" value={t.label} onChange={(e) => set(i, { label: e.target.value })} />
             {t.code && <span className="rounded bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">{t.code}</span>}
             {t.system && <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">sistema</span>}
             <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" disabled={!canManage} checked={t.active} onChange={(e) => set(i, { active: e.target.checked })} className={checkCls} />Ativa</label>
@@ -132,10 +132,10 @@ export function SourcesTab({ canManage }: { canManage: boolean }) {
 }
 
 // ── Motivos de encerramento ───────────────────────────────────────────────────
-const OUTCOMES: { value: CloseOutcome; label: string; hint: string }[] = [
-  { value: 'LOST', label: 'Perdido', hint: 'Oportunidade real que não fechou.' },
-  { value: 'DISCARDED', label: 'Desqualificado', hint: 'Não era uma oportunidade (contato inválido, duplicado…).' },
-  { value: 'RECYCLED', label: 'Reciclado', hint: 'Volta a ser trabalhado no futuro.' },
+const OUTCOMES: { value: CloseOutcome; label: string }[] = [
+  { value: 'LOST', label: 'Perdido' },
+  { value: 'DISCARDED', label: 'Desqualificado' },
+  { value: 'RECYCLED', label: 'Reciclado' },
 ]
 
 export function CloseReasonsTab({ canManage }: { canManage: boolean }) {
@@ -143,14 +143,13 @@ export function CloseReasonsTab({ canManage }: { canManage: boolean }) {
   const set = (id: string, patch: Partial<CloseReasonCfg>) => s.update(s.items.map((r) => r.id === id ? { ...r, ...patch } : r))
   let newSeq = 0
   return (
-    <Card title="Motivos de encerramento" hint="Lista oferecida ao marcar um lead como perdido, desqualificado ou reciclado — no detalhe do lead e ao mover no Kanban.">
+    <Card title="Motivos de encerramento">
       <div className="grid gap-4 lg:grid-cols-3">
         {OUTCOMES.map((o) => {
           const list = s.items.filter((r) => r.outcome === o.value)
           return (
             <div key={o.value} className="rounded-lg border border-gray-100 p-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-700">{o.label}</h3>
-              <p className="mb-2 text-[11px] text-gray-400">{o.hint}</p>
               <ul className="space-y-1.5">
                 {list.map((r) => (
                   <li key={r.id} className="flex items-center gap-1.5">

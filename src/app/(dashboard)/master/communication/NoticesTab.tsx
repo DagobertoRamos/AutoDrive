@@ -15,6 +15,7 @@ import {
   Zap, ShieldAlert, Send,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -467,10 +468,8 @@ function NoticeModal({ initial, onClose, onSaved }: {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.title.trim() || !form.message.trim()) {
-      setError('Título e mensagem são obrigatórios.')
-      return
-    }
+    if (!form.title.trim()) { setError('Informe o título.'); return }
+    if (!form.message.trim()) { setError('Informe a mensagem.'); return }
     if (form.startsAt && form.endsAt && new Date(form.endsAt) < new Date(form.startsAt)) {
       setError('A data de expiração não pode ser anterior à data de início.')
       return
@@ -563,12 +562,12 @@ function NoticeModal({ initial, onClose, onSaved }: {
 
               {/* Título e mensagem */}
               <div>
-                <label className={lbl}>Título *</label>
-                <input className={inp} value={form.title} onChange={e => setField('title', e.target.value)} placeholder="Ex: Nova funcionalidade disponível" />
+                <label className={lbl}>Título <RequiredMark /></label>
+                <input className={inp} value={form.title} onChange={e => setField('title', e.target.value)} placeholder="Ex.: Nova funcionalidade disponível" />
               </div>
               <div>
-                <label className={lbl}>Mensagem *</label>
-                <textarea className={inp} rows={3} value={form.message} onChange={e => setField('message', e.target.value)} placeholder="Texto completo do aviso..." />
+                <label className={lbl}>Mensagem <RequiredMark /></label>
+                <textarea className={inp} rows={3} value={form.message} onChange={e => setField('message', e.target.value)} />
               </div>
 
               {/* Tipo, prioridade e severidade */}
@@ -613,11 +612,6 @@ function NoticeModal({ initial, onClose, onSaved }: {
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>
-                {['SELECTED_TENANTS', 'SELECTED_UNITS', 'SELECTED_ROLES', 'SELECTED_USERS'].includes(form.targetType) && (
-                  <p className="mt-1 text-[11px] text-blue-600">
-                    Seleção avançada de {TARGET_LABELS[form.targetType]?.toLowerCase()} disponível via API de usuários/tenants.
-                  </p>
-                )}
               </div>
 
               {/* Canais de exibição */}
@@ -649,12 +643,12 @@ function NoticeModal({ initial, onClose, onSaved }: {
               {/* Ação */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={lbl}>URL de ação (opcional)</label>
+                  <label className={lbl}>URL de ação</label>
                   <input className={inp} value={form.actionUrl} onChange={e => setField('actionUrl', e.target.value)} placeholder="https://..." />
                 </div>
                 <div>
                   <label className={lbl}>Texto do botão</label>
-                  <input className={inp} value={form.actionLabel} onChange={e => setField('actionLabel', e.target.value)} placeholder="Ver mais" />
+                  <input className={inp} value={form.actionLabel} onChange={e => setField('actionLabel', e.target.value)} placeholder="Ex.: Ver mais" />
                 </div>
               </div>
 
@@ -1081,7 +1075,7 @@ export default function NoticesTab() {
       ) : notices.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
           <Megaphone size={32} strokeWidth={1} />
-          <p className="text-sm">Nenhum aviso encontrado</p>
+          <p className="text-sm">Nenhum aviso.</p>
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700">
             <Plus size={12} /> Criar primeiro aviso
           </button>

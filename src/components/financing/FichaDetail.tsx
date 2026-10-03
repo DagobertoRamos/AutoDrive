@@ -199,9 +199,9 @@ export default function FichaDetail({ id }: { id: string }) {
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
           <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900"><Send size={16} className="text-brand-600" />Enviar para bancos</h2>
           {!perms.enviarFicha ? (
-            <p className="flex items-center gap-2 text-sm text-gray-400"><Lock size={14} />Seu perfil não pode enviar fichas (Permissões F&amp;I da loja).</p>
+            <p className="flex items-center gap-2 text-sm text-gray-400"><Lock size={14} />Seu perfil não pode enviar fichas.</p>
           ) : banks.length === 0 ? (
-            <p className="text-sm text-gray-400">Nenhum banco ativo. Cadastre em Bancos da Loja.</p>
+            <p className="text-sm text-gray-400">Nenhum banco ativo.</p>
           ) : (
             <>
               <div className="flex flex-wrap gap-1.5">
@@ -212,7 +212,6 @@ export default function FichaDetail({ id }: { id: string }) {
                 ))}
               </div>
               <button onClick={() => submit(false)} disabled={sending || pickBanks.length === 0} className="btn-primary mt-3 w-full justify-center text-sm disabled:opacity-50"><Send size={15} />{sending ? 'Enviando...' : `Enviar a ${pickBanks.length || ''} banco(s)`}</button>
-              <p className="mt-2 text-[11px] text-gray-400">Envio registrado de forma supervisionada (sem automação de tela de banco). Envie a ficha pelo canal oficial e acompanhe o status aqui.</p>
             </>
           )}
         </div>

@@ -70,7 +70,7 @@ export default function FiPermissionsPage() {
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
         <div>
           <p className="text-lg font-semibold text-gray-800">Configuração restrita</p>
-          <p className="mt-1 max-w-md text-sm text-gray-500">As permissões de F&amp;I são definidas pela loja (administração/gerência/financeiro).</p>
+          <p className="mt-1 max-w-md text-sm text-gray-500">Acesso restrito à administração, gerência e financeiro.</p>
         </div>
       </div>
     )
@@ -81,7 +81,6 @@ export default function FiPermissionsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Permissões F&amp;I</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Quem pode enviar ficha, aprovar e alterar retorno na sua loja.</p>
         </div>
         <button onClick={save} disabled={saving || loading} className="btn-primary text-sm disabled:opacity-50"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button>
       </div>
@@ -121,7 +120,7 @@ export default function FiPermissionsPage() {
 
       <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
         <ShieldCheck size={16} className="mt-0.5 shrink-0" />
-        <span>Aplicada no fluxo: papéis fora da lista são bloqueados ao enviar ficha, aprovar/recusar ou alterar retorno (além do RBAC base). <strong>Deixar uma capacidade sem nenhum papel = sem restrição extra</strong> (todos com permissão base podem). Tudo auditado.</span>
+        <span>Coluna sem nenhum papel marcado = sem restrição extra.</span>
       </div>
     </div>
   )

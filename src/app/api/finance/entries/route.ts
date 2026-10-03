@@ -74,6 +74,7 @@ export async function POST(req: Request) {
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
     const d = createEntrySchema.parse(await req.json())
+    if (!d.dueDate) return NextResponse.json({ success: false, error: 'Informe o vencimento.' }, { status: 400 })
     const entry = await prisma.financialEntry.create({
       data: {
         tenantId, type: d.type, status: d.status, description: d.description, amount: d.amount,

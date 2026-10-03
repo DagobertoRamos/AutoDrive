@@ -8,6 +8,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, UserCog, X, Save, CheckCircle, AlertCircle, Bell } from 'lucide-react'
 import { cn, formatCPF, formatPhone } from '@/lib/utils'
 import { maskCPF, maskPhone } from '@/lib/masks'
+import { isValidCPF } from '@/lib/br-docs/cpf'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -102,9 +105,11 @@ function Modal({
   positions: Position[]
 }) {
   const [form, setForm] = useState<ManagerForm>(emptyForm)
+  const [formErr, setFormErr] = useState('')
 
   useEffect(() => {
     if (open) {
+      setFormErr('')
       if (initial) {
         const { id: _id, unitName: _un, position: _p, ...rest } = initial
         setForm({ ...rest, positionId: initial.positionId ?? null })
@@ -118,7 +123,19 @@ function Modal({
   if (!open) return null
 
   const set = <K extends keyof ManagerForm>(key: K, value: ManagerForm[K]) => {
+    setFormErr('')
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const validate = (): string => {
+    if (!form.fullName.trim()) return 'Informe o nome completo.'
+    if (!isValidCPF(form.cpf)) return 'CPF inválido.'
+    if (!isValidPhone(form.whatsapp)) return 'WhatsApp inválido.'
+    if (!initial && !form.email.trim()) return 'Informe o e-mail.'
+    if (form.email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return 'E-mail inválido.'
+    if (!form.unitId) return 'Selecione a unidade.'
+    if (!form.positionId) return 'Selecione o cargo.'
+    return ''
   }
 
   return (
@@ -140,29 +157,35 @@ function Modal({
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); onSave(form) }}
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            const msg = validate()
+            if (msg) { setFormErr(msg); return }
+            onSave(form)
+          }}
           className="px-6 py-5 space-y-4"
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome completo *</label>
-              <input required className={inputClass()} value={form.fullName} onChange={(e) => set('fullName', e.target.value)} placeholder="Maria Oliveira" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome completo<RequiredMark className="ml-0.5" /></label>
+              <input className={inputClass()} value={form.fullName} onChange={(e) => set('fullName', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">CPF</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">CPF<RequiredMark className="ml-0.5" /></label>
               <input className={inputClass()} value={maskCPF(form.cpf)} onChange={(e) => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">WhatsApp *</label>
-              <input required type="tel" className={inputClass()} value={maskPhone(form.whatsapp)} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 99999-9999" inputMode="numeric" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">WhatsApp<RequiredMark className="ml-0.5" /></label>
+              <input type="tel" className={inputClass()} value={maskPhone(form.whatsapp)} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 99999-9999" inputMode="numeric" />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail</label>
-              <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="gerente@autodrive.com.br" />
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">E-mail{!initial && <RequiredMark className="ml-0.5" />}</label>
+              <input type="email" className={inputClass()} value={form.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade *</label>
-              <select required className={inputClass()} value={form.unitId} onChange={(e) => set('unitId', e.target.value)}>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade<RequiredMark className="ml-0.5" /></label>
+              <select className={inputClass()} value={form.unitId} onChange={(e) => set('unitId', e.target.value)}>
                 <option value="">Selecione</option>
                 {units.map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
@@ -177,13 +200,13 @@ function Modal({
               </select>
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Cargo<RequiredMark className="ml-0.5" /></label>
               <select
                 className={inputClass()}
                 value={form.positionId ?? ''}
                 onChange={(e) => set('positionId', e.target.value || null)}
               >
-                <option value="">— selecione —</option>
+                <option value="">Selecione</option>
                 {positions.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
@@ -196,10 +219,10 @@ function Modal({
             <ToggleRow label="Recebe notificações" checked={form.receivesNotifications} onChange={(v) => set('receivesNotifications', v)} />
           </div>
 
-          {error && (
+          {(formErr || error) && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
+              {formErr || error}
             </div>
           )}
 
@@ -294,7 +317,6 @@ export default function GerentesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gerentes</h1>
-          <p className="mt-1 text-sm text-gray-500">Gerencie os gerentes e administradores do sistema.</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-800 transition-colors">
           <Plus className="h-4 w-4" />
@@ -331,8 +353,7 @@ export default function GerentesPage() {
               ) : managers.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
-                    Nenhum gerente cadastrado.{' '}
-                    <button onClick={openCreate} className="text-brand-600 hover:underline">Adicionar agora</button>
+                    Nenhum gerente cadastrado.
                   </td>
                 </tr>
               ) : (

@@ -9,15 +9,16 @@
 import { useState, useEffect, useMemo } from 'react'
 import { X, Save, RefreshCw, AlertCircle, CheckCircle2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Option { id: string; nome: string }
 interface Props { periodDefault?: string; colaboradores: Option[]; onClose: () => void; onDone: () => void }
 
 const KINDS = [
-  { value: 'CREDITO', label: 'Crédito (+ soma ao colaborador)' },
-  { value: 'DEBITO', label: 'Débito (− desconta)' },
-  { value: 'VALE', label: 'Vale / Adiantamento (− desconta)' },
-  { value: 'DESCONTO_FOLHA', label: 'Desconto em folha (− desconta)' },
+  { value: 'CREDITO', label: 'Crédito (+)' },
+  { value: 'DEBITO', label: 'Débito (−)' },
+  { value: 'VALE', label: 'Vale / adiantamento (−)' },
+  { value: 'DESCONTO_FOLHA', label: 'Desconto em folha (−)' },
 ]
 
 function currentMonth() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
@@ -78,39 +79,38 @@ export default function LancamentoManualModal({ periodDefault, colaboradores, on
           <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Wallet size={18} className="text-brand-600" />Lançamento manual (RH)</h2>
           <button onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
         </div>
-        <p className="mt-1 text-xs text-gray-500">Lança no extrato do colaborador e espelha no Financeiro.</p>
 
         <div className="mt-4 space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Colaborador</label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Colaborador<RequiredMark className="ml-0.5" /></label>
             <select value={collaborator} onChange={(e) => setCollaborator(e.target.value)} className={inputCls}>
-              <option value="">Selecione…</option>
+              <option value="">Selecione</option>
               {people.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Período</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Período<RequiredMark className="ml-0.5" /></label>
               <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Valor (R$)</label>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Valor (R$)<RequiredMark className="ml-0.5" /></label>
               <input inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" className={inputCls} />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Tipo</label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Tipo<RequiredMark className="ml-0.5" /></label>
             <select value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
               {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Descrição</label>
-            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex: Vale semana 1 / Garantia cortesia / Bônus" className={inputCls} />
+            <label className="mb-1 block text-xs font-medium text-gray-700">Descrição<RequiredMark className="ml-0.5" /></label>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Motivo (opcional)</label>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Justificativa interna" className={inputCls} />
+            <label className="mb-1 block text-xs font-medium text-gray-700">Motivo</label>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
           </div>
 
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><AlertCircle size={14} />{error}</div>}

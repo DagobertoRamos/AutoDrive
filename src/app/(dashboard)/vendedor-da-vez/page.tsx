@@ -39,6 +39,8 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
+import { maskPhoneInput } from '@/lib/br-docs/phone'
 import MinhaFilaIndividual from '@/components/seller-queue/MinhaFilaIndividual'
 import FilasIndividuaisUnidade from '@/components/seller-queue/FilasIndividuaisUnidade'
 import QueueRanking from '@/components/seller-queue/QueueRanking'
@@ -345,7 +347,7 @@ export default function FilaOverviewPage() {
       const j = await res.json().catch(() => ({}))
       if (!res.ok) flash(j?.error ?? 'Falha ao chamar.', false)
       else if (j?.data?.alreadyInProgress) flash(j?.data?.sellerName ? `Chamada já em andamento — ${j.data.sellerName} foi chamado.` : (j?.data?.cooldownSeconds ? `Aguarde ${j.data.cooldownSeconds}s para chamar de novo.` : 'Chamada já em andamento — aguarde.'), false)
-      else if (j?.data?.call?.ok) flash('Vendedor da vez chamado! 🔔', true)
+      else if (j?.data?.call?.ok) flash('Vendedor da vez chamado!', true)
       else flash(j?.data?.call?.reason ?? 'Nenhum vendedor disponível na fila.', false)
       await load()
     } catch { flash('Erro de rede.', false) } finally { setCalling(false) }
@@ -369,6 +371,7 @@ export default function FilaOverviewPage() {
   const submitMarkAttending = async () => {
     if (!markAttendingForm.sellerId) { flash('Selecione o vendedor.', false); return }
     if (!markAttendingForm.notes.trim()) { flash('As observações são obrigatórias.', false); return }
+    if (!markAttendingForm.reason.trim()) { flash('Informe o motivo administrativo.', false); return }
     setBusy('mark-attending')
     try {
       const res = await fetch('/api/seller-queue/manage-seller', {
@@ -969,7 +972,7 @@ export default function FilaOverviewPage() {
                   <ListOrdered size={16} className="text-brand-600" />
                   Ordem da fila
                 </p>
-                <span className="text-xs text-gray-400">Atualiza a cada 3s</span>
+
               </div>
               <div className="divide-y divide-gray-100">
                 {(current?.entries ?? []).length === 0 ? (
@@ -1243,13 +1246,13 @@ export default function FilaOverviewPage() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-700">Vendedor *</label>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Vendedor <RequiredMark /></label>
                 <select
                   value={markAttendingForm.sellerId}
                   onChange={(e) => setMarkAttendingForm((f) => ({ ...f, sellerId: e.target.value }))}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 >
-                  <option value="">— selecione o vendedor —</option>
+                  <option value="">— selecione —</option>
                   {callable.map((c) => (
                     <option key={c.sellerId} value={c.sellerId}>
                       {c.name} {c.queueStatus ? `(${queueStatusLabel(c.queueStatus)})` : '(fora da fila)'}
@@ -1274,42 +1277,43 @@ export default function FilaOverviewPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-700">Nome do Cliente (opcional)</label>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Nome do cliente</label>
                 <input
                   type="text"
                   value={markAttendingForm.customerName}
                   onChange={(e) => setMarkAttendingForm((f) => ({ ...f, customerName: e.target.value }))}
-                  placeholder="Ex: Anderson Silva"
+                  placeholder="Nome completo"
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-700">Telefone (opcional)</label>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Telefone</label>
                 <input
                   type="tel"
+                  inputMode="numeric"
                   value={markAttendingForm.customerPhone}
-                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, customerPhone: e.target.value }))}
-                  placeholder="(11)9.9999-9999"
+                  onChange={(e) => setMarkAttendingForm((f) => ({ ...f, customerPhone: maskPhoneInput(e.target.value) }))}
+                  placeholder="(11) 99999-9999"
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-700">Observações *</label>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Observações <RequiredMark /></label>
                 <textarea
                   rows={2}
                   value={markAttendingForm.notes}
                   onChange={(e) => setMarkAttendingForm((f) => ({ ...f, notes: e.target.value }))}
-                  placeholder="Justificativa ou descrição do atendimento"
+                  placeholder="Descrição do atendimento"
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-700">Motivo Administrativo *</label>
+                <label className="mb-1 block text-xs font-semibold text-gray-700">Motivo administrativo <RequiredMark /></label>
                 <input
                   type="text"
                   value={markAttendingForm.reason}
                   onChange={(e) => setMarkAttendingForm((f) => ({ ...f, reason: e.target.value }))}
-                  placeholder="Justificativa do gerente"
+                  placeholder="Motivo"
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
               </div>

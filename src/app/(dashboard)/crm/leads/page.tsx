@@ -19,6 +19,8 @@ import { CRM_STAGE_OPTIONS, crmPriorityLabel, crmPriorityTone } from '@/lib/crm/
 import { useCrmSettings } from '@/hooks/useCrmSettings'
 import { leadTypeOf, sourceLabelOf, temperatureOf } from '@/lib/crm/settings-core'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
+import { isValidPhone, maskPhoneInput } from '@/lib/br-docs/phone'
 
 interface LeadTag { id: string; name: string; color: string | null }
 interface LeadRow {
@@ -142,13 +144,17 @@ export default function CrmLeadsPage() {
     void load(page)
   }
 
+  const typeRequired = settings.requiredFields.onCreate.includes('leadType') && settings.leadTypes.some(t => t.active)
   const createLead = async () => {
-    if (!newName && !newPhone) return
+    if (!newName.trim() || !isValidPhone(newPhone) || !newSource || (typeRequired && !newType)) {
+      setNewErr('Preencha os campos obrigatórios.')
+      return
+    }
     setSaving(true); setNewErr(null)
     try {
       const res = await fetch('/api/crm/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ name: newName || null, phone: newPhone || null, source: newSource || 'MANUAL', leadType: newType || undefined }),
+        body: JSON.stringify({ name: newName.trim(), phone: newPhone, source: newSource || 'MANUAL', leadType: newType || undefined }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => null) as { error?: string } | null
@@ -194,20 +200,20 @@ export default function CrmLeadsPage() {
       {showNew && (
         <div className="flex flex-wrap items-end gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3 dark:border-brand-900/50 dark:bg-brand-950/40">
           <div className="flex-1 min-w-[160px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Nome</label>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Nome <RequiredMark /></label>
             <input value={newName} onChange={e => setNewName(e.target.value)}
               placeholder="Nome do cliente"
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white" />
           </div>
           <div className="flex-1 min-w-[140px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Telefone</label>
-            <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)}
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Telefone <RequiredMark /></label>
+            <input type="tel" inputMode="tel" value={newPhone} onChange={e => setNewPhone(maskPhoneInput(e.target.value))}
               onKeyDown={e => e.key === 'Enter' && void createLead()}
-              placeholder="(11) 9.9999-9999"
+              placeholder="(11) 99999-9999"
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white" />
           </div>
           <div className="min-w-[140px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Origem</label>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Origem <RequiredMark /></label>
             <select value={newSource} onChange={e => setNewSource(e.target.value)}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white">
               {settings.sources.filter(o => o.active || o.code === 'MANUAL').map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
@@ -215,15 +221,15 @@ export default function CrmLeadsPage() {
           </div>
           {settings.leadTypes.some(t => t.active) && (
             <div className="min-w-[140px]">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tipo</label>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tipo{typeRequired && <> <RequiredMark /></>}</label>
               <select value={newType} onChange={e => setNewType(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none dark:border-white/20 dark:bg-slate-800 dark:text-white">
-                <option value="">Sem tipo</option>
+                <option value="">{typeRequired ? '— selecione —' : 'Sem tipo'}</option>
                 {settings.leadTypes.filter(t => t.active).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </div>
           )}
-          <button onClick={() => void createLead()} disabled={saving || (!newName && !newPhone)} className="btn-primary text-sm">
+          <button onClick={() => void createLead()} disabled={saving} className="btn-primary text-sm">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}Criar
           </button>
           <button onClick={() => setShowNew(false)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"><X size={15} /></button>
@@ -249,7 +255,7 @@ export default function CrmLeadsPage() {
             )}
             <input
               value={search} onChange={e => handleSearch(e.target.value)}
-              placeholder="Buscar por nome, telefone, e-mail, placa, carro, notas…"
+              placeholder="Nome, telefone, e-mail, placa ou veículo"
               className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:border-white/15 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500 dark:focus:ring-brand-900"
             />
           </div>

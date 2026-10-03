@@ -14,6 +14,7 @@ import { BadgePercent, CalendarClock, Images, Loader2, Pencil, Search, Star, Tag
 import { cn } from '@/lib/utils'
 import { MoneyInput, moneyToText, textToMoney } from '@/components/ui/money-input'
 import { discountPct, type PromoState } from '@/lib/site/listing-core'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Row {
   id: string; title: string; plate: string | null; cover: string | null; state: 'PUBLICADO' | 'EM_BREVE' | 'HIDDEN'
@@ -74,10 +75,7 @@ export default function SitePromotionsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><BadgePercent size={20} className="text-brand-600" />Promoções</h1>
-        <p className="text-sm text-gray-500">Preço “de/por” com início e fim. Enquanto a promoção vale, o site mostra o preço anterior riscado e o selo de oferta.</p>
-      </div>
+      <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900"><BadgePercent size={20} className="text-brand-600" />Promoções</h1>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
@@ -107,7 +105,7 @@ export default function SitePromotionsPage() {
       {loading ? <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100" />)}</div>
         : shown.length === 0 ? (
           <p className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
-            {tab === 'ATIVA' ? 'Nenhum carro em promoção agora. Abra “Criar promoção” para escolher um carro.' : tab === 'NENHUMA' ? 'Todos os carros do site já têm promoção.' : 'Nada por aqui.'}
+            {tab === 'ATIVA' ? 'Nenhum carro em promoção.' : tab === 'NENHUMA' ? 'Todos os carros do site já têm promoção.' : 'Nada por aqui.'}
           </p>
         ) : (
         <ul className="space-y-2">
@@ -131,7 +129,7 @@ export default function SitePromotionsPage() {
                   {p.state !== 'NENHUMA' && (p.startsAt || p.endsAt) && (
                     <p className="text-[11px] text-gray-400">{p.startsAt ? `De ${when(p.startsAt)}` : 'Desde já'}{p.endsAt ? ` até ${when(p.endsAt)}` : ', sem data para acabar'}</p>
                   )}
-                  {r.state === 'EM_BREVE' && <p className="text-[11px] text-amber-700">Carro ainda sem fotos: a promoção aparece quando ele for publicado.</p>}
+                  {r.state === 'EM_BREVE' && <p className="text-[11px] text-amber-700">Sem fotos: aparece quando o carro for publicado.</p>}
                 </div>
                 <button onClick={() => setEditing(r)} className="btn-secondary px-2 py-1.5 text-xs">
                   {p.state === 'NENHUMA' ? <><Tag size={13} />Criar promoção</> : <><Pencil size={13} />Editar</>}
@@ -168,7 +166,7 @@ function PromoEditor({ row, onClose, onSaved }: { row: Row; onClose: () => void;
     } catch { setErr('Erro de rede.') } finally { setBusy(null) }
   }
   const save = () => {
-    if (!sale) { setErr('Defina o preço de venda do carro no estoque antes de criar a promoção.'); return }
+    if (!sale) { setErr('Defina o preço de venda no estoque.'); return }
     if (!value) { setErr('Informe o preço promocional.'); return }
     void send('save', {
       isPromo: true, promoPrice: value,
@@ -187,7 +185,7 @@ function PromoEditor({ row, onClose, onSaved }: { row: Row; onClose: () => void;
         </div>
         <div className="space-y-3">
           <p className="text-sm text-gray-600">Preço de venda: <b>{brl(sale)}</b></p>
-          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Preço promocional (R$)</span>
+          <label className="block"><span className="mb-1 block text-xs font-medium text-gray-600">Preço promocional (R$) <RequiredMark /></span>
             <MoneyInput className={input} value={textToMoney(price)} placeholder="89.900,00" onChange={(n) => setPrice(moneyToText(n))} />
           </label>
           {sale != null && (

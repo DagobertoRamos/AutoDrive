@@ -19,6 +19,7 @@ import {
   getServiceDef,
   type FieldKey, type ServiceKey,
 } from '@/lib/integrations/catalog'
+import { RequiredMark } from '@/components/ui/field'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -117,13 +118,23 @@ function CredentialModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!service || !name.trim()) {
-      setError('Serviço e nome são obrigatórios.')
-      return
-    }
+    if (!service) { setError('Selecione o serviço.'); return }
+    if (!name.trim()) { setError('Informe o nome.'); return }
     if (!serviceDef) {
       setError('Serviço inválido.')
       return
+    }
+    if (serviceDef.fields.includes('apiUrl') && serviceDef.fieldRequired?.apiUrl && !apiUrl.trim()) {
+      setError(`Informe ${serviceDef.fieldLabels?.apiUrl ?? DEFAULT_FIELD_LABELS.apiUrl}.`)
+      return
+    }
+    for (const f of CATALOG_SENSITIVE) {
+      if (!serviceDef.fields.includes(f) || !serviceDef.fieldRequired?.[f]) continue
+      const hasSaved = isEdit && !!existing && !!existing[f as keyof Credential]
+      if (!hasSaved && !secrets[f]?.trim()) {
+        setError(`Informe ${serviceDef.fieldLabels?.[f] ?? DEFAULT_FIELD_LABELS[f]}.`)
+        return
+      }
     }
 
     // Monta payload SOMENTE com os campos que o serviço usa.
@@ -176,7 +187,7 @@ function CredentialModal({
     return (
       <div key={field}>
         <label className={labelCls}>
-          {label} {required && <span className="text-red-500">*</span>}
+          {label} {required && <RequiredMark />}
         </label>
         <div className="relative">
           <input
@@ -189,7 +200,7 @@ function CredentialModal({
             className={`${inputCls} pr-9 font-mono text-xs`}
             value={secrets[field]}
             onChange={(e) => setSecret(field, e.target.value)}
-            placeholder={hasSaved ? 'Salvo · deixe vazio para manter o atual' : 'Cole o valor aqui'}
+            placeholder={hasSaved ? 'Salvo (vazio = manter)' : ''}
           />
           <button type="button" onClick={() => setShow((p) => ({ ...p, [field]: !p[field] }))}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
@@ -198,9 +209,6 @@ function CredentialModal({
           </button>
         </div>
         {hint && <p className="mt-1 text-[10px] text-gray-500">{hint}</p>}
-        {hasSaved && !secrets[field] && (
-          <p className="mt-1 text-[10px] text-amber-700">Valor atual preservado. Digite um novo valor para substituir.</p>
-        )}
       </div>
     )
   }
@@ -213,7 +221,7 @@ function CredentialModal({
       <div>
         <label className={labelCls}>
           {serviceDef.fieldLabels?.apiUrl ?? DEFAULT_FIELD_LABELS.apiUrl}
-          {required && <span className="text-red-500"> *</span>}
+          {required && <> <RequiredMark /></>}
         </label>
         <input
           className={`${inputCls} font-mono text-xs`}
@@ -277,7 +285,7 @@ function CredentialModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Serviço *</label>
+              <label className={labelCls}>Serviço <RequiredMark /></label>
               <select
                 className={inputCls}
                 value={service}
@@ -290,12 +298,12 @@ function CredentialModal({
               </select>
             </div>
             <div>
-              <label className={labelCls}>Nome amigável *</label>
+              <label className={labelCls}>Nome <RequiredMark /></label>
               <input
                 className={inputCls}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={service === 'FIPE_PROVIDER' ? 'FIPE Parallelum' : 'Ex: Principal'}
+                placeholder={service === 'FIPE_PROVIDER' ? 'Ex.: FIPE Parallelum' : 'Ex.: Principal'}
                 autoComplete="off"
               />
             </div>
@@ -305,7 +313,6 @@ function CredentialModal({
                 className={inputCls}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Opcional"
                 autoComplete="off"
               />
             </div>
@@ -327,7 +334,6 @@ function CredentialModal({
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Referência de contrato, link de docs, etc."
               autoComplete="off"
             />
           </div>
@@ -541,7 +547,7 @@ export default function IntegrationsPage() {
       {Object.keys(groups).length === 0 ? (
         <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
           <Plug size={24} />
-          <p className="text-sm">Nenhuma credencial cadastrada</p>
+          <p className="text-sm">Nenhuma credencial.</p>
         </div>
       ) : (
         <div className="space-y-5">

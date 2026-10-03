@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import { AlertCircle, CheckCircle2, Clock, RefreshCw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
+import { maskPhoneInput } from '@/lib/br-docs/phone'
 
 interface ReminderState {
   reminderCount: number
@@ -164,9 +166,6 @@ export default function AttendanceReminderModal({ reminder, onClose, onChanged }
 
           {mode === 'question' ? (
             <>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Este lembrete ajuda a manter a fila limpa e evita atendimento esquecido em aberto.
-              </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <button type="button" onClick={confirmActive} disabled={busy} className="btn-primary justify-center py-3 text-sm">
                   {busy ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
@@ -195,21 +194,21 @@ export default function AttendanceReminderModal({ reminder, onClose, onChanged }
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Cliente</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Cliente <RequiredMark /></label>
                   <input className={inputCls} value={form.customerName} onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))} placeholder="Nome do cliente" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Telefone</label>
-                  <input className={inputCls} value={form.customerPhone} onChange={(e) => setForm((f) => ({ ...f, customerPhone: e.target.value }))} placeholder="(00) 00000-0000" />
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Telefone <RequiredMark /></label>
+                  <input type="tel" inputMode="numeric" className={inputCls} value={form.customerPhone} onChange={(e) => setForm((f) => ({ ...f, customerPhone: maskPhoneInput(e.target.value) }))} placeholder="(11) 99999-9999" />
                 </div>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-700">E-mail</label>
-                <input className={inputCls} value={form.customerEmail} onChange={(e) => setForm((f) => ({ ...f, customerEmail: e.target.value }))} placeholder="opcional" />
+                <input type="email" className={inputCls} value={form.customerEmail} onChange={(e) => setForm((f) => ({ ...f, customerEmail: e.target.value }))} placeholder="cliente@email.com" />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Observação / motivo</label>
-                <textarea className={cn(inputCls, 'min-h-[88px]')} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder={needsNotes ? 'Obrigatório quando não vira negociação' : 'Opcional'} />
+                <label className="mb-1 block text-xs font-medium text-gray-700">Observação / motivo {needsNotes && <RequiredMark />}</label>
+                <textarea className={cn(inputCls, 'min-h-[88px]')} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
               </div>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setMode('question')} className="btn-secondary text-sm">Voltar</button>

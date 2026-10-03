@@ -314,7 +314,7 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
           <h4 className="text-sm font-semibold text-gray-800">Serviços a executar</h4>
         </div>
         {generalServices.length === 0 ? (
-          <p className="text-xs text-gray-500">Nenhum serviço marcado. Volte para a aba <em>Serviços</em> se necessário.</p>
+          <p className="text-xs text-gray-500">Nenhum serviço marcado.</p>
         ) : (
           <ul className="divide-y divide-gray-100">
             {generalServices.map((s) => (
@@ -355,14 +355,13 @@ export function SummarySection({ evaluationId, opcionais = [], onBack, onFinaliz
           ))}
         </select>
         {sellers.length === 0 && (
-          <p className="mt-2 text-xs text-amber-700">Nenhum vendedor cadastrado nesta unidade. Cadastre em <em>Cadastros → Vendedores</em> antes de finalizar.</p>
+          <p className="mt-2 text-xs text-amber-700">Nenhum vendedor cadastrado nesta unidade.</p>
         )}
         {!sellerId && !!error && (
           <div className="mt-1">
             <FieldError id="assigned-seller-error">Este campo é obrigatório.</FieldError>
           </div>
         )}
-        <p className="mt-2 text-[11px] text-gray-500">O vendedor selecionado receberá notificação para acompanhar a negociação. Gerentes da unidade também são notificados.</p>
       </div>
 
       <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-3">

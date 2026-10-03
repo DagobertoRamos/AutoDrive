@@ -84,10 +84,7 @@ export default function PendencyAckWatcher() {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600">
               <AlertTriangle size={16} />
             </span>
-            <div>
-              <h2 className="text-sm font-bold text-gray-800">Você tem {items.length} pendência{items.length > 1 ? 's' : ''} para ler</h2>
-              <p className="text-xs text-gray-500">Dê ciência para confirmar que está a par.</p>
-            </div>
+            <h2 className="text-sm font-bold text-gray-800">{items.length} pendência{items.length > 1 ? 's' : ''} para dar ciência</h2>
           </div>
           <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" title="Fechar">
             <X size={16} />

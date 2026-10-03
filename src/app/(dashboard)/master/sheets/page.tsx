@@ -23,6 +23,7 @@ import {
   SlidersHorizontal, ArrowRightLeft, RotateCcw, UserX, BadgeAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 import PlanilhaConfigModal          from './PlanilhaConfigModal'
 import SheetCredentialsSettings     from './SheetCredentialsSettings'
 
@@ -239,7 +240,8 @@ function ImporterModal({ initial, onClose, onSaved }: {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.name.trim() || !form.spreadsheetId.trim()) { setError('Nome e Spreadsheet ID são obrigatórios.'); return }
+    if (!form.name.trim()) { setError('Informe o nome do importador.'); return }
+    if (!form.spreadsheetId.trim()) { setError('Informe o Spreadsheet ID.'); return }
     setSaving(true)
     try {
       const url = initial ? `/api/master/sheets/${initial.id}` : '/api/master/sheets'
@@ -270,16 +272,16 @@ function ImporterModal({ initial, onClose, onSaved }: {
         <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
           {error && <Alert type="error" msg={error} />}
           <div>
-            <label className={lbl}>Nome do importador *</label>
-            <input className={inp} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Google Sheets - EasyCar Matriz" />
+            <label className={lbl}>Nome do importador <RequiredMark /></label>
+            <input className={inp} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Ex.: Planilha Matriz" />
           </div>
           <div>
-            <label className={lbl}>Spreadsheet ID * <span className="text-gray-400 font-normal">(da URL da planilha)</span></label>
-            <input className={`${inp} font-mono`} value={form.spreadsheetId} onChange={e => setForm(p => ({ ...p, spreadsheetId: e.target.value }))} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
+            <label className={lbl}>Spreadsheet ID <RequiredMark /></label>
+            <input className={`${inp} font-mono`} value={form.spreadsheetId} onChange={e => setForm(p => ({ ...p, spreadsheetId: e.target.value }))} placeholder="ID na URL da planilha" />
           </div>
           <div>
             <label className={lbl}>Descrição</label>
-            <input className={inp} value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Planilha VENDAS MATRIZ" />
+            <input className={inp} value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Ex.: Vendas Matriz" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -331,7 +333,7 @@ function TabModal({ configId, initial, onClose, onSaved }: {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.sheetName.trim()) { setError('Nome da aba obrigatório.'); return }
+    if (!form.sheetName.trim()) { setError('Informe o nome da aba.'); return }
     setSaving(true)
     try {
       const url = initial ? `/api/master/sheets/${configId}/tabs/${initial.id}` : `/api/master/sheets/${configId}/tabs`
@@ -358,12 +360,12 @@ function TabModal({ configId, initial, onClose, onSaved }: {
           {error && <Alert type="error" msg={error} />}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lbl}>Nome da aba (exato) *</label>
-              <input className={inp} value={form.sheetName} onChange={e => setForm(p => ({ ...p, sheetName: e.target.value }))} placeholder="Abril" />
+              <label className={lbl}>Nome da aba (exato) <RequiredMark /></label>
+              <input className={inp} value={form.sheetName} onChange={e => setForm(p => ({ ...p, sheetName: e.target.value }))} placeholder="Ex.: Abril" />
             </div>
             <div>
               <label className={lbl}>GID da aba</label>
-              <input className={`${inp} font-mono`} value={form.gid} onChange={e => setForm(p => ({ ...p, gid: e.target.value }))} placeholder="1507200471" />
+              <input className={`${inp} font-mono`} value={form.gid} onChange={e => setForm(p => ({ ...p, gid: e.target.value }))} placeholder="Ex.: 1507200471" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -610,7 +612,7 @@ function AutoSyncModal({ configId, tabs, initial, onClose, onSaved }: {
             </div>
             {form.freqPreset === 0 && (
               <div className="flex items-center gap-2">
-                <input type="number" min={1} max={1440} placeholder="Ex: 45"
+                <input type="number" min={1} max={1440} placeholder="Ex.: 45"
                   className={`${inp} w-32`}
                   value={form.customFreq}
                   onChange={e => setForm(p => ({ ...p, customFreq: e.target.value }))}
@@ -729,14 +731,9 @@ function AutoSyncModal({ configId, tabs, initial, onClose, onSaved }: {
                 onChange={e => setForm(p => ({ ...p, processDeals: e.target.checked }))}
               />
               <span className="text-xs text-indigo-700 leading-relaxed">
-                Processar automaticamente cada linha como Negociação (Deal) após a importação
+                Converter cada linha em Negociação após a importação
               </span>
             </label>
-            {form.processDeals && (
-              <p className="text-[10px] text-indigo-500 pl-6.5">
-                Vendedores não encontrados terão um responsável provisório designado e uma pendência de revisão gerada.
-              </p>
-            )}
           </div>
 
           {/* Notificações */}
@@ -759,7 +756,7 @@ function AutoSyncModal({ configId, tabs, initial, onClose, onSaved }: {
             {form.notifyOnError && (
               <div>
                 <label className={lbl}>E-mail ou WhatsApp para erros técnicos</label>
-                <input className={inp} placeholder="erro@empresa.com ou +5511999990000"
+                <input className={inp} placeholder="Ex.: erro@empresa.com"
                   value={form.errorNotifyTarget}
                   onChange={e => setForm(p => ({ ...p, errorNotifyTarget: e.target.value }))}
                 />
@@ -786,9 +783,6 @@ function AutoSyncModal({ configId, tabs, initial, onClose, onSaved }: {
                 />
               </div>
             </div>
-            <p className="text-[10px] text-gray-400">
-              Execuções simultâneas são automaticamente bloqueadas por lock.
-            </p>
           </div>
         </div>
 
@@ -1072,7 +1066,7 @@ function AutoSyncCard({ configId, tabs, initialConfig, onConfigChange }: {
               {jobsLoading && <Loader2 size={12} className="animate-spin text-gray-400" />}
             </div>
             {jobs.length === 0 && !jobsLoading ? (
-              <p className="px-3 py-4 text-xs text-gray-400 text-center">Nenhuma execução registrada ainda.</p>
+              <p className="px-3 py-4 text-xs text-gray-400 text-center">Nenhuma execução.</p>
             ) : (
               <div className="divide-y divide-gray-100">
                 {jobs.map(job => (
@@ -1378,7 +1372,7 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
             </div>
 
             {tabs.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">Nenhuma aba cadastrada. Clique em &quot;+ Adicionar aba&quot;.</p>
+              <p className="text-sm text-gray-400 italic">Nenhuma aba.</p>
             ) : (
               <div className="overflow-hidden rounded-lg border border-gray-200">
                 <table className="w-full text-xs">
@@ -1567,13 +1561,6 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
 
             {showDealSection && (
               <div className="border-t border-indigo-200 px-4 pb-5 pt-4 space-y-4">
-                <p className="text-xs text-indigo-700/80 leading-relaxed">
-                  Processa as linhas já importadas da planilha e as converte em{' '}
-                  <strong>Negociações oficiais</strong> do AutoDrive — criando automaticamente
-                  Cliente, Veículo, Contrato e Pendências vinculadas.
-                  Vendedores não localizados são vinculados provisoriamente com pendência de revisão.
-                </p>
-
                 {/* Stats */}
                 {rowStatsLoading ? (
                   <div className="flex items-center gap-2 text-xs text-indigo-600">
@@ -1597,7 +1584,7 @@ function ImporterCard({ config, onRefresh }: { config: ImporterConfig; onRefresh
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-indigo-500 italic">Nenhuma linha importada ainda. Execute a importação da planilha primeiro.</p>
+                  <p className="text-xs text-indigo-500 italic">Nenhuma linha importada.</p>
                 )}
 
                 {rowStats?.lastProcessedAt && (
@@ -1836,10 +1823,7 @@ export default function SheetsPage() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600">
             <FileSpreadsheet size={18} className="text-white" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Importador Google Sheets</h1>
-            <p className="text-xs text-gray-400">Configure planilhas, abas, mapeamento de colunas e execute importações</p>
-          </div>
+          <h1 className="text-xl font-bold text-gray-900">Importador Google Sheets</h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">
@@ -1858,7 +1842,7 @@ export default function SheetsPage() {
       {configs.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
           <FileSpreadsheet size={32} strokeWidth={1} />
-          <p className="text-sm">Nenhum importador configurado</p>
+          <p className="text-sm">Nenhum importador.</p>
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             <Plus size={13} /> Criar primeiro importador
           </button>

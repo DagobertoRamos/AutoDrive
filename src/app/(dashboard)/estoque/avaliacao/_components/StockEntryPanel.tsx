@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2, Loader2, PackageCheck, Undo2, Warehouse } from 'lucide-react'
+import { RequiredMark } from '@/components/ui/field'
 import { buildEntryPendencies, EVAL_AWAITING_STOCK, EVAL_IN_STOCK } from '@/lib/evaluation/stock-entry-core'
 
 export interface StockEntryEvaluation {
@@ -95,6 +96,8 @@ export function StockEntryPanel({ evaluation, isManagerPlus, onChanged, showToas
   }
 
   async function confirmEntry() {
+    if (!((parseBRL(purchase) ?? 0) > 0)) { showToast(stockType === 'CONSIGNADO' ? 'Informe o valor de repasse.' : 'Informe o valor de compra.', false); return }
+    if (!((parseBRL(sale) ?? 0) > 0)) { showToast('Informe o preço de venda.', false); return }
     if (!confirm('Confirmar a entrada deste veículo no estoque?')) return
     const d = await post('confirm', `/api/evaluations/${evaluation.id}/stock-entry`, {
       stockType, purchasePrice: parseBRL(purchase), salePrice: parseBRL(sale), notes: note.trim() || undefined, receiveNotes: receiveNotes.trim() || undefined,
@@ -116,7 +119,7 @@ export function StockEntryPanel({ evaluation, isManagerPlus, onChanged, showToas
         <Warehouse size={18} className="text-teal-700" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-teal-900">Veículo no estoque</p>
-          <p className="text-xs text-teal-800">Entrou com pendência de recebimento. Resolva as pendências na ficha do veículo.</p>
+          <p className="text-xs text-teal-800">Pendências na ficha do veículo.</p>
         </div>
         {evaluation.vehicleId && (
           <Link href={`/estoque/${evaluation.vehicleId}`} className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700">
@@ -145,17 +148,17 @@ export function StockEntryPanel({ evaluation, isManagerPlus, onChanged, showToas
       {!awaiting && (
         <p className="mb-3 text-xs text-emerald-900">
           {decision === 'ACEITA'
-            ? 'O cliente aceitou a proposta. Devolva ao gestor para ele confirmar e liberar o veículo para o estoque.'
-            : 'Quando o cliente aceitar a proposta, clique abaixo: a aceitação é registrada e a avaliação volta ao gestor para liberar o veículo no estoque.'}
+            ? 'Cliente aceitou a proposta.'
+            : 'Aguardando aceite do cliente.'}
         </p>
       )}
       {awaiting && !isManagerPlus && (
-        <p className="text-xs text-indigo-900">O gestor foi avisado. Assim que ele confirmar, o veículo entra no estoque com a pendência de recebimento.</p>
+        <p className="text-xs text-indigo-900">Gestor avisado.</p>
       )}
 
       {!formOpen && (
         <div className="space-y-2">
-          <textarea className={inputCls + ' min-h-[56px] bg-white'} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação para o gestor (opcional)" />
+          <textarea className={inputCls + ' min-h-[56px] bg-white'} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação para o gestor" />
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={requestEntry} disabled={busy != null}
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
@@ -176,28 +179,28 @@ export function StockEntryPanel({ evaluation, isManagerPlus, onChanged, showToas
         <div className="mt-2 space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-700">Tipo de estoque</span>
+              <span className="text-xs font-medium text-gray-700">Tipo de estoque <RequiredMark /></span>
               <select className={inputCls + ' bg-white'} value={stockType} onChange={(e) => setStockType(e.target.value)}>
                 <option value="PROPRIO">Próprio (compra)</option>
                 <option value="CONSIGNADO">Consignado</option>
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-700">{stockType === 'CONSIGNADO' ? 'Valor repasse ao cliente (R$)' : 'Valor de compra (R$)'}</span>
+              <span className="text-xs font-medium text-gray-700">{stockType === 'CONSIGNADO' ? 'Valor repasse ao cliente (R$)' : 'Valor de compra (R$)'} <RequiredMark /></span>
               <input className={inputCls + ' bg-white'} inputMode="numeric" placeholder="0,00" value={purchase} onChange={(e) => setPurchase(maskBRL(e.target.value))} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-700">Preço de venda (R$)</span>
+              <span className="text-xs font-medium text-gray-700">Preço de venda (R$) <RequiredMark /></span>
               <input className={inputCls + ' bg-white'} inputMode="numeric" placeholder="0,00" value={sale} onChange={(e) => setSale(maskBRL(e.target.value))} />
             </label>
             <label className="flex flex-col gap-1 sm:col-span-3">
-              <span className="text-xs font-medium text-gray-700">Recebimento do veículo — observação (opcional)</span>
-              <input className={inputCls + ' bg-white'} placeholder="Ex.: cliente entrega na sexta com a 2ª chave" value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} />
+              <span className="text-xs font-medium text-gray-700">Observação do recebimento</span>
+              <input className={inputCls + ' bg-white'} placeholder="Ex.: entrega na sexta" value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} />
             </label>
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-3">
-            <p className="mb-1.5 text-xs font-semibold text-gray-700">O veículo entra no estoque como “Pend. Preparação” (fora do site) com estas pendências:</p>
+            <p className="mb-1.5 text-xs font-semibold text-gray-700">Entra como “Pend. Preparação” com as pendências:</p>
             <ul className="space-y-1.5">
               {pendencies.map((p) => (
                 <li key={p.label} className="text-xs">

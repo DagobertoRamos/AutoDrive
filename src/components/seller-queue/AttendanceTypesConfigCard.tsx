@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ListChecks, Save, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface TypeItem { code: string; label: string; active: boolean; consumesTurn: boolean; requiresDescription?: boolean }
 const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500'
@@ -38,6 +39,7 @@ export default function AttendanceTypesConfigCard({ unitId }: { unitId?: string 
 
   const save = async () => {
     if (!types) return
+    if (types.some((t) => !t.code.trim() || !t.label.trim())) { setError('Preencha código e rótulo de todos os tipos.'); setSaved(false); return }
     setSaving(true); setError(''); setSaved(false)
     try {
       const res = await fetch(`/api/seller-queue/attendance-types-config${qs}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ types }) })
@@ -50,10 +52,7 @@ export default function AttendanceTypesConfigCard({ unitId }: { unitId?: string 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><ListChecks size={17} className="text-brand-600" />Tipos de atendimento</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Natureza da visita ao iniciar. "Consome a vez" manda o vendedor ao fim da fila ao finalizar.</p>
-        </div>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><ListChecks size={17} className="text-brand-600" />Tipos de atendimento</h2>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
 
@@ -61,7 +60,7 @@ export default function AttendanceTypesConfigCard({ unitId }: { unitId?: string 
         <div className="mt-4 space-y-3">
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr>{['Código', 'Rótulo', 'Ativo', 'Consome a vez', ''].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Código', 'Rótulo', 'Ativo', 'Consome a vez', ''].map((h, i) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">{h}{i < 2 && <> <RequiredMark /></>}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {types.map((t, i) => (
                   <tr key={i}>

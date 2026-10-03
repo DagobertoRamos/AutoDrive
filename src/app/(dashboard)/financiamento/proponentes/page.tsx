@@ -9,10 +9,13 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Users, X, Save, Loader2, Info } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, X, Save, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL, maskCPF, maskCNPJ, maskPhone, maskCEP } from '@/lib/masks'
 import SearchBox from '@/components/reports/SearchBox'
+import { RequiredMark } from '@/components/ui/field'
+import { isValidCPF } from '@/lib/br-docs/cpf'
+import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 
 type Occ = 'AUTONOMO' | 'CLT' | 'EMPRESARIO' | 'APOSENTADO_PENSIONISTA'
 interface Row { id: string; nomeCompleto: string; cpf: string | null; celular: string | null; occupation: Occ | null; cidade: string | null; estado: string | null; renda: number; proposals: number }
@@ -42,7 +45,7 @@ const CARGOS = ['Vendedor(a)', 'Motorista', 'Pedreiro', 'Autônomo', 'Comerciant
 function Field({ label, required, children, hint }: { label: string; required?: boolean; children: React.ReactNode; hint?: string }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-gray-700">{label}{required && <span className="ml-0.5 text-red-500">*</span>}</label>
+      <label className="mb-1 block text-xs font-medium text-gray-700">{label}{required && <> <RequiredMark /></>}</label>
       {children}
       {hint && <p className="mt-1 text-[11px] text-gray-400">{hint}</p>}
     </div>
@@ -126,13 +129,22 @@ export default function ProponentesPage() {
   const delRenda = (i: number) => set('outrasRendas', form.outrasRendas.filter((_, idx) => idx !== i))
 
   const save = async () => {
+    const f = form
+    const empty = [f.nomeCompleto, f.dataNascimento, f.cpf, f.rg, f.email, f.nomeMae, f.nomePai, f.celular, f.cep, f.logradouro, f.bairro, f.cidade, f.estado, f.numero, f.occupation].some((v) => !String(v ?? '').trim())
+      || !f.renda
+      || (f.occupation === 'AUTONOMO' && !f.cargo.trim())
+      || (f.occupation === 'APOSENTADO_PENSIONISTA' && !f.numeroBeneficio.trim())
+      || ((f.occupation === 'CLT' || f.occupation === 'EMPRESARIO') && !f.empresaNome.trim())
+    if (empty) { setError('Preencha os campos obrigatórios.'); return }
+    if (!isValidCPF(f.cpf)) { setError('CPF inválido.'); return }
+    if (f.occupation === 'EMPRESARIO' && !isValidCNPJ(f.empresaCnpj)) { setError('CNPJ da empresa inválido.'); return }
     setSaving(true); setError(null)
     try {
       const payload = { ...form, renda: form.renda || null, dataNascimento: form.dataNascimento || null, outrasRendas: form.outrasRendas.filter((r) => r.descricao.trim()) }
       const url = editingId ? `/api/financing/proponents/${editingId}` : '/api/financing/proponents'
       const res = await fetch(url, { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) })
       const json = await res.json()
-      if (!res.ok) { setError(json?.error ?? 'Erro ao salvar. Verifique os campos obrigatórios.'); return }
+      if (!res.ok) { setError(json?.error ?? 'Erro ao salvar.'); return }
       setModal(false); await load()
     } catch { setError('Erro de rede.') } finally { setSaving(false) }
   }
@@ -227,8 +239,8 @@ export default function ProponentesPage() {
               <Field label="Ocupação" required><select className={inputCls} value={form.occupation} onChange={(e) => set('occupation', e.target.value as Occ)}><option value="">Selecione...</option><option value="AUTONOMO">Autônomo</option><option value="CLT">CLT</option><option value="EMPRESARIO">Empresário</option><option value="APOSENTADO_PENSIONISTA">Aposentado/Pensionista</option></select></Field>
               <Field label="Renda" required><MoneyInput value={form.renda} onChange={(v) => set('renda', v)} /></Field>
               {form.occupation === 'AUTONOMO' && (
-                <Field label="Cargo / atividade" required hint="Selecione ou digite">
-                  <input className={inputCls} list="cargos-list" value={form.cargo} onChange={(e) => set('cargo', e.target.value)} placeholder="Ex: Pedreiro" />
+                <Field label="Cargo / atividade" required>
+                  <input className={inputCls} list="cargos-list" value={form.cargo} onChange={(e) => set('cargo', e.target.value)} placeholder="Pedreiro" />
                   <datalist id="cargos-list">{CARGOS.map((c) => <option key={c} value={c} />)}</datalist>
                 </Field>
               )}
@@ -241,7 +253,6 @@ export default function ProponentesPage() {
             {showEmpresa && (
               <>
                 <h3 className="mb-1 mt-5 text-sm font-semibold text-brand-700">Empresa {form.occupation === 'AUTONOMO' && <span className="font-normal text-gray-400">(opcional)</span>}</h3>
-                {form.occupation === 'AUTONOMO' && <p className="mb-2 flex items-center gap-1 text-[11px] text-amber-600"><Info size={12} /> Recomendado preencher para fortalecer a ficha.</p>}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {form.occupation === 'EMPRESARIO' && (
                     <Field label="CNPJ" required><div className="relative"><input className={inputCls} value={maskCNPJ(form.empresaCnpj)} onChange={(e) => { set('empresaCnpj', e.target.value); lookupCnpj(e.target.value) }} placeholder="00.000.000/0000-00" />{cnpjLoading && <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}</div></Field>
@@ -268,7 +279,7 @@ export default function ProponentesPage() {
               <div className="mt-2 space-y-2">
                 {form.outrasRendas.map((r, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <input className={cn(inputCls, 'flex-1')} value={r.descricao} onChange={(e) => updRenda(i, { descricao: e.target.value })} placeholder="Ex: Aluguel, pensão..." />
+                    <input className={cn(inputCls, 'flex-1')} value={r.descricao} onChange={(e) => updRenda(i, { descricao: e.target.value })} placeholder="Aluguel, pensão..." />
                     <div className="w-40"><MoneyInput value={r.valor} onChange={(v) => updRenda(i, { valor: v })} /></div>
                     <button type="button" onClick={() => delRenda(i)} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>
                   </div>

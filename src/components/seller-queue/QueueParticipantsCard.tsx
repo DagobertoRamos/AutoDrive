@@ -98,10 +98,7 @@ export default function QueueParticipantsCard() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-card">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Users size={17} className="text-brand-600" />Vendedores na fila</h2>
-          <p className="mt-0.5 text-xs text-gray-500">Quem participa e o que cada um pode receber. "Participa" desligado barra a entrada na fila.</p>
-        </div>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900"><Users size={17} className="text-brand-600" />Vendedores na fila</h2>
         <button onClick={load} disabled={loading} className="rounded p-1.5 text-gray-400 hover:bg-gray-100"><RefreshCw size={14} className={cn(loading && 'animate-spin')} /></button>
       </div>
 

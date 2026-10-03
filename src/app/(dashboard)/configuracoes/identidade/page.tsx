@@ -9,6 +9,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { Palette, Save, Loader2, CheckCircle2, AlertCircle, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskPhone } from '@/lib/masks'
+import { isValidPhone } from '@/lib/br-docs/phone'
+import { RequiredMark } from '@/components/ui/field'
 import { injectTheme } from '@/components/layout/ThemeInjector'
 import { useIdentityStore } from '@/store/identityStore'
 
@@ -97,8 +99,17 @@ export default function IdentidadePage() {
     setForm((p) => ({ ...p, [key]: value }))
 
   const handleSave = async () => {
-    setSaving(true)
     setFeedback(null)
+    const invalid =
+      !form.appName.trim()                                   ? 'Informe o nome do sistema.'
+      : form.companyPhone && !isValidPhone(form.companyPhone) ? 'Telefone inválido.'
+      : form.supportPhone && !isValidPhone(form.supportPhone) ? 'Telefone de suporte inválido.'
+      : null
+    if (invalid) {
+      setFeedback({ ok: false, msg: invalid })
+      return
+    }
+    setSaving(true)
     try {
       const res  = await fetch('/api/settings/identity', {
         method: 'POST', credentials: 'include',
@@ -138,9 +149,6 @@ export default function IdentidadePage() {
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Identidade do Sistema</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Personalize o nome, logotipo e dados da empresa exibidos no sistema.
-        </p>
       </div>
 
       {feedback && (
@@ -164,7 +172,7 @@ export default function IdentidadePage() {
         <div className="p-4 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="label">Nome do sistema *</label>
+              <label className="label">Nome do sistema <RequiredMark /></label>
               <input
                 value={form.appName}
                 onChange={(e) => set('appName', e.target.value)}
@@ -189,7 +197,7 @@ export default function IdentidadePage() {
               <input
                 value={form.logoUrl}
                 onChange={(e) => set('logoUrl', e.target.value)}
-                placeholder="https://cdn.example.com/logo.png"
+                placeholder="https://"
                 className="input"
               />
             </div>
@@ -198,7 +206,7 @@ export default function IdentidadePage() {
               <input
                 value={form.faviconUrl}
                 onChange={(e) => set('faviconUrl', e.target.value)}
-                placeholder="https://cdn.example.com/favicon.ico"
+                placeholder="https://"
                 className="input"
               />
             </div>
@@ -277,7 +285,7 @@ export default function IdentidadePage() {
             <input
               value={form.companyAddress}
               onChange={(e) => set('companyAddress', e.target.value)}
-              placeholder="Rua das Flores, 123 — São Paulo, SP"
+              placeholder="Rua, número — cidade/UF"
               className="input"
             />
           </div>
@@ -371,9 +379,6 @@ export default function IdentidadePage() {
             </div>
           ))}
         </div>
-        <p className="px-4 pb-4 text-xs text-gray-400">
-          Os ícones de redes sociais aparecem no menu lateral apenas para os campos preenchidos.
-        </p>
       </div>
 
       {/* ── Salvar ────────────────────────────────────────────────────────── */}

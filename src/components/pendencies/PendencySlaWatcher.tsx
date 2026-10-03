@@ -15,6 +15,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Clock, CalendarClock, Flame } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Pendency { id: string; customerName: string; plate: string | null; type: string | null; description: string | null; priority: string; status: string; dueDate: string | null; unit?: { name: string } | null }
 interface Decision { kind: 'commit' | 'charge'; committedDueDate: string | null; canDefer: boolean; overdue: boolean }
@@ -91,7 +92,7 @@ export default function PendencySlaWatcher() {
     if (await post({ action: 'respond', note: note.trim(), committedDueDate: due ? new Date(due).toISOString() : undefined })) advance()
   }
   const handleDefer = async () => {
-    const reason = window.prompt('Por que adiar? (será registrado no histórico)')
+    const reason = window.prompt('Motivo do adiamento')
     if (reason === null) return
     if (reason.trim().length < 3) { setError('Justifique o adiamento.'); return }
     if (await post({ action: 'defer', reason: reason.trim() })) advance()
@@ -126,24 +127,25 @@ export default function PendencySlaWatcher() {
           </div>
 
           {isCritical ? (
-            <p className="text-sm text-gray-700">Esta pendência está <b>crítica</b> e sem tratamento. Registre o que está sendo feito (ou peça ajuda) — o gestor já está acompanhando.</p>
+            <p className="text-sm text-gray-700">Pendência <b>crítica</b> sem tratamento. Registre o que está sendo feito.</p>
           ) : isCharge ? (
             <p className="text-sm text-gray-700">Você se comprometeu a resolver até <b>{item.decision?.committedDueDate ? formatDate(new Date(item.decision.committedDueDate)) : '—'}</b> e o prazo passou. O que aconteceu?</p>
           ) : (
-            <p className="text-sm text-gray-700">Em quanto tempo você resolve isso? Registre o prazo com que se compromete.</p>
+            <p className="text-sm text-gray-700">Em quanto tempo você resolve?</p>
           )}
 
           {requiresResponse ? (
             <>
-              <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Explique a situação…" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-              <label className="block text-xs font-medium text-gray-700">{isCritical ? 'Novo prazo (opcional)' : 'Novo prazo (opcional)'}</label>
+              <label className="block text-xs font-medium text-gray-700">Resposta <RequiredMark /></label>
+              <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="O que aconteceu" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+              <label className="block text-xs font-medium text-gray-700">Novo prazo</label>
               <input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
             </>
           ) : (
             <>
-              <label className="block text-xs font-medium text-gray-700">Prazo comprometido *</label>
+              <label className="block text-xs font-medium text-gray-700">Prazo comprometido <RequiredMark /></label>
               <input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-              <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação (opcional)" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+              <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
             </>
           )}
 

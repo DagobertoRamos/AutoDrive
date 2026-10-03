@@ -19,14 +19,11 @@ export function EvaluationHeader({ total, loading, onRefresh, newHref = '/estoqu
         </div>
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Avaliações</h1>
-          <p className="text-sm text-gray-500">
-            Gerencie as solicitações de avaliação e cadastre novas avaliações de veículos.
-            {typeof total === 'number' && !loading && (
-              <span className="ml-1 font-medium text-gray-700">
-                {total} {total === 1 ? 'avaliação' : 'avaliações'} no período
-              </span>
-            )}
-          </p>
+          {typeof total === 'number' && !loading && (
+            <p className="text-sm text-gray-500">
+              {total} {total === 1 ? 'avaliação' : 'avaliações'} no período
+            </p>
+          )}
         </div>
       </div>
 

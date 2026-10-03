@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { FileCheck2, Plus, X, Save, Lock } from 'lucide-react'
+import { Plus, X, Save, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const CONFIG_ROLES = ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO']
@@ -72,7 +72,7 @@ export default function FiDocumentsPage() {
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Lock size={24} /></div>
         <div>
           <p className="text-lg font-semibold text-gray-800">Configuração restrita</p>
-          <p className="mt-1 max-w-md text-sm text-gray-500">Os documentos obrigatórios são definidos pela loja (administração/gerência/financeiro).</p>
+          <p className="mt-1 max-w-md text-sm text-gray-500">Acesso restrito à administração, gerência e financeiro.</p>
         </div>
       </div>
     )
@@ -83,7 +83,6 @@ export default function FiDocumentsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Documentos Obrigatórios</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Documentos exigidos por perfil do proponente na montagem da ficha.</p>
         </div>
         <button onClick={save} disabled={saving || loading} className="btn-primary text-sm disabled:opacity-50"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button>
       </div>
@@ -110,18 +109,13 @@ export default function FiDocumentsPage() {
                 ))}
               </div>
               <div className="flex gap-2">
-                <input className={inputCls} value={drafts[p.key]} onChange={(e) => setDrafts((d) => ({ ...d, [p.key]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(p.key) } }} placeholder="Ex: RG, CPF, comprovante de renda..." />
+                <input className={inputCls} value={drafts[p.key]} onChange={(e) => setDrafts((d) => ({ ...d, [p.key]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(p.key) } }} placeholder="Ex.: RG" />
                 <button onClick={() => add(p.key)} className="btn-secondary px-2.5 text-sm" title="Adicionar"><Plus size={15} /></button>
               </div>
             </div>
           ))}
         </div>
       )}
-
-      <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500">
-        <FileCheck2 size={16} className="mt-0.5 shrink-0" />
-        <span>Esta lista orienta quais documentos anexar na ficha. A exigência automática (bloquear envio sem os documentos) é ativada nas fases de fichas profissionais.</span>
-      </div>
     </div>
   )
 }

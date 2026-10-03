@@ -72,7 +72,6 @@ export default function ComissoesVendedorReportPage() {
           </table>
         </div>
       </div>
-      <p className="text-xs text-gray-400">Coluna “Venda/Retorno/Garantia” soma apenas lançamentos do tipo. Outros tipos entram no Total.</p>
     </div>
   )
 }

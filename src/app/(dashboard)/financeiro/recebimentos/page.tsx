@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2, ExternalLink, Loader2, Paperclip, RotateCcw, Search, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 interface Row {
   id: string; type: string; method: string | null; status: string; value: number
@@ -88,7 +89,6 @@ export default function RecebimentosPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Recebimentos</h1>
-        <p className="text-sm text-gray-500">Pagamentos dos clientes nas negociações. Confira o comprovante e confirme — na negociação o pagamento entra como pendente.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {(['PENDENTE', 'CONFIRMADO', 'CANCELADO'] as const).map((t) => (
@@ -138,7 +138,7 @@ export default function RecebimentosPage() {
                 {canManage && tab === 'PENDENTE' && (
                   <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-2 text-xs">
                     {isCard(r) && (
-                      <label className="text-gray-600">Autorização do cartão{r.receipts.length ? ' *' : ''}
+                      <label className="text-gray-600">Autorização do cartão{r.receipts.length ? <RequiredMark className="ml-0.5" /> : null}
                         <input value={auth[r.id] ?? r.authorizationCode ?? ''} onChange={(e) => setAuth((a) => ({ ...a, [r.id]: e.target.value }))} placeholder="Nº de autorização" className={cn('mt-0.5 block w-44 rounded-md border px-2 py-1.5 text-sm', needAuth ? 'border-amber-400' : 'border-gray-300')} />
                       </label>
                     )}

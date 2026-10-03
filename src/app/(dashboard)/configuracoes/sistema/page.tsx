@@ -20,6 +20,7 @@ import {
   Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RequiredMark } from '@/components/ui/field'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -233,8 +234,16 @@ export default function ConfiguracoesSistemaPage() {
   }, [])
 
   const handleSave = async () => {
-    setSaving(true)
     setAlert(null)
+    const invalid =
+      !settings.systemName.trim()  ? 'Informe o nome do sistema.'
+      : !settings.companyName.trim() ? 'Informe o nome da empresa.'
+      : null
+    if (invalid) {
+      setAlert({ type: 'error', message: invalid })
+      return
+    }
+    setSaving(true)
     try {
       const res = await fetch('/api/settings/system', {
         method: 'PUT',
@@ -261,8 +270,7 @@ export default function ConfiguracoesSistemaPage() {
         <div>
           <p className="text-lg font-semibold text-gray-800">Configuração global da plataforma</p>
           <p className="mt-1 max-w-md text-sm text-gray-500">
-            Estes parâmetros são globais e gerenciados pelo administrador da plataforma (MASTER).
-            Para ajustes da sua loja, use <span className="font-medium">Configurações › Loja</span>.
+            Ajustes da loja: <span className="font-medium">Configurações › Loja</span>.
           </p>
         </div>
       </div>
@@ -283,7 +291,6 @@ export default function ConfiguracoesSistemaPage() {
     <div className="pb-24">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Configurações do Sistema</h1>
-        <p className="mt-1 text-sm text-gray-500">Gerencie os parâmetros globais do AutoDrive.</p>
       </div>
 
       <div className="space-y-4">
@@ -291,16 +298,16 @@ export default function ConfiguracoesSistemaPage() {
         <AccordionSection icon={Settings} title="Geral" defaultOpen>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do sistema</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome do sistema <RequiredMark /></label>
               <input className={inputClass()} value={settings.systemName} onChange={(e) => set('systemName', e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome da empresa</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Nome da empresa <RequiredMark /></label>
               <input className={inputClass()} value={settings.companyName} onChange={(e) => set('companyName', e.target.value)} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Unidade padrão</label>
-              <input className={inputClass()} value={settings.defaultUnit} onChange={(e) => set('defaultUnit', e.target.value)} placeholder="ID da unidade padrão" />
+              <input className={inputClass()} value={settings.defaultUnit} onChange={(e) => set('defaultUnit', e.target.value)} placeholder="ID da unidade" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Timezone</label>
@@ -477,7 +484,7 @@ export default function ConfiguracoesSistemaPage() {
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-700">Planilha ID (Google Sheets)</label>
-              <input className={inputClass()} value={settings.spreadsheetId} onChange={(e) => set('spreadsheetId', e.target.value)} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
+              <input className={inputClass()} value={settings.spreadsheetId} onChange={(e) => set('spreadsheetId', e.target.value)} />
             </div>
 
             <div className="flex items-center justify-between">
@@ -508,7 +515,7 @@ export default function ConfiguracoesSistemaPage() {
               {alert.message}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">Lembre-se de salvar as alterações.</p>
+            <span />
           )}
           <button
             type="button"

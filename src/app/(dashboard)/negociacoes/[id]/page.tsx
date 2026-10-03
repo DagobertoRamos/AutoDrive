@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
+import { RequiredMark } from '@/components/ui/field'
 import { calculateNegotiationFinancialSummary, dealToFinancialInput } from '@/lib/negotiation-service'
 import Phase2Panel from './_components/Phase2Panel'
 import ReturnPanel from './_components/ReturnPanel'
@@ -866,8 +867,7 @@ function MotiveModal({ title, onConfirm, onCancel, loading }: MotiveModalProps) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 className="mb-1 text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="mb-4 text-sm text-gray-500">Informe o motivo (obrigatório).</p>
+        <h3 className="mb-4 text-lg font-semibold text-gray-900">{title}</h3>
         {suggestions.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-1.5">
             {suggestions.map((s) => (
@@ -877,7 +877,7 @@ function MotiveModal({ title, onConfirm, onCancel, loading }: MotiveModalProps) 
         )}
         <textarea
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 min-h-24 resize-y"
-          placeholder="Descreva o motivo..."
+          placeholder="Motivo"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
@@ -913,9 +913,8 @@ function SignalModal({ onConfirm, onCancel, loading }: SignalModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 className="mb-1 text-lg font-semibold text-gray-900">Registrar Sinal</h3>
-        <p className="mb-4 text-sm text-gray-500">Informe o valor recebido como sinal.</p>
-        <label className="mb-1 block text-sm font-medium text-gray-700">Valor (R$)</label>
+        <h3 className="mb-4 text-lg font-semibold text-gray-900">Registrar Sinal</h3>
+        <label className="mb-1 block text-sm font-medium text-gray-700">Valor (R$) <RequiredMark /></label>
         <input
           type="text"
           inputMode="numeric"
@@ -927,7 +926,6 @@ function SignalModal({ onConfirm, onCancel, loading }: SignalModalProps) {
         <label className="mb-1 block text-sm font-medium text-gray-700">Observações</label>
         <textarea
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 min-h-16 resize-y"
-          placeholder="Opcional..."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
@@ -1861,8 +1859,8 @@ export default function NegociacaoDetailPage() {
                 <h3 className="mb-4 text-lg font-semibold text-gray-900">Adicionar Serviço</h3>
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Nome *</label>
-                    <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.name} onChange={(e) => setNewService((p) => ({ ...p, name: e.target.value }))} placeholder="Ex: Revisão, Polimento..." />
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Nome <RequiredMark /></label>
+                    <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.name} onChange={(e) => setNewService((p) => ({ ...p, name: e.target.value }))} placeholder="Revisão, polimento..." />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -1977,9 +1975,6 @@ export default function NegociacaoDetailPage() {
             <Shield size={28} className="text-gray-300" />
             <div>
               <p className="font-medium text-gray-700">Nenhum registro RENAVE</p>
-              <p className="mt-1 text-xs text-gray-500">
-                Quando a integração RENAVE for cadastrada, entrada/saída, protocolo e pendências aparecerão aqui.
-              </p>
             </div>
             {isManager && (
               <button
@@ -2017,7 +2012,6 @@ export default function NegociacaoDetailPage() {
               <Shield size={28} className="text-gray-300" />
               <div>
                 <p className="font-medium text-gray-700">Nenhuma garantia contratada</p>
-                <p className="mt-1 text-xs text-gray-500">Adicione garantias contratadas pelo cliente nesta negociação.</p>
               </div>
               <Link
                 href="/garantias"
