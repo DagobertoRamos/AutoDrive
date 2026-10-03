@@ -3702,6 +3702,9 @@ function StepPagamento({
                         </div>
                         {p.notes && <p className="mt-1 text-[11px] text-gray-400 italic truncate">{p.notes}</p>}
                       </div>
+                      {p.status === 'CONFIRMADO' ? (
+                        <span className="text-[10px] text-gray-400" title="Confirmado pelo financeiro — não pode ser alterado aqui">Baixado</span>
+                      ) : (
                       <div className="flex flex-col gap-1">
                         <button type="button" onClick={() => handleEditPayment(p)}
                           className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -3714,6 +3717,7 @@ function StepPagamento({
                           <Trash2 size={12} />
                         </button>
                       </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -4481,14 +4485,22 @@ export default function NovaNegociacaoPage() {
           socioAdmNome:      p?.socioAdmNome      ?? '',
           socioAdmCpf:       p?.socioAdmCpf       ? formatCPF(p.socioAdmCpf)        : '',
           socioAdmPhone:     p?.socioAdmPhone     ? formatPhone(p.socioAdmPhone)    : '',
-          socioAdmRg:             '',
-          socioAdmDataNascimento: '',
-          socioAdmNomeMae:        '',
-          socioAdmEmail:          '',
-          socioAdmWhatsapp:       false,
-          socioAdmCep:        '', socioAdmLogradouro: '', socioAdmNumero: '',
-          socioAdmComplemento:'', socioAdmBairro:     '', socioAdmCidade: '',
-          socioAdmEstado:     '',
+          ...(() => {
+            let x: Record<string, string | null> = {}
+            const m = /__socioAdmExtras__=(\{.*\})/.exec(String(p?.notes ?? ''))
+            if (m) { try { x = JSON.parse(m[1]) } catch { x = {} } }
+            const dn = x.socioAdmDataNascimento ?? ''
+            return {
+              socioAdmRg:             x.socioAdmRg ?? '',
+              socioAdmDataNascimento: /^\d{4}-\d{2}-\d{2}/.test(dn) ? dn.slice(0, 10) : dn,
+              socioAdmNomeMae:        p?.socioAdmNomeMae ?? '',
+              socioAdmEmail:          p?.socioAdmEmail ?? '',
+              socioAdmWhatsapp:       !!p?.socioAdmWhatsapp,
+              socioAdmCep:        x.socioAdmCep ? formatCEP(x.socioAdmCep) : '', socioAdmLogradouro: x.socioAdmLogradouro ?? '', socioAdmNumero: x.socioAdmNumero ?? '',
+              socioAdmComplemento: x.socioAdmComplemento ?? '', socioAdmBairro: x.socioAdmBairro ?? '', socioAdmCidade: x.socioAdmCidade ?? '',
+              socioAdmEstado:     x.socioAdmEstado ?? '',
+            }
+          })(),
           celular:    p?.phone ? formatPhone(p.phone) : (c?.phone ? formatPhone(c.phone) : ''),
           email:      p?.email ?? c?.email ?? '',
           whatsapp:   !!p?.whatsapp,
@@ -4504,7 +4516,7 @@ export default function NovaNegociacaoPage() {
           consignMinValue: num(d.consignMinValue),
           consignCommPct:  d.consignCommPct ? String(d.consignCommPct) : '',
           consignDeadline: d.consignDeadline ? String(d.consignDeadline).slice(0, 10) : '',
-          debts: Array.isArray(d.debts) ? d.debts.map((debt: { id: string; vehicleRole: string; type: string; description: string | null; value: number | string; responsavel: string; notes: string | null }) => ({
+          debts: Array.isArray(d.debts) ? d.debts.map((debt: { id: string; vehicleRole: string; type: string; description: string | null; value: number | string; responsavel: string; notes: string | null; dueDate: string | null }) => ({
             id:          debt.id,
             vehicleRole: debt.vehicleRole ?? 'VENDIDO',
             type:        debt.type,
@@ -4512,6 +4524,7 @@ export default function NovaNegociacaoPage() {
             value:       num(debt.value),
             responsavel: debt.responsavel ?? 'LOJA',
             notes:       debt.notes ?? '',
+            dueDate:     debt.dueDate ? String(debt.dueDate).slice(0, 10) : '',
           })) : [],
           saleAmount:       num(d.saleAmount),
           purchaseAmount:   num(d.purchaseAmount),
@@ -4531,30 +4544,38 @@ export default function NovaNegociacaoPage() {
           changePix:     d.changePix     ?? '',
           payoffAmount:  num(d.payoffAmount),
           payoffBank:    d.payoffBank    ?? '',
-          // Reconstrói o array `payments` a partir dos dados legados pra
-          // que o usuário veja seus pagamentos antigos quando reabrir a edição.
+          // Pagamentos exatamente como cadastrados (DealPayment). Só negociação
+          // antiga, sem nenhum pagamento gravado, cai nos campos legados.
           payments: (() => {
+            type Row = { id: string; type: string; status: string | null; value: number | string; method: string | null; bank: string | null; cardBrand: string | null; pixKey: string | null; installments: number | null; installmentValue: number | string | null; installmentIntervalDays: number | null; returnPct: number | string | null; vehiclePlate: string | null; firstDueDate: string | null; dueDate: string | null; paidAt: string | null; notes: string | null; authorizationCode: string | null }
+            const day = (v: string | null) => (v ? String(v).slice(0, 10) : '')
+            const rows: Row[] = Array.isArray(d.payments) ? d.payments : []
+            if (rows.length) {
+              return rows.map((r): PaymentEntry => ({
+                ...EMPTY_PAYMENT(),
+                id:           r.id,
+                type:         (r.type === 'OUTROS' ? 'OUTRO' : r.type) as PaymentEntryType,
+                status:       (r.status ?? 'PENDENTE') as PaymentEntryStatus,
+                amount:       num(r.value),
+                dueDate:      day(r.dueDate),
+                paidAt:       day(r.paidAt),
+                bank:         r.bank ?? '',
+                cardBrand:    r.cardBrand ?? '',
+                installments: r.installments ? String(r.installments) : '',
+                installmentValue:        num(r.installmentValue),
+                installmentIntervalDays: r.installmentIntervalDays ? String(r.installmentIntervalDays) : '',
+                firstDueDate: day(r.firstDueDate),
+                returnPct:    r.returnPct != null && r.returnPct !== '' ? String(r.returnPct).replace('.', ',') : '',
+                vehiclePlate: r.vehiclePlate ?? '',
+                pixKey:       r.pixKey ?? '',
+                notes:        r.notes ?? '',
+                signalMethod: r.method ?? undefined,
+                authorizationCode: r.authorizationCode ?? undefined,
+              }))
+            }
             const list: PaymentEntry[] = []
-            const signal = parseBRLInput(num(d.signalAmount))
-            if (signal && signal > 0) {
-              list.push({
-                ...EMPTY_PAYMENT(),
-                type: 'SINAL',
-                status: 'CONFIRMADO',
-                amount: num(d.signalAmount),
-                bank: d.paymentBank ?? '',
-              })
-            }
-            const financed = parseBRLInput(num(d.financedAmount))
-            if (financed && financed > 0) {
-              list.push({
-                ...EMPTY_PAYMENT(),
-                type: 'FINANCIAMENTO',
-                status: 'PENDENTE',
-                amount: num(d.financedAmount),
-                bank: d.paymentBank ?? '',
-              })
-            }
+            if ((parseBRLInput(num(d.signalAmount)) ?? 0) > 0) list.push({ ...EMPTY_PAYMENT(), type: 'SINAL', status: 'CONFIRMADO', amount: num(d.signalAmount) })
+            if ((parseBRLInput(num(d.financedAmount)) ?? 0) > 0) list.push({ ...EMPTY_PAYMENT(), type: 'FINANCIAMENTO', status: 'PENDENTE', amount: num(d.financedAmount), bank: d.paymentBank ?? '' })
             return list
           })(),
           deliveryDate:  d.deliveryDate  ? String(d.deliveryDate).slice(0, 10) : '',
@@ -4886,6 +4907,7 @@ export default function NovaNegociacaoPage() {
       payments:         form.payments
         .filter((p) => p.status !== 'CANCELADO')
         .map((p) => ({
+          id:           p.id,
           type:         p.type,
           status:       p.status,
           amount:       parseBRLInput(p.amount) ?? 0,
@@ -4914,6 +4936,7 @@ export default function NovaNegociacaoPage() {
       notes: [form.notes, form.schedulingNotes].filter(Boolean).join('\n') || null,
       debts: form.debts.length > 0
         ? form.debts.map((d) => ({
+            id:          d.id,
             vehicleRole: d.vehicleRole,
             type:        d.type,
             description: d.description,

@@ -12,6 +12,7 @@ import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -147,6 +148,7 @@ export async function POST(
       userRole: session.user.role,
     })
 
+    await logDealChild(params.id, { id: session.user.id, name: session.user.name, role: session.user.role }, 'pagamento', null, `Incluído: ${payLabel(created)}`)
     await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: created }, { status: 201 })
   } catch (err) {

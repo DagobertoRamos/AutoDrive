@@ -34,7 +34,7 @@ import {
   Edit,
   MessageSquare,
 } from 'lucide-react'
-import { canAccessModule } from '@/lib/permissions'
+import { canAccessModule, hasMinRole } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
 import { calculateNegotiationFinancialSummary, dealToFinancialInput } from '@/lib/negotiation-service'
@@ -204,8 +204,16 @@ interface AuditEntry {
   field:     string | null
   oldValue:  string | null
   newValue:  string | null
-  user:      { name: string } | null
+  userName:  string | null
   createdAt: string
+}
+
+/** Rótulo legível do campo alterado (log da negociação). */
+const AUDIT_FIELD_LABEL: Record<string, string> = {
+  pagamento: 'Pagamento', 'débito': 'Débito', status: 'Status', saleAmount: 'Valor de venda', purchaseAmount: 'Valor de compra',
+  signalAmount: 'Sinal', financedAmount: 'Valor financiado', tradeValue: 'Valor da troca', discountAmount: 'Desconto',
+  documentationFee: 'Documentação', payoffAmount: 'Quitação', changeAmount: 'Troco', sellerId: 'Vendedor', unitId: 'Unidade',
+  deliveryDate: 'Entrega', notes: 'Observações', paymentBank: 'Banco', paymentType: 'Forma de pagamento',
 }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -1094,7 +1102,8 @@ export default function NegociacaoDetailPage() {
   const [newService, setNewService] = useState({ name: '', value: '', cost: '', supplier: '', commission: '', notes: '' })
   const [savingService, setSavingService] = useState(false)
 
-  const isManager = ['GERENTE', 'MASTER', 'ADM'].includes(role ?? '')
+  // Gerência (gerente, gerente geral/administrativo, ADM, MASTER) vê os logs.
+  const isManager = hasMinRole(role ?? undefined, 'GERENTE')
   const isAdm     = ['MASTER', 'ADM'].includes(role ?? '')
 
   // Estado consolidado de ações (saldo + RBAC)
@@ -1132,16 +1141,16 @@ export default function NegociacaoDetailPage() {
       .finally(() => setTimelineLoading(false))
   }, [tab, id])
 
-  // Load audit when tab selected
+  // Log de alterações: no Resumo e na aba Auditoria (só gerência)
   useEffect(() => {
-    if (tab !== 'auditoria' || !id) return
+    if ((tab !== 'auditoria' && tab !== 'resumo') || !id || !isManager) return
     setAuditLoading(true)
     fetch(`/api/negotiations/${id}/audit`)
       .then((r) => r.json())
       .then((d) => setAudit(d.data ?? []))
       .catch(() => {})
       .finally(() => setAuditLoading(false))
-  }, [tab, id])
+  }, [tab, id, isManager])
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -1659,6 +1668,33 @@ export default function NegociacaoDetailPage() {
               onForceFinalize={() => { setForceTyped(''); setShowForceConfirm(true) }}
             />
           </div>
+          {isManager && (
+            <SectionCard title="Histórico de alterações" icon={<Shield size={15} />}>
+              {auditLoading ? (
+                <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-brand-600" /></div>
+              ) : audit.length === 0 ? (
+                <p className="py-4 text-center text-sm text-gray-400">Nenhuma alteração.</p>
+              ) : (
+                <ul className="divide-y divide-gray-50">
+                  {audit.slice(0, 30).map((a) => (
+                    <li key={a.id} className="py-2 text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="font-medium text-gray-800">{AUDIT_FIELD_LABEL[a.field ?? ''] ?? a.field ?? a.action}</span>
+                        <span className="text-xs text-gray-400">{a.userName ?? '—'} · {fmtDateTime(a.createdAt)}</span>
+                      </div>
+                      {(a.oldValue || a.newValue) && (
+                        <p className="mt-0.5 text-xs text-gray-600">
+                          {a.oldValue && <span className="text-red-600 line-through decoration-red-300">{a.oldValue}</span>}
+                          {a.oldValue && a.newValue && <span className="mx-1 text-gray-400">→</span>}
+                          {a.newValue && <span className="text-green-700">{a.newValue}</span>}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+          )}
         </div>
       )}
 
@@ -2133,7 +2169,7 @@ export default function NegociacaoDetailPage() {
                       <td className="px-3 py-2 font-mono text-xs text-gray-600">{a.field ?? '—'}</td>
                       <td className="px-3 py-2 text-xs text-red-600 max-w-[120px] truncate">{a.oldValue ?? '—'}</td>
                       <td className="px-3 py-2 text-xs text-green-700 max-w-[120px] truncate">{a.newValue ?? '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{a.user?.name ?? '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{a.userName ?? '—'}</td>
                       <td className="px-3 py-2 text-xs text-gray-400">{fmtDateTime(a.createdAt)}</td>
                     </tr>
                   ))}

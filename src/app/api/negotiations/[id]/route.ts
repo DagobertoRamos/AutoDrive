@@ -13,6 +13,8 @@ import { computeDealTotals, createDealAudit } from '@/lib/negotiation-service'
 import { canEditDeal, isDealLocked } from '@/lib/negotiation-rbac'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { applyChildren, planChildren, planHasChanges } from '@/lib/negotiation/children-sync'
+import { BLOB_PREFIX, pendingFolder } from '@/lib/negotiation/storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -285,7 +287,11 @@ export async function PATCH(
 
   // Se o usuário não enviou nenhuma mudança válida, devolvemos sucesso vazio
   // em vez de chamar update com data:{} (que Prisma também rejeita).
-  if (Object.keys(allowedFields).length === 0 && !personPatch) {
+  // Pagamentos e débitos da tela de edição: grava por id só o que mudou (com log).
+  const childrenPlan = await planChildren(dealId, body)
+  const childrenChanged = planHasChanges(childrenPlan)
+
+  if (Object.keys(allowedFields).length === 0 && !personPatch && !childrenChanged) {
     return NextResponse.json({ data: deal, message: 'Nenhuma alteração detectada.' })
   }
 
@@ -383,6 +389,28 @@ export async function PATCH(
             beforeData: before as never,
             afterData:  after  as never,
           },
+        })
+      }
+
+      if (childrenChanged) {
+        // Comprovante/boleto enviado na edição vira anexo do pagamento/débito novo.
+        const rawPay = new Map(((body.payments as Array<Record<string, unknown>>) ?? []).map((x) => [String(x.id ?? ''), x]))
+        const rawDebt = new Map(((body.debts as Array<Record<string, unknown>>) ?? []).map((x) => [String(x.id ?? ''), x]))
+        const pendingOk = (k: unknown) => typeof k === 'string' && (k.startsWith(`${BLOB_PREFIX}${pendingFolder(session.user.tenantId ?? '')}`) || k.startsWith(`deals/pending/${session.user.tenantId}/`))
+        await applyChildren(tx, deal, childrenPlan, { id: session.user.id, name: session.user.name ?? null, role: session.user.role }, async (kind, tmpId, newId) => {
+          const raw = (kind === 'payment' ? rawPay : rawDebt).get(tmpId)
+          const r = raw?.receipt as { storageKey?: string; publicUrl?: string; fileName?: string; fileType?: string; mimeType?: string; fileSize?: number } | null | undefined
+          if (!r || !pendingOk(r.storageKey)) return
+          await tx.dealAttachment.create({
+            data: {
+              dealId, tenantId: deal.tenantId,
+              category: kind === 'payment' ? 'COMPROVANTE_PAGAMENTO' : String(raw?.type ?? '').toUpperCase() === 'FINANCIAMENTO' ? 'COMPROVANTE_QUITACAO' : 'COMPROVANTE_DEBITO',
+              fileName: String(r.fileName ?? 'comprovante').slice(0, 160), fileType: r.fileType ?? 'other', mimeType: r.mimeType ?? 'application/octet-stream',
+              fileSize: Number(r.fileSize) || null, storageKey: r.storageKey!, publicUrl: r.publicUrl ?? null,
+              ...(kind === 'payment' ? { paymentId: newId } : { debtId: newId }),
+              uploadedById: session.user.id, uploadedByName: session.user.name ?? null,
+            } as never,
+          })
         })
       }
 

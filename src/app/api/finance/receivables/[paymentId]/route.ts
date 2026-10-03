@@ -13,6 +13,7 @@ import { canAccessModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { saveDealAttachment, validateDealUpload } from '@/lib/negotiation/storage'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,7 @@ async function load(paymentId: string) {
   const tenantId = assertTenantId(user.tenantId, user.role)
   const p = await prisma.dealPayment.findFirst({
     where: { id: paymentId, ...(user.role === 'MASTER' ? {} : { deal: { tenantId } }) },
-    select: { id: true, dealId: true, type: true, method: true, status: true, authorizationCode: true, deal: { select: { tenantId: true } } },
+    select: { id: true, dealId: true, type: true, method: true, status: true, authorizationCode: true, value: true, bank: true, deal: { select: { tenantId: true } } },
   })
   if (!p) return { error: NextResponse.json({ error: 'Pagamento não encontrado.' }, { status: 404 }) }
   return { user, p }
@@ -58,6 +59,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const updated = await prisma.dealPayment.update({ where: { id: paymentId }, data })
     await createSafeAuditLog({ userId: user.id, tenantId: user.tenantId ?? null, action: action ? `PAYMENT_${action}` : 'PAYMENT_AUTH_CODE', entity: 'DealPayment', entityId: paymentId, userName: user.name ?? null, userRole: user.role })
+    if (updated.status !== p.status) await logDealChild(p.dealId, { id: user.id, name: user.name ?? null, role: user.role }, 'pagamento', `${payLabel(p)} (${statusPt(p.status)})`, `${payLabel(updated)} (${statusPt(updated.status)})`)
     await syncDealFinanceSafe(p.dealId)
     return NextResponse.json({ success: true, data: updated })
   } catch (err) { return handlePrismaError(err) }

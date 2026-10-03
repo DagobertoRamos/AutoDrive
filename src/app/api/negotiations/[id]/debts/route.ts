@@ -11,6 +11,7 @@ import { canEditDeal }          from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
 
 // ── GET — Listar débitos ──────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ export async function POST(
       },
     }).catch(() => {})
 
+    await logDealChild(params.id, { id: session.user.id, name: session.user.name, role: session.user.role }, 'débito', null, `Incluído: ${debtRowLabel(debt)}`)
     await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: debt }, { status: 201 })
   } catch (err) {

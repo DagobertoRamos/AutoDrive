@@ -12,6 +12,7 @@ import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,7 +91,10 @@ export async function PATCH(
   }
 
   try {
+    const before = ctx.payment
     const updated = await prisma.dealPayment.update({ where: { id: params.paymentId }, data })
+    const changed = payLabel(before) !== payLabel(updated) || before.status !== updated.status
+    if (changed) await logDealChild(params.id, { id: session.user.id, name: session.user.name, role: session.user.role }, 'pagamento', `${payLabel(before)} (${statusPt(before.status)})`, `${payLabel(updated)} (${statusPt(updated.status)})`)
     await createSafeAuditLog({
       userId: session.user.id, tenantId: session.user.tenantId ?? null,
       action: 'UPDATE_PAYMENT', entity: 'DealPayment', entityId: params.paymentId,
@@ -122,8 +126,13 @@ export async function DELETE(
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
+  if (ctx.payment.status === 'CONFIRMADO') {
+    return NextResponse.json({ error: 'Pagamento confirmado pelo financeiro não pode ser excluído.' }, { status: 409 })
+  }
+
   try {
     await prisma.dealPayment.delete({ where: { id: params.paymentId } })
+    await logDealChild(params.id, { id: session.user.id, name: session.user.name, role: session.user.role }, 'pagamento', payLabel(ctx.payment), 'Removido')
     await createSafeAuditLog({
       userId: session.user.id, tenantId: session.user.tenantId ?? null,
       action: 'DELETE_PAYMENT', entity: 'DealPayment', entityId: params.paymentId,

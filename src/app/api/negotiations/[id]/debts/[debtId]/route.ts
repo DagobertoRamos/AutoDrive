@@ -11,6 +11,7 @@ import { canEditDeal }          from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
 
 async function getDealAndCheck(dealId: string, session: NonNullable<Awaited<ReturnType<typeof getServerAuthSession>>>) {
   const deal = await prisma.deal.findFirst({
@@ -46,6 +47,7 @@ export async function PATCH(
     const body = await req.json()
     const { vehicleRole, type, description, value, responsavel, notes, dueDate } = body
 
+    const beforeDebt = await prisma.dealDebt.findUnique({ where: { id: params.debtId } })
     const updated = await (prisma.dealDebt as any).update({
       where: { id: params.debtId },
       data: {
@@ -61,6 +63,7 @@ export async function PATCH(
 
     void deal // used for check above
 
+    if (beforeDebt && debtRowLabel(beforeDebt) !== debtRowLabel(updated)) await logDealChild(params.id, { id: session.user.id, name: session.user.name, role: session.user.role }, 'débito', debtRowLabel(beforeDebt), debtRowLabel(updated))
     await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: updated })
   } catch (err) {
@@ -85,7 +88,9 @@ export async function DELETE(
   if (err) return err
 
   try {
+    const gone = await prisma.dealDebt.findUnique({ where: { id: params.debtId } })
     await (prisma.dealDebt as any).delete({ where: { id: params.debtId } })
+    if (gone) await logDealChild(params.id, { id: session.user.id, name: session.user.name, role: session.user.role }, 'débito', debtRowLabel(gone), 'Removido')
     void deal // used for check above
 
     await prisma.auditLog.create({

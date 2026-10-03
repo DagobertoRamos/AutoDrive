@@ -5,7 +5,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireModule } from '@/lib/permissions'
+import { requireModule, hasMinRole } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 
@@ -20,6 +20,11 @@ export async function GET(
     requireModule(session.user.role, 'negotiations')
     { const gate = await assertModuleEnabled(session.user, 'negotiations'); if (gate) return gate }
   } catch {
+    return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
+  }
+
+  // Log de alterações: só gerência (gerente, gerente geral/administrativo, ADM, MASTER).
+  if (!hasMinRole(session.user.role, 'GERENTE')) {
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
