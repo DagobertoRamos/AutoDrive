@@ -166,6 +166,7 @@ export const config = {
     // são carregados por Web Workers (Tesseract, pdfjs) que NÃO enviam cookie
     // de sessão. Se passarem pelo proxy, viram redirect 307 para /login e o
     // Worker falha silenciosamente ("Failed to execute 'importScripts'").
-    '/((?!s/|api/site/|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|tesseract/|tessdata/|pdfjs/|pdf.worker.min.mjs|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm|traineddata|gz)$).*)',
+    // `tiktok<código>.txt` = arquivo de verificação de URL do app TikTok (público).
+    '/((?!s/|api/site/|api/auth|api/webhook|api/internal|api/integrations|api/queue/jobs|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|tesseract/|tessdata/|pdfjs/|pdf.worker.min.mjs|icons/|tiktok[A-Za-z0-9]+\\.txt$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm|traineddata|gz)$).*)',
   ],
 }
