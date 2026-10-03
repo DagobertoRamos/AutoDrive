@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canFinalizeDeal, FINALIZABLE_STATUSES } from '@/lib/negotiation-permissions'
-import { createDealAudit, createStatusHistory, updateVehicleStock, dealBalanceOf } from '@/lib/negotiation-service'
+import { createDealAudit, createStatusHistory, updateVehicleStock, dealBalanceOf, reconciliationOf, vehicleReleaseBlock } from '@/lib/negotiation-service'
 import { generateCommissionsForDeal } from '@/lib/commission-generator'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
 import { canForceFinalize } from '@/lib/negotiation-rbac'
@@ -65,7 +65,10 @@ export async function POST(
   // Bloqueio de saldo em aberto
   if (!force) {
     // Mesma conta do resumo da tela (valor de venda atual, débitos, serviços, taxas, descontos).
-    const { summary: _s, ...balance } = dealBalanceOf(deal)
+    const { summary, ...balance } = dealBalanceOf(deal)
+    // Finalizar libera o veículo: todo o valor precisa estar conciliado pelo financeiro.
+    const releaseBlock = vehicleReleaseBlock(reconciliationOf(summary))
+    if (releaseBlock) return NextResponse.json({ error: releaseBlock, balance }, { status: 422 })
     if (balance.saldo > 0.009) {
       return NextResponse.json(
         { error: 'Saldo da negociação está em aberto. Não é possível finalizar.', balance },

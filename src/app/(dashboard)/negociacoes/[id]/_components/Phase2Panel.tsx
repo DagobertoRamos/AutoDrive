@@ -29,6 +29,8 @@ export interface Phase2Payment {
   notes?:         string | null
   method?:            string | null
   authorizationCode?: string | null
+  /** PENDENTE (aguardando conciliação do financeiro) | CONFIRMADO | CANCELADO... */
+  status?:            string | null
 }
 
 export interface Phase2DiscountRequest {
@@ -284,6 +286,11 @@ export default function Phase2Panel(props: Props) {
       diferenca,
     }
   }, [vehicles, debts, services, payments, discounts, changes, vehicleValue, debtsTotal, servicesTotal])
+
+  // Lançado mas ainda não conferido pelo financeiro: não conta como quitado.
+  const aguardandoConciliacao = payments
+    .filter((p) => !['CONFIRMADO', 'PAGO', 'CANCELADO', 'ESTORNADO', 'RECUSADO'].includes(String(p.status ?? 'PENDENTE').toUpperCase()))
+    .reduce((s, p) => s + toN(p.value), 0)
 
   const saldoStatus: 'aberto' | 'excedente' | 'zerado' =
     totals.diferenca > 0.009 ? 'aberto'
@@ -614,13 +621,16 @@ export default function Phase2Panel(props: Props) {
             </dl>
 
             <div className={`mt-3 rounded-lg px-3 py-2.5 text-sm ${
-              saldoStatus === 'zerado' ? 'bg-green-50 text-green-800'
+              saldoStatus === 'zerado' && aguardandoConciliacao > 0.009 ? 'bg-amber-50 text-amber-800'
+              : saldoStatus === 'zerado' ? 'bg-green-50 text-green-800'
               : saldoStatus === 'aberto' ? 'bg-amber-50 text-amber-800'
               : 'bg-blue-50 text-blue-800'
             }`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 text-xs">
-                  {saldoStatus === 'zerado' && 'Saldo zerado — pronto para finalizar'}
+                  {saldoStatus === 'zerado' && (aguardandoConciliacao > 0.009
+                    ? `Tudo lançado, mas ${formatBRL(aguardandoConciliacao)} aguardam conciliação do financeiro. A finalização e a entrega do veículo liberam depois da conciliação.`
+                    : 'Saldo zerado e conciliado — pronto para finalizar')}
                   {saldoStatus === 'aberto'  && `Em aberto: ${formatBRL(totals.diferenca)}`}
                   {saldoStatus === 'excedente' && `Excedente: ${formatBRL(-totals.diferenca)}`}
                 </div>

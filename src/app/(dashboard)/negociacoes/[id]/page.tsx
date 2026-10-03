@@ -37,7 +37,7 @@ import {
 import { canAccessModule, hasMinRole } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
-import { calculateNegotiationFinancialSummary, dealToFinancialInput } from '@/lib/negotiation-service'
+import { calculateNegotiationFinancialSummary, dealToFinancialInput, reconciliationOf } from '@/lib/negotiation-service'
 import Phase2Panel from './_components/Phase2Panel'
 import ReturnPanel from './_components/ReturnPanel'
 import WarrantySalesPanel from './_components/WarrantySalesPanel'
@@ -722,8 +722,14 @@ function DealValuesCard({ deal }: { deal: DealDetail }) {
   const docFee           = f.feeAmount
   const totalOperacao    = f.netTotal
   const totalPayments    = f.paidTotal
-  const saldo            = f.openBalance
-  const ok               = f.paymentStatus === 'QUITADO'
+  // Conciliação: só está quitado quando o financeiro conferiu todo o valor.
+  const rec              = reconciliationOf(f)
+  const brl0             = (v: number) => fmtBRL(v) ?? 'R$ 0,00'
+  const badge = rec.situacao === 'CONCILIADO' || rec.situacao === 'SEM_VALOR'
+    ? { cls: 'bg-emerald-100 text-emerald-700', text: '✓ Quitado e conciliado' }
+    : rec.situacao === 'AGUARDANDO_CONCILIACAO'
+      ? { cls: 'bg-amber-100 text-amber-800', text: `Falta conciliar: ${brl0(rec.naoConciliado)}` }
+      : { cls: 'bg-red-100 text-red-700', text: `Em aberto: ${brl0(rec.naoConciliado)}` }
 
   const payments: Array<{ id?: string; type: string; status?: string; value: number | string; bank?: string | null; agency?: string | null; account?: string | null; pixKey?: string | null; installments?: number | null; installmentValue?: number | string | null; installmentIntervalDays?: number | null; firstDueDate?: string | null; vehiclePlate?: string | null; returnPct?: number | string | null }> = anyDeal.payments ?? []
   const changes: Array<{ id: string; value: number | string; beneficiary: string; bank?: string | null; agency?: string | null; account?: string | null; pixKey?: string | null }> = anyDeal.changes ?? []
@@ -737,13 +743,7 @@ function DealValuesCard({ deal }: { deal: DealDetail }) {
           <DollarSign size={15} className="text-brand-600" />
           <h3 className="font-semibold text-gray-800">Valores Detalhados</h3>
         </div>
-        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-          ok ? 'bg-emerald-100 text-emerald-700'
-             : saldo > 0 ? 'bg-amber-100 text-amber-700'
-                        : 'bg-blue-100 text-blue-700'
-        }`}>
-          {ok ? '✓ Saldo zerado' : saldo > 0 ? `Em aberto: ${fmtBRL(saldo)}` : `Excedente: ${fmtBRL(Math.abs(saldo))}`}
-        </span>
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badge.cls}`}>{badge.text}</span>
       </div>
 
       <div className="p-4">
@@ -805,16 +805,26 @@ function DealValuesCard({ deal }: { deal: DealDetail }) {
                       {p.vehiclePlate && (
                         <span className="ml-1 rounded bg-gray-100 px-1 font-mono text-[10px]">{p.vehiclePlate}</span>
                       )}
-                      {p.status && p.status !== 'PENDENTE' && p.status !== 'CANCELADO' && (
-                        <span className="ml-1 rounded bg-green-100 px-1 text-[10px] text-green-700">{p.status}</span>
-                      )}
+                      {p.status === 'CONFIRMADO' || p.status === 'PAGO'
+                        ? <span className="ml-1 rounded bg-green-100 px-1.5 text-[10px] font-medium text-green-700">Conciliado</span>
+                        : p.status === 'CANCELADO' || p.status === 'ESTORNADO' || p.status === 'RECUSADO'
+                          ? <span className="ml-1 rounded bg-gray-100 px-1.5 text-[10px] text-gray-500">{p.status === 'CANCELADO' ? 'Cancelado' : p.status === 'ESTORNADO' ? 'Estornado' : 'Recusado'}</span>
+                          : <span className="ml-1 rounded bg-amber-100 px-1.5 text-[10px] font-medium text-amber-800">Aguardando conciliação</span>}
                     </td>
                     <td className="py-1.5 text-right font-medium">{fmtBRL(p.value)}</td>
                   </tr>
                 ))}
                 <tr>
-                  <td className="py-1.5 text-sm font-medium text-gray-700">Total pago</td>
-                  <td className="py-1.5 text-right font-semibold text-gray-900">{fmtBRL(totalPayments)}</td>
+                  <td className="py-1.5 text-sm font-medium text-gray-700">Total lançado</td>
+                  <td className="py-1.5 text-right font-semibold text-gray-900">{brl0(totalPayments)}</td>
+                </tr>
+                <tr className="text-xs">
+                  <td className="py-1 pl-4 text-green-700">· Conciliado pelo financeiro</td>
+                  <td className="py-1 text-right text-green-700">{brl0(rec.conciliado)}</td>
+                </tr>
+                <tr className="text-xs">
+                  <td className="py-1 pl-4 text-amber-700">· Aguardando conciliação</td>
+                  <td className="py-1 text-right text-amber-700">{brl0(rec.aguardando)}</td>
                 </tr>
               </>
             )}
@@ -839,12 +849,24 @@ function DealValuesCard({ deal }: { deal: DealDetail }) {
               </>
             )}
 
-            <tr className={`${ok ? 'bg-emerald-50' : saldo > 0 ? 'bg-amber-50' : 'bg-blue-50'}`}>
-              <td className={`py-2.5 text-sm font-bold ${ok ? 'text-emerald-800' : saldo > 0 ? 'text-amber-800' : 'text-blue-800'}`}>
-                {ok ? 'Saldo' : saldo > 0 ? 'Em aberto' : 'Excedente (troco)'}
+            {rec.faltaLancar > 0.009 && (
+              <tr>
+                <td className="py-1.5 text-sm text-red-700">Falta lançar pagamento</td>
+                <td className="py-1.5 text-right font-medium text-red-700">{brl0(rec.faltaLancar)}</td>
+              </tr>
+            )}
+            {rec.excedente > 0.009 && (
+              <tr>
+                <td className="py-1.5 text-sm text-blue-700">Lançado acima do total (troco)</td>
+                <td className="py-1.5 text-right font-medium text-blue-700">{brl0(rec.excedente)}</td>
+              </tr>
+            )}
+            <tr className={rec.situacao === 'CONCILIADO' || rec.situacao === 'SEM_VALOR' ? 'bg-emerald-50' : rec.situacao === 'AGUARDANDO_CONCILIACAO' ? 'bg-amber-50' : 'bg-red-50'}>
+              <td className={`py-2.5 text-sm font-bold ${rec.situacao === 'CONCILIADO' || rec.situacao === 'SEM_VALOR' ? 'text-emerald-800' : rec.situacao === 'AGUARDANDO_CONCILIACAO' ? 'text-amber-800' : 'text-red-800'}`}>
+                {rec.situacao === 'CONCILIADO' || rec.situacao === 'SEM_VALOR' ? 'Saldo (tudo conciliado)' : 'Saldo a conciliar'}
               </td>
-              <td className={`py-2.5 text-right text-base font-bold ${ok ? 'text-emerald-700' : saldo > 0 ? 'text-amber-800' : 'text-blue-700'}`}>
-                {fmtBRL(Math.abs(saldo))}
+              <td className={`py-2.5 text-right text-base font-bold ${rec.situacao === 'CONCILIADO' || rec.situacao === 'SEM_VALOR' ? 'text-emerald-700' : rec.situacao === 'AGUARDANDO_CONCILIACAO' ? 'text-amber-800' : 'text-red-700'}`}>
+                {brl0(rec.naoConciliado)}
               </td>
             </tr>
           </tbody>

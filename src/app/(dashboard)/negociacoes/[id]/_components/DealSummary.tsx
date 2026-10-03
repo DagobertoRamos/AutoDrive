@@ -10,8 +10,8 @@
 
 import { useState } from 'react'
 import {
-  User, Car, Users, DollarSign, ArrowDownCircle, ArrowUpCircle, CalendarDays, Truck, Phone, Mail, MapPin,
-  Edit, CheckCircle2, RotateCcw, AlertTriangle, ShieldAlert, Ban,
+  User, Car, Users, DollarSign, ArrowUpCircle, CalendarDays, Truck, Phone, Mail, MapPin,
+  Edit, CheckCircle2, RotateCcw, AlertTriangle, ShieldAlert, Ban, Clock, Lock,
 } from 'lucide-react'
 import { formatBRL, maskCPF, maskCNPJ, maskPhone, maskCEP } from '@/lib/masks'
 import { useDealActions, type DealActionsActor, type DealActionsDeal } from '../_hooks/useDealActions'
@@ -178,8 +178,9 @@ export default function DealSummary({
   const initial = (cliNome ?? '?').trim().charAt(0).toUpperCase()
   const fin = a.summary
   const net = fin?.netTotal ?? a.balance.totalLiquido
-  const paid = fin?.paidTotal ?? a.balance.totalPago
-  const paidPct = net > 0 ? Math.min(100, Math.max(0, (paid / net) * 100)) : 0
+  const rec = a.reconciliation
+  const pct = (v?: number) => (net > 0 && v ? Math.min(100, Math.max(0, (v / net) * 100)) : 0)
+  const tone = rec?.situacao === 'CONCILIADO' || rec?.situacao === 'SEM_VALOR' ? 'bg-green-50 text-green-800' : rec?.situacao === 'AGUARDANDO_CONCILIACAO' ? 'bg-amber-50 text-amber-900' : 'bg-red-50 text-red-800'
   const sellerName = deal.seller?.user?.name ?? deal.seller?.fullName ?? deal.sellerNameFromSheet ?? null
   const priceLabel = deal.type === 'COMPRA' ? 'Valor de compra' : deal.type === 'CONSIGNACAO' ? 'Valor do veículo' : 'Valor de venda'
   const vehicleRoleLabel = deal.type === 'COMPRA' ? 'Veículo comprado' : deal.type === 'CONSIGNACAO' ? 'Veículo consignado' : 'Veículo vendido'
@@ -327,26 +328,28 @@ export default function DealSummary({
             </div>
           </dl>
 
+          {/* Conciliação: só conta como recebido o que o financeiro conferiu. */}
           <div className="mt-4 rounded-xl bg-gray-50 p-3">
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="text-gray-600">Recebido</span>
-              <span className="font-semibold tabular-nums text-gray-900">{formatBRL(paid)}</span>
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-gray-200" role="img" aria-label={`Conciliado ${Math.round(pct(rec?.conciliado))}%, aguardando conciliação ${Math.round(pct(rec?.aguardando))}%`}>
+              <div className="h-full bg-green-500" style={{ width: `${pct(rec?.conciliado)}%` }} />
+              <div className="h-full bg-amber-400" style={{ width: `${pct(rec?.aguardando)}%` }} />
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuenow={Math.round(paidPct)} aria-valuemin={0} aria-valuemax={100} aria-label="Percentual recebido">
-              <div className={`h-full rounded-full ${a.saldoStatus === 'zerado' ? 'bg-green-500' : a.saldoStatus === 'excedente' ? 'bg-blue-500' : 'bg-brand-500'}`} style={{ width: `${paidPct}%` }} />
-            </div>
-            {!!fin?.paidPending && (
-              <p className="mt-1.5 text-[11px] text-amber-700">{formatBRL(fin.paidPending)} aguardando confirmação do financeiro</p>
-            )}
+            <dl className="mt-3 space-y-1.5 text-sm">
+              <Legend dot="bg-green-500" label="Conciliado pelo financeiro" value={rec?.conciliado ?? 0} />
+              <Legend dot="bg-amber-400" label="Aguardando conciliação" value={rec?.aguardando ?? 0} />
+              <Legend dot="bg-gray-300" label="Falta lançar" value={rec?.faltaLancar ?? 0} />
+            </dl>
           </div>
 
-          <div className={`mt-3 flex items-center justify-between rounded-xl px-3 py-2.5 ${a.saldoStatus === 'zerado' ? 'bg-green-50 text-green-800' : a.saldoStatus === 'aberto' ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-blue-800'}`}>
+          <div className={`mt-3 flex items-center justify-between rounded-xl px-3 py-2.5 ${tone}`}>
             <span className="flex items-center gap-1.5 text-sm font-medium">
-              {a.saldoStatus === 'zerado' ? <CheckCircle2 size={15} /> : a.saldoStatus === 'aberto' ? <ArrowUpCircle size={15} /> : <ArrowDownCircle size={15} />}
-              {a.saldoStatus === 'zerado' ? 'Quitado' : a.saldoStatus === 'aberto' ? 'Falta receber' : 'Valor excedente'}
+              {rec?.situacao === 'CONCILIADO' ? <CheckCircle2 size={15} /> : rec?.situacao === 'AGUARDANDO_CONCILIACAO' ? <Clock size={15} /> : <ArrowUpCircle size={15} />}
+              {rec?.situacao === 'CONCILIADO' ? 'Quitado e conciliado' : rec?.situacao === 'AGUARDANDO_CONCILIACAO' ? 'Falta conciliar' : 'Falta receber'}
             </span>
-            <span className="text-lg font-bold tabular-nums">{formatBRL(Math.abs(a.saldo))}</span>
+            <span className="text-lg font-bold tabular-nums">{formatBRL(rec?.naoConciliado ?? 0)}</span>
           </div>
+          {!!rec?.excedente && <p className="mt-2 text-xs text-blue-700">Lançado acima do total: <strong className="tabular-nums">{formatBRL(rec.excedente)}</strong></p>}
+          {a.releaseBlock && <p className="mt-2 flex items-start gap-1.5 text-[11px] text-gray-500"><Lock size={12} className="mt-0.5 shrink-0" />Veículo só é liberado (finalização e termo de entrega) com tudo conciliado.</p>}
           {a.balance.totalTroco > 0 && <p className="mt-2 text-xs text-gray-500">Troco a devolver ao cliente: <strong className="tabular-nums">{formatBRL(a.balance.totalTroco)}</strong></p>}
         </div>
       </div>
@@ -386,6 +389,15 @@ function Person({ label, name, hint, empty, badge }: { label: string; name: stri
         </dd>
         {hint && <dd className="text-xs text-gray-500">{hint}</dd>}
       </div>
+    </div>
+  )
+}
+
+function Legend({ dot, label, value }: { dot: string; label: string; value: number }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="flex items-center gap-2 text-gray-600"><span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />{label}</dt>
+      <dd className="tabular-nums text-gray-900">{formatBRL(value)}</dd>
     </div>
   )
 }

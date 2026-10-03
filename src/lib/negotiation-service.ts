@@ -340,6 +340,47 @@ export function dealToFinancialInput(deal: any): FinancialSummaryInput {
  * pagamentos. Usado no resumo da tela E na trava da finalização — os dois
  * nunca divergem.
  */
+export interface Reconciliation {
+  /** Total da negociação (líquido). */
+  total: number
+  /** Conferido e confirmado pelo financeiro. */
+  conciliado: number
+  /** Lançado, aguardando conferência do financeiro. */
+  aguardando: number
+  /** Ainda não lançado como pagamento. */
+  faltaLancar: number
+  /** Total que falta o financeiro conciliar (aguardando + falta lançar). */
+  naoConciliado: number
+  /** Valor lançado acima do total (troco). */
+  excedente: number
+  situacao: 'CONCILIADO' | 'AGUARDANDO_CONCILIACAO' | 'FALTA_RECEBER' | 'SEM_VALOR'
+}
+
+/** Conciliação: o carro só é liberado quando o financeiro conferiu todo o valor. PURO. */
+export function reconciliationOf(s: Pick<FinancialSummary, 'netTotal' | 'paidConfirmed' | 'paidPending'>): Reconciliation {
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const total = r2(Math.max(0, s.netTotal))
+  const conciliado = r2(s.paidConfirmed)
+  const aguardando = r2(s.paidPending)
+  const faltaLancar = r2(Math.max(0, total - conciliado - aguardando))
+  const naoConciliado = r2(Math.max(0, total - conciliado))
+  const excedente = r2(Math.max(0, conciliado + aguardando - total))
+  const situacao = total <= 0.009 ? 'SEM_VALOR' : naoConciliado <= 0.009 ? 'CONCILIADO' : faltaLancar <= 0.009 ? 'AGUARDANDO_CONCILIACAO' : 'FALTA_RECEBER'
+  return { total, conciliado, aguardando, faltaLancar, naoConciliado, excedente, situacao }
+}
+
+const brlTxt = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace(/\s/g, ' ')
+
+/** Motivo para NÃO liberar o veículo (finalizar / termo de entrega); null = pode liberar. */
+export function vehicleReleaseBlock(r: Reconciliation): string | null {
+  if (r.situacao === 'CONCILIADO' || r.situacao === 'SEM_VALOR') return null
+  const parts = [
+    r.aguardando > 0.009 ? `${brlTxt(Math.min(r.aguardando, r.naoConciliado))} aguardando conciliação do financeiro` : null,
+    r.faltaLancar > 0.009 ? `${brlTxt(r.faltaLancar)} ainda sem pagamento lançado` : null,
+  ].filter(Boolean)
+  return `O veículo só é liberado com todo o valor conciliado pelo financeiro. Faltam ${brlTxt(r.naoConciliado)}: ${parts.join(' e ')}.`
+}
+
 export function dealBalanceOf(deal: any): DealBalanceResult & { summary: FinancialSummary } {
   const s = calculateNegotiationFinancialSummary(dealToFinancialInput(deal))
   return {

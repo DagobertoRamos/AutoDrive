@@ -16,7 +16,7 @@ import {
   canForceFinalize,
   isDealLocked,
 } from '@/lib/negotiation-rbac'
-import { dealBalanceOf, type DealBalanceResult, type FinancialSummary } from '@/lib/negotiation-service'
+import { dealBalanceOf, reconciliationOf, vehicleReleaseBlock, type DealBalanceResult, type FinancialSummary, type Reconciliation } from '@/lib/negotiation-service'
 import { FINALIZABLE_STATUSES } from '@/lib/negotiation-permissions'
 import { formatBRL } from '@/lib/masks'
 
@@ -48,6 +48,10 @@ export interface DealActions {
   balance:               DealBalanceResult
   /** Composição completa (veículo, débitos, serviços, taxas, descontos, pago confirmado/pendente). */
   summary:               FinancialSummary | null
+  /** Conciliado pelo financeiro × aguardando × falta lançar. */
+  reconciliation:        Reconciliation | null
+  /** Motivo de não liberar o veículo (null = tudo conciliado). */
+  releaseBlock:          string | null
   saldo:                 number
   saldoStatus:           'zerado' | 'aberto' | 'excedente'
   isLocked:              boolean
@@ -73,6 +77,8 @@ export function useDealActions(
       return {
         balance: empty,
         summary: null,
+        reconciliation: null,
+        releaseBlock: null,
         saldo: 0,
         saldoStatus: 'zerado',
         isLocked: false,
@@ -90,6 +96,8 @@ export function useDealActions(
     // Mesma conta do card "Valores Detalhados" e da trava de finalização no servidor.
     const { summary, ...balance } = dealBalanceOf(deal)
 
+    const reconciliation = reconciliationOf(summary)
+    const releaseBlock = vehicleReleaseBlock(reconciliation)
     const saldo = balance.saldo
     const saldoStatus: 'zerado' | 'aberto' | 'excedente' =
       saldo > 0.009 ? 'aberto'
@@ -106,7 +114,8 @@ export function useDealActions(
     const trocoOk     = saldoStatus !== 'excedente' || (balance.totalTroco + 0.009 >= excedente)
     const saldoOk     = saldoStatus === 'zerado' || (saldoStatus === 'excedente' && trocoOk)
 
-    const canFinalizeNow = baseFinalize && saldoOk
+    // Finalizar libera o veículo: exige todo o valor conciliado pelo financeiro.
+    const canFinalizeNow = baseFinalize && saldoOk && !releaseBlock
 
     let finalizeDisabledReason: string | null = null
     if (!isFinalizable) {
@@ -120,11 +129,15 @@ export function useDealActions(
       if (saldoStatus === 'aberto')     parts.push(`em aberto: ${formatBRL(saldo)}`)
       if (saldoStatus === 'excedente')  parts.push(`excedente: ${formatBRL(excedente - balance.totalTroco)}`)
       finalizeDisabledReason = `Resolva o saldo antes de finalizar (${parts.join(' / ')}).`
+    } else if (releaseBlock) {
+      finalizeDisabledReason = releaseBlock
     }
 
     return {
       balance,
       summary,
+      reconciliation,
+      releaseBlock,
       saldo,
       saldoStatus,
       isLocked,

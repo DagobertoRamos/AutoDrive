@@ -13,6 +13,8 @@ import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { loadContractData } from '@/lib/negotiation/contracts/contract-data'
 import { generateDealDocument, isDocKind } from '@/lib/negotiation/contracts/generate'
+import { prisma } from '@/lib/prisma'
+import { dealBalanceOf, reconciliationOf, vehicleReleaseBlock } from '@/lib/negotiation-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +47,13 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const body = (await req.json().catch(() => ({}))) as { kind?: unknown }
   if (!isDocKind(body.kind)) return NextResponse.json({ error: 'Documento inválido.' }, { status: 400 })
   const where = await buildNegotiationAccessWhere(g.session.user, { id })
+  // Termo de entrega do veículo vendido = liberação do carro: exige todo o valor conciliado pelo financeiro.
+  if (body.kind === 'ENTREGA_VENDA') {
+    const deal = await prisma.deal.findFirst({ where, include: { vehicles: true, debts: true, services: true, payments: true, discountRequests: true, changes: true } })
+    if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
+    const block = vehicleReleaseBlock(reconciliationOf(dealBalanceOf(deal).summary))
+    if (block) return NextResponse.json({ error: block }, { status: 422 })
+  }
   try {
     const r = await generateDealDocument(id, body.kind, g.session.user.id, where)
     return NextResponse.json({ data: r.doc, regenerated: r.regenerated }, { status: r.regenerated ? 200 : 201 })
