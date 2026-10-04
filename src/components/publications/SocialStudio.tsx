@@ -22,7 +22,7 @@ import { SocialPreviewModal } from '@/components/publications/SocialPreviewModal
 import { PhotoEnhanceToggle } from '@/components/publications/PhotoEnhanceToggle'
 import { DesignPicker, VideoSecondsPicker } from '@/components/publications/DesignPicker'
 import type { DesignStyle, VideoSeconds } from '@/lib/publications/social/design-styles'
-import { limitDesigns, MAX_DESIGNS } from '@/lib/publications/social/variety-core'
+import { limitDesigns, maxDesignsFor } from '@/lib/publications/social/variety-core'
 
 export interface SocialChoice {
   formats: SocialFormat[]
@@ -56,6 +56,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
   const vid = current && vehicles.some((v) => v.id === current) ? current : vehicles[0]?.id ?? null
   const set = (p: Partial<SocialChoice>) => onChange({ ...value, ...p })
+  const maxDesigns = maxDesignsFor(vehicles.length)
   const toggle = (f: SocialFormat) => set({ formats: value.formats.includes(f) ? value.formats.filter((x) => x !== f) : SOCIAL_FORMATS.filter((x) => x === f || value.formats.includes(x)) })
 
   const generate = async (format: SocialFormat) => {
@@ -113,7 +114,7 @@ export function SocialStudio({ vehicles, value, onChange, hasInstagram = true, t
 
       {value.formats.length > 0 && (
         <>
-          <DesignPicker value={value.design} onChange={(design) => set({ design })} many={{ values: value.designs?.length ? value.designs : [value.design], max: MAX_DESIGNS, onChange: (designs) => set({ designs: limitDesigns(designs), design: designs[0] }) }} />
+          <DesignPicker value={value.design} onChange={(design) => set({ design })} many={{ values: limitDesigns(value.designs?.length ? value.designs : [value.design], maxDesigns), max: maxDesigns, onChange: (list) => { const designs = limitDesigns(list, maxDesigns); set({ designs, design: designs[0] }) } }} />
           {value.formats.includes('REELS') && <VideoSecondsPicker value={value.seconds} onChange={(seconds) => set({ seconds })} />}
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Chamada da arte">
             <span className="mr-1 text-xs font-medium text-gray-600">Chamada:</span>

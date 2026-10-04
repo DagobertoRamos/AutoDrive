@@ -32,13 +32,12 @@ export function DesignPicker({ value, onChange, className, many }: { value: Desi
     if (!many) return onChange(d)
     const has = many.values.includes(d)
     if (has && many.values.length === 1) return
-    const next = has ? many.values.filter((x) => x !== d) : [...many.values, d].slice(-many.max)
-    many.onChange(next)
-    onChange(next[0])
+    // Uma única gravação (duas seguidas apagavam a escolha: "travava").
+    many.onChange(has ? many.values.filter((x) => x !== d) : [...many.values, d].slice(-many.max))
   }
   return (
     <div className={cn('space-y-1.5', className)}>
-      <p className="text-xs font-medium text-gray-600">Modelo visual (vídeo e artes){many ? ` — escolha até ${many.max}; cada carro sai com um deles, sorteado` : ''}</p>
+      <p className="text-xs font-medium text-gray-600">Modelo visual (vídeo e artes){many && many.max > 1 ? ` — escolha até ${many.max} (${many.values.length} marcado${many.values.length > 1 ? 's' : ''}); os vídeos se alternam entre eles` : ''}</p>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6" role={many ? 'group' : 'radiogroup'} aria-label="Modelo visual">
         {DESIGN_STYLES.map((d) => {
           const sw = SWATCH[d]; const on = chosen.includes(d)

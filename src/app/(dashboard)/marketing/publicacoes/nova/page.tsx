@@ -438,7 +438,8 @@ function StepReview({ vehicleIds, connectionIds, vehicles, campaign, social: soc
     : null
   // Variedade: cada carro com o seu modelo (entre os escolhidos), chamada e clima de música sorteados.
   const socialOv = (v: string, f: string) => {
-    const x = variantFor(`${v}:${requestKey.current.slice(0, 8)}`, { designs: social.designs?.length ? social.designs : [social.design], template: social.template, vary: !!social.vary, music: social.music })
+    const round = requestKey.current.slice(0, 8)
+    const x = variantFor(`${v}:${round}`, { designs: social.designs?.length ? social.designs : [social.design], template: social.template, vary: !!social.vary, music: social.music }, vehicleIds.indexOf(v), round)
     const cap = social.captions[`${v}:${f}`]?.trim()
     return { social: { format: f, template: x.template, design: x.design, seconds: social.seconds, ...(x.music ? { music: x.music } : {}) }, ...(cap ? { caption: cap } : {}) }
   }

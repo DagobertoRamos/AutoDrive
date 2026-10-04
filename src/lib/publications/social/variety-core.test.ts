@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { limitDesigns, variantFor } from './variety-core'
+import { limitDesigns, maxDesignsFor, variantFor } from './variety-core'
 
 describe('variedade dos posts em lote', () => {
   it('modelo sorteado só entre os escolhidos; chamada e música variam com "Variar"', () => {
@@ -17,8 +17,14 @@ describe('variedade dos posts em lote', () => {
     expect(v).toEqual({ design: 'CLASSICO', template: 'OFERTA', music: track })
     expect(variantFor('y', { designs: [], template: 'OFERTA', vary: true, music: track }).music).toEqual(track)
   })
-  it('até 2 modelos: o mais antigo sai', () => {
-    expect(limitDesigns(['CLASSICO', 'LUXO', 'FEIRAO'])).toEqual(['LUXO', 'FEIRAO'])
-    expect(limitDesigns(['LUXO', 'LUXO'])).toEqual(['LUXO'])
+  it('limite de modelos: 1 carro = 1; lote = até um por carro; o mais antigo sai', () => {
+    expect(maxDesignsFor(1)).toBe(1); expect(maxDesignsFor(5)).toBe(5); expect(maxDesignsFor(28)).toBe(12)
+    expect(limitDesigns(['CLASSICO', 'LUXO', 'FEIRAO'], 2)).toEqual(['LUXO', 'FEIRAO'])
+    expect(limitDesigns(['LUXO', 'LUXO'], 3)).toEqual(['LUXO'])
+  })
+  it('lote: cada modelo escolhido aparece por igual entre os vídeos', () => {
+    const input = { designs: ['TELEJORNAL', 'LUXO', 'FEIRAO', 'REVISTA'] as const, template: 'CHEGOU' as const, vary: true, music: null }
+    const used = Array.from({ length: 12 }, (_, i) => variantFor(`c${i}`, { ...input, designs: [...input.designs] }, i, 'rodada1').design)
+    for (const d of input.designs) expect(used.filter((x) => x === d)).toHaveLength(3)
   })
 })
