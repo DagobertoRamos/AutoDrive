@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { formatBRL, maskBRL, parseBRL, numberToBRLMask, maskCPF, maskCNPJ } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
+import { isLockedPayment } from '@/lib/negotiation/children-sync-core'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -583,7 +584,7 @@ export default function Phase2Panel(props: Props) {
                           {p.notes && <p className="line-clamp-2 italic">{p.notes}</p>}
                         </div>
                       </div>
-                      {canEdit && !isLocked && (
+                      {canEdit && !isLocked && !isLockedPayment({ status: p.status ?? null }) && (
                         <div className="flex shrink-0 flex-col gap-0.5">
                           <button
                             onClick={() => { setEditingPayment(p); setPaymentModalOpen(true) }}

@@ -10,6 +10,7 @@ import type { SessionUser } from '@/lib/auth-guards'
 import { assertTenantId } from '@/lib/auth-guards'
 import { aggregateAchieved, type AggregationScope } from '@/lib/goals/aggregators'
 import { computeRanking } from '@/lib/ranking/service'
+import { getGoalPeriod } from '@/lib/goals/service'
 import { num } from '@/lib/finance/finance-service'
 import { resolveDashboardProfile } from '@/lib/dashboard/dashboardProfiles'
 import {
@@ -261,18 +262,17 @@ function emptyRawDashboardMetrics(): RawDashboardMetrics {
   }
 }
 
+// Limites no fuso de São Paulo (o servidor roda em UTC).
 function monthRange(now: Date) {
   return {
-    start: new Date(now.getFullYear(), now.getMonth(), 1),
-    end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999),
+    start: getGoalPeriod({ frequency: 'monthly', referenceDate: now }).startsAt,
+    end: getGoalPeriod({ frequency: 'daily', referenceDate: now }).endsAt,
   }
 }
 
 function todayRange(now: Date) {
-  return {
-    start: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-    end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999),
-  }
+  const { startsAt, endsAt } = getGoalPeriod({ frequency: 'daily', referenceDate: now })
+  return { start: startsAt, end: endsAt }
 }
 
 function fmtCurrency(value: number): string {
@@ -306,6 +306,11 @@ function scopedDealWhere(ctx: DashboardContext, extra: Prisma.DealWhereInput = {
   return where
 }
 
+function toArray<T>(value: T | T[] | undefined): T[] {
+  if (value === undefined) return []
+  return Array.isArray(value) ? value : [value]
+}
+
 function scopedPendencyWhere(ctx: DashboardContext, extra: Prisma.PendencyWhereInput = {}): Prisma.PendencyWhereInput {
   const where: Prisma.PendencyWhereInput = {
     ...(ctx.user.role === 'MASTER' ? {} : { tenantId: ctx.tenantId }),
@@ -313,9 +318,10 @@ function scopedPendencyWhere(ctx: DashboardContext, extra: Prisma.PendencyWhereI
   }
 
   if (ctx.profile.scope === 'SELF') {
-    where.OR = [
-      { responsibleId: ctx.sellerId ?? NO_MATCH },
-      { assignedUserId: ctx.user.id },
+    // AND: não sobrescreve um OR vindo de `extra`
+    where.AND = [
+      ...toArray(where.AND),
+      { OR: [{ responsibleId: ctx.sellerId ?? NO_MATCH }, { assignedUserId: ctx.user.id }] },
     ]
     return where
   }
@@ -334,9 +340,9 @@ function scopedLeadWhere(ctx: DashboardContext, extra: Prisma.MarketingLeadWhere
   }
 
   if (ctx.profile.scope === 'SELF' || ctx.profile.kind === 'SDR') {
-    where.OR = [
-      { assignedToUserId: ctx.user.id },
-      { claimedByUserId: ctx.user.id },
+    where.AND = [
+      ...toArray(where.AND),
+      { OR: [{ assignedToUserId: ctx.user.id }, { claimedByUserId: ctx.user.id }] },
     ]
     return where
   }

@@ -155,9 +155,10 @@ export async function runPendencyNaggingSweep(opts?: { tenantId?: string }): Pro
         await logPendencyEvent({ tenantId: p.tenantId, pendencyId: p.id, type: PENDENCY_EVENT.ESCALATED, content: 'nagging nível 3 (automático)' })
         result.escalated++
       }
-      // Penalidade WARN_MANAGER — só avisa/marca. Uma ativa por pendência.
-      const existing = await prisma.pendencyPenalty.findFirst({ where: { pendencyId: p.id, active: true }, select: { id: true } }).catch(() => 'unavailable' as const)
-      if (existing === null) {
+      // Penalidade WARN_MANAGER — só avisa/marca. Uma única por pendência: se o
+      // gestor removeu (active:false), não reaplica na próxima rodada.
+      const existing = await prisma.pendencyPenalty.findFirst({ where: { pendencyId: p.id }, select: { id: true } }).catch(() => 'unavailable' as const)
+      if (existing === null && !hasEvent(events, PENDENCY_EVENT.PENALTY_APPLIED)) {
         const uid = await responsibleUserId(p.responsibleId)
         if (uid) {
           const created = await prisma.pendencyPenalty.create({ data: { tenantId: p.tenantId, unitId: p.unitId, pendencyId: p.id, sellerUserId: uid, type: 'WARN_MANAGER', reason: 'Pendência crítica não tratada (nível 3)' } }).catch(() => null)

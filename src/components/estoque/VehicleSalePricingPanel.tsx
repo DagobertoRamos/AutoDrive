@@ -82,6 +82,13 @@ function fmtDateInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/** datetime-local (hora local) → ISO com fuso, para não deslocar a cada salvamento. */
+function localToIso(local: string): string | null {
+  if (!local) return null
+  const d = new Date(local)
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
 export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -140,8 +147,8 @@ export function VehicleSalePricingPanel({ vehicleId, canManage }: Props) {
         salePrice:          parseBRL(salePriceMask),
         promoPrice:         isPromo ? parseBRL(promoPriceMask) : null,
         isPromo,
-        promoStartsAt:      promoStartsAt || null,
-        promoEndsAt:        promoEndsAt   || null,
+        promoStartsAt:      localToIso(promoStartsAt),
+        promoEndsAt:        localToIso(promoEndsAt),
         isAvailableForSale,
         pricingNotes:       pricingNotes.trim() || null,
         reason:             reason.trim() || null,

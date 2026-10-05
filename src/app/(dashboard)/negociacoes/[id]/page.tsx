@@ -1723,7 +1723,7 @@ export default function NegociacaoDetailPage() {
                 <ValueRow label="Valor Mínimo ao Proprietário" value={fmtBRL(deal.consignMinValue)} />
                 <ValueRow label="Valor de Anúncio"             value={fmtBRL(deal.saleAmount)} />
                 {deal.consignCommPct != null && <ValueRow label="Comissão da Loja (%)" value={`${Number(deal.consignCommPct)}%`} />}
-                {deal.consignDeadline && <ValueRow label="Prazo"   value={`${deal.consignDeadline} dias`} />}
+                {deal.consignDeadline && <ValueRow label="Prazo até" value={new Date(deal.consignDeadline).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} />}
               </>
             )}
 

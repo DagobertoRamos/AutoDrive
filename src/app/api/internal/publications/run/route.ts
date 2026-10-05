@@ -24,12 +24,17 @@ function authorized(req: NextRequest): boolean {
 
 async function handle(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  // Prazo da rota inteira (maxDuration 300 s, com folga): nada começa uma
+  // publicação que não dá tempo de terminar (a Vercel mata no meio → duplicado).
+  const deadlineAt = Date.now() + 280_000
+  const left = () => deadlineAt - Date.now()
   const doReconcile = req.nextUrl.searchParams.get('reconcile') === '1'
   const rec = doReconcile ? await reconcile() : null
   if (doReconcile) await pruneSocialVideos().catch(() => 0)
   const program = doReconcile ? await planAllAutoPrograms().catch((e) => [{ tenantId: '-', planned: 0, message: `Erro: ${(e as Error).message}` }]) : null
-  const work = await runWorker({ maxJobs: 60, deadlineMs: 240_000, heavy: true })
-  const avulsos = await processSocialPosts({ heavy: true }).catch((e) => { console.error('[avulsa]', e); return { processed: 0 } })
+  // Reserva ~90 s: o último job pego ainda precisa terminar e sobrar tempo p/ os avulsos.
+  const work = await runWorker({ maxJobs: 60, deadlineMs: Math.max(0, Math.min(240_000, left() - 90_000)), heavy: true })
+  const avulsos = left() < 60_000 ? { processed: 0 } : await processSocialPosts({ heavy: true }, new Date(), deadlineAt).catch((e) => { console.error('[avulsa]', e); return { processed: 0 } })
   if (doReconcile) { await applyRetention().catch((e) => console.error('[retencao]', e)); await pruneVideoParts().catch(() => 0); await pruneVideoBlobs().catch((e) => { console.error("[avulsa] limpeza do armazenamento", e); return 0 }); await pruneSocialUploads().catch(() => 0) }
   return NextResponse.json({ success: true, reconcile: rec, program, avulsos, recovered: work.recovered, processed: work.processed.length, results: work.processed.map((p) => ({ op: p.op, channel: p.channel, result: p.result })) })
 }

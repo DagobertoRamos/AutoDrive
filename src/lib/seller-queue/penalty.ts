@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { queueDate, getUnitConfig } from './queue'
+import { queueDate, queueDayStart, getUnitConfig } from './queue'
 import { notifySellerStrikeWarning, notifySellerBlocked, notifyBlockManagers } from './notify'
 
 export interface AutoBlockConfig {
@@ -60,16 +60,17 @@ export function blockMessage(block: QueueBlock): string {
   return `Você está temporariamente fora da fila por perder a vez vezes demais. Volta liberada em ~${dur}.`
 }
 
-/** Perdas (timeouts) do vendedor hoje (desde a meia-noite UTC da fila).
+/** Perdas (timeouts) do vendedor hoje (desde a meia-noite de São Paulo).
  *  Só conta as ATIVAS — liberar um vendedor desativa as perdas (zera o contador). */
 export async function countStrikesToday(tenantId: string, unitId: string, sellerId: string): Promise<number> {
   return prisma.sellerQueuePenalty.count({
-    where: { tenantId, unitId, sellerId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDate() } },
+    where: { tenantId, unitId, sellerId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDayStart() } },
   })
 }
 
+// Fim do dia da fila (próxima meia-noite de São Paulo).
 function nextMidnightUtc(now = new Date()): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+  return new Date(queueDayStart(now).getTime() + 24 * 3600_000)
 }
 
 async function removeFromQueue(queueId: string, sellerId: string): Promise<void> {
@@ -156,7 +157,7 @@ export async function listBlockedSellers(tenantId: string, unitId: string): Prom
 
   const [users, strikeGroups] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
-    prisma.sellerQueuePenalty.groupBy({ by: ['sellerId'], where: { tenantId, unitId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDate() }, sellerId: { in: ids } }, _count: { _all: true } }),
+    prisma.sellerQueuePenalty.groupBy({ by: ['sellerId'], where: { tenantId, unitId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDayStart() }, sellerId: { in: ids } }, _count: { _all: true } }),
   ])
   const nameOf = new Map(users.map((u) => [u.id, u.name]))
   const strikeOf = new Map(strikeGroups.map((s) => [s.sellerId, s._count._all]))
@@ -183,7 +184,7 @@ export async function releaseSeller(tenantId: string, unitId: string, sellerId: 
     data: { active: false, endsAt: now },
   }).catch(() => {})
   await prisma.sellerQueuePenalty.updateMany({
-    where: { tenantId, unitId, sellerId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDate() } },
+    where: { tenantId, unitId, sellerId, type: 'TIMEOUT', active: true, createdAt: { gte: queueDayStart() } },
     data: { active: false },
   }).catch(() => {})
   // desbloqueia o bloqueio manual na fila de hoje (se houver)

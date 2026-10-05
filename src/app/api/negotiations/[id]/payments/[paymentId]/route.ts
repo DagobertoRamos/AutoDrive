@@ -13,6 +13,8 @@ import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
+import { isLockedPayment } from '@/lib/negotiation/children-sync-core'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,12 +77,17 @@ export async function PATCH(
   if (body?.bank !== undefined) data.bank = body.bank
   if (body?.cardBrand !== undefined) data.cardBrand = body.cardBrand
   if (body?.installments !== undefined) data.installments = body.installments == null ? null : Number(body.installments)
-  if (body?.firstDueDate !== undefined) data.firstDueDate = body.firstDueDate ? new Date(body.firstDueDate) : null
-  if (body?.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null
+  if (body?.firstDueDate !== undefined) data.firstDueDate = parseDateOnly(body.firstDueDate)
+  if (body?.dueDate !== undefined) data.dueDate = parseDateOnly(body.dueDate)
   if (body?.notes !== undefined) data.notes = body.notes
   if (body?.signalMethod !== undefined) data.method = body.signalMethod ? String(body.signalMethod).toUpperCase().slice(0, 30) : null
   if (body?.authorizationCode !== undefined) data.authorizationCode = body.authorizationCode ? String(body.authorizationCode).trim().slice(0, 40) : null
-  if (body?.paidAt !== undefined) data.paidAt = body.paidAt ? new Date(body.paidAt) : null
+  if (body?.paidAt !== undefined) data.paidAt = parseDateOnly(body.paidAt)
+  // Pagamento conferido (confirmado/cancelado): valor, tipo e forma só pelo financeiro.
+  const changesMoney = ['type', 'value', 'method'].some((k) => k in data && String(data[k] ?? '') !== String((ctx.payment as any)[k] ?? ''))
+  if (changesMoney && isLockedPayment(ctx.payment) && !canAccessModule(session.user.role, 'finance.manage')) {
+    return NextResponse.json({ error: 'Pagamento já conferido pelo financeiro: valor, tipo e forma só podem ser alterados pelo financeiro.' }, { status: 409 })
+  }
   // Status (confirmar/cancelar) só pelo financeiro.
   if (body?.status !== undefined) {
     if (!canAccessModule(session.user.role, 'finance.manage')) return NextResponse.json({ error: 'Só o financeiro confirma ou cancela pagamentos (Financeiro › Recebimentos).' }, { status: 403 })

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, unauthorizedResponse, forbiddenResponse, hasRole, MANAGEMENT_ROLES } from '@/lib/auth-guards'
+import { getSessionUser, unauthorizedResponse, forbiddenResponse, assertUnitBelongsToTenant } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canPerformAction } from '@/lib/permissions'
+import { canActOn } from '@/lib/role-hierarchy'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +30,7 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
   { const gate = await assertModuleEnabled(user, 'registrations.managers'); if (gate) return gate }
-  if (!hasRole(user.role, MANAGEMENT_ROLES)) return forbiddenResponse()
+  if (!canPerformAction(user.role, 'registrations.managers', 'update')) return forbiddenResponse()
 
   try {
     const existing = await getManagerInTenant(params.id, user.tenantId, user.role)
@@ -39,8 +41,23 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
       )
     }
 
+    // Hierarquia: só age sobre gerente ABAIXO de si (ou sobre o próprio cadastro).
+    if (existing.userId !== user.id) {
+      const targetUser = await prisma.user.findUnique({
+        where:  { id: existing.userId },
+        select: { role: true },
+      })
+      if (!canActOn(user.role, targetUser?.role ?? null)) {
+        return forbiddenResponse('Você não pode editar gerente com cargo igual ou superior ao seu.')
+      }
+    }
+
     const body = await req.json()
     const { fullName, cpf, whatsapp, email, unitId, accessProfile, active, receivesNotifications, positionId } = body
+
+    if (unitId !== undefined && unitId !== null && unitId !== '') {
+      await assertUnitBelongsToTenant(String(unitId), user.tenantId, user.role)
+    }
 
     // Valida positionId (se fornecido)
     let positionUpdate: string | null | undefined = undefined
@@ -50,13 +67,16 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
       } else {
         const pos = await prisma.position.findUnique({
           where:  { id: String(positionId) },
-          select: { id: true, tenantId: true },
+          select: { id: true, tenantId: true, baseRole: true },
         })
         if (!pos || (pos.tenantId !== null && user.role !== 'MASTER' && pos.tenantId !== user.tenantId)) {
           return NextResponse.json(
             { success: false, error: 'Cargo inválido para este tenant.' },
             { status: 400 },
           )
+        }
+        if (pos.id !== existing.positionId && !canActOn(user.role, pos.baseRole ?? null)) {
+          return forbiddenResponse('Você não pode atribuir cargo igual ou superior ao seu.')
         }
         positionUpdate = pos.id
       }

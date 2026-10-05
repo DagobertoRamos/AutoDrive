@@ -11,6 +11,7 @@ import { canEditDeal }          from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
 
 // ── GET — Listar débitos ──────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ export async function POST(
         value:       Number(value),
         responsavel: responsavel ?? 'LOJA',
         notes:       notes       ?? null,
-        dueDate:     dueDate     ? new Date(dueDate) : null,
+        dueDate:     parseDateOnly(dueDate),
       },
     })
 

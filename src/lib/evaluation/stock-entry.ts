@@ -78,10 +78,11 @@ async function ensurePendencyOption(tx: Tx, tenantId: string | null, p: EntryPen
       label: { equals: p.label, mode: 'insensitive' },
       OR:    [{ tenantId }, { tenantId: null }],
     },
-    orderBy: { tenantId: 'desc' }, // prefere a da loja à global
-    select:  { id: true, active: true },
+    orderBy: { tenantId: { sort: 'desc', nulls: 'last' } }, // prefere a da loja à global
+    select:  { id: true, active: true, tenantId: true },
   })
-  if (found) {
+  if (found && (found.active || found.tenantId === tenantId)) {
+    // Só reativa a da própria loja; global inativa não é religada (afetaria todas)
     if (!found.active) await tx.stockPendencyOption.update({ where: { id: found.id }, data: { active: true } })
     return found.id
   }

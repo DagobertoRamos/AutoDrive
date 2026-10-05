@@ -31,22 +31,18 @@ export interface CommissionWindow {
 }
 
 export function commissionEligibleDealWindowWhere(window: CommissionWindow): Record<string, unknown> {
+  // Mesma precedência de commissionReferenceDate: vale a PRIMEIRA data preenchida
+  // (aprovação → liberação → finalização → venda → criação). Assim a negociação
+  // cai num único período, sem contar em dois meses.
+  const inWindow = { gte: window.start, lte: window.end }
   return {
     status: { in: COMMISSION_ELIGIBLE_DEAL_STATUSES },
     OR: [
-      { approvedAt:  { gte: window.start, lte: window.end } },
-      { releasedAt:  { gte: window.start, lte: window.end } },
-      { finalizedAt: { gte: window.start, lte: window.end } },
-      { saleDate:    { gte: window.start, lte: window.end } },
-      {
-        AND: [
-          { approvedAt: null },
-          { releasedAt: null },
-          { finalizedAt: null },
-          { saleDate: null },
-          { createdAt: { gte: window.start, lte: window.end } },
-        ],
-      },
+      { approvedAt: inWindow },
+      { approvedAt: null, releasedAt: inWindow },
+      { approvedAt: null, releasedAt: null, finalizedAt: inWindow },
+      { approvedAt: null, releasedAt: null, finalizedAt: null, saleDate: inWindow },
+      { approvedAt: null, releasedAt: null, finalizedAt: null, saleDate: null, createdAt: inWindow },
     ],
   }
 }

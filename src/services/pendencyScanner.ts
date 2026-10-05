@@ -52,18 +52,23 @@ async function getDefaultSeller(unitId: string) {
 }
 
 /**
- * Verifica se já existe uma pendência aberta para esse registro de origem.
+ * Verifica se já existe pendência (em qualquer status) para esse registro de
+ * origem — uma pendência resolvida/arquivada não deve ser recriada.
  */
 async function pendencyExists(originModule: string, originRecordId: string, tenantId: string) {
   return prisma.pendency.findFirst({
-    where: {
-      originModule,
-      originRecordId,
-      tenantId,
-      status: { in: ['ABERTA', 'EM_ANDAMENTO', 'AGUARDANDO_RESPOSTA', 'PAUSADA', 'REATIVADA'] },
-    },
+    where: { originModule, originRecordId, tenantId },
     select: { id: true },
   })
+}
+
+/** IDs de origem que já viraram pendência — excluídos já na consulta. */
+async function handledOriginIds(originModule: string, tenantId: string): Promise<string[]> {
+  const rows = await prisma.pendency.findMany({
+    where: { originModule, tenantId, originRecordId: { not: null } },
+    select: { originRecordId: true },
+  })
+  return rows.map((r) => r.originRecordId).filter((v): v is string => !!v)
 }
 
 // ── Scanner 1: DEALS ──────────────────────────────────────────────────────────
@@ -75,16 +80,19 @@ async function scanDeals(tenantId: string): Promise<ScanResult> {
     // Negociações aguardando liberação há mais de 24h
     const threshold = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
+    const handled = await handledOriginIds('DEALS', tenantId)
     const stuckDeals = await prisma.deal.findMany({
       where: {
         tenantId,
         status: 'AGUARDANDO_LIBERACAO',
         updatedAt: { lt: threshold },
+        ...(handled.length ? { id: { notIn: handled } } : {}),
       },
       include: {
         seller: { select: { id: true, fullName: true, unitId: true } },
         customer: { select: { name: true } },
       },
+      orderBy: { updatedAt: 'asc' },
       take: 100,
     })
 
@@ -97,7 +105,7 @@ async function scanDeals(tenantId: string): Promise<ScanResult> {
 
         const slaDeadline = new Date(Date.now() + 4 * 60 * 60 * 1000) // +4h SLA
 
-        await prisma.pendency.create({
+        const created = await prisma.pendency.create({
           data: {
             tenantId,
             responsibleId:  deal.seller.id,
@@ -119,7 +127,7 @@ async function scanDeals(tenantId: string): Promise<ScanResult> {
         })
 
         await notifyPendency({
-          pendencyId: deal.id,
+          pendencyId: created.id,
           tenantId,
           unitId:     deal.seller.unitId,
           type:       'NOVA_PENDENCIA',
@@ -149,15 +157,18 @@ async function scanCommissions(tenantId: string): Promise<ScanResult> {
     // Comissões aprovadas há mais de 30 dias ainda não pagas
     const threshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
+    const handled = await handledOriginIds('COMMISSIONS', tenantId)
     const overdueCalcs = await prisma.commissionCalculation.findMany({
       where: {
         tenantId,
         status:     'APROVADO',
         approvedAt: { lt: threshold },
+        ...(handled.length ? { id: { notIn: handled } } : {}),
       },
       select: {
         id: true, sellerId: true, managerId: true, description: true, commissionValue: true,
       },
+      orderBy: { approvedAt: 'asc' },
       take: 50,
     })
 
@@ -217,16 +228,19 @@ async function scanStock(tenantId: string): Promise<ScanResult> {
     // Veículos com pendências de estoque abertas há mais de 7 dias
     const threshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
+    const handled = await handledOriginIds('STOCK', tenantId)
     const oldPendencies = await prisma.vehicleStockPendency.findMany({
       where: {
         resolved:  false,
         createdAt: { lt: threshold },
         vehicle:   { tenantId },
+        ...(handled.length ? { id: { notIn: handled } } : {}),
       },
       include: {
         vehicle: { select: { id: true, plate: true, brand: true, model: true, unitId: true } },
         option:  { select: { label: true } },
       },
+      orderBy: { createdAt: 'asc' },
       take: 50,
     })
 
@@ -289,15 +303,18 @@ async function scanWhatsapp(tenantId: string): Promise<ScanResult> {
     // Mensagens de retorno (inbound) sem resposta há mais de 4h sem vínculo com pendência ativa
     const threshold = new Date(Date.now() - 4 * 60 * 60 * 1000)
 
+    // Escopo do tenant via seller→unit (MessageReturn não tem tenantId).
     const unanswered = await prisma.messageReturn.findMany({
       where: {
         createdAt:  { lt: threshold },
         pendencyId: null,
         sellerId:   { not: null },
+        seller:     { unit: { tenantId } },
       },
       include: {
         seller: { select: { id: true, unitId: true, fullName: true } },
       },
+      orderBy: { createdAt: 'asc' },
       take: 30,
     })
 
@@ -313,11 +330,16 @@ async function scanWhatsapp(tenantId: string): Promise<ScanResult> {
         if (unit?.tenantId !== tenantId) { result.skipped++; continue }
 
         const exists = await pendencyExists('WHATSAPP', msg.id, tenantId)
-        if (exists) { result.skipped++; continue }
+        if (exists) {
+          // vincula p/ sair da varredura nas próximas rodadas
+          await prisma.messageReturn.update({ where: { id: msg.id }, data: { pendencyId: exists.id } }).catch(() => {})
+          result.skipped++
+          continue
+        }
 
         const slaDeadline = new Date(Date.now() + 2 * 60 * 60 * 1000) // +2h SLA
 
-        await prisma.pendency.create({
+        const created = await prisma.pendency.create({
           data: {
             tenantId,
             responsibleId:  msg.seller.id,
@@ -337,6 +359,7 @@ async function scanWhatsapp(tenantId: string): Promise<ScanResult> {
             source:         'SCANNER',
           },
         })
+        await prisma.messageReturn.update({ where: { id: msg.id }, data: { pendencyId: created.id } })
 
         result.created++
       } catch (err) {

@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { canActOn } from '@/lib/role-hierarchy'
+import { canPerformAction } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import {
   canAccessPendencyScope,
@@ -28,6 +30,16 @@ const PENDENCY_INCLUDE = {
     select: { id: true, profileName: true, messageBody: true, createdAt: true },
   },
 } as const
+
+// Campos que qualquer um com acesso à pendência pode editar via PUT.
+const EDITABLE_FIELDS = [
+  'customerName', 'plate', 'vehicle', 'negotiation', 'description', 'lead', 'type', 'notes', 'chargeRecipient',
+] as const
+// Campos de prazo/prioridade/envio — só quem gerencia pendências.
+const MANAGER_EDITABLE_FIELDS = [
+  'priority', 'severity', 'dueDate', 'slaMinutes', 'automaticSend', 'frequency', 'allowedDays',
+  'startTime', 'endTime', 'maxSends', 'sendsPerDay', 'templateId',
+] as const
 
 // ── Helper: busca pendência e role do assignee para checagem de hierarquia ───
 async function loadPendencyAndTargetRole(id: string) {
@@ -181,15 +193,29 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
       return NextResponse.json({ success: false, error: 'Sem permissão para alterar esta pendência.' }, { status: 403 })
     }
 
-    const body = await req.json()
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: 'Dados inválidos.' }, { status: 400 })
+    }
+    // Status, tenant, responsável, baixa/validação têm rotas próprias (resolve,
+    // review, assign, archive...) — aqui só campos de conteúdo/agenda.
+    const canManage = canPerformAction(session.user.role, 'pendencies.manage', 'update')
+    const allowed = new Set<string>([...EDITABLE_FIELDS, ...(canManage ? MANAGER_EDITABLE_FIELDS : [])])
+    const forbidden = Object.keys(body).filter((k) => !allowed.has(k))
+    if (forbidden.length > 0) {
+      return NextResponse.json({ success: false, error: `Campos não editáveis: ${forbidden.join(', ')}` }, { status: 403 })
+    }
+    const data: Record<string, unknown> = {}
+    for (const k of Object.keys(body)) data[k] = body[k]
+
     const pendency = await prisma.pendency.update({
       where: { id: params.id },
-      data: body,
+      data: data as Prisma.PendencyUncheckedUpdateInput,
       include: PENDENCY_INCLUDE,
     })
 
     await prisma.auditLog.create({
-      data: { userId: session.user.id, action: 'UPDATE', entity: 'Pendency', entityId: params.id },
+      data: { tenantId: target.tenantId, userId: session.user.id, action: 'UPDATE', entity: 'Pendency', entityId: params.id },
     }).catch(() => {})
 
     return NextResponse.json({ success: true, data: pendency })
@@ -251,6 +277,7 @@ export async function DELETE(req: Request, ctxArg: { params: { id: string } | Pr
     }).catch(() => {})
     await prisma.auditLog.create({
       data: {
+        tenantId: target.tenantId,
         userId: session.user.id,
         userName: session.user.name,
         userRole: session.user.role,

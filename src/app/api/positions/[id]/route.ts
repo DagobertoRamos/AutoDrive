@@ -10,22 +10,13 @@ import {
   forbiddenResponse,
   createSafeAuditLog,
 } from '@/lib/auth-guards'
-import { canAccessModule, canPerformAction, type UserRole } from '@/lib/permissions'
+import { canAccessModule, canPerformAction, ROLE_LABELS, type UserRole } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 
 export const dynamic = 'force-dynamic'
 
-const VALID_ROLES: UserRole[] = [
-  'MASTER',
-  'ADM',
-  'GERENTE_GERAL',
-  'GERENTE',
-  'VENDEDOR_LIDER',
-  'VENDEDOR',
-  'USUARIO_LIDER',
-  'USUARIO',
-]
+const VALID_ROLES: UserRole[] = (Object.keys(ROLE_LABELS) as UserRole[]).filter((r) => r !== 'MASTER')
 
 /** Master sempre pode; outros só podem se for cargo do próprio tenant. */
 function canMutate(user: { role: string; tenantId: string | null }, position: { tenantId: string | null }) {
@@ -89,7 +80,8 @@ export async function PATCH(req: NextRequest, ctxArg: { params: { id: string } |
       data.description = description ? String(description).trim() : null
     }
     if (baseRole !== undefined) {
-      data.baseRole = baseRole && VALID_ROLES.includes(baseRole) ? baseRole : null
+      // Mantém o baseRole atual quando reenviado sem mudança (ex.: cargo legado MASTER).
+      data.baseRole = baseRole && (baseRole === position.baseRole || VALID_ROLES.includes(baseRole)) ? baseRole : null
     }
     if (sortOrder !== undefined && typeof sortOrder === 'number') {
       data.sortOrder = sortOrder

@@ -15,6 +15,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { convertLeadSchema } from '@/lib/validators/marketing'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { closeOpenLeadSlas } from '@/lib/marketing/distribution'
 import { syncDealVehiclesToLead } from '@/lib/crm/vehicle-sync'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -39,6 +40,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const d = convertLeadSchema.parse(await req.json().catch(() => ({})))
     await prisma.$transaction(async (tx) => {
+      await closeOpenLeadSlas(tx, id)
       await tx.marketingLead.update({
         where: { id },
         data: { status: 'CONVERTED', convertedAt: new Date(), convertedDealId: d.dealId ?? null, ...(d.notes ? { notes: d.notes } : {}) },

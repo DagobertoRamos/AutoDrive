@@ -76,7 +76,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
         data: { pendencyId: params.id, previousStatus: pendency.status, newStatus, changedByUserId: session.user.id, reason: action === 'reject' ? reason : null },
       }).catch(() => {}),
       prisma.auditLog.create({
-        data: { userId: session.user.id, userName: session.user.name, userRole: session.user.role, action: 'UPDATE', entity: 'Pendency', entityId: params.id, beforeData: { status: pendency.status }, afterData: { status: newStatus, review: action, reason: reason || undefined } },
+        data: { tenantId: pendency.tenantId, userId: session.user.id, userName: session.user.name, userRole: session.user.role, action: 'UPDATE', entity: 'Pendency', entityId: params.id, beforeData: { status: pendency.status }, afterData: { status: newStatus, review: action, reason: reason || undefined } },
       }).catch(() => {}),
       complianceReview
         ? prisma.sellerQueueFraudFlag.update({
@@ -94,6 +94,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       complianceReview
         ? prisma.auditLog.create({
             data: {
+              tenantId: pendency.tenantId,
               userId: session.user.id,
               userName: session.user.name,
               userRole: session.user.role,
@@ -115,6 +116,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       await prisma.notification.create({
         data: {
           userId: pendency.responsible.userId,
+          tenantId: pendency.tenantId,
           type: action === 'approve' ? 'PENDENCIA_FINALIZADA' : 'PENDENCIA_NAO_RESOLVIDA',
           title: action === 'approve' ? 'Resolução aprovada ✅' : 'Resolução reprovada — refaça',
           message: action === 'approve' ? `Pendência de ${pendency.customerName} foi aprovada e encerrada.` : `Pendência de ${pendency.customerName} reprovada. Motivo: ${reason}`,

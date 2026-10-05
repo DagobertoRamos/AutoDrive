@@ -11,7 +11,7 @@
 import type { UserRole } from '@/lib/permissions'
 import { tenantWhere } from '@/lib/auth-guards'
 import { prisma } from '@/lib/prisma'
-import { PAYMENT_SOURCE_PREFIX, syncDealsFinance } from './deal-finance-sync'
+import { PAYMENT_SOURCE_PREFIX, TRADE_SOURCE_PREFIX, syncDealsFinance } from './deal-finance-sync'
 
 const COMMISSION_SOURCE: Record<string, string> = { RETORNO: 'RETORNO', GARANTIA: 'GARANTIA' }
 
@@ -50,8 +50,9 @@ async function runSync(dealWhere: Record<string, unknown>, commWhere: Record<str
   const dealIds = deals.map((d) => d.id)
   const existingDeal = dealIds.length
     ? await prisma.financialEntry.findMany({
-        // Venda já lançada, ou recebida pelos pagamentos (NEG_PGTO_*) → não lança o total de novo.
-        where: { dealId: { in: dealIds }, OR: [{ source: 'VENDA' }, { source: { startsWith: PAYMENT_SOURCE_PREFIX } }] },
+        // Venda já lançada, ou recebida pelos pagamentos (NEG_PGTO_*) / carro na troca
+        // (NEG_TROCA_*) → não lança o total de novo (a troca contaria em dobro).
+        where: { dealId: { in: dealIds }, OR: [{ source: 'VENDA' }, { source: { startsWith: PAYMENT_SOURCE_PREFIX } }, { source: { startsWith: TRADE_SOURCE_PREFIX } }] },
         select: { dealId: true },
       })
     : []
@@ -87,9 +88,21 @@ async function runSync(dealWhere: Record<string, unknown>, commWhere: Record<str
   }).catch(() => { /* não bloqueia o sync */ })
 
   const existingCom = comIds.length
-    ? await prisma.financialEntry.findMany({ where: { commissionCalculationId: { in: comIds } }, select: { commissionCalculationId: true } })
+    ? await prisma.financialEntry.findMany({ where: { commissionCalculationId: { in: comIds } }, select: { id: true, commissionCalculationId: true, status: true, amount: true, description: true } })
     : []
   const haveCom = new Set(existingCom.map((e) => e.commissionCalculationId))
+
+  // Comissão reprecificada (retroativo/recálculo) → lançamento PREVISTO acompanha o valor.
+  const comById = new Map(comissoes.map((c) => [c.id, c]))
+  for (const e of existingCom) {
+    if (e.status !== 'PREVISTO' || !e.commissionCalculationId) continue
+    const c = comById.get(e.commissionCalculationId)
+    if (!c || c.status === 'CANCELADO' || c.status === 'PAGO') continue
+    const novo = Number(c.commissionValue)
+    if (Math.abs(Number(e.amount) - novo) < 0.005) continue
+    await prisma.financialEntry.update({ where: { id: e.id }, data: { amount: novo, description: c.description || e.description } })
+      .catch(() => { /* não bloqueia o sync */ })
+  }
 
   // Comissão paga no sistema de comissões → lançamento baixado no Financeiro.
   const paidIds = comissoes.filter((c) => c.status === 'PAGO').map((c) => c.id)

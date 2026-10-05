@@ -71,6 +71,7 @@ export async function POST(_req: Request, ctxArg: { params: { id: string } | Pro
       }).catch(() => {}),
       prisma.auditLog.create({
         data: {
+          tenantId:  pendency.tenantId,
           userId:    session.user.id,
           userName:  session.user.name,
           userRole:  session.user.role,
@@ -88,7 +89,8 @@ export async function POST(_req: Request, ctxArg: { params: { id: string } | Pro
       await prisma.notification.create({
         data: {
           userId:    pendency.manager.userId,
-          type:      isManager ? 'PENDENCIA_FINALIZADA' : 'PENDENCIA_RESOLVIDA',
+          tenantId:  pendency.tenantId,
+          type:     isManager ? 'PENDENCIA_FINALIZADA' : 'PENDENCIA_RESOLVIDA',
           title:     isManager ? `${pendency.responsible.fullName} finalizou uma pendência` : `${pendency.responsible.fullName} marcou como resolvido — confira`,
           message:   `Cliente: ${pendency.customerName} | Placa: ${pendency.plate ?? '—'}`,
           actionUrl: `/pendencias/central`,

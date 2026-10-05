@@ -37,6 +37,8 @@ export async function POST(req: Request, { params }: Ctx) {
       where: { id },
       data: { status: 'CANCELADO', ruleDetails: { ...rd, cancelReason: reason, cancelledBy: user.id, cancelledByName: user.name, cancelledAt: new Date().toISOString() } as never },
     })
+    // Lançamento previsto no Financeiro acompanha o cancelamento.
+    await prisma.financialEntry.updateMany({ where: { commissionCalculationId: id, status: 'PREVISTO' }, data: { status: 'CANCELADO' } }).catch(() => {})
     await createSafeAuditLog({ userId: user.id, tenantId: calc.tenantId, action: 'COMMISSION_CANCEL_MANUAL', entity: 'CommissionCalculation', entityId: id, userName: user.name, userRole: user.role, afterData: { reason } as never })
     return NextResponse.json({ success: true })
   } catch (err) {

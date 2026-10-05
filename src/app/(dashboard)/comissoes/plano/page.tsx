@@ -36,6 +36,13 @@ interface Rule {
   priority: number
   active: boolean
   notes: string | null
+  description?: string | null
+  unitId?: string | null
+  serviceId?: string | null
+  warrantyId?: string | null
+  bank?: string | null
+  validFrom?: string | null
+  validUntil?: string | null
   position?: { name: string; slug: string; baseRole: string | null } | null
   seller?: { user?: { name: string | null } | null } | null
   manager?: { fullName: string | null; user?: { name: string | null } | null } | null
@@ -168,7 +175,9 @@ function RulesTab({ rules, loading, onReload }: { rules: Rule[]; loading: boolea
     name: r.name, ruleType: r.ruleType, commissionType: r.commissionType, role: r.role, positionId: r.positionId,
     sellerId: r.sellerId, managerId: r.managerId, fromQuantity: r.fromQuantity, toQuantity: r.toQuantity,
     fromValue: r.fromValue, toValue: r.toValue, fixedValue: r.fixedValue, percentage: r.percentage,
-    priority: r.priority, active: r.active, notes: r.notes, ...over,
+    priority: r.priority, active: r.active, notes: r.notes,
+    description: r.description, unitId: r.unitId, serviceId: r.serviceId, warrantyId: r.warrantyId,
+    bank: r.bank, validFrom: r.validFrom, validUntil: r.validUntil, ...over,
   })
 
   const put = async (r: Rule, over: Partial<Rule>) => {

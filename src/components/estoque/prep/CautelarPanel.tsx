@@ -16,8 +16,9 @@ const OPTS = [
   ['COM_APONTAMENTO', 'Com apontamento'], ['REPROVADA', 'Reprovada'],
 ] as const
 
-export function CautelarPanel({ vehicleId, cautelarStatus, cautelarNumber, cautelarNotes, canEdit, onSaved }: {
+export function CautelarPanel({ vehicleId, cautelarStatus, cautelarNumber, cautelarNotes, originEvaluationId, canEdit, onSaved }: {
   vehicleId: string; cautelarStatus: string; cautelarNumber: string | null; cautelarNotes: string | null
+  originEvaluationId?: string | null
   canEdit: boolean; onSaved: () => void | Promise<void>
 }) {
   const [evaluationLaudos, setEvaluationLaudos] = useState<Array<{ id: string; url: string; fileName: string }>>([])
@@ -33,13 +34,16 @@ export function CautelarPanel({ vehicleId, cautelarStatus, cautelarNumber, caute
     if (j?.success) setFiles(j.data)
   }, [vehicleId])
   useEffect(() => { const t = setTimeout(() => void loadFiles(), 0); return () => clearTimeout(t) }, [loadFiles])
-  // Laudos que subiram na avaliação também contam.
+  // Laudos que subiram na avaliação de origem também contam (mesma regra do servidor:
+  // só a avaliação que deu entrada no carro, não outras com a mesma placa).
   useEffect(() => {
+    if (!originEvaluationId) { setEvaluationLaudos([]); return }
     fetch(`/api/vehicles/${vehicleId}/documents?type=LAUDO_CAUTELAR`, { cache: 'no-store' }).then((r) => r.json())
-      .then((j) => setEvaluationLaudos((Array.isArray(j?.data) ? j.data : []).filter((d: { category?: string; publicUrl?: string | null }) => d.category === 'LAUDO_CAUTELAR' && d.publicUrl)
+      .then((j) => setEvaluationLaudos((Array.isArray(j?.data) ? j.data : []).filter((d: { category?: string; publicUrl?: string | null; source?: string; sourceId?: string }) =>
+        d.category === 'LAUDO_CAUTELAR' && d.publicUrl && d.source === 'EVALUATION' && d.sourceId === originEvaluationId)
         .map((d: { id: string; publicUrl: string; fileName: string }) => ({ id: d.id, url: d.publicUrl, fileName: d.fileName }))))
       .catch(() => undefined)
-  }, [vehicleId])
+  }, [vehicleId, originEvaluationId])
 
   const ready = inspectionReady(cautelarStatus, files.length + evaluationLaudos.length)
 

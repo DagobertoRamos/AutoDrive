@@ -173,7 +173,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function NewEntryModal({ vehicleId, accounts, onClose, onSaved }: { vehicleId: string; accounts: Data['accounts']; onClose: () => void; onSaved: () => Promise<void> }) {
-  const [f, setF] = useState({ type: 'DESPESA', category: 'DOCUMENTACAO', description: '', amount: '', dueDate: new Date().toISOString().slice(0, 10), counterparty: '', paid: false, paymentMethod: 'PIX', accountId: '' })
+  const [f, setF] = useState({ type: 'DESPESA', category: 'DOCUMENTACAO', description: '', amount: '', dueDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }), counterparty: '', paid: false, paymentMethod: 'PIX', accountId: '' })
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const cats = f.type === 'DESPESA' ? EXPENSES_MANUAL : REVENUES_MANUAL

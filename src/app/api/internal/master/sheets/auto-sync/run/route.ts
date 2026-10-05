@@ -245,3 +245,7 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+
+// Vercel Cron dispara GET (com Authorization: Bearer <CRON_SECRET>) — sem este
+// alias o cron caía em 405 e o auto-sync nunca rodava.
+export const GET = POST

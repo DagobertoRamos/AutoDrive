@@ -26,6 +26,8 @@ import { isPublishableStock, saleAction, type SaleReason } from './sale-rules-co
 import { loadPublicationSettings, type PublicationSettings } from './settings'
 import { validatePayload, type Issue } from './validate-core'
 import { getConnector } from './connectors'
+import { realPhotoUrls } from '@/lib/vehicle-placeholder'
+import { SITE_VISIBLE_STOCK } from '@/lib/site/listing-core'
 
 type Tx = Prisma.TransactionClient
 export interface Actor { id: string | null; name: string | null; role?: string | null }
@@ -139,13 +141,13 @@ export async function buildFor(tenantId: string, v: VehicleRow, externalRef: str
   const draft = await prisma.publicationDraft.findUnique({ where: { vehicleId: v.id } })
   // Só fotos que ainda existem (galeria ou originais preservadas) — foto
   // apagada depois da aprovação não vira link quebrado no canal.
-  const allowed = new Set([...v.photos.map((p) => p.url), ...(Array.isArray(v.siteListing?.originalPhotos) ? (v.siteListing!.originalPhotos as unknown[]).filter((x): x is string => typeof x === 'string') : [])])
+  const allowed = new Set(realPhotoUrls([...v.photos.map((p) => p.url), ...(Array.isArray(v.siteListing?.originalPhotos) ? (v.siteListing!.originalPhotos as unknown[]).filter((x): x is string => typeof x === 'string') : [])]))
   const src = draftSource(draft)
   const ov = overridesSource(overrides)
   if (src?.photos) src.photos = src.photos.filter((u) => allowed.has(u))
   if (ov?.photos) ov.photos = ov.photos.filter((u) => allowed.has(u))
   const p = buildPayload({
-    reference: externalRef, vehicle: factsOf(v), siteListing: v.siteListing, gallery: v.photos.map((p) => p.url),
+    reference: externalRef, vehicle: factsOf(v), siteListing: v.siteListing, gallery: realPhotoUrls(v.photos.map((p) => p.url)),
     draft: src, overrides: ov, contacts: c.settings.contacts, location: c.loc.location, storeName: c.loc.storeName,
     defaultConditions: termsBlock({ terms: c.settings.terms, inspected: v.cautelarStatus === 'APROVADA', storeName: c.loc.storeName }),
   })
@@ -187,7 +189,7 @@ export async function ensureMediaApproved(tenantId: string, vehicleIds: string[]
   for (const id of ids) {
     if (done.has(id)) continue
     const v = await loadVehicle(tenantId, id)
-    const photos = v?.photos.map((p) => p.url) ?? []
+    const photos = realPhotoUrls(v?.photos.map((p) => p.url) ?? [])
     if (!photos.length) continue
     await approveMedia(tenantId, id, photos, actor)
     approvedNow.push(id)
@@ -393,7 +395,9 @@ export async function applyIntent(tenantId: string, publicationId: string, inten
     const desired: DesiredState = intent === 'PAUSAR' ? 'PAUSADO' : intent === 'RETIRAR' ? 'REMOVIDO' : 'PUBLICADO'
     if (intent === 'RETOMAR') {
       const v = await tx.vehicle.findFirst({ where: { id: pub.vehicleId, tenantId }, select: { stockStatus: true, active: true } })
-      if (!isPublishableStock(v?.stockStatus, v?.active ?? false)) return { ok: false, message: 'O veículo não está disponível no estoque; não pode voltar ao ar.' }
+      // Site segue a regra da vitrine (inclui Em serviço); os demais canais, só Disponível/Em promoção.
+      const okStock = pub.channel === 'SITE' ? !!v?.active && (SITE_VISIBLE_STOCK as readonly string[]).includes(String(v.stockStatus)) : isPublishableStock(v?.stockStatus, v?.active ?? false)
+      if (!okStock) return { ok: false, message: 'O veículo não está disponível no estoque; não pode voltar ao ar.' }
     }
     if (pub.desiredState === desired && !(intent === 'RETIRAR' && !pub.archivedAt && opts.archive)) return { ok: true, message: 'Nada a mudar.' }
     const gen = pub.generation + 1
@@ -543,7 +547,7 @@ export async function proposeMedia(tenantId: string, vehicleId: string, photos: 
 export async function approveMedia(tenantId: string, vehicleId: string, photos: string[], actor: Actor): Promise<{ revisionId: string; autoPublished: CreateResult[]; updates: number }> {
   const v = await loadVehicle(tenantId, vehicleId)
   if (!v) throw new Error('Veículo não encontrado nesta loja.')
-  const allowed = new Set([...v.photos.map((p) => p.url), ...(Array.isArray(v.siteListing?.originalPhotos) ? (v.siteListing!.originalPhotos as unknown[]).filter((x): x is string => typeof x === 'string') : [])])
+  const allowed = new Set(realPhotoUrls([...v.photos.map((p) => p.url), ...(Array.isArray(v.siteListing?.originalPhotos) ? (v.siteListing!.originalPhotos as unknown[]).filter((x): x is string => typeof x === 'string') : [])]))
   const clean = photos.filter((u) => allowed.has(u))
   if (!clean.length) throw new Error('Escolha ao menos uma foto do veículo.')
   const hash = mediaHash(clean)

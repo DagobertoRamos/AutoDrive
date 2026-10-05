@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { notifyPendency } from '@/services/notification.service'
 import { canActOn } from '@/lib/role-hierarchy'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canAccessPendencyScope } from '@/lib/pendencies/access'
 
 const schema = z.object({
   assignedUserId: z.string().min(1, 'Usuário obrigatório').nullable(),
@@ -43,20 +44,34 @@ export async function PATCH(
           ? { tenantId: session.user.tenantId }
           : {}),
       },
-      select: { id: true, tenantId: true, unitId: true, status: true, customerName: true, assignedUserId: true },
+      select: {
+        id: true, tenantId: true, unitId: true, status: true, customerName: true, assignedUserId: true,
+        resolvedByUserId: true, responsible: { select: { userId: true } }, manager: { select: { userId: true } },
+      },
     })
 
     if (!pendency) {
       return NextResponse.json({ success: false, error: 'Pendência não encontrada' }, { status: 404 })
     }
+    if (!canAccessPendencyScope(session.user, pendency)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
 
     // Hierarquia: não pode atribuir a alguém igual ou acima
     if (assignedUserId) {
-      const targetUser = await prisma.user.findUnique({
-        where:  { id: assignedUserId },
+      // Destino precisa ser da mesma loja (e, p/ GERENTE, da mesma unidade).
+      const targetUser = await prisma.user.findFirst({
+        where:  {
+          id: assignedUserId,
+          tenantId: pendency.tenantId,
+          ...(session.user.role === 'GERENTE' ? { unitId: pendency.unitId } : {}),
+        },
         select: { role: true },
       })
-      if (!canActOn(session.user.role, targetUser?.role ?? null)) {
+      if (!targetUser) {
+        return NextResponse.json({ success: false, error: 'Usuário não encontrado' }, { status: 404 })
+      }
+      if (!canActOn(session.user.role, targetUser.role)) {
         return NextResponse.json(
           { success: false, error: 'Sem permissão para atribuir a um usuário deste nível.' },
           { status: 403 },

@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { canAccessModule, requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { isDealLocked, canAddPayment } from '@/lib/negotiation-rbac'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
@@ -130,9 +131,9 @@ export async function POST(
         vehiclePlate: body?.vehiclePlate ?? null,
         method:       ['SINAL', 'ENTRADA'].includes(method) && body?.signalMethod ? String(body.signalMethod).toUpperCase().slice(0, 30) : null,
         authorizationCode: body?.authorizationCode ? String(body.authorizationCode).trim().slice(0, 40) : null,
-        firstDueDate: body?.firstDueDate ? new Date(body.firstDueDate) : null,
-        dueDate:      body?.dueDate ? new Date(body.dueDate) : null,
-        paidAt:       body?.paidAt ? new Date(body.paidAt) : null,
+        firstDueDate: parseDateOnly(body?.firstDueDate),
+        dueDate:      parseDateOnly(body?.dueDate),
+        paidAt:       parseDateOnly(body?.paidAt),
         notes:        body?.notes ?? null,
         createdById:  session.user.id,
       } as any,

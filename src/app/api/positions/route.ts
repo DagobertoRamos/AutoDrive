@@ -10,23 +10,16 @@ import {
   forbiddenResponse,
   createSafeAuditLog,
 } from '@/lib/auth-guards'
-import { canAccessModule, canPerformAction, type UserRole } from '@/lib/permissions'
+import { canAccessModule, canPerformAction, ROLE_LABELS, type UserRole } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canActOn } from '@/lib/role-hierarchy'
 
 export const dynamic = 'force-dynamic'
 
-// Roles válidos para baseRole (sincronizado com enum UserRole)
-const VALID_ROLES: UserRole[] = [
-  'MASTER',
-  'ADM',
-  'GERENTE_GERAL',
-  'GERENTE',
-  'VENDEDOR_LIDER',
-  'VENDEDOR',
-  'USUARIO_LIDER',
-  'USUARIO',
-]
+// Roles válidos para baseRole: todo o enum UserRole (via ROLE_LABELS) menos MASTER,
+// que nunca é atribuído por cargo.
+const VALID_ROLES: UserRole[] = (Object.keys(ROLE_LABELS) as UserRole[]).filter((r) => r !== 'MASTER')
 
 function slugify(input: string): string {
   return input
@@ -55,8 +48,19 @@ function tenantOrSystemWhere(role: string, tenantId: string | null) {
 export async function GET(req: NextRequest) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'registrations.positions')) return forbiddenResponse()
-  { const gate = await assertModuleEnabled(user, 'registrations.positions'); if (gate) return gate }
+  // Leitura: quem administra cargos vê todos; quem só cadastra colaboradores
+  // (vendedores/gerentes) também precisa da lista para o formulário — mas apenas
+  // dos cargos ABAIXO do próprio nível (anti-escalonamento).
+  const canManagePositions = canAccessModule(user.role, 'registrations.positions')
+  const readModule = canManagePositions
+    ? 'registrations.positions'
+    : canAccessModule(user.role, 'registrations.sellers')
+      ? 'registrations.sellers'
+      : canAccessModule(user.role, 'registrations.managers')
+        ? 'registrations.managers'
+        : null
+  if (!readModule) return forbiddenResponse()
+  { const gate = await assertModuleEnabled(user, readModule); if (gate) return gate }
 
   try {
     const url = new URL(req.url)
@@ -73,7 +77,11 @@ export async function GET(req: NextRequest) {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     })
 
-    return NextResponse.json({ success: true, data: positions })
+    const visible = canManagePositions
+      ? positions
+      : positions.filter((p) => canActOn(user.role, p.baseRole ?? null))
+
+    return NextResponse.json({ success: true, data: visible })
   } catch (err) {
     return handlePrismaError(err)
   }

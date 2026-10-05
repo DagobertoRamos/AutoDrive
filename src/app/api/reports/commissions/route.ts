@@ -66,11 +66,13 @@ export async function GET(req: Request) {
     // (MASTER/ADM/GERENTE_GERAL/GERENTE). GERENTE fica escopado à PRÓPRIA
     // unidade; os demais veem o tenant. Não basta o gate — o where filtra.
     const where = await buildCommissionAccessWhere(user, extra)
+    // Totais ignoram comissões CANCELADAS (só aparecem na quebra por status).
+    const activeWhere = { AND: [where, { status: { not: 'CANCELADO' } }] } as Prisma.CommissionCalculationWhereInput
 
     // ---- Vendedor: agregado por vendedor + tipo --------------------------
     if (view === 'vendedor') {
       const rows = await prisma.commissionCalculation.findMany({
-        where: where as never,
+        where: activeWhere as never,
         take: 5000,
         select: {
           sellerId: true,
@@ -147,7 +149,7 @@ export async function GET(req: Request) {
           status: true, period: true, sellerId: true, managerId: true, ruleDetails: true, createdAt: true,
         },
       }),
-      prisma.commissionCalculation.groupBy({ by: ['ruleType'], where: where as never, _sum: { commissionValue: true }, _count: { _all: true } }),
+      prisma.commissionCalculation.groupBy({ by: ['ruleType'], where: activeWhere as never, _sum: { commissionValue: true }, _count: { _all: true } }),
       prisma.commissionCalculation.groupBy({ by: ['status'], where: where as never, _sum: { commissionValue: true }, _count: { _all: true } }),
     ])
 

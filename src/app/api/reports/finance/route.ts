@@ -13,11 +13,12 @@ import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { num, entryTextSearch } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { spDayStart, spDayEnd, spMonthKey } from '@/lib/dashboard/tz'
 
 const VIEWS = ['visao-geral', 'dre', 'contas', 'contas-a-pagar', 'contas-a-receber', 'fluxo-de-caixa', 'receitas', 'despesas', 'resultado-unidade', 'resultado-vendedor', 'resultado-periodo'] as const
 type View = (typeof VIEWS)[number]
 
-const monthKey = (d: Date | null) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : '—')
+const monthKey = (d: Date | null) => spMonthKey(d)
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
     const from = searchParams.get('from')
     const to = searchParams.get('to')
     const dateRange = from || to
-      ? { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}) }
+      ? { ...(from ? { gte: spDayStart(from) } : {}), ...(to ? { lte: spDayEnd(to) } : {}) }
       : null
     const dateField =
       view === 'fluxo-de-caixa' ? 'paidDate'
@@ -149,8 +150,8 @@ export async function GET(req: Request) {
 
     // ---- Listas (receitas/despesas/contas-a-pagar/contas-a-receber) ------
     const extra: Record<string, unknown> = {}
-    if (view === 'receitas') extra.type = 'RECEITA'
-    if (view === 'despesas') extra.type = 'DESPESA'
+    if (view === 'receitas') { extra.type = 'RECEITA'; extra.status = { not: 'CANCELADO' } }
+    if (view === 'despesas') { extra.type = 'DESPESA'; extra.status = { not: 'CANCELADO' } }
     if (view === 'contas-a-pagar') { extra.type = 'DESPESA'; extra.status = 'PREVISTO' }
     if (view === 'contas-a-receber') { extra.type = 'RECEITA'; extra.status = 'PREVISTO' }
     const searchOr = entryTextSearch(searchParams.get('q'))
@@ -158,7 +159,7 @@ export async function GET(req: Request) {
     const where = base(extra)
     const isAging = view === 'contas-a-pagar' || view === 'contas-a-receber'
 
-    const [rows, byCat] = await Promise.all([
+    const [rows, byCat, totals] = await Promise.all([
       prisma.financialEntry.findMany({
         where: where as never,
         orderBy: isAging ? [{ dueDate: 'asc' }] : [{ competenceDate: 'desc' }, { createdAt: 'desc' }],
@@ -166,6 +167,8 @@ export async function GET(req: Request) {
         include: { category: { select: { name: true } }, account: { select: { name: true } } },
       }),
       prisma.financialEntry.groupBy({ by: ['categoryId'], where: where as never, _sum: { amount: true }, _count: { _all: true } }),
+      // Total/contagem sobre todo o filtro — a lista acima é limitada a 500.
+      prisma.financialEntry.aggregate({ where: where as never, _sum: { amount: true }, _count: { _all: true } }),
     ])
     const catIds = [...new Set(byCat.map((g) => g.categoryId).filter(Boolean))] as string[]
     const cats = catIds.length ? await prisma.financialCategory.findMany({ where: { id: { in: catIds } }, select: { id: true, name: true } }) : []
@@ -180,8 +183,7 @@ export async function GET(req: Request) {
       }
     })
     const byCategory = byCat.map((g) => ({ categoria: g.categoryId ? (catMap[g.categoryId] ?? 'Sem categoria') : 'Sem categoria', total: num(g._sum.amount), count: g._count._all })).sort((a, b) => b.total - a.total)
-    const total = data.reduce((s, d) => s + d.amount, 0)
-    const summary: Record<string, number> = { count: data.length, total }
+    const summary: Record<string, number> = { count: totals._count?._all ?? data.length, total: num(totals._sum?.amount) }
     if (isAging) summary.vencidas = data.filter((d) => d.vencida).length
     return NextResponse.json({ success: true, view, summary, byCategory, data })
   } catch (err) {

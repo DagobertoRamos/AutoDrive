@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog, forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
@@ -66,10 +67,7 @@ export async function GET(req: Request) {
     const priority = sp.get('priority')?.trim() || ''
     const temperature = sp.get('temperature')?.trim() || ''
     const leadTypeFilter = sp.get('leadType')?.trim() || ''
-    // NOTA: deletedAt ausente da query intencionalmente até a migration
-    // crm_card_lead_number_softdelete ser aplicada na Neon. Após aplicar, voltar:
-    //   applyCrmScope({ tenantId, deletedAt: null }, scope, user)
-    const where = applyCrmScope({ tenantId }, scope, user)
+    const where = applyCrmScope({ tenantId, deletedAt: null }, scope, user)
 
     if (status) where.status = status as never
     // Filtro de origem: 'AUTOCONF' é legado; agora aceita qualquer valor de source.
@@ -113,11 +111,15 @@ export async function GET(req: Request) {
       where.status = { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] }
     }
 
-    const [rows, users, units] = await Promise.all([
+    // Prioridade/temperatura/tipo são filtrados e ordenados em memória: busca um
+    // lote maior e enriquece só a página. Sem filtro em memória, o total vem do count.
+    const inMemoryFilter = !!(priority || temperature || leadTypeFilter)
+    const take = Math.min(5000, Math.max(2000, page * perPage))
+    const [rawRows, dbTotal, users, units] = await Promise.all([
       prisma.marketingLead.findMany({
         where,
         orderBy: [{ updatedAt: 'desc' }],
-        take: 300,
+        take,
         select: {
           id: true, name: true, phone: true, email: true, source: true, status: true,
           unitId: true, assignedToUserId: true, customerId: true, vehicleId: true,
@@ -125,9 +127,30 @@ export async function GET(req: Request) {
           createdAt: true, updatedAt: true, metadata: true, leadNumber: true,
         },
       }),
+      inMemoryFilter ? Promise.resolve(0) : prisma.marketingLead.count({ where }),
       prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true } }),
       prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true } }),
     ])
+
+    let filteredRows = priority ? rawRows.filter((row) => leadPriorityOf(row) === priority) : rawRows
+    // Temperatura: filtra em memória (metadata é JSON — sem índice no campo)
+    if (temperature) {
+      filteredRows = filteredRows.filter((row) => readTemperature(row.metadata) === temperature)
+    }
+    if (leadTypeFilter) {
+      filteredRows = filteredRows.filter((row) => readLeadType(row.metadata) === leadTypeFilter)
+    }
+    const priorityOrder = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 }
+    const sortedRows = filteredRows
+      .map((row) => ({ row, pr: leadPriorityOf(row) }))
+      .sort((a, b) => {
+        const byPriority = priorityOrder[a.pr as keyof typeof priorityOrder] - priorityOrder[b.pr as keyof typeof priorityOrder]
+        if (byPriority !== 0) return byPriority
+        return new Date(b.row.updatedAt).getTime() - new Date(a.row.updatedAt).getTime()
+      })
+      .map((x) => x.row)
+    const total = inMemoryFilter ? sortedRows.length : Math.max(dbTotal, sortedRows.length)
+    const rows = sortedRows.slice((page - 1) * perPage, page * perPage)
 
     const userNames = new Map(users.map((item) => [item.id, item.name]))
     const unitNames = new Map(units.map((item) => [item.id, item.name]))
@@ -191,35 +214,8 @@ export async function GET(req: Request) {
         tags: tagsByLead.get(row.id) ?? [],
       }
     })
-    // Busca por veículo em memória: o WHERE do banco já retornou leads por campos
-    // diretos. Aqui adicionamos leads cujo veículo vinculado bate no search term
-    // (placa/marca/modelo) e não foram capturados pelo WHERE do banco.
-    let enrichedFiltered = enriched
-    if (search) {
-      const s = search.toLowerCase()
-      const byDb = new Set(enriched.map(r => r.id))
-      const extraFromVehicle = enriched.filter(r => r.vehicleLabel?.toLowerCase().includes(s) && !byDb.has(r.id))
-      enrichedFiltered = [...enriched, ...extraFromVehicle]
-    }
-    let filtered = priority ? enrichedFiltered.filter((row) => row.priority === priority) : enrichedFiltered
-    // Temperatura: filtra em memória (metadata é JSON — sem índice no campo)
-    if (temperature) {
-      filtered = filtered.filter((row) => readTemperature(row.metadata) === temperature)
-    }
-    if (leadTypeFilter) {
-      filtered = filtered.filter((row) => readLeadType(row.metadata) === leadTypeFilter)
-    }
-    const sorted = filtered.sort((a, b) => {
-      const order = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 }
-      const byPriority = order[a.priority as keyof typeof order] - order[b.priority as keyof typeof order]
-      if (byPriority !== 0) return byPriority
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    })
-    const total = sorted.length
-    const paged = sorted.slice((page - 1) * perPage, page * perPage)
-
     // temperatura, etiquetas, vehicle, deal, nextTask já vêm do enrich em lote acima.
-    const data = paged.map(({ metadata, ...rest }) => ({
+    const data = enriched.map(({ metadata, ...rest }) => ({
       ...rest,
       temperature: readTemperature(metadata),
       leadType: readLeadType(metadata),
@@ -288,19 +284,24 @@ export async function POST(req: Request) {
       : autoDistribute ? null : user.id
     const unitId = body.unitId && canEditUnit ? String(body.unitId) : (user.unitId ?? null)
 
+    // Telefone é gravado formatado: pré-filtra pelos 4 últimos dígitos e compara
+    // os 8 últimos normalizados (mesma regra do inbound-lead).
     const phoneDigits = normalizePhone(phone)
-    const existing = await prisma.marketingLead.findFirst({
-      where: {
-        tenantId,
-        status: { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] },
-        OR: [
-          ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : []),
-          ...(phoneDigits ? [{ phone: { contains: phoneDigits } }] : []),
-        ],
-      },
-      select: { id: true, assignedToUserId: true, customerId: true },
-      orderBy: { updatedAt: 'desc' },
-    })
+    const dedupOr: Prisma.MarketingLeadWhereInput[] = [
+      ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : []),
+      ...(phoneDigits ? [{ phone: { contains: phoneDigits.slice(-4) } }] : []),
+    ]
+    const candidates = dedupOr.length
+      ? await prisma.marketingLead.findMany({
+        where: { tenantId, deletedAt: null, status: { notIn: ['CONVERTED', 'LOST', 'DISCARDED'] }, OR: dedupOr },
+        select: { id: true, assignedToUserId: true, customerId: true, phone: true, email: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 50,
+      })
+      : []
+    const tail = phoneDigits ? phoneDigits.slice(-8) : ''
+    const existing = (tail ? candidates.find((c) => (c.phone ?? '').replace(/\D/g, '').slice(-8) === tail) : undefined)
+      ?? (email ? candidates.find((c) => c.email?.toLowerCase() === email.toLowerCase()) : undefined)
 
     if (existing) {
       const updated = await prisma.marketingLead.update({
@@ -313,7 +314,8 @@ export async function POST(req: Request) {
           // Reusa o contato existente (não cria pessoa nova) quando o lead ainda não tinha.
           ...(identity.customerId && !existing.customerId ? { customerId: identity.customerId } : {}),
           lastContactAt: new Date(),
-          ...(canTransfer ? { assignedToUserId } : {}),
+          // Só troca o responsável quando veio um explícito (não zera o dono atual).
+          ...(canTransfer && explicitAssigned ? { assignedToUserId } : {}),
         },
       })
       await createSafeAuditLog({ userId: user.id, tenantId, action: 'CRM_LEAD_DEDUP', entity: 'MarketingLead', entityId: updated.id, userName: user.name, userRole: user.role })

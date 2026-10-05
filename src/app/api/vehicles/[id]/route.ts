@@ -11,6 +11,7 @@ import {
   unauthorizedResponse,
   forbiddenResponse,
   createSafeAuditLog,
+  assertUnitBelongsToTenant,
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModule } from '@/lib/permissions'
@@ -133,6 +134,13 @@ export async function PATCH(
       cautelarStatus, cautelarNumber, cautelarNotes,
       mainPhotoUrl, notes, unitId, active, exitDate, entryDate,
     } = body
+
+    // Unidade informada precisa ser da mesma empresa do veículo
+    const nextUnitId = typeof unitId === 'string' ? unitId.trim() : ''
+    if (nextUnitId) {
+      try { await assertUnitBelongsToTenant(nextUnitId, existing.tenantId, user.role) }
+      catch (e) { return forbiddenResponse(e instanceof Error ? e.message : 'Unidade inválida.') }
+    }
 
     const updated = await prisma.vehicle.update({
       where: { id: params.id },

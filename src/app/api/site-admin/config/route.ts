@@ -14,15 +14,19 @@ import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { loadSiteConfig, saveSiteConfig, SiteConfigError, SITE_SERVICES } from '@/lib/site/config'
 import { SITE_VISIBLE_STOCK } from '@/lib/site/listing-core'
 import { pruneUnusedBanners } from '@/lib/site/assets'
+import { realPhotoUrls } from '@/lib/vehicle-placeholder'
 
 export const dynamic = 'force-dynamic'
 
 async function vitrine(tenantId: string) {
   const where = { tenantId, active: true, stockStatus: { in: [...SITE_VISIBLE_STOCK] } }
-  const [total, published] = await Promise.all([
-    prisma.vehicle.count({ where: { ...where, OR: [{ siteListing: { is: null } }, { siteListing: { is: { hidden: false } } }] } }),
-    prisma.vehicle.count({ where: { ...where, photos: { some: {} }, OR: [{ siteListing: { is: null } }, { siteListing: { is: { hidden: false } } }] } }),
-  ]).catch(() => [0, 0])
+  // Publicado = tem foto de verdade (arte "em breve" não conta).
+  const rows = await prisma.vehicle.findMany({
+    where: { ...where, OR: [{ siteListing: { is: null } }, { siteListing: { is: { hidden: false } } }] },
+    select: { photos: { select: { url: true } } },
+  }).catch(() => [])
+  const total = rows.length
+  const published = rows.filter((r) => realPhotoUrls(r.photos.map((p) => p.url)).length > 0).length
   return { total, published, comingSoon: total - published }
 }
 

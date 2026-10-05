@@ -13,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { createProposalSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { tenantRefError } from '@/lib/finance/tenant-refs'
 
 const STATUSES = ['SIMULACAO', 'ENVIADA', 'APROVADA', 'RECUSADA', 'CANCELADA']
 
@@ -69,6 +70,8 @@ export async function POST(req: Request) {
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)
     const d = createProposalSchema.parse(await req.json())
+    const refErr = await tenantRefError(tenantId, d)
+    if (refErr) return NextResponse.json({ success: false, error: refErr }, { status: 400 })
     const proposal = await prisma.financeProposal.create({
       data: {
         tenantId, proponentId: d.proponentId, bankId: d.bankId ?? null, sellerId: d.sellerId ?? null,

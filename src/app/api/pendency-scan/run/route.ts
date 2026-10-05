@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
       ? schema.parse(await req.json())
       : {}
 
-    const targetTenantId = body.tenantId ?? (isMaster ? undefined : session.user.tenantId)
+    // Só o MASTER escolhe o tenant; ADM fica sempre no próprio.
+    const targetTenantId = isMaster ? body.tenantId : session.user.tenantId
 
     let report: unknown
 

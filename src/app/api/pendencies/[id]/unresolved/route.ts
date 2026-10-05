@@ -64,6 +64,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       }).catch(() => {}),
       prisma.auditLog.create({
         data: {
+          tenantId:  pendency.tenantId,
           userId:    session.user.id,
           userName:  session.user.name,
           userRole:  session.user.role,
@@ -81,6 +82,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       await prisma.notification.create({
         data: {
           userId:    pendency.manager.userId,
+          tenantId:  pendency.tenantId,
           type:      'NOVA_PENDENCIA',
           title:     `${pendency.responsible.fullName} aguarda resposta do cliente`,
           message:   `Motivo: ${reason} | Cliente: ${pendency.customerName} | Placa: ${pendency.plate ?? '—'}`,

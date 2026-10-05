@@ -9,7 +9,8 @@
 
 import { prisma } from '@/lib/prisma'
 import { generateDealNumber } from '@/lib/negotiation-service'
-import type { LeadStatus } from '@prisma/client'
+import { Prisma, type LeadStatus } from '@prisma/client'
+import { OPEN_LEAD_STATUSES } from '@/lib/crm/settings-core'
 
 const RESULT_TO_STATUS: Record<string, LeadStatus> = {
   CONVERTED_TO_NEGOTIATION: 'CONVERTED',
@@ -54,7 +55,7 @@ async function customerIdByPhone(tenantId: string, digits: string): Promise<stri
 }
 async function leadIdByPhone(tenantId: string, digits: string): Promise<string | null> {
   if (digits.length < 10) return null
-  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM marketing_leads WHERE "tenantId" = ${tenantId} AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') = ${digits} ORDER BY "createdAt" DESC LIMIT 1`.catch(() => [] as { id: string }[])
+  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM marketing_leads WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL AND status::text IN (${Prisma.join([...OPEN_LEAD_STATUSES])}) AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') = ${digits} ORDER BY "createdAt" DESC LIMIT 1`.catch(() => [] as { id: string }[])
   return rows[0]?.id ?? null
 }
 
@@ -74,14 +75,16 @@ async function findCustomer(tenantId: string, phone: string | null, email: strin
   return null
 }
 
-/** Acha um Lead existente por cliente, e-mail ou telefone normalizado (reuso). */
+/** Acha um Lead ABERTO (não excluído/convertido/perdido) por cliente, e-mail ou
+ *  telefone normalizado (reuso). Sem lead aberto → cria um novo. */
 async function findLead(tenantId: string, customerId: string | null, phone: string | null, email: string | null): Promise<string | null> {
+  const open = { tenantId, deletedAt: null, status: { in: [...OPEN_LEAD_STATUSES] } }
   if (customerId) {
-    const byCust = await prisma.marketingLead.findFirst({ where: { tenantId, customerId }, orderBy: { createdAt: 'desc' }, select: { id: true } }).catch(() => null)
+    const byCust = await prisma.marketingLead.findFirst({ where: { ...open, customerId }, orderBy: { createdAt: 'desc' }, select: { id: true } }).catch(() => null)
     if (byCust) return byCust.id
   }
   if (email) {
-    const l = await prisma.marketingLead.findFirst({ where: { tenantId, email: { equals: email, mode: 'insensitive' } }, select: { id: true }, orderBy: { createdAt: 'desc' } }).catch(() => null)
+    const l = await prisma.marketingLead.findFirst({ where: { ...open, email: { equals: email, mode: 'insensitive' } }, select: { id: true }, orderBy: { createdAt: 'desc' } }).catch(() => null)
     if (l) return l.id
   }
   if (phone) { const id = await leadIdByPhone(tenantId, onlyDigits(phone)); if (id) return id }
@@ -102,11 +105,13 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<A
   const email = opts.customerEmail?.trim() || arrival?.customerEmail || null
 
   // ── (b) CLIENTE: acha-ou-cria, sem duplicar ────────────────────────────────
+  // Ids vindos de fora só valem se forem DESTA loja.
   let customerId = opts.existingCustomerId || arrival?.customerId || null
+  if (customerId && !(await prisma.customer.count({ where: { id: customerId, tenantId: opts.tenantId } }).catch(() => 0))) customerId = null
   if (!customerId) customerId = await findCustomer(opts.tenantId, phone, email)
   if (customerId) {
     // Completa dados que faltarem (não sobrescreve com vazio).
-    await prisma.customer.update({ where: { id: customerId }, data: { ...(name ? { name } : {}), ...(phone ? { phone } : {}), ...(email ? { email } : {}) } }).catch(() => {})
+    await prisma.customer.updateMany({ where: { id: customerId, tenantId: opts.tenantId }, data: { ...(name ? { name } : {}), ...(phone ? { phone } : {}), ...(email ? { email } : {}) } }).catch(() => {})
   } else if (name || phone || email) {
     const c = await prisma.customer.create({ data: { tenantId: opts.tenantId, name: name ?? 'Cliente', phone, email } }).catch(() => null)
     customerId = c?.id ?? null
@@ -114,10 +119,12 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<A
 
   // ── LEAD: reaproveita SEMPRE o mesmo (sem duplicar) ─────────────────────────
   let leadId = opts.existingLeadId || arrival?.leadId || null
+  if (leadId && !(await prisma.marketingLead.count({ where: { id: leadId, tenantId: opts.tenantId, deletedAt: null } }).catch(() => 0))) leadId = null
   if (!leadId) leadId = await findLead(opts.tenantId, customerId, phone, email)
 
   // ── (a) NEGOCIAÇÃO: se virou negociação e ainda não há Deal, cria RASCUNHO ──
   let dealId = opts.dealId || null
+  if (dealId && !(await prisma.deal.count({ where: { id: dealId, tenantId: opts.tenantId } }).catch(() => 0))) dealId = null
   if (converted && !dealId) {
     const dealNumber = await generateDealNumber(opts.tenantId).catch(() => undefined)
     const deal = await prisma.deal.create({
@@ -139,8 +146,8 @@ export async function ensureAttendanceLead(opts: AttendanceLeadInput): Promise<A
   }
 
   if (leadId) {
-    const upd = await prisma.marketingLead.update({ where: { id: leadId }, data: common }).catch(() => null)
-    return { leadId: upd?.id ?? leadId, dealId, customerId }
+    await prisma.marketingLead.updateMany({ where: { id: leadId, tenantId: opts.tenantId }, data: common }).catch(() => null)
+    return { leadId, dealId, customerId }
   }
 
   const created = await prisma.marketingLead.create({

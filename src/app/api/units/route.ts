@@ -7,15 +7,14 @@ import { prisma } from '@/lib/prisma'
 import {
   getSessionUser,
   assertTenantId,
-  hasRole,
   tenantWhere,
-  ADMIN_ROLES,
   unauthorizedResponse,
   forbiddenResponse,
   createSafeAuditLog,
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canPerformAction } from '@/lib/permissions'
 
 // ── GET — Listar unidades ────────────────────────────────────────────────────
 
@@ -45,7 +44,7 @@ export async function POST(req: Request) {
   if (!user) return unauthorizedResponse()
   { const gate = await assertModuleEnabled(user, 'registrations.units'); if (gate) return gate }
 
-  if (!hasRole(user.role, ADMIN_ROLES)) {
+  if (!canPerformAction(user.role, 'registrations.units', 'create')) {
     return forbiddenResponse('Apenas administradores podem cadastrar unidades.')
   }
 

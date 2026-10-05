@@ -316,7 +316,7 @@ export async function GET(req: Request) {
       prisma.pendency.count({
         where: {
           ...pendencyBaseFilter,
-          managerId: { not: null },
+          escalatedAt: { not: null },
         },
       }),
     ])
@@ -547,7 +547,7 @@ export async function GET(req: Request) {
           type: 'PENDENCY',
           message: `${so.name} tem ${so.overduePendencies} pendências vencidas.`,
           action: 'cobrar',
-          target: `/pendencias?responsibleId=${so.id}`,
+          target: `/pendencias/central?sellerId=${so.id}`,
         })
       }
       if (so.overdueTasks > 0) {

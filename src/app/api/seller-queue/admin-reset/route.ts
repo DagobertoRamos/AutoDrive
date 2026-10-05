@@ -12,7 +12,7 @@ import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAudi
 import { canAccessModule } from '@/lib/permissions'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { queueDate, unitFromRequest, isUserQueueResponsible } from '@/lib/seller-queue/queue'
+import { queueDate, queueDayStart, unitFromRequest, isUserQueueResponsible } from '@/lib/seller-queue/queue'
 
 export async function POST(req: Request) {
   const user = await getSessionUser()
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
         removed.entradas = (await prisma.sellerQueueEntry.deleteMany({ where: qw })).count
       }
       // Penalidades/bloqueios de hoje (desativa para liberar geral).
-      removed.penalidades = (await prisma.sellerQueuePenalty.deleteMany({ where: { tenantId, unitId, createdAt: { gte: queueDate() } } })).count
+      removed.penalidades = (await prisma.sellerQueuePenalty.deleteMany({ where: { tenantId, unitId, createdAt: { gte: queueDayStart() } } })).count
     }
 
     await createSafeAuditLog({ userId: user.id, tenantId, action: action === 'wipe' ? 'QUEUE_WIPE' : 'QUEUE_RESET', entity: 'SellerQueue', entityId: unitId, userName: user.name, userRole: user.role })

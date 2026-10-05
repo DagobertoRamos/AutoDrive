@@ -199,7 +199,7 @@ export async function PATCH(
     if (isAvailableForSale === true && (ex.stockStatus === 'EM_PRECIFICACAO' || ex.stockStatus == null)) {
       updates.stockStatus = isPromo === true ? 'EM_PROMOCAO' : 'DISPONIVEL'
     }
-    if (isAvailableForSale === false && ex.stockStatus === 'DISPONIVEL') {
+    if (isAvailableForSale === false && ex.isAvailableForSale === true && ex.stockStatus === 'DISPONIVEL') {
       // volta para pré-publicação se for despublicado
       updates.stockStatus = 'EM_PRECIFICACAO'
     }

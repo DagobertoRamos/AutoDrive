@@ -63,6 +63,16 @@ export function pickCandidate(cands: Candidate[], mode: LeadDistributionMode): C
 }
 
 // ── Acesso ao banco ──────────────────────────────────────────────────────────
+/**
+ * Encerra os SLAs ABERTOS (PENDING) do lead — chamado ao (re)atribuir, assumir,
+ * liberar, converter, transferir ou registrar contato. Sem isso o SLA antigo
+ * estoura depois e recicla/alerta um lead que já está sendo trabalhado.
+ * Usa 'MET' (único status de fechamento existente além de BREACHED/ESCALATED).
+ */
+export async function closeOpenLeadSlas(db: Prisma.TransactionClient, leadId: string): Promise<void> {
+  await db.marketingLeadSla.updateMany({ where: { leadId, status: 'PENDING' }, data: { status: 'MET' } })
+}
+
 async function getActivePolicy(tenantId: string) {
   return prisma.marketingLeadDistributionPolicy.findFirst({
     where: { tenantId, active: true },
@@ -81,7 +91,7 @@ async function loadCandidates(tenantId: string, teamId: string | null): Promise<
   if (members.length === 0) return []
   const counts = await prisma.marketingLead.groupBy({
     by: ['assignedToUserId'],
-    where: { tenantId, assignedToUserId: { in: members.map((m) => m.userId) }, status: { in: OPEN_STATUSES as unknown as never } },
+    where: { tenantId, deletedAt: null, assignedToUserId: { in: members.map((m) => m.userId) }, status: { in: OPEN_STATUSES as unknown as never } },
     _count: { _all: true },
   })
   const openBy = new Map<string, number>()
@@ -105,6 +115,7 @@ async function assign(tenantId: string, leadId: string, cand: Candidate, mode: L
       data: { assignedToUserId: cand.userId, claimedByUserId: cand.userId, claimedAt: now, teamId: cand.teamId, status: 'ASSIGNED' },
     })
     await tx.marketingSdrMember.update({ where: { id: cand.memberId }, data: { lastAssignedAt: now } })
+    await closeOpenLeadSlas(tx, leadId)
     await tx.marketingLeadAssignment.create({
       data: { tenantId, leadId, assignedToUserId: cand.userId, teamId: cand.teamId, mode, status: 'ASSIGNED', slaDeadline: deadline },
     })
@@ -125,7 +136,7 @@ export async function distributePendingLeads(tenantId: string, limit = 50): Prom
   const eligiblePresence = Array.isArray(cfg.eligiblePresence) && cfg.eligiblePresence.length ? (cfg.eligiblePresence as string[]) : DEFAULT_ELIGIBLE_PRESENCE
 
   const leads = await prisma.marketingLead.findMany({
-    where: { tenantId, assignedToUserId: null, claimedByUserId: null, status: { in: ['NEW', 'RECYCLED'] } },
+    where: { tenantId, deletedAt: null, assignedToUserId: null, claimedByUserId: null, status: { in: ['NEW', 'RECYCLED'] } },
     orderBy: { createdAt: 'asc' }, take: Math.min(Math.max(limit, 1), 500),
     select: { id: true, unitId: true },
   })
@@ -148,7 +159,7 @@ export async function distributeLeadById(tenantId: string, leadId: string): Prom
   const policy = await getActivePolicy(tenantId)
   if (!policy || !AUTO_MODES.includes(policy.mode)) return false
   const lead = await prisma.marketingLead.findFirst({
-    where: { id: leadId, tenantId, assignedToUserId: null, claimedByUserId: null, status: { in: ['NEW', 'RECYCLED'] } },
+    where: { id: leadId, tenantId, deletedAt: null, assignedToUserId: null, claimedByUserId: null, status: { in: ['NEW', 'RECYCLED'] } },
     select: { id: true, unitId: true },
   })
   if (!lead) return false
@@ -172,13 +183,19 @@ export async function processSlaBreaches(tenantId: string, limit = 100): Promise
     orderBy: { deadline: 'asc' }, take: Math.min(Math.max(limit, 1), 500),
     select: { id: true, leadId: true },
   })
-  let recycled = 0
+  let recycled = 0, breached = 0
   for (const b of breaches) {
-    const lead = await prisma.marketingLead.findUnique({ where: { id: b.leadId }, select: { id: true, status: true, assignedToUserId: true, lastContactAt: true } })
+    const lead = await prisma.marketingLead.findUnique({ where: { id: b.leadId }, select: { id: true, status: true, assignedToUserId: true, lastContactAt: true, deletedAt: true } })
+    // Lead excluído ou já encerrado (convertido/perdido/descartado): não é estouro.
+    if (!lead || lead.deletedAt || ['CONVERTED', 'LOST', 'DISCARDED'].includes(lead.status)) {
+      await prisma.marketingLeadSla.updateMany({ where: { id: b.id, status: 'PENDING' }, data: { status: 'MET' } })
+      continue
+    }
+    breached++
     await prisma.$transaction(async (tx) => {
       await tx.marketingLeadSla.update({ where: { id: b.id }, data: { status: 'BREACHED', breachedAt: now } })
       // Se ainda não foi trabalhado (sem contato) e segue atribuído → devolve p/ a fila.
-      if (lead && lead.status === 'ASSIGNED' && !lead.lastContactAt) {
+      if (lead.status === 'ASSIGNED' && !lead.lastContactAt) {
         await tx.marketingLead.update({ where: { id: lead.id }, data: { assignedToUserId: null, claimedByUserId: null, claimedAt: null, status: 'RECYCLED' } })
         await tx.marketingLeadAssignment.create({
           data: { tenantId, leadId: lead.id, assignedToUserId: lead.assignedToUserId, mode: 'ROUND_ROBIN', status: 'REDISTRIBUTED', reason: 'SLA estourado', respondedAt: now },
@@ -188,20 +205,20 @@ export async function processSlaBreaches(tenantId: string, limit = 100): Promise
     })
   }
   // Avisa os gestores (best-effort, agregado) quando houve estouro de SLA.
-  if (breaches.length > 0) {
+  if (breached > 0) {
     await notifyByRole({
       tenantId,
       roles: MANAGER_ROLES,
       type: 'SISTEMA',
       title: 'SLA de atendimento estourado',
-      message: `${breaches.length} lead(s) sem atendimento dentro do SLA${recycled > 0 ? ` — ${recycled} devolvido(s) à fila para redistribuição` : ''}.`,
+      message: `${breached} lead(s) sem atendimento dentro do SLA${recycled > 0 ? ` — ${recycled} devolvido(s) à fila para redistribuição` : ''}.`,
       actionUrl: '/marketing/sdr/inbox',
-      metadata: { kind: 'sla_breach', breached: breaches.length, recycled },
+      metadata: { kind: 'sla_breach', breached, recycled },
       channels: ['APP_WEB', 'APP_MOBILE', 'PUSH'],
     }).catch(() => {})
   }
 
   // Após reciclar, tenta redistribuir os que voltaram à fila.
   if (recycled > 0) await distributePendingLeads(tenantId, recycled)
-  return { scanned: breaches.length, breached: breaches.length, recycled }
+  return { scanned: breaches.length, breached, recycled }
 }

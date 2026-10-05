@@ -46,16 +46,7 @@ const EMPTY_FORM: PositionForm = {
   active:      true,
 }
 
-const ROLE_OPTIONS: UserRole[] = [
-  'MASTER',
-  'ADM',
-  'GERENTE_GERAL',
-  'GERENTE',
-  'VENDEDOR_LIDER',
-  'VENDEDOR',
-  'USUARIO_LIDER',
-  'USUARIO',
-]
+const ROLE_OPTIONS: UserRole[] = (Object.keys(ROLE_LABELS) as UserRole[]).filter((r) => r !== 'MASTER')
 
 // -----------------------------------------------------------------------------
 // Helpers
@@ -179,7 +170,8 @@ function Modal({
                 onChange={(e) => set('baseRole', e.target.value as UserRole | '')}
               >
                 <option value="">Selecione</option>
-                {ROLE_OPTIONS.map((r) => (
+                {/* Cargo legado com baseRole MASTER: mantém visível para não zerar ao salvar. */}
+                {(form.baseRole === 'MASTER' ? ['MASTER' as UserRole, ...ROLE_OPTIONS] : ROLE_OPTIONS).map((r) => (
                   <option key={r} value={r}>{ROLE_LABELS[r]}</option>
                 ))}
               </select>

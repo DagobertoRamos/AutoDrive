@@ -190,18 +190,24 @@ async function resolveCustomerId(tenantId: string, row: AutoconfRow): Promise<st
   const city = safeText(details.cidade, 120)
   const state = safeText(details.estado, 2)
 
-  const or: Array<Record<string, unknown>> = []
-  if (doc) or.push({ cpf: doc })
-  if (email) or.push({ email })
-  if (phone) or.push({ phone })
-  if (!or.length) or.push({ name })
-
-  const existing = await prisma.customer.findFirst({ where: { tenantId, OR: or as never }, select: { id: true } }).catch(() => null)
+  // Documento primeiro; e-mail/telefone só casam com cadastro SEM documento
+  // (evita juntar pessoas diferentes que dividem telefone/e-mail).
+  const contact: Array<Record<string, unknown>> = []
+  if (email) contact.push({ email })
+  if (phone) contact.push({ phone })
+  let existing = doc
+    ? await prisma.customer.findFirst({ where: { tenantId, cpf: doc }, select: { id: true } }).catch(() => null)
+    : null
+  if (!existing && contact.length) {
+    existing = await prisma.customer.findFirst({ where: { tenantId, OR: contact as never, ...(doc ? { cpf: null } : {}) }, select: { id: true } }).catch(() => null)
+  }
+  if (!existing && !doc && !contact.length) {
+    existing = await prisma.customer.findFirst({ where: { tenantId, name }, select: { id: true } }).catch(() => null)
+  }
   if (existing) {
-    await prisma.customer.update({
-      where: { id: existing.id },
-      data: { name, cpf: doc, phone, email, address, city, state },
-    }).catch(() => null)
+    // Reimportação só preenche/atualiza o que veio; vazio não apaga o cadastro.
+    const data = Object.fromEntries(Object.entries({ name, cpf: doc, phone, email, address, city, state }).filter(([, v]) => v != null && v !== ''))
+    await prisma.customer.update({ where: { id: existing.id }, data }).catch(() => null)
     return existing.id
   }
 

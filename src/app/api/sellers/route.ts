@@ -26,6 +26,7 @@ import {
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { isValidCPF } from '@/lib/br-docs/cpf'
+import { canActOn } from '@/lib/role-hierarchy'
 
 // ── GET — Listar vendedores ──────────────────────────────────────────────────
 
@@ -145,6 +146,11 @@ export async function POST(req: Request) {
     const collaboratorRole = (positionBaseRole && positionBaseRole !== 'MASTER')
       ? (positionBaseRole as 'ADM' | 'GERENTE_GERAL' | 'GERENTE_ADMINISTRATIVO' | 'GERENTE' | 'VENDEDOR_LIDER' | 'VENDEDOR' | 'FINANCEIRO' | 'USUARIO_LIDER' | 'USUARIO')
       : 'VENDEDOR'
+    // Anti-escalonamento: ninguém (exceto MASTER) cria colaborador com papel
+    // igual ou acima do próprio.
+    if (!canActOn(user.role, collaboratorRole)) {
+      return forbiddenResponse('Você não pode cadastrar colaborador com cargo igual ou superior ao seu.')
+    }
 
     // ── Checa duplicidade de e-mail ──────────────────────────────────────────
     const emailNorm = String(email).toLowerCase().trim()

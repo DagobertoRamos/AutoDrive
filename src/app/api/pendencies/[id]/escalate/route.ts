@@ -7,6 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canAccessPendencyScope } from '@/lib/pendencies/access'
 import { logPendencyEvent, PENDENCY_EVENT } from '@/lib/pendencies/events'
 
 const schema = z.object({
@@ -43,11 +44,17 @@ export async function POST(
       select: {
         id: true, tenantId: true, unitId: true, status: true,
         customerName: true, priority: true, escalatedAt: true,
+        assignedUserId: true, resolvedByUserId: true,
+        responsible: { select: { userId: true } }, manager: { select: { userId: true } },
       },
     })
 
     if (!pendency) {
       return NextResponse.json({ success: false, error: 'Pendência não encontrada' }, { status: 404 })
+    }
+    // GERENTE só escalona pendência da própria unidade; sem tenant na sessão, nada.
+    if (!canAccessPendencyScope(session.user, pendency)) {
+      return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
     }
 
     if (pendency.escalatedAt) {

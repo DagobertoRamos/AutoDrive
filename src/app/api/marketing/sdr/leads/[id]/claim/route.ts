@@ -16,6 +16,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/marketing/acting-t
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { ownsTenant } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { closeOpenLeadSlas } from '@/lib/marketing/distribution'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -44,6 +45,7 @@ export async function POST(req: Request, { params }: Ctx) {
         data: { tenantId: tid, leadId: id, userId: user.id, action: success ? 'CLAIMED' : 'LOST_RACE', succeeded: success },
       })
       if (success) {
+        await closeOpenLeadSlas(tx, id)
         await tx.marketingLeadAssignment.create({
           data: { tenantId: tid, leadId: id, assignedToUserId: user.id, assignedByUserId: user.id, mode: 'SHARK_TANK', status: 'ACCEPTED', respondedAt: new Date() },
         })

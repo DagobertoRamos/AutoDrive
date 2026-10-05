@@ -5,13 +5,14 @@
 //     configurados pela loja (padrão 5, para baixar e postar fora); vencido o
 //     prazo, mídias e texto completo são apagados e o post sai do painel —
 //     fica só no HISTÓRICO (data, contas, resultado e links).
-//   • Posts com erro/cancelados: o mesmo após 2 dias.
+//   • Posts cancelados: o mesmo após 2 dias; com erro (ou parciais): após
+//     KEEP_FAILED_DAYS (prazo prometido para "Tentar de novo").
 //   • Progresso do assistente "Nova publicação" parado há 2 dias é descartado.
 // Anúncios de veículos já enviados NÃO são apagados (seguem vivos nos canais).
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
-import { deleteVideoParts } from './social/avulsa'
+import { deleteVideoParts, KEEP_FAILED_DAYS } from './social/avulsa'
 import { sanitizeMedia } from './social/avulsa-core'
 
 import { RETENTION_DAYS } from './retention-core'
@@ -29,16 +30,23 @@ export async function applyRetention(now = new Date(), onlyTenantIds?: string[])
 
   // Posts avulsos encerrados → só histórico. Publicados: no prazo de guarda da loja.
   const failed = await prisma.socialPost.findMany({
-    where: { ...scope, status: { in: ['FALHA', 'CANCELADO'] }, updatedAt: { lt: limit }, NOT: { media: { equals: [] } } },
+    where: {
+      ...scope, NOT: { media: { equals: [] } },
+      OR: [{ status: 'CANCELADO', updatedAt: { lt: limit } }, { status: 'FALHA', updatedAt: { lt: new Date(now.getTime() - KEEP_FAILED_DAYS * 86_400_000) } }],
+    },
     select: { id: true, tenantId: true, media: true, caption: true }, take: 500,
   })
   const published = await prisma.socialPost.findMany({
     where: { ...scope, status: { in: ['PUBLICADO', 'PARCIAL'] }, publishedAt: { lt: new Date(now.getTime() - 86_400_000) }, NOT: { media: { equals: [] } } },
-    select: { id: true, tenantId: true, media: true, caption: true, publishedAt: true }, take: 500,
+    select: { id: true, tenantId: true, status: true, media: true, caption: true, publishedAt: true }, take: 500,
   })
   const keepDays = new Map<string, number>()
   for (const t of new Set(published.map((p) => p.tenantId))) keepDays.set(t, (await loadPublicationSettings(t)).posting.mediaKeepDays)
-  const expired = published.filter((p) => p.publishedAt && p.publishedAt.getTime() < now.getTime() - (keepDays.get(p.tenantId) ?? 5) * 86_400_000)
+  // Parcial: a rede que falhou ainda pode ser reenviada → guarda pelo menos KEEP_FAILED_DAYS.
+  const expired = published.filter((p) => {
+    const days = Math.max(keepDays.get(p.tenantId) ?? 5, p.status === 'PARCIAL' ? KEEP_FAILED_DAYS : 0)
+    return p.publishedAt && p.publishedAt.getTime() < now.getTime() - days * 86_400_000
+  })
   const done = [...failed, ...expired]
   for (const d of done) {
     await deleteVideoParts(d.tenantId, sanitizeMedia(d.media))

@@ -9,6 +9,7 @@
 import { prisma } from '@/lib/prisma'
 import { defaultSiteConfig, isValidSiteSlug, sanitizeSiteConfig, type SiteConfig } from './config-core'
 import { normalizeHost } from './host'
+import { isTenantAccessBlocked } from '@/lib/tenant-lifecycle/access'
 
 export * from './config-core'
 
@@ -85,6 +86,8 @@ export async function resolveSite(key: string, opts: { includeDisabled?: boolean
     tenantId = row?.value ?? null
   }
   if (!tenantId) return null
+  // Loja desativada/suspensa: site, formulários e catálogo saem do ar (404).
+  if (await isTenantAccessBlocked(tenantId)) return null
   const config = await loadSiteConfig(tenantId)
   return config.enabled || opts.includeDisabled ? { tenantId, config } : null
 }

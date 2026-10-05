@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { getSessionUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { queueDate, unitFromRequest } from '@/lib/seller-queue/queue'
+import { queueDayStart, unitFromRequest } from '@/lib/seller-queue/queue'
 import { assertModuleEnabled, canAccessModuleForUser } from '@/lib/tenant-modules'
 import type { SellerQueueEventType } from '@prisma/client'
 
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     const rows = await prisma.sellerQueueEvent.findMany({
       where: {
         tenantId, unitId,
-        createdAt: validBefore ? { lt: validBefore } : { gte: queueDate() },
+        createdAt: validBefore ? { lt: validBefore } : { gte: queueDayStart() },
         ...(type ? { type } : {}),
         ...(sellerId ? { sellerId } : {}),
       },

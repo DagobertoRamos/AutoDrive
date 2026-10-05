@@ -5,6 +5,8 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
+import { realPhotoUrls } from '@/lib/vehicle-placeholder'
 import { prisma } from '@/lib/prisma'
 import { forbiddenResponse, getSessionUser, unauthorizedResponse } from '@/lib/auth-guards'
 import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
@@ -30,23 +32,27 @@ export async function GET(req: Request) {
   const wanted = sp.get('state')
 
   try {
-    const rows = await prisma.vehicle.findMany({
-      where: {
-        tenantId,
-        ...(q ? { OR: [{ brand: { contains: q, mode: 'insensitive' } }, { model: { contains: q, mode: 'insensitive' } }, { plate: { contains: q.replace(/[^a-z0-9]/gi, ''), mode: 'insensitive' } }] } : {}),
-      },
-      select: {
-        id: true, brand: true, model: true, version: true, year: true, modelYear: true, plate: true, km: true, active: true, stockStatus: true,
-        salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true, mainPhotoUrl: true, createdAt: true,
-        _count: { select: { photos: true } },
-        photos: { select: { url: true }, orderBy: [{ isMain: 'desc' }, { order: 'asc' }], take: 1 },
-        siteListing: { select: { featured: true, hidden: true, title: true, description: true, options: true, videoUrl: true, seoTitle: true, seoDescription: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    })
+    const base: Prisma.VehicleWhereInput = {
+      tenantId,
+      ...(q ? { OR: [{ brand: { contains: q, mode: 'insensitive' } }, { model: { contains: q, mode: 'insensitive' } }, { plate: { contains: q.replace(/[^a-z0-9]/gi, ''), mode: 'insensitive' } }] } : {}),
+    }
+    // Estoque visível (ou escondido à mão) vem sempre, mesmo o antigo; o resto
+    // do histórico (vendidos etc.) só os mais recentes.
+    const relevant: Prisma.VehicleWhereInput = { OR: [{ active: true, stockStatus: { in: [...SITE_VISIBLE_STOCK] } }, { siteListing: { is: { hidden: true } } }] }
+    const select = {
+      id: true, brand: true, model: true, version: true, year: true, modelYear: true, plate: true, km: true, active: true, stockStatus: true,
+      salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true, mainPhotoUrl: true, createdAt: true,
+      photos: { select: { url: true }, orderBy: [{ isMain: 'desc' as const }, { order: 'asc' as const }] },
+      siteListing: { select: { featured: true, hidden: true, title: true, description: true, options: true, videoUrl: true, seoTitle: true, seoDescription: true } },
+    } satisfies Prisma.VehicleSelect
+    const [main, rest] = await Promise.all([
+      prisma.vehicle.findMany({ where: { AND: [base, relevant] }, select, orderBy: { createdAt: 'desc' }, take: 2000 }),
+      prisma.vehicle.findMany({ where: { AND: [base, { NOT: relevant }] }, select, orderBy: { createdAt: 'desc' }, take: 500 }),
+    ])
+    const rows = [...main, ...rest]
     const data = rows.map((r) => {
-      const state = siteVehicleState({ active: r.active, stockStatus: r.stockStatus }, r.siteListing ? { photosStatus: 'ORIGEM', hidden: r.siteListing.hidden } : null, r._count.photos)
+      const real = realPhotoUrls(r.photos.map((p) => p.url))
+      const state = siteVehicleState({ active: r.active, stockStatus: r.stockStatus }, r.siteListing ? { photosStatus: 'ORIGEM', hidden: r.siteListing.hidden } : null, real.length)
       const why = state !== 'HIDDEN' ? null
         : r.siteListing?.hidden ? 'escondido manualmente'
         : !r.active ? 'veículo inativo'
@@ -56,7 +62,7 @@ export async function GET(req: Request) {
       const price = effectivePrice(pl)
       return {
         id: r.id, title: vehicleTitle(t), slug: vehicleSlug(t), plate: r.plate, year: r.year, modelYear: r.modelYear, km: r.km,
-        cover: r.mainPhotoUrl || r.photos[0]?.url || null, photos: r._count.photos, state, why, ...price,
+        cover: (r.mainPhotoUrl && real.includes(r.mainPhotoUrl) ? r.mainPhotoUrl : real[0]) || null, photos: real.length, state, why, ...price,
         promo: { state: promoState(pl), salePrice: pl.salePrice, promoPrice: pl.promoPrice, startsAt: r.promoStartsAt, endsAt: r.promoEndsAt },
         listing: {
           featured: r.siteListing?.featured ?? false, hidden: r.siteListing?.hidden ?? false,

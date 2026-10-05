@@ -10,6 +10,7 @@
 import type { GoalPeriod, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { aggregateAchieved, type AggregationWindow } from '@/lib/goals/aggregators'
+import { getGoalPeriod } from '@/lib/goals/service'
 import { computeQueueScores } from '@/lib/seller-queue/quality'
 import { computeComplianceAdjustments } from '@/lib/seller-queue/compliance'
 import { applyRankingParticipationFilter, getRankingExcludedUnits } from '@/lib/ranking/participation'
@@ -98,30 +99,10 @@ export function resolvePeriodWindow(
 ): AggregationWindow {
   if (explicitStart && explicitEnd) return { start: explicitStart, end: explicitEnd }
 
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const d = now.getDate()
-  const endOfDay = (dt: Date) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 23, 59, 59, 999)
-
-  switch (period) {
-    case 'DAILY':
-      return { start: new Date(y, m, d), end: endOfDay(now) }
-    case 'WEEKLY': {
-      const day = now.getDay() // 0=domingo
-      const start = new Date(y, m, d - day)
-      return { start, end: endOfDay(new Date(y, m, d - day + 6)) }
-    }
-    case 'QUARTERLY': {
-      const q = Math.floor(m / 3)
-      return { start: new Date(y, q * 3, 1), end: endOfDay(new Date(y, q * 3 + 3, 0)) }
-    }
-    case 'YEARLY':
-      return { start: new Date(y, 0, 1), end: endOfDay(new Date(y, 11, 31)) }
-    case 'MONTHLY':
-    case 'CUSTOM':
-    default:
-      return { start: new Date(y, m, 1), end: endOfDay(new Date(y, m + 1, 0)) }
-  }
+  // Dias/meses no fuso de São Paulo (servidor roda em UTC).
+  const FREQ: Partial<Record<GoalPeriod, string>> = { DAILY: 'daily', WEEKLY: 'weekly', QUARTERLY: 'quarterly', YEARLY: 'yearly' }
+  const { startsAt, endsAt } = getGoalPeriod({ frequency: FREQ[period] ?? 'monthly', referenceDate: now })
+  return { start: startsAt, end: endsAt }
 }
 
 // ── Métricas negativas ──────────────────────────────────────────────────────────

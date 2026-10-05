@@ -20,7 +20,7 @@ const ENTRYPOINTS: { key: string; label: string; path: string; module?: string }
   { key: 'negociacoes', label: 'Negociações',         path: '/negociacoes',                 module: 'negotiations' },
   { key: 'estoque',     label: 'Estoque',             path: '/estoque',                     module: 'stock.view' },
   { key: 'fila',        label: 'Fila de Atendimento', path: '/vendedor-da-vez/minha-fila',  module: 'sellerQueue.view' },
-  { key: 'comissoes',   label: 'Comissões',           path: '/comissoes',                   module: 'commissions' },
+  { key: 'comissoes',   label: 'Comissões',           path: '/comissoes/extrato',           module: 'commissions' },
   { key: 'perfil',      label: 'Perfil',              path: '/configuracoes/perfil' },
 ]
 

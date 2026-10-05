@@ -5,7 +5,7 @@
 // 6 etapas: Placa → Veículo → FIPE/Preços → Cautelar → Cliente → Resultado
 // =============================================================================
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -653,6 +653,11 @@ function AvaliacaoForm() {
   // Nota: intention/result/stockType foram removidos do wizard. A intenção
   // e o resultado agora são definidos pelo gerente após "Enviar para aprovação".
   const [evaluationNotes, setEvaluationNotes] = useState('')
+  // Observações já gravadas (rascunho retomado): marcadores extras e o texto salvo,
+  // para não apagar nada no envio e só regravar quando mudou.
+  const notesLoadedFor = useRef<string | null>(null)
+  const notesExtras    = useRef<string[]>([])
+  const notesSaved     = useRef<string | null>(null)
 
   // ── Carga inicial ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -708,6 +713,20 @@ function AvaliacaoForm() {
       // EvaluationSections (e não o hardcode "DRAFT" / 0).
       if (d?.data?.status) setEvalStatus(String(d.data.status))
       if (d?.data?.reopenCount != null) setEvalReopenCount(Number(d.data.reopenCount) || 0)
+      if (d?.data && notesLoadedFor.current !== evaluationId) {
+        notesLoadedFor.current = evaluationId
+        const raw = typeof d.data.evaluationNotes === 'string' ? d.data.evaluationNotes : ''
+        const lines = raw.split(/\r?\n/)
+        const opc = lines.find((l: string) => l.startsWith('[Opcionais] '))
+        notesExtras.current = lines.filter((l: string) => l.startsWith('[Ano Modelo] '))
+        notesSaved.current = raw.trim() || null
+        const free = lines.filter((l: string) => !/^\[(Opcionais|Ano Modelo)\] /.test(l)).join('\n').trim()
+        if (free) setEvaluationNotes((prev) => prev || free)
+        if (opc) {
+          const list = opc.slice('[Opcionais] '.length).split(',').map((x: string) => x.trim()).filter(Boolean)
+          setOpcionais((prev) => (prev.length ? prev : list))
+        }
+      }
     } catch { /* silent */ }
   }, [evaluationId])
 
@@ -1880,11 +1899,19 @@ function AvaliacaoForm() {
                     }
                     // PATCH dos dados editáveis (mesmo handleSave faz isto, mas
                     // aqui só precisamos garantir observações + status)
-                    await fetch(`/api/evaluations/${id}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ evaluationNotes }),
-                    }).catch(() => {})
+                    const combinedNotes = [
+                      evaluationNotes.trim(),
+                      ...notesExtras.current,
+                      opcionais.length ? `[Opcionais] ${opcionais.join(', ')}` : '',
+                    ].filter(Boolean).join('\n').trim() || null
+                    if (combinedNotes !== notesSaved.current) {
+                      const pr = await fetch(`/api/evaluations/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ evaluationNotes: combinedNotes }),
+                      }).catch(() => null)
+                      if (pr?.ok) notesSaved.current = combinedNotes
+                    }
 
                     const r = await fetch(`/api/evaluations/${id}/submit-for-approval`, { method: 'POST' })
                     const d = await r.json()

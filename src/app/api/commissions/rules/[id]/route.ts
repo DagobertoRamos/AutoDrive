@@ -33,7 +33,11 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Acesso negado.' }, { status: 403 })
     }
 
-    const data = validateCommissionRulePayload(await req.json())
+    // Mescla sobre a regra atual: campo não enviado não é apagado.
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
+    const current: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(rule)) current[k] = v instanceof Date ? v.toISOString() : v != null && typeof v === 'object' ? String(v) : v
+    const data = validateCommissionRulePayload({ ...current, ...body })
     const referenceError = await validateCommissionRuleReferences(data, session.user.tenantId ?? null)
     if (referenceError) return NextResponse.json({ success: false, error: referenceError }, { status: 400 })
 

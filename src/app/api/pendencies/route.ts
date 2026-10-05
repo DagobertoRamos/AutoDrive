@@ -248,6 +248,7 @@ export async function POST(req: NextRequest) {
     // Audit log
     await prisma.auditLog.create({
       data: {
+        tenantId:  pendency.tenantId,
         userId:    session.user.id,
         userName:  session.user.name,
         userRole:  session.user.role,
@@ -270,7 +271,7 @@ export async function POST(req: NextRequest) {
             type:      'NOVA_PENDENCIA',
             title:     `Nova pendência: ${pendency.type ?? 'pendência'}`,
             message:   `${pendency.customerName}${pendency.plate ? ' — ' + pendency.plate : ''}${pendency.description ? ': ' + pendency.description : ''}`,
-            actionUrl: '/pendencias/central',
+            actionUrl: `/pendencias/central?id=${pendency.id}`,
           },
         })
       }

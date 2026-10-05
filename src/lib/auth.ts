@@ -118,6 +118,35 @@ async function getSessionIdleWindowSecs(): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// Revalidação do usuário no JWT (desativado/bloqueado/rebaixado perde acesso)
+// ---------------------------------------------------------------------------
+// Sem isto o token carregava role/status do LOGIN para sempre: um colaborador
+// desativado ou rebaixado continuava com acesso até a sessão expirar. Cache
+// curto por userId (1 query/min por usuário, por instância). FAIL-OPEN: erro de
+// banco devolve `undefined` e o token segue como está — uma oscilação do banco
+// NUNCA pode deslogar todo mundo. `null` = usuário não existe mais.
+type FreshUser = { status: string; role: string; tenantId: string | null; unitId: string | null }
+const USER_RECHECK_MS = 60_000
+const _userCache = new Map<string, { at: number; data: FreshUser | null }>()
+async function getFreshUser(userId: string): Promise<FreshUser | null | undefined> {
+  const now = Date.now()
+  const hit = _userCache.get(userId)
+  if (hit && now - hit.at < USER_RECHECK_MS) return hit.data
+  try {
+    const data = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { status: true, role: true, tenantId: true, unitId: true },
+    })
+    if (_userCache.size > 5000) _userCache.clear()
+    _userCache.set(userId, { at: now, data: data ? { ...data, role: String(data.role), status: String(data.status) } : null })
+    return _userCache.get(userId)!.data
+  } catch {
+    // fail-open: mantém o último valor conhecido (ou o próprio token).
+    return hit ? hit.data : undefined
+  }
+}
+
+// ---------------------------------------------------------------------------
 // NextAuth options
 // ---------------------------------------------------------------------------
 export const authOptions: NextAuthOptions = {
@@ -287,6 +316,17 @@ export const authOptions: NextAuthOptions = {
         token.mustChangePassword = (user as { mustChangePassword?: boolean }).mustChangePassword ?? false
         token.lastSeen          = nowSecs
         token.expired           = false
+        // Login acabou de ler o usuário do banco: semeia o cache (evita que um
+        // status antigo em cache derrube quem acabou de ser reativado).
+        _userCache.set(user.id, {
+          at: Date.now(),
+          data: {
+            status:   String((user as { status: UserStatus }).status),
+            role:     String((user as { role: UserRole }).role),
+            tenantId: (user as { tenantId: string | null }).tenantId,
+            unitId:   (user as { unitId: string | null }).unitId,
+          },
+        })
       }
       // Atualização vinda do client via useSession().update(...) — ex.: após
       // trocar a senha no 1º acesso, limpamos o flag para não voltar à tela.
@@ -308,6 +348,21 @@ export const authOptions: NextAuthOptions = {
         }
       } else {
         token.lastSeen = nowSecs
+      }
+
+      // Usuário desativado/bloqueado/excluído perde a sessão; mudança de papel,
+      // loja ou unidade passa a valer sem novo login. (Impersonação do MASTER
+      // não mora no token — é cookie `acting_tenant` — então não é afetada.)
+      if (!token.expired && typeof token.id === 'string') {
+        const fresh = await getFreshUser(token.id)
+        if (fresh === null || (fresh && fresh.status !== 'ATIVO')) {
+          token.expired = true
+        } else if (fresh) {
+          token.role     = fresh.role as UserRole
+          token.status   = fresh.status as UserStatus
+          token.tenantId = fresh.tenantId
+          token.unitId   = fresh.unitId
+        }
       }
 
       // Loja desativada/suspensa/cancelada: derruba também as sessões que já

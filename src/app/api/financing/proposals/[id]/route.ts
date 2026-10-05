@@ -12,6 +12,7 @@ import { updateProposalSchema } from '@/lib/validators/financing'
 import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
 import { isFiAllowed } from '@/lib/finance/fi-permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { tenantRefError } from '@/lib/finance/tenant-refs'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Ficha não encontrada.' }, { status: 404 })
@@ -45,6 +46,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Ficha de outro tenant.')
 
     const d = updateProposalSchema.parse(await req.json())
+    const refErr = await tenantRefError(existing.tenantId, d)
+    if (refErr) return NextResponse.json({ success: false, error: refErr }, { status: 400 })
     // Permissões F&I: aprovar/recusar a ficha é restrito a quem a loja autoriza.
     if ((d.status === 'APROVADA' || d.status === 'RECUSADA') && !(await isFiAllowed(existing.tenantId, 'aprovar', user.role))) {
       return forbiddenResponse('Seu perfil não pode aprovar/recusar fichas (Permissões F&I da loja).')

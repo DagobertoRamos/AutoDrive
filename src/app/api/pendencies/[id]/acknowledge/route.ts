@@ -36,9 +36,9 @@ export async function POST(_req: Request, ctxArg: { params: { id: string } | Pro
       }).catch(() => {})
     }
 
-    // Marca como lida a notificação de pendência do usuário (limpa o sininho).
+    // Marca como lidas só as notificações DESTA pendência (link com ?id=).
     await prisma.notification.updateMany({
-      where: { userId: session.user.id, read: false, actionUrl: { contains: '/pendencias' } },
+      where: { userId: session.user.id, read: false, actionUrl: { contains: `/pendencias/central?id=${params.id}` } },
       data:  { read: true },
     }).catch(() => {})
 

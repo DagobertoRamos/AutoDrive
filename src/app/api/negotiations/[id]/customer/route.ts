@@ -18,7 +18,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 import { canEditDeal } from '@/lib/negotiation-rbac'
 import { createDealAudit } from '@/lib/negotiation-service'
-import { personFields, upsertPerson, type PersonInput } from '@/lib/people/upsert-person'
+import { upsertPerson, type PersonInput } from '@/lib/people/upsert-person'
 import { isValidCPF } from '@/lib/br-docs/cpf'
 import { isValidCNPJ } from '@/lib/br-docs/cnpj'
 
@@ -59,23 +59,28 @@ export async function PATCH(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const r = await upsertPerson(tx, deal.tenantId, input, deal.personId)
+      // Janela completa: campo esvaziado apaga; troca PF↔PJ apaga o documento antigo.
+      const r = await upsertPerson(tx, deal.tenantId, input, deal.personId, { clearEmpty: true })
       if ('error' in r) return r
       if (deal.personId !== r.id) await tx.deal.update({ where: { id: deal.id }, data: { personId: r.id } })
       if (deal.customerId) {
-        // Customer legado (listas antigas e importações) acompanha o cadastro.
-        const f = personFields(input)
-        const address = [f.logradouro, f.numero].filter(Boolean).join(', ') || undefined
+        // Customer legado (listas antigas e importações) acompanha o que foi
+        // de fato gravado no cadastro (documento em conflito não é gravado).
+        const f = r.fields
+        const has = (k: string) => k in f
+        const str = (v: unknown) => (v == null || v === '' ? null : String(v))
+        const docSaved = has('cpf') || has('cnpj')
+        const addressSent = has('logradouro') || has('numero')
         await tx.customer.update({
           where: { id: deal.customerId },
           data: {
             personId: r.id, name,
-            ...(f.cpf || f.cnpj ? { cpf: String(f.cpf ?? f.cnpj) } : {}),
-            ...(f.phone ? { phone: String(f.phone) } : {}),
-            ...(f.email ? { email: String(f.email) } : {}),
-            ...(address ? { address } : {}),
-            ...(f.cidade ? { city: String(f.cidade) } : {}),
-            ...(f.estado ? { state: String(f.estado) } : {}),
+            ...(docSaved ? { cpf: str(f.cpf ?? f.cnpj) } : {}),
+            ...(has('phone') ? { phone: str(f.phone) } : {}),
+            ...(has('email') ? { email: str(f.email) } : {}),
+            ...(addressSent ? { address: [f.logradouro, f.numero].filter(Boolean).join(', ') || null } : {}),
+            ...(has('cidade') ? { city: str(f.cidade) } : {}),
+            ...(has('estado') ? { state: str(f.estado) } : {}),
           },
         })
       }

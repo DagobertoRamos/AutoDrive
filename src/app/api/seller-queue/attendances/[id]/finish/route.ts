@@ -48,6 +48,13 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const bodyJson = await req.json()
     const d = finishSchema.parse(bodyJson)
+    // Ids vindos do cliente precisam ser desta loja (anti cross-tenant).
+    const [leadOk, customerOk, dealOk] = await Promise.all([
+      d.leadId ? prisma.marketingLead.count({ where: { id: d.leadId, tenantId: att.tenantId, deletedAt: null } }) : 1,
+      d.customerId ? prisma.customer.count({ where: { id: d.customerId, tenantId: att.tenantId } }) : 1,
+      d.dealId ? prisma.deal.count({ where: { id: d.dealId, tenantId: att.tenantId } }) : 1,
+    ])
+    if (!leadOk || !customerOk || !dealOk) return NextResponse.json({ success: false, error: 'Lead, cliente ou negociação inválidos para esta loja.' }, { status: 400 })
     const hasCustomer = Boolean(d.customerId) || (Boolean(d.customerName?.trim()) && (d.customerPhone ?? '').replace(/\D/g, '').length >= 10)
 
     let allowBypassCustomer = false
@@ -98,15 +105,17 @@ export async function POST(req: Request, { params }: Ctx) {
     }).catch(() => 0)
     const hasPendingPersonal = pendingPersonalCount > 0
 
-    await prisma.$transaction(async (tx) => {
-      await tx.sellerQueueAttendance.update({
-        where: { id: att.id },
+    const finished = await prisma.$transaction(async (tx) => {
+      // Compare-and-set: clique duplo não finaliza 2x (nem cria 2 negociações).
+      const upd = await tx.sellerQueueAttendance.updateMany({
+        where: { id: att.id, status: { in: ['IN_ATTENDANCE', 'ACCEPTED'] } },
         data: {
           status: 'FINISHED', finishedAt: new Date(),
           type: d.type as SellerAttendanceType, result: d.result as SellerAttendanceResult,
           dealId: d.dealId ?? null, leadId: d.leadId ?? null, notes: d.notes ?? null,
         },
       })
+      if (upd.count !== 1) return false
       if (hasPendingPersonal) {
         // NÃO volta p/ a fila principal (ainda tem cliente na fila individual).
         // Só contabiliza o atendimento; o próximo item vai TOCAR abaixo.
@@ -119,7 +128,9 @@ export async function POST(req: Request, { params }: Ctx) {
         await tx.sellerQueueEntry.updateMany({ where: { queueId: att.queueId, sellerId: att.sellerId, status: { in: ['IN_ATTENDANCE', 'CALLED'] } }, data: { status: 'WAITING', pausedAt: null, lastActiveAt: new Date() } })
       }
       if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'DONE' } })
+      return true
     })
+    if (!finished) return NextResponse.json({ success: false, error: 'Atendimento não está em andamento.' }, { status: 409 })
 
     let out: { leadId?: string | null; dealId?: string | null; customerId?: string | null } | null = null
 

@@ -15,12 +15,15 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   if (a instanceof NextResponse) return a
   const { id } = await ctx.params
   const permanent = new URL(req.url).searchParams.get('permanente') === '1'
-  const post = await prisma.socialPost.findFirst({ where: { id, tenantId: a.tenantId }, select: { status: true, media: true } })
+  const post = await prisma.socialPost.findFirst({ where: { id, tenantId: a.tenantId }, select: { status: true, media: true, lockedUntil: true } })
   if (!post) return bad('Post não encontrado.', 404)
+  // A rotina está publicando este post agora: não dá para cancelar no meio.
+  const notLocked = { OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date() } }] }
+  if (post.lockedUntil && post.lockedUntil > new Date()) return bad('Este post está sendo publicado agora; aguarde terminar.', 409)
   if (permanent && post.status !== 'ENVIANDO') {
     await prisma.socialPost.delete({ where: { id } })
   } else if (post.status === 'RASCUNHO' || post.status === 'AGENDADO') {
-    const r = await prisma.socialPost.updateMany({ where: { id, tenantId: a.tenantId, status: { in: ['RASCUNHO', 'AGENDADO'] } }, data: { status: 'CANCELADO' } })
+    const r = await prisma.socialPost.updateMany({ where: { id, tenantId: a.tenantId, status: { in: ['RASCUNHO', 'AGENDADO'] }, ...notLocked }, data: { status: 'CANCELADO' } })
     if (!r.count) return bad('O post acabou de ir para a fila; atualize a tela.', 409)
   } else if (post.status === 'FALHA' || post.status === 'CANCELADO') {
     await prisma.socialPost.delete({ where: { id } })

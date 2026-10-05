@@ -8,6 +8,8 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessModule } from '@/lib/permissions'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { resolveActingTenant } from '@/lib/acting-tenant'
+import type { SessionUser } from '@/lib/auth-guards'
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,7 +23,13 @@ export async function GET(req: NextRequest) {
     const perPage = Math.min(100, Number(searchParams.get('perPage') ?? 50))
     const search  = searchParams.get('search') || undefined
 
-    const where: Record<string, unknown> = {}
+    // Isolamento multi-tenant: não-MASTER vê só a própria loja; MASTER vê a
+    // "loja ativa" escolhida (ou todas, se nenhuma selecionada).
+    const actingTenantId = await resolveActingTenant(session.user as SessionUser, req)
+    if (session.user.role !== 'MASTER' && !actingTenantId) {
+      return NextResponse.json({ success: false, error: 'Usuário sem empresa vinculada.' }, { status: 403 })
+    }
+    const where: Record<string, unknown> = actingTenantId ? { tenantId: actingTenantId } : {}
     if (search) {
       where.OR = [
         { name:  { contains: search, mode: 'insensitive' } },

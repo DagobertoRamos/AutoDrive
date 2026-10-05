@@ -15,6 +15,7 @@ import { updateEntrySchema } from '@/lib/validators/finance'
 import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { applyStatusSideEffects } from '@/lib/finance/entry-settlement'
+import { tenantRefError } from '@/lib/finance/tenant-refs'
 
 type Ctx = { params: Promise<{ id: string }> }
 const notFound = () => NextResponse.json({ success: false, error: 'Lançamento não encontrado.' }, { status: 404 })
@@ -49,6 +50,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Lançamento de outro tenant.')
 
     const d = updateEntrySchema.parse(await req.json())
+    const refErr = await tenantRefError(existing.tenantId, d)
+    if (refErr) return NextResponse.json({ success: false, error: refErr }, { status: 400 })
     const updateData: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(d)) if (v !== undefined) updateData[k] = v
 

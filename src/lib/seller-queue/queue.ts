@@ -8,6 +8,7 @@ import { prisma } from '../prisma'
 import type { Prisma, SellerQueueEventType, SellerPresenceMethod } from '@prisma/client'
 import { evaluatePresence, type PresenceConfig, type PresenceInput, type PresenceResult } from './geo'
 import { flagFraud } from './fraud'
+import { queueDate } from './queue-date'
 
 const STORE_PANEL_EMAILS = new Set(['filadeatendimento@easycarveiculo.com.br'])
 
@@ -15,10 +16,8 @@ export function isQueuePanelFallbackUser(user: { email?: string | null }): boole
   return STORE_PANEL_EMAILS.has(String(user.email ?? '').trim().toLowerCase())
 }
 
-/** Data (sem hora) de hoje, em UTC — suficiente p/ o campo @db.Date da fila. */
-export function queueDate(now = new Date()): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-}
+// Dia da fila no fuso de São Paulo (ver queue-date.ts).
+export { queueDate, queueDayStart } from './queue-date'
 
 /**
  * Unidade efetiva da requisição: `?unitId=` (override explícito) → unidade do

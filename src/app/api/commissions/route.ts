@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
     const STATUS_RANK: Record<string, number> = { PREVISTO: 0, AJUSTADO: 1, APROVADO: 1, PAGO: 2, CANCELADO: 3 }
     const groups = new Map<string, Group>()
     for (const r of rows) {
-      if (r.status === 'CANCELADO') continue
+      if (r.status === 'CANCELADO' && status !== 'CANCELADO') continue // cancelada só aparece se pedida no filtro
       let earnerId = ''
       let responsavel = '—'
       if (r.sellerId) { earnerId = `s:${r.sellerId}`; responsavel = sellerMap[r.sellerId] ?? '—' }
@@ -144,15 +144,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Dados inválidos.' }, { status: 400 })
     }
 
-    // Buscar userId de cada vendedor para preencher campo obrigatório
+    // Buscar userId de cada vendedor para preencher campo obrigatório (só da loja da sessão)
+    const tenantId  = session.user.tenantId ?? null
     const sellerIds = [...new Set(results.map((r) => r.sellerId))]
     const sellers   = await prisma.seller.findMany({
-      where: { id: { in: sellerIds } },
+      where: { id: { in: sellerIds }, ...(tenantId ? { unit: { tenantId } } : {}) },
       select: { id: true, userId: true, fullName: true, shortName: true },
     })
     const sellerMap = Object.fromEntries(sellers.map((s) => [s.id, s]))
 
-    const creates: ReturnType<typeof prisma.commissionExtract.create>[] = []
+    const creates: Prisma.CommissionExtractUncheckedCreateInput[] = []
 
     for (const r of results) {
       const seller = sellerMap[r.sellerId]
@@ -161,42 +162,46 @@ export async function POST(req: NextRequest) {
 
       // Valor base
       if (r.baseValue !== 0) {
-        creates.push(
-          prisma.commissionExtract.create({
-            data: {
-              userId,
-              sellerId:    r.sellerId,
-              period,
-              type:        'BASE',
-              description: `Base — ${seller.shortName ?? seller.fullName}`,
-              value:       r.baseValue,
-              status:      'PREVISTO',
-            },
-          }),
-        )
+        creates.push({
+          tenantId,
+          userId,
+          sellerId:    r.sellerId,
+          period,
+          type:        'BASE',
+          description: `Base — ${seller.shortName ?? seller.fullName}`,
+          value:       r.baseValue,
+          status:      'PREVISTO',
+        })
       }
 
       // Ajustes (positivo ou negativo)
       if (r.adjustments !== 0) {
-        creates.push(
-          prisma.commissionExtract.create({
-            data: {
-              userId,
-              sellerId:    r.sellerId,
-              period,
-              type:        'AJUSTE',
-              description: `Ajuste — ${seller.shortName ?? seller.fullName}`,
-              value:       r.adjustments,
-              status:      'PREVISTO',
-            },
-          }),
-        )
+        creates.push({
+          tenantId,
+          userId,
+          sellerId:    r.sellerId,
+          period,
+          type:        'AJUSTE',
+          description: `Ajuste — ${seller.shortName ?? seller.fullName}`,
+          value:       r.adjustments,
+          status:      'PREVISTO',
+        })
       }
     }
 
-    const created = await Promise.all(creates)
+    // Idempotente: salvar de novo o mesmo período substitui o extrato PREVISTO anterior
+    // (BASE/AJUSTE) dos vendedores, em vez de duplicar a cada clique.
+    const savedSellerIds = [...new Set(creates.map((c) => c.sellerId as string))]
+    const count = await prisma.$transaction(async (tx) => {
+      if (savedSellerIds.length) {
+        await tx.commissionExtract.deleteMany({
+          where: { tenantId, period, sellerId: { in: savedSellerIds }, type: { in: ['BASE', 'AJUSTE'] }, status: 'PREVISTO' },
+        })
+      }
+      return creates.length ? (await tx.commissionExtract.createMany({ data: creates })).count : 0
+    })
 
-    return NextResponse.json({ success: true, data: created, count: created.length }, { status: 201 })
+    return NextResponse.json({ success: true, count }, { status: 201 })
   } catch (err) {
     console.error('[POST /api/commissions]', err)
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })

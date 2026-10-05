@@ -37,9 +37,9 @@ export async function POST(
   const session = await getServerAuthSession()
   if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   try { requireModule(session.user.role, 'stock') } catch {
-  { const gate = await assertModuleEnabled(session.user, 'stock.view'); if (gate) return gate }
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
+  { const gate = await assertModuleEnabled(session.user, 'stock.view'); if (gate) return gate }
 
   let body: { decision?: string; note?: string; availableFor?: string[] } = {}
   try { body = await req.json() } catch { /* sem body */ }

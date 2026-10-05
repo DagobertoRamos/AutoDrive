@@ -11,6 +11,7 @@ import { canEditDeal }          from '@/lib/negotiation-rbac'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere, getNegotiationActorIds } from '@/lib/negotiation-access'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 import { debtRowLabel, logDealChild, payLabel, statusPt } from '@/lib/negotiation/children-sync'
 
 async function getDealAndCheck(dealId: string, session: NonNullable<Awaited<ReturnType<typeof getServerAuthSession>>>) {
@@ -57,7 +58,7 @@ export async function PATCH(
         ...(value       !== undefined && { value: Number(value) }),
         ...(responsavel !== undefined && { responsavel }),
         ...(notes       !== undefined && { notes       }),
-        ...(dueDate     !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+        ...(dueDate     !== undefined && { dueDate: parseDateOnly(dueDate) }),
       },
     })
 

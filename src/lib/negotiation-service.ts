@@ -7,14 +7,45 @@ import { prisma } from '@/lib/prisma'
 
 // ── Geração de número de negociação ──────────────────────────────────────────
 
-export async function generateDealNumber(tenantId: string): Promise<string> {
-  const year = new Date().getFullYear()
-  const count = await prisma.deal.count({
-    where: { tenantId, dealNumber: { startsWith: `NEG-${year}-` } },
-  })
+type DealNumberDb = { deal: Pick<PrismaClient['deal'], 'findMany' | 'findFirst' | 'update'> }
 
-  const seq = String(count + 1).padStart(4, '0')
-  return `NEG-${year}-${seq}`
+/** Maior sequência já usada no ano (não usa count: exclusões/importações geravam número repetido). */
+export async function generateDealNumber(tenantId: string | null | undefined, db: DealNumberDb = prisma): Promise<string> {
+  const year = new Date().getFullYear()
+  const prefix = `NEG-${year}-`
+  const rows = await db.deal.findMany({
+    where: { tenantId: tenantId ?? undefined, dealNumber: { startsWith: prefix } },
+    select: { dealNumber: true },
+  })
+  let max = 0
+  for (const r of rows) {
+    const n = parseInt(String(r.dealNumber ?? '').slice(prefix.length), 10)
+    if (Number.isFinite(n) && n > max) max = n
+  }
+  return `${prefix}${String(max + 1).padStart(4, '0')}`
+}
+
+/**
+ * Sem índice único no banco: depois de gravar, se outra negociação (anterior)
+ * ficou com o mesmo número, esta recebe um novo. Tenta algumas vezes.
+ */
+export async function ensureUniqueDealNumber(dealId: string, db: DealNumberDb = prisma): Promise<string | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const me = await db.deal.findFirst({ where: { id: dealId }, select: { id: true, tenantId: true, dealNumber: true, createdAt: true } }) as
+      { id: string; tenantId: string | null; dealNumber: string | null; createdAt: Date } | null
+    if (!me?.dealNumber) return me?.dealNumber ?? null
+    const dup = await db.deal.findFirst({
+      where: {
+        tenantId: me.tenantId ?? undefined, dealNumber: me.dealNumber, id: { not: me.id },
+        OR: [{ createdAt: { lt: me.createdAt } }, { createdAt: me.createdAt, id: { lt: me.id } }],
+      },
+      select: { id: true },
+    })
+    if (!dup) return me.dealNumber
+    const next = await generateDealNumber(me.tenantId, db)
+    await db.deal.update({ where: { id: me.id }, data: { dealNumber: next } })
+  }
+  return null
 }
 
 // ── Auditoria de deal ─────────────────────────────────────────────────────────
@@ -103,11 +134,11 @@ export function computeDealTotals(data: {
   const discount   = Number(data.discountAmount ?? 0)
   const payoff     = Number(data.payoffAmount   ?? 0)
 
-  // total a receber: sinal + financiamento + serviços + taxa doc
-  const totalPayments = signal + financed + services + docFee
+  // pagamentos: sinal + financiamento (serviços e taxa doc são cobranças, não pagamentos)
+  const totalPayments = signal + financed
 
-  // saldo: venda - desconto - troca - pagamentos recebidos
-  const balance = (sale - discount) - trade - totalPayments
+  // saldo: venda - desconto + taxa doc + serviços - troca - pagamentos
+  const balance = (sale - discount) + docFee + services - trade - totalPayments
 
   // margem: venda - compra - desconto - payoff de veículo de troca
   const marginAmount = sale - purchase - discount - payoff

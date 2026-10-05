@@ -30,17 +30,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
   }
 }
-
-export async function POST(req: Request) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
-
-    const body = await req.json()
-    const notification = await prisma.notification.create({ data: body })
-
-    return NextResponse.json({ success: true, data: notification }, { status: 201 })
-  } catch {
-    return NextResponse.json({ success: false, error: 'Erro interno' }, { status: 500 })
-  }
-}

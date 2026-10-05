@@ -6,6 +6,8 @@
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
+import { realPhotoUrls } from '@/lib/vehicle-placeholder'
+import { isTenantAccessBlocked } from '@/lib/tenant-lifecycle/access'
 import { effectivePrice } from '@/lib/site/listing-core'
 import { PUBLISHABLE_STOCK } from '../sale-rules-core'
 import { utcToLocalInput } from '../schedule-core'
@@ -34,11 +36,12 @@ export async function planAutoProgram(tenantId: string, now = new Date()): Promi
   if (!open.length) return { planned: 0, results: [], message: 'Grade das próximas 48 h já preenchida.' }
 
   // Estoque anunciável com foto + quando apareceu por último nas redes.
-  const vehicles = await prisma.vehicle.findMany({
+  // Arte "em breve" não conta como foto.
+  const vehicles = (await prisma.vehicle.findMany({
     where: { tenantId, active: true, stockStatus: { in: [...PUBLISHABLE_STOCK] }, photos: { some: {} } },
-    select: { id: true, createdAt: true, salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true, siteListing: { select: { videoUrl: true } } },
+    select: { id: true, createdAt: true, salePrice: true, promoPrice: true, isPromo: true, promoStartsAt: true, promoEndsAt: true, siteListing: { select: { videoUrl: true } }, photos: { select: { url: true } } },
     take: 500,
-  })
+  })).filter((v) => realPhotoUrls(v.photos.map((p) => p.url)).length > 0)
   if (!vehicles.length) return { planned: 0, results: [], message: 'Nenhum carro disponível com fotos para programar.' }
   const recent = await prisma.publication.groupBy({
     by: ['vehicleId'], where: { tenantId, vehicleId: { in: vehicles.map((v) => v.id) }, channel: { in: [...SOCIAL_CHANNELS] } },
@@ -82,6 +85,7 @@ export async function planAllAutoPrograms(now = new Date()): Promise<Array<{ ten
   for (const r of rows) {
     const tenantId = /^t:(.+):publications:v1$/.exec(r.key)?.[1]
     if (!tenantId) continue
+    if (await isTenantAccessBlocked(tenantId)) continue // loja desativada/suspensa não publica
     try { const x = await planAutoProgram(tenantId, now); if (x.planned || x.message.includes('conectada')) out.push({ tenantId, planned: x.planned, message: x.message }) } catch (e) { out.push({ tenantId, planned: 0, message: `Erro: ${(e as Error).message}` }) }
   }
   return out

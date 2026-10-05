@@ -13,10 +13,12 @@ import {
   forbiddenResponse,
   hasRole,
   MANAGEMENT_ROLES,
+  assertUnitBelongsToTenant,
 } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import type { UserRole } from '@prisma/client'
+import { canActOn } from '@/lib/role-hierarchy'
 
 // ── Verificar se seller pertence ao tenant do usuário ────────────────────────
 
@@ -48,8 +50,23 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
       )
     }
 
+    // Hierarquia: só age sobre colaborador ABAIXO de si (ou sobre o próprio
+    // cadastro). Vale para qualquer alteração, inclusive e-mail (login).
+    const targetUser = await prisma.user.findUnique({
+      where:  { id: existing.userId },
+      select: { id: true, role: true },
+    })
+    const isSelf = existing.userId === user.id
+    if (!isSelf && !canActOn(user.role, targetUser?.role ?? null)) {
+      return forbiddenResponse('Você não pode editar colaborador com cargo igual ou superior ao seu.')
+    }
+
     const body = await req.json()
     const { fullName, shortName, cpf, whatsapp, email, unitId, cargo, active, receivesCharge, positionId } = body
+
+    if (unitId !== undefined && unitId !== null && unitId !== '') {
+      await assertUnitBelongsToTenant(String(unitId), user.tenantId, user.role)
+    }
 
     // Valida positionId (se fornecido) e captura o baseRole do cargo.
     let positionUpdate: string | null | undefined = undefined
@@ -79,6 +96,11 @@ export async function PATCH(req: Request, ctxArg: { params: { id: string } | Pro
     const derivedRole: UserRole | null = (positionBaseRole && positionBaseRole !== 'MASTER')
       ? (positionBaseRole as UserRole)
       : null
+    // Anti-escalonamento: o novo papel precisa ficar abaixo do de quem edita
+    // (manter o papel atual do alvo é permitido, ex.: salvar o próprio cadastro).
+    if (derivedRole && derivedRole !== targetUser?.role && !canActOn(user.role, derivedRole)) {
+      return forbiddenResponse('Você não pode atribuir cargo igual ou superior ao seu.')
+    }
 
     const seller = await prisma.seller.update({
       where: { id: params.id },
@@ -134,6 +156,15 @@ export async function DELETE(req: Request, ctxArg: { params: { id: string } | Pr
         { success: false, error: 'Vendedor não encontrado.' },
         { status: 404 },
       )
+    }
+
+    // Hierarquia: só exclui colaborador ABAIXO de si (nunca o próprio cadastro).
+    const targetUser = await prisma.user.findUnique({
+      where:  { id: existing.userId },
+      select: { role: true },
+    })
+    if (existing.userId === user.id || !canActOn(user.role, targetUser?.role ?? null)) {
+      return forbiddenResponse('Você não pode excluir colaborador com cargo igual ou superior ao seu.')
     }
 
     await prisma.seller.delete({ where: { id: params.id } })

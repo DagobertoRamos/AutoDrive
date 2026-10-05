@@ -13,6 +13,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { createEntrySchema } from '@/lib/validators/finance'
 import { zodErrorResponse, num, entryTextSearch } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { tenantRefError } from '@/lib/finance/tenant-refs'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -57,6 +58,7 @@ export async function GET(req: Request) {
       account: e.account?.name ?? null, category: e.category?.name ?? null,
       source: e.source, counterparty: e.counterparty, documentNumber: e.documentNumber,
       unitId: e.unitId, sellerId: e.sellerId, createdAt: e.createdAt,
+      categoryId: e.categoryId, accountId: e.accountId, paymentMethod: e.paymentMethod, notes: e.notes,
     }))
     const totals = Object.fromEntries(byType.map((g) => [g.type, { total: num(g._sum.amount), count: g._count._all }]))
     return NextResponse.json({ success: true, data, totals })
@@ -75,6 +77,8 @@ export async function POST(req: Request) {
     const tenantId = assertTenantId(user.tenantId, user.role)
     const d = createEntrySchema.parse(await req.json())
     if (!d.dueDate) return NextResponse.json({ success: false, error: 'Informe o vencimento.' }, { status: 400 })
+    const refErr = await tenantRefError(tenantId, d)
+    if (refErr) return NextResponse.json({ success: false, error: refErr }, { status: 400 })
     const entry = await prisma.financialEntry.create({
       data: {
         tenantId, type: d.type, status: d.status, description: d.description, amount: d.amount,

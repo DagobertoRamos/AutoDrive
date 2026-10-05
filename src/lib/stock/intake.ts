@@ -61,9 +61,16 @@ export async function syncIntake(vehicleId: string, actor: Actor = null): Promis
     }
   }
 
-  const state = intakeState(v.stockPendencies.map((p) => ({ label: p.option.label, resolved: p.resolved })), v.stockStatus)
+  const list = v.stockPendencies.map((p) => ({ label: p.option.label, resolved: p.resolved }))
+  // Serviços lançados depois da entrada (sem a etapa registrada) também seguram o carro em serviço.
+  if (!svc && v.services.length > 0 && !servicesDone(v.services)) list.push({ label: STAGE_SERVICES, resolved: false })
+  const state = intakeState(list, v.stockStatus)
   if (state.nextStatus) {
-    await prisma.vehicle.update({ where: { id: v.id }, data: { stockStatus: state.nextStatus as VehicleStockStatus } })
+    // Liberou na esteira → fica à venda (senão salvar o preço devolveria para precificação)
+    const data = state.nextStatus === 'DISPONIVEL'
+      ? { stockStatus: state.nextStatus as VehicleStockStatus, isAvailableForSale: true }
+      : { stockStatus: state.nextStatus as VehicleStockStatus }
+    await prisma.vehicle.update({ where: { id: v.id }, data })
     await prisma.auditLog.create({
       data: {
         userId: actor?.id ?? null, tenantId: v.tenantId ?? null, action: 'STOCK_INTAKE_STATUS', entity: 'Vehicle', entityId: v.id,

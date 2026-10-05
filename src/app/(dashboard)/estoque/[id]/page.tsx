@@ -62,6 +62,7 @@ interface VehicleDetail {
   cautelarStatus: string
   cautelarNumber: string | null
   cautelarNotes:  string | null
+  originEvaluationId?: string | null
   mainPhotoUrl:   string | null
   notes:          string | null
   active:         boolean
@@ -681,7 +682,8 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
         {activeTab === 'cautelar' && (
           <CautelarPanel
             vehicleId={vehicle.id} cautelarStatus={vehicle.cautelarStatus} cautelarNumber={vehicle.cautelarNumber ?? null}
-            cautelarNotes={vehicle.cautelarNotes ?? null} canEdit={canManage} onSaved={reloadVehicle}
+            cautelarNotes={vehicle.cautelarNotes ?? null} originEvaluationId={vehicle.originEvaluationId ?? null}
+            canEdit={canManage} onSaved={reloadVehicle}
           />
         )}
 

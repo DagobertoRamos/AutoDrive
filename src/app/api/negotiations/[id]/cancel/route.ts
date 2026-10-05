@@ -8,7 +8,8 @@ import { prisma } from '@/lib/prisma'
 import { requireModule } from '@/lib/permissions'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canCancelDeal } from '@/lib/negotiation-permissions'
-import { createDealAudit, createStatusHistory, updateVehicleStock } from '@/lib/negotiation-service'
+import { createDealAudit, createStatusHistory } from '@/lib/negotiation-service'
+import { releaseStock } from '@/lib/negotiation/deal-children'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { cancelCommissionsForDeal } from '@/lib/commission/sync'
 import { reopenNegotiationGate } from '@/lib/stock/intake'
@@ -46,6 +47,11 @@ export async function POST(
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
+  // Finalizada: reabrir antes (o carro já foi vendido). Cancelada: nada a fazer.
+  if (deal.status === 'FINALIZADA' || deal.status === 'CANCELADA') {
+    return NextResponse.json({ error: deal.status === 'FINALIZADA' ? 'Negociação finalizada. Reabra antes de cancelar.' : 'Negociação já está cancelada.' }, { status: 409 })
+  }
+
   if (!canCancelDeal(session.user.role, deal.status)) {
     return NextResponse.json({ error: 'Sem permissão para cancelar esta negociação no status atual' }, { status: 403 })
   }
@@ -73,11 +79,10 @@ export async function POST(
         },
       })
 
-      // Liberar veículos vendidos/comprados de volta ao estoque
+      // Devolve ao estoque só o carro que esta venda segurava (em negociação/reservado)
+      // e que nenhuma outra venda ativa segura. Carro comprado/consignado não muda.
       for (const dv of deal.vehicles) {
-        if (dv.vehicleId && (dv.role === 'VENDIDO' || dv.role === 'COMPRADO')) {
-          await updateVehicleStock(tx as any, dv.vehicleId, 'DISPONIVEL')
-        }
+        if (dv.vehicleId && dv.role === 'VENDIDO') await releaseStock(tx, dv.vehicleId, params.id)
       }
 
       await createStatusHistory(tx as any, params.id, deal.status, 'CANCELADA', session.user.id, body.reason)

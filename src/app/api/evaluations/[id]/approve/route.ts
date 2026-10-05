@@ -7,7 +7,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { loadEvaluationContext } from '@/lib/evaluation/service'
-import { canApproveServices }   from '@/lib/evaluation/permissions'
+import { canApproveServices, canViewEvaluation }   from '@/lib/evaluation/permissions'
 import { recordHistory }        from '@/lib/evaluation/history'
 
 export async function POST(
@@ -23,6 +23,12 @@ export async function POST(
     const user = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId }
     if (!canApproveServices(user)) {
       return NextResponse.json({ error: 'Apenas gerência pode aprovar.' }, { status: 403 })
+    }
+    if (!canViewEvaluation(user, ctx)) {
+      return NextResponse.json({ error: 'Avaliação não encontrada' }, { status: 404 })
+    }
+    if (ctx.vehicleId || ['CANCELADA', 'CANCELED', 'NO_ESTOQUE', 'AGUARDANDO_ENTRADA'].includes(ctx.status)) {
+      return NextResponse.json({ error: 'Avaliação cancelada ou já encaminhada ao estoque; ação indisponível.' }, { status: 409 })
     }
 
     const updated = await prisma.vehicleEvaluation.update({

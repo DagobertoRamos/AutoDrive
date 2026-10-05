@@ -21,6 +21,10 @@ import {
 } from './feed-import-core'
 import { normalizeOrigin } from '@/lib/stock/origin-core'
 import { ensurePartnerStoreByName } from '@/lib/stock/partner-stores'
+import { realPhotoUrls } from '@/lib/vehicle-placeholder'
+
+// Status definidos no SaaS que a importação nunca sobrescreve.
+const KEEP_STOCK = ['VENDIDO', 'EM_NEGOCIACAO', 'RESERVADO']
 
 type Item = FeedVehicle & { extras: FeedExtras }
 
@@ -43,7 +47,8 @@ export interface FeedImportResult {
 
 // slugs: link antigo (/veiculos/<slug> do site de origem) → vehicleId, p/ redirecionar.
 // origins: vehicleId → dados de origem (loja parceira, código, link...) — o Vehicle não tem colunas p/ isso.
-interface ImportState { map: Record<string, string>; slugs: Record<string, string>; origins: Record<string, FeedOrigin>; last?: FeedImportResult }
+// removed: veículos que a PRÓPRIA importação desativou (saíram do feed) — só esses voltam sozinhos.
+interface ImportState { map: Record<string, string>; slugs: Record<string, string>; origins: Record<string, FeedOrigin>; removed: Record<string, true>; last?: FeedImportResult }
 
 export function feedImportSources(env = process.env.SITE_FEED_IMPORT): FeedImportSource[] {
   return String(env ?? '').split(';').map((s) => s.trim()).filter(Boolean).flatMap((s) => {
@@ -56,7 +61,7 @@ const stateKey = (tenantId: string) => `t:${tenantId}:site:feedimport:v1`
 
 async function loadState(tenantId: string): Promise<ImportState> {
   const row = await prisma.systemSetting.findFirst({ where: { key: stateKey(tenantId) }, select: { value: true } })
-  try { const s = JSON.parse(row?.value ?? '{}'); return { map: s.map ?? {}, slugs: s.slugs ?? {}, origins: s.origins ?? {}, last: s.last } } catch { return { map: {}, slugs: {}, origins: {} } }
+  try { const s = JSON.parse(row?.value ?? '{}'); return { map: s.map ?? {}, slugs: s.slugs ?? {}, origins: s.origins ?? {}, removed: s.removed ?? {}, last: s.last } } catch { return { map: {}, slugs: {}, origins: {}, removed: {} } }
 }
 
 async function saveState(tenantId: string, state: ImportState) {
@@ -144,12 +149,13 @@ function vehicleData(item: Item) {
     bodyType: item.bodyType,
     color: item.color,
     vehicleType: item.vehicleType,
-    mainPhotoUrl: item.photos[0] ?? null,
+    mainPhotoUrl: realPhotoUrls(item.photos)[0] ?? null,
     ...(item.inspected ? { cautelarStatus: 'APROVADA' as const } : {}),
   }
 }
 
-async function writePhotos(vehicleId: string, photos: string[]) {
+async function writePhotos(vehicleId: string, all: string[]) {
+  const photos = realPhotoUrls(all) // arte "em breve" do site antigo não vira foto
   await prisma.$transaction([
     prisma.vehiclePhoto.deleteMany({ where: { vehicleId } }),
     prisma.vehiclePhoto.createMany({ data: photos.map((url, i) => ({ vehicleId, url, order: i, isMain: i === 0 })) }),
@@ -168,7 +174,7 @@ async function upsertListing(tenantId: string, vehicleId: string, item: Item) {
   }
   await prisma.siteListing.upsert({
     where: { vehicleId },
-    create: { tenantId, vehicleId, ...data, publishedAt: item.photos.length ? new Date() : null },
+    create: { tenantId, vehicleId, ...data, publishedAt: realPhotoUrls(item.photos).length ? new Date() : null },
     update: data,
   })
 }
@@ -218,7 +224,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         if (item.legacySlug) state.slugs[item.legacySlug] = v.id
         if (item.extras.origin) state.origins[v.id] = item.extras.origin
         await applyFeedOrigin(src.tenantId, v.id, item.extras.origin, true)
-        if (item.photos.length) await writePhotos(v.id, item.photos)
+        if (realPhotoUrls(item.photos).length) await writePhotos(v.id, item.photos)
         await upsertListing(src.tenantId, v.id, item)
         created++
       }
@@ -234,11 +240,17 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
         // capa ficam como estão; o resto do cadastro segue o site de origem.
         const locked = cur?.siteListing?.photosLocked === true
         const { mainPhotoUrl, ...data } = vehicleData(item)
+        // Só reativa o que a importação desativou; apagado/vendido no SaaS fica como está.
+        const revive = !!cur && !cur.active && state.removed[vehicleId] === true
+        const reviveData = revive
+          ? { active: true, exitDate: null, ...(KEEP_STOCK.includes(cur.stockStatus ?? '') ? {} : { stockStatus: item.extras.reserved ? 'RESERVADO' as const : 'DISPONIVEL' as const }) }
+          : {}
         await prisma.vehicle.update({
           where: { id: vehicleId },
-          data: { ...data, ...(locked ? {} : { mainPhotoUrl }), ...reservedSync, ...(cur && !cur.active ? { active: true, exitDate: null, stockStatus: item.extras.reserved ? 'RESERVADO' : 'DISPONIVEL' } : {}) },
+          data: { ...data, ...(locked ? {} : { mainPhotoUrl }), ...reservedSync, ...reviveData },
         })
-        if (!locked && !samePhotos(cur?.photos.map((p) => p.url) ?? [], item.photos)) await writePhotos(vehicleId, item.photos)
+        delete state.removed[vehicleId]
+        if (!locked && !samePhotos(cur?.photos.map((p) => p.url) ?? [], realPhotoUrls(item.photos))) await writePhotos(vehicleId, item.photos)
         await upsertListing(src.tenantId, vehicleId, item)
         if (item.legacySlug) state.slugs[item.legacySlug] = vehicleId
         if (item.extras.origin) state.origins[vehicleId] = item.extras.origin
@@ -247,6 +259,7 @@ export async function runFeedImport(src: FeedImportSource): Promise<FeedImportRe
       }
       if (plan.remove.length) {
         await prisma.vehicle.updateMany({ where: { id: { in: plan.remove }, tenantId: src.tenantId }, data: { active: false, exitDate: new Date() } })
+        for (const id of plan.remove) state.removed[id] = true
       }
       result = { ...base, ok: true, feed: items.length, created, updated, removed: plan.remove.length, aborted: null, ...enrichInfo }
     }

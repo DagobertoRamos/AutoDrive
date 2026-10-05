@@ -189,10 +189,12 @@ export function pendencySettingsKeyForTenant(tenantId: string): string {
   return `t:${tenantId}:${PENDENCY_SETTINGS_KEY_BASE}`
 }
 
-export function pendencySettingsKeyForSession(role: string, tenantId: string | null | undefined): string {
-  return role === 'MASTER' || !tenantId
-    ? `global:${PENDENCY_SETTINGS_KEY_BASE}`
-    : pendencySettingsKeyForTenant(tenantId)
+export const GLOBAL_PENDENCY_SETTINGS_KEY = `global:${PENDENCY_SETTINGS_KEY_BASE}`
+
+// MASTER dentro de uma loja grava na chave da loja (a que os motores leem);
+// só sem tenant na sessão usa a chave global (padrão para todas as lojas).
+export function pendencySettingsKeyForSession(_role: string, tenantId: string | null | undefined): string {
+  return tenantId ? pendencySettingsKeyForTenant(tenantId) : GLOBAL_PENDENCY_SETTINGS_KEY
 }
 
 export function tenantIdFromPendencySettingsKey(key: string): string | null {
@@ -201,7 +203,11 @@ export function tenantIdFromPendencySettingsKey(key: string): string | null {
 }
 
 export async function loadPendencySettingsByKey(key: string): Promise<PendencySettings> {
-  const row = await prisma.systemSetting.findFirst({ where: { key }, select: { value: true } }).catch(() => null)
+  let row = await prisma.systemSetting.findFirst({ where: { key }, select: { value: true } }).catch(() => null)
+  // Loja sem configuração própria herda o padrão global (MASTER) antes dos defaults.
+  if (!row?.value && key !== GLOBAL_PENDENCY_SETTINGS_KEY) {
+    row = await prisma.systemSetting.findFirst({ where: { key: GLOBAL_PENDENCY_SETTINGS_KEY }, select: { value: true } }).catch(() => null)
+  }
   if (!row?.value) return DEFAULT_PENDENCY_SETTINGS
 
   try {

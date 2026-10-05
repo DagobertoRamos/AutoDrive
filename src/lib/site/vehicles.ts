@@ -88,8 +88,6 @@ function filteredWhere(tenantId: string, f: SiteFilters, brandIn: string[] | nul
   if (f.transmission) and.push({ transmission: { equals: f.transmission, mode: 'insensitive' } })
   if (f.yearMin) and.push({ modelYear: { gte: f.yearMin } })
   if (f.yearMax) and.push({ modelYear: { lte: f.yearMax } })
-  if (f.priceMin) and.push({ salePrice: { gte: f.priceMin } })
-  if (f.priceMax) and.push({ salePrice: { lte: f.priceMax } })
   if (f.type === 'motorcycles') and.push({ vehicleType: 'MOTORCYCLE' })
   if (f.type === 'cars') and.push({ OR: [{ vehicleType: null }, { vehicleType: { not: 'MOTORCYCLE' } }] })
   return { AND: and }
@@ -115,7 +113,9 @@ export async function listSiteVehicles(tenantId: string, f: SiteFilters = {}): P
   const brandIn = f.brand ? brandVariants(f.brand, await rawBrands(tenantId)) : null
   const rows = await prisma.vehicle.findMany({ where: filteredWhere(tenantId, f, brandIn), select: SELECT, take: 1000 })
   const created = new Map(rows.map((r) => [r.id, r.createdAt.getTime()]))
-  const all = sortRows(rows.map(toSiteVehicle).filter((v) => v.state !== 'HIDDEN'), f.sort, created)
+  // Faixa de preço sobre o preço exibido (promoção vigente), não o de venda.
+  const inPrice = (v: SiteVehicle) => (!f.priceMin || (v.price != null && v.price >= f.priceMin)) && (!f.priceMax || (v.price != null && v.price <= f.priceMax))
+  const all = sortRows(rows.map(toSiteVehicle).filter((v) => v.state !== 'HIDDEN' && inPrice(v)), f.sort, created)
   const page = Math.max(1, f.page ?? 1)
   return { items: all.slice((page - 1) * SITE_PAGE_SIZE, page * SITE_PAGE_SIZE), total: all.length }
 }

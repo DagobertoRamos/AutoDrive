@@ -122,6 +122,26 @@ export async function PATCH(
       return NextResponse.json({ success: true, message: 'Senha resetada com sucesso.' })
     }
 
+    // ── Guard: nunca remover o último MASTER ativo ────────────────────────────
+    // (inativar/bloquear ou rebaixar o único MASTER trancaria o sistema).
+    const nextStatus = status ?? existing.status
+    const nextRole   = action === 'SET_STATUS' ? existing.role : (role ?? existing.role)
+    if (
+      action !== 'RESET_PASSWORD' &&
+      existing.role === 'MASTER' && existing.status === 'ATIVO' &&
+      (String(nextStatus) !== 'ATIVO' || String(nextRole) !== 'MASTER')
+    ) {
+      const otherActiveMasters = await prisma.user.count({
+        where: { role: 'MASTER', status: 'ATIVO', id: { not: params.id } },
+      })
+      if (otherActiveMasters < 1) {
+        return NextResponse.json(
+          { success: false, error: 'Não é possível inativar/rebaixar o último MASTER ativo do sistema.' },
+          { status: 409 },
+        )
+      }
+    }
+
     // ── Ação especial: banir/ativar/bloquear/inativar ─────────────────────────
     if (action === 'SET_STATUS') {
       if (!status) {

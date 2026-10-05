@@ -151,6 +151,10 @@ export async function saveEntryCosts(id: string, input: SaveCostsInput): Promise
   if (existing.status === 'CANCELADO') return 'Lançamento cancelado: reabra antes de dar baixa.'
   if (existing.vehicleServiceId && (input.items?.length || input.amount != null)) return 'Custo de serviço: altere o valor na aba Serviços do veículo.'
   if (existing.commissionCalculationId && (input.items?.length || input.amount != null)) return 'Comissão: o valor vem do sistema de comissões.'
+  if (existing.commissionCalculationId && input.settle) {
+    const c = await prisma.commissionCalculation.findUnique({ where: { id: existing.commissionCalculationId }, select: { status: true } })
+    if (c?.status === 'CANCELADO') return 'Comissão cancelada: não pode ser paga.'
+  }
 
   const items = input.items ? normalizeItems(input.items) : null
   let newAmount: number | null = null

@@ -10,6 +10,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
+import { closeOpenLeadSlas } from '@/lib/marketing/distribution'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,8 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     }})
     // Atualiza lastContactAt do lead se a interação for relevante.
     await prisma.marketingLead.update({ where: { id }, data: { lastContactAt: occurredAt } }).catch(() => {})
+    // Houve contato: cumpre o SLA aberto do lead (não estoura/recicla depois).
+    if (type !== 'NO_CONTACT') await closeOpenLeadSlas(prisma, id).catch(() => {})
     return NextResponse.json({ success: true, data: interaction }, { status: 201 })
   } catch (err) { return handlePrismaError(err) }
 }

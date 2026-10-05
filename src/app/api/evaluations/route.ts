@@ -11,6 +11,7 @@ import { handlePrismaError }    from '@/lib/prisma-errors'
 import { prisma }               from '@/lib/prisma'
 import { ITEMS, type SectionKey } from '@/lib/evaluation/catalog'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canEditPricing, canViewPricing, PRICING_FIELDS } from '@/lib/evaluation/permissions'
 
 export async function GET(req: NextRequest) {
   const session = await getServerAuthSession()
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
           result: true,
           version: true, manufactureYear: true, color: true, ownerPhone: true,
           customerDecision: true, vehicleId: true, stockType: true,
+          tenantId: true, releasedAt: true,
         },
       }),
       prisma.vehicleEvaluation.count({ where }),
@@ -84,10 +86,18 @@ export async function GET(req: NextRequest) {
       photosByEval.get(p.evaluationId)!.push(p)
     }
 
+    const user = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId }
     const data = rows.map((r) => {
       const all = photosByEval.get(r.id) ?? []
+      // Mesma regra do GET [id]: vendedor só vê valores após a liberação
+      const safe = { ...r } as Record<string, unknown>
+      const showPricing = canViewPricing(user, {
+        status: r.status ?? 'DRAFT', tenantId: r.tenantId, unitId: r.unitId,
+        evaluatorId: r.evaluatedById, result: r.result, releasedAt: r.releasedAt,
+      })
+      if (!showPricing) for (const f of PRICING_FIELDS) if (f in safe) safe[f] = null
       return {
-        ...r,
+        ...safe,
         coverPhotoUrl: all[0]?.publicUrl ?? null,
         photoCount:    all.length,
         photos:        all.map((p) => ({
@@ -135,16 +145,30 @@ export async function POST(req: NextRequest) {
       if (u) resolvedUnitId = u.id
     }
 
+    // Veículo vinculado precisa ser do mesmo tenant
+    let resolvedVehicleId: string | null = null
+    if (vehicleId && typeof vehicleId === 'string') {
+      const v = await prisma.vehicle.findFirst({
+        where:  { id: vehicleId, tenantId: session.user.tenantId ?? undefined },
+        select: { id: true },
+      })
+      if (!v) return NextResponse.json({ error: 'Veículo não encontrado' }, { status: 404 })
+      resolvedVehicleId = v.id
+    }
+
     const safeNum = (v: unknown): number | null => {
       if (v == null || v === '') return null
       const n = Number(v)
       return Number.isFinite(n) ? n : null
     }
+    // Precificação só por gerência+ (mesma regra do PATCH)
+    const canPrice = canEditPricing({ id: session.user.id, role: session.user.role, tenantId: session.user.tenantId })
+    const priceNum = (v: unknown): number | null => (canPrice ? safeNum(v) : null)
     const ev = await prisma.vehicleEvaluation.create({
       data: {
         tenantId:        session.user.tenantId ?? null,
         unitId:          resolvedUnitId,
-        vehicleId:       vehicleId ?? null,
+        vehicleId:       resolvedVehicleId,
         plate:           plate?.toUpperCase().replace(/[^A-Z0-9]/g, '') || null,
         brand:           brand ?? null,
         model:           model ?? null,
@@ -161,11 +185,11 @@ export async function POST(req: NextRequest) {
         conditionType:   conditionType ?? null,
         fipeCode:           fipeCode ?? null,
         fipeReferenceMonth: fipeReferenceMonth ?? null,
-        fipeValue:          safeNum(fipeValue),
-        evaluatedValue:     safeNum(evaluatedValue),
-        desiredValue:       safeNum(desiredValue),
-        minimumValue:       safeNum(minimumValue),
-        suggestedSalePrice: safeNum(suggestedSalePrice),
+        fipeValue:          priceNum(fipeValue),
+        evaluatedValue:     priceNum(evaluatedValue),
+        desiredValue:       priceNum(desiredValue),
+        minimumValue:       priceNum(minimumValue),
+        suggestedSalePrice: priceNum(suggestedSalePrice),
         evaluationNotes:    evaluationNotes    ?? null,
         ownerName:          ownerName  ?? null,
         ownerCpf:           ownerCpf   ?? null,

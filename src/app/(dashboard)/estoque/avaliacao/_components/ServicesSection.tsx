@@ -140,20 +140,24 @@ export function ServicesSection({ evaluationId, readOnly, onBack, onComplete }: 
     }
   }
 
-  async function updateCost(cat: ServiceCatalogItem, newCostStr: string) {
-    setDrafts((prev) => ({ ...prev, [cat.key]: newCostStr }))
+  // Digitação só mexe no rascunho; grava ao sair do campo
+  async function saveCost(cat: ServiceCatalogItem) {
+    const draft = drafts[cat.key]
     const existing = findServiceFor(cat.key)
-    if (!existing) return
-    // Atualiza custo do serviço existente
-    const cost = parseBRL(newCostStr) ?? 0
+    if (draft === undefined || !existing) return
+    const cost = parseBRL(draft) ?? 0
+    if (Number(existing.estimatedCost ?? 0) === cost) return
     try {
-      await fetch(`/api/evaluations/${evaluationId}/services/${existing.id}`, {
+      const r = await fetch(`/api/evaluations/${evaluationId}/services/${existing.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estimatedCost: cost }),
       })
+      if (!r.ok) throw new Error('Falha ao salvar custo')
       setServices((prev) => prev.map((s) => s.id === existing.id ? { ...s, estimatedCost: cost } : s))
-    } catch { /* silent — próxima carga sincroniza */ }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro')
+    }
   }
 
   const total = services.reduce((sum, s) => sum + (Number(s.estimatedCost) || 0), 0)
@@ -180,7 +184,7 @@ export function ServicesSection({ evaluationId, readOnly, onBack, onComplete }: 
           {catalog.map((cat) => {
             const marked = isMarked(cat.key)
             const existing = findServiceFor(cat.key)
-            const currentCost = existing?.estimatedCost != null ? numberToBRLMask(Number(existing.estimatedCost)) : (drafts[cat.key] ?? (cat.suggestedCost ? numberToBRLMask(cat.suggestedCost) : ''))
+            const currentCost = drafts[cat.key] ?? (existing?.estimatedCost != null ? numberToBRLMask(Number(existing.estimatedCost)) : (cat.suggestedCost ? numberToBRLMask(cat.suggestedCost) : ''))
             return (
               <li key={cat.key} className={`flex items-center gap-3 px-3 py-2.5 ${marked ? 'bg-brand-50/40' : ''}`}>
                 <input
@@ -200,7 +204,8 @@ export function ServicesSection({ evaluationId, readOnly, onBack, onComplete }: 
                     <input
                       type="text"
                       value={currentCost}
-                      onChange={(e) => updateCost(cat, maskBRL(e.target.value))}
+                      onChange={(e) => { const v = maskBRL(e.target.value); setDrafts((prev) => ({ ...prev, [cat.key]: v })) }}
+                      onBlur={() => void saveCost(cat)}
                       disabled={readOnly || !marked}
                       placeholder={cat.suggestedCost ? String(cat.suggestedCost) : '0,00'}
                       className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm disabled:bg-gray-50 disabled:text-gray-400"

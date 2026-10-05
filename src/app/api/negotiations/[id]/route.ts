@@ -19,6 +19,7 @@ import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { applyChildren, planChildren, planHasChanges } from '@/lib/negotiation/children-sync'
 import { BLOB_PREFIX, pendingFolder } from '@/lib/negotiation/storage'
 import { resolveDealManagerUserId } from '@/lib/negotiation/manager'
+import { upsertPerson, type PersonInput } from '@/lib/people/upsert-person'
 
 export const dynamic = 'force-dynamic'
 
@@ -280,6 +281,16 @@ export async function PATCH(
     }
   }
 
+  // Cliente e gerente: só cadastros da mesma loja.
+  if (typeof body.personId === 'string' && body.personId && body.personId !== deal.personId) {
+    const p = await prisma.person.findFirst({ where: { id: body.personId, ...(tenantId ? { tenantId } : {}) }, select: { id: true } })
+    if (!p) return NextResponse.json({ error: 'Cliente inválido para esta loja.' }, { status: 400 })
+  }
+  if (typeof body.managerId === 'string' && body.managerId && body.managerId !== deal.managerId) {
+    const m = await prisma.user.findFirst({ where: { id: body.managerId, ...(tenantId ? { tenantId } : {}) }, select: { id: true } })
+    if (!m) return NextResponse.json({ error: 'Gerente inválido para esta loja.' }, { status: 400 })
+  }
+
   const allowedFields: Record<string, unknown> = {}
   const auditEntries: Array<{ field: string; oldValue: unknown; newValue: unknown }> = []
 
@@ -312,8 +323,23 @@ export async function PATCH(
   ] as const
 
   const personBody = (body as Record<string, unknown>).person as Record<string, unknown> | undefined
+  // Cadastro que recebe o patch: só o personId enviado (já validado). Sem
+  // personId (CPF trocado no formulário) nunca grava no cadastro antigo:
+  // acha/cria o cliente pelo documento e vincula à negociação.
+  const bodyPersonId = typeof body.personId === 'string' && body.personId ? body.personId : null
+  const personBlocked = (SENSITIVE_FIELDS as readonly string[]).includes('personId') && sensitiveBlocked
+  const personTargetId: string | null = !personBlocked && bodyPersonId && (bodyPersonId === deal.personId || allowedFields.personId === bodyPersonId)
+    ? bodyPersonId : null
+  if (personBody && typeof personBody === 'object' && !personBlocked && !bodyPersonId) {
+    const r = await upsertPerson(prisma, tenantId, personBody as PersonInput, null)
+    if ('error' in r) return NextResponse.json({ error: r.error }, { status: 400 })
+    if (r.id !== deal.personId) {
+      allowedFields.personId = r.id
+      auditEntries.push({ field: 'personId', oldValue: deal.personId, newValue: r.id })
+    }
+  }
   let personPatch: Record<string, unknown> | null = null
-  if (personBody && typeof personBody === 'object' && deal.personId) {
+  if (personBody && typeof personBody === 'object' && personTargetId) {
     const patch: Record<string, unknown> = {}
     for (const field of PERSON_PATCHABLE_FIELDS) {
       if (!(field in personBody)) continue
@@ -330,6 +356,12 @@ export async function PATCH(
       } else {
         patch[field] = v
       }
+    }
+    // Documento que já é de outro cadastro da loja: não troca.
+    for (const docKey of ['cpf', 'cnpj'] as const) {
+      if (typeof patch[docKey] !== 'string') continue
+      const clash = await prisma.person.findFirst({ where: { [docKey]: patch[docKey], id: { not: personTargetId }, ...(tenantId ? { tenantId } : {}) }, select: { id: true } })
+      if (clash) delete patch[docKey]
     }
     if (Object.keys(patch).length > 0) personPatch = patch
   }
@@ -385,17 +417,20 @@ export async function PATCH(
       changeAmount:    allowedFields.changeAmount    ?? deal.changeAmount,
     }
     const totals = computeDealTotals(merged as any)
-    allowedFields.totalPayments = totals.totalPayments
-    allowedFields.balance       = totals.balance
+    // Importada do AutoConf: o total de pagamentos veio das linhas de pagamento de lá.
+    if (deal.source !== 'AUTOCONF') allowedFields.totalPayments = totals.totalPayments
+    allowedFields.balance       = deal.source === 'AUTOCONF' && deal.totalPayments != null
+      ? totals.balance + totals.totalPayments - Number(deal.totalPayments)
+      : totals.balance
     allowedFields.marginAmount  = totals.marginAmount
   }
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
       // Atualiza Person primeiro (se houver patch). Falha aqui aborta tudo.
-      if (personPatch && deal.personId) {
+      if (personPatch && personTargetId) {
         await tx.person.update({
-          where: { id: deal.personId },
+          where: { id: personTargetId },
           data:  personPatch as never,
         })
       }

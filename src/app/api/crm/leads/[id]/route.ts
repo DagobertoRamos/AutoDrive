@@ -34,7 +34,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!scope) return forbiddenResponse('Sem acesso aos leads do CRM.')
 
     const lead = await prisma.marketingLead.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, deletedAt: null },
       include: {
         assignments: {
           orderBy: { createdAt: 'desc' },
@@ -324,7 +324,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   try {
     const { id } = await params
-    const lead = await prisma.marketingLead.findFirst({ where: { id, tenantId } })
+    const lead = await prisma.marketingLead.findFirst({ where: { id, tenantId, deletedAt: null } })
     if (!lead) return NextResponse.json({ success: false, error: 'Lead não encontrado.' }, { status: 404 })
 
     const scope = await resolveCrmScope(user)

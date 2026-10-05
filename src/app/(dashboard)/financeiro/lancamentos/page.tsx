@@ -18,6 +18,7 @@ interface Entry {
   id: string; type: 'RECEITA' | 'DESPESA'; status: string; description: string; amount: number
   category: string | null; account: string | null; counterparty: string | null
   dueDate: string | null; competenceDate: string | null; source: string | null
+  categoryId?: string | null; accountId?: string | null; documentNumber?: string | null; paymentMethod?: string | null; notes?: string | null
 }
 interface Ref { id: string; name: string; kind?: string }
 interface Form {
@@ -72,22 +73,25 @@ export default function FinanceEntriesPage() {
       setForm({
         type: e.type, status: e.status as Form['status'], description: e.description, amount: e.amount,
         dueDate: e.dueDate ? e.dueDate.slice(0, 10) : '', competenceDate: e.competenceDate ? e.competenceDate.slice(0, 10) : '',
-        categoryId: '', accountId: '', counterparty: e.counterparty ?? '', documentNumber: '', paymentMethod: '', notes: '',
+        categoryId: e.categoryId ?? '', accountId: e.accountId ?? '', counterparty: e.counterparty ?? '',
+        documentNumber: e.documentNumber ?? '', paymentMethod: e.paymentMethod ?? '', notes: e.notes ?? '',
       })
     } else setForm(emptyForm)
     setError(null); setModal(true)
   }
 
   const save = async () => {
+    // Débito/adiantamento de comissão tem valor negativo: editar sem mexer no valor é permitido.
+    const keepAmount = !!editing && form.amount === editing.amount
     const msg = form.description.trim().length < 2 ? 'Informe a descrição.'
-      : form.amount <= 0 ? 'Informe o valor.'
+      : form.amount <= 0 && !(keepAmount && form.amount !== 0) ? 'Informe o valor.'
       : !form.dueDate ? 'Informe o vencimento.'
       : ''
     if (msg) { setError(msg); return }
     setSaving(true); setError(null)
     try {
       const payload: Record<string, unknown> = {
-        type: form.type, status: form.status, description: form.description, amount: form.amount,
+        type: form.type, status: form.status, description: form.description, ...(keepAmount ? {} : { amount: form.amount }),
         dueDate: form.dueDate || null, competenceDate: form.competenceDate || null,
         categoryId: form.categoryId || null, accountId: form.accountId || null,
         counterparty: form.counterparty || null, documentNumber: form.documentNumber || null,

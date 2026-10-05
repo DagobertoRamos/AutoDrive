@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { assignLeadSchema } from '@/lib/validators/marketing'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { closeOpenLeadSlas } from '@/lib/marketing/distribution'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -36,6 +37,7 @@ export async function POST(req: Request, { params }: Ctx) {
     if (!target) return NextResponse.json({ success: false, error: 'Responsável inválido para esta loja.' }, { status: 400 })
 
     await prisma.$transaction(async (tx) => {
+      await closeOpenLeadSlas(tx, id)
       await tx.marketingLead.update({
         where: { id },
         data: { assignedToUserId: d.assignedToUserId, claimedByUserId: d.assignedToUserId, claimedAt: new Date(), status: 'ASSIGNED' },

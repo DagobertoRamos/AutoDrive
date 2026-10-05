@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { num } from '@/lib/finance/finance-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { spDayStart, spDayEnd } from '@/lib/dashboard/tz'
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
     const from = searchParams.get('from')
     const to = searchParams.get('to')
     const extra: Record<string, unknown> = {}
-    if (from || to) extra.createdAt = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}) }
+    if (from || to) extra.createdAt = { ...(from ? { gte: spDayStart(from) } : {}), ...(to ? { lte: spDayEnd(to) } : {}) }
     const where = tenantWhere(user.role, tenantId, extra)
 
     const [byStatusRaw, byBankRaw, banks] = await Promise.all([
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
 
     // ── BI avançado (Fase 9) ──────────────────────────────────────────────────
     const canSeeReturn = canAccessModule(user.role, 'financing.config')
-    const range = (field: string) => (from || to ? { [field]: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}) } } : {})
+    const range = (field: string) => (from || to ? { [field]: { ...(from ? { gte: spDayStart(from) } : {}), ...(to ? { lte: spDayEnd(to) } : {}) } } : {})
     const subWhere = tenantWhere(user.role, tenantId, range('submittedAt'))
     const simWhere = tenantWhere(user.role, tenantId, range('createdAt'))
 

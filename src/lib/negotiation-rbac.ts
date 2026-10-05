@@ -28,7 +28,8 @@ export function isDealLocked(status: string | null | undefined): boolean {
  */
 export function isDealStatusEditable(status: string | null | undefined): boolean {
   if (!status) return false
-  return !isDealLocked(status)
+  // CANCELADA também é só leitura (mas não entra em isDealLocked: não reabre).
+  return !FINALIZED_STATUSES.has(status)
 }
 
 type Actor = {
@@ -90,7 +91,7 @@ export function canReopen(actor: Actor, deal: DealLike): boolean {
 
 export function canAddPayment(actor: Actor, deal: DealLike): boolean {
   if (!actor || !deal) return false
-  if (isDealLocked(deal.status)) return false
+  if (FINALIZED_STATUSES.has(deal.status)) return false
   if (isManagerPlus(actor.role) || actor.role === 'VENDEDOR_LIDER') return true
   if (actor.role === 'VENDEDOR') {
     if (deal.sellerId && actor.sellerId && deal.sellerId === actor.sellerId) return true

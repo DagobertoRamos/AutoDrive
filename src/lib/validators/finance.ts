@@ -5,7 +5,10 @@
 import { z } from 'zod'
 
 const money = z.number({ invalid_type_error: 'Valor inválido.' })
-const dateish = z.coerce.date({ invalid_type_error: 'Data inválida.' }).nullish()
+// Data pura "AAAA-MM-DD" vira meio-dia UTC (não cai no dia anterior em São Paulo);
+// timestamp ISO completo segue como veio.
+const dateOnlyNoon = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? `${v.trim()}T12:00:00Z` : v)
+const dateish = z.preprocess(dateOnlyNoon, z.coerce.date({ invalid_type_error: 'Data inválida.' }).nullish())
 
 // ── Conta financeira (caixa/banco) ──────────────────────────────────────────
 export const createAccountSchema = z.object({
@@ -47,7 +50,7 @@ export const updateEntrySchema = createEntrySchema.partial()
 
 // Liquidar (pagar/receber) um lançamento PREVISTO.
 export const settleEntrySchema = z.object({
-  paidDate: z.coerce.date({ invalid_type_error: 'Data inválida.' }).optional(),
+  paidDate: z.preprocess(dateOnlyNoon, z.coerce.date({ invalid_type_error: 'Data inválida.' }).optional()),
 })
 
 export type CreateAccountInput = z.infer<typeof createAccountSchema>

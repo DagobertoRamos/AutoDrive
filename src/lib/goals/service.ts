@@ -231,7 +231,18 @@ export function goalWindow(goal: Goal, referenceDate: Date = new Date()): Aggreg
     const { startsAt, endsAt } = getGoalPeriod({ frequency: goal.period, referenceDate })
     return { start: startsAt, end: endsAt }
   }
-  return { start: goal.startDate, end: goal.endDate }
+  return customGoalWindow(goal.startDate, goal.endDate)
+}
+
+/**
+ * Meta CUSTOM: as datas vêm do formulário como dia puro (gravadas à meia-noite UTC).
+ * A janela vai do início do primeiro dia até o fim do último dia em São Paulo.
+ */
+export function customGoalWindow(startDate: Date, endDate: Date, timezone = 'America/Sao_Paulo'): AggregationWindow {
+  return {
+    start: parseInTimezone(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, startDate.getUTCDate(), 0, 0, 0, 0, timezone),
+    end: parseInTimezone(endDate.getUTCFullYear(), endDate.getUTCMonth() + 1, endDate.getUTCDate(), 23, 59, 59, 999, timezone),
+  }
 }
 
 // ── Progressão de níveis (sem hardcode) ────────────────────────────────────────
@@ -306,7 +317,8 @@ export async function resolveGoalForUser({
       const { startsAt } = getGoalPeriod({ frequency: 'monthly', referenceDate: g.startDate })
       return referenceDate >= startsAt
     }
-    return referenceDate >= g.startDate && referenceDate <= g.endDate
+    const w = customGoalWindow(g.startDate, g.endDate)
+    return referenceDate >= w.start && referenceDate <= w.end
   })
 
   // 1. User Specific (scope = USER, userId = userId)

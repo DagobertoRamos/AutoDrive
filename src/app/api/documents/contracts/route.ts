@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       customerName:   c.customer?.name ?? 'Desconhecido',
       plate:          c.vehicle?.plate ?? null,
       vehicle:        c.vehicle ? `${c.vehicle.brand ?? ''} ${c.vehicle.model ?? ''}`.trim() : null,
-      value:          c.saleValue,
+      value:          c.saleValue != null ? Number(c.saleValue) : null, // Decimal → número
       contractDate:   c.saleDate,
       type:           c.type,
       status:         c.status ?? 'ATIVO',

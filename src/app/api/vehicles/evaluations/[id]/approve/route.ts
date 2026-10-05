@@ -60,6 +60,15 @@ export async function POST(
       )
     }
 
+    // Avaliação cancelada/recusada ou já na esteira de entrada não gera veículo aqui
+    if (['CANCELADA', 'CANCELED', 'REJECTED', 'NO_ESTOQUE', 'AGUARDANDO_ENTRADA'].includes(String(evaluation.status ?? ''))
+      || evaluation.result === 'RECUSADO') {
+      return NextResponse.json(
+        { success: false, error: 'Avaliação cancelada, recusada ou já encaminhada ao estoque.' },
+        { status: 409 },
+      )
+    }
+
     // Valida dados mínimos obrigatórios
     if (!evaluation.brand?.trim() || !evaluation.model?.trim()) {
       return NextResponse.json(

@@ -126,7 +126,13 @@ export async function recalculateSellerMainForPeriod(opts: {
             retroAt: date.toISOString(),
           } as never,
         },
-      }).catch(() => {})
+      })
+        // Lançamento do Financeiro ainda previsto acompanha o novo valor.
+        .then(() => prisma.financialEntry.updateMany({
+          where: { commissionCalculationId: r.id, status: 'PREVISTO' },
+          data: { amount: newValue },
+        }))
+        .catch(() => {})
     }
     repriced++
   }

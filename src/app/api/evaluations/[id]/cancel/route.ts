@@ -8,7 +8,7 @@ import { getServerAuthSession } from '@/lib/auth'
 import { prisma }               from '@/lib/prisma'
 import { handlePrismaError }    from '@/lib/prisma-errors'
 import { loadEvaluationContext } from '@/lib/evaluation/service'
-import { canCancelEvaluation }   from '@/lib/evaluation/permissions'
+import { canCancelEvaluation, canViewEvaluation }   from '@/lib/evaluation/permissions'
 import { recordHistory }        from '@/lib/evaluation/history'
 
 export async function POST(
@@ -24,6 +24,12 @@ export async function POST(
     const user = { id: session.user.id, role: session.user.role, tenantId: session.user.tenantId }
     if (!canCancelEvaluation(user)) {
       return NextResponse.json({ error: 'Apenas gerência pode cancelar a avaliação.' }, { status: 403 })
+    }
+    if (!canViewEvaluation(user, ctx)) {
+      return NextResponse.json({ error: 'Avaliação não encontrada' }, { status: 404 })
+    }
+    if (ctx.vehicleId || ['CANCELADA', 'CANCELED', 'NO_ESTOQUE'].includes(ctx.status)) {
+      return NextResponse.json({ error: 'Avaliação já cancelada ou já no estoque.' }, { status: 409 })
     }
 
     const body = await req.json().catch(() => ({}))

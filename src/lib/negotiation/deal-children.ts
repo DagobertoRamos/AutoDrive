@@ -9,6 +9,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BLOB_PREFIX, pendingFolder } from '@/lib/negotiation/storage'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 import { MANAGER_REVIEW_REASON, needsManagerReview } from '@/lib/evaluation/site-pre-evaluation'
 
 type Tx = any
@@ -22,6 +23,8 @@ export const OPEN_DEAL_STATUSES = [
   'AGUARDANDO_CONTRATO', 'CONTRATO_GERADO',
   'AGUARDANDO_ASSINATURA', 'ASSINADA',
   'AGUARDANDO_ENTREGA', 'ENTREGUE', 'EM_ANDAMENTO', 'FINALIZADA',
+  // Reaberta / devolvida para correção continuam segurando o carro.
+  'REABERTA', 'DEVOLVIDA_PARA_CORRECAO',
 ]
 
 export const MAIN_VEHICLE_ROLES = ['VENDIDO', 'COMPRADO', 'CONSIGNADO']
@@ -49,7 +52,7 @@ export async function assertVehicleNotInOtherSale(tx: Tx, vehicleId: string, exc
     select: { deal: { select: { id: true, dealNumber: true, status: true, seller: { select: { fullName: true, shortName: true } } } } },
   })
   if (!conflict?.deal) return
-  const approved = new Set(OPEN_DEAL_STATUSES.filter((s) => s !== 'AGUARDANDO_APROVACAO' && s !== 'AGUARDANDO_LIBERACAO'))
+  const approved = new Set(OPEN_DEAL_STATUSES.filter((s) => s !== 'AGUARDANDO_APROVACAO' && s !== 'AGUARDANDO_LIBERACAO' && s !== 'DEVOLVIDA_PARA_CORRECAO'))
   const sellerLbl = conflict.deal.seller?.shortName ?? conflict.deal.seller?.fullName ?? 'outro vendedor'
   const negLbl    = conflict.deal.dealNumber ?? conflict.deal.id.slice(0, 8)
   throw new Error(approved.has(conflict.deal.status)
@@ -132,7 +135,7 @@ const label = (r: { plate?: string | null; vehicleId?: string | null } | null | 
   r ? (normPlate(r.plate) || r.vehicleId || 'veículo') : null
 
 /** Devolve ao estoque um carro que esta negociação estava segurando (se nenhuma outra venda ativa o segura). */
-async function releaseStock(tx: Tx, vehicleId: string, dealId: string): Promise<boolean> {
+export async function releaseStock(tx: Tx, vehicleId: string, dealId: string): Promise<boolean> {
   const other = await tx.dealVehicle.findFirst({
     where: { vehicleId, role: 'VENDIDO', deal: { id: { not: dealId }, status: { in: OPEN_DEAL_STATUSES as never[] } } },
     select: { id: true },
@@ -444,8 +447,8 @@ function paymentFields(p: PaymentInput) {
     installmentIntervalDays: p.installmentIntervalDays ? Number(p.installmentIntervalDays) : null,
     returnPct,
     vehiclePlate:            p.vehiclePlate || null,
-    firstDueDate:            p.firstDueDate ? new Date(p.firstDueDate) : null,
-    dueDate:                 p.dueDate      ? new Date(p.dueDate)      : null,
+    firstDueDate:            parseDateOnly(p.firstDueDate),
+    dueDate:                 parseDateOnly(p.dueDate),
     notes:                   p.notes || null,
   }
 }

@@ -243,15 +243,23 @@ async function checkPending(channel: string, ctx: ConnectorContext, r: AvulsaRes
 const TRANSIENT = new Set(['RATE_LIMIT', 'UNAVAILABLE', 'TIMEOUT'])
 
 /** Rotina agendada: publica os avulsos vencidos e confere os que estão processando. */
-export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()): Promise<{ processed: number }> {
+export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date(), deadlineAt = Infinity): Promise<{ processed: number }> {
   const due = await prisma.socialPost.findMany({
     where: { status: { in: ['AGENDADO', 'ENVIANDO'] }, scheduledAt: { lte: now }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },
-    orderBy: { scheduledAt: 'asc' }, take: 5,
+    orderBy: { scheduledAt: 'asc' }, take: 5, select: { id: true },
   })
+  // Sem tempo para terminar um envio: deixa para a próxima rodada (evita ser morto no meio).
+  const timeLeft = () => deadlineAt - Date.now() > 60_000
   let processed = 0
-  for (const post of due) {
-    const lock = await prisma.socialPost.updateMany({ where: { id: post.id, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] }, data: { lockedUntil: new Date(now.getTime() + 5 * 60_000) } })
+  for (const { id: postId } of due) {
+    if (!timeLeft()) break
+    // Relógio atual (não o do início da rodada): o lock vencido de outra execução não é roubado antes da hora.
+    const t = new Date()
+    const lock = await prisma.socialPost.updateMany({ where: { id: postId, status: { in: ['AGENDADO', 'ENVIANDO'] }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: t } }] }, data: { lockedUntil: new Date(t.getTime() + 5 * 60_000) } })
     if (!lock.count) continue
+    // Relê depois do lock: resultados gravados por outra execução não são reenviados.
+    const post = await prisma.socialPost.findUnique({ where: { id: postId } })
+    if (!post) continue
     processed++
     const connIds = (post.connectionIds as string[]) ?? []
     const results = { ...((post.results as Record<string, AvulsaResult> | null) ?? {}) }
@@ -271,15 +279,20 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
     }
     let lastError: string | null = null
     let transient = false
+    let deferred = false
     const conns = await prisma.publicationConnection.findMany({ where: { tenantId: post.tenantId, id: { in: connIds } } })
+    // Grava o resultado de cada conta na hora: se a execução cair, a próxima pula o que já foi.
+    const saveResults = () => prisma.socialPost.updateMany({ where: { id: post.id, status: { not: 'CANCELADO' } }, data: { results: results as unknown as object } })
     for (const id of connIds) {
       const prev = results[id]
       if (prev?.state === 'PUBLICADO' || prev?.state === 'FALHA') continue
+      if (!timeLeft()) { deferred = true; break }
       const conn = conns.find((c) => c.id === id)
       if (!conn || conn.status !== 'CONECTADO') { results[id] = { state: 'FALHA', error: 'Conta desconectada: reconecte em Canais conectados.', at: now.toISOString() }; continue }
       try {
         const ctx = await connectorContext(conn, deps)
         results[id] = { ...(prev?.state === 'EM_ANALISE' ? await checkPending(conn.channel, ctx, prev) : await publishTo(conn.channel, ctx, post.format as AvulsaFormat, plainCaption(post.caption ?? ''), prepared)), at: now.toISOString() }
+        await saveResults()
       } catch (e) {
         const ce = isConnectorError(e) ? e : null
         lastError = `${socialName(conn.channel)}: ${(e as Error).message}`
@@ -287,10 +300,11 @@ export async function processSocialPosts(deps: WorkerDeps = {}, now = new Date()
         else results[id] = { state: 'FALHA', error: (e as Error).message.slice(0, 400), at: now.toISOString() }
       }
     }
-    const pendingOrRetry = transient || connIds.some((c) => results[c]?.state === 'EM_ANALISE')
-    const status = transient ? 'ENVIANDO' : overallStatus(connIds, results)
-    await prisma.socialPost.update({
-      where: { id: post.id },
+    const pendingOrRetry = transient || deferred || connIds.some((c) => results[c]?.state === 'EM_ANALISE')
+    const status = transient || deferred ? 'ENVIANDO' : overallStatus(connIds, results)
+    // Cancelado durante o envio: não volta o status.
+    await prisma.socialPost.updateMany({
+      where: { id: post.id, status: { not: 'CANCELADO' } },
       data: {
         results: results as unknown as object, status, lastError, lockedUntil: null, attempts: { increment: transient ? 1 : 0 },
         // Processando/tentando de novo: volta em 1 minuto (a rotina roda a cada minuto).
@@ -344,6 +358,7 @@ export async function retryAvulsa(tenantId: string, id: string): Promise<{ ok: t
   const results = { ...((post.results as Record<string, AvulsaResult> | null) ?? {}) }
   const failed = Object.keys(results).filter((k) => results[k]?.state === 'FALHA')
   if (!failed.length) return { ok: false, error: 'Nenhuma rede com falha neste post.' }
+  if (!sanitizeMedia(post.media).length) return { ok: false, error: 'As fotos/vídeo deste post não estão mais guardados. Crie o post de novo em Post avulso.' }
   if (!(await videoAvailable(tenantId, sanitizeMedia(post.media)))) return { ok: false, error: 'O vídeo deste post não está mais guardado. Envie o vídeo de novo em Post avulso.' }
   for (const k of failed) delete results[k]
   await prisma.socialPost.update({

@@ -55,6 +55,7 @@ export async function GET(
       unitId: ev.unitId,
       evaluatorId: ev.evaluatedById,
       result: ev.result,
+      releasedAt: ev.releasedAt,
     }) : false
     const safeEv = ev ? { ...ev } as Record<string, unknown> : ev
     if (safeEv && !showPricing) {
@@ -96,7 +97,8 @@ export async function PATCH(
       'suggestedSalePrice', 'evaluationNotes', 'ownerName', 'ownerCpf',
       'ownerPhone', 'ownerEmail', 'cautelarStatus', 'cautelarNumber',
       'cautelarNotes', 'pendencyNotes', 'estimatedDays',
-      'evaluatorFeedback', 'testDriveDone', 'status',
+      'evaluatorFeedback', 'testDriveDone',
+      // status fica de fora: transições só pelos endpoints próprios (finish/release/...)
     ]
     const pricingSet = new Set<string>(PRICING_FIELDS as readonly string[])
     const canPrice = canEditPricing(user)

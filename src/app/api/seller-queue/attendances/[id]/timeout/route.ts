@@ -17,8 +17,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { timeoutSchema } from '@/lib/validators/seller-queue'
 import { logQueueEvent, getUnitConfig } from '@/lib/seller-queue/queue'
-import { moveEntryToEnd } from '@/lib/seller-queue/attendance'
-import { callForArrival } from '@/lib/seller-queue/call'
+import { callForArrival, expireCalledAttendance } from '@/lib/seller-queue/call'
 import { notifyTimeoutManagers } from '@/lib/seller-queue/notify'
 import { escalateAfterTimeout } from '@/lib/seller-queue/penalty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
@@ -44,12 +43,15 @@ export async function POST(req: Request, { params }: Ctx) {
     if (!isLead && !expired) return forbiddenResponse('O prazo de aceite ainda não expirou.')
 
     const d = timeoutSchema.parse(await req.json().catch(() => ({})))
-    await prisma.$transaction(async (tx) => {
-      await tx.sellerQueueAttendance.update({ where: { id: att.id }, data: { status: 'EXPIRED' } })
-      await moveEntryToEnd(tx, att.queueId, att.sellerId)
-      await tx.sellerQueuePenalty.create({ data: { tenantId, unitId: att.unitId, sellerId: att.sellerId, type: 'TIMEOUT', reason: d.reason ?? 'Não aceitou no prazo', points: 1, appliedById: user.id } })
-      if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'PENDING' } })
-    })
+    // Compare-and-set compartilhado com o sweep: evita penalidade/re-rota em dobro
+    // e devolve a chamada da fila individual ao vendedor (sem penalidade).
+    const outcome = await expireCalledAttendance({ tenantId, queueId: att.queueId, att, actorId: user.id, reason: d.reason ?? 'Não aceitou no prazo' })
+    if (!outcome) return NextResponse.json({ success: false, error: 'Este atendimento não está aguardando aceite.' }, { status: 409 })
+    if (outcome === 'personal') {
+      await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'TIMEOUT', sellerId: att.sellerId, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id, reason: 'fila individual: aceite expirou (devolvido à fila do vendedor)' }).catch(() => {})
+      await createSafeAuditLog({ userId: user.id, tenantId, action: 'TIMEOUT', entity: 'SellerQueueAttendance', entityId: att.id, userName: user.name, userRole: user.role })
+      return NextResponse.json({ success: true, data: { call: { ok: false, reason: 'Fila individual: devolvido à fila do vendedor.' } } })
+    }
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'TIMEOUT', sellerId: att.sellerId, actorId: user.id, arrivalId: att.arrivalId, attendanceId: att.id })
     await logQueueEvent({ tenantId, unitId: att.unitId, queueId: att.queueId, type: 'MOVED_TO_END', sellerId: att.sellerId, actorId: user.id, attendanceId: att.id })
 

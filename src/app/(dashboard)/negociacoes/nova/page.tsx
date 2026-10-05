@@ -5068,7 +5068,8 @@ export default function NovaNegociacaoPage() {
   const tryNext = async () => {
     const errs = validateStep(step)
     if (errs.length > 0) { showToast(errs[0], false); return }
-    if (step === 1 && mode === 'create' && !(await saveClient())) return
+    // Também na edição: o cliente alterado vai para o cadastro (e vincula o novo, se trocou o CPF).
+    if (step === 1 && !(await saveClient())) return
     setStep((s) => Math.min(STEPS.length - 1, s + 1))
   }
 
@@ -5133,7 +5134,8 @@ export default function NovaNegociacaoPage() {
       // Rascunho de uso único: o servidor recusa o segundo envio (outro aparelho).
       draftId:  mode === 'create' && draftId ? draftId : undefined,
       personId: form.personId ?? undefined,
-      person: form.personId ? undefined : buildPersonPayload(),
+      // Edição: sempre envia o cliente — o servidor grava no cadastro vinculado (personId).
+      person: form.personId && mode !== 'edit' ? undefined : buildPersonPayload(),
       vehicle: hasVehicle ? {
         role:           form.type === 'COMPRA' ? 'COMPRADO' : form.type === 'CONSIGNACAO' ? 'CONSIGNADO' : 'VENDIDO',
         vehicleId:      v.vehicleId ?? undefined,

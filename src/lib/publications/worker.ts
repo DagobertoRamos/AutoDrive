@@ -24,6 +24,7 @@ import { opFor, statusFromRemote, type DesiredState, type JobOp, type PubStatus,
 import { isPublishableStock } from './sale-rules-core'
 import { validatePayload } from './validate-core'
 import { getConnector } from './connectors'
+import { BLOCKED_TENANT_STATUSES } from '@/lib/tenant-lifecycle/core'
 import { createHttpClient, type HttpClient } from './connectors/http'
 import type { ConnectorContext, MappingResolver, RemoteResult } from './connectors/types'
 import { buildFor, enqueue, loadVehicle, logEvent, onVehicleStockChanged, readSecrets, sealSecrets, SYSTEM_ACTOR } from './service'
@@ -68,6 +69,8 @@ export async function claimJob(workerId: string, onlyTenantIds?: string[]): Prom
   // Colunas são timestamp SEM fuso gravadas em UTC pelo Prisma: comparar
   // sempre com now() em UTC (a sessão do banco pode estar em outro fuso).
   const lockMs = LOCK_MS
+  // Loja desativada/suspensa: os jobs ficam parados (não publica em nome dela).
+  const blocked = [...BLOCKED_TENANT_STATUSES] as string[]
   try {
     const rows = onlyTenantIds?.length
       ? await prisma.$queryRaw<JobRow[]>`
@@ -75,6 +78,7 @@ export async function claimJob(workerId: string, onlyTenantIds?: string[]): Prom
         SELECT j.id FROM "publication_jobs" j
         WHERE j.status = 'PENDENTE' AND j."runAt" <= (now() AT TIME ZONE 'UTC') AND j."tenantId" = ANY(${onlyTenantIds})
           AND NOT EXISTS (SELECT 1 FROM "publication_jobs" r WHERE r."publicationId" = j."publicationId" AND r.status = 'EXECUTANDO')
+          AND NOT EXISTS (SELECT 1 FROM "tenants" t WHERE t.id = j."tenantId" AND t.status::text = ANY(${blocked}))
         ORDER BY j.priority ASC, j."runAt" ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1
@@ -88,6 +92,7 @@ export async function claimJob(workerId: string, onlyTenantIds?: string[]): Prom
         SELECT j.id FROM "publication_jobs" j
         WHERE j.status = 'PENDENTE' AND j."runAt" <= (now() AT TIME ZONE 'UTC')
           AND NOT EXISTS (SELECT 1 FROM "publication_jobs" r WHERE r."publicationId" = j."publicationId" AND r.status = 'EXECUTANDO')
+          AND NOT EXISTS (SELECT 1 FROM "tenants" t WHERE t.id = j."tenantId" AND t.status::text = ANY(${blocked}))
         ORDER BY j.priority ASC, j."runAt" ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1

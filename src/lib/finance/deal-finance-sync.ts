@@ -161,7 +161,10 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
     if (cur) {
       if (cur.vehicleId !== vehicleId) await prisma.financialEntry.update({ where: { id: cur.id }, data: { vehicleId } })
       // Custo real já detalhado/baixado: o débito só atualiza o valor COBRADO.
-      if (cur.chargedAmount != null || cur.status !== 'PREVISTO') {
+      // Negociação cancelada: débito ainda em aberto é cancelado (mesmo já detalhado).
+      if (dead && cur.status === 'PREVISTO') {
+        await prisma.financialEntry.update({ where: { id: cur.id }, data: { status: 'CANCELADO' } })
+      } else if (cur.chargedAmount != null || cur.status !== 'PREVISTO') {
         if (cur.status !== 'CANCELADO') await prisma.financialEntry.update({ where: { id: cur.id }, data: { chargedAmount: d.value } })
       } else {
         await prisma.financialEntry.update({ where: { id: cur.id }, data: { ...data, ...(dead ? { status: 'CANCELADO' } : {}) } })

@@ -186,6 +186,15 @@ export const metaPageConnector: Connector = {
     }
     return { state: 'REMOVIDO', remoteId: ref.remoteId }
   },
+  /** Timeout no /feed: procura o post recente com o mesmo texto antes de repetir (só post de fotos). */
+  async findByReference(_ref: RemoteRef, p, ctx) {
+    const s = p?.social
+    if (!p || (s && (s.format !== 'POST' || musicPlan(s.music ?? null, 'META_PAGE', s.format)))) return null
+    const message = channelText(p, pageSpec).description.trim()
+    const j = await graph<{ data?: Array<{ id: string; message?: string; permalink_url?: string }> }>(ctx, 'GET', `/${ctx.connection.externalAccountId}/published_posts`, { fields: 'id,message,permalink_url,created_time', limit: '10' }, 'Página')
+    const hit = (j.data ?? []).find((m) => (m.message ?? '').trim() === message)
+    return hit ? { state: 'PUBLICADO', remoteId: hit.id, remoteUrl: hit.permalink_url ?? `https://www.facebook.com/${hit.id}` } : null
+  },
 }
 
 // ── Instagram ───────────────────────────────────────────────────────────────

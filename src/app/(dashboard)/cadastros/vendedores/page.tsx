@@ -349,7 +349,12 @@ function Modal({
                 onChange={(e) => set('positionId', e.target.value || null)}
               >
                 <option value="">Selecione</option>
-                {positions.map((p) => (
+                {/* O cargo ATUAL do registro pode não vir na lista (a API só lista
+                    cargos abaixo do nível de quem edita) — mantém-no como opção. */}
+                {(initial?.position && !positions.some((p) => p.id === initial.position!.id)
+                  ? [initial.position as Position, ...positions]
+                  : positions
+                ).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>

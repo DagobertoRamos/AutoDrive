@@ -53,9 +53,11 @@ export async function callForArrival(opts: {
         const upd = await tx.sellerQueueEntry.updateMany({ where: { id: entryId, status: current.status, blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
         if (upd.count !== 1) return null // perdeu a corrida
       } else {
+        // Gerente normalmente NÃO está na fila: sem entry, chama mesmo assim.
         const current = await tx.sellerQueueEntry.findFirst({ where: { queueId: opts.queueId, sellerId, status: { in: ['WAITING', 'NEXT'] } }, select: { status: true } })
-        if (!current || !canTransitionQueueEntryStatus(current.status, 'CALLED')) return null
-        await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId, status: current.status, blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
+        if (current && canTransitionQueueEntryStatus(current.status, 'CALLED')) {
+          await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId, status: current.status, blocked: false }, data: { status: 'CALLED', lastActiveAt: now } })
+        }
       }
       const att = await tx.sellerQueueAttendance.create({
         data: { tenantId: opts.tenantId, unitId: opts.unitId, queueId: opts.queueId, sellerId, arrivalId: opts.arrivalId, status: 'CALLED', calledAt: now, acceptDeadline: deadline },
@@ -139,6 +141,47 @@ export async function callForArrival(opts: {
 }
 
 /**
+ * Expira UM atendimento CALLED de forma atômica (compare-and-set) — compartilhado
+ * pelo sweep do servidor e pela rota /timeout. Retorna 'personal' quando era
+ * chamada da fila individual (item volta a AGUARDANDO, sem penalidade/re-rota),
+ * 'expired' quando expirou na rotação (vendedor ao fim + penalidade + cliente
+ * PENDING) ou null se outro processo já tratou (perdeu a corrida).
+ */
+export async function expireCalledAttendance(opts: {
+  tenantId: string
+  queueId: string
+  att: { id: string; sellerId: string; unitId: string; arrivalId: string | null }
+  actorId: string
+  reason: string
+}): Promise<'personal' | 'expired' | null> {
+  const { att } = opts
+  const now = new Date()
+  // Chamada da FILA INDIVIDUAL (o próprio cliente do vendedor)? Não pode ser
+  // re-roteada p/ outro vendedor nem penalizar/mover — o cliente é DELE.
+  const personalItem = await prisma.agentPersonalQueueItem.findFirst({ where: { attendanceId: att.id, status: 'CHAMADO' }, select: { id: true } }).catch(() => null)
+  let outcome: 'personal' | 'expired' | null = null
+  await prisma.$transaction(async (tx) => {
+    // Compare-and-set: só processa se AINDA estiver CALLED (evita corrida).
+    const upd = await tx.sellerQueueAttendance.updateMany({ where: { id: att.id, status: 'CALLED' }, data: { status: 'EXPIRED' } })
+    if (upd.count !== 1) return
+    if (personalItem) {
+      // Devolve o item à fila individual do vendedor (sem penalidade/re-rota).
+      await tx.agentPersonalQueueItem.update({ where: { id: personalItem.id }, data: { status: 'AGUARDANDO', attendanceId: null } })
+      await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId: att.sellerId, status: 'CALLED' }, data: { status: 'WAITING', lastActiveAt: now } })
+      outcome = 'personal'
+      return
+    }
+    // Move o vendedor para o fim da fila (se ainda estiver na fila).
+    const agg = await tx.sellerQueueEntry.aggregate({ where: { queueId: opts.queueId }, _max: { position: true } })
+    await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId: att.sellerId, status: { in: ['CALLED', 'NEXT'] } }, data: { status: 'WAITING', position: (agg._max.position ?? 0) + 1, lastActiveAt: now } })
+    await tx.sellerQueuePenalty.create({ data: { tenantId: opts.tenantId, unitId: att.unitId, sellerId: att.sellerId, type: 'TIMEOUT', reason: opts.reason, points: 1, appliedById: opts.actorId } })
+    if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'PENDING' } })
+    outcome = 'expired'
+  })
+  return outcome
+}
+
+/**
  * Expiração NO SERVIDOR dos chamados vencidos (não depende do navegador do
  * vendedor disparar o /timeout). Varre os atendimentos CALLED com prazo vencido
  * e, para cada um (de forma atômica): marca EXPIRED, move o vendedor ao fim,
@@ -156,29 +199,9 @@ export async function sweepExpiredCalls(opts: { tenantId: string; unitId: string
   if (!stale.length) return
   const cfg = await getUnitConfig(opts.tenantId, opts.unitId)
   for (const att of stale) {
-    // Chamada da FILA INDIVIDUAL (o próprio cliente do vendedor)? Não pode ser
-    // re-roteada p/ outro vendedor nem penalizar/mover — o cliente é DELE. Só
-    // devolve o item p/ a fila individual dele (fica AGUARDANDO p/ tocar de novo).
-    const personalItem = await prisma.agentPersonalQueueItem.findFirst({ where: { attendanceId: att.id, status: 'CHAMADO' }, select: { id: true } }).catch(() => null)
-    let claimed = false
-    await prisma.$transaction(async (tx) => {
-      // Compare-and-set: só processa se AINDA estiver CALLED (evita corrida).
-      const upd = await tx.sellerQueueAttendance.updateMany({ where: { id: att.id, status: 'CALLED' }, data: { status: 'EXPIRED' } })
-      if (upd.count !== 1) return
-      claimed = true
-      if (personalItem) {
-        // Devolve o item à fila individual do vendedor (sem penalidade/re-rota).
-        await tx.agentPersonalQueueItem.update({ where: { id: personalItem.id }, data: { status: 'AGUARDANDO', attendanceId: null } })
-        await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId: att.sellerId, status: 'CALLED' }, data: { status: 'WAITING', lastActiveAt: now } })
-        return
-      }
-      // Move o vendedor para o fim da fila (se ainda estiver na fila).
-      const agg = await tx.sellerQueueEntry.aggregate({ where: { queueId: opts.queueId }, _max: { position: true } })
-      await tx.sellerQueueEntry.updateMany({ where: { queueId: opts.queueId, sellerId: att.sellerId, status: { in: ['CALLED', 'NEXT'] } }, data: { status: 'WAITING', position: (agg._max.position ?? 0) + 1, lastActiveAt: now } })
-      await tx.sellerQueuePenalty.create({ data: { tenantId: opts.tenantId, unitId: att.unitId, sellerId: att.sellerId, type: 'TIMEOUT', reason: 'Não aceitou no prazo (auto)', points: 1, appliedById: opts.actorId } })
-      if (att.arrivalId) await tx.sellerQueueCustomerArrival.update({ where: { id: att.arrivalId }, data: { status: 'PENDING' } })
-    })
-    if (!claimed) continue
+    const outcome = await expireCalledAttendance({ tenantId: opts.tenantId, queueId: opts.queueId, att, actorId: opts.actorId, reason: 'Não aceitou no prazo (auto)' })
+    if (!outcome) continue
+    const personalItem = outcome === 'personal'
     // Item da fila individual: só registra e segue (não move/escala/re-chama).
     if (personalItem) {
       await logQueueEvent({ tenantId: opts.tenantId, unitId: att.unitId, queueId: opts.queueId, type: 'TIMEOUT', sellerId: att.sellerId, actorId: opts.actorId, arrivalId: att.arrivalId, attendanceId: att.id, reason: 'fila individual: aceite expirou (devolvido à fila do vendedor)' }).catch(() => {})

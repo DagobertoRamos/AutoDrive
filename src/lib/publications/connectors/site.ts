@@ -6,7 +6,8 @@
 
 import { prisma } from '@/lib/prisma'
 import { loadSiteConfig, publicSiteRoot } from '@/lib/site/config'
-import { siteVehicleState, vehicleSlug } from '@/lib/site/listing-core'
+import { siteVehicleState, SITE_VISIBLE_STOCK, vehicleSlug } from '@/lib/site/listing-core'
+import { realPhotoUrls } from '@/lib/vehicle-placeholder'
 import { channelSpec } from '../channels'
 import { ConnectorError } from '../errors'
 import type { ListingPayload } from '../content-core'
@@ -29,17 +30,17 @@ async function readState(tenantId: string, vehicleId: string): Promise<RemoteRes
     where: { id: vehicleId, tenantId },
     select: {
       id: true, brand: true, model: true, version: true, modelYear: true, year: true, active: true, stockStatus: true,
-      siteListing: { select: { hidden: true, photosStatus: true } }, _count: { select: { photos: true } },
+      siteListing: { select: { hidden: true, photosStatus: true } }, photos: { select: { url: true } },
     },
   })
   if (!v) return { state: 'NAO_ENCONTRADO', message: 'Veículo não existe mais no estoque.' }
-  const st = siteVehicleState({ active: v.active, stockStatus: v.stockStatus }, v.siteListing ? { hidden: v.siteListing.hidden, photosStatus: v.siteListing.photosStatus } : null, v._count.photos)
+  const st = siteVehicleState({ active: v.active, stockStatus: v.stockStatus }, v.siteListing ? { hidden: v.siteListing.hidden, photosStatus: v.siteListing.photosStatus } : null, realPhotoUrls(v.photos.map((p) => p.url)).length)
   const root = await siteRoot(tenantId)
   const url = root ? `${root}/veiculos/${vehicleSlug(v)}` : null
   if (st === 'PUBLICADO') return root ? { state: 'PUBLICADO', remoteId: v.id, remoteUrl: url, remoteStatus: 'PUBLICADO' } : { state: 'EM_ANALISE', remoteId: v.id, message: 'Site da loja desativado: o anúncio só aparece quando o site estiver no ar.' }
   if (st === 'EM_BREVE') return { state: 'EM_ANALISE', remoteId: v.id, remoteUrl: url, remoteStatus: 'EM_BREVE', message: 'No site como "Em breve" (sem fotos).' }
   // Vendido/fora do estoque vendável = fora do site, mesmo que também esteja escondido.
-  const stockVisible = v.active && ['DISPONIVEL', 'EM_PROMOCAO'].includes(String(v.stockStatus))
+  const stockVisible = v.active && (SITE_VISIBLE_STOCK as readonly string[]).includes(String(v.stockStatus))
   if (stockVisible && v.siteListing?.hidden) return { state: 'PAUSADO', remoteId: v.id, remoteStatus: 'ESCONDIDO' }
   // Venda em andamento: a vitrine já oculta o carro — equivale a pausado.
   if (v.active && ['EM_NEGOCIACAO', 'RESERVADO'].includes(String(v.stockStatus))) return { state: 'PAUSADO', remoteId: v.id, remoteStatus: 'VENDA_EM_ANDAMENTO' }

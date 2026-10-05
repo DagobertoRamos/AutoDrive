@@ -106,7 +106,8 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
 
   async function submit(settle: boolean) {
     if (!e) return
-    if (settle && !(realCost > 0)) { setErr('Informe o valor antes de dar a baixa.'); return }
+    // Débito/adiantamento de comissão vem negativo do sistema de comissões e também tem baixa.
+    if (settle && !(realCost > 0) && !(e.commissionLinked && e.amount !== 0)) { setErr('Informe o valor antes de dar a baixa.'); return }
     if (settle && !paidDate) { setErr('Informe a data da baixa.'); return }
     setBusy(settle ? 'settle' : 'save'); setErr('')
     const body: Record<string, unknown> = {
@@ -131,9 +132,8 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
   async function setStatus(status: 'PREVISTO' | 'CANCELADO', ask: string) {
     if (!e || !confirm(ask)) return
     setBusy(status); setErr('')
-    const r = status === 'CANCELADO'
-      ? await fetch(`/api/finance/entries/${e.id}`, { method: 'DELETE', credentials: 'include' })
-      : await fetch(`/api/finance/entries/${e.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status, paidDate: null }) })
+    // Cancelar só muda o status (DELETE apagaria de vez o lançamento manual).
+    const r = await fetch(`/api/finance/entries/${e.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(status === 'CANCELADO' ? { status } : { status, paidDate: null }) })
     const j = await r.json().catch(() => ({}))
     setBusy(null)
     if (!r.ok) { setErr(j?.error ?? 'Não foi possível concluir.'); return }

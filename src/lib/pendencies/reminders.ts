@@ -20,7 +20,9 @@ const DEFAULT_AUTOSEND: AutoSend = { enabled: false, allowedDays: ['MON', 'TUE',
 
 /** Lê a config de auto-envio de pendências da loja (SystemSetting JSON). */
 async function loadAutoSend(tenantId: string): Promise<AutoSend> {
-  const row = await prisma.systemSetting.findFirst({ where: { key: `t:${tenantId}:pendency_settings` }, select: { value: true } }).catch(() => null)
+  const row = (await prisma.systemSetting.findFirst({ where: { key: `t:${tenantId}:pendency_settings` }, select: { value: true } }).catch(() => null))
+    // sem config da loja → padrão global (MASTER)
+    ?? (await prisma.systemSetting.findFirst({ where: { key: 'global:pendency_settings' }, select: { value: true } }).catch(() => null))
   let raw: { autoSend?: Partial<AutoSend> } = {}
   try { if (row?.value) raw = JSON.parse(row.value) } catch { /* default */ }
   const a = raw.autoSend ?? {}
@@ -79,7 +81,7 @@ async function escalateToManager(p: EscalatePendency): Promise<void> {
   const title = '⚠️ Pendência não resolvida — cobrança esgotada'
   const message = `${p.type ? p.type + ': ' : ''}${p.customerName}${p.plate ? ' — ' + p.plate : ''} não foi resolvida após os lembretes. Confira.`
   for (const uid of targets) {
-    await prisma.notification.create({ data: { userId: uid, type: 'PENDENCIA_CRITICA', title, message, actionUrl: '/pendencias/central' } }).catch(() => {})
+    await prisma.notification.create({ data: { userId: uid, tenantId: p.tenantId, type: 'PENDENCIA_CRITICA', title, message, actionUrl: '/pendencias/central' } }).catch(() => {})
   }
   await logNotif(p.tenantId, p.id, null, 'ESCALATION', 'SENT', targets.size, 'cobrança esgotada')
 }

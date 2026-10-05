@@ -73,6 +73,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
       }).catch(() => {}),
       prisma.auditLog.create({
         data: {
+          tenantId: pendency.tenantId,
           userId: session.user.id,
           userName: session.user.name,
           userRole: session.user.role,

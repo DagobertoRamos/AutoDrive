@@ -31,7 +31,7 @@ export function ReceptionPanel({ vehicleId, canEdit, onChanged }: { vehicleId: s
     setS(d)
     setItems(Object.fromEntries(d.catalog.map((c) => [c.key, d.items.find((i) => i.key === c.key) ?? { key: c.key, status: 'PENDENTE', note: null }])))
     setKm(d.km != null ? String(d.km) : '')
-    setDate(d.receivedAt ? String(d.receivedAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
+    setDate(d.receivedAt ? String(d.receivedAt).slice(0, 10) : new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))
     setNotes(d.notes ?? '')
   }
   const load = useCallback(async () => {

@@ -15,6 +15,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { zodErrorResponse, ownsTenant } from '@/lib/finance/finance-service'
 import { releaseLeadSchema } from '@/lib/validators/marketing'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { closeOpenLeadSlas } from '@/lib/marketing/distribution'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -39,6 +40,8 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const d = releaseLeadSchema.parse(await req.json().catch(() => ({})))
     await prisma.$transaction(async (tx) => {
+      // Lead volta p/ a fila: o SLA do responsável anterior não vale mais.
+      await closeOpenLeadSlas(tx, id)
       await tx.marketingLead.update({
         where: { id },
         data: { assignedToUserId: null, claimedByUserId: null, claimedAt: null, status: d.recycle ? 'RECYCLED' : 'NEW' },

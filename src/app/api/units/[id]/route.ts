@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { canPerformAction } from '@/lib/permissions'
 
 export async function PUT(req: Request, ctxArg: { params: { id: string } | Promise<{ id: string }> }) {
   /* ASYNC_PARAMS_FIXED */ const params = await Promise.resolve(ctxArg.params)
@@ -12,8 +13,19 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
     if (!session) return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
     { const gate = await assertModuleEnabled(session.user, 'registrations.units'); if (gate) return gate }
 
-    if (!['MASTER', 'ADM', 'GERENTE'].includes(session.user.role)) {
+    if (!canPerformAction(session.user.role, 'registrations.units', 'update')) {
       return NextResponse.json({ success: false, error: 'Sem permissão' }, { status: 403 })
+    }
+
+    // Isolamento: não-MASTER só edita unidade da própria loja.
+    const existing = await prisma.unit.findFirst({
+      where: session.user.role === 'MASTER'
+        ? { id: params.id }
+        : { id: params.id, tenantId: session.user.tenantId ?? '__none__' },
+      select: { id: true, tenantId: true },
+    })
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Unidade não encontrada' }, { status: 404 })
     }
 
     const body = await req.json()
@@ -36,13 +48,13 @@ export async function PUT(req: Request, ctxArg: { params: { id: string } | Promi
         phone:       phone ? String(phone) : null,
         email:       email ? String(email) : null,
         responsavel: responsavel ? String(responsavel) : null,
-        active:      active !== undefined ? Boolean(active) : true,
+        active:      active !== undefined ? Boolean(active) : undefined,
       },
     })
 
     await createSafeAuditLog({
       userId:   session.user.id,
-      tenantId: session.user.tenantId ?? null,
+      tenantId: existing.tenantId ?? session.user.tenantId ?? null,
       action:   'UPDATE',
       entity:   'Unit',
       entityId: params.id,

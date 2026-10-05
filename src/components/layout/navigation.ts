@@ -246,7 +246,6 @@ export const NAV_GROUPS: NavItem[] = [
       { label: 'Disparo',                href: '/comunicacao/disparo',   icon: Send,            module: 'communication.dispatch' },
       { label: 'Templates',              href: '/comunicacao/templates', icon: LayoutTemplate,  module: 'communication.templates' },
       { label: 'Avisos',                 href: '/comunicacao/avisos',    icon: Megaphone,       module: 'communication' },
-      { label: 'Logs',                   href: '/comunicacao/logs',      icon: ScrollText,      module: 'communication' },
     ],
   },
 
@@ -393,7 +392,6 @@ export const NAV_GROUPS: NavItem[] = [
           { label: 'WhatsApp',         href: '/relatorios/comunicacao/whatsapp', module: 'logs' },
           { label: 'E-mail',           href: '/relatorios/comunicacao/email',    module: 'logs' },
           { label: 'Avisos Internos',  href: '/relatorios/comunicacao/avisos',   module: 'logs' },
-          { label: 'Logs',             href: '/relatorios/comunicacao/logs',     module: 'logs' },
         ],
       },
       {

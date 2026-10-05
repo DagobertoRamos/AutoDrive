@@ -7,8 +7,6 @@ import { prisma } from '@/lib/prisma'
 import {
   getSessionUser,
   assertTenantId,
-  hasRole,
-  MANAGEMENT_ROLES,
   unauthorizedResponse,
   forbiddenResponse,
   assertUnitBelongsToTenant,
@@ -18,6 +16,8 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import bcrypt from 'bcryptjs'
 import { isValidCPF } from '@/lib/br-docs/cpf'
+import { canPerformAction } from '@/lib/permissions'
+import { canActOn } from '@/lib/role-hierarchy'
 
 // ── GET — Listar gerentes ────────────────────────────────────────────────────
 
@@ -64,8 +64,8 @@ export async function POST(req: Request) {
   if (!user) return unauthorizedResponse()
   { const gate = await assertModuleEnabled(user, 'registrations.managers'); if (gate) return gate }
 
-  if (!hasRole(user.role, MANAGEMENT_ROLES)) {
-    return forbiddenResponse('Apenas gerentes e administradores podem cadastrar gerentes.')
+  if (!canPerformAction(user.role, 'registrations.managers', 'create')) {
+    return forbiddenResponse('Apenas gerentes gerais e administradores podem cadastrar gerentes.')
   }
 
   try {
@@ -109,6 +109,18 @@ export async function POST(req: Request) {
     const managerRole = (positionBaseRole && positionBaseRole !== 'MASTER')
       ? (positionBaseRole as 'ADM' | 'GERENTE_GERAL' | 'GERENTE_ADMINISTRATIVO' | 'GERENTE' | 'VENDEDOR_LIDER' | 'VENDEDOR' | 'FINANCEIRO' | 'USUARIO_LIDER' | 'USUARIO')
       : 'GERENTE'
+    // Anti-escalonamento: ninguém (exceto MASTER) cria gerente com papel igual
+    // ou acima do próprio.
+    if (!canActOn(user.role, managerRole)) {
+      return forbiddenResponse('Você não pode cadastrar gerente com cargo igual ou superior ao seu.')
+    }
+
+    // O tenant do gerente é o tenant DA UNIDADE (corrige MASTER, cujo tenantId é null).
+    const unitRec = await prisma.unit.findUnique({ where: { id: String(unitId) }, select: { tenantId: true } })
+    const effectiveTenantId = unitRec?.tenantId ?? tenantId
+    if (!effectiveTenantId) {
+      return NextResponse.json({ success: false, error: 'Unidade sem empresa vinculada.' }, { status: 400 })
+    }
 
     const cpfDigits = cpf ? String(cpf).replace(/\D/g, '') : null
     const whatsappDigits = String(whatsapp).replace(/\D/g, '')
@@ -117,6 +129,17 @@ export async function POST(req: Request) {
     let manager
     if (body.userId) {
       // Promoção de um usuário já existente a gerente (1:1 com User).
+      // O usuário precisa ser do mesmo tenant e estar abaixo de quem promove.
+      const target = await prisma.user.findFirst({
+        where:  { id: String(body.userId), tenantId: effectiveTenantId },
+        select: { id: true, role: true },
+      })
+      if (!target) {
+        return NextResponse.json({ success: false, error: 'Usuário não encontrado.' }, { status: 404 })
+      }
+      if (target.id !== user.id && !canActOn(user.role, target.role)) {
+        return forbiddenResponse('Você não pode promover usuário com cargo igual ou superior ao seu.')
+      }
       manager = await prisma.manager.create({
         data: {
           userId:                String(body.userId),
@@ -148,7 +171,7 @@ export async function POST(req: Request) {
       manager = await prisma.$transaction(async (tx) => {
         const newUser = await tx.user.create({
           data: {
-            tenantId,
+            tenantId:           effectiveTenantId,
             unitId:             String(unitId),
             name:               String(fullName).trim(),
             email:              emailNorm,
@@ -178,7 +201,7 @@ export async function POST(req: Request) {
 
     await createSafeAuditLog({
       userId:   user.id,
-      tenantId,
+      tenantId: effectiveTenantId,
       action:   'CREATE',
       entity:   'Manager',
       entityId: manager.id,

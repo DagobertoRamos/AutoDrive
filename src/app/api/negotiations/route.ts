@@ -22,6 +22,8 @@ import {
 } from '@/lib/negotiation/deal-children'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { resolveDealManagerUserId } from '@/lib/negotiation/manager'
+import { ensureUniqueDealNumber, generateDealNumber } from '@/lib/negotiation-service'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 // ── GET — Listar negociações ──────────────────────────────────────────────────
 
@@ -309,6 +311,13 @@ export async function POST(req: NextRequest) {
       if (sel) resolvedSellerId = sel.id
     }
 
+    // Veículos do estoque informados pelo cliente: só da mesma loja.
+    for (const vid of [vehicle?.vehicleId, tradeInVehicle?.vehicleId]) {
+      if (!vid) continue
+      const ok = await prisma.vehicle.findFirst({ where: { id: String(vid), tenantId: session.user.tenantId ?? undefined }, select: { id: true } })
+      if (!ok) return NextResponse.json({ error: 'Veículo inválido para esta loja.' }, { status: 400 })
+    }
+
     let heldExtra: string[] = []
     const result = await prisma.$transaction(async (tx) => {
       // ── Trava de envio duplicado ─────────────────────────────────────────
@@ -406,8 +415,7 @@ export async function POST(req: NextRequest) {
         personId = personRecord.id
       }
 
-      const count = await tx.deal.count({ where: { tenantId: session.user.tenantId ?? undefined } })
-      const dealNumber    = `NEG-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`
+      const dealNumber    = await generateDealNumber(session.user.tenantId ?? null, tx)
       const initialStatus = submit ? 'AGUARDANDO_APROVACAO' : 'RASCUNHO'
 
       // Gerente responsável: o do vendedor (ou o 1º gerente ativo da unidade).
@@ -440,7 +448,7 @@ export async function POST(req: NextRequest) {
           totalPayments: totalPayments ? Number(totalPayments) : null,
           changeAmount:  changeAmount  ? Number(changeAmount)  : null,
           // Agendamento
-          deliveryDate: deliveryDate   ? new Date(deliveryDate) : null,
+          deliveryDate: parseDateOnly(deliveryDate),
           // Troco/Dados bancários
           changeBeneficiary:    changeBeneficiary    ?? null,
           changeBeneficiaryCpf: changeBeneficiaryCpf ?? null,
@@ -451,7 +459,7 @@ export async function POST(req: NextRequest) {
           // Consignação
           consignMinValue:  consignMinValue  ? Number(consignMinValue)  : null,
           consignCommPct:   consignCommPct   ? Number(consignCommPct)   : null,
-          consignDeadline:  consignDeadline  ? new Date(consignDeadline): null,
+          consignDeadline:  parseDateOnly(consignDeadline),
           notes: notes ?? null,
         } as never,
       })
@@ -507,6 +515,13 @@ export async function POST(req: NextRequest) {
             year:      vehicle.year   ? Number(vehicle.year) : null,
             color:     vehicle.color  ?? null,
             km:        vehicle.km     ? Number(vehicle.km)   : null,
+            condition:      vehicle.condition ?? null,
+            evaluatedValue: vehicle.evaluatedValue ? Number(vehicle.evaluatedValue) : null,
+            fipeValue:      vehicle.fipeValue      ? Number(vehicle.fipeValue)      : null,
+            hasFinancing:   vehicle.hasFinancing   ?? false,
+            payoffValue:    vehicle.payoffValue    ? Number(vehicle.payoffValue)    : null,
+            payoffBank:     vehicle.payoffBank     ?? null,
+            notes:          vehicle.notes          ?? null,
             // Vários veículos: cada um com o próprio valor; um só = valor da operação.
             agreedValue: hasExtras && vehicle.agreedValue != null
               ? Number(vehicle.agreedValue)
@@ -628,6 +643,7 @@ export async function POST(req: NextRequest) {
     // Esteira de entrada: carro que ENTRA por esta negociação (troca/compra/
     // consignação) tem o portão "Negociação de entrada" resolvido ao cadastrar.
     const newDealId = (result as { id?: string }).id
+    if (newDealId) await ensureUniqueDealNumber(newDealId).catch((e) => console.error('[negociacao] número duplicado', e))
     if (newDealId) {
       await resolveNegotiationGate(newDealId, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
         .catch((e) => console.error('[esteira] portão de negociação', e))

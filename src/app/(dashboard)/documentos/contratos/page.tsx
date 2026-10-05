@@ -15,16 +15,18 @@ interface Contract {
   customerName:   string
   plate:          string | null
   vehicle:        string | null
-  value:          number | null
+  value:          number | string | null
   contractDate:   string | null
   type:           string
   status:         string
   createdAt:      string
 }
 
-function fmt(n: number | null) {
-  if (n == null) return '—'
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+function fmt(n: number | string | null) {
+  if (n == null || n === '') return '—'
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 export default function ContratosPage() {

@@ -34,6 +34,7 @@ import {
   commissionReferenceDate,
   isCommissionEligibleStatus,
 } from '@/lib/commission/status'
+import { getGoalPeriod } from '@/lib/goals/service'
 import type { CommissionRule, CommissionRuleType, Prisma, UserRole } from '@prisma/client'
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
@@ -133,10 +134,9 @@ function toNum(v: unknown): number {
   return Number(v) || 0
 }
 
+// Período (AAAA-MM) no fuso de São Paulo — o servidor roda em UTC.
 function periodOf(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  return `${y}-${m}`
+  return getGoalPeriod({ frequency: 'monthly', referenceDate: date }).periodKey
 }
 
 function dateOnly(date: Date): string {
@@ -953,11 +953,10 @@ export async function generateCommissionsForDeal(
 
 // ── Faixas e bônus por quantidade ────────────────────────────────────────────
 
+// Mês de São Paulo como janela [start, end) — fim exclusivo.
 function periodBounds(date: Date): { start: Date; end: Date } {
-  return {
-    start: new Date(date.getFullYear(), date.getMonth(), 1),
-    end:   new Date(date.getFullYear(), date.getMonth() + 1, 1),
-  }
+  const { startsAt, endsAt } = getGoalPeriod({ frequency: 'monthly', referenceDate: date })
+  return { start: startsAt, end: new Date(endsAt.getTime() + 1) }
 }
 
 function vehicleRolesForRuleType(ruleType: string): string[] {
@@ -1012,18 +1011,14 @@ async function countEmployeeVehiclesInWindow(
   const dealAnd: Array<Record<string, unknown>> = [
     { status: { in: COMMISSION_ELIGIBLE_DEAL_STATUSES } },
     {
+      // Mesma precedência de commissionReferenceDate (1ª data preenchida): o carro
+      // conta num único período.
       OR: [
-        { approvedAt:  { gte: start, lt: end } },
-        { finalizedAt: { gte: start, lt: end } },
-        { saleDate:    { gte: start, lt: end } },
-        {
-          AND: [
-            { approvedAt: null },
-            { finalizedAt: null },
-            { saleDate: null },
-            { createdAt: { gte: start, lt: end } },
-          ],
-        },
+        { approvedAt: { gte: start, lt: end } },
+        { approvedAt: null, releasedAt: { gte: start, lt: end } },
+        { approvedAt: null, releasedAt: null, finalizedAt: { gte: start, lt: end } },
+        { approvedAt: null, releasedAt: null, finalizedAt: null, saleDate: { gte: start, lt: end } },
+        { approvedAt: null, releasedAt: null, finalizedAt: null, saleDate: null, createdAt: { gte: start, lt: end } },
       ],
     },
     employeeFilter,

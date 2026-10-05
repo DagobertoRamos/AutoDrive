@@ -183,14 +183,15 @@ export async function GET(req: Request) {
         where: {
           ...pendencyBaseFilter,
           status: { in: OPEN_PENDENCIES },
-          OR: [{ priority: 'URGENTE' }, { severity: 'CRITICAL' }],
+          // AND: o OR de criticidade não pode sobrescrever o OR de "dono" do filtro base
+          AND: [{ OR: [{ priority: 'URGENTE' }, { severity: 'CRITICAL' }] }],
         },
       }),
       prisma.pendency.count({
         where: {
           ...pendencyBaseFilter,
           status: { notIn: CLOSED_PENDENCIES },
-          OR: [{ status: 'VENCIDA' }, { dueDate: { lt: now } }, { slaDeadline: { lt: now } }],
+          AND: [{ OR: [{ status: 'VENCIDA' }, { dueDate: { lt: now } }, { slaDeadline: { lt: now } }] }],
         },
       }),
       prisma.pendency.count({

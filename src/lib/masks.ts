@@ -70,9 +70,12 @@ export function numberToBRLMask(value: number | string | null | undefined): stri
 /**
  * Formata um número como BRL (R$ 1.234,56) — usado para exibição (read-only).
  */
-export function formatBRL(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  return value.toLocaleString('pt-BR', {
+export function formatBRL(value: number | string | null | undefined): string {
+  // Decimal do Prisma chega serializado como string ("12345.67")
+  if (value == null || value === '') return '—'
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return '—'
+  return n.toLocaleString('pt-BR', {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 2,

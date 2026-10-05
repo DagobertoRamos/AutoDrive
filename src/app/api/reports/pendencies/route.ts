@@ -3,7 +3,7 @@
 // Relatórios de pendências sobre Pendency. Multi-tenant via tenantWhere; gated
 // por canAccessModule('logs'). read-only.
 //  - abertas:   não finalizadas/canceladas + quebra prioridade/status + vencidas
-//  - resolvidas: FINALIZADA + tempo médio de resolução
+//  - resolvidas: FINALIZADA (ou arquivada após resolver) + tempo médio de resolução
 //  - sla:       com prazo (sla/dueDate) classificadas em no-prazo vs vencida
 //  - responsavel/unidade: agregado por responsável/unidade
 // =============================================================================
@@ -21,6 +21,12 @@ const VIEWS = ['abertas', 'resolvidas', 'sla', 'responsavel', 'unidade'] as cons
 type View = (typeof VIEWS)[number]
 
 const CLOSED: PendencyStatus[] = ['FINALIZADA', 'CANCELADA']
+
+// Arquivar (manual ou automático) leva FINALIZADA → CANCELADA mantendo resolvedAt:
+// conta como resolvida. Exclusão lógica já sai via notDeletedPendencyWhere.
+const RESOLVED_OR = [{ status: 'FINALIZADA' }, { status: 'CANCELADA', resolvedAt: { not: null } }]
+const isResolved = (p: { status: PendencyStatus; resolvedAt: Date | null }) =>
+  p.status === 'FINALIZADA' || (p.status === 'CANCELADA' && p.resolvedAt != null)
 
 export async function GET(req: Request) {
   const user = await getSessionUser()
@@ -46,7 +52,7 @@ export async function GET(req: Request) {
       const rows = await prisma.pendency.findMany({
         where: where as never,
         take: 5000,
-        select: { responsibleId: true, unitId: true, status: true, slaDeadline: true, dueDate: true },
+        select: { responsibleId: true, unitId: true, status: true, slaDeadline: true, dueDate: true, resolvedAt: true },
       })
       const keyOf = (r: typeof rows[number]) => (view === 'responsavel' ? r.responsibleId : r.unitId)
       const agg = new Map<string, { total: number; abertas: number; resolvidas: number; vencidas: number }>()
@@ -54,7 +60,7 @@ export async function GET(req: Request) {
         const k = keyOf(r) ?? '__sem__'
         const e = agg.get(k) ?? { total: 0, abertas: 0, resolvidas: 0, vencidas: 0 }
         e.total++
-        if (r.status === 'FINALIZADA') e.resolvidas++
+        if (isResolved(r)) e.resolvidas++
         else if (r.status !== 'CANCELADA') e.abertas++
         if (isOverdue(r)) e.vencidas++
         agg.set(k, e)
@@ -79,7 +85,7 @@ export async function GET(req: Request) {
     // ---- Listas (abertas / resolvidas / sla) ----------------------------
     const extra: Record<string, unknown> = {}
     if (view === 'abertas') extra.status = { notIn: CLOSED }
-    if (view === 'resolvidas') extra.status = 'FINALIZADA'
+    if (view === 'resolvidas') extra.OR = RESOLVED_OR
     if (view === 'sla') { extra.status = { notIn: CLOSED }; extra.OR = [{ slaDeadline: { not: null } }, { dueDate: { not: null } }] }
     const where = tenantWhere(user.role, tenantId, { ...extra, AND: [notDeletedPendencyWhere()] })
 

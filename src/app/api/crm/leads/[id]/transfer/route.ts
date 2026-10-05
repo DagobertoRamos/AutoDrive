@@ -14,6 +14,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
 import { prisma as db } from '@/lib/prisma'
+import { closeOpenLeadSlas } from '@/lib/marketing/distribution'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,6 +66,8 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     await db.$transaction(async (tx) => {
       // Atualiza o responsável do lead.
       await tx.marketingLead.update({ where: { id }, data: { assignedToUserId: toUserId, lastContactAt: now } })
+      // Novo responsável: o SLA do anterior não vale mais (evita reciclar/alertar).
+      await closeOpenLeadSlas(tx, id)
       // Registra atribuição (fonte de verdade de histórico de responsáveis).
       await tx.marketingLeadAssignment.create({ data: { tenantId, leadId: id, assignedToUserId: toUserId, assignedByUserId: user.id, mode: 'MANUAL', status: 'ASSIGNED', reason } })
       // Transfere tarefas abertas.
