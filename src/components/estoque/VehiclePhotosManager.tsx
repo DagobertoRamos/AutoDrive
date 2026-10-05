@@ -11,6 +11,7 @@
 import { useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Camera, Globe, ImagePlus, Loader2, Rocket, Star, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
 import { compressPhoto } from '@/lib/stock/photo-compress'
 
 export interface VehiclePhotoItem { id: string; url: string; isMain: boolean; order: number; caption?: string | null }
@@ -137,7 +138,7 @@ export function VehiclePhotosManager({ vehicleId, photos, onChange }: Props) {
               }}
               className={cn('group relative overflow-hidden rounded-xl border-2 bg-gray-100', p.isMain ? 'border-amber-400' : 'border-transparent', overId === p.id && dragId !== p.id && 'ring-2 ring-brand-400', dragId === p.id && 'opacity-50', !busy && 'cursor-grab')}
             >
-              <img src={p.url} alt={`Foto ${i + 1}`} className="aspect-[4/3] w-full object-cover" loading="lazy" />
+              <img src={p.url} alt={`Foto ${i + 1}`} className="aspect-[4/3] w-full object-cover" loading="lazy" onError={(e) => { if (!e.currentTarget.src.endsWith(VEHICLE_NO_PHOTO_IMG)) e.currentTarget.src = VEHICLE_NO_PHOTO_IMG }} />
               <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white">{i + 1}</span>
               {p.isMain && <span className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-amber-950"><Star size={10} />Capa</span>}
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/70 to-transparent p-1.5">

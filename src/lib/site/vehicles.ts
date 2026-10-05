@@ -11,6 +11,7 @@ import { classifyVideo } from '@/lib/publications/social/video-core'
 import { brandLandings, type BrandLanding } from './seo-core'
 import { brandCounts, brandVariants, type BrandCount } from './brands-core'
 import { effectivePrice, siteVehicleState, SITE_VISIBLE_STOCK, vehicleIdFromSlug, vehicleSlug, vehicleTitle, type SiteVehicleState } from './listing-core'
+import { realPhotoUrls } from '@/lib/vehicle-placeholder'
 
 export const SITE_PAGE_SIZE = 24
 
@@ -52,9 +53,9 @@ const num = (d: Prisma.Decimal | null) => (d == null ? null : Number(d))
 
 function toSiteVehicle(r: Row): SiteVehicle {
   const l = r.siteListing
-  const state = siteVehicleState({ active: r.active, stockStatus: r.stockStatus }, l, r.photos.length)
+  const photos = realPhotoUrls(r.photos.map((p) => p.url))
+  const state = siteVehicleState({ active: r.active, stockStatus: r.stockStatus }, l, photos.length)
   const { price, oldPrice } = effectivePrice({ salePrice: num(r.salePrice), promoPrice: num(r.promoPrice), isPromo: r.isPromo, promoStartsAt: r.promoStartsAt, promoEndsAt: r.promoEndsAt })
-  const photos = r.photos.map((p) => p.url)
   const options = Array.isArray(l?.options) ? (l!.options as unknown[]).filter((x): x is string => typeof x === 'string') : []
   const t = { id: r.id, brand: r.brand, model: r.model, version: r.version, modelYear: r.modelYear, year: r.year }
   return {

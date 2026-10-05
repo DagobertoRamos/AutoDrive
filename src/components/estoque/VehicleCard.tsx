@@ -10,7 +10,8 @@ import Link from 'next/link'
 import { MapPin, Gauge, Calendar, AlertTriangle, Tag, ChevronLeft, ChevronRight } from 'lucide-react'
 import { VehicleStatusBadge, CautelarBadge, StockTypeBadge, ConditionBadge } from './VehicleStatusBadge'
 import { cn } from '@/lib/utils'
-import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
+import { VEHICLE_NO_PHOTO_IMG, realPhotoUrls } from '@/lib/vehicle-placeholder'
+import { VehiclePhotoImg } from './VehiclePhotoImg'
 
 interface VehiclePendency {
   id: string
@@ -220,9 +221,12 @@ export function VehicleCard({ vehicle, className }: VehicleCardProps) {
 }
 
 // ── Carrossel das fotos do card (auto-rotate + setas no hover) ──────────────
-export function VehicleCardCarousel({ photos, alt }: { photos: string[]; alt: string }) {
+export function VehicleCardCarousel({ photos: all, alt }: { photos: string[]; alt: string }) {
   const [idx, setIdx] = useState(0)
   const [hovering, setHovering] = useState(false)
+  const [broken, setBroken] = useState<string[]>([])
+  // Arte "em breve" e links quebrados saem do carrossel; sem nenhuma, mostra a imagem padrão.
+  const photos = realPhotoUrls(all).filter((u) => !broken.includes(u))
   const total = photos.length
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -260,14 +264,14 @@ export function VehicleCardCarousel({ photos, alt }: { photos: string[]; alt: st
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
-      <Image
+      <VehiclePhotoImg
         key={photos[idx]}
         src={photos[idx]}
         alt={alt}
         fill
         className="object-cover transition-opacity duration-300"
         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        unoptimized
+        onBroken={(u) => setBroken((b) => (b.includes(u) ? b : [...b, u]))}
       />
 
       {total > 1 && (

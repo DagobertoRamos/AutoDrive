@@ -24,7 +24,8 @@ import {
 } from '@/components/estoque/VehicleStatusBadge'
 import { VehicleSalePricingPanel } from '@/components/estoque/VehicleSalePricingPanel'
 import { VehiclePhotosManager } from '@/components/estoque/VehiclePhotosManager'
-import { VEHICLE_NO_PHOTO_IMG } from '@/lib/vehicle-placeholder'
+import { VEHICLE_NO_PHOTO_IMG, isPlaceholderPhoto } from '@/lib/vehicle-placeholder'
+import { VehiclePhotoImg } from '@/components/estoque/VehiclePhotoImg'
 import { PendencyActions } from '@/components/estoque/PendencyActions'
 import { IntakeTimeline } from '@/components/estoque/IntakeTimeline'
 import { VehicleHistoryPanel } from '@/components/estoque/VehicleHistoryPanel'
@@ -238,9 +239,10 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
     ? `${vehicle.year ?? '—'}/${vehicle.modelYear}`
     : vehicle.year?.toString() ?? '—'
 
-  const allPhotos = vehicle.photos.length > 0
-    ? vehicle.photos
-    : vehicle.mainPhotoUrl
+  const realPhotos = vehicle.photos.filter((p) => p.url && !isPlaceholderPhoto(p.url))
+  const allPhotos = realPhotos.length > 0
+    ? realPhotos
+    : vehicle.mainPhotoUrl && !isPlaceholderPhoto(vehicle.mainPhotoUrl)
       ? [{ id: 'main', url: vehicle.mainPhotoUrl, caption: null, isMain: true, order: 0 }]
       : []
 
@@ -328,9 +330,9 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
         <div className="flex items-start gap-4">
           {/* Foto thumbnail */}
           <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-gray-100">
-            <Image
-              src={allPhotos[0]?.url ?? VEHICLE_NO_PHOTO_IMG}
-              alt={allPhotos[0] ? `${vehicle.brand} ${vehicle.model}` : 'Aguardando fotos'}
+            <VehiclePhotoImg
+              src={allPhotos[0]?.url}
+              alt={`${vehicle.brand} ${vehicle.model}`}
               fill className="object-cover"
             />
           </div>
@@ -589,8 +591,9 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
               <div className="flex flex-col gap-4">
                 {/* Foto principal */}
                 <div className="relative h-80 w-full overflow-hidden rounded-xl bg-gray-100">
-                  <Image
-                    src={allPhotos[photoIdx]?.url ?? ''}
+                  <VehiclePhotoImg
+                    key={allPhotos[photoIdx]?.url}
+                    src={allPhotos[photoIdx]?.url}
                     alt={`Foto ${photoIdx + 1}`}
                     fill className="object-contain"
                   />
@@ -607,7 +610,7 @@ export default function EstoqueDetailPage({ params }: { params: Promise<{ id: st
                           i === photoIdx ? 'border-brand-500' : 'border-transparent',
                         ].join(' ')}
                       >
-                        <Image src={photo.url} alt={`Thumb ${i + 1}`} fill className="object-cover" />
+                        <VehiclePhotoImg src={photo.url} alt={`Thumb ${i + 1}`} fill className="object-cover" />
                       </button>
                     ))}
                   </div>

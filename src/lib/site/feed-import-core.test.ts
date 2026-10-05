@@ -38,6 +38,10 @@ describe('normalizações', () => {
   it('foto "em breve" não conta', () => {
     expect(isPlaceholderPhoto('https://www.appautodrive.com.br/em-breve.jpg')).toBe(true)
     expect(isPlaceholderPhoto('https://cdn/x.jpg')).toBe(false)
+    expect(isPlaceholderPhoto('https://x.blob.vercel-storage.com/vehicle-images/abc/1789964936525-em-breve.png')).toBe(true)
+    expect(isPlaceholderPhoto('https://s/EmBreve.webp?v=2')).toBe(true)
+    expect(isPlaceholderPhoto('https://s/sem-foto.svg')).toBe(true)
+    expect(isPlaceholderPhoto('https://x.blob.vercel-storage.com/vehicle-images/manual/1789964335295-01.png')).toBe(false)
   })
 })
 

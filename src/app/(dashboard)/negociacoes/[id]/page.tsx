@@ -1388,6 +1388,7 @@ export default function NegociacaoDetailPage() {
         onReopen={() => handleAction('reopen')}
         onApprove={() => handleAction('approve')}
         onCancelDeal={() => setModal('cancel')}
+        onCustomerSaved={() => { showToast('Dados do cliente atualizados.'); loadDeal() }}
       />
 
       {/* Breadcrumb compacto + loading inline */}

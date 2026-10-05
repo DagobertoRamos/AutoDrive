@@ -19,6 +19,7 @@ import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { feedOrigins } from '@/lib/site/feed-import'
 import type { FeedOrigin } from '@/lib/site/feed-import-core'
 import { mergeOrigin } from '@/lib/stock/origin-core'
+import { isPlaceholderPhoto, realPhotoUrls } from '@/lib/vehicle-placeholder'
 
 // Status que NÃO finalizaram a negociação — veículo está em negociação ativa
 const OPEN_DEAL_STATUSES = ['RASCUNHO', 'AGUARDANDO_LIBERACAO', 'LIBERADA', 'EM_ANDAMENTO', 'REABERTA']
@@ -279,9 +280,9 @@ export async function GET(req: NextRequest) {
       const marketingPhotos: string[] = (v.photos ?? [])
         .sort((a: any, b: any) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0)) // main primeiro
         .map((p: any) => p.url)
-        .filter((u: string | null): u is string => !!u)
+        .filter((u: string | null): u is string => !!u && !isPlaceholderPhoto(u))
       const fallbackPhotos = marketingPhotos.length === 0
-        ? (evalPhotosByVehicle[v.id] ?? [])
+        ? realPhotoUrls(evalPhotosByVehicle[v.id] ?? [])
         : []
       const displayPhotos = [...marketingPhotos, ...fallbackPhotos].slice(0, 6)
 

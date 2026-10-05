@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { canAccessModule } from '@/lib/permissions'
 import { DealDraftsPanel } from '@/components/negotiations/DealDraftsPanel'
+import { dealMainVehicle, dealVehiclePrice } from '@/lib/negotiation-value'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ interface DealVehicle {
   brand:  string | null
   model:  string | null
   year:   number | null
+  agreedValue?: string | number | null
+  vehicle?:     { salePrice: string | number | null } | null
 }
 
 interface Deal {
@@ -54,6 +57,7 @@ interface Deal {
   status:              string
   source:              string | null
   saleAmount:          string | number | null
+  purchaseAmount?:     string | number | null
   totalPayments:       string | number | null
   vehicleValue:        string | number | null
   createdAt:           string
@@ -877,8 +881,8 @@ export default function NegociacoesPage() {
           <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
             {deals.map((deal) => {
               const clientName = deal.person?.nomeCompleto ?? deal.customer?.name ?? '—'
-              const mainVehicle = deal.vehicles?.find((v) => v.role === 'VENDIDO' || v.role === 'COMPRADO' || v.role === 'CONSIGNADO') ?? deal.vehicles?.[0]
-              const amount = deal.totalPayments ?? deal.saleAmount ?? deal.vehicleValue
+              const mainVehicle = dealMainVehicle(deal)
+              const amount = dealVehiclePrice(deal)
               return (
                 <button
                   key={deal.id}
@@ -956,8 +960,8 @@ export default function NegociacoesPage() {
             <tbody className="divide-y divide-gray-50">
               {deals.map((deal) => {
                 const clientName = deal.person?.nomeCompleto ?? deal.customer?.name ?? '—'
-                const mainVehicle = deal.vehicles?.find((v) => v.role === 'VENDIDO' || v.role === 'COMPRADO' || v.role === 'CONSIGNADO') ?? deal.vehicles?.[0]
-                const amount = deal.totalPayments ?? deal.saleAmount ?? deal.vehicleValue
+                const mainVehicle = dealMainVehicle(deal)
+                const amount = dealVehiclePrice(deal)
                 return (
                   <tr key={deal.id} className="group hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => router.push('/negociacoes/' + deal.id)}>
                     {/* Número / Tipo */}

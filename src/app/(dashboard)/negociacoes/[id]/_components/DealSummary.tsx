@@ -15,10 +15,13 @@ import {
 } from 'lucide-react'
 import { formatBRL, maskCPF, maskCNPJ, maskPhone, maskCEP } from '@/lib/masks'
 import { useDealActions, type DealActionsActor, type DealActionsDeal } from '../_hooks/useDealActions'
+import { dealMainRole, dealVehiclePrice } from '@/lib/negotiation-value'
+import { VehiclePhotoImg } from '@/components/estoque/VehiclePhotoImg'
+import DealCustomerModal, { type CustomerPerson, type CustomerLegacy } from './DealCustomerModal'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-interface PersonLike {
+interface PersonLike extends CustomerPerson {
   nomeCompleto?: string | null
   type?:         string | null
   cpf?:          string | null
@@ -54,6 +57,7 @@ interface VehicleLike {
     modelYear?:    number | null
     color?:        string | null
     mainPhotoUrl?: string | null
+    salePrice?:    any | number | null
   } | null
 }
 
@@ -63,7 +67,7 @@ interface DealLike extends DealActionsDeal {
   status:      string
   purchaseAmount?: any | number | null
   person?:     PersonLike | null
-  customer?:   { name?: string | null; cpf?: string | null; email?: string | null; phone?: string | null; address?: string | null; city?: string | null; state?: string | null } | null
+  customer?:   CustomerLegacy | null
   seller?:     { id?: string; fullName?: string | null; user?: { id?: string; name?: string | null; email?: string | null; role?: string | null } | null; cargo?: string | null } | null
   manager?:    { id?: string; name?: string | null; email?: string | null } | null
   vehicles?:   VehicleLike[]
@@ -141,13 +145,18 @@ export interface DealSummaryProps {
   onApprove?:      () => void
   /** Cancelamento — abre o modal de motivo no parent. */
   onCancelDeal?:   () => void
+  /** Dados do cliente salvos pela janelinha — recarrega a negociação. */
+  onCustomerSaved?: () => void
 }
 
 export default function DealSummary({
-  deal, actor, onEdit, onFinalize, onForceFinalize, onReopen, onApprove, onCancelDeal,
+  deal, actor, onEdit, onFinalize, onForceFinalize, onReopen, onApprove, onCancelDeal, onCustomerSaved,
 }: DealSummaryProps) {
   const a = useDealActions(deal, actor)
   const [confirmForce, setConfirmForce] = useState(false)
+  const [showCustomer, setShowCustomer] = useState(false)
+  // Contato/endereço não mexem em valores: GERENTE+ corrige em qualquer status (menos cancelada).
+  const canEditCustomer = deal.status !== 'CANCELADA' && (['GERENTE', 'GERENTE_GERAL', 'ADM', 'MASTER'].includes(actor.role) || a.canEditNow)
 
   const person      = deal.person ?? null
   const customer    = deal.customer ?? null
@@ -161,8 +170,9 @@ export default function DealSummary({
   const street      = [person?.logradouro, person?.numero].filter(Boolean).join(', ') + (person?.complemento ? ` — ${person.complemento}` : '')
   const cityLine    = [person?.bairro, [cliCidade, cliEstado].filter(Boolean).join('/')].filter(Boolean).join(' · ')
 
-  const main = deal.type === 'COMPRA' ? 'COMPRADO' : deal.type === 'CONSIGNACAO' ? 'CONSIGNADO' : 'VENDIDO'
-  const vendido = (deal.vehicles ?? []).find(v => v.role === main) ?? (deal.vehicles ?? [])[0]
+  const main = dealMainRole(deal.type)
+  const mainVehicles = (deal.vehicles ?? []).filter(v => v.role === main)
+  const vendido = mainVehicles[0] ?? (deal.vehicles ?? [])[0]
   const vPlate  = vendido?.plate  ?? vendido?.vehicle?.plate
   const vBrand  = vendido?.brand  ?? vendido?.vehicle?.brand
   const vModel  = vendido?.model  ?? vendido?.vehicle?.model
@@ -172,8 +182,10 @@ export default function DealSummary({
   const vColor  = vendido?.color  ?? vendido?.vehicle?.color
   const vKm     = vendido?.km
   const vPhoto  = vendido?.vehicle?.mainPhotoUrl ?? null
-  // Valor ATUAL da negociação (o valor editado), nunca o valor antigo do veículo.
-  const vValor  = deal.type === 'COMPRA' ? (deal.purchaseAmount ?? deal.vehicleValue) : (deal.saleAmount ?? deal.vehicleValue ?? vendido?.agreedValue)
+  // Valor ATUAL negociado do carro. Com mais de um carro na mesma ponta, o card
+  // mostra o valor deste carro (o total da operação fica no resumo financeiro).
+  const ownValue = mainVehicles.length > 1 && Number(vendido?.agreedValue) > 0 ? Number(vendido?.agreedValue) : null
+  const vValor  = ownValue ?? dealVehiclePrice(deal as never)
 
   const initial = (cliNome ?? '?').trim().charAt(0).toUpperCase()
   const fin = a.summary
@@ -255,8 +267,9 @@ export default function DealSummary({
             {vendido ? (
               <>
                 {vPhoto ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={vPhoto} alt={vModel ?? 'veículo'} className="h-24 w-full shrink-0 rounded-xl object-cover sm:w-36" />
+                  <div className="relative h-24 w-full shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:w-36">
+                    <VehiclePhotoImg src={vPhoto} alt={vModel ?? 'veículo'} fill className="object-cover" sizes="144px" />
+                  </div>
                 ) : (
                   <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-400 sm:w-36"><Car size={28} /></div>
                 )}
@@ -284,7 +297,14 @@ export default function DealSummary({
           <div className="grid grid-cols-1 divide-y divide-gray-100 border-t border-gray-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             {/* Cliente */}
             <div className="min-w-0 p-5">
-              <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400"><User size={12} />Cliente</p>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400"><User size={12} />Cliente</p>
+                {(person || customer) && (
+                  <button type="button" onClick={() => setShowCustomer(true)} className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline">
+                    Ver dados do cliente
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700">{initial}</div>
                 <div className="min-w-0">
@@ -353,6 +373,17 @@ export default function DealSummary({
           {a.balance.totalTroco > 0 && <p className="mt-2 text-xs text-gray-500">Troco a devolver ao cliente: <strong className="tabular-nums">{formatBRL(a.balance.totalTroco)}</strong></p>}
         </div>
       </div>
+
+      {showCustomer && (
+        <DealCustomerModal
+          dealId={deal.id}
+          person={person}
+          customer={customer}
+          canEdit={canEditCustomer}
+          onClose={() => setShowCustomer(false)}
+          onSaved={() => onCustomerSaved?.()}
+        />
+      )}
 
       {confirmForce && (
         <ForceFinalizeModal

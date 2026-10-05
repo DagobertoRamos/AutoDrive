@@ -9,6 +9,8 @@
 //     contra feed quebrado (vazio ou encolhido de repente).
 // =============================================================================
 
+import { isPlaceholderPhoto } from '@/lib/vehicle-placeholder'
+
 export interface FeedVehicle {
   extId: string
   brand: string
@@ -85,9 +87,7 @@ export function parseKm(v: string): number | null {
   return d ? Number(d) : null
 }
 
-export function isPlaceholderPhoto(url: string): boolean {
-  return /\/em-breve\.(jpe?g|png|webp)(\?|$)/i.test(url)
-}
+export { isPlaceholderPhoto }
 
 /** Título curto: a versão do feed costuma repetir o modelo ("Palio EX 1.0"). */
 export function feedTitle(brand: string, model: string, version: string): string {
