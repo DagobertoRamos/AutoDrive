@@ -105,13 +105,14 @@ export async function callForArrival(opts: {
   // Padrão retrocompatível: sem config, canBeVez=true → não muda nada.
   const participating = regular.filter((w) => getParticipant(cfg?.config, w.sellerId).canBeVez !== false)
 
-  // Conformidade: exclui vendedores com restrição operacional ativa (SellerQueuePenalty
-  // com active=true e endsAt > now). Só usa penalidades CONFIRMADAS (não candidatos).
+  // Conformidade: exclui vendedores com restrição operacional ativa decidida pela
+  // gestão (SellerQueuePenalty active, endsAt > now). Bloqueio automático por
+  // perdas (COOLDOWN/DAILY_BLOCK) não tira ninguém da rotação — só avisa.
   const nowTime = new Date()
   const restricted = participating.length > 0
     ? new Set(
         (await prisma.sellerQueuePenalty.findMany({
-          where: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: { in: participating.map(w => w.sellerId) }, active: true, endsAt: { gte: nowTime } },
+          where: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: { in: participating.map(w => w.sellerId) }, active: true, endsAt: { gte: nowTime }, type: { notIn: ['COOLDOWN', 'DAILY_BLOCK'] } },
           select: { sellerId: true },
         }).catch(() => []))
         .map(p => p.sellerId)

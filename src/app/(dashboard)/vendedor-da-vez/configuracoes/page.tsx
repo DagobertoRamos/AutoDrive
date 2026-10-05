@@ -2240,13 +2240,13 @@ export default function ConfiguracoesFilaPage() {
         </SettingsSection>
 
         <SettingsSection
-          title="Bloqueio por reincidência"
+          title="Alerta por perdas da vez"
           scope="Somente administradores"
         >
           <SettingRow
             icon={<ShieldAlert size={16} />}
-            title="Ativar bloqueio automático"
-            description="Bloqueio temporário ou diário por reincidência de timeouts."
+            title="Ativar alertas de perdas"
+            description="Avisa o vendedor a cada perda e alerta a gerência nos limites. Ninguém sai da fila."
             status={cfg.autoBlock.enabled ? 'Ativado' : 'Desativado'}
             statusTone={cfg.autoBlock.enabled ? 'warning' : 'neutral'}
             scope="Configuração da unidade"
@@ -2262,9 +2262,9 @@ export default function ConfiguracoesFilaPage() {
               </label>
             }
           >
-            <div className={cn('grid gap-3 md:grid-cols-3', !cfg.autoBlock.enabled && 'pointer-events-none opacity-50')}>
+            <div className={cn('grid gap-3 md:grid-cols-2', !cfg.autoBlock.enabled && 'pointer-events-none opacity-50')}>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para bloqueio temporário <RequiredMark /></label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para o 1º alerta à gerência <RequiredMark /></label>
                 <input
                   type="number"
                   min={1}
@@ -2275,19 +2275,7 @@ export default function ConfiguracoesFilaPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Duração do bloqueio <RequiredMark /></label>
-                <input
-                  type="number"
-                  min={1}
-                  max={24}
-                  className={inputCls}
-                  value={cfg.autoBlock.cooldownHours}
-                  onChange={(e) => set('autoBlock', { ...cfg.autoBlock, cooldownHours: Number(e.target.value) || 1 })}
-                />
-                <p className="mt-1 text-[11px] text-gray-400">Em horas.</p>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para bloqueio diário <RequiredMark /></label>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Perdas para o 2º alerta à gerência <RequiredMark /></label>
                 <input
                   type="number"
                   min={2}
@@ -2300,7 +2288,7 @@ export default function ConfiguracoesFilaPage() {
             </div>
             {blockConfigInvalid && (
               <p className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
-                O bloqueio diário precisa exigir mais perdas do que o bloqueio temporário.
+                O 2º alerta precisa exigir mais perdas do que o 1º.
               </p>
             )}
           </SettingRow>

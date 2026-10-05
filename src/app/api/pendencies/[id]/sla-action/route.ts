@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { logPendencyEvent, PENDENCY_EVENT } from '@/lib/pendencies/events'
 import { loadTenantPendencySettings, DEFAULT_PENDENCY_SETTINGS } from '@/lib/pendencies/settings'
 import { isPendencyManagerPlus } from '@/lib/pendencies/access'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 const schema = z.object({
   action:           z.enum(['commit', 'defer', 'shown', 'respond']),
@@ -71,7 +72,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     }
 
     // commit | respond — ambos podem trazer um prazo comprometido.
-    const committed = body.committedDueDate ? new Date(body.committedDueDate) : null
+    const committed = parseDateOnly(body.committedDueDate)
     if (body.action === 'commit') {
       if (!committed || Number.isNaN(committed.getTime())) return NextResponse.json({ success: false, error: 'Informe um prazo válido.' }, { status: 400 })
       await logPendencyEvent({ ...base, type: PENDENCY_EVENT.COMMITMENT, newDueDate: committed, content: body.note?.trim() || null })

@@ -65,51 +65,31 @@ export async function notifyNoSellerAvailable(p: { tenantId: string; unitId: str
 
 // ── Anti-abuso (strikes) ──────────────────────────────────────────────────────
 
-/** Aviso progressivo ao vendedor após perder a vez (sem bloquear ainda). */
+/** Aviso ao vendedor após perder a vez (penalidade só avisa — não sai da fila). */
 export async function notifySellerStrikeWarning(p: {
-  tenantId: string; sellerId: string; strikes: number; remaining: number; cooldownHours: number; willBeDaily: boolean
+  tenantId: string; sellerId: string; strikes: number
 }): Promise<void> {
-  const consequencia = p.willBeDaily
-    ? `mais ${p.remaining} e você fica bloqueado até o fim do dia`
-    : `mais ${p.remaining} e você fica ${p.cooldownHours}h fora da fila`
   await notify({
     userId: p.sellerId, tenantId: p.tenantId, type: 'SISTEMA',
     title: '⚠️ Você perdeu a vez',
-    message: `Você não aceitou no prazo (${p.strikes} perda(s) hoje). Atenção: ${consequencia}.`,
+    message: `Você não aceitou no prazo (${p.strikes} perda(s) hoje). A gerência acompanha as perdas do dia.`,
     actionUrl: '/vendedor-da-vez/minha-fila',
     metadata: { kind: 'seller_queue_strike', strikes: p.strikes },
   }).catch(() => {})
 }
 
-/** Avisa o vendedor que foi bloqueado (temporário ou diário). */
-export async function notifySellerBlocked(p: {
-  tenantId: string; sellerId: string; type: 'COOLDOWN' | 'DAILY_BLOCK'; strikes: number; hours: number
-}): Promise<void> {
-  const isDaily = p.type === 'DAILY_BLOCK'
-  await notify({
-    userId: p.sellerId, tenantId: p.tenantId, type: 'SISTEMA',
-    title: isDaily ? '🚫 Bloqueado na fila (reincidência)' : '🚫 Bloqueado temporariamente na fila',
-    message: isDaily
-      ? `Você perdeu a vez ${p.strikes}x hoje e está bloqueado até o fim do dia. Procure a gerência.`
-      : `Você perdeu a vez ${p.strikes}x e está fora da fila pelas próximas ${p.hours} horas.`,
-    actionUrl: '/vendedor-da-vez/minha-fila',
-    metadata: { kind: 'seller_queue_blocked', blockType: p.type, strikes: p.strikes },
-  }).catch(() => {})
-}
-
-/** Avisa a gestão que um vendedor foi bloqueado automaticamente. */
+/** Alerta a gestão quando um vendedor atinge o limiar de perdas do dia. */
 export async function notifyBlockManagers(p: {
-  tenantId: string; unitId: string; sellerId: string; type: 'COOLDOWN' | 'DAILY_BLOCK'; strikes: number; whatsapp?: boolean
+  tenantId: string; unitId: string; sellerId: string; strikes: number; whatsapp?: boolean
 }): Promise<void> {
   const seller = await prisma.user.findUnique({ where: { id: p.sellerId }, select: { name: true } }).catch(() => null)
   const nome = seller?.name ?? 'Um vendedor'
-  const tipo = p.type === 'DAILY_BLOCK' ? 'até o fim do dia' : 'temporariamente'
   await notifyByRole({
     tenantId: p.tenantId, unitId: p.unitId, roles: MANAGER_ROLES, type: 'SISTEMA',
-    title: 'Vendedor bloqueado na fila',
-    message: `${nome} foi bloqueado ${tipo} por perder a vez ${p.strikes}x hoje. Você pode liberar no Painel.`,
+    title: 'Vendedor perdendo a vez na fila',
+    message: `${nome} perdeu a vez ${p.strikes}x hoje. Ele continua na fila — vale conversar.`,
     actionUrl: '/vendedor-da-vez/painel',
-    metadata: { kind: 'seller_queue_auto_block', sellerId: p.sellerId, blockType: p.type, strikes: p.strikes },
+    metadata: { kind: 'seller_queue_strikes_alert', sellerId: p.sellerId, strikes: p.strikes },
     channels: ch(p.whatsapp ?? false),
   }).catch(() => {})
 }

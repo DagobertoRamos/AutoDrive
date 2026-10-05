@@ -24,6 +24,7 @@ import { normalizeCPF, isValidCPF } from '@/lib/br-docs/cpf'
 import { normalizePhone } from '@/lib/br-docs/phone'
 import { normalizeCEP } from '@/lib/br-docs/cep'
 import bcrypt from 'bcryptjs'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 // ── GET ──────────────────────────────────────────────────────────────────────
 
@@ -148,7 +149,7 @@ export async function POST(
       rg:             rg?.trim()    || null,
       celular:        normalizePhone(celular) || null,
       email:          normalizedEmail,
-      dataNascimento: dataNascimento ? new Date(dataNascimento) : null,
+      dataNascimento: parseDateOnly(dataNascimento),
       role:           (role ?? 'SOCIO') as never,
       participacao:   participacao ?? null,
       principal:      Boolean(principal),

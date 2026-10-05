@@ -53,15 +53,16 @@ function num(v: unknown): number | null {
 
 function parseDateValue(v: unknown): Date | null {
   if (!v || typeof v !== 'string') return null
+  // Data só-dia vai ao meio-dia UTC: à meia-noite viraria o dia anterior no Brasil.
   const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (iso) {
-    const d = new Date(v)
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? new Date(`${v.trim()}T12:00:00Z`) : new Date(v)
     return Number.isNaN(d.getTime()) ? null : d
   }
   const br = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})/)
   if (br) {
     const year = br[3].length === 2 ? 2000 + Number(br[3]) : Number(br[3])
-    const d = new Date(year, Number(br[2]) - 1, Number(br[1]))
+    const d = new Date(Date.UTC(year, Number(br[2]) - 1, Number(br[1]), 12))
     return Number.isNaN(d.getTime()) ? null : d
   }
   return null

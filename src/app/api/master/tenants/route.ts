@@ -15,6 +15,7 @@ import { normalizeCEP } from '@/lib/br-docs/cep'
 import { normalizePhone } from '@/lib/br-docs/phone'
 import bcrypt from 'bcryptjs'
 import { ALL_FEATURE_KEYS } from '@/lib/modules-catalog'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -322,7 +323,7 @@ export async function POST(req: NextRequest) {
           inscricaoEstadual:       company.inscricaoEstadual?.trim() || null,
           isentoInscricaoEstadual: company.isentoInscricaoEstadual ?? false,
           situacaoCadastral:       company.situacaoCadastral?.trim() || null,
-          dataAbertura:            company.dataAbertura ? new Date(company.dataAbertura) : null,
+          dataAbertura:            parseDateOnly(company.dataAbertura),
           cnaeCode:                company.cnaeCode?.trim()      || null,
           phone:                   normalizePhone(company.telefone) || null,
           email:                   company.email?.trim().toLowerCase() || null,
@@ -403,7 +404,7 @@ export async function POST(req: NextRequest) {
             rg:            p.rg?.trim()    || null,
             celular:       normalizePhone(p.celular) || null,
             email:         p.email?.trim().toLowerCase() || null,
-            dataNascimento: p.dataNascimento ? new Date(p.dataNascimento) : null,
+            dataNascimento: parseDateOnly(p.dataNascimento),
             role:          (p.role ?? 'SOCIO') as never,
             participacao:  p.participacao ?? null,
             principal:     isPrincipal,

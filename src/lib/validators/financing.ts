@@ -17,7 +17,7 @@ const outraRenda = z.object({
 export const createProponentSchema = z.object({
   // Pessoais (obrigatórios; telefoneFixo opcional)
   nomeCompleto: reqStr('Nome completo', 3),
-  dataNascimento: z.coerce.date({ invalid_type_error: 'Data de nascimento inválida.' }),
+  dataNascimento: z.preprocess((v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T12:00:00Z` : v), z.coerce.date({ invalid_type_error: 'Data de nascimento inválida.' })),
   cpf: z.string().trim().refine((v) => digits(v).length === 11, 'CPF deve ter 11 dígitos.'),
   rg: reqStr('RG', 3),
   nomeMae: reqStr('Nome da mãe', 3),

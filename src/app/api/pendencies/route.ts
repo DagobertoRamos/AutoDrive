@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { isPendencyManagerPlus, notDeletedPendencyWhere } from '@/lib/pendencies/access'
 import { logPendencyEvent, PENDENCY_EVENT } from '@/lib/pendencies/events'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 const NO_MATCH = '__pendency_no_match__'
 
@@ -210,7 +211,7 @@ export async function POST(req: NextRequest) {
       data: {
         ...rest,
         tenantId:    session.user.tenantId ?? null, // sem isso a pendência fica órfã e some da lista
-        dueDate:     dueDate ? new Date(dueDate) : null,
+        dueDate:     parseDateOnly(dueDate),
         slaMinutes:  slaMinutes,
         slaDeadline,
         status:      'ABERTA',

@@ -190,3 +190,6 @@ _samples_crlv/
 
 # fotos de teste local do site da loja
 public/site-test/
+
+# Backups locais de correções de dados (contêm dados pessoais)
+_backups/

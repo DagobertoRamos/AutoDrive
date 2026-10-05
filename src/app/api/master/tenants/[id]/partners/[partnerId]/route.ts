@@ -19,6 +19,7 @@ import { normalizeCPF } from '@/lib/br-docs/cpf'
 import { normalizePhone } from '@/lib/br-docs/phone'
 import { normalizeCEP } from '@/lib/br-docs/cep'
 import bcrypt from 'bcryptjs'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 // ── PATCH — Editar sócio ─────────────────────────────────────────────────────
 
@@ -160,7 +161,7 @@ export async function PATCH(
         ...(rg              != null && { rg:            String(rg).trim() || null }),
         ...(celular         != null && { celular:       normalizePhone(celular) || null }),
         ...(email           != null && { email:         resultEmail }),
-        ...(dataNascimento  != null && { dataNascimento: dataNascimento ? new Date(dataNascimento) : null }),
+        ...(dataNascimento  != null && { dataNascimento: parseDateOnly(dataNascimento) }),
         ...(role            != null && { role:          String(role) as never }),
         ...(participacao    != null && { participacao:  participacao }),
         ...(principal       != null && { principal:     Boolean(principal) }),

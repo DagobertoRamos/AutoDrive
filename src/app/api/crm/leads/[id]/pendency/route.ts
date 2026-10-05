@@ -12,6 +12,7 @@ import { resolveActingTenant, actingTenantError } from '@/lib/acting-tenant'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { canAccessModuleForUser } from '@/lib/tenant-modules'
 import { canAccessLeadByScope, resolveCrmScope } from '@/lib/crm/shared'
+import { parseDateOnly } from '@/lib/negotiation/date-only'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +33,7 @@ export async function POST(req: Request, ctxArg: { params: { id: string } | Prom
     const title       = String(b?.title ?? '').trim()
     const description = String(b?.description ?? '').trim()
     const type        = String(b?.type ?? 'FOLLOWUP').trim()
-    const dueDate     = b?.dueDate ? new Date(b.dueDate) : null
+    const dueDate     = parseDateOnly(b?.dueDate)
     if (!title) return NextResponse.json({ success: false, error: 'Informe o título da pendência.' }, { status: 400 })
 
     // Resolve o responsável: usa o seller vinculado ao assignedToUserId

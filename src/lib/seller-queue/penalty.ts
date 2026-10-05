@@ -1,16 +1,15 @@
 // =============================================================================
 // seller-queue/penalty.ts — estratégia anti-abuso da fila ("strikes").
 // Cada vez que o vendedor é chamado e NÃO aceita no prazo (timeout) conta 1
-// "perda" no dia. Ao atingir os limiares da unidade: bloqueio temporário
-// (cooldown) e, na reincidência, bloqueio até o fim do dia. O vendedor é
-// avisado de forma progressiva. Limiares configuráveis por unidade (cfg.config
-// .autoBlock), com defaults. Sem coluna nova no banco — usa SellerQueuePenalty
-// (type COOLDOWN | DAILY_BLOCK, com endsAt) para o bloqueio temporizado.
+// "perda" no dia. Penalidade SÓ AVISA: o vendedor recebe aviso progressivo e,
+// ao atingir os limiares da unidade (cfg.config.autoBlock), a gerência é
+// alertada — ninguém sai da rotação automaticamente. Registros antigos de
+// COOLDOWN/DAILY_BLOCK são ignorados.
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
 import { queueDate, queueDayStart, getUnitConfig } from './queue'
-import { notifySellerStrikeWarning, notifySellerBlocked, notifyBlockManagers } from './notify'
+import { notifySellerStrikeWarning, notifyBlockManagers } from './notify'
 
 export interface AutoBlockConfig {
   enabled: boolean
@@ -40,15 +39,9 @@ export function readAutoBlockConfig(cfgConfig: unknown): AutoBlockConfig {
 
 export interface QueueBlock { type: 'COOLDOWN' | 'DAILY_BLOCK'; endsAt: Date; reason: string }
 
-/** Bloqueio de fila ativo (cooldown/diário) do vendedor, se houver. */
-export async function getActiveQueueBlock(tenantId: string, unitId: string, sellerId: string): Promise<QueueBlock | null> {
-  const now = new Date()
-  const p = await prisma.sellerQueuePenalty.findFirst({
-    where: { tenantId, unitId, sellerId, active: true, type: { in: ['COOLDOWN', 'DAILY_BLOCK'] }, endsAt: { gt: now } },
-    orderBy: { endsAt: 'desc' },
-  })
-  if (!p || !p.endsAt) return null
-  return { type: p.type as QueueBlock['type'], endsAt: p.endsAt, reason: p.reason ?? '' }
+/** Bloqueio automático de fila foi desligado (penalidade só avisa): nunca há bloqueio ativo. */
+export async function getActiveQueueBlock(_tenantId: string, _unitId: string, _sellerId: string): Promise<QueueBlock | null> {
+  return null
 }
 
 /** Mensagem amigável para uma rota negar entrada por bloqueio ativo. */
@@ -68,18 +61,10 @@ export async function countStrikesToday(tenantId: string, unitId: string, seller
   })
 }
 
-// Fim do dia da fila (próxima meia-noite de São Paulo).
-function nextMidnightUtc(now = new Date()): Date {
-  return new Date(queueDayStart(now).getTime() + 24 * 3600_000)
-}
-
-async function removeFromQueue(queueId: string, sellerId: string): Promise<void> {
-  await prisma.sellerQueueEntry.updateMany({ where: { queueId, sellerId }, data: { status: 'LEFT', leftAt: new Date() } }).catch(() => {})
-}
-
 /**
  * Roda DEPOIS do timeout (que já criou a penalidade TIMEOUT). Conta as perdas
- * do dia e decide: apenas avisar, cooldown ou bloqueio diário. Best-effort.
+ * do dia: avisa o vendedor sempre e, a partir do limiar, alerta a gerência.
+ * Nunca tira o vendedor da fila. Best-effort.
  */
 export async function escalateAfterTimeout(opts: {
   tenantId: string; unitId: string; queueId: string; sellerId: string; whatsapp?: boolean
@@ -89,39 +74,14 @@ export async function escalateAfterTimeout(opts: {
   if (!ab.enabled) return { action: 'NONE', strikes: 0 }
 
   const strikes = await countStrikesToday(opts.tenantId, opts.unitId, opts.sellerId)
-  const now = new Date()
 
-  // Bloqueio diário (reincidência).
-  if (strikes >= ab.strikesForDailyBlock) {
-    const already = await prisma.sellerQueuePenalty.findFirst({ where: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'DAILY_BLOCK', active: true, endsAt: { gt: now } } })
-    const endsAt = nextMidnightUtc(now)
-    if (!already) {
-      await prisma.sellerQueuePenalty.create({ data: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'DAILY_BLOCK', startsAt: now, endsAt, points: 3, reason: `Reincidência: ${strikes} perdas no dia` } }).catch(() => {})
-    }
-    await removeFromQueue(opts.queueId, opts.sellerId)
-    await notifySellerBlocked({ tenantId: opts.tenantId, sellerId: opts.sellerId, type: 'DAILY_BLOCK', strikes, hours: ab.cooldownHours })
-    await notifyBlockManagers({ tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'DAILY_BLOCK', strikes, whatsapp: opts.whatsapp })
-    return { action: 'DAILY_BLOCK', strikes }
-  }
-
-  // Bloqueio temporário (cooldown) — ao atingir o limiar (>=, robusto: ex.: 1
-  // perda já bloqueia). Guarda anti-duplicata: não cria 2 cooldowns ativos.
-  if (strikes >= ab.strikesForCooldown) {
-    const already = await prisma.sellerQueuePenalty.findFirst({ where: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'COOLDOWN', active: true, endsAt: { gt: now } } })
-    const endsAt = new Date(now.getTime() + ab.cooldownHours * 3600_000)
-    if (!already) {
-      await prisma.sellerQueuePenalty.create({ data: { tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'COOLDOWN', startsAt: now, endsAt, points: 2, reason: `${strikes} perda(s) no dia` } }).catch(() => {})
-    }
-    await removeFromQueue(opts.queueId, opts.sellerId)
-    await notifySellerBlocked({ tenantId: opts.tenantId, sellerId: opts.sellerId, type: 'COOLDOWN', strikes, hours: ab.cooldownHours })
-    await notifyBlockManagers({ tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, type: 'COOLDOWN', strikes, whatsapp: opts.whatsapp })
-    return { action: 'COOLDOWN', strikes }
+  // Limiares viram alerta à gerência (uma vez ao atingir cada um).
+  if (strikes === ab.strikesForCooldown || strikes === ab.strikesForDailyBlock) {
+    await notifyBlockManagers({ tenantId: opts.tenantId, unitId: opts.unitId, sellerId: opts.sellerId, strikes, whatsapp: opts.whatsapp })
   }
 
   // Caso contrário: aviso progressivo ao vendedor.
-  const willBeDaily = strikes >= ab.strikesForCooldown
-  const nextThreshold = willBeDaily ? ab.strikesForDailyBlock : ab.strikesForCooldown
-  await notifySellerStrikeWarning({ tenantId: opts.tenantId, sellerId: opts.sellerId, strikes, remaining: Math.max(1, nextThreshold - strikes), cooldownHours: ab.cooldownHours, willBeDaily })
+  await notifySellerStrikeWarning({ tenantId: opts.tenantId, sellerId: opts.sellerId, strikes })
   return { action: 'WARN', strikes }
 }
 
