@@ -18,7 +18,7 @@ import {
   Users, Search, RefreshCw, Loader2, AlertCircle,
   CheckCircle2, Shield, Edit2, Key, UserX, UserCheck,
   ChevronLeft, ChevronRight, X, Save, Plus, Eye, EyeOff,
-  ExternalLink, Trash2,
+  ExternalLink, Trash2, UserMinus,
 } from 'lucide-react'
 import { RequiredMark } from '@/components/ui/field'
 import { isValidCPF } from '@/lib/br-docs/cpf'
@@ -591,7 +591,9 @@ function DeleteUserModal({
   )
 }
 
-// ── PurgeUserModal — hard delete real (force purge) ─────────────────────────
+// ── PurgeUserModal — exclusão definitiva (qualquer loja) ────────────────────
+
+interface PurgeStep { table: string; label: string; action: 'delete' | 'unlink'; count: number }
 
 function PurgeUserModal({
   user, isSelf, onClose, onPurged,
@@ -604,14 +606,28 @@ function PurgeUserModal({
   const [typed, setTyped] = useState('')
   const [busy,  setBusy]  = useState(false)
   const [err,   setErr]   = useState('')
+  const [steps, setSteps] = useState<PurgeStep[] | null>(null)
+
+  useEffect(() => {
+    if (isSelf) return
+    let off = false
+    fetch(`/api/master/users/${user.id}/purge`)
+      .then((r) => r.json())
+      .then((d) => { if (off) return; if (d?.success) setSteps(d.data); else setErr(d?.error ?? 'Não foi possível calcular a prévia.') })
+      .catch(() => { if (!off) setErr('Não foi possível calcular a prévia.') })
+    return () => { off = true }
+  }, [user.id, isSelf])
 
   async function doPurge() {
     setBusy(true); setErr('')
     try {
-      const res  = await fetch(`/api/master/users/${user.id}/purge`, { method: 'POST' })
+      const res  = await fetch(`/api/master/users/${user.id}/purge`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmEmail: typed.trim() }),
+      })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data?.success) throw new Error(data?.error ?? 'Falha ao purgar.')
-      onPurged(data?.message ?? 'Usuário apagado permanentemente.')
+      if (!res.ok || !data?.success) throw new Error(data?.error ?? 'Falha ao excluir.')
+      onPurged(data?.message ?? 'Usuário excluído definitivamente.')
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro inesperado.')
     } finally {
@@ -619,58 +635,63 @@ function PurgeUserModal({
     }
   }
 
-  const confirmPhrase = 'EXCLUIR PERMANENTE'
-  const canConfirm = !isSelf && typed.trim().toUpperCase() === confirmPhrase
+  const canConfirm = !isSelf && steps !== null && typed.trim().toLowerCase() === user.email.toLowerCase()
+  const deletes = (steps ?? []).filter((s) => s.action === 'delete')
+  const unlinks = (steps ?? []).filter((s) => s.action === 'unlink')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl border-2 border-red-300 bg-white shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border-2 border-red-300 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-red-200 bg-red-50 px-5 py-3">
           <h3 className="flex items-center gap-2 text-base font-bold text-red-800">
-            <Trash2 size={16} /> EXCLUIR PERMANENTEMENTE
+            <Trash2 size={16} /> Excluir definitivamente
           </h3>
           <button onClick={onClose} className="rounded-md p-1.5 text-red-700 hover:bg-red-100">
             <X size={16} />
           </button>
         </div>
 
-        <div className="space-y-3 p-5 text-sm">
-          <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
-            <strong>Ação irreversível:</strong> apaga o usuário e todos os dados pessoais vinculados.
-            Históricos auditáveis perdem a referência ao usuário.
-          </div>
-
+        <div className="space-y-3 overflow-y-auto p-5 text-sm">
           {isSelf && (
             <div className="rounded-lg border border-red-300 bg-red-100 px-3 py-2 text-xs text-red-900">
-              Você não pode purgar sua própria conta.
+              Você não pode excluir a sua própria conta.
             </div>
           )}
 
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 space-y-0.5">
+          <div className="space-y-0.5 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
             <p><strong>Nome:</strong> {user.name}</p>
             <p><strong>E-mail:</strong> {user.email}</p>
-            <p><strong>Perfil:</strong> {user.role}</p>
-            <p><strong>Status atual:</strong> {user.status}</p>
-            {user.tenant && <p><strong>Tenant:</strong> {user.tenant.name}</p>}
+            <p><strong>Perfil:</strong> {user.role} · <strong>Status:</strong> {user.status}</p>
+            {user.tenant && <p><strong>Loja:</strong> {user.tenant.name}</p>}
           </div>
 
-          {user.status !== 'INATIVO' && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Inative o usuário antes de excluir permanentemente.
+          {!isSelf && steps === null && !err && (
+            <p className="flex items-center gap-2 text-xs text-gray-500"><Loader2 size={13} className="animate-spin" /> Calculando o que será apagado…</p>
+          )}
+          {deletes.length > 0 && (
+            <div className="rounded-lg border border-red-200 p-3 text-xs">
+              <p className="mb-1 font-semibold text-red-800">Será apagado</p>
+              {deletes.map((s) => <p key={s.table} className="flex justify-between text-gray-700"><span>{s.label}</span><span className="tabular-nums">{s.count}</span></p>)}
+            </div>
+          )}
+          {unlinks.length > 0 && (
+            <div className="rounded-lg border border-gray-200 p-3 text-xs">
+              <p className="mb-1 font-semibold text-gray-800">Fica na loja, sem o vínculo com o usuário</p>
+              {unlinks.map((s, i) => <p key={`${s.table}-${i}`} className="flex justify-between text-gray-600"><span>{s.label}</span><span className="tabular-nums">{s.count}</span></p>)}
             </div>
           )}
 
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">
-              Digite <span className="font-mono text-red-700">{confirmPhrase}</span> para confirmar:
+              Digite o e-mail <span className="font-mono text-red-700">{user.email}</span> para confirmar:
             </label>
             <input
               type="text"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              disabled={isSelf || user.status !== 'INATIVO'}
-              className="w-full rounded-md border border-red-300 px-3 py-2 text-sm font-mono focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
-              placeholder={confirmPhrase}
+              disabled={isSelf}
+              autoComplete="off"
+              className="w-full rounded-md border border-red-300 px-3 py-2 font-mono text-sm focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600 disabled:cursor-not-allowed disabled:bg-gray-100"
             />
           </div>
 
@@ -687,11 +708,11 @@ function PurgeUserModal({
           </button>
           <button
             onClick={doPurge}
-            disabled={busy || !canConfirm || user.status !== 'INATIVO'}
+            disabled={busy || !canConfirm}
             className="flex items-center gap-1.5 rounded-md bg-red-700 px-4 py-2 text-sm font-bold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-            Excluir permanentemente
+            Excluir definitivamente
           </button>
         </div>
       </div>
@@ -985,13 +1006,14 @@ export default function MasterUsersPage() {
                                 className="rounded p-1 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600"
                               ><UserCheck size={13} /></button>
                             )}
-                            {u.status === 'INATIVO' ? (
-                              <button onClick={() => setPurgeUser(u)} title="EXCLUIR PERMANENTEMENTE (force purge)"
+                            {u.status !== 'INATIVO' && (
+                              <button onClick={() => setDeleteUser(u)} title="Inativar"
+                                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                              ><UserMinus size={13} /></button>
+                            )}
+                            {session?.user?.id !== u.id && (
+                              <button onClick={() => setPurgeUser(u)} title="Excluir definitivamente"
                                 className="rounded p-1 text-red-500 hover:bg-red-100 hover:text-red-800"
-                              ><Trash2 size={13} /></button>
-                            ) : (
-                              <button onClick={() => setDeleteUser(u)} title="Inativar (soft delete)"
-                                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-700"
                               ><Trash2 size={13} /></button>
                             )}
                           </div>
