@@ -98,13 +98,12 @@ export function ResultByCenterReport({ url, onData, registerCsv }: ReportViewPro
   )
 }
 
-function CenterCards({ title, hint, rows, selected, onSelect }: { title: string; hint: string; rows: CenterRow[]; selected: string | null; onSelect: (id: string) => void }) {
+function CenterCards({ title, rows, selected, onSelect }: { title: string; rows: CenterRow[]; selected: string | null; onSelect: (id: string) => void }) {
   if (!rows.length) return null
   return (
     <section className="space-y-2">
       <div className="flex items-baseline gap-2">
         <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
-        <span className="text-xs text-gray-500">{hint}</span>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {rows.map((r) => {
