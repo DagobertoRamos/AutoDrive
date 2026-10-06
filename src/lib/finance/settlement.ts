@@ -5,7 +5,9 @@
 //   • Total   → o próprio título vira PAGO/RECEBIDO; só então comissão e
 //     pagamento da negociação acompanham (applyStatusSideEffects).
 //   • Estorno → desfaz a última baixa (LIFO), devolvendo o principal ao saldo;
-//     tudo com motivo no registro de auditoria.
+//     a baixa parcial estornada fica CANCELADA (nunca é apagada), com motivo.
+//   • Concorrência: a baixa só grava se o título ainda está como foi lido
+//     (status + saldo) — dois cliques/abas não baixam duas vezes.
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
@@ -75,8 +77,8 @@ export async function settleTitle(tenantId: string | null, entryId: string, inpu
   const status = e.type === 'DESPESA' ? 'PAGO' : 'RECEBIDO'
 
   if (plan.kind === 'FULL') {
-    await prisma.financialEntry.update({
-      where: { id: e.id },
+    const done = await prisma.financialEntry.updateMany({
+      where: { id: e.id, status: 'PREVISTO', amount: e.amount },
       data: {
         status, paidDate, amount: plan.paid, accountId, paymentMethod,
         interestAmount: plan.interest || null, discountAmount: plan.discount || null,
@@ -84,6 +86,7 @@ export async function settleTitle(tenantId: string | null, entryId: string, inpu
         ...(input.notes ? { notes: [e.notes, input.notes].filter(Boolean).join('\n').slice(0, 2000) } : {}),
       },
     })
+    if (done.count !== 1) return { error: 'O lançamento foi alterado por outra operação. Atualize a tela.' }
     await applyStatusSideEffects(e, status, paidDate)
     await audit(actor, e.tenantId, 'FINANCE_SETTLE', e.id, { status: e.status, amount: Number(e.amount) }, { status, paid: plan.paid, principal: plan.principal, interest: plan.interest, discount: plan.discount, paidDate: input.paidDate, accountId, batchId: input.batchId ?? null })
     return { kind: 'FULL' }
@@ -91,6 +94,12 @@ export async function settleTitle(tenantId: string | null, entryId: string, inpu
 
   const n = e._count.partials + 1
   const child = await prisma.$transaction(async (tx) => {
+    // Trava otimista: o saldo do título não mudou desde a leitura.
+    const locked = await tx.financialEntry.updateMany({
+      where: { id: e.id, status: 'PREVISTO', amount: e.amount },
+      data: { amount: plan.remainingAfter, ...(input.newDueDate && /^\d{4}-\d{2}-\d{2}$/.test(input.newDueDate) ? { dueDate: noonUtc(input.newDueDate) } : {}) },
+    })
+    if (locked.count !== 1) return null
     const c = await tx.financialEntry.create({
       data: {
         tenantId: e.tenantId, unitId: e.unitId, accountId, categoryId: e.categoryId, costCenterId: e.costCenterId,
@@ -103,12 +112,9 @@ export async function settleTitle(tenantId: string | null, entryId: string, inpu
       },
       select: { id: true },
     })
-    await tx.financialEntry.update({
-      where: { id: e.id },
-      data: { amount: plan.remainingAfter, ...(input.newDueDate && /^\d{4}-\d{2}-\d{2}$/.test(input.newDueDate) ? { dueDate: noonUtc(input.newDueDate) } : {}) },
-    })
     return c
   })
+  if (!child) return { error: 'O lançamento foi alterado por outra operação. Atualize a tela.' }
   await audit(actor, e.tenantId, 'FINANCE_SETTLE_PARTIAL', e.id, { remaining: Number(e.amount) }, { childId: child.id, paid: plan.paid, principal: plan.principal, interest: plan.interest, discount: plan.discount, remaining: plan.remainingAfter, paidDate: input.paidDate, newDueDate: input.newDueDate ?? null, batchId: input.batchId ?? null })
   return { kind: 'PARTIAL', childId: child.id }
 }
@@ -122,26 +128,34 @@ export async function reverseSettlement(tenantId: string | null, entryId: string
   const e = await prisma.financialEntry.findFirst({ where: { id: entryId, ...(tenantId ? { tenantId } : {}) } })
   if (!e) return 'Lançamento não encontrado.'
   if (e.parentEntryId) {
-    const parent = await prisma.financialEntry.findUnique({ where: { id: e.parentEntryId }, include: { partials: { select: { id: true, createdAt: true }, orderBy: { createdAt: 'desc' } } } })
+    if (e.status === 'CANCELADO') return 'Esta baixa já foi estornada.'
+    const parent = await prisma.financialEntry.findUnique({ where: { id: e.parentEntryId }, include: { partials: { where: { status: { not: 'CANCELADO' } }, select: { id: true, createdAt: true }, orderBy: { createdAt: 'desc' } } } })
     if (!parent) return 'Título não encontrado.'
     if (parent.status !== 'PREVISTO') return 'Estorne primeiro a baixa final do título.'
     if (parent.partials[0]?.id !== e.id) return 'Estorne primeiro a baixa mais recente.'
     const principal = principalOf({ amount: Number(e.amount), interestAmount: e.interestAmount == null ? null : Number(e.interestAmount), discountAmount: e.discountAmount == null ? null : Number(e.discountAmount) })
-    await prisma.$transaction([
-      prisma.financialEntry.update({ where: { id: parent.id }, data: { amount: Math.round((Number(parent.amount) + principal) * 100) / 100 } }),
-      prisma.financialEntryAttachment.deleteMany({ where: { entryId: e.id } }),
-      prisma.financialEntry.delete({ where: { id: e.id } }),
-    ])
+    const ok = await prisma.$transaction(async (tx) => {
+      const p = await tx.financialEntry.updateMany({ where: { id: parent.id, status: 'PREVISTO', amount: parent.amount }, data: { amount: Math.round((Number(parent.amount) + principal) * 100) / 100 } })
+      if (p.count !== 1) return false
+      const c = await tx.financialEntry.updateMany({
+        where: { id: e.id, status: { not: 'CANCELADO' } },
+        data: { status: 'CANCELADO', notes: [e.notes, `Estornada: ${reason.trim()}`].filter(Boolean).join('\n').slice(0, 2000) },
+      })
+      if (c.count !== 1) throw new Error('ESTORNO_CONCORRENTE')
+      return true
+    }).catch((err) => { if (err instanceof Error && err.message === 'ESTORNO_CONCORRENTE') return false; throw err })
+    if (!ok) return 'O lançamento foi alterado por outra operação. Atualize a tela.'
     await audit(actor, e.tenantId, 'FINANCE_SETTLE_REVERSE', parent.id, { partial: { id: e.id, paid: Number(e.amount), paidDate: e.paidDate, accountId: e.accountId } }, { restored: principal, reason })
     return null
   }
   if (e.status !== 'PAGO' && e.status !== 'RECEBIDO') return 'Lançamento sem baixa para estornar.'
   if (e.transferGroupId) return 'Transferência: exclua a transferência.'
   const principal = principalOf({ amount: Number(e.amount), interestAmount: e.interestAmount == null ? null : Number(e.interestAmount), discountAmount: e.discountAmount == null ? null : Number(e.discountAmount) })
-  await prisma.financialEntry.update({
-    where: { id: e.id },
+  const r = await prisma.financialEntry.updateMany({
+    where: { id: e.id, status: e.status, amount: e.amount },
     data: { status: 'PREVISTO', paidDate: null, amount: principal, interestAmount: null, discountAmount: null, settlementBatchId: null },
   })
+  if (r.count !== 1) return 'O lançamento foi alterado por outra operação. Atualize a tela.'
   await applyStatusSideEffects(e, 'PREVISTO', null)
   await audit(actor, e.tenantId, 'FINANCE_SETTLE_REVERSE', e.id, { status: e.status, paid: Number(e.amount), paidDate: e.paidDate, accountId: e.accountId }, { status: 'PREVISTO', amount: principal, reason })
   return null
@@ -198,12 +212,12 @@ export async function reverseBatch(tenantId: string, batchId: string, reason: st
   const batch = await prisma.financialSettlementBatch.findFirst({ where: { id: batchId, tenantId } })
   if (!batch) return 'Lote não encontrado.'
   if (batch.reversedAt) return 'Lote já estornado.'
-  const entries = await prisma.financialEntry.findMany({ where: { settlementBatchId: batchId, tenantId }, select: { id: true, parentEntryId: true, createdAt: true }, orderBy: { createdAt: 'desc' } })
+  const entries = await prisma.financialEntry.findMany({ where: { settlementBatchId: batchId, tenantId, status: { not: 'CANCELADO' } }, select: { id: true, parentEntryId: true, createdAt: true }, orderBy: { createdAt: 'desc' } })
   // Antes de estornar qualquer item: as baixas do lote precisam ser as mais
   // recentes de cada título (senão o estorno pararia no meio).
   const inBatch = new Set(entries.map((x) => x.id))
   const titleIds = [...new Set(entries.map((x) => x.parentEntryId ?? x.id))]
-  const titles = await prisma.financialEntry.findMany({ where: { id: { in: titleIds } }, select: { id: true, status: true, settlementBatchId: true, partials: { select: { id: true, createdAt: true }, orderBy: { createdAt: 'desc' } } } })
+  const titles = await prisma.financialEntry.findMany({ where: { id: { in: titleIds } }, select: { id: true, status: true, settlementBatchId: true, partials: { where: { status: { not: 'CANCELADO' } }, select: { id: true, createdAt: true }, orderBy: { createdAt: 'desc' } } } })
   for (const t of titles) {
     const finalOutside = t.status !== 'PREVISTO' && !inBatch.has(t.id)
     if (finalOutside) return 'Um título do lote foi quitado depois, fora do lote: estorne essa baixa antes.'

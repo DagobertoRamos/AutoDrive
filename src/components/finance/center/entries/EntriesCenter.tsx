@@ -122,9 +122,12 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
   async function remove(list: Row[]) {
     const del = list.filter((r) => r.deletable)
     if (!del.length) { setMsg('Lançamentos integrados não podem ser excluídos: cancele.'); return }
-    if (!confirm(del.length === 1 ? `Excluir "${del[0].description}"?` : `Excluir ${del.length} lançamentos?`)) return
-    const r = await postJson<{ done?: number; failed?: unknown[] }>('/api/finance/center/entries/bulk', { action: 'delete', ids: del.map((x) => x.id) })
-    setMsg(r.ok ? '' : r.data.error ?? 'Não foi possível excluir.')
+    const reason = window.prompt(del.length === 1 ? `Excluir "${del[0].description}"?
+Motivo:` : `Excluir ${del.length} lançamentos?
+Motivo:`)?.trim()
+    if (!reason) return
+    const r = await postJson<{ done?: number; failed?: { error: string }[] }>('/api/finance/center/entries/bulk', { action: 'delete', ids: del.map((x) => x.id), reason })
+    setMsg(!r.ok ? r.data.error ?? 'Não foi possível excluir.' : r.data.failed?.length ? r.data.failed[0].error : '')
     await load()
   }
 

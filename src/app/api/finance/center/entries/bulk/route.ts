@@ -2,7 +2,7 @@
 // POST /api/finance/center/entries/bulk — ações em lote (finance.manage).
 //   { action: 'settle', ids[], paidDate, accountId?, paymentMethod? }  → baixa cada um pelo valor
 //   { action: 'cancel', ids[], reason? }
-//   { action: 'delete', ids[] }  → só lançamentos manuais/recorrência
+//   { action: 'delete', ids[], reason? }  → cancela (nunca apaga) — voidEntry
 //   → { success, done, failed: [{ id, description, error }] }
 // =============================================================================
 
@@ -13,9 +13,8 @@ import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { financeGuard } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
-import { bad, canPayroll, centerRefError, isDeletableSource } from '../_lib/shared'
-import { cancelEntry, settleEntry } from '../_lib/settle'
-import { deleteEntriesFiles } from '@/app/api/finance/entries/[id]/attachments/_storage'
+import { bad, canPayroll, centerRefError } from '../_lib/shared'
+import { cancelEntry, settleEntry, voidEntry } from '../_lib/settle'
 
 export const maxDuration = 60
 
@@ -51,13 +50,8 @@ export async function POST(req: Request) {
           if (!error && r.status !== 'PREVISTO') continue
         } else if (d.action === 'cancel') {
           error = await cancelEntry(r.id, d.reason)
-        } else if (!isDeletableSource(r.source)) {
-          error = 'Lançamento integrado: cancele em vez de excluir.'
-        } else if (await prisma.financialEntry.count({ where: { parentEntryId: r.id } })) {
-          error = 'O título tem baixas: estorne-as antes.'
         } else {
-          await deleteEntriesFiles([r.id]).catch(() => {})
-          await prisma.financialEntry.delete({ where: { id: r.id } })
+          error = await voidEntry(r.id, d.reason, { id: g.user.id, name: g.user.name, role: g.user.role })
         }
       } catch (err) {
         console.error('[finance/bulk]', r.id, err)
@@ -66,7 +60,7 @@ export async function POST(req: Request) {
       if (error) failed.push({ id: r.id, description: r.description, error })
       else done++
     }
-    await createSafeAuditLog({ userId: g.user.id, tenantId: g.tenantId, action: `BULK_${d.action.toUpperCase()}`, entity: 'FinancialEntry', entityId: rows.map((r) => r.id).join(',').slice(0, 180), userName: g.user.name, userRole: g.user.role })
+    await createSafeAuditLog({ userId: g.user.id, tenantId: g.tenantId, action: `BULK_${d.action.toUpperCase()}`, entity: 'FinancialEntry', entityId: null, userName: g.user.name, userRole: g.user.role, afterData: { ids: rows.map((r) => r.id), done, failed, reason: d.reason ?? null } })
     return NextResponse.json({ success: true, done, failed })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)

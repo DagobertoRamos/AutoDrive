@@ -149,10 +149,12 @@ export function EntryDrawer({ entryId: initialId, onClose, onChanged }: { entryI
   }
 
   async function setStatus(status: 'PREVISTO' | 'CANCELADO', ask: string) {
-    if (!e || !confirm(ask)) return
+    if (!e) return
+    const reason = window.prompt(`${ask}
+Motivo:`)?.trim()
+    if (!reason) return
     setBusy(status); setErr('')
-    // Cancelar só muda o status (DELETE apagaria de vez o lançamento manual).
-    const r = await fetch(`/api/finance/entries/${e.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(status === 'CANCELADO' ? { status } : { status, paidDate: null }) })
+    const r = await fetch(`/api/finance/entries/${e.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status, reason }) })
     const j = await r.json().catch(() => ({}))
     setBusy(null)
     if (!r.ok) { setErr(j?.error ?? 'Não foi possível concluir.'); return }

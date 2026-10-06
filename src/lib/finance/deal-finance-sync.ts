@@ -102,7 +102,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
 
   const entries = await prisma.financialEntry.findMany({
     where: { dealId },
-    select: { id: true, source: true, status: true, chargedAmount: true, vehicleId: true, costCenterId: true, notes: true, _count: { select: { items: true, partials: true } } },
+    select: { id: true, source: true, status: true, chargedAmount: true, vehicleId: true, costCenterId: true, notes: true, _count: { select: { items: true, partials: { where: { status: { not: 'CANCELADO' } } } } } },
   })
   // Legado (total da venda já lançado) e importadas: só o F&I.
   const children = !imported && !entries.some((e) => e.source === 'VENDA')

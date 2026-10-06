@@ -107,8 +107,13 @@ export default function FinanceEntriesPage() {
   }
 
   const remove = async (e: Entry) => {
-    if (!confirm(`Excluir o lançamento "${e.description}"?`)) return
-    await fetch(`/api/finance/entries/${e.id}`, { method: 'DELETE', credentials: 'include' }); await load()
+    const reason = window.prompt(`Cancelar o lançamento "${e.description}"?
+Motivo:`)?.trim()
+    if (!reason) return
+    const r = await fetch(`/api/finance/entries/${e.id}?reason=${encodeURIComponent(reason)}`, { method: 'DELETE', credentials: 'include' })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) setError(j?.error ?? 'Não foi possível cancelar.')
+    await load()
   }
   const sync = async () => {
     setSyncing(true); setMsg(null)

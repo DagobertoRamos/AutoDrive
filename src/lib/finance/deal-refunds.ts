@@ -8,7 +8,7 @@
 //   • Devolução do proprietário (compra/consignação já paga) → RECEITA RECEBIDO
 //       "Outras receitas" (código 5). source = NEG_DEVOLUCAO_<entryId>.
 //   Os dois aparecem no extrato da conta, no fluxo de caixa, na DRE e no
-//   relatório "Cancelamentos e estornos". Desfazer = apaga o lançamento do estorno.
+//   relatório "Cancelamentos e estornos". Desfazer = cancela o lançamento do estorno.
 // =============================================================================
 
 import { prisma } from '@/lib/prisma'
@@ -162,14 +162,15 @@ export async function registerRefund(tenantId: string, input: RefundInput): Prom
   return { ok: true }
 }
 
-/** Desfaz um estorno marcado por engano: apaga o lançamento e o pagamento volta a conciliado. */
+/** Desfaz um estorno marcado por engano: o lançamento fica cancelado e o pagamento volta a conciliado. */
 export async function undoRefund(tenantId: string, dealId: string, refId: string, kind: RefundKind, actor: RefundInput['actor']): Promise<{ ok: true } | { ok: false; error: string }> {
   const deal = await prisma.deal.findFirst({ where: { id: dealId, tenantId }, select: { id: true, unitId: true } })
   if (!deal) return { ok: false, error: 'Negociação não encontrada.' }
   const entry = await prisma.financialEntry.findFirst({ where: { dealId, source: refundSource(kind, refId) }, select: { id: true, amount: true, settlementBatchId: true } })
   if (!entry) return { ok: false, error: 'Estorno não encontrado.' }
   await prisma.$transaction(async (tx) => {
-    await tx.financialEntry.delete({ where: { id: entry.id } })
+    // Nunca apaga: fica cancelado (origem renomeada para liberar um novo estorno).
+    await tx.financialEntry.update({ where: { id: entry.id }, data: { status: 'CANCELADO', source: `${refundSource(kind, refId)}#X${Date.now()}`, notes: 'Estorno desfeito.' } })
     if (kind === 'ESTORNO_CLIENTE') await tx.dealPayment.updateMany({ where: { id: refId, dealId, status: 'ESTORNADO' }, data: { status: 'CONFIRMADO' } })
     await createDealAudit(tx as never, {
       dealId, tenantId, unitId: deal.unitId, userId: actor.id, userName: actor.name ?? undefined, userRole: actor.role ?? undefined,

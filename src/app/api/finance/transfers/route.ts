@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     const from = sp.get('from'); const to = sp.get('to')
     const rows = await prisma.financialEntry.findMany({
       where: {
-        tenantId: g.tenantId, transferGroupId: { not: null },
+        tenantId: g.tenantId, transferGroupId: { not: null }, status: { not: 'CANCELADO' },
         ...((from && YMD.test(from)) || (to && YMD.test(to)) ? { paidDate: { ...(from && YMD.test(from) ? { gte: spDayStart(from) } : {}), ...(to && YMD.test(to) ? { lte: spDayEnd(to) } : {}) } } : {}),
       },
       orderBy: [{ paidDate: 'desc' }, { createdAt: 'desc' }], take: 400,

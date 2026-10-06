@@ -134,7 +134,7 @@ export async function GET(req: Request) {
     const titleIds = rows.filter((r) => !r.parentEntryId).map((r) => r.id)
     const parentIds = [...new Set(rows.map((r) => r.parentEntryId).filter((v): v is string => !!v))]
     const [partialRows, parents] = await Promise.all([
-      titleIds.length ? prisma.financialEntry.findMany({ where: { parentEntryId: { in: titleIds } }, select: { parentEntryId: true, amount: true, interestAmount: true, discountAmount: true } }) : [],
+      titleIds.length ? prisma.financialEntry.findMany({ where: { parentEntryId: { in: titleIds }, status: { not: 'CANCELADO' } }, select: { parentEntryId: true, amount: true, interestAmount: true, discountAmount: true } }) : [],
       parentIds.length ? prisma.financialEntry.findMany({ where: { id: { in: parentIds } }, select: { id: true, description: true } }) : [],
     ])
     const partialsBy = new Map<string, { amount: number; interestAmount: number | null; discountAmount: number | null }[]>()

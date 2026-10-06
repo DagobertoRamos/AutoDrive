@@ -95,7 +95,7 @@ async function loadSettlementInfo(e: FinancialEntry) {
     : e
   if (!title) return null
   const [partials, accounts] = await Promise.all([
-    prisma.financialEntry.findMany({ where: { parentEntryId: title.id }, orderBy: { createdAt: 'asc' } }),
+    prisma.financialEntry.findMany({ where: { parentEntryId: title.id, status: { not: 'CANCELADO' } }, orderBy: { createdAt: 'asc' } }),
     prisma.financialAccount.findMany({ where: { tenantId: title.tenantId }, select: { id: true, name: true } }),
   ])
   const accName = new Map(accounts.map((a) => [a.id, a.name]))

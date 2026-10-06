@@ -1,8 +1,8 @@
 // =============================================================================
 // /api/finance/entries/[id] — ver / editar / liquidar / excluir lançamento.
 //   GET    : finance (read)
-//   PATCH  : finance.manage (edita campos; status PAGO/RECEBIDO grava paidDate)
-//   DELETE : finance.manage (hard delete de lançamento MANUAL/recorrência; integrados são cancelados)
+//   PATCH  : finance.manage (edita campos; status passa por baixa/estorno/cancelamento)
+//   DELETE : finance.manage (nunca apaga: cancela com motivo — voidEntry)
 // Folha (lançamento com colaborador) só com finance.payroll.
 // =============================================================================
 
@@ -13,10 +13,11 @@ import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateEntrySchema } from '@/lib/validators/finance'
 import { zodErrorResponse, num } from '@/lib/finance/finance-service'
-import { applyStatusSideEffects } from '@/lib/finance/entry-settlement'
+import { reverseSettlement, settleTitle } from '@/lib/finance/settlement'
+import { entryDiff } from '@/lib/finance/entry-audit'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
-import { entryAccessError, isDeletableSource, legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
-import { deleteEntriesFiles } from './attachments/_storage'
+import { entryAccessError, legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
+import { voidEntry } from '@/app/api/finance/center/entries/_lib/settle'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -47,22 +48,45 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (denied || !existing) return denied
     if (existing.parentEntryId) return NextResponse.json({ success: false, error: 'Esta linha é uma baixa: para desfazer, use Estornar.' }, { status: 400 })
 
-    const d = updateEntrySchema.parse(await req.json())
+    const body = await req.json()
+    const d = updateEntrySchema.parse(body)
     const refErr = await tenantRefError(existing.tenantId, d)
     if (refErr) return NextResponse.json({ success: false, error: refErr }, { status: 400 })
-    const updateData: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(d)) if (v !== undefined) updateData[k] = v
+    const actor = { id: user.id, name: user.name, role: user.role }
+    const settled = existing.status === 'PAGO' || existing.status === 'RECEBIDO'
 
-    // Liquidação: ao marcar PAGO/RECEBIDO sem data, registra agora.
-    if ((d.status === 'PAGO' || d.status === 'RECEBIDO') && !d.paidDate && !existing.paidDate) {
-      updateData.paidDate = new Date()
+    // Mudança de status passa SEMPRE pelas regras de baixa/estorno/cancelamento.
+    if (d.status && d.status !== existing.status) {
+      let err: string | null = null
+      if (d.status === 'CANCELADO') err = await voidEntry(id, typeof body?.reason === 'string' ? body.reason : null, actor)
+      else if (d.status === 'PREVISTO') {
+        const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
+        err = await reverseSettlement(existing.tenantId, id, reason || 'Estorno pelo lançamento', actor)
+      } else {
+        if ((d.status === 'PAGO') !== (existing.type === 'DESPESA')) err = 'Status não combina com o tipo do lançamento.'
+        else {
+          const paid = d.paidDate ?? new Date()
+          const r = await settleTitle(existing.tenantId, id, { paidDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(paid), accountId: d.accountId ?? undefined, paymentMethod: d.paymentMethod ?? undefined }, actor)
+          err = 'error' in r ? r.error : null
+        }
+      }
+      if (err) return NextResponse.json({ success: false, error: err }, { status: 400 })
     }
 
-    const entry = await prisma.financialEntry.update({ where: { id }, data: updateData })
-    await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'UPDATE', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role })
-
-    // Baixa/estorno → comissão (sistema de comissões) e pagamento da negociação acompanham.
-    if (d.status) await applyStatusSideEffects(existing, d.status, (updateData.paidDate as Date | undefined) ?? existing.paidDate)
+    // Demais campos. Valor e tipo de lançamento já baixado não mudam (estorne antes).
+    const updateData: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(d)) if (v !== undefined && k !== 'status' && k !== 'paidDate') updateData[k] = v
+    if (settled && ((d.amount !== undefined && Math.abs(Number(d.amount) - Number(existing.amount)) > 0.004) || (d.type && d.type !== existing.type))) {
+      return NextResponse.json({ success: false, error: 'Lançamento baixado: estorne a baixa para mudar valor ou tipo.' }, { status: 400 })
+    }
+    if (d.categoryId) {
+      const cat = await prisma.financialCategory.findFirst({ where: { id: d.categoryId }, select: { kind: true } })
+      if (cat && cat.kind !== (d.type ?? existing.type)) return NextResponse.json({ success: false, error: 'A categoria não é do mesmo tipo do lançamento.' }, { status: 400 })
+    }
+    const current = await prisma.financialEntry.findUniqueOrThrow({ where: { id } })
+    const entry = Object.keys(updateData).length ? await prisma.financialEntry.update({ where: { id }, data: updateData }) : current
+    const changed = entryDiff(current as unknown as Record<string, unknown>, entry as unknown as Record<string, unknown>)
+    if (changed) await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'UPDATE', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role, beforeData: changed.before, afterData: changed.after })
     return NextResponse.json({ success: true, data: { ...entry, amount: num(entry.amount) } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
@@ -80,19 +104,10 @@ export async function DELETE(req: Request, { params }: Ctx) {
     const existing = await prisma.financialEntry.findUnique({ where: { id } })
     const denied = await entryAccessError(existing, g)
     if (denied || !existing) return denied
-    if (existing.parentEntryId) return NextResponse.json({ success: false, error: 'Esta linha é uma baixa: use Estornar.' }, { status: 400 })
-    if (await prisma.financialEntry.count({ where: { parentEntryId: id } })) return NextResponse.json({ success: false, error: 'O título tem baixas: estorne-as antes.' }, { status: 400 })
-    // Lançamentos integrados (VENDA/COMISSAO/TRANSFER...) não são apagados manualmente — cancela.
-    if (!isDeletableSource(existing.source)) {
-      await prisma.financialEntry.update({ where: { id }, data: { status: 'CANCELADO' } })
-      await applyStatusSideEffects(existing, 'CANCELADO', null)
-      await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'CANCEL', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role })
-      return NextResponse.json({ success: true, canceled: true })
-    }
-    await deleteEntriesFiles([id]).catch(() => {})
-    await prisma.financialEntry.delete({ where: { id } })
-    await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'DELETE', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role })
-    return NextResponse.json({ success: true })
+    const reason = new URL(req.url).searchParams.get('reason')
+    const err = await voidEntry(id, reason, { id: user.id, name: user.name, role: user.role })
+    if (err) return NextResponse.json({ success: false, error: err }, { status: 400 })
+    return NextResponse.json({ success: true, canceled: true })
   } catch (err) {
     return handlePrismaError(err)
   }

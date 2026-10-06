@@ -16,6 +16,7 @@ import type { Prisma } from '@prisma/client'
 import { z, ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { createSafeAuditLog } from '@/lib/auth-guards'
+import { entryDiff } from '@/lib/finance/entry-audit'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { financeGuard } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
@@ -55,7 +56,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       if (e.commissionCalculationId) return bad('Comissão: o valor vem do sistema de comissões.')
       if (e.vehicleServiceId) return bad('Custo de serviço: altere o valor na aba Serviços do veículo.')
       if (e.parentEntryId) return bad('Esta linha é uma baixa: para desfazer, use Estornar.')
-      if (await prisma.financialEntry.count({ where: { parentEntryId: e.id } })) return bad('Título com baixas: o valor não pode mudar (estorne as baixas antes).')
+      if (await prisma.financialEntry.count({ where: { parentEntryId: e.id, status: { not: 'CANCELADO' } } })) return bad('Título com baixas: o valor não pode mudar (estorne as baixas antes).')
     }
     if (e.parentEntryId) return bad('Esta linha é uma baixa: para desfazer, use Estornar.')
     const data: Prisma.FinancialEntryUncheckedUpdateInput = {}
@@ -87,7 +88,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
       data.counterparty = cp || (await supplierName(d.supplierId ?? e.supplierId)) || dealCustomer || null
     }
     const row = await prisma.financialEntry.update({ where: { id }, data })
-    await createSafeAuditLog({ userId: g.user.id, tenantId: g.tenantId, action: 'UPDATE', entity: 'FinancialEntry', entityId: id, userName: g.user.name, userRole: g.user.role })
+    const changed = entryDiff(e as unknown as Record<string, unknown>, row as unknown as Record<string, unknown>)
+    if (changed) await createSafeAuditLog({ userId: g.user.id, tenantId: g.tenantId, action: 'UPDATE', entity: 'FinancialEntry', entityId: id, userName: g.user.name, userRole: g.user.role, beforeData: changed.before, afterData: changed.after })
     return NextResponse.json({ success: true, data: { ...row, amount: Number(row.amount) } })
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err)
