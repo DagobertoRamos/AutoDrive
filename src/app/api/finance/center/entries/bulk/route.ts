@@ -47,12 +47,14 @@ export async function POST(req: Request) {
       let error: string | null = null
       try {
         if (d.action === 'settle') {
-          error = r.status === 'PREVISTO' ? await settleEntry(r.id, { paidDate: d.paidDate!, accountId: d.accountId, paymentMethod: d.paymentMethod }) : null
+          error = r.status === 'PREVISTO' ? await settleEntry(r.id, { paidDate: d.paidDate!, accountId: d.accountId, paymentMethod: d.paymentMethod }, { id: g.user.id, name: g.user.name, role: g.user.role }, g.tenantId) : null
           if (!error && r.status !== 'PREVISTO') continue
         } else if (d.action === 'cancel') {
           error = await cancelEntry(r.id, d.reason)
         } else if (!isDeletableSource(r.source)) {
           error = 'Lançamento integrado: cancele em vez de excluir.'
+        } else if (await prisma.financialEntry.count({ where: { parentEntryId: r.id } })) {
+          error = 'O título tem baixas: estorne-as antes.'
         } else {
           await deleteEntriesFiles([r.id]).catch(() => {})
           await prisma.financialEntry.delete({ where: { id: r.id } })

@@ -45,6 +45,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const existing = await prisma.financialEntry.findUnique({ where: { id } })
     const denied = await entryAccessError(existing, g)
     if (denied || !existing) return denied
+    if (existing.parentEntryId) return NextResponse.json({ success: false, error: 'Esta linha é uma baixa: para desfazer, use Estornar.' }, { status: 400 })
 
     const d = updateEntrySchema.parse(await req.json())
     const refErr = await tenantRefError(existing.tenantId, d)
@@ -79,6 +80,8 @@ export async function DELETE(req: Request, { params }: Ctx) {
     const existing = await prisma.financialEntry.findUnique({ where: { id } })
     const denied = await entryAccessError(existing, g)
     if (denied || !existing) return denied
+    if (existing.parentEntryId) return NextResponse.json({ success: false, error: 'Esta linha é uma baixa: use Estornar.' }, { status: 400 })
+    if (await prisma.financialEntry.count({ where: { parentEntryId: id } })) return NextResponse.json({ success: false, error: 'O título tem baixas: estorne-as antes.' }, { status: 400 })
     // Lançamentos integrados (VENDA/COMISSAO/TRANSFER...) não são apagados manualmente — cancela.
     if (!isDeletableSource(existing.source)) {
       await prisma.financialEntry.update({ where: { id }, data: { status: 'CANCELADO' } })

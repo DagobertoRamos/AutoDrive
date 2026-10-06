@@ -6,6 +6,8 @@
 // (source) e, por último, no genérico do tipo.
 // =============================================================================
 
+import { baseSource } from './settlement-core'
+
 export type DreSection =
   | 'RECEITA_BRUTA' | 'DEDUCOES' | 'CMV' | 'DESPESAS_OPERACIONAIS'
   | 'RESULTADO_FINANCEIRO' | 'IMPOSTOS_LUCRO' | 'FORA_DRE'
@@ -48,7 +50,7 @@ export const VEHICLE_COST_GROUPS = new Set(['CMV_AQUISICAO', 'CMV_PREPARACAO', '
 
 // Origem automática → grupo (quando o lançamento não tem categoria com grupo).
 export function sourceDreGroup(source: string | null | undefined, type: 'RECEITA' | 'DESPESA'): string | null {
-  const s = source ?? ''
+  const s = baseSource(source) ?? ''
   if (s === 'VENDA' || s.startsWith('NEG_PGTO_') || s.startsWith('NEG_TROCA_')) return 'REC_VEICULOS'
   if (s === 'COMISSAO' || s === 'RETORNO' || s === 'GARANTIA') return 'DESP_COMISSOES'
   if (s.startsWith('NEG_DEBITO_')) return 'CMV_DOCUMENTACAO'

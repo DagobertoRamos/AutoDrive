@@ -6,6 +6,8 @@
 // pela origem; lançamento manual com centro escolhido sempre vence.
 // =============================================================================
 
+import { baseSource } from './settlement-core'
+
 export type CenterKind = 'RESULTADO' | 'CUSTO'
 
 export interface ResultCenterDef { key: string; name: string; kind: CenterKind }
@@ -90,7 +92,7 @@ export function deriveCenterKey(
   dreGroup: string,
   ctx: CenterContext = {},
 ): string {
-  const s = e.source ?? ''
+  const s = baseSource(e.source) ?? ''
   if (s.startsWith('NEG_SERV_')) return SERVICE_KIND_BY_KEY[ctx.serviceKind?.(s.slice(9)) ?? '']?.center ?? 'VENDAS'
   if (s.startsWith('NEG_GAR_')) return 'GARANTIAS'
   if (s.startsWith('NEG_RETORNO_') || s.startsWith('NEG_PLUS_') || s.startsWith('NEG_AGREG_')) return 'FI'
@@ -266,7 +268,7 @@ export type FiRevenueType = (typeof FI_REVENUE_TYPES)[number]['key']
 
 /** Tipo da receita de F&I: pela origem automática e, nos manuais, pela categoria 2.x. */
 export function fiRevenueType(source: string | null | undefined, categoryCode: string | null | undefined, serviceKind?: string | null): FiRevenueType {
-  const s = source ?? ''
+  const s = baseSource(source) ?? ''
   if (s.startsWith('NEG_RETORNO_') || s === 'VEICULO_RETORNO') return 'RETORNO'
   if (s.startsWith('NEG_PLUS_')) return 'PLUS'
   if (s.startsWith('NEG_AGREG_')) return 'AGREGADO'

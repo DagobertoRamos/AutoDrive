@@ -16,6 +16,7 @@ import { EXPENSE_LABEL, REVENUE_LABEL, serviceCost, vehicleResult, type ExpenseC
 import { listVehicleFiles, type VehicleFileMeta } from './vehicle-files'
 import { DEBT_SOURCE_PREFIX } from '@/lib/finance/deal-finance-sync'
 import { COST_ITEM_LABEL, DOC_DEBT_TYPES, chargeResult, isChargedToCustomer } from '@/lib/finance/entry-settlement-core'
+import { baseSource } from '@/lib/finance/settlement-core'
 
 /** Tipo do débito da negociação → categoria do extrato do veículo. */
 const DEBT_CATEGORY: Record<string, string> = {
@@ -25,7 +26,7 @@ const DEBT_CATEGORY: Record<string, string> = {
 
 export const VEHICLE_SOURCE_PREFIX = 'VEICULO_'
 export const sourceOf = (category: string) => `${VEHICLE_SOURCE_PREFIX}${category}`
-export const categoryOf = (source: string | null) => (source?.startsWith(VEHICLE_SOURCE_PREFIX) ? source.slice(VEHICLE_SOURCE_PREFIX.length) : source ?? 'OUTRO')
+export const categoryOf = (raw: string | null) => { const source = baseSource(raw); return source?.startsWith(VEHICLE_SOURCE_PREFIX) ? source.slice(VEHICLE_SOURCE_PREFIX.length) : source ?? 'OUTRO' }
 
 const catCache = new Map<string, string>()
 

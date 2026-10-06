@@ -4264,11 +4264,19 @@ model FinancialEntry {
   /// Na baixa: juros/multa pagos e desconto obtido (o valor pago já os inclui).
   interestAmount     Decimal? @db.Decimal(14, 2)
   discountAmount     Decimal? @db.Decimal(14, 2)
+  /// Baixa parcial: este lançamento PAGO/RECEBIDO é uma baixa do título original
+  /// (o título fica com o saldo em aberto). Valor original = saldo + Σ principal das baixas.
+  parentEntryId      String?
+  /// Baixa feita em lote (FinancialSettlementBatch).
+  settlementBatchId  String?
 
   account     FinancialAccount?          @relation(fields: [accountId], references: [id])
   category    FinancialCategory?         @relation(fields: [categoryId], references: [id])
   costCenter  FinancialCostCenter?       @relation(fields: [costCenterId], references: [id])
   recurrence  FinancialRecurrence?       @relation(fields: [recurrenceId], references: [id])
+  parent      FinancialEntry?            @relation("EntryPartials", fields: [parentEntryId], references: [id], onDelete: Restrict)
+  partials    FinancialEntry[]           @relation("EntryPartials")
+  batch       FinancialSettlementBatch?  @relation(fields: [settlementBatchId], references: [id])
   items       FinancialEntryItem[]
   attachments FinancialEntryAttachment[]
 
@@ -4288,6 +4296,8 @@ model FinancialEntry {
   @@index([installmentGroupId])
   @@index([recurrenceId])
   @@index([employeeUserId])
+  @@index([parentEntryId])
+  @@index([settlementBatchId])
   @@map("financial_entries")
 }
 
@@ -4387,6 +4397,30 @@ model FinancialEntryAttachment {
   @@index([entryId])
   @@index([tenantId])
   @@map("financial_entry_attachments")
+}
+
+/// Lote de baixas (vários títulos pagos/recebidos de uma vez).
+model FinancialSettlementBatch {
+  id             String             @id @default(cuid())
+  tenantId       String?
+  type           FinancialEntryType
+  paidDate       DateTime
+  accountId      String?
+  paymentMethod  String?
+  description    String?
+  total          Decimal            @db.Decimal(14, 2)
+  count          Int
+  reversedAt     DateTime?
+  reversalReason String?
+  /// Itens baixados (descrição, saldo, principal, juros, desconto, pago) — o comprovante sobrevive ao estorno.
+  snapshot       Json?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+
+  entries FinancialEntry[]
+
+  @@index([tenantId, paidDate])
+  @@map("financial_settlement_batches")
 }
 
 /// Documento anexado a qualquer registro do sistema (nota fiscal, boleto,

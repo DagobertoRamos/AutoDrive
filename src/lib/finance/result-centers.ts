@@ -18,6 +18,7 @@ import {
   SERVICE_KIND_BY_KEY, centerKeyByCategoryCode, dealRevenueComponents, deriveCenterKey, isChargedDocDebt, isDocDebtType,
   serviceKindOf, splitReceipt, type CenterContext, type RevenueComponent,
 } from './result-centers-core'
+import { baseSource } from './settlement-core'
 
 const CHUNK = 5000
 async function inChunks<T>(ids: string[], load: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
@@ -59,7 +60,7 @@ export async function classifyEntries(
   const relevant = opts.relevant ?? (() => true)
   const debtIds: string[] = [], serviceIds: string[] = [], commissionIds: string[] = [], dealIds: string[] = []
   for (const e of raw) {
-    const s = e.source ?? ''
+    const s = baseSource(e.source) ?? ''
     if (s.startsWith('NEG_DEBITO_')) debtIds.push(s.slice(11))
     else if (s.startsWith('NEG_SERV_')) serviceIds.push(s.slice(9))
     if (e.commissionCalculationId) commissionIds.push(e.commissionCalculationId)
@@ -105,7 +106,7 @@ export async function classifyEntries(
 
   const out: RawEntry[] = []
   for (const e of raw) {
-    const s = e.source ?? ''
+    const s = baseSource(e.source) ?? ''
     const group = e.groupOverride ?? refs.groupOf(e)
     const code = e.categoryId ? refs.catCode(e.categoryId) : null
     const derive = () => {

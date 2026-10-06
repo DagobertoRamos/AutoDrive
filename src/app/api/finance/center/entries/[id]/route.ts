@@ -20,6 +20,7 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { financeGuard } from '@/lib/finance/access'
 import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { noonUtc } from '@/lib/finance/recurrence-core'
+import { reverseSettlement } from '@/lib/finance/settlement'
 import { MANUAL_DEAL_SOURCE_PREFIX, bad, categoryKindError, centerRefError, dealForEntry, entryAccessError, isDeletableSource, supplierName } from '../_lib/shared'
 import { cancelEntry, settleEntry, settleSchema } from '../_lib/settle'
 
@@ -53,7 +54,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (d.amount !== undefined && d.amount !== Number(e.amount)) {
       if (e.commissionCalculationId) return bad('Comissão: o valor vem do sistema de comissões.')
       if (e.vehicleServiceId) return bad('Custo de serviço: altere o valor na aba Serviços do veículo.')
+      if (e.parentEntryId) return bad('Esta linha é uma baixa: para desfazer, use Estornar.')
+      if (await prisma.financialEntry.count({ where: { parentEntryId: e.id } })) return bad('Título com baixas: o valor não pode mudar (estorne as baixas antes).')
     }
+    if (e.parentEntryId) return bad('Esta linha é uma baixa: para desfazer, use Estornar.')
     const data: Prisma.FinancialEntryUncheckedUpdateInput = {}
     if (d.description !== undefined) data.description = d.description
     if (d.amount !== undefined) data.amount = d.amount
@@ -103,7 +107,9 @@ export async function POST(req: Request, { params }: Ctx) {
     let error: string | null
     if (body.action === 'settle') {
       const s = settleSchema.parse(body)
-      error = await centerRefError(g.tenantId, { accountId: s.accountId }) ?? await settleEntry(id, s)
+      error = await centerRefError(g.tenantId, { accountId: s.accountId }) ?? await settleEntry(id, s, { id: g.user.id, name: g.user.name, role: g.user.role }, g.tenantId)
+    } else if (body.action === 'reverse') {
+      error = await reverseSettlement(g.tenantId, id, typeof body.reason === 'string' ? body.reason.slice(0, 300) : '', { id: g.user.id, name: g.user.name, role: g.user.role })
     } else if (body.action === 'cancel') {
       error = await cancelEntry(id, typeof body.reason === 'string' ? body.reason.slice(0, 300) : null)
     } else {

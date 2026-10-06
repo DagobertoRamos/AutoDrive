@@ -85,7 +85,8 @@ export async function generateRecurrences(tenantId?: string | null, horizonMonth
  */
 export async function applyRecurrenceToFuture(rec: Rec, prev: Pick<Rec, 'dayOfMonth'>): Promise<void> {
   const today = todaySpYmd()
-  const baseWhere = { recurrenceId: rec.id, status: 'PREVISTO' as const, dueDate: { gte: noonUtc(today) } }
+  // Títulos com baixa parcial ficam como estão (o saldo já foi negociado).
+  const baseWhere = { recurrenceId: rec.id, status: 'PREVISTO' as const, dueDate: { gte: noonUtc(today) }, partials: { none: {} } }
   const outside: Prisma.FinancialEntryWhereInput[] = [{ dueDate: { lt: rec.startDate } }]
   if (rec.endDate) outside.push({ dueDate: { gt: noonUtc(ymdOf(rec.endDate)) } })
   await prisma.financialEntry.updateMany({ where: { ...baseWhere, OR: outside }, data: { status: 'CANCELADO' } })

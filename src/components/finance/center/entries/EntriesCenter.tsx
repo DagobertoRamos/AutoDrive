@@ -4,18 +4,22 @@
 // Contas a pagar / a receber (Centro Financeiro). Lista de DESPESAS ou RECEITAS
 // (sem transferências) com abas, filtros, totais, ações por linha e em lote.
 //   ?novo=1 abre o formulário; ?id=<lançamento> abre o painel do lançamento.
-// Consome /api/finance/center/entries (+ /refs, /bulk, /[id]) e /api/finance/entries/[id].
+// Consome /api/finance/center/entries (+ /refs, /bulk, /[id]), /api/finance/center/settlements/batch
+// e /api/finance/entries/[id]. Títulos em aberto mostram o SALDO; baixas parciais
+// aparecem em Pagos/Recebidos como linhas próprias ligadas ao título.
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowRightLeft, Ban, CheckCircle2, Copy, Eye, Loader2, Paperclip, Pencil, Plus, Repeat, RefreshCw, Trash2, Wallet } from 'lucide-react'
+import { ArrowRightLeft, Ban, CheckCircle2, Copy, CornerDownRight, Eye, Layers, Loader2, Paperclip, Pencil, Plus, Repeat, RefreshCw, Trash2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EntryDrawer } from '@/components/finance/EntryDrawer'
 import { DealPeekLink } from '@/components/deals/DealPeek'
 import { CategorySelect } from './CategorySelect'
 import { EntryForm, type EntryFormValues } from './EntryForm'
 import { SettleModal, type SettleTarget } from './SettleModal'
+import { BulkSettleModal, type BulkTarget } from './BulkSettleModal'
+import { BatchesModal } from './BatchesModal'
 import { TransferModal } from './TransferModal'
 import { ErrorLine, Field, Modal, brl, dt, inputCls, postJson } from './ui'
 import { useFinanceRefs } from './useFinanceRefs'
@@ -33,6 +37,9 @@ interface Row {
   installmentNumber: number | null; installmentTotal: number | null; recurrenceId: string | null
   vehicle: { id: string; plate: string | null; title: string } | null; attachments: number
   deal?: { id: string; dealNumber: string | null; customer: string | null } | null
+  isPartialSettlement?: boolean; partialNumber?: number | null; parent?: { id: string; description: string }
+  partialCount?: number; partialBlocked?: string | null
+  summary?: { original: number; settled: number; remaining: number; paidTotal: number; count: number; partial: boolean }
 }
 type Summary = Record<Tab, { count: number; amount: number }>
 
@@ -59,7 +66,9 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
 
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [form, setForm] = useState<{ initial?: Partial<EntryFormValues>; editId?: string } | null>(null)
-  const [settle, setSettle] = useState<SettleTarget[] | null>(null)
+  const [settle, setSettle] = useState<SettleTarget | null>(null)
+  const [bulk, setBulk] = useState<BulkTarget[] | null>(null)
+  const [batches, setBatches] = useState(false)
   const [transfer, setTransfer] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<Row[] | null>(null)
 
@@ -91,11 +100,16 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
   const listed = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows])
   const selRows = rows.filter((r) => selected.has(r.id))
   const selTotal = selRows.reduce((s, r) => s + r.amount, 0)
-  const openSel = selRows.filter((r) => r.status === 'PREVISTO')
-  const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id))
+  const openSel = selRows.filter((r) => r.status === 'PREVISTO' && !r.isPartialSettlement)
+  const selectable = rows.filter((r) => !r.isPartialSettlement)
+  const allChecked = selectable.length > 0 && selectable.every((r) => selected.has(r.id))
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
-  const toTarget = (r: Row): SettleTarget => ({ id: r.id, description: r.description, amount: r.amount, accountId: r.account?.id ?? null, paymentMethod: r.paymentMethod, linked: r.linked })
+  const toTarget = (r: Row): SettleTarget & BulkTarget => ({
+    id: r.id, description: r.description, amount: r.amount, original: r.summary?.original ?? r.amount, paid: r.summary?.paidTotal ?? 0,
+    dueDate: r.dueDate, counterparty: r.counterparty || r.deal?.customer || null,
+    accountId: r.account?.id ?? null, paymentMethod: r.paymentMethod, linked: r.linked, partialBlocked: r.partialBlocked ?? null,
+  })
   const valuesOf = (r: Row): Partial<EntryFormValues> => ({
     type: r.type, description: r.description.replace(/\s\(\d+\/\d+\)$/, ''), amount: r.amount, dueDate: ymd(r.dueDate), competenceDate: ymd(r.competenceDate),
     accountId: r.account?.id ?? '', categoryId: r.category?.id ?? '', costCenterId: r.costCenter?.id ?? '', supplierId: r.supplierId ?? '',
@@ -112,6 +126,7 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
     await load()
   }
 
+  const valueLabel = tab === 'aberto' || tab === 'vencidos' ? 'Saldo' : tab === 'pagos' ? (isExpense ? 'Pago' : 'Recebido') : 'Valor'
   const tabs: Array<[Tab, string]> = [['aberto', 'Em aberto'], ['vencidos', 'Vencidos'], ['pagos', isExpense ? 'Pagos' : 'Recebidos'], ['cancelados', 'Cancelados'], ['todos', 'Todos']]
 
   return (
@@ -120,6 +135,7 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
         <h1 className="text-xl font-bold text-gray-900">{isExpense ? 'Contas a pagar' : 'Contas a receber'}</h1>
         {canManage && (
           <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setBatches(true)} className="btn-secondary text-sm"><Layers size={15} />Lotes de baixa</button>
             <button type="button" onClick={() => setTransfer(true)} className="btn-secondary text-sm"><ArrowRightLeft size={15} />Transferir</button>
             <button type="button" onClick={() => setForm({})} className="btn-primary text-sm"><Plus size={15} />Novo</button>
           </div>
@@ -162,7 +178,7 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm">
           <span className="font-medium text-brand-800">{selected.size} selecionado(s) · {brl(selTotal)}</span>
           <div className="ml-auto flex flex-wrap gap-2">
-            {openSel.length > 0 && <button type="button" onClick={() => setSettle(openSel.map(toTarget))} className="btn-primary text-xs"><CheckCircle2 size={14} />{isExpense ? 'Pagar' : 'Receber'} ({openSel.length})</button>}
+            {openSel.length > 0 && <button type="button" onClick={() => setBulk(openSel.map(toTarget))} className="btn-primary text-xs"><CheckCircle2 size={14} />{isExpense ? 'Pagar' : 'Receber'} ({openSel.length})</button>}
             {openSel.length > 0 && <button type="button" onClick={() => setCancelTarget(openSel)} className="btn-secondary text-xs"><Ban size={14} />Cancelar</button>}
             <button type="button" onClick={() => void remove(selRows)} className="btn-secondary text-xs text-red-600"><Trash2 size={14} />Excluir</button>
           </div>
@@ -174,9 +190,9 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                {canManage && <th className="w-8 px-3 py-3"><input type="checkbox" checked={allChecked} onChange={() => setSelected(allChecked ? new Set() : new Set(rows.map((r) => r.id)))} aria-label="Selecionar todos" className="rounded border-gray-300" /></th>}
-                {['Vencimento', 'Descrição', 'Categoria', 'Conta', 'Valor', 'Status', ''].map((h, i) => (
-                  <th key={i} className={cn('whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500', h === 'Valor' && 'text-right')}>{h}</th>
+                {canManage && <th className="w-8 px-3 py-3"><input type="checkbox" checked={allChecked} onChange={() => setSelected(allChecked ? new Set() : new Set(selectable.map((r) => r.id)))} aria-label="Selecionar todos" className="rounded border-gray-300" /></th>}
+                {['Vencimento', 'Descrição', 'Categoria', 'Conta', valueLabel, 'Status', ''].map((h, i) => (
+                  <th key={i} className={cn('whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500', i === 4 && 'text-right')}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -187,15 +203,21 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
                 <tr><td colSpan={8} className="py-14 text-center"><Wallet size={30} className="mx-auto mb-2 text-gray-300" strokeWidth={1} /><p className="text-sm text-gray-400">Nenhum lançamento.</p></td></tr>
               ) : rows.map((r) => {
                 const settled = r.status === 'PAGO' || r.status === 'RECEBIDO'
+                const child = !!r.isPartialSettlement
+                const hasPartials = (r.partialCount ?? 0) > 0
                 return (
                   <tr key={r.id} className={cn('hover:bg-gray-50', selected.has(r.id) && 'bg-brand-50/40')}>
-                    {canManage && <td className="px-3 py-2.5"><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} aria-label="Selecionar" className="rounded border-gray-300" /></td>}
+                    {canManage && <td className="px-3 py-2.5">{!child && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} aria-label="Selecionar" className="rounded border-gray-300" />}</td>}
                     <td className="whitespace-nowrap px-3 py-2.5 text-xs text-gray-600">
                       <span className={cn(r.overdue && 'font-semibold text-red-600')}>{dt(r.dueDate)}</span>
                       {settled && r.paidDate && <span className="block text-[11px] text-gray-400">{isExpense ? 'pago' : 'receb.'} {dt(r.paidDate)}</span>}
                     </td>
                     <td className="max-w-[320px] cursor-pointer px-3 py-2.5" onClick={() => setDrawerId(r.id)}>
-                      <p className="truncate font-medium text-gray-900">{r.description}</p>
+                      {child ? (
+                        <p className="flex items-center gap-1 truncate font-medium text-gray-900"><CornerDownRight size={13} className="shrink-0 text-gray-400" /><span className="truncate">Baixa parcial {r.partialNumber ?? ''} — {r.parent?.description || r.description}</span></p>
+                      ) : (
+                        <p className="truncate font-medium text-gray-900">{r.description}</p>
+                      )}
                       <p className="flex flex-wrap items-center gap-x-2 truncate text-[11px] text-gray-500">
                         {(r.counterparty || r.deal?.customer) && <span>{r.counterparty || r.deal?.customer}</span>}
                         {r.deal && <DealPeekLink dealId={r.deal.id} className="font-medium text-brand-700 hover:underline">{r.deal.dealNumber ?? 'Negociação'}</DealPeekLink>}
@@ -207,14 +229,17 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
                     </td>
                     <td className="px-3 py-2.5 text-xs text-gray-600">{r.category ? `${r.category.code ? `${r.category.code} ` : ''}${r.category.name}` : '—'}{r.costCenter && <span className="block text-[11px] text-gray-400">{r.costCenter.name}</span>}</td>
                     <td className="px-3 py-2.5 text-xs text-gray-600">{r.account?.name ?? '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums text-gray-900">{brl(r.amount)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums text-gray-900">
+                      {brl(r.amount)}
+                      {settled && r.summary && r.summary.count > 1 && <span className="block text-[11px] font-normal text-gray-400">total {brl(r.summary.paidTotal)}</span>}
+                    </td>
                     <td className="px-3 py-2.5"><StatusBadge row={r} /></td>
                     <td className="whitespace-nowrap px-2 py-2.5 text-right">
                       <IconBtn title="Ver" onClick={() => setDrawerId(r.id)}><Eye size={15} /></IconBtn>
-                      {canManage && r.status === 'PREVISTO' && <IconBtn title={isExpense ? 'Pagar' : 'Receber'} tone="green" onClick={() => setSettle([toTarget(r)])}><CheckCircle2 size={15} /></IconBtn>}
-                      {canManage && !r.linked && r.status !== 'CANCELADO' && <IconBtn title="Editar" onClick={() => setForm({ initial: valuesOf(r), editId: r.id })}><Pencil size={15} /></IconBtn>}
-                      {canManage && <IconBtn title="Duplicar" onClick={() => setForm({ initial: valuesOf(r) })}><Copy size={15} /></IconBtn>}
-                      {canManage && r.status === 'PREVISTO' && <IconBtn title="Cancelar" onClick={() => setCancelTarget([r])}><Ban size={15} /></IconBtn>}
+                      {canManage && !child && r.status === 'PREVISTO' && <IconBtn title={isExpense ? 'Pagar' : 'Receber'} tone="green" onClick={() => setSettle(toTarget(r))}><CheckCircle2 size={15} /></IconBtn>}
+                      {canManage && !child && !hasPartials && !r.linked && r.status !== 'CANCELADO' && <IconBtn title="Editar" onClick={() => setForm({ initial: valuesOf(r), editId: r.id })}><Pencil size={15} /></IconBtn>}
+                      {canManage && !child && <IconBtn title="Duplicar" onClick={() => setForm({ initial: { ...valuesOf(r), amount: r.summary?.original ?? r.amount } })}><Copy size={15} /></IconBtn>}
+                      {canManage && !child && !hasPartials && r.status === 'PREVISTO' && <IconBtn title="Cancelar" onClick={() => setCancelTarget([r])}><Ban size={15} /></IconBtn>}
                       {canManage && r.deletable && <IconBtn title="Excluir" tone="red" onClick={() => void remove([r])}><Trash2 size={15} /></IconBtn>}
                     </td>
                   </tr>
@@ -247,7 +272,9 @@ export function EntriesCenter({ kind }: { kind: Kind }) {
         <EntryForm type={kind} refs={refs} initial={form.initial} editId={form.editId}
           onClose={() => setForm(null)} onSaved={() => { setForm(null); void load() }} />
       )}
-      {settle && <SettleModal type={kind} targets={settle} accounts={refs.accounts} onClose={() => setSettle(null)} onDone={(m) => { setSettle(null); setMsg(m ?? ''); void load() }} />}
+      {settle && <SettleModal type={kind} target={settle} accounts={refs.accounts} onClose={() => setSettle(null)} onDone={(m) => { setSettle(null); setMsg(m ?? ''); void load() }} />}
+      {bulk && <BulkSettleModal type={kind} targets={bulk} accounts={refs.accounts} onClose={() => setBulk(null)} onChanged={() => void load()} />}
+      {batches && <BatchesModal type={kind} accounts={refs.accounts} canManage={canManage} onClose={() => setBatches(false)} onChanged={() => void load()} />}
       {transfer && <TransferModal accounts={refs.accounts} onClose={() => setTransfer(false)} onDone={() => { setTransfer(false); void load() }} />}
       {cancelTarget && <CancelModal rows={cancelTarget} onClose={() => setCancelTarget(null)} onDone={(m) => { setCancelTarget(null); setMsg(m ?? ''); void load() }} />}
     </div>
@@ -259,7 +286,15 @@ function StatusBadge({ row }: { row: Row }) {
     : row.status === 'PREVISTO' ? ['Em aberto', 'bg-amber-100 text-amber-800']
     : row.status === 'CANCELADO' ? ['Cancelado', 'bg-gray-100 text-gray-500']
     : [row.status === 'PAGO' ? 'Pago' : 'Recebido', 'bg-emerald-100 text-emerald-800']
-  return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold', cls)}>{label}</span>
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold', cls)}>{label}</span>
+      {row.summary?.partial && <span className="whitespace-nowrap rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800">Parcial</span>}
+      {row.summary?.partial && (
+        <span className="block w-full whitespace-nowrap text-[11px] tabular-nums text-gray-500">{row.type === 'DESPESA' ? 'pago' : 'recebido'} {brl(row.summary.settled)} de {brl(row.summary.original)}</span>
+      )}
+    </span>
+  )
 }
 
 function IconBtn({ title, onClick, tone, children }: { title: string; onClick: () => void; tone?: 'green' | 'red'; children: React.ReactNode }) {

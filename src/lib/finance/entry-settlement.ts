@@ -19,6 +19,7 @@ import {
   serviceCostSpec, serviceRefOfSource,
 } from './service-sync-core'
 import { SERVICE_KIND_BY_KEY } from './result-centers-core'
+import { PARTIAL_SOURCE_SEP, baseSource, partialBlockedReason, principalOf, titleSummary } from './settlement-core'
 
 const num = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d))
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
@@ -71,13 +72,55 @@ async function serviceCommissions(tenantId: string | null, ref: { kind: 'SERVICE
 }
 
 /** Pagamento de origem: NEG_PGTO_<id> (confirma na negociação) ou F&I (NEG_RETORNO_/NEG_PLUS_/NEG_AGREG_<id>_<i>). */
-function paymentRefOfSource(source: string | null): { id: string; linked: boolean } | null {
+function paymentRefOfSource(raw: string | null): { id: string; linked: boolean } | null {
+  const source = baseSource(raw)
   if (!source) return null
   if (source.startsWith(PAYMENT_SOURCE_PREFIX)) return { id: source.slice(PAYMENT_SOURCE_PREFIX.length), linked: true }
   for (const p of [FI_RETURN_SOURCE_PREFIX, FI_PLUS_SOURCE_PREFIX, FI_ADDON_SOURCE_PREFIX]) {
     if (source.startsWith(p)) return { id: source.slice(p.length).split('_')[0], linked: false }
   }
   return null
+}
+
+/**
+ * Baixas do título (parciais + final) para o painel do lançamento. Aceita o
+ * próprio título ou uma baixa parcial (filho) — devolve sempre o título.
+ * Estorno é LIFO: só a última baixa pode ser estornada.
+ */
+async function loadSettlementInfo(e: FinancialEntry) {
+  const title = e.parentEntryId
+    ? await prisma.financialEntry.findUnique({ where: { id: e.parentEntryId } })
+    : e
+  if (!title) return null
+  const [partials, accounts] = await Promise.all([
+    prisma.financialEntry.findMany({ where: { parentEntryId: title.id }, orderBy: { createdAt: 'asc' } }),
+    prisma.financialAccount.findMany({ where: { tenantId: title.tenantId }, select: { id: true, name: true } }),
+  ])
+  const accName = new Map(accounts.map((a) => [a.id, a.name]))
+  const money = (x: FinancialEntry) => ({ amount: num(x.amount), interestAmount: x.interestAmount == null ? null : num(x.interestAmount), discountAmount: x.discountAmount == null ? null : num(x.discountAmount) })
+  const settledTitle = title.status === 'PAGO' || title.status === 'RECEBIDO'
+  const row = (x: FinancialEntry, kind: 'PARCIAL' | 'FINAL', n: number) => ({
+    id: x.id, kind, n, paidDate: iso(x.paidDate), account: x.accountId ? accName.get(x.accountId) ?? null : null,
+    paymentMethod: x.paymentMethod, principal: principalOf(money(x)), interest: num(x.interestAmount), discount: num(x.discountAmount),
+    paid: num(x.amount), batchId: x.settlementBatchId, notes: x.notes, canReverse: false,
+  })
+  const baixas = partials.map((p, i) => {
+    const n = Number(p.source?.split(PARTIAL_SOURCE_SEP)[1])
+    return row(p, 'PARCIAL', Number.isFinite(n) && n > 0 ? n : i + 1)
+  })
+  if (settledTitle) baixas.push(row(title, 'FINAL', baixas.length + 1))
+  const reversible = !title.transferGroupId && baixas.length > 0
+  if (reversible) baixas[baixas.length - 1].canReverse = true
+  return {
+    titleId: title.id,
+    title: { id: title.id, description: title.description, status: title.status },
+    isChild: !!e.parentEntryId,
+    transfer: !!title.transferGroupId,
+    summary: titleSummary({ status: title.status, ...money(title) }, partials.map(money)),
+    partialCount: partials.length,
+    partialBlocked: partialBlockedReason(title),
+    baixas,
+  }
 }
 
 export async function loadEntryDetail(id: string) {
@@ -87,11 +130,13 @@ export async function loadEntryDetail(id: string) {
   })
   if (!e) return null
 
-  const debtId = e.source?.startsWith(DEBT_SOURCE_PREFIX) ? e.source.slice(DEBT_SOURCE_PREFIX.length) : null
+  const src = baseSource(e.source)
+  const debtId = src?.startsWith(DEBT_SOURCE_PREFIX) ? src.slice(DEBT_SOURCE_PREFIX.length) : null
   const payRef = paymentRefOfSource(e.source)
   const paymentId = payRef?.id ?? null
   const svcRef = serviceRefOfSource(e.source)
-  const [deal, debt, payment, vehicle, supplier, service, warrantySale] = await Promise.all([
+  const [settlement, deal, debt, payment, vehicle, supplier, service, warrantySale] = await Promise.all([
+    loadSettlementInfo(e),
     e.dealId ? prisma.deal.findUnique({
       where:  { id: e.dealId },
       select: { id: true, dealNumber: true, status: true, type: true, customer: { select: { name: true } }, person: { select: { nomeCompleto: true } }, seller: { select: { fullName: true, shortName: true } }, vehicles: { select: { role: true, plate: true, model: true, vehicleId: true } } },
@@ -160,7 +205,8 @@ export async function loadEntryDetail(id: string) {
     vehicle: vehicle ? { id: vehicle.id, plate: vehicle.plate, title: [vehicle.brand, vehicle.model].filter(Boolean).join(' ') } : null,
     commissions,
     result,
-    suggestedKinds: (debt ? SUGGESTED_ITEMS[debt.type] : serviceKind ? SERVICE_SUGGESTED_ITEMS[serviceKind] : null) ?? (e.type === 'DESPESA' ? (['OUTRO'] as CostItemKind[]) : []),
+    settlement,
+    suggestedKinds: (debt ?SUGGESTED_ITEMS[debt.type] : serviceKind ? SERVICE_SUGGESTED_ITEMS[serviceKind] : null) ?? (e.type === 'DESPESA' ? (['OUTRO'] as CostItemKind[]) : []),
   }
 }
 

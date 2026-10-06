@@ -9,6 +9,7 @@
 
 import { SERVICE_KIND_BY_KEY, serviceKindOf } from './result-centers-core'
 import { parseAddOns } from './fi-receipt-core'
+import { baseSource } from './settlement-core'
 
 export const SERVICE_SOURCE_PREFIX = 'NEG_SERV_'
 export const WARRANTY_SOURCE_PREFIX = 'NEG_GAR_'
@@ -98,6 +99,7 @@ export const isSyncEditable = (e: { status: string; itemCount: number }) => e.st
 /** Id do serviço/garantia a partir da origem do lançamento. */
 export function serviceRefOfSource(source: string | null | undefined): { kind: 'SERVICE' | 'WARRANTY'; id: string } | null {
   if (!source) return null
+  source = baseSource(source)
   if (source.startsWith(SERVICE_SOURCE_PREFIX)) return { kind: 'SERVICE', id: source.slice(SERVICE_SOURCE_PREFIX.length) }
   if (source.startsWith(WARRANTY_SOURCE_PREFIX)) return { kind: 'WARRANTY', id: source.slice(WARRANTY_SOURCE_PREFIX.length) }
   return null

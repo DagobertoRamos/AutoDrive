@@ -5,6 +5,10 @@
 //          &from&to (vencimento, YYYY-MM-DD) &accountId &categoryId (inclui subcategorias)
 //          &costCenterId &party (fornecedor/cliente) &plate &q
 //          → { data: rows, summary: { aberto, vencidos, pagos, cancelados, todos }, canManage, canPayroll }
+//          Título: `amount` = saldo em aberto (PREVISTO) ou valor pago (quitado);
+//            summary = titleSummary (original, settled, remaining, paidTotal, count, partial),
+//            partialCount, partialBlocked (motivo de não aceitar baixa parcial).
+//          Baixa parcial (filho): isPartialSettlement, partialNumber, parent { id, description }.
 //          Transferências ficam de fora; folha só com finance.payroll.
 //   POST : finance.manage — lançamento único ou parcelado (atômico).
 //          { type, description, amount, dueDate, competenceDate?, accountId?, categoryId?,
@@ -29,6 +33,7 @@ import { zodErrorResponse } from '@/lib/finance/finance-service'
 import { buildInstallmentPlan } from '@/lib/finance/installments-core'
 import { noonUtc, todaySpYmd } from '@/lib/finance/recurrence-core'
 import { spDayEnd, spDayStart } from '@/lib/dashboard/tz'
+import { PARTIAL_SOURCE_SEP, partialBlockedReason, titleSummary } from '@/lib/finance/settlement-core'
 import {
   MANUAL_DEAL_SOURCE_PREFIX, bad, canManage, canPayroll, categoryKindError, centerRefError, dealForEntry, isDeletableSource, payrollFilter, supplierName,
 } from './_lib/shared'
@@ -125,6 +130,26 @@ export async function GET(req: Request) {
       supplierIds.length ? prisma.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, name: true } }) : [],
       dealIds.length ? prisma.deal.findMany({ where: { id: { in: dealIds } }, select: { id: true, dealNumber: true, person: { select: { nomeCompleto: true } }, customer: { select: { name: true } } } }) : [],
     ])
+    // Baixas parciais dos títulos listados e títulos das baixas parciais listadas.
+    const titleIds = rows.filter((r) => !r.parentEntryId).map((r) => r.id)
+    const parentIds = [...new Set(rows.map((r) => r.parentEntryId).filter((v): v is string => !!v))]
+    const [partialRows, parents] = await Promise.all([
+      titleIds.length ? prisma.financialEntry.findMany({ where: { parentEntryId: { in: titleIds } }, select: { parentEntryId: true, amount: true, interestAmount: true, discountAmount: true } }) : [],
+      parentIds.length ? prisma.financialEntry.findMany({ where: { id: { in: parentIds } }, select: { id: true, description: true } }) : [],
+    ])
+    const partialsBy = new Map<string, { amount: number; interestAmount: number | null; discountAmount: number | null }[]>()
+    for (const p of partialRows) {
+      if (!p.parentEntryId) continue
+      const list = partialsBy.get(p.parentEntryId) ?? []
+      list.push({ amount: Number(p.amount), interestAmount: p.interestAmount == null ? null : Number(p.interestAmount), discountAmount: p.discountAmount == null ? null : Number(p.discountAmount) })
+      partialsBy.set(p.parentEntryId, list)
+    }
+    const parentMap = new Map(parents.map((p) => [p.id, p]))
+    const partialNumberOf = (source: string | null) => {
+      const n = Number(source?.split(PARTIAL_SOURCE_SEP)[1])
+      return Number.isFinite(n) && n > 0 ? n : null
+    }
+
     const vMap = new Map(vehicles.map((v) => [v.id, v])); const sMap = new Map(suppliers.map((s) => [s.id, s.name]))
     const dMap = new Map(deals.map((d) => [d.id, { id: d.id, dealNumber: d.dealNumber, customer: d.person?.nomeCompleto ?? d.customer?.name ?? null }]))
 
@@ -137,7 +162,7 @@ export async function GET(req: Request) {
       counterparty: e.counterparty ?? (e.supplierId ? sMap.get(e.supplierId) ?? null : null) ?? (e.dealId ? dMap.get(e.dealId)?.customer ?? null : null),
       deal: e.dealId ? dMap.get(e.dealId) ?? null : null,
       supplierId: e.supplierId, documentNumber: e.documentNumber, paymentMethod: e.paymentMethod, notes: e.notes,
-      source: e.source, deletable: isDeletableSource(e.source),
+      source: e.source, deletable: !e.parentEntryId && !partialsBy.get(e.id)?.length && isDeletableSource(e.source),
       linked: !!e.commissionCalculationId || !!e.vehicleServiceId,
       installmentNumber: e.installmentNumber, installmentTotal: e.installmentTotal, installmentGroupId: e.installmentGroupId,
       recurrenceId: e.recurrenceId, employeeUserId: e.employeeUserId, unitId: e.unitId,
@@ -145,6 +170,20 @@ export async function GET(req: Request) {
       discountAmount: e.discountAmount == null ? null : Number(e.discountAmount),
       vehicle: e.vehicleId && vMap.get(e.vehicleId) ? { id: e.vehicleId, plate: vMap.get(e.vehicleId)!.plate, title: [vMap.get(e.vehicleId)!.brand, vMap.get(e.vehicleId)!.model].filter(Boolean).join(' ') } : null,
       attachments: e._count.attachments,
+      ...(e.parentEntryId
+        ? {
+            isPartialSettlement: true as const, partialNumber: partialNumberOf(e.source),
+            parent: parentMap.get(e.parentEntryId) ?? { id: e.parentEntryId, description: '' },
+          }
+        : {
+            isPartialSettlement: false as const,
+            partialCount: partialsBy.get(e.id)?.length ?? 0,
+            partialBlocked: partialBlockedReason(e),
+            summary: titleSummary(
+              { status: e.status, amount: Number(e.amount), interestAmount: e.interestAmount == null ? null : Number(e.interestAmount), discountAmount: e.discountAmount == null ? null : Number(e.discountAmount) },
+              partialsBy.get(e.id) ?? [],
+            ),
+          }),
     }))
     const sum = (a: { _sum: { amount: Prisma.Decimal | null }; _count: { _all: number } }) => ({ count: a._count._all, amount: Number(a._sum.amount ?? 0) })
     return NextResponse.json({

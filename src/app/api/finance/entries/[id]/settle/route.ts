@@ -61,6 +61,9 @@ export async function POST(req: Request, { params }: Ctx) {
   const g = await guard(req, id, 'finance.manage')
   if ('error' in g) return g.error
   try {
+    const own = await prisma.financialEntry.findUnique({ where: { id }, select: { parentEntryId: true, _count: { select: { partials: true } } } })
+    if (own?.parentEntryId) return NextResponse.json({ success: false, error: 'Esta linha é uma baixa: para desfazer, use Estornar.' }, { status: 400 })
+    if (own?._count.partials) return NextResponse.json({ success: false, error: 'Título com baixas parciais: use Pagar/Receber para baixar o saldo.' }, { status: 400 })
     const body = schema.parse(await req.json())
     // Conta e fornecedor precisam ser da mesma loja.
     if (body.accountId) {

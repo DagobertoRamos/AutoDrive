@@ -101,7 +101,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
 
   const entries = await prisma.financialEntry.findMany({
     where: { dealId },
-    select: { id: true, source: true, status: true, chargedAmount: true, vehicleId: true, costCenterId: true, notes: true, _count: { select: { items: true } } },
+    select: { id: true, source: true, status: true, chargedAmount: true, vehicleId: true, costCenterId: true, notes: true, _count: { select: { items: true, partials: true } } },
   })
   // Legado (total da venda já lançado) e importadas: só o F&I.
   const children = !imported && !entries.some((e) => e.source === 'VENDA')
@@ -219,7 +219,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
         // Negociação cancelada: débito ainda em aberto é cancelado (mesmo já detalhado).
         if (dead && cur.status === 'PREVISTO') {
           await prisma.financialEntry.update({ where: { id: cur.id }, data: { status: 'CANCELADO' } })
-        } else if (cur.chargedAmount != null || !isSyncEditable({ status: cur.status, itemCount: cur._count.items })) {
+        } else if (cur.chargedAmount != null || !isSyncEditable({ status: cur.status, itemCount: cur._count.items + cur._count.partials })) {
           if (cur.status !== 'CANCELADO') await prisma.financialEntry.update({ where: { id: cur.id }, data: { chargedAmount: d.value } })
         } else {
           await prisma.financialEntry.update({
@@ -279,7 +279,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
       if (cur) {
         if (dead && cur.status === 'PREVISTO') {
           await prisma.financialEntry.update({ where: { id: cur.id }, data: { status: 'CANCELADO' } })
-        } else if (isSyncEditable({ status: cur.status, itemCount: cur._count.items })) {
+        } else if (isSyncEditable({ status: cur.status, itemCount: cur._count.items + cur._count.partials })) {
           await prisma.financialEntry.update({ where: { id: cur.id }, data })
         } else if (cur.status !== 'CANCELADO') {
           // Custo real detalhado/baixado: só o valor cobrado acompanha a negociação.
@@ -331,7 +331,7 @@ export async function syncDealFinance(dealId: string, cache: Map<string, string>
           // Valor ajustado no financeiro: mantém o real, atualiza o previsto.
           await prisma.financialEntry.update({
             where: { id: cur.id },
-            data: cur.chargedAmount != null ? { ...data, chargedAmount: r.amount } : { ...data, amount: r.amount, categoryId: categoryIdFi, costCenterId: r.costCenterId },
+            data: cur.chargedAmount != null || cur._count.partials > 0 ? { ...data, chargedAmount: r.amount } : { ...data, amount: r.amount, categoryId: categoryIdFi, costCenterId: r.costCenterId },
           })
         } else {
           await prisma.financialEntry.create({

@@ -7,6 +7,9 @@
 // ECV, honorário…) e dar a baixa com data, conta, forma e fornecedor.
 // Para débito cobrado do cliente: cobrado × custo real × comissões de documento
 // = lucro líquido. Consome /api/finance/entries/[id]/settle.
+// Baixas (parciais + final) com estorno LIFO em SettlementHistory; título com
+// baixa parcial (ou a própria baixa parcial) fica só leitura — baixa do saldo
+// pelo SettleModal (POST /api/finance/center/entries/[id]).
 // =============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -18,6 +21,8 @@ import { RequiredMark } from '@/components/ui/field'
 import { COST_ITEM_KINDS, COST_ITEM_LABEL, chargeResult, itemsTotal } from '@/lib/finance/entry-settlement-core'
 import { AttachmentsPanel } from '@/components/finance/center/entries/AttachmentsPanel'
 import { DealPeekLink } from '@/components/deals/DealPeek'
+import { SettleModal } from '@/components/finance/center/entries/SettleModal'
+import { SettlementHistory, type SettlementInfo } from '@/components/finance/center/entries/SettlementHistory'
 
 interface Detail {
   entry: {
@@ -36,6 +41,7 @@ interface Detail {
   commissions: Array<{ id: string; description: string; amount: number; status: string }>
   result: { charged: number; cost: number; gross: number; commissions: number; net: number; margin: number | null; costIsEstimate: boolean } | null
   suggestedKinds: string[]
+  settlement?: SettlementInfo | null
   canManage: boolean
 }
 interface ItemRow { key: string; kind: string; description: string; amount: number | null }
@@ -55,7 +61,10 @@ const COMMISSION_STATUS: Record<string, string> = { PREVISTO: 'prevista', APROVA
 let seq = 0
 const newKey = () => `i${++seq}`
 
-export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; onClose: () => void; onChanged?: () => void }) {
+export function EntryDrawer({ entryId: initialId, onClose, onChanged }: { entryId: string; onClose: () => void; onChanged?: () => void }) {
+  // Navega entre a baixa parcial e o título sem fechar o painel.
+  const [entryId, setEntryId] = useState(initialId)
+  const [settleOpen, setSettleOpen] = useState(false)
   const [d, setD] = useState<Detail | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -98,8 +107,12 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
   }, [])
 
   const e = d?.entry
-  const editableCost = !!e && e.type === 'DESPESA' && !e.commissionLinked && !e.serviceLinked
-  const readOnly = !d?.canManage || e?.status === 'CANCELADO'
+  const st = d?.settlement ?? null
+  // Baixa parcial (filho) ou título com baixas parciais: valores só pelas baixas.
+  const locked = !!st && (st.isChild || st.partialCount > 0)
+  const editableCost = !!e && e.type === 'DESPESA' && !e.commissionLinked && !e.serviceLinked && !locked
+  const readOnly = !d?.canManage || e?.status === 'CANCELADO' || locked
+  const canPartial = !!e && !!st && !st.isChild && e.status === 'PREVISTO' && (st.partialCount > 0 || (!st.partialBlocked && !e.commissionLinked && !e.serviceLinked))
   const validItems = items.filter((i) => (i.amount ?? 0) > 0)
   const realCost = validItems.length ? itemsTotal(validItems.map((i) => ({ amount: i.amount ?? 0 }))) : (amount ?? 0)
   const live = useMemo(() => (d?.result ? chargeResult({ charged: d.result.charged, cost: realCost, commissions: d.commissions }) : null), [d, realCost])
@@ -164,6 +177,8 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
               {e && (
                 <p className="mt-0.5 text-sm text-gray-600">
                   <span className="text-xl font-bold tabular-nums text-gray-900">{brl(e.amount)}</span>
+                  {st?.summary.partial && <span className="ml-2 text-xs text-gray-500">saldo · original {brl(st.summary.original)}</span>}
+                  {st?.isChild && <span className="ml-2 text-xs text-gray-500">baixa parcial</span>}
                   {e.chargedAmount != null && e.chargedAmount !== e.amount && <span className="ml-2 text-xs text-gray-500">previsto/cobrado {brl(e.chargedAmount)}</span>}
                   <span className="ml-3 text-xs text-gray-500">venc. {dt(e.dueDate)}{settled && e.paidDate ? ` · baixado em ${dt(e.paidDate)}` : ''}</span>
                 </p>
@@ -302,8 +317,14 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                 </section>
               )}
 
+              {/* Baixas do título (parciais + final) */}
+              {st && (st.baixas.length > 0 || st.isChild) && (
+                <SettlementHistory info={st} type={e.type} currentId={e.id} canManage={d.canManage}
+                  onOpenEntry={(id) => setEntryId(id)} onChanged={(to) => { if (to) setEntryId(to); else void load(); onChanged?.() }} />
+              )}
+
               {/* Baixa */}
-              <section className="rounded-xl border border-gray-200 bg-white p-4">
+              {!locked && <section className="rounded-xl border border-gray-200 bg-white p-4">
                 <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{settled ? 'Dados da baixa' : 'Baixa'}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {e.type === 'RECEITA' && (
@@ -324,7 +345,7 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                   <Field label="Nº do documento / NF"><input disabled={readOnly} className={inputCls} value={docNumber} onChange={(ev) => setDocNumber(ev.target.value)} /></Field>
                   <div className="sm:col-span-2"><Field label="Observações"><textarea disabled={readOnly} rows={2} className={inputCls} value={notes} onChange={(ev) => setNotes(ev.target.value)} /></Field></div>
                 </div>
-              </section>
+              </section>}
 
               <AttachmentsPanel entryId={e.id} canManage={d.canManage} />
             </>
@@ -335,19 +356,35 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
         {d && e && d.canManage && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 bg-white px-5 py-3">
             <div className="flex gap-2">
-              {e.status === 'PREVISTO' && <button type="button" disabled={!!busy} onClick={() => setStatus('CANCELADO', 'Cancelar este lançamento?')} className="btn-secondary text-sm text-red-600"><Ban size={14} />Cancelar</button>}
-              {settled && <button type="button" disabled={!!busy} onClick={() => setStatus('PREVISTO', 'Estornar a baixa? O lançamento volta para previsto.')} className="btn-secondary text-sm"><RotateCcw size={14} />Estornar baixa</button>}
+              {e.status === 'PREVISTO' && !locked && <button type="button" disabled={!!busy} onClick={() => setStatus('CANCELADO', 'Cancelar este lançamento?')} className="btn-secondary text-sm text-red-600"><Ban size={14} />Cancelar</button>}
+              {/* Estorno da baixa fica em "Baixas" (LIFO, com motivo); transferência segue pelo status. */}
+              {settled && (!st || st.transfer) && <button type="button" disabled={!!busy} onClick={() => setStatus('PREVISTO', 'Estornar a baixa? O lançamento volta para previsto.')} className="btn-secondary text-sm"><RotateCcw size={14} />Estornar baixa</button>}
               {e.status === 'CANCELADO' && <button type="button" disabled={!!busy} onClick={() => setStatus('PREVISTO', 'Reabrir o lançamento como previsto?')} className="btn-secondary text-sm"><RotateCcw size={14} />Reabrir</button>}
             </div>
             {e.status !== 'CANCELADO' && (
-              <div className="flex gap-2">
-                <button type="button" disabled={!!busy} onClick={() => submit(false)} className="btn-secondary text-sm">{busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Salvar</button>
-                {!settled && <button type="button" disabled={!!busy} onClick={() => submit(true)} className="btn-primary text-sm">{busy === 'settle' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}{e.type === 'RECEITA' ? 'Confirmar recebimento' : 'Dar baixa'}</button>}
+              <div className="flex flex-wrap gap-2">
+                {!locked && <button type="button" disabled={!!busy} onClick={() => submit(false)} className="btn-secondary text-sm">{busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Salvar</button>}
+                {canPartial && (
+                  <button type="button" disabled={!!busy} onClick={() => setSettleOpen(true)} className={locked ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>
+                    <CheckCircle2 size={14} />{locked ? (e.type === 'RECEITA' ? 'Receber saldo' : 'Pagar saldo') : 'Baixa parcial'}
+                  </button>
+                )}
+                {!settled && !locked && <button type="button" disabled={!!busy} onClick={() => submit(true)} className="btn-primary text-sm">{busy === 'settle' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}{e.type === 'RECEITA' ? 'Confirmar recebimento' : 'Dar baixa'}</button>}
               </div>
             )}
           </div>
         )}
       </div>
+      {settleOpen && e && st && (
+        <SettleModal type={e.type} accounts={accounts}
+          target={{
+            id: e.id, description: e.description, amount: e.amount, original: st.summary.original, paid: st.summary.paidTotal,
+            dueDate: e.dueDate, counterparty: e.counterparty, accountId: e.accountId, paymentMethod: e.paymentMethod,
+            linked: e.commissionLinked || e.serviceLinked, partialBlocked: st.partialBlocked,
+          }}
+          onClose={() => setSettleOpen(false)}
+          onDone={() => { setSettleOpen(false); void load(); onChanged?.() }} />
+      )}
     </div>
   )
 }
