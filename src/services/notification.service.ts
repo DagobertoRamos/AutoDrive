@@ -444,6 +444,25 @@ export async function notifyDealApproved(ctx: DealNotifContext): Promise<void> {
   })
 }
 
+/** "Venda cancelada" pra TODOS do tenant — mesmos canais da venda aprovada. */
+export async function notifyDealCancelled(ctx: DealNotifContext & { reason: string }): Promise<void> {
+  if (!ctx.tenantId) return
+  const tipoLabel = ctx.dealType === 'VENDA'  ? 'venda'
+                  : ctx.dealType === 'COMPRA' ? 'compra'
+                  : ctx.dealType === 'TROCA'  ? 'troca'
+                  : 'consignação'
+
+  await notifyAllTenant({
+    tenantId:  ctx.tenantId,
+    type:      'NEGOCIACAO_RECUSADA',
+    title:     `${tipoLabel.charAt(0).toUpperCase() + tipoLabel.slice(1)} cancelada`,
+    message:   `A ${tipoLabel} do veículo ${ctx.vehicleLabel} (vendedor ${ctx.sellerName}) foi cancelada por ${ctx.approverName}. Motivo: ${ctx.reason}`,
+    actionUrl: `/negociacoes/${ctx.dealId}`,
+    metadata:  { dealId: ctx.dealId, dealNumber: ctx.dealNumber, dealType: ctx.dealType, cancelled: true },
+    channels:  ['APP_WEB', 'APP_MOBILE', 'PUSH', 'WHATSAPP', 'EMAIL'],
+  })
+}
+
 /**
  * Notifica o(s) gerente(s) responsável(eis) que há negociação aguardando aprovação.
  * Sistema + WhatsApp.
@@ -494,6 +513,6 @@ export async function notifyDealSubmittedForApproval(params: {
 // Re-export namespace style for backwards-compat
 export const NotificationService = {
   notify, notifyMany, notifyByRole, notifyPendency,
-  notifyAllTenant, notifyDealApproved, notifyDealSubmittedForApproval,
+  notifyAllTenant, notifyDealApproved, notifyDealCancelled, notifyDealSubmittedForApproval,
 }
 export default NotificationService

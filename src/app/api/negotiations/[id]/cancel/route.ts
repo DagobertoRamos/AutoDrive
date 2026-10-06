@@ -26,6 +26,7 @@ import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
 import { notifySaleCancelled, notifyStockChanged } from '@/lib/publications/service'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
 import { syncTenantFinance } from '@/lib/finance/finance-sync'
+import { notifyDealCancelled } from '@/services/notification.service'
 
 export async function POST(
   req: NextRequest,
@@ -52,7 +53,10 @@ export async function POST(
 
   const deal = await prisma.deal.findFirst({
     where: await buildNegotiationAccessWhere(session.user, { id: params.id }),
-    include: { vehicles: { select: { id: true, vehicleId: true, role: true } } },
+    include: {
+      vehicles: { select: { id: true, vehicleId: true, role: true, brand: true, model: true, year: true, plate: true } },
+      seller:   { select: { shortName: true, fullName: true } },
+    },
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
@@ -188,6 +192,21 @@ export async function POST(
     // volta a pedir a negociação de entrada.
     if (!returnEntering) await reopenNegotiationGate(params.id, { id: session.user.id, name: session.user.name ?? null, role: session.user.role })
       .catch((e) => console.error('[esteira] reabrir portão de negociação', e))
+
+    // Mesmo aviso da venda aprovada, para todos da loja.
+    try {
+      const v = deal.vehicles.find((x) => x.role === 'VENDIDO') ?? deal.vehicles[0]
+      const vehicleLabel = [v?.brand, v?.model, v?.year ? `(${v.year})` : null, v?.plate ? `· placa ${v.plate}` : null]
+        .filter(Boolean).join(' ').trim() || 'veículo'
+      await notifyDealCancelled({
+        dealId: params.id, dealNumber: deal.dealNumber, dealType: deal.type, tenantId: deal.tenantId, vehicleLabel,
+        approverName: session.user.name ?? 'Gerente',
+        sellerName:   deal.seller?.shortName ?? deal.seller?.fullName ?? deal.sellerNameFromSheet ?? 'vendedor',
+        reason:       body.reason!.trim(),
+      })
+    } catch (e) {
+      console.error('[cancel] notifyDealCancelled', e instanceof Error ? e.message : e)
+    }
 
     await syncDealFinanceSafe(params.id)
     // Comissões canceladas → lançamentos previstos delas cancelados no Financeiro.
