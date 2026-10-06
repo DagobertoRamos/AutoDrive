@@ -4,21 +4,19 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server'
-import { getSessionUser, assertTenantId, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { syncFinanceFromBusiness } from '@/lib/finance/finance-sync'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
 
-export async function POST() {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'finance.manage')) return forbiddenResponse('Sem permissão para sincronizar o financeiro.')
-  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
+export async function POST(req?: Request) {
+  const g = await legacyFinanceGuard('finance.manage', req)
+  if (g.error) return g.error
+  const { user, tenantId } = g
 
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
-    const result = await syncFinanceFromBusiness(user.role, tenantId)
+    // MASTER com loja escolhida sincroniza só ela; sem loja, segue global.
+    const result = await syncFinanceFromBusiness(tenantId ? 'ADM' : user.role, tenantId)
     await createSafeAuditLog({ userId: user.id, tenantId, action: 'CREATE_CHANGE', entity: 'FinancialEntry', entityId: 'sync', userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true, ...result })
   } catch (err) {

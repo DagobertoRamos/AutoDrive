@@ -1,18 +1,17 @@
 // =============================================================================
 // /api/reports/finance?view=... — relatórios financeiros (read-only).
 // Sobre FinancialEntry/FinancialAccount. Multi-tenant via tenantWhere; gated
-// por canAccessModule('logs'). Views:
+// pelo acesso do Centro Financeiro (src/lib/finance/access.ts). Views:
 //   visao-geral, dre, contas, contas-a-pagar, contas-a-receber, fluxo-de-caixa,
 //   receitas, despesas, resultado-unidade, resultado-vendedor, resultado-periodo
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { num, entryTextSearch } from '@/lib/finance/finance-service'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { hasFinanceAccess } from '@/lib/finance/access'
 import { spDayStart, spDayEnd, spMonthKey } from '@/lib/dashboard/tz'
 
 const VIEWS = ['visao-geral', 'dre', 'contas', 'contas-a-pagar', 'contas-a-receber', 'fluxo-de-caixa', 'receitas', 'despesas', 'resultado-unidade', 'resultado-vendedor', 'resultado-periodo'] as const
@@ -23,8 +22,7 @@ const monthKey = (d: Date | null) => spMonthKey(d)
 export async function GET(req: Request) {
   const user = await getSessionUser()
   if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'logs')) return forbiddenResponse('Sem acesso a relatórios.')
-  { const gate = await assertModuleEnabled(user, 'logs'); if (gate) return gate }
+  if (!(await hasFinanceAccess(user))) return forbiddenResponse('Sem acesso ao financeiro.')
 
   try {
     const tenantId = assertTenantId(user.tenantId, user.role)

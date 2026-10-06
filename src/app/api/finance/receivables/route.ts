@@ -8,8 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, assertTenantId, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import { legacyFinanceGuard, canManage } from '@/app/api/finance/center/entries/_lib/shared'
 import { handlePrismaError } from '@/lib/prisma-errors'
 
 export const dynamic = 'force-dynamic'
@@ -17,16 +16,15 @@ export const dynamic = 'force-dynamic'
 const OUT_TYPES = ['QUITACAO', 'TROCO']
 
 export async function GET(req: NextRequest) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'finance')) return forbiddenResponse()
+  const g = await legacyFinanceGuard('finance', req)
+  if (g.error) return g.error
+  const { user, tenantId } = g
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const sp = req.nextUrl.searchParams
     const status = (sp.get('status') ?? 'PENDENTE').toUpperCase()
     const q = (sp.get('q') ?? '').trim()
     const statusWhere = status === 'CONFIRMADO' ? { status: 'CONFIRMADO' } : status === 'CANCELADO' ? { status: 'CANCELADO' } : { OR: [{ status: 'PENDENTE' }, { status: null }] }
-    const dealWhere: Record<string, unknown> = { ...(user.role === 'MASTER' ? {} : { tenantId }), status: { not: 'CANCELADA' } }
+    const dealWhere: Record<string, unknown> = { ...(tenantId ? { tenantId } : {}), status: { not: 'CANCELADA' } }
     if (q) {
       dealWhere.OR = [
         { dealNumber: { contains: q, mode: 'insensitive' } },
@@ -60,7 +58,7 @@ export async function GET(req: NextRequest) {
       receipts: atts.filter((a) => a.paymentId === r.id).map((a) => ({ id: a.id, fileName: a.fileName, url: a.publicUrl, fileType: a.fileType })),
     }))
     const total = data.reduce((s, r) => s + r.value, 0)
-    return NextResponse.json({ success: true, data, total, canManage: canAccessModule(user.role, 'finance.manage') })
+    return NextResponse.json({ success: true, data, total, canManage: await canManage(user) })
   } catch (err) {
     return handlePrismaError(err)
   }

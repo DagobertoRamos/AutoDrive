@@ -78,6 +78,7 @@ export type Module =
   | 'settings.critical'         // apenas MASTER
   | 'finance'                     // módulo financeiro (ver lançamentos/relatórios)
   | 'finance.manage'              // criar/editar/excluir lançamentos, contas, categorias
+  | 'finance.payroll'             // folha: salários, adiantamentos e pagamento de comissões
   | 'financing'                   // módulo financiamento (FN): proponentes, fichas, simulações
   | 'financing.manage'            // criar/editar proponentes, bancos, fichas
   | 'financing.config'            // configurar F&I da loja (bancos, credenciais, prioridades, retornos) — ADM/gestão/financeiro
@@ -392,13 +393,20 @@ const MODULE_PERMISSIONS: Record<Module, ModulePermission> = {
     roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE'],
     actions: ['read', 'export'],
   },
-  // Módulo Financeiro — administrativo/financeiro (ADM só vê o próprio tenant via tenantWhere).
+  // Centro Financeiro — restrito: dono (ADM) e setor financeiro por padrão.
+  // Qualquer outro colaborador só entra com liberação do administrador
+  // (UserModule), ver src/lib/finance/access.ts.
   finance: {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
+    roles: ['MASTER', 'ADM', 'FINANCEIRO'],
     actions: ['read', 'export'],
   },
   'finance.manage': {
-    roles: ['MASTER', 'ADM', 'GERENTE_GERAL', 'GERENTE_ADMINISTRATIVO', 'FINANCEIRO'],
+    roles: ['MASTER', 'ADM', 'FINANCEIRO'],
+    actions: ['read', 'create', 'update', 'delete'],
+  },
+  // Folha (salários, adiantamentos, pagamento de comissões) — só o dono por padrão.
+  'finance.payroll': {
+    roles: ['MASTER', 'ADM'],
     actions: ['read', 'create', 'update', 'delete'],
   },
   // Módulo Financiamento (FN) — vendas + administração tratam de fichas/proponentes.

@@ -1,28 +1,25 @@
 // =============================================================================
 // /api/finance/entries — lançamentos financeiros. Multi-tenant.
-//   GET  : finance (read; filtros type/status/unitId/categoryId/from/to)
+//   GET  : finance (read; filtros type/status/unitId/categoryId/from/to; folha só com finance.payroll)
 //   POST : finance.manage (lançamento manual; source=MANUAL)
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { createEntrySchema } from '@/lib/validators/finance'
 import { zodErrorResponse, num, entryTextSearch } from '@/lib/finance/finance-service'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { legacyFinanceGuard, scope, canPayroll, payrollFilter } from '@/app/api/finance/center/entries/_lib/shared'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
 
 export async function GET(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'finance')) return forbiddenResponse('Sem acesso ao financeiro.')
-  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
+  const g = await legacyFinanceGuard('finance', req)
+  if (g.error) return g.error
+  const { user, tenantId } = g
 
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const { searchParams } = new URL(req.url)
     const extra: Record<string, unknown> = {}
     const type = searchParams.get('type')
@@ -41,7 +38,7 @@ export async function GET(req: Request) {
     const searchOr = entryTextSearch(searchParams.get('q'))
     if (searchOr) extra.OR = searchOr
 
-    const where = tenantWhere(user.role, tenantId, extra)
+    const where = { ...scope(tenantId), ...payrollFilter(await canPayroll(user)), ...extra }
     const [rows, byType] = await Promise.all([
       prisma.financialEntry.findMany({
         where: where as never,
@@ -68,13 +65,11 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'finance.manage')) return forbiddenResponse('Sem permissão para lançar.')
-  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
+  const g = await legacyFinanceGuard('finance.manage', req)
+  if (g.error) return g.error
+  const { user, tenantId } = g
 
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const d = createEntrySchema.parse(await req.json())
     if (!d.dueDate) return NextResponse.json({ success: false, error: 'Informe o vencimento.' }, { status: 400 })
     const refErr = await tenantRefError(tenantId, d)

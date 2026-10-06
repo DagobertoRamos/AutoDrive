@@ -896,39 +896,39 @@ model VehicleReception {
 
 // ── Fornecedores / prestadores (oficinas, funilaria, estética, despachante…) ──
 model Supplier {
-  id          String   @id @default(cuid())
-  tenantId    String
+  id                String   @id @default(cuid())
+  tenantId          String
   /// Nome de exibição: nome fantasia (PJ) ou nome completo (PF).
-  name        String
+  name              String
   /// Razão social (PJ) / nome completo (PF) — usado nos contratos e termos.
-  legalName   String?
-  kind        String   @default("OUTRO") // ver SUPPLIER_KINDS (VEICULOS = fornecedor de carros intermediados)
-  personType  String   @default("PJ") // PF | PJ — pelo documento
-  document    String? // CNPJ/CPF (só dígitos)
-  rg          String?
+  legalName         String?
+  kind              String   @default("OUTRO") // ver SUPPLIER_KINDS (VEICULOS = fornecedor de carros intermediados)
+  personType        String   @default("PJ") // PF | PJ — pelo documento
+  document          String? // CNPJ/CPF (só dígitos)
+  rg                String?
   stateRegistration String? // inscrição estadual
-  repName     String? // representante legal (PJ)
-  repCpf      String?
-  contactName String?
-  phone       String?
-  whatsapp    String?
-  email       String?
-  cep         String?
-  street      String?
-  number      String?
-  complement  String?
-  district    String?
-  city        String?
-  state       String?
-  address     String? // legado (texto livre)
-  commission  String? // remuneração da intermediação (fornecedor de veículos)
-  pixKey      String?
-  bankInfo    String?
-  notes       String?
-  sourceRef   String? // importação (feed do site antigo)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  repName           String? // representante legal (PJ)
+  repCpf            String?
+  contactName       String?
+  phone             String?
+  whatsapp          String?
+  email             String?
+  cep               String?
+  street            String?
+  number            String?
+  complement        String?
+  district          String?
+  city              String?
+  state             String?
+  address           String? // legado (texto livre)
+  commission        String? // remuneração da intermediação (fornecedor de veículos)
+  pixKey            String?
+  bankInfo          String?
+  notes             String?
+  sourceRef         String? // importação (feed do site antigo)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   services VehicleService[]
   vehicles Vehicle[]        @relation("VehicleSupplierOrigin")
@@ -4147,12 +4147,22 @@ model FinancialAccount {
   name           String
   type           FinancialAccountType @default(CAIXA)
   openingBalance Decimal              @default(0) @db.Decimal(14, 2)
+  /// Data a partir da qual o saldo inicial vale (extrato começa nela).
+  openingDate    DateTime?
+  bankName       String?
+  agency         String?
+  accountNumber  String?
+  unitId         String?
+  color          String?
+  /// Entra no saldo consolidado (ex.: conta de aplicação pode ficar de fora).
+  includeInTotal Boolean              @default(true)
   active         Boolean              @default(true)
   createdById    String?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  entries FinancialEntry[]
+  entries     FinancialEntry[]
+  recurrences FinancialRecurrence[]
 
   @@index([tenantId])
   @@map("financial_accounts")
@@ -4164,14 +4174,25 @@ model FinancialCategory {
   name      String
   kind      FinancialEntryType // RECEITA ou DESPESA
   color     String?
+  /// Plano de contas em árvore (grupo › categoria › subcategoria).
+  parentId  String?
+  code      String?
+  /// Linha da DRE (src/lib/finance/dre-core.ts — DRE_GROUPS). Herdada do pai quando vazia.
+  dreGroup  String?
+  sortOrder Int                @default(0)
   active    Boolean            @default(true)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
-  entries FinancialEntry[]
+  parent      FinancialCategory?    @relation("FinancialCategoryTree", fields: [parentId], references: [id])
+  children    FinancialCategory[]   @relation("FinancialCategoryTree")
+  entries     FinancialEntry[]
+  recurrences FinancialRecurrence[]
+  budgets     FinancialBudget[]
 
   @@index([tenantId])
   @@index([kind])
+  @@index([parentId])
   @@map("financial_categories")
 }
 
@@ -4207,13 +4228,31 @@ model FinancialEntry {
 
   /// Valor original cobrado/previsto antes da baixa com o custo real (ex.: documentação
   /// cobrada do cliente 1.500 → gasto real 725; o lucro é a diferença).
-  chargedAmount           Decimal?             @db.Decimal(14, 2)
+  chargedAmount Decimal? @db.Decimal(14, 2)
   /// Fornecedor da baixa (despachante, oficina…) — Supplier.id.
-  supplierId              String?
+  supplierId    String?
 
-  account  FinancialAccount?  @relation(fields: [accountId], references: [id])
-  category FinancialCategory? @relation(fields: [categoryId], references: [id])
-  items    FinancialEntryItem[]
+  costCenterId       String?
+  /// Transferência entre contas: saída + entrada com o mesmo grupo (fora da DRE).
+  transferGroupId    String?
+  /// Parcelamento: N lançamentos com o mesmo grupo (parcela k de N).
+  installmentGroupId String?
+  installmentNumber  Int?
+  installmentTotal   Int?
+  /// Gerado por uma despesa/receita fixa (FinancialRecurrence).
+  recurrenceId       String?
+  /// Folha: colaborador (User.id) do salário/adiantamento/comissão.
+  employeeUserId     String?
+  /// Na baixa: juros/multa pagos e desconto obtido (o valor pago já os inclui).
+  interestAmount     Decimal? @db.Decimal(14, 2)
+  discountAmount     Decimal? @db.Decimal(14, 2)
+
+  account     FinancialAccount?          @relation(fields: [accountId], references: [id])
+  category    FinancialCategory?         @relation(fields: [categoryId], references: [id])
+  costCenter  FinancialCostCenter?       @relation(fields: [costCenterId], references: [id])
+  recurrence  FinancialRecurrence?       @relation(fields: [recurrenceId], references: [id])
+  items       FinancialEntryItem[]
+  attachments FinancialEntryAttachment[]
 
   @@unique([commissionCalculationId])
   @@unique([dealId, source])
@@ -4226,6 +4265,11 @@ model FinancialEntry {
   @@index([sellerId])
   @@index([unitId])
   @@index([vehicleId])
+  @@index([costCenterId])
+  @@index([transferGroupId])
+  @@index([installmentGroupId])
+  @@index([recurrenceId])
+  @@index([employeeUserId])
   @@map("financial_entries")
 }
 
@@ -4247,6 +4291,97 @@ model FinancialEntryItem {
   @@index([entryId])
   @@index([tenantId])
   @@map("financial_entry_items")
+}
+
+/// Centro de custo (unidade, vendas, oficina, administrativo…).
+model FinancialCostCenter {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  name      String
+  code      String?
+  parentId  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries     FinancialEntry[]
+  recurrences FinancialRecurrence[]
+  budgets     FinancialBudget[]
+
+  @@index([tenantId])
+  @@map("financial_cost_centers")
+}
+
+/// Receita/despesa fixa (aluguel, salário, sistemas…) — gera os lançamentos
+/// previstos mês a mês (janela rolante).
+model FinancialRecurrence {
+  id             String             @id @default(cuid())
+  tenantId       String?
+  type           FinancialEntryType
+  description    String
+  amount         Decimal            @db.Decimal(14, 2)
+  accountId      String?
+  categoryId     String?
+  costCenterId   String?
+  supplierId     String?
+  employeeUserId String?
+  counterparty   String?
+  dayOfMonth     Int
+  startDate      DateTime
+  endDate        DateTime?
+  active         Boolean            @default(true)
+  /// Último mês (dia 1) já gerado.
+  generatedUntil DateTime?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  account    FinancialAccount?    @relation(fields: [accountId], references: [id])
+  category   FinancialCategory?   @relation(fields: [categoryId], references: [id])
+  costCenter FinancialCostCenter? @relation(fields: [costCenterId], references: [id])
+  entries    FinancialEntry[]
+
+  @@index([tenantId])
+  @@map("financial_recurrences")
+}
+
+/// Comprovante / NF / boleto de um lançamento.
+model FinancialEntryAttachment {
+  id          String   @id @default(cuid())
+  entryId     String
+  tenantId    String?
+  name        String
+  url         String
+  mimeType    String?
+  size        Int?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+  @@index([tenantId])
+  @@map("financial_entry_attachments")
+}
+
+/// Orçamento mensal (orçado × realizado) por categoria e, opcionalmente, centro de custo.
+model FinancialBudget {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  month        String // YYYY-MM
+  categoryId   String
+  costCenterId String?
+  amount       Decimal  @db.Decimal(14, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  category   FinancialCategory    @relation(fields: [categoryId], references: [id])
+  costCenter FinancialCostCenter? @relation(fields: [costCenterId], references: [id])
+
+  @@unique([tenantId, month, categoryId, costCenterId])
+  @@index([tenantId, month])
+  @@map("financial_budgets")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

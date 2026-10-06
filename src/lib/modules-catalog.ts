@@ -24,8 +24,10 @@ export const MODULE_CATALOG: ModuleGroup[] = [
     { key: 'commissions.calculate', label: 'Calcular comissões' },
     { key: 'commissions.rules', label: 'Regras de comissão' },
   ] },
-  { area: 'Financeiro', features: [
-    { key: 'finance', label: 'Financeiro' },
+  { area: 'Centro Financeiro', features: [
+    { key: 'finance', label: 'Ver o centro financeiro e relatórios', level: 4, sensitive: true },
+    { key: 'finance.manage', label: 'Lançar, baixar e configurar', level: 4, sensitive: true },
+    { key: 'finance.payroll', label: 'Folha: salários e comissões', level: 4, sensitive: true },
   ] },
   { area: 'F&I (Financiamento)', features: [
     { key: 'financing', label: 'F&I — financiamento' },

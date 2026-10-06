@@ -8,8 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, assertTenantId, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import { createSafeAuditLog } from '@/lib/auth-guards'
+import { legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { saveDealAttachment, validateDealUpload } from '@/lib/negotiation/storage'
 import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
@@ -20,13 +20,12 @@ export const dynamic = 'force-dynamic'
 
 type Ctx = { params: { paymentId: string } | Promise<{ paymentId: string }> }
 
-async function load(paymentId: string) {
-  const user = await getSessionUser()
-  if (!user) return { error: unauthorizedResponse() }
-  if (!canAccessModule(user.role, 'finance.manage')) return { error: forbiddenResponse('Só o financeiro confirma pagamentos.') }
-  const tenantId = assertTenantId(user.tenantId, user.role)
+async function load(req: Request, paymentId: string) {
+  const g = await legacyFinanceGuard('finance.manage', req)
+  if (g.error) return { error: g.error }
+  const { user, tenantId } = g
   const p = await prisma.dealPayment.findFirst({
-    where: { id: paymentId, ...(user.role === 'MASTER' ? {} : { deal: { tenantId } }) },
+    where: { id: paymentId, ...(tenantId ? { deal: { tenantId } } : {}) },
     select: { id: true, dealId: true, type: true, method: true, status: true, authorizationCode: true, value: true, bank: true, deal: { select: { tenantId: true } } },
   })
   if (!p) return { error: NextResponse.json({ error: 'Pagamento não encontrado.' }, { status: 404 }) }
@@ -37,7 +36,7 @@ const isCard = (p: { type: string; method: string | null }) => [p.type, p.method
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   const { paymentId } = await Promise.resolve(ctx.params)
-  const l = await load(paymentId)
+  const l = await load(req, paymentId)
   if ('error' in l) return l.error
   const { user, p } = l
   const b = (await req.json().catch(() => ({}))) as { action?: string; paidAt?: string; authorizationCode?: string }
@@ -67,7 +66,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
 export async function POST(req: NextRequest, ctx: Ctx) {
   const { paymentId } = await Promise.resolve(ctx.params)
-  const l = await load(paymentId)
+  const l = await load(req, paymentId)
   if ('error' in l) return l.error
   const { user, p } = l
   const form = await req.formData().catch(() => null)

@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { MoneyInput } from '@/components/ui/money-input'
 import { RequiredMark } from '@/components/ui/field'
 import { COST_ITEM_KINDS, COST_ITEM_LABEL, chargeResult, itemsTotal } from '@/lib/finance/entry-settlement-core'
+import { AttachmentsPanel } from '@/components/finance/center/entries/AttachmentsPanel'
 
 interface Detail {
   entry: {
@@ -46,6 +47,7 @@ const STATUS: Record<string, [string, string]> = {
   PREVISTO: ['Previsto', 'bg-amber-100 text-amber-800'], PAGO: ['Pago', 'bg-emerald-100 text-emerald-800'],
   RECEBIDO: ['Recebido', 'bg-emerald-100 text-emerald-800'], CANCELADO: ['Cancelado', 'bg-gray-100 text-gray-500'],
 }
+const SOURCE_LABEL: Record<string, string> = { RECORRENCIA: 'Fixa mensal', TRANSFER: 'Transferência' }
 const COMMISSION_STATUS: Record<string, string> = { PREVISTO: 'prevista', APROVADO: 'aprovada', PAGO: 'paga', AJUSTADO: 'ajustada', CANCELADO: 'cancelada' }
 let seq = 0
 const newKey = () => `i${++seq}`
@@ -151,7 +153,7 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                 <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px]">
                   <span className={cn('rounded-full px-2 py-0.5 font-semibold', e.type === 'RECEITA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600')}>{e.type === 'RECEITA' ? 'Receita' : 'Despesa'}</span>
                   <span className={cn('rounded-full px-2 py-0.5 font-semibold', STATUS[e.status]?.[1])}>{STATUS[e.status]?.[0] ?? e.status}</span>
-                  <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-700">{e.sourceLabel}</span>
+                  <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-700">{SOURCE_LABEL[e.sourceLabel] ?? e.sourceLabel}</span>
                   {e.category && <span className="text-gray-500">{e.category}</span>}
                 </div>
               )}
@@ -305,6 +307,8 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                   <div className="sm:col-span-2"><Field label="Observações"><textarea disabled={readOnly} rows={2} className={inputCls} value={notes} onChange={(ev) => setNotes(ev.target.value)} /></Field></div>
                 </div>
               </section>
+
+              <AttachmentsPanel entryId={e.id} canManage={d.canManage} />
             </>
           )}
         </div>

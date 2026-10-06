@@ -112,8 +112,13 @@ export async function PUT(req: Request, { params }: Ctx) {
     const catalogKeys = new Set(MODULE_CATALOG.flatMap((g) => g.features.map((f) => f.key)))
 
     const before = await prisma.userModule.findMany({ where: { userId: id }, select: { moduleKey: true, allowed: true } })
+    // Centro financeiro: só o administrador da loja (ou MASTER) libera/bloqueia;
+    // para os demais as liberações do financeiro ficam como estão.
+    const isFinanceKey = (k: string) => k === 'finance' || k.startsWith('finance.')
+    const financeLocked = actor.role !== 'ADM' && actor.role !== 'MASTER'
+    const keptFinance = financeLocked ? before.filter((b) => isFinanceKey(b.moduleKey)) : []
     if (restoreDefault) {
-      await prisma.userModule.deleteMany({ where: { userId: id } })
+      await prisma.userModule.deleteMany({ where: { userId: id, ...(financeLocked ? { NOT: { moduleKey: { in: keptFinance.map((b) => b.moduleKey) } } } : {}) } })
       await createSafeAuditLog({
         userId: actor.id, tenantId, action: 'PERMISSION_RESTORE_DEFAULT', entity: 'UserModule', entityId: id, userName: actor.name, userRole: actor.role,
         beforeData: { overrides: before }, afterData: { overrides: [], targetUserId: id, targetRole: target.role, reason: reason || null },
@@ -122,8 +127,8 @@ export async function PUT(req: Request, { params }: Ctx) {
     }
 
     const maxLevel = maxGrantLevel(actor.role)
-    const cleanAllowed = [...new Set(allowedRaw)].filter((k) => catalogKeys.has(k) && !canAccessModule(target.role, k as Module))
-    const cleanDenied = [...new Set(deniedRaw)].filter((k) => catalogKeys.has(k) && canAccessModule(target.role, k as Module))
+    const cleanAllowed = [...new Set(allowedRaw)].filter((k) => catalogKeys.has(k) && !canAccessModule(target.role, k as Module) && !(financeLocked && isFinanceKey(k)))
+    const cleanDenied = [...new Set(deniedRaw)].filter((k) => catalogKeys.has(k) && canAccessModule(target.role, k as Module) && !(financeLocked && isFinanceKey(k)))
     const changedKeys = [...new Set([...cleanAllowed, ...cleanDenied])]
     const sensitive = changedKeys.map(featureMeta).filter((f) => f && f.sensitive) as Array<NonNullable<ReturnType<typeof featureMeta>>>
 
@@ -141,6 +146,7 @@ export async function PUT(req: Request, { params }: Ctx) {
     const data = [
       ...cleanAllowed.map((k) => ({ userId: id, moduleKey: k, allowed: true })),
       ...cleanDenied.filter((k) => !cleanAllowed.includes(k)).map((k) => ({ userId: id, moduleKey: k, allowed: false })),
+      ...keptFinance.map((b) => ({ userId: id, moduleKey: b.moduleKey, allowed: b.allowed })),
     ]
     await prisma.$transaction([
       prisma.userModule.deleteMany({ where: { userId: id } }),

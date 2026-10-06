@@ -6,25 +6,23 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, assertTenantId, tenantWhere, unauthorizedResponse, forbiddenResponse } from '@/lib/auth-guards'
+import { legacyFinanceGuard, scope } from '@/app/api/finance/center/entries/_lib/shared'
 import { handlePrismaError } from '@/lib/prisma-errors'
-import { canSeeVehicleFinance } from '@/lib/stock/vehicle-guard'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canSeeVehicleFinance(user.role)) return forbiddenResponse()
+  const g = await legacyFinanceGuard('finance', req)
+  if (g.error) return g.error
+  const { tenantId } = g
   try {
-    const tenantId = assertTenantId(user.tenantId, user.role)
     const sp = req.nextUrl.searchParams
     const q = (sp.get('q') ?? '').trim()
     const onlyPending = sp.get('pendentes') === '1'
 
     const grouped = await prisma.financialEntry.groupBy({
       by: ['vehicleId', 'status', 'type'],
-      where: { ...tenantWhere(user.role, tenantId), vehicleId: { not: null } },
+      where: { ...scope(tenantId), vehicleId: { not: null } },
       _sum: { amount: true }, _count: { _all: true },
     })
     const byVehicle = new Map<string, { total: number; paid: number; pending: number; revenue: number; count: number; pendingCount: number }>()

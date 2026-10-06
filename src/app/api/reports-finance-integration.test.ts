@@ -20,8 +20,8 @@ const { prismaMock, authMock } = vi.hoisted(() => {
       notificationDelivery: { findMany: fn(), groupBy: fn() },
       auditLog: { findMany: fn(), groupBy: fn(), create: fn() },
       financialEntry: { findMany: fn(), groupBy: fn(), aggregate: fn(), create: fn(), createMany: fn(), findUnique: fn(), update: fn(), updateMany: fn(), delete: fn(), deleteMany: fn() },
-      financialAccount: { findMany: fn(), create: fn(), findUnique: fn(), update: fn() },
-      financialCategory: { findMany: fn(), findFirst: fn(), create: fn(), findUnique: fn(), update: fn() },
+      financialAccount: { findMany: fn(), create: fn(), findUnique: fn(), findFirst: fn(), update: fn() },
+      financialCategory: { findMany: fn(), findFirst: fn(), create: fn(), findUnique: fn(), update: fn(), count: fn() },
       seller: { findMany: fn(), findFirst: fn() },
       unit: { findMany: fn(), findFirst: fn() },
       user: { findMany: fn() },
@@ -34,6 +34,7 @@ const { prismaMock, authMock } = vi.hoisted(() => {
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/auth', () => ({ getServerAuthSession: authMock, authOptions: {} }))
+vi.mock('@/lib/finance/setup', () => ({ ensureFinanceSetup: vi.fn(async () => {}) }))
 
 import { GET as negGET } from '@/app/api/reports/negotiations/route'
 import { GET as comReportGET } from '@/app/api/reports/commissions/route'
@@ -169,14 +170,15 @@ describe('Financeiro — RBAC e tenant', () => {
     expect(res.status).toBe(400)
   })
 
-  it('accounts PATCH: 403 conta de outro tenant', async () => {
-    prismaMock.financialAccount.findUnique.mockResolvedValue({ id: 'a1', tenantId: 'OUTRO', active: true })
+  it('accounts PATCH: conta de outro tenant não é encontrada (busca já filtra a loja)', async () => {
+    prismaMock.financialAccount.findFirst.mockResolvedValue(null)
     const res = await accPATCH(jsonReq('http://x/api/finance/accounts/a1', 'PATCH', { name: 'novo' }), ctx('a1'))
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
+    expect(prismaMock.financialAccount.findFirst.mock.calls[0][0].where.tenantId).toBe('t1')
     expect(prismaMock.financialAccount.update).not.toHaveBeenCalled()
   })
   it('accounts PATCH: 404 inexistente', async () => {
-    prismaMock.financialAccount.findUnique.mockResolvedValue(null)
+    prismaMock.financialAccount.findFirst.mockResolvedValue(null)
     const res = await accPATCH(jsonReq('http://x/api/finance/accounts/zz', 'PATCH', { name: 'n' }), ctx('zz'))
     expect(res.status).toBe(404)
   })

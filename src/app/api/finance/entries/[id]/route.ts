@@ -2,35 +2,33 @@
 // /api/finance/entries/[id] — ver / editar / liquidar / excluir lançamento.
 //   GET    : finance (read)
 //   PATCH  : finance.manage (edita campos; status PAGO/RECEBIDO grava paidDate)
-//   DELETE : finance.manage (hard delete de lançamento MANUAL; integrados não)
+//   DELETE : finance.manage (hard delete de lançamento MANUAL/recorrência; integrados são cancelados)
+// Folha (lançamento com colaborador) só com finance.payroll.
 // =============================================================================
 
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getSessionUser, unauthorizedResponse, forbiddenResponse, createSafeAuditLog } from '@/lib/auth-guards'
-import { canAccessModule } from '@/lib/permissions'
+import { createSafeAuditLog } from '@/lib/auth-guards'
 import { handlePrismaError } from '@/lib/prisma-errors'
 import { updateEntrySchema } from '@/lib/validators/finance'
-import { zodErrorResponse, ownsTenant, num } from '@/lib/finance/finance-service'
-import { assertModuleEnabled } from '@/lib/tenant-modules'
+import { zodErrorResponse, num } from '@/lib/finance/finance-service'
 import { applyStatusSideEffects } from '@/lib/finance/entry-settlement'
 import { tenantRefError } from '@/lib/finance/tenant-refs'
+import { entryAccessError, isDeletableSource, legacyFinanceGuard } from '@/app/api/finance/center/entries/_lib/shared'
+import { deleteEntriesFiles } from './attachments/_storage'
 
 type Ctx = { params: Promise<{ id: string }> }
-const notFound = () => NextResponse.json({ success: false, error: 'Lançamento não encontrado.' }, { status: 404 })
 
-export async function GET(_req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'finance')) return forbiddenResponse('Sem acesso ao financeiro.')
-  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
+export async function GET(req: Request, { params }: Ctx) {
+  const g = await legacyFinanceGuard('finance', req)
+  if (g.error) return g.error
   const { id } = await params
 
   try {
     const e = await prisma.financialEntry.findUnique({ where: { id }, include: { account: true, category: true } })
-    if (!e) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, e.tenantId)) return forbiddenResponse('Lançamento de outro tenant.')
+    const denied = await entryAccessError(e, g)
+    if (denied || !e) return denied
     return NextResponse.json({ success: true, data: { ...e, amount: num(e.amount) } })
   } catch (err) {
     return handlePrismaError(err)
@@ -38,16 +36,15 @@ export async function GET(_req: Request, { params }: Ctx) {
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'finance.manage')) return forbiddenResponse('Sem permissão.')
-  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
+  const g = await legacyFinanceGuard('finance.manage', req)
+  if (g.error) return g.error
+  const { user } = g
   const { id } = await params
 
   try {
     const existing = await prisma.financialEntry.findUnique({ where: { id } })
-    if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Lançamento de outro tenant.')
+    const denied = await entryAccessError(existing, g)
+    if (denied || !existing) return denied
 
     const d = updateEntrySchema.parse(await req.json())
     const refErr = await tenantRefError(existing.tenantId, d)
@@ -72,24 +69,24 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
-  const user = await getSessionUser()
-  if (!user) return unauthorizedResponse()
-  if (!canAccessModule(user.role, 'finance.manage')) return forbiddenResponse('Sem permissão.')
-  { const gate = await assertModuleEnabled(user, 'finance'); if (gate) return gate }
+export async function DELETE(req: Request, { params }: Ctx) {
+  const g = await legacyFinanceGuard('finance.manage', req)
+  if (g.error) return g.error
+  const { user } = g
   const { id } = await params
 
   try {
     const existing = await prisma.financialEntry.findUnique({ where: { id } })
-    if (!existing) return notFound()
-    if (!ownsTenant(user.role, user.tenantId, existing.tenantId)) return forbiddenResponse('Lançamento de outro tenant.')
-    // Lançamentos integrados (VENDA/COMISSAO/...) não são apagados manualmente — cancela.
-    if (existing.source && existing.source !== 'MANUAL') {
+    const denied = await entryAccessError(existing, g)
+    if (denied || !existing) return denied
+    // Lançamentos integrados (VENDA/COMISSAO/TRANSFER...) não são apagados manualmente — cancela.
+    if (!isDeletableSource(existing.source)) {
       await prisma.financialEntry.update({ where: { id }, data: { status: 'CANCELADO' } })
       await applyStatusSideEffects(existing, 'CANCELADO', null)
       await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'CANCEL', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role })
       return NextResponse.json({ success: true, canceled: true })
     }
+    await deleteEntriesFiles([id]).catch(() => {})
     await prisma.financialEntry.delete({ where: { id } })
     await createSafeAuditLog({ userId: user.id, tenantId: existing.tenantId, action: 'DELETE', entity: 'FinancialEntry', entityId: id, userName: user.name, userRole: user.role })
     return NextResponse.json({ success: true })
@@ -97,4 +94,3 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     return handlePrismaError(err)
   }
 }
-
