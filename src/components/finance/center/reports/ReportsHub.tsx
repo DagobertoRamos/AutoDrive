@@ -4,23 +4,26 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { BarChart3, Building2, CalendarClock, CarFront, PieChart, Scale, Target, Truck, Users } from 'lucide-react'
+import { BarChart3, Building2, CalendarClock, CarFront, Landmark, PieChart, Scale, Target, Truck, Users, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MonthInput, RegimeToggle, SelectInput, Toolbar, currentMonth, downloadCsv, monthLabel, monthsBack, qs, type Option } from './shared'
-import { CostCenterReport, ExpensesByCategoryReport, SuppliersReport } from './CategoryReports'
+import { ExpensesByCategoryReport, SuppliersReport } from './CategoryReports'
+import { FiRevenueReport, ResultByCenterReport, ServicesSoldReport } from './CenterReports'
 import { GroupProfitReport, VehicleProfitReport } from './ProfitReports'
 import { AgingReport, BudgetReport, MonthlyComparisonReport } from './PeriodReports'
 import type { CsvSpec } from './types'
 
 type View =
-  | 'despesas-categoria' | 'centro-custo' | 'fornecedores' | 'lucratividade-veiculo' | 'lucratividade-vendedor'
+  | 'resultado-centros' | 'servicos' | 'receitas-fi' | 'despesas-categoria' | 'fornecedores' | 'lucratividade-veiculo' | 'lucratividade-vendedor'
   | 'lucratividade-unidade' | 'comparativo-mensal' | 'orcado-realizado' | 'aging'
 
 type Filter = 'range' | 'to' | 'regime' | 'costCenter' | 'unit' | 'seller'
 
 const REPORTS: { key: View; label: string; icon: typeof PieChart; filters: Filter[] }[] = [
+  { key: 'resultado-centros', label: 'Resultado por área', icon: Building2, filters: ['range', 'regime', 'unit'] },
+  { key: 'servicos', label: 'Serviços vendidos', icon: Wrench, filters: ['range', 'unit', 'seller'] },
+  { key: 'receitas-fi', label: 'Receitas de F&I', icon: Landmark, filters: ['range', 'regime', 'unit', 'seller'] },
   { key: 'despesas-categoria', label: 'Despesas por categoria', icon: PieChart, filters: ['range', 'regime', 'costCenter', 'unit'] },
-  { key: 'centro-custo', label: 'Centro de custo', icon: Building2, filters: ['range', 'regime', 'unit'] },
   { key: 'fornecedores', label: 'Fornecedores', icon: Truck, filters: ['range', 'regime', 'costCenter', 'unit'] },
   { key: 'lucratividade-veiculo', label: 'Lucro por veículo', icon: CarFront, filters: ['range', 'unit', 'seller'] },
   { key: 'lucratividade-vendedor', label: 'Lucro por vendedor', icon: Users, filters: ['range', 'unit'] },
@@ -34,7 +37,9 @@ interface FilterLists { costCenters: Option[]; units: Option[]; sellers: Option[
 
 export default function ReportsHub() {
   const sp = useSearchParams()
-  const initial = REPORTS.find((r) => r.key === sp.get('view'))?.key ?? 'despesas-categoria'
+  // 'centro-custo' = nome antigo do "Resultado por área" (links salvos continuam valendo).
+  const asked = sp.get('view') === 'centro-custo' ? 'resultado-centros' : sp.get('view')
+  const initial = REPORTS.find((r) => r.key === asked)?.key ?? 'resultado-centros'
   const [view, setView] = useState<View>(initial)
   const [from, setFrom] = useState(monthsBack(2))
   const [to, setTo] = useState(currentMonth())
@@ -98,14 +103,16 @@ export default function ReportsHub() {
         {has('range') && <MonthInput label="De" value={from} onChange={setFrom} />}
         {(has('range') || has('to')) && <MonthInput label={has('range') ? 'Até' : 'Mês final'} value={to} onChange={setTo} />}
         {has('regime') && <RegimeToggle value={regime} onChange={setRegime} />}
-        {has('costCenter') && <SelectInput label="Centro de custo" value={costCenterId} onChange={setCostCenterId} all="Todos" options={[...lists.costCenters, { id: 'none', name: 'Sem centro de custo' }]} />}
+        {has('costCenter') && <SelectInput label="Área / centro" value={costCenterId} onChange={setCostCenterId} all="Todas" options={[...lists.costCenters, { id: 'none', name: 'Sem centro' }]} />}
         {has('unit') && lists.units.length > 1 && <SelectInput label="Unidade" value={unitId} onChange={setUnitId} all="Todas" options={lists.units} />}
         {has('seller') && <SelectInput label="Vendedor" value={sellerId} onChange={setSellerId} all="Todos" options={lists.sellers} />}
         {!has('range') && !has('to') && <span className="flex items-center gap-1.5 self-center text-xs text-gray-500"><Scale size={13} />Contas em aberto na data de hoje</span>}
       </Toolbar>
 
+      {view === 'resultado-centros' && <ResultByCenterReport key={view} {...props} />}
+      {view === 'servicos' && <ServicesSoldReport key={view} {...props} />}
+      {view === 'receitas-fi' && <FiRevenueReport key={view} {...props} />}
       {view === 'despesas-categoria' && <ExpensesByCategoryReport key={view} {...props} />}
-      {view === 'centro-custo' && <CostCenterReport key={view} {...props} />}
       {view === 'fornecedores' && <SuppliersReport key={view} {...props} />}
       {view === 'lucratividade-veiculo' && <VehicleProfitReport key={view} {...props} />}
       {view === 'lucratividade-vendedor' && <GroupProfitReport key={view} {...props} groupLabel="Vendedor" />}

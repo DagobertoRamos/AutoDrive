@@ -1828,6 +1828,10 @@ model DealService {
   supplier   String? // fornecedor
   commission Decimal? @db.Decimal(12, 2) // comissão sobre o serviço
   notes      String?
+  /// Linha de serviço (centro de resultado): DOCUMENTACAO | FUNILARIA | ESTETICA | ACESSORIO | GARANTIA | SEGURO | OUTRO
+  kind       String?
+  /// Fornecedor cadastrado (Supplier.id) — quem executa e recebe o custo.
+  supplierId String?
   createdAt  DateTime @default(now())
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -1970,6 +1974,18 @@ model DealPayment {
   // preserva o registro original entre importações. Fase 2 do V2.
   source                  String?
   externalId              String?
+  // ── F&I do financiamento (visível só ao financeiro) ─────────────────────────
+  /// Retorno bruto, ILA, IOF/IRRF e retorno líquido deste contrato.
+  returnGrossValue        Decimal?  @db.Decimal(12, 2)
+  ilaValue                Decimal?  @db.Decimal(12, 2)
+  iofValue                Decimal?  @db.Decimal(12, 2)
+  irrfValue               Decimal?  @db.Decimal(12, 2)
+  returnNetValue          Decimal?  @db.Decimal(12, 2)
+  /// PLUS: valor fixo por contrato pago pelo banco à loja.
+  plusValue               Decimal?  @db.Decimal(12, 2)
+  /// Agregados embutidos no financiamento: [{ name, kind, amount, beneficiary: LOJA|TERCEIRO, storeRevenue? }]
+  addOns                  Json?
+  contractNumber          String?
 
   deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
@@ -2328,6 +2344,8 @@ model WarrantySale {
   hasPremiumAddon   Boolean            @default(false)
   premiumAddonValue Decimal            @default(0) @db.Decimal(12, 2)
   finalPrice        Decimal            @db.Decimal(12, 2) // basePrice + (premium? premiumAddonValue : 0)
+  /// Custo da garantia para a loja (o que a seguradora/gestora cobra).
+  costValue         Decimal?           @db.Decimal(12, 2)
   status            WarrantySaleStatus @default(ATIVA)
   createdBy         String?
   createdAt         DateTime           @default(now())
@@ -4299,6 +4317,10 @@ model FinancialCostCenter {
   tenantId  String?
   name      String
   code      String?
+  /// RESULTADO (tem receita e custo: documentação, funilaria, F&I…) ou CUSTO (só despesa: marketing, administrativo).
+  kind      String   @default("CUSTO")
+  /// Chave do centro padrão (VENDAS, DOCUMENTACAO, FUNILARIA, ESTETICA, ACESSORIOS, GARANTIAS, FI, PREPARACAO, MARKETING, ADMINISTRATIVO) — usada para classificar lançamentos automáticos.
+  systemKey String?
   parentId  String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())

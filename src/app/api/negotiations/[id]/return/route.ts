@@ -19,6 +19,13 @@ import { returnRateSchema } from '@/lib/validators/return'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { resolveReturnSettingsForDate } from '@/lib/finance/return-settings'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { hasFinanceAccess } from '@/lib/finance/access'
+
+// ILA/IOF e o líquido são do financeiro: quem não tem acesso ao financeiro vê só
+// valor financiado, % e bruto (e se a loja tem ILA/IOF cadastrados p/ salvar).
+async function canSeeFinanceOf(user: Parameters<typeof hasFinanceAccess>[0]) {
+  return hasFinanceAccess(user).catch(() => false)
+}
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -65,10 +72,22 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     const returnConfig = deal.tenantId
       ? await resolveReturnSettingsForDate(deal.tenantId, returnCompetenceDate(deal)).catch(() => null)
       : null
+    const canSeeFinance = await canSeeFinanceOf(session.user)
+    if (!canSeeFinance) {
+      const { ilaPercent: _ip, ilaValue: _iv, iofPercent: _op, iofValue: _ov, returnNetValue: _nv, ...publicDeal } = deal
+      return NextResponse.json({
+        success: true,
+        data: publicDeal,
+        returnConfig: returnConfig ? { range: returnConfig.range, competence: returnConfig.competence, ila: null, iof: null, hasIla: !!returnConfig.ila || returnConfig.range.allowMissingIlaAsZero, hasIof: !!returnConfig.iof || returnConfig.range.allowMissingIofAsZero } : null,
+        canSeeFinance: false,
+        canEditFinancing: canAccessModule(session.user.role, 'negotiations.financing'),
+      })
+    }
     return NextResponse.json({
       success: true,
       data: deal,
-      returnConfig,
+      returnConfig: returnConfig ? { ...returnConfig, hasIla: !!returnConfig.ila || returnConfig.range.allowMissingIlaAsZero, hasIof: !!returnConfig.iof || returnConfig.range.allowMissingIofAsZero } : null,
+      canSeeFinance: true,
       canEditFinancing: canAccessModule(session.user.role, 'negotiations.financing'),
     })
   } catch (err) {
@@ -257,7 +276,10 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     }).catch(() => {})
     await syncTenantFinance(deal.tenantId ?? null).catch(() => {})
 
-    return NextResponse.json({ success: true, data: { returnRatePercent, ...calc, snapshot } })
+    if (!(await canSeeFinanceOf(session.user))) {
+      return NextResponse.json({ success: true, data: { returnRatePercent, returnGrossValue: calc.returnGrossValue }, canSeeFinance: false })
+    }
+    return NextResponse.json({ success: true, data: { returnRatePercent, ...calc, snapshot }, canSeeFinance: true })
   } catch (err) {
     if (err instanceof ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Dados inválidos.' }, { status: 400 })

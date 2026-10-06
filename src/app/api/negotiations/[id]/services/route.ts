@@ -1,5 +1,7 @@
 // =============================================================================
 // POST /api/negotiations/[id]/services — Adicionar serviço à negociação
+// (tipo = linha de serviço/centro de resultado; fornecedor cadastrado). O custo
+// vira lançamento previsto no Financeiro (deal-finance-sync).
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -10,6 +12,8 @@ import { handlePrismaError } from '@/lib/prisma-errors'
 import { createDealAudit } from '@/lib/negotiation-service'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { syncDealFinanceSafe } from '@/lib/finance/deal-finance-sync'
+import { resolveServiceKind, resolveServiceSupplier } from './_shared'
 
 export async function POST(
   req: NextRequest,
@@ -25,7 +29,7 @@ export async function POST(
     return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
   }
 
-  let body: { name?: string; value?: number; cost?: number; supplier?: string; commission?: number; notes?: string } = {}
+  let body: { name?: string; value?: number; cost?: number; supplier?: string; supplierId?: string | null; kind?: string | null; commission?: number; notes?: string } = {}
   try {
     body = await req.json()
   } catch {
@@ -44,15 +48,23 @@ export async function POST(
   })
   if (!deal) return NextResponse.json({ error: 'Negociação não encontrada' }, { status: 404 })
 
+  const sup = await resolveServiceSupplier(body.supplierId, deal.tenantId)
+  if (!sup.ok) return NextResponse.json({ error: sup.error }, { status: 400 })
+  const supplierName = sup.name ?? (body.supplier?.trim() || null)
+  const serviceName = String(body.name).trim()
+  const kind = resolveServiceKind(body.kind, serviceName, supplierName)
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const service = await (tx.dealService as any).create({
         data: {
           dealId:     params.id,
-          name:       body.name,
+          name:       serviceName,
           value:      Number(body.value),
           cost:       body.cost       != null ? Number(body.cost)       : null,
-          supplier:   body.supplier   ?? null,
+          supplier:   supplierName,
+          supplierId: sup.supplierId,
+          kind,
           commission: body.commission != null ? Number(body.commission) : null,
           notes:      body.notes      ?? null,
         },
@@ -87,6 +99,7 @@ export async function POST(
       return { service, deal: updatedDeal }
     })
 
+    await syncDealFinanceSafe(params.id)
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err) {
     return handlePrismaError(err)

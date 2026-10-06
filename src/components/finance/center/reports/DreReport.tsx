@@ -73,8 +73,8 @@ export default function DreReport() {
         <MonthInput label="De" value={from} onChange={setFrom} />
         <MonthInput label="Até" value={to} onChange={setTo} />
         <RegimeToggle value={regime} onChange={setRegime} />
-        <SelectInput label="Centro de custo" value={costCenterId} onChange={setCostCenterId} all="Todos"
-          options={[...(data?.filters.costCenters ?? []), { id: 'none', name: 'Sem centro de custo' }]} />
+        <SelectInput label="Área / centro" value={costCenterId} onChange={setCostCenterId} all="Todas"
+          options={[...(data?.filters.costCenters ?? []), { id: 'none', name: 'Sem centro' }]} />
         {(data?.filters.units.length ?? 0) > 1 && <SelectInput label="Unidade" value={unitId} onChange={setUnitId} all="Todas" options={data?.filters.units ?? []} />}
       </Toolbar>
 

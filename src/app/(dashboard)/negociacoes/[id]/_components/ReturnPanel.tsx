@@ -4,7 +4,8 @@
 // ReturnPanel — Retorno financeiro da negociação (componente autocontido)
 // Vendedor informa % de retorno. ILA/IOF vêm da configuração F&I do tenant
 // por competência — o backend é a fonte de verdade do cálculo e snapshot.
-// Consome /api/negotiations/[id]/return.
+// Consome /api/negotiations/[id]/return. ILA/IOF/líquido só aparecem para quem
+// tem acesso ao financeiro (a API nem envia esses valores aos demais).
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
@@ -25,6 +26,8 @@ interface ReturnConfig {
   competence: { label: string }
   ila: { value: number; valueType: 'PERCENTUAL' | 'FIXO' } | null
   iof: { value: number; valueType: 'PERCENTUAL' | 'FIXO'; month?: number | null; year?: number | null } | null
+  hasIla?: boolean
+  hasIof?: boolean
 }
 
 // % de retorno: dígitos preenchem 1 casa decimal.
@@ -39,6 +42,7 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
   const [financed, setFinanced] = useState(0)
   const [rate, setRate] = useState(0)
   const [config, setConfig] = useState<ReturnConfig | null>(null)
+  const [canSeeFinance, setCanSeeFinance] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -51,6 +55,7 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
       setFinanced(num(d.financedAmount))
       setRate(num(d.returnRatePercent))
       setConfig(json?.returnConfig ?? null)
+      setCanSeeFinance(json?.canSeeFinance !== false)
     } catch {
       /* silencioso */
     } finally {
@@ -74,6 +79,8 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
   const minRate = config?.range.minReturnPercent ?? 0
   const maxRate = config?.range.maxReturnPercent ?? 6
   const outOfRange = rate < minRate || rate > maxRate
+  const hasIla = !!(config?.ila || config?.hasIla)
+  const hasIof = !!(config?.iof || config?.hasIof)
 
   const save = async () => {
     setSaving(true)
@@ -124,6 +131,7 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
             <label className="mb-1 block text-xs font-medium text-gray-700">Retorno bruto</label>
             <input disabled className={inputCls} value={brl(gross)} />
           </div>
+          {canSeeFinance && <>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">ILA {config?.competence.label ? `(${config.competence.label})` : ''}</label>
             <input disabled className={inputCls} value={config?.ila ? `${config.ila.valueType === 'FIXO' ? brl(config.ila.value) : `${config.ila.value}%`} = ${brl(ilaValue)}` : 'Não cadastrado'} />
@@ -136,17 +144,18 @@ export default function ReturnPanel({ dealId, canEdit, onReload, onToast }: Prop
             <label className="mb-1 block text-xs font-medium text-gray-700">Retorno líquido</label>
             <input disabled className={cn(inputCls, 'font-semibold text-brand-700')} value={brl(net)} />
           </div>
+          </>}
         </div>
 
         <div className="flex items-center justify-between text-xs text-gray-500">
           <span>
-            ILA: {brl(ilaValue)} · IOF: {brl(iofValue)} · base da comissão = líquido
+            {canSeeFinance && <>ILA: {brl(ilaValue)} · IOF: {brl(iofValue)} · base da comissão = líquido</>}
             {outOfRange && <span className="ml-2 text-red-600">Retorno fora da faixa permitida.</span>}
-            {(!config?.ila || !config?.iof) && <span className="ml-2 text-amber-700">Configure ILA/IOF antes de salvar.</span>}
+            {(!hasIla || !hasIof) && <span className="ml-2 text-amber-700">Configure ILA/IOF antes de salvar.</span>}
           </span>
           {canEdit && (
             <button
-              onClick={save} disabled={saving || outOfRange || !config?.ila || !config?.iof}
+              onClick={save} disabled={saving || outOfRange || !hasIla || !hasIof}
               className="flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
             >
               <Save size={14} />{saving ? 'Salvando...' : 'Salvar retorno'}

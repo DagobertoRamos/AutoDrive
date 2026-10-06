@@ -33,6 +33,7 @@ import {
   Ban,
   Edit,
   MessageSquare,
+  Trash2,
 } from 'lucide-react'
 import { canAccessModule, hasMinRole } from '@/lib/permissions'
 import { maskBRL, parseBRL } from '@/lib/masks'
@@ -49,6 +50,7 @@ import ContractsTab from './_components/ContractsTab'
 import NfeTab from './_components/NfeTab'
 import NotesPanel from './_components/NotesPanel'
 import { useDealActions } from './_hooks/useDealActions'
+import { SERVICE_KINDS, SERVICE_KIND_BY_KEY, guessServiceKind, serviceKindOf } from '@/lib/finance/result-centers-core'
 import { isDealLocked, canAddPayment, canApproveDiscount, canReopen, canForceFinalize } from '@/lib/negotiation-rbac'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -61,7 +63,12 @@ interface DealService {
   supplier:   string | null
   commission: string | number | null
   notes:      string | null
+  kind?:      string | null
+  supplierId?: string | null
 }
+
+const EMPTY_SERVICE = { name: '', value: '', cost: '', supplier: '', supplierId: '', kind: '', commission: '', notes: '' }
+const centsOf = (v: string | number | null | undefined) => (v == null || v === '' ? '' : String(Math.round(Number(v) * 100)))
 
 interface DealVehicle {
   id:             string
@@ -1120,8 +1127,10 @@ export default function NegociacaoDetailPage() {
 
   // Add service modal
   const [showAddService, setShowAddService] = useState(false)
-  const [newService, setNewService] = useState({ name: '', value: '', cost: '', supplier: '', commission: '', notes: '' })
+  const [newService, setNewService] = useState(EMPTY_SERVICE)
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [savingService, setSavingService] = useState(false)
+  const [serviceSuppliers, setServiceSuppliers] = useState<Array<{ id: string; name: string }>>([])
 
   // Gerência (gerente, gerente geral/administrativo, ADM, MASTER) vê os logs.
   const isManager = hasMinRole(role ?? undefined, 'GERENTE')
@@ -1209,31 +1218,67 @@ export default function NegociacaoDetailPage() {
     }
   }
 
+  const openServiceModal = (s?: DealService) => {
+    if (!serviceSuppliers.length) {
+      fetch('/api/suppliers?ativos=1&semTipo=VEICULOS', { credentials: 'include' })
+        .then((r) => r.json())
+        .then((d) => setServiceSuppliers((d?.data ?? []).map((x: { id: string; name: string }) => ({ id: x.id, name: x.name }))))
+        .catch(() => {})
+    }
+    setEditingServiceId(s?.id ?? null)
+    setNewService(s ? {
+      name:       s.name,
+      value:      maskBRL(centsOf(s.value)),
+      cost:       maskBRL(centsOf(s.cost)),
+      supplier:   s.supplier ?? '',
+      supplierId: s.supplierId ?? '',
+      kind:       serviceKindOf(s),
+      commission: maskBRL(centsOf(s.commission)),
+      notes:      s.notes ?? '',
+    } : EMPTY_SERVICE)
+    setShowAddService(true)
+  }
+
   const handleAddService = async () => {
     if (!newService.name) return
     setSavingService(true)
     try {
-      const res = await fetch(`/api/negotiations/${id}/services`, {
-        method: 'POST',
+      const res = await fetch(editingServiceId ? `/api/negotiations/${id}/services/${editingServiceId}` : `/api/negotiations/${id}/services`, {
+        method: editingServiceId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name:       newService.name,
           value:      newService.value      ? parseBRL(newService.value)        : null,
           cost:       newService.cost       ? parseBRL(newService.cost)         : null,
-          supplier:   newService.supplier   || null,
+          kind:       newService.kind       || guessServiceKind(newService.name),
+          supplierId: newService.supplierId || null,
+          supplier:   newService.supplierId ? null : (newService.supplier || null),
           commission: newService.commission ? parseBRL(newService.commission)   : null,
           notes:      newService.notes      || null,
         }),
       })
-      if (!res.ok) throw new Error('Erro ao adicionar serviço')
-      showToast('Serviço adicionado!')
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Erro ao salvar serviço')
+      showToast(editingServiceId ? 'Serviço atualizado!' : 'Serviço adicionado!')
       setShowAddService(false)
-      setNewService({ name: '', value: '', cost: '', supplier: '', commission: '', notes: '' })
+      setEditingServiceId(null)
+      setNewService(EMPTY_SERVICE)
       loadDeal()
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : 'Erro', false)
     } finally {
       setSavingService(false)
+    }
+  }
+
+  const handleDeleteService = async (s: DealService) => {
+    if (!confirm(`Remover o serviço "${s.name}"?`)) return
+    try {
+      const res = await fetch(`/api/negotiations/${id}/services/${s.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Erro ao remover serviço')
+      showToast('Serviço removido!')
+      loadDeal()
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Erro', false)
     }
   }
 
@@ -1746,7 +1791,7 @@ export default function NegociacaoDetailPage() {
             <p className="text-sm text-gray-500">{deal.services.length} serviço(s) vinculado(s)</p>
             {isManager && (
               <button
-                onClick={() => setShowAddService(true)}
+                onClick={() => openServiceModal()}
                 className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
               >
                 + Adicionar Serviço
@@ -1758,7 +1803,7 @@ export default function NegociacaoDetailPage() {
           {showAddService && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
               <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-                <h3 className="mb-4 text-lg font-semibold text-gray-900">Adicionar Serviço</h3>
+                <h3 className="mb-4 text-lg font-semibold text-gray-900">{editingServiceId ? 'Editar Serviço' : 'Adicionar Serviço'}</h3>
                 <div className="space-y-3">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Nome <RequiredMark /></label>
@@ -1766,7 +1811,22 @@ export default function NegociacaoDetailPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">Valor (R$)</label>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Tipo <RequiredMark /></label>
+                      <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.kind || guessServiceKind(newService.name)} onChange={(e) => setNewService((p) => ({ ...p, kind: e.target.value }))}>
+                        {SERVICE_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Fornecedor</label>
+                      <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.supplierId} onChange={(e) => setNewService((p) => ({ ...p, supplierId: e.target.value }))}>
+                        <option value="">{newService.supplier && !newService.supplierId ? newService.supplier : '—'}</option>
+                        {serviceSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Valor (R$) <RequiredMark /></label>
                       <input type="text" inputMode="numeric" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={maskBRL(newService.value)} onChange={(e) => setNewService((p) => ({ ...p, value: maskBRL(e.target.value) }))} placeholder="0,00" />
                     </div>
                     <div>
@@ -1775,10 +1835,6 @@ export default function NegociacaoDetailPage() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">Fornecedor</label>
-                      <input className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={newService.supplier} onChange={(e) => setNewService((p) => ({ ...p, supplier: e.target.value }))} />
-                    </div>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">Comissão (R$)</label>
                       <input type="text" inputMode="numeric" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" value={maskBRL(newService.commission)} onChange={(e) => setNewService((p) => ({ ...p, commission: maskBRL(e.target.value) }))} placeholder="0,00" />
@@ -1790,8 +1846,8 @@ export default function NegociacaoDetailPage() {
                   </div>
                 </div>
                 <div className="mt-4 flex justify-end gap-2">
-                  <button onClick={() => setShowAddService(false)} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
-                  <button onClick={handleAddService} disabled={!newService.name || savingService} className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+                  <button onClick={() => { setShowAddService(false); setEditingServiceId(null) }} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                  <button onClick={handleAddService} disabled={!newService.name || !newService.value || savingService}className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
                     {savingService && <Loader2 size={13} className="animate-spin" />}
                     Salvar
                   </button>
@@ -1818,26 +1874,34 @@ export default function NegociacaoDetailPage() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-100 bg-gray-50">
                     <tr>
-                      {['Serviço', 'Valor', 'Custo', 'Fornecedor', 'Comissão'].map((h) => (
+                      {['Serviço', 'Tipo', 'Valor', 'Custo', 'Fornecedor', 'Comissão'].map((h) => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">{h}</th>
                       ))}
+                      {isManager && <th className="px-4 py-3" />}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {deal.services.map((s) => (
                       <tr key={s.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium text-gray-800">{s.name}</td>
+                        <td className="px-4 py-3 text-gray-600">{SERVICE_KIND_BY_KEY[serviceKindOf(s)]?.label ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-700">{fmtBRL(s.value) ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{fmtBRL(s.cost) ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{s.supplier ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{fmtBRL(s.commission) ?? '—'}</td>
+                        {isManager && (
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <button onClick={() => openServiceModal(s)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-brand-700" title="Editar" aria-label="Editar serviço"><Edit size={14} /></button>
+                            <button onClick={() => handleDeleteService(s)} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remover" aria-label="Remover serviço"><Trash2 size={14} /></button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                     <tr>
-                      <td className="px-4 py-3 font-semibold text-gray-700">Total</td>
-                      <td className="px-4 py-3 font-bold text-brand-700" colSpan={4}>
+                      <td className="px-4 py-3 font-semibold text-gray-700" colSpan={2}>Total</td>
+                      <td className="px-4 py-3 font-bold text-brand-700" colSpan={isManager ? 5 : 4}>
                         {fmtBRL(deal.services.reduce((acc, s) => acc + Number(s.value ?? 0), 0)) ?? '—'}
                       </td>
                     </tr>

@@ -28,7 +28,9 @@ interface Detail {
   items: Array<{ id: string; kind: string; description: string; amount: number }>
   deal: { id: string; dealNumber: string | null; status: string; customer: string | null; seller: string | null; vehicles: Array<{ role: string; plate: string | null; model: string | null; vehicleId: string | null }> } | null
   debt: { typeLabel: string; responsavelLabel: string | null; vehicleRole: string | null; chargedToCustomer: boolean; isDocumentation: boolean; value: number } | null
-  payment: { type: string; method: string | null; bank: string | null; installments: number | null; status: string | null; authorizationCode: string | null } | null
+  payment: { type: string; method: string | null; bank: string | null; installments: number | null; status: string | null; authorizationCode: string | null; contractNumber?: string | null; confirmsDeal?: boolean } | null
+  service?: { id: string; name: string; value: number; kind: string | null; kindLabel: string | null; supplier: string | null } | null
+  resultKind?: 'DOCUMENTO' | 'SERVICO' | null
   vehicle: { id: string; plate: string | null; title: string } | null
   commissions: Array<{ id: string; description: string; amount: number; status: string }>
   result: { charged: number; cost: number; gross: number; commissions: number; net: number; margin: number | null; costIsEstimate: boolean } | null
@@ -207,10 +209,19 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
                         </p>
                       </div>
                     )}
+                    {d.service && (
+                      <div className="flex items-start gap-2 sm:col-span-2">
+                        <FileText size={15} className="mt-0.5 text-gray-400" />
+                        <p className="text-xs text-gray-600">
+                          {d.service.kind === 'GARANTIA' ? 'Garantia' : 'Serviço'} <b>{d.service.name}</b>{d.service.kind !== 'GARANTIA' && d.service.kindLabel ? ` · ${d.service.kindLabel}` : ''} · cobrado do cliente {brl(d.result?.charged ?? d.service.value)}
+                        </p>
+                      </div>
+                    )}
                     {d.payment && (
                       <p className="text-xs text-gray-600 sm:col-span-2">
                         Pagamento {d.payment.type}{d.payment.method ? ` (${d.payment.method})` : ''}{d.payment.bank ? ` · ${d.payment.bank}` : ''}{d.payment.installments ? ` · ${d.payment.installments}x` : ''}
-                        {d.payment.authorizationCode ? ` · autorização ${d.payment.authorizationCode}` : ''} — a baixa aqui confirma o pagamento na negociação.
+                        {d.payment.authorizationCode ? ` · autorização ${d.payment.authorizationCode}` : ''}{d.payment.contractNumber ? ` · contrato ${d.payment.contractNumber}` : ''}
+                        {d.payment.confirmsDeal !== false ? ' — a baixa aqui confirma o pagamento na negociação.' : ''}
                       </p>
                     )}
                   </div>
@@ -220,28 +231,28 @@ export function EntryDrawer({ entryId, onClose, onChanged }: { entryId: string; 
               {/* Resultado: cobrado × custo real × comissões */}
               {live && d.result && (
                 <section className="rounded-xl border border-gray-200 bg-white p-4">
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{d.debt?.isDocumentation ? 'Resultado do documento (despachante)' : 'Cobrado × custo real'}</h3>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{d.resultKind === 'DOCUMENTO' || d.debt?.isDocumentation ? 'Resultado do documento (despachante)' : d.resultKind === 'SERVICO' ? 'Resultado do serviço' : 'Cobrado × custo real'}</h3>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <Kpi label="Cobrado do cliente" value={brl(live.charged)} />
                     <Kpi label={validItems.length || settled ? 'Custo real' : 'Custo (previsto)'} value={brl(live.cost)} tone="text-red-700" />
                     <Kpi label="Lucro bruto" value={brl(live.gross)} tone={live.gross >= 0 ? 'text-emerald-700' : 'text-red-700'} />
                     <Kpi label="Lucro líquido" value={brl(live.net)} sub={live.margin == null ? undefined : `${live.margin.toLocaleString('pt-BR')}% do cobrado`} tone={live.net >= 0 ? 'text-emerald-700' : 'text-red-700'} />
                   </div>
-                  {d.debt?.isDocumentation && (
+                  {(d.debt?.isDocumentation || d.resultKind === 'SERVICO') && (
                     <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                      <p className="mb-1.5 text-xs font-semibold text-gray-700">Comissões de documento</p>
+                      <p className="mb-1.5 text-xs font-semibold text-gray-700">{d.resultKind === 'SERVICO' ? 'Comissões do serviço' : 'Comissões de documento'}</p>
                       {d.commissions.length ? (
                         <ul className="space-y-1 text-xs">
                           {d.commissions.map((c) => (
                             <li key={c.id} className={cn('flex justify-between gap-2', c.status === 'CANCELADO' && 'line-through opacity-50')}>
-                              <span className="text-gray-700">{c.description.replace(/^DOCUMENTO — /, '')} <span className="text-gray-400">· {COMMISSION_STATUS[c.status] ?? c.status}</span></span>
+                              <span className="text-gray-700">{c.description.replace(/^(DOCUMENTO|SERVICO|GARANTIA) — /, '')} <span className="text-gray-400">· {COMMISSION_STATUS[c.status] ?? c.status}</span></span>
                               <span className="tabular-nums text-gray-900">− {brl(c.amount)}</span>
                             </li>
                           ))}
                           <li className="flex justify-between border-t border-gray-200 pt-1 font-semibold"><span>Total</span><span className="tabular-nums">− {brl(live.commissions)}</span></li>
                         </ul>
                       ) : (
-                        <p className="text-xs text-gray-500">Nenhuma comissão de documento gerada.</p>
+                        <p className="text-xs text-gray-500">{d.resultKind === 'SERVICO' ? 'Nenhuma comissão gerada.' : 'Nenhuma comissão de documento gerada.'}</p>
                       )}
                     </div>
                   )}

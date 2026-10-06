@@ -1,10 +1,12 @@
 // =============================================================================
 // GET /api/finance/center/reports — relatórios gerenciais (Centro Financeiro).
-//   ?view=despesas-categoria|centro-custo|fornecedores|lucratividade-veiculo|
+//   ?view=resultado-centros (alias antigo: centro-custo)|servicos|receitas-fi|
+//         despesas-categoria|fornecedores|lucratividade-veiculo|
 //         lucratividade-vendedor|lucratividade-unidade|comparativo-mensal|
 //         orcado-realizado|aging
 //   &from=YYYY-MM&to=YYYY-MM &regime=competencia|caixa
 //   &costCenterId= (id | 'none') &unitId= &sellerId=
+//   &center= (id | 'none') — resultado-centros: detalhe de uma área
 // =============================================================================
 
 import { NextResponse } from 'next/server'
@@ -30,6 +32,7 @@ export async function GET(req: Request) {
       tenantId: g.tenantId, view, periods,
       regime: sp.get('regime') === 'caixa' ? 'caixa' : 'competencia',
       costCenterId: sp.get('costCenterId') || null, unitId: sp.get('unitId') || null, sellerId: sp.get('sellerId') || null,
+      center: sp.get('center') || null,
       canSeePayroll: await hasFinanceAccess({ ...g.user, tenantId: g.tenantId }, 'finance.payroll'),
       now,
     })

@@ -1,7 +1,7 @@
 // =============================================================================
 // /api/negotiations/[id]/warranty-sales — Vender garantia dentro da negociação
 //   GET  : lista as garantias vendidas na negociação
-//   POST : registra a venda (tipo cheio/reduzido + adicional prêmio) — vendedor
+//   POST : registra a venda (tipo cheio/reduzido + adicional prêmio + custo) — vendedor
 // Preço e comissão são calculados no service layer a partir do cadastro.
 // =============================================================================
 
@@ -18,6 +18,7 @@ import { calculateWarrantyCommission, calculateWarrantySale, calculateWarrantySa
 import { warrantySaleSchema } from '@/lib/validators/warranty'
 import { assertModuleEnabled } from '@/lib/tenant-modules'
 import { buildNegotiationAccessWhere } from '@/lib/negotiation-access'
+import { parseWarrantyCost } from './_shared'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -55,7 +56,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const { id } = await params
 
   try {
-    const input = warrantySaleSchema.parse(await req.json())
+    const raw = await req.json()
+    const input = warrantySaleSchema.parse(raw)
+    const cost = parseWarrantyCost((raw as { costValue?: unknown } | null)?.costValue)
+    if (!cost.ok) return NextResponse.json({ error: cost.error }, { status: 400 })
 
     const deal = await prisma.deal.findFirst({
       where: await buildNegotiationAccessWhere(session.user, { id }),
@@ -97,6 +101,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           hasPremiumAddon:   input.clientBoughtPremium && warranty.hasPremiumAddon,
           premiumAddonValue: calc.premiumAddonValue,
           finalPrice:        calc.finalPrice,
+          costValue:         cost.value,
           createdBy:         session.user.id,
         },
       })

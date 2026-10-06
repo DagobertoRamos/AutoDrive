@@ -8,9 +8,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, ExternalLink, Loader2, Paperclip, RotateCcw, Search, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ExternalLink, Landmark, Loader2, Paperclip, RotateCcw, Search, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RequiredMark } from '@/components/ui/field'
+import FiContractPanel, { type FiData, type FiProduct } from '@/components/finance/center/receivables/FiContractPanel'
 
 interface Row {
   id: string; type: string; method: string | null; status: string; value: number
@@ -18,6 +19,7 @@ interface Row {
   authorizationCode: string | null; notes: string | null
   deal: { id: string; number: string | null; status: string; client: string | null; seller: string | null; vehicle: string | null; plate: string | null }
   receipts: Array<{ id: string; fileName: string; url: string | null; fileType: string }>
+  fi: FiData | null
 }
 
 const TYPE: Record<string, string> = {
@@ -50,11 +52,14 @@ export default function RecebimentosPage() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [auth, setAuth] = useState<Record<string, string>>({})
   const [paidAt, setPaidAt] = useState<Record<string, string>>({})
+  const [products, setProducts] = useState<FiProduct[]>([])
+  const [openFi, setOpenFi] = useState<string | null>(null)
+  const [fiVersion, setFiVersion] = useState(0)
 
   const load = useCallback(async () => {
     const qs = new URLSearchParams({ status: tab, ...(q.trim() ? { q: q.trim() } : {}) })
     const j = await fetch(`/api/finance/receivables?${qs}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
-    if (j?.success) { setRows(j.data); setTotal(j.total); setCanManage(!!j.canManage) } else { setRows([]); setMsg({ ok: false, text: j?.error ?? 'Falha ao carregar.' }) }
+    if (j?.success) { setRows(j.data); setTotal(j.total); setProducts(j.products ?? []); setCanManage(!!j.canManage); setFiVersion((v) => v + 1) } else { setRows([]); setMsg({ ok: false, text: j?.error ?? 'Falha ao carregar.' }) }
   }, [tab, q])
   useEffect(() => { const t = setTimeout(() => void load(), q ? 300 : 0); return () => clearTimeout(t) }, [load, q])
 
@@ -135,6 +140,21 @@ export default function RecebimentosPage() {
                     </label>
                   )}
                 </div>
+                {r.fi && (
+                  <div className="mt-2 border-t border-gray-100 pt-2 text-xs">
+                    <button type="button" onClick={() => setOpenFi((o) => (o === r.id ? null : r.id))} aria-expanded={openFi === r.id} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline">
+                      <Landmark size={12} />F&amp;I do contrato<ChevronDown size={12} className={cn('transition-transform', openFi === r.id && 'rotate-180')} />
+                    </button>
+                    {openFi === r.id && (
+                      <FiContractPanel
+                        key={`${r.id}-${fiVersion}`}
+                        paymentId={r.id} financed={r.value} bank={r.bank} installments={r.installments}
+                        fi={r.fi} products={products} canEdit={canManage}
+                        onSaved={(m) => { setMsg(m); if (m.ok) void load() }}
+                      />
+                    )}
+                  </div>
+                )}
                 {canManage && tab === 'PENDENTE' && (
                   <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-2 text-xs">
                     {isCard(r) && (

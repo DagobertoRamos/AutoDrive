@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react'
-import { ShieldCheck, RefreshCw, Plus, Trash2 } from 'lucide-react'
+import { ShieldCheck, RefreshCw, Plus, Trash2, Pencil, Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { maskBRL, parseBRL } from '@/lib/masks'
 import { RequiredMark } from '@/components/ui/field'
@@ -28,7 +28,7 @@ interface Warranty {
   premiumAddonCommissionValue: number | string
 }
 interface Sale {
-  id: string; saleType: 'FULL' | 'REDUCED'; finalPrice: number | string; status: string
+  id: string; saleType: 'FULL' | 'REDUCED'; finalPrice: number | string; status: string; costValue?: number | string | null
   hasPremiumAddon: boolean; warranty?: { name: string } | null
 }
 
@@ -43,6 +43,9 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
   const [warrantyId, setWarrantyId] = useState('')
   const [soldPrice, setSoldPrice] = useState(0)
   const [premium, setPremium] = useState(false)
+  const [cost, setCost] = useState(0)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editCost, setEditCost] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -94,16 +97,31 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
     try {
       const res = await fetch(`/api/negotiations/${dealId}/warranty-sales`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ warrantyId, soldPrice, clientBoughtPremium: premium }),
+        body: JSON.stringify({ warrantyId, soldPrice, clientBoughtPremium: premium, costValue: cost > 0 ? cost : null }),
       })
       if (!res.ok) throw new Error((await res.json())?.error ?? 'Erro ao vender garantia')
       onToast('Garantia vendida.', 'success')
-      setWarrantyId(''); setSoldPrice(0); setPremium(false)
+      setWarrantyId(''); setSoldPrice(0); setPremium(false); setCost(0)
       await load(); onReload()
     } catch (err) {
       onToast(err instanceof Error ? err.message : 'Erro ao vender garantia.', 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const saveCost = async (sale: Sale) => {
+    try {
+      const res = await fetch(`/api/negotiations/${dealId}/warranty-sales/${sale.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ costValue: editCost > 0 ? editCost : null }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Erro ao salvar o custo.')
+      onToast('Custo da garantia salvo.', 'success')
+      setEditingId(null)
+      await load()
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : 'Erro ao salvar o custo.', 'error')
     }
   }
 
@@ -141,9 +159,27 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
                   <p className="truncate font-medium text-gray-800">{s.warranty?.name ?? 'Garantia'}</p>
                   <p className="text-xs text-gray-400">
                     {s.saleType === 'FULL' ? 'Cheio' : 'Reduzido'}{s.hasPremiumAddon ? ' + prêmio' : ''} · {brl(num(s.finalPrice))}
+                    {s.costValue != null && editingId !== s.id && <> · custo {brl(num(s.costValue))}</>}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {editingId === s.id ? (
+                    <>
+                      <input
+                        type="text" inputMode="numeric" autoFocus aria-label="Custo da garantia"
+                        className="w-28 rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        value={maskBRL(editCost ? Math.round(editCost * 100).toString() : '')}
+                        onChange={(e) => setEditCost(parseBRL(maskBRL(e.target.value)) ?? 0)}
+                        placeholder="Custo"
+                      />
+                      <button onClick={() => saveCost(s)} className="rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-700" title="Salvar"><Check size={14} /></button>
+                      <button onClick={() => setEditingId(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" title="Cancelar"><X size={14} /></button>
+                    </>
+                  ) : canEdit && s.status === 'ATIVA' && (
+                    <button onClick={() => { setEditingId(s.id); setEditCost(num(s.costValue)) }} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-brand-700" title="Custo da garantia">
+                      <Pencil size={14} />
+                    </button>
+                  )}
                   <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium',
                     s.status === 'ATIVA' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
                     {s.status}
@@ -162,7 +198,7 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
         {/* Formulário de venda */}
         {canEdit && (
           <div className="space-y-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-700">Garantia <RequiredMark /></label>
                 <select className={inputCls} value={warrantyId} onChange={(e) => {
@@ -184,6 +220,17 @@ export default function WarrantySalesPanel({ dealId, canEdit, onReload, onToast 
                   className={inputCls}
                   value={maskBRL(soldPrice ? Math.round(soldPrice * 100).toString() : '')}
                   onChange={(e) => setSoldPrice(parseBRL(maskBRL(e.target.value)) ?? 0)}
+                  placeholder="0,00"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Custo da garantia</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className={inputCls}
+                  value={maskBRL(cost ? Math.round(cost * 100).toString() : '')}
+                  onChange={(e) => setCost(parseBRL(maskBRL(e.target.value)) ?? 0)}
                   placeholder="0,00"
                 />
               </div>

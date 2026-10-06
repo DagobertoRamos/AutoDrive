@@ -98,6 +98,14 @@ export interface RawEntry {
   /** Juros/multa e desconto da baixa (o amount pago já os inclui). */
   interestAmount?: number | null
   discountAmount?: number | null
+  description?: string | null
+  commissionCalculationId?: string | null
+  /** Grupo da DRE já decidido (parte do recebimento rateado, custo de serviço vendido). */
+  groupOverride?: string | null
+  /** Centro efetivo (id): o escolhido no lançamento ou o derivado da origem. */
+  centerId?: string | null
+  /** Parte do recebimento rateado: VEICULO | DOCUMENTACAO | SERV_<dealServiceId>. */
+  part?: string | null
 }
 
 export interface AllocatedEntry extends RawEntry {
@@ -157,7 +165,7 @@ export function allocateEntries(
   for (const e of raw) {
     if (e.transferGroupId || e.status === 'CANCELADO') continue
     const d = entryDate(e, opts.regime)
-    const group = opts.groupOf(e)
+    const group = e.groupOverride ?? opts.groupOf(e)
     if (opts.regime === 'competencia' && e.vehicleId && VEHICLE_COST_GROUPS.has(group)) {
       const sale = opts.saleDateByVehicle.get(e.vehicleId)
       const saleKey = sale ? monthKeySP(sale) : null

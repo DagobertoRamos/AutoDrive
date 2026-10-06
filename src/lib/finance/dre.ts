@@ -6,10 +6,13 @@
 
 import { prisma } from '@/lib/prisma'
 import { spDayEnd, spDayStart } from '@/lib/dashboard/tz'
-import { COMMISSION_ELIGIBLE_DEAL_STATUSES } from '@/lib/commission/status'
 import { buildDre, categoryGroupResolver, resolveDreGroup } from './dre-core'
+import { classifyEntries, isDealReceiptSource, matchesCenterFilter } from './result-centers'
+import { COMMISSION_ELIGIBLE_DEAL_STATUSES, commissionEligibleDealWindowWhere, commissionReferenceDate } from '@/lib/commission/status'
+import { dealRevenueComponents } from './result-centers-core'
+import type { CenterKind } from './result-centers-core'
 import {
-  allocateEntries, drillDown, r2, saleDateOf, verticalAnalysis,
+  allocateEntries, drillDown, entryDate, monthKeySP, r2, saleDateOf, verticalAnalysis,
   type AllocatedEntry, type CatNode, type DreLineAv, type DrillRow, type RawEntry, type Regime, type StockCost,
 } from './reports-core'
 
@@ -27,6 +30,12 @@ export interface FinanceRefs {
   catName: (id: string) => string
   groupOf: (e: Pick<RawEntry, 'type' | 'source' | 'categoryId'>) => string
   costCenters: { id: string; name: string }[]
+  /** Centros com tipo (RESULTADO/CUSTO) e chave padrão (VENDAS, DOCUMENTACAO…). */
+  centers: { id: string; name: string; kind: CenterKind; key: string | null; active: boolean }[]
+  centerIdByKey: Record<string, string>
+  /** Código do plano da categoria (ou do ancestral mais próximo com código). */
+  catCode: (id: string) => string | null
+  catIdByCode: (code: string) => string | null
   units: { id: string; name: string }[]
 }
 
@@ -36,16 +45,31 @@ export async function loadFinanceRefs(tenantId: string): Promise<FinanceRefs> {
       where: { tenantId },
       select: { id: true, name: true, parentId: true, code: true, sortOrder: true, kind: true, dreGroup: true },
     }),
-    prisma.financialCostCenter.findMany({ where: { tenantId }, select: { id: true, name: true, active: true }, orderBy: [{ code: 'asc' }, { name: 'asc' }] }),
+    prisma.financialCostCenter.findMany({ where: { tenantId }, select: { id: true, name: true, active: true, kind: true, systemKey: true }, orderBy: [{ code: 'asc' }, { name: 'asc' }] }),
     prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true, active: true }, orderBy: { name: 'asc' } }),
   ])
   const resolver = categoryGroupResolver(cats)
   const names = new Map(cats.map((c) => [c.id, c.code ? `${c.code} ${c.name}` : c.name]))
+  const byId = new Map(cats.map((c) => [c.id, c]))
+  const idByCode = new Map(cats.filter((c) => c.code).map((c) => [c.code as string, c.id]))
+  const centerIdByKey: Record<string, string> = {}
+  for (const c of costCenters) if (c.systemKey && !centerIdByKey[c.systemKey]) centerIdByKey[c.systemKey] = c.id
   return {
     cats: cats.map((c) => ({ ...c, kind: c.kind as 'RECEITA' | 'DESPESA' })),
     catName: (id) => names.get(id) ?? 'Categoria removida',
     groupOf: (e) => resolveDreGroup(e, resolver),
     costCenters: costCenters.map(({ id, name }) => ({ id, name })),
+    centers: costCenters.map((c) => ({ id: c.id, name: c.name, kind: (c.kind === 'RESULTADO' ? 'RESULTADO' : 'CUSTO') as CenterKind, key: c.systemKey ?? null, active: c.active })),
+    centerIdByKey,
+    catCode: (id) => {
+      let c = byId.get(id)
+      for (let i = 0; c && i < 6; i++) {
+        if (c.code) return c.code
+        c = c.parentId ? byId.get(c.parentId) : undefined
+      }
+      return null
+    },
+    catIdByCode: (code) => idByCode.get(code) ?? null,
     units: units.map(({ id, name }) => ({ id, name })),
   }
 }
@@ -54,13 +78,13 @@ const ENTRY_SELECT = {
   id: true, type: true, status: true, amount: true, dueDate: true, paidDate: true, competenceDate: true,
   categoryId: true, costCenterId: true, vehicleId: true, dealId: true, supplierId: true, counterparty: true,
   source: true, employeeUserId: true, unitId: true, sellerId: true, transferGroupId: true,
-  interestAmount: true, discountAmount: true,
+  interestAmount: true, discountAmount: true, description: true, commissionCalculationId: true,
 } as const
 
 export interface EntryFilters { costCenterId?: string | null; unitId?: string | null }
 
+// O filtro de centro é aplicado depois da classificação (centro escolhido ou derivado).
 const filterWhere = (f: EntryFilters) => ({
-  ...(f.costCenterId ? { costCenterId: f.costCenterId === 'none' ? null : f.costCenterId } : {}),
   ...(f.unitId ? { unitId: f.unitId } : {}),
 })
 
@@ -96,9 +120,55 @@ const toRaw = (e: { amount: unknown; type: string; interestAmount?: unknown; dis
   ({ ...e, type: e.type as RawEntry['type'], amount: Number(e.amount), interestAmount: e.interestAmount == null ? null : Number(e.interestAmount), discountAmount: e.discountAmount == null ? null : Number(e.discountAmount) })
 
 /**
+ * Receita por competência das vendas do período: um recebimento "sintético"
+ * por negociação com o total cobrado (carro − descontos + documentação +
+ * serviços + débitos), datado na venda; o rateio (classifyEntries) separa as
+ * partes pelo valor cheio. Só negociações que o financeiro já acompanha (têm
+ * recebimento lançado); sem partes conhecidas vale a soma dos recebimentos.
+ */
+async function dealAccrualEntries(tenantId: string, start: Date, end: Date, f: EntryFilters): Promise<RawEntry[]> {
+  const deals = await prisma.deal.findMany({
+    where: { tenantId, type: { in: [...SALE_DEAL_TYPES] }, ...commissionEligibleDealWindowWhere({ start, end }), ...(f.unitId ? { unitId: f.unitId } : {}) },
+    select: {
+      id: true, unitId: true, sellerId: true, approvedAt: true, releasedAt: true, finalizedAt: true, saleDate: true, createdAt: true,
+      saleAmount: true, purchaseAmount: true, vehicleValue: true, documentationFee: true, discountAmount: true,
+      vehicles: { select: { agreedValue: true } },
+      debts: { select: { id: true, type: true, value: true, responsavel: true } },
+      services: { select: { id: true, value: true, kind: true, name: true, supplier: true } },
+      discountRequests: { select: { status: true, approvedValue: true, requestedValue: true } },
+    },
+  })
+  if (!deals.length) return []
+  const receipts = await prisma.financialEntry.groupBy({
+    by: ['dealId'],
+    where: { tenantId, dealId: { in: deals.map((d) => d.id) }, type: 'RECEITA', status: { not: 'CANCELADO' }, OR: [{ source: 'VENDA' }, { source: { startsWith: 'NEG_PGTO_' } }, { source: { startsWith: 'NEG_TROCA_' } }] },
+    _sum: { amount: true },
+  })
+  const received = new Map(receipts.map((r) => [r.dealId as string, Number(r._sum.amount ?? 0)]))
+  const out: RawEntry[] = []
+  for (const d of deals) {
+    if (!received.has(d.id)) continue
+    const total = dealRevenueComponents(d as Parameters<typeof dealRevenueComponents>[0]).reduce((s, c) => s + c.amount, 0)
+    const amount = Math.round((total > 0 ? total : received.get(d.id) ?? 0) * 100) / 100
+    if (amount <= 0) continue
+    const at = commissionReferenceDate(d, d.createdAt)
+    out.push({
+      id: `accrual:${d.id}`, type: 'RECEITA', status: 'RECEBIDO', amount, dueDate: at, paidDate: at, competenceDate: at,
+      categoryId: null, costCenterId: null, vehicleId: null, dealId: d.id, supplierId: null, counterparty: null,
+      source: 'NEG_PGTO_ACCRUAL', employeeUserId: null, unitId: d.unitId, sellerId: d.sellerId, transferGroupId: null,
+      interestAmount: null, discountAmount: null,
+    })
+  }
+  return out
+}
+
+/**
  * Lançamentos do período já posicionados por regime. Em competência traz também
  * todos os custos com veículo (de qualquer data), para levá-los ao mês da venda
- * e apurar o custo em estoque.
+ * e apurar o custo em estoque. Antes de posicionar, cada lançamento ganha o
+ * centro (escolhido ou derivado da origem), os recebimentos de negociação são
+ * rateados entre veículo/documentação/serviços e os custos de serviço vendido
+ * vão para CMV_SERVICOS (fora da realocação do carro) — ver result-centers.ts.
  */
 export async function loadAllocated(params: { tenantId: string; periods: string[]; regime: Regime; refs: FinanceRefs } & EntryFilters): Promise<{ entries: AllocatedEntry[]; stock: StockCost }> {
   const { tenantId, periods, regime, refs } = params
@@ -118,7 +188,17 @@ export async function loadAllocated(params: { tenantId: string; periods: string[
     where: { tenantId, status: { not: 'CANCELADO' }, transferGroupId: null, ...filterWhere(params), ...dateWhere },
     select: ENTRY_SELECT,
   })
-  const raw = rows.map(toRaw)
+  const inPeriod = new Set(periods)
+  // Competência: a receita da venda é reconhecida inteira no mês da venda
+  // (cada parte — carro, documentação, serviços — pelo valor cheio), não pela
+  // data de cada pagamento. Recebimentos ficam só no regime de caixa.
+  const accrual = regime === 'competencia'
+  const base = accrual ? rows.filter((r) => !(r.type === 'RECEITA' && r.dealId && isDealReceiptSource(r.source))) : rows
+  const synthetic = accrual ? await dealAccrualEntries(tenantId, start, end, params) : []
+  const raw = (await classifyEntries(tenantId, [...base.map(toRaw), ...synthetic], refs, {
+    relevant: (e) => { const d = entryDate(e, regime); return !!d && inPeriod.has(monthKeySP(d)) },
+  }))
+    .filter((e) => matchesCenterFilter(e, params.costCenterId, refs))
   const vehicleIds = regime === 'competencia' ? raw.filter((e) => e.vehicleId).map((e) => e.vehicleId as string) : []
   const saleDateByVehicle = vehicleIds.length ? await loadSaleDates(tenantId, vehicleIds) : new Map<string, Date>()
   return allocateEntries(raw, { regime, periods, groupOf: refs.groupOf, saleDateByVehicle })

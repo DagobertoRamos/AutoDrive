@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chargeResult, isChargedToCustomer, isPayoffDebt, itemsTotal, normalizeItems } from './entry-settlement-core'
+import { SERVICE_SUGGESTED_ITEMS, chargeResult, isChargedToCustomer, isPayoffDebt, itemsTotal, normalizeItems, pickWarrantyCommissions } from './entry-settlement-core'
 import { DEFAULT_DOCUMENTO_CONFIG, computeDocumentoCommission, resolveDocumentationFee, type DocumentoConfig } from './documento-config'
 
 describe('baixa detalhada — itens', () => {
@@ -59,5 +59,28 @@ describe('comissão de documento — base e setor', () => {
     expect([c('VENDEDOR'), c('GERENTE'), c('SETOR'), c('SETOR_GERENTE')]).toEqual([200, 100, 10, 30])
     expect(computeDocumentoCommission({ config, fee: 1500, payer: 'CLIENTE', isManager: true })).toBe(100) // legado
     expect(computeDocumentoCommission({ config, fee: 1500, payer: 'LOJA', beneficiary: 'SETOR' })).toBe(0) // cortesia
+  })
+})
+
+describe('resultado do serviço', () => {
+  it('itens de custo de serviço (peças, mão de obra…) são aceitos', () => {
+    expect(normalizeItems([{ kind: 'PECA', amount: 300 }, { kind: 'MAO_DE_OBRA', amount: 200 }]).map((i) => i.description)).toEqual(['Peças', 'Mão de obra'])
+    expect(SERVICE_SUGGESTED_ITEMS.FUNILARIA).toContain('PECA')
+    expect(SERVICE_SUGGESTED_ITEMS.DOCUMENTACAO).toContain('HONORARIO')
+  })
+
+  it('comissões da garantia vendida: pelo warrantySaleId; legado sem vínculo entra (menos as de serviço)', () => {
+    const rows = [
+      { id: 'a', ruleDetails: { dealId: 'd', warrantySaleId: 'w1' } },
+      { id: 'b', ruleDetails: { dealId: 'd', warrantySaleId: 'w2' } },
+      { id: 'c', ruleDetails: { dealId: 'd', serviceId: 's1' } },
+    ]
+    expect(pickWarrantyCommissions(rows, 'w1').map((r) => r.id)).toEqual(['a'])
+    const legacy = [{ id: 'x', ruleDetails: { dealId: 'd' } }, { id: 'y', ruleDetails: { dealId: 'd', serviceId: 's1' } }]
+    expect(pickWarrantyCommissions(legacy, 'w9').map((r) => r.id)).toEqual(['x'])
+  })
+
+  it('serviço cobrado 2.000, custo 1.200, comissão 100 → líquido 700', () => {
+    expect(chargeResult({ charged: 2000, cost: 1200, commissions: [{ amount: 100, status: 'PREVISTO' }] })).toMatchObject({ gross: 800, net: 700, margin: 35 })
   })
 })

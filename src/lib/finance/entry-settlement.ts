@@ -11,9 +11,14 @@ import type { FinancialEntry, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { DEBT_SOURCE_PREFIX, PAYMENT_SOURCE_PREFIX, TRADE_SOURCE_PREFIX } from './deal-finance-sync'
 import {
-  COST_ITEM_LABEL, DOC_DEBT_TYPES, SUGGESTED_ITEMS, chargeResult, isChargedToCustomer, itemsTotal, normalizeItems,
-  type CostItemInput, type CostItemKind,
+  COST_ITEM_LABEL, DOC_DEBT_TYPES, SERVICE_SUGGESTED_ITEMS, SUGGESTED_ITEMS, chargeResult, isChargedToCustomer, itemsTotal, normalizeItems,
+  pickWarrantyCommissions, type CostItemInput, type CostItemKind,
 } from './entry-settlement-core'
+import {
+  FI_ADDON_SOURCE_PREFIX, FI_PLUS_SOURCE_PREFIX, FI_RETURN_SOURCE_PREFIX, SERVICE_SOURCE_PREFIX, WARRANTY_SOURCE_PREFIX,
+  serviceCostSpec, serviceRefOfSource,
+} from './service-sync-core'
+import { SERVICE_KIND_BY_KEY } from './result-centers-core'
 
 const num = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d))
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
@@ -29,6 +34,11 @@ export function sourceLabel(source: string | null) {
   if (source.startsWith(PAYMENT_SOURCE_PREFIX)) return 'Pagamento da negociação'
   if (source.startsWith(DEBT_SOURCE_PREFIX)) return 'Débito da negociação'
   if (source.startsWith(TRADE_SOURCE_PREFIX)) return 'Veículo na troca'
+  if (source.startsWith(SERVICE_SOURCE_PREFIX)) return 'Serviço da negociação'
+  if (source.startsWith(WARRANTY_SOURCE_PREFIX)) return 'Garantia da negociação'
+  if (source.startsWith(FI_RETURN_SOURCE_PREFIX)) return 'Retorno do financiamento'
+  if (source.startsWith(FI_PLUS_SOURCE_PREFIX)) return 'PLUS do financiamento'
+  if (source.startsWith(FI_ADDON_SOURCE_PREFIX)) return 'Agregado do financiamento'
   if (source.startsWith('VEICULO_')) return 'Custo do veículo'
   return ({ VENDA: 'Venda', COMISSAO: 'Comissão', RETORNO: 'Comissão — retorno', GARANTIA: 'Comissão — garantia' } as Record<string, string>)[source] ?? source
 }
@@ -43,6 +53,33 @@ async function docCommissions(tenantId: string | null, dealId: string) {
   return rows.map((c) => ({ id: c.id, description: c.description, amount: num(c.commissionValue), status: c.status as string }))
 }
 
+/** Comissões do SERVIÇO (ruleDetails.serviceId) ou da GARANTIA vendida (ruleType GARANTIA da negociação). */
+async function serviceCommissions(tenantId: string | null, ref: { kind: 'SERVICE' | 'WARRANTY'; id: string }, dealId: string | null) {
+  const select = { id: true, description: true, commissionValue: true, status: true, ruleDetails: true } as const
+  const rows = ref.kind === 'SERVICE'
+    ? await prisma.commissionCalculation.findMany({
+        where:  { tenantId, ruleDetails: { path: ['serviceId'], equals: ref.id } as never },
+        select, orderBy: { createdAt: 'asc' },
+      })
+    : dealId
+      ? pickWarrantyCommissions(await prisma.commissionCalculation.findMany({
+          where:  { tenantId, ruleType: 'GARANTIA', ruleDetails: { path: ['dealId'], equals: dealId } as never },
+          select, orderBy: { createdAt: 'asc' },
+        }), ref.id)
+      : []
+  return rows.map((c) => ({ id: c.id, description: c.description, amount: num(c.commissionValue), status: c.status as string }))
+}
+
+/** Pagamento de origem: NEG_PGTO_<id> (confirma na negociação) ou F&I (NEG_RETORNO_/NEG_PLUS_/NEG_AGREG_<id>_<i>). */
+function paymentRefOfSource(source: string | null): { id: string; linked: boolean } | null {
+  if (!source) return null
+  if (source.startsWith(PAYMENT_SOURCE_PREFIX)) return { id: source.slice(PAYMENT_SOURCE_PREFIX.length), linked: true }
+  for (const p of [FI_RETURN_SOURCE_PREFIX, FI_PLUS_SOURCE_PREFIX, FI_ADDON_SOURCE_PREFIX]) {
+    if (source.startsWith(p)) return { id: source.slice(p.length).split('_')[0], linked: false }
+  }
+  return null
+}
+
 export async function loadEntryDetail(id: string) {
   const e = await prisma.financialEntry.findUnique({
     where:   { id },
@@ -51,8 +88,10 @@ export async function loadEntryDetail(id: string) {
   if (!e) return null
 
   const debtId = e.source?.startsWith(DEBT_SOURCE_PREFIX) ? e.source.slice(DEBT_SOURCE_PREFIX.length) : null
-  const paymentId = e.source?.startsWith(PAYMENT_SOURCE_PREFIX) ? e.source.slice(PAYMENT_SOURCE_PREFIX.length) : null
-  const [deal, debt, payment, vehicle, supplier] = await Promise.all([
+  const payRef = paymentRefOfSource(e.source)
+  const paymentId = payRef?.id ?? null
+  const svcRef = serviceRefOfSource(e.source)
+  const [deal, debt, payment, vehicle, supplier, service, warrantySale] = await Promise.all([
     e.dealId ? prisma.deal.findUnique({
       where:  { id: e.dealId },
       select: { id: true, dealNumber: true, status: true, type: true, customer: { select: { name: true } }, seller: { select: { fullName: true, shortName: true } }, vehicles: { select: { role: true, plate: true, model: true, vehicleId: true } } },
@@ -61,16 +100,25 @@ export async function loadEntryDetail(id: string) {
     paymentId ? prisma.dealPayment.findUnique({ where: { id: paymentId } }) : null,
     e.vehicleId ? prisma.vehicle.findUnique({ where: { id: e.vehicleId }, select: { id: true, plate: true, brand: true, model: true } }) : null,
     e.supplierId ? prisma.supplier.findUnique({ where: { id: e.supplierId }, select: { id: true, name: true } }) : null,
+    svcRef?.kind === 'SERVICE' ? prisma.dealService.findUnique({ where: { id: svcRef.id } }) : null,
+    svcRef?.kind === 'WARRANTY' ? prisma.warrantySale.findUnique({ where: { id: svcRef.id }, include: { warranty: { select: { name: true } } } }) : null,
   ])
 
   const isDoc = !!debt && DOC_DEBT_TYPES.includes(debt.type)
-  const commissions = isDoc && e.dealId ? await docCommissions(e.tenantId, e.dealId) : []
-  const charged = debt ? (isChargedToCustomer(debt.responsavel) ? num(e.chargedAmount ?? debt.value) : 0) : num(e.chargedAmount)
+  const serviceKind = service ? serviceCostSpec(service).kind : warrantySale ? 'GARANTIA' : null
+  const resultKind: 'DOCUMENTO' | 'SERVICO' | null = isDoc ? 'DOCUMENTO' : svcRef && (service || warrantySale) ? 'SERVICO' : null
+  const commissions = isDoc && e.dealId
+    ? await docCommissions(e.tenantId, e.dealId)
+    : resultKind === 'SERVICO' && svcRef ? await serviceCommissions(e.tenantId, svcRef, e.dealId) : []
+  const charged = debt ? (isChargedToCustomer(debt.responsavel) ? num(e.chargedAmount ?? debt.value) : 0)
+    : service ? num(e.chargedAmount ?? service.value)
+    : warrantySale ? num(e.chargedAmount ?? warrantySale.finalPrice)
+    : num(e.chargedAmount)
   const hasItems = e.items.length > 0
   const settled = e.status === 'PAGO' || e.status === 'RECEBIDO'
   // Custo real conhecido = itens lançados ou baixa feita; antes disso o custo é a previsão.
   const cost = e.type === 'DESPESA' ? num(e.amount) : 0
-  const result = e.type === 'DESPESA' && (debt || e.chargedAmount != null)
+  const result = e.type === 'DESPESA' && (debt || service || warrantySale || e.chargedAmount != null)
     ? { ...chargeResult({ charged, cost, commissions }), costIsEstimate: !hasItems && !settled }
     : null
 
@@ -99,11 +147,20 @@ export async function loadEntryDetail(id: string) {
     payment: payment ? {
       id: payment.id, type: payment.type, method: payment.method, bank: payment.bank, installments: payment.installments,
       status: payment.status, authorizationCode: payment.authorizationCode,
+      contractNumber: payment.contractNumber, confirmsDeal: !!payRef?.linked,
     } : null,
+    service: service ? {
+      id: service.id, name: service.name, value: num(service.value), kind: serviceKind,
+      kindLabel: SERVICE_KIND_BY_KEY[serviceKind ?? '']?.label ?? null, supplier: service.supplier,
+    } : warrantySale ? {
+      id: warrantySale.id, name: warrantySale.warranty?.name ?? 'Garantia', value: num(warrantySale.finalPrice), kind: 'GARANTIA',
+      kindLabel: SERVICE_KIND_BY_KEY.GARANTIA.label, supplier: null as string | null,
+    } : null,
+    resultKind,
     vehicle: vehicle ? { id: vehicle.id, plate: vehicle.plate, title: [vehicle.brand, vehicle.model].filter(Boolean).join(' ') } : null,
     commissions,
     result,
-    suggestedKinds: (debt ? SUGGESTED_ITEMS[debt.type] : null) ?? (e.type === 'DESPESA' ? (['OUTRO'] as CostItemKind[]) : []),
+    suggestedKinds: (debt ? SUGGESTED_ITEMS[debt.type] : serviceKind ? SERVICE_SUGGESTED_ITEMS[serviceKind] : null) ?? (e.type === 'DESPESA' ? (['OUTRO'] as CostItemKind[]) : []),
   }
 }
 
@@ -156,7 +213,13 @@ export async function saveEntryCosts(id: string, input: SaveCostsInput): Promise
     if (c?.status === 'CANCELADO') return 'Comissão cancelada: não pode ser paga.'
   }
 
-  const items = input.items ? normalizeItems(input.items) : null
+  let items = input.items ? normalizeItems(input.items) : null
+  // Serviço/garantia da negociação: valor real digitado sem itens vira um item
+  // (custo real detalhado) — a sincronização da negociação não o sobrescreve mais.
+  if (serviceRefOfSource(existing.source) && (!items || items.length === 0) && input.amount != null) {
+    const v = Math.round(Number(input.amount) * 100) / 100
+    if (v > 0 && v !== num(existing.amount)) items = [{ kind: 'OUTRO', description: 'Custo real', amount: v, supplierId: input.supplierId || null }]
+  }
   let newAmount: number | null = null
   if (items && items.length > 0) newAmount = itemsTotal(items)
   else if (input.amount != null) newAmount = Math.round(Number(input.amount) * 100) / 100

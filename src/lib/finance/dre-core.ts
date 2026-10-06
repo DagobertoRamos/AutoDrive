@@ -152,10 +152,12 @@ export const DEFAULT_CHART: DefaultCategory[] = [
   { code: '1', name: 'Vendas de veículos', kind: 'RECEITA', dreGroup: 'REC_VEICULOS', children: [
     { code: '1.1', name: 'Vendas' }, { code: '1.2', name: 'Entrada em troca' } ] },
   { code: '2', name: 'Retorno financeiro (F&I)', kind: 'RECEITA', dreGroup: 'REC_FI', children: [
-    { code: '2.1', name: 'Retorno de financiamento' }, { code: '2.2', name: 'Comissão de seguros' } ] },
+    { code: '2.1', name: 'Retorno de financiamento' }, { code: '2.2', name: 'Comissão de seguros' },
+    { code: '2.3', name: 'Bonificação de bancos' }, { code: '2.4', name: 'Acordos comerciais' }, { code: '2.5', name: 'PLUS por contrato' } ] },
   { code: '3', name: 'Intermediação e consignação', kind: 'RECEITA', dreGroup: 'REC_INTERMEDIACAO' },
   { code: '4', name: 'Serviços vendidos', kind: 'RECEITA', dreGroup: 'REC_SERVICOS', children: [
-    { code: '4.1', name: 'Garantias' }, { code: '4.2', name: 'Documentação cobrada do cliente' }, { code: '4.3', name: 'Acessórios' } ] },
+    { code: '4.1', name: 'Garantias' }, { code: '4.2', name: 'Documentação cobrada do cliente' }, { code: '4.3', name: 'Acessórios' },
+    { code: '4.4', name: 'Funilaria e pintura cobrada' }, { code: '4.5', name: 'Estética cobrada' }, { code: '4.6', name: 'Outros serviços cobrados' } ] },
   { code: '5', name: 'Outras receitas', kind: 'RECEITA', dreGroup: 'REC_OUTRAS' },
   { code: '6', name: 'Receitas financeiras', kind: 'RECEITA', dreGroup: 'FIN_RECEITAS', children: [
     { code: '6.1', name: 'Rendimentos de aplicação' } ] },
@@ -186,11 +188,14 @@ export const DEFAULT_CHART: DefaultCategory[] = [
   { code: '18', name: 'Despesas financeiras', kind: 'DESPESA', dreGroup: 'FIN_DESPESAS', children: [
     { code: '18.1', name: 'Tarifas bancárias' }, { code: '18.2', name: 'Juros e multas pagos' }, { code: '18.3', name: 'Juros de floor plan / capital de giro' } ] },
   { code: '19', name: 'IR e CSLL', kind: 'DESPESA', dreGroup: 'IR_CSLL' },
+  { code: '21', name: 'Custo dos serviços vendidos', kind: 'DESPESA', dreGroup: 'CMV_SERVICOS', children: [
+    { code: '21.1', name: 'Custo de documentação / despachante' }, { code: '21.2', name: 'Custo de funilaria e pintura' },
+    { code: '21.3', name: 'Custo de estética' }, { code: '21.4', name: 'Custo de acessórios' },
+    { code: '21.5', name: 'Custo de garantias' }, { code: '21.6', name: 'Custo de outros serviços' } ] },
   { code: '20', name: 'Não operacional', kind: 'DESPESA', dreGroup: 'NAO_OPERACIONAL', children: [
     { code: '20.1', name: 'Retiradas dos sócios' }, { code: '20.2', name: 'Investimentos' } ] },
 ]
 
-export const DEFAULT_COST_CENTERS = ['Vendas', 'Preparação / Oficina', 'F&I', 'Marketing', 'Administrativo']
 
 /** Grupo da DRE para categorias antigas (criadas antes do plano de contas), pelo nome. */
 export function guessDreGroup(name: string, kind: 'RECEITA' | 'DESPESA'): string {

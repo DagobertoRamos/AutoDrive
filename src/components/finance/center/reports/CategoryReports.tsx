@@ -1,12 +1,12 @@
 'use client'
 
-// Relatórios: despesas por categoria, centro de custo e fornecedores.
+// Relatórios: despesas por categoria e fornecedores (resultado por área: CenterReports).
 
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
-import { COLORS, Kpi, PALETTE, Panel, StateBox, SortTh, fmt, fmtDate, fmtPct, fmtShort, monthLabel, td, tdR, th, thR, useFinanceData, useSort } from './shared'
+import { COLORS, Kpi, PALETTE, Panel, StateBox, fmt, fmtDate, fmtPct, fmtShort, monthLabel, td, tdR, th, thR, useFinanceData } from './shared'
 import type { ReportViewProps } from './types'
 
 // ── Despesas por categoria ──────────────────────────────────────────────────
@@ -118,79 +118,6 @@ export function ExpensesByCategoryReport({ url, onData, registerCsv }: ReportVie
           </div>
         )}
       </Panel>
-    </div>
-  )
-}
-
-// ── Centro de custo ─────────────────────────────────────────────────────────
-interface CcRow { id: string | null; name: string; receitas: number; despesas: number; resultado: number; count: number; shareDespesas: number | null }
-interface CcData { from: string; to: string; rows: CcRow[]; totals: { receitas: number; despesas: number; resultado: number } }
-
-export function CostCenterReport({ url, onData, registerCsv }: ReportViewProps) {
-  const { data, loading, error } = useFinanceData<CcData>(url)
-  useEffect(() => { onData(data) }, [data, onData])
-  const { sort, toggle, apply } = useSort<'name' | 'receitas' | 'despesas' | 'resultado' | 'shareDespesas'>('despesas')
-  const rows = useMemo(() => apply(data?.rows ?? [], (r, k) => r[k]), [data, apply])
-  useEffect(() => {
-    registerCsv(data ? {
-      name: `centro-de-custo-${data.from}-a-${data.to}`,
-      headers: ['Centro de custo', 'Receitas', 'Despesas', 'Resultado', '% das despesas', 'Lançamentos'],
-      rows: data.rows.map((r) => [r.name, r.receitas, r.despesas, r.resultado, r.shareDespesas, r.count]),
-    } : null)
-  }, [data, registerCsv])
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Kpi label="Receitas" value={loading ? '—' : fmt(data?.totals.receitas ?? 0)} tone="green" />
-        <Kpi label="Despesas" value={loading ? '—' : fmt(data?.totals.despesas ?? 0)} tone="red" />
-        <Kpi label="Resultado" value={loading ? '—' : fmt(data?.totals.resultado ?? 0)} tone={(data?.totals.resultado ?? 0) < 0 ? 'red' : 'blue'} />
-      </div>
-      <Panel title="Receitas e despesas por centro de custo">
-        <StateBox loading={loading} error={error} empty={!data?.rows.length} />
-        {!loading && !error && !!data?.rows.length && (
-          <div className="h-72 p-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.rows} margin={{ left: 8, right: 8 }}>
-                <CartesianGrid stroke="#e5e7eb" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} axisLine={false} tickLine={false} interval={0} />
-                <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} width={64} />
-                <Tooltip formatter={(v) => fmt(Number(v))} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="receitas" name="Receitas" fill={COLORS.receita} radius={[3, 3, 0, 0]} maxBarSize={32} />
-                <Bar dataKey="despesas" name="Despesas" fill={COLORS.despesa} radius={[3, 3, 0, 0]} maxBarSize={32} />
-                <Bar dataKey="resultado" name="Resultado" fill={COLORS.resultado} radius={[3, 3, 0, 0]} maxBarSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </Panel>
-      {!loading && !error && !!data?.rows.length && (
-        <Panel>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50"><tr>
-                <SortTh k="name" label="Centro de custo" sort={sort} toggle={toggle} />
-                <SortTh k="receitas" label="Receitas" sort={sort} toggle={toggle} right />
-                <SortTh k="despesas" label="Despesas" sort={sort} toggle={toggle} right />
-                <SortTh k="resultado" label="Resultado" sort={sort} toggle={toggle} right />
-                <SortTh k="shareDespesas" label="% despesas" sort={sort} toggle={toggle} right />
-              </tr></thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => (
-                  <tr key={r.id ?? 'none'} className="hover:bg-gray-50">
-                    <td className={cn(td, !r.id && 'italic text-gray-500')}>{r.name}</td>
-                    <td className={cn(tdR, 'text-green-700')}>{fmt(r.receitas)}</td>
-                    <td className={cn(tdR, 'text-red-600')}>{fmt(r.despesas)}</td>
-                    <td className={cn(tdR, 'font-medium', r.resultado < 0 ? 'text-red-600' : 'text-gray-900')}>{fmt(r.resultado)}</td>
-                    <td className={cn(tdR, 'text-gray-500')}>{fmtPct(r.shareDespesas)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-gray-200 font-semibold"><tr><td className={td}>Total</td><td className={tdR}>{fmt(data.totals.receitas)}</td><td className={tdR}>{fmt(data.totals.despesas)}</td><td className={tdR}>{fmt(data.totals.resultado)}</td><td className={tdR}>100,0%</td></tr></tfoot>
-            </table>
-          </div>
-        </Panel>
-      )}
     </div>
   )
 }

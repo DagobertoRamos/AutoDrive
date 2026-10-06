@@ -10,6 +10,7 @@
 
 import { createHash } from 'crypto'
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { fiFromAutoconf, fillFiNulls } from '@/lib/finance/fi-receipt-core'
 
 type Tx = Prisma.TransactionClient
 
@@ -191,10 +192,10 @@ async function _upsertPayment(tx: Tx, tenantId: string, dealId: string, source: 
   const notes = [
     p.tipo === 'PIX' && p.sinal ? 'Sinal de negócio' : null,
     p.dataLimiteReserva ? `Limite reserva: ${p.dataLimiteReserva}` : null,
-    p.tipo === 'FINANCIAMENTO' && p.ila ? `ILA=${p.ila}` : null,
-    p.tipo === 'FINANCIAMENTO' && p.irrf ? `IRRF=${p.irrf}` : null,
-    p.tipo === 'FINANCIAMENTO' && p.valorRetorno ? `Retorno bruto=${p.valorRetorno}` : null,
   ].filter(Boolean).join(' | ').slice(0, 800) || null
+  // F&I (ILA/IRRF/retorno bruto) vai para as colunas próprias — só preenche o
+  // que está vazio, para não sobrescrever o que o financeiro já conferiu.
+  const fi = p.tipo === 'FINANCIAMENTO' ? fiFromAutoconf(p) : {}
   const data = {
     tenantId,
     type: p.tipo || 'OUTROS',
@@ -209,13 +210,16 @@ async function _upsertPayment(tx: Tx, tenantId: string, dealId: string, source: 
     notes,
   }
   const existing = p.externalId
-    ? await tx.dealPayment.findFirst({ where: { dealId, source, externalId: p.externalId }, select: { id: true } })
+    ? await tx.dealPayment.findFirst({
+        where: { dealId, source, externalId: p.externalId },
+        select: { id: true, returnGrossValue: true, ilaValue: true, iofValue: true, irrfValue: true, returnNetValue: true },
+      })
     : null
   if (existing) {
-    await tx.dealPayment.update({ where: { id: existing.id }, data })
+    await tx.dealPayment.update({ where: { id: existing.id }, data: { ...data, ...fillFiNulls(existing, fi) } })
     return 'updated'
   }
-  await tx.dealPayment.create({ data: { dealId, source, externalId: p.externalId ?? null, ...data } })
+  await tx.dealPayment.create({ data: { dealId, source, externalId: p.externalId ?? null, ...data, ...fi } })
   return 'created'
 }
 

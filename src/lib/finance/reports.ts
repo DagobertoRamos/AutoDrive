@@ -6,9 +6,16 @@
 // como "Folha de pagamento", a não ser para quem tem 'finance.payroll'.
 // =============================================================================
 
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { commissionEligibleDealWindowWhere } from '@/lib/commission/status'
 import { DRE_GROUP_BY_KEY } from './dre-core'
+import { parseAddOns, summarizeFiContract } from './fi-receipt-core'
+import { commissionRefOf } from './result-centers'
+import {
+  FI_REVENUE_TYPES, SERVICE_KINDS, SERVICE_KIND_BY_KEY, aggregateByCenter, aggregateServiceLines,
+  fiRevenueType, isChargedDocDebt, serviceKindOf, serviceProfit,
+} from './result-centers-core'
 import { SALE_DEAL_TYPES, loadAllocated, loadFinanceRefs, monthBounds, type EntryFilters, type FinanceRefs } from './dre'
 import {
   AGING_BUCKETS, addMonths, agingBucket, agingSummary, aggregateProfit, budgetVsActual, buildCategoryTree, daysBetweenSP,
@@ -17,6 +24,7 @@ import {
 } from './reports-core'
 
 export const REPORT_VIEWS = [
+  'resultado-centros', 'servicos', 'receitas-fi',
   'despesas-categoria', 'centro-custo', 'fornecedores', 'lucratividade-veiculo', 'lucratividade-vendedor',
   'lucratividade-unidade', 'comparativo-mensal', 'orcado-realizado', 'aging',
 ] as const
@@ -29,6 +37,8 @@ export interface ReportParams extends EntryFilters {
   periods: string[]
   regime: Regime
   sellerId?: string | null
+  /** resultado-centros: detalhe de um centro (id | 'none'). */
+  center?: string | null
   canSeePayroll: boolean
   now: Date
 }
@@ -48,8 +58,11 @@ export async function getReport(p: ReportParams) {
     filters: { costCenters: refs.costCenters, units: refs.units, sellers: await loadSellers(p.tenantId) },
   }
   switch (p.view) {
+    case 'resultado-centros':
+    case 'centro-custo': return { ...base, ...(await resultByCenter(p, refs)) } // centro-custo = nome antigo
+    case 'servicos': return { ...base, ...(await servicesReport(p)) }
+    case 'receitas-fi': return { ...base, ...(await fiRevenues(p, refs)) }
     case 'despesas-categoria': return { ...base, ...(await expensesByCategory(p, refs)) }
-    case 'centro-custo': return { ...base, ...(await byCostCenter(p, refs)) }
     case 'fornecedores': return { ...base, ...(await bySupplier(p, refs)) }
     case 'lucratividade-veiculo': return { ...base, ...(await vehicleProfitability(p, refs)) }
     case 'lucratividade-vendedor':
@@ -103,27 +116,346 @@ async function expensesByCategory(p: ReportParams, refs: FinanceRefs) {
   }
 }
 
-// ── Centro de custo ─────────────────────────────────────────────────────────
-async function byCostCenter(p: ReportParams, refs: FinanceRefs) {
+// ── Resultado por área (centros de resultado e de custo) ────────────────────
+const PART_LABEL: Record<string, string> = { VEICULO: 'rateio: veículo', DOCUMENTACAO: 'rateio: documentação' }
+const partLabel = (part: string | null | undefined) => (!part ? null : PART_LABEL[part] ?? (part.startsWith('SERV_') ? 'rateio: serviço' : part))
+
+/** Receitas × custos por centro; com `center` traz o detalhe (categorias, lançamentos e serviços). */
+async function resultByCenter(p: ReportParams, refs: FinanceRefs) {
   const { entries } = await loadAllocated({ ...p, refs })
-  const names = new Map(refs.costCenters.map((c) => [c.id, c.name]))
-  const acc = new Map<string, { receitas: number; despesas: number; count: number }>()
-  for (const e of entries) {
-    if (!inDre(e)) continue
-    const k = e.costCenterId ?? ''
-    const a = acc.get(k) ?? { receitas: 0, despesas: 0, count: 0 }
-    if (e.type === 'RECEITA') a.receitas += e.amount
-    else a.despesas += e.amount
-    a.count++
-    acc.set(k, a)
+  const dre = entries.filter(inDre)
+  const { rows, totals } = aggregateByCenter(dre.map((e) => ({ type: e.type, amount: e.amount, centerId: e.centerId ?? null })), refs.centers)
+  const chart = rows.filter((r) => r.receitas || r.despesas).map((r) => ({ id: r.id, name: r.name, resultado: r.resultado, receitas: r.receitas, despesas: r.despesas }))
+  if (!p.center) return { rows, totals, chart, detail: null }
+  return { rows, totals, chart, detail: await centerDetail(p, refs, dre, rows) }
+}
+
+async function centerDetail(p: ReportParams, refs: FinanceRefs, dre: AllocatedEntry[], rows: ReturnType<typeof aggregateByCenter>['rows']) {
+  const known = new Set(refs.centers.map((c) => c.id))
+  const none = p.center === 'none'
+  const mine = dre.filter((e) => (none ? !(e.centerId && known.has(e.centerId)) : e.centerId === p.center))
+  const meta = none ? null : refs.centers.find((c) => c.id === p.center) ?? null
+  const row = rows.find((r) => (none ? r.id === null : r.id === p.center)) ?? null
+
+  const cats = new Map<string, { categoryId: string | null; label: string; type: 'RECEITA' | 'DESPESA'; amount: number; count: number }>()
+  const groups = new Map<string, { group: string; label: string; receitas: number; despesas: number }>()
+  for (const e of mine) {
+    const k = `${e.type}:${e.categoryId ?? `sem:${e.group}`}`
+    const c = cats.get(k) ?? { categoryId: e.categoryId, label: e.categoryId ? refs.catName(e.categoryId) : `Sem categoria — ${DRE_GROUP_BY_KEY[e.group]?.label ?? e.group}`, type: e.type, amount: 0, count: 0 }
+    c.amount += e.amount
+    c.count++
+    cats.set(k, c)
+    const g = groups.get(e.group) ?? { group: e.group, label: DRE_GROUP_BY_KEY[e.group]?.label ?? e.group, receitas: 0, despesas: 0 }
+    if (e.type === 'RECEITA') g.receitas += e.amount
+    else g.despesas += e.amount
+    groups.set(e.group, g)
   }
-  const totalDesp = [...acc.values()].reduce((s, a) => s + a.despesas, 0)
-  const rows = [...acc].map(([id, a]) => ({
-    id: id || null, name: id ? names.get(id) ?? 'Centro removido' : 'Sem centro de custo',
-    receitas: r2(a.receitas), despesas: r2(a.despesas), resultado: r2(a.receitas - a.despesas), count: a.count, shareDespesas: pct(a.despesas, totalDesp),
-  })).sort((a, b) => (a.id ? 0 : 1) - (b.id ? 0 : 1) || b.despesas - a.despesas)
-  const totals = rows.reduce((t, r) => ({ receitas: r2(t.receitas + r.receitas), despesas: r2(t.despesas + r.despesas), resultado: r2(t.resultado + r.resultado) }), { receitas: 0, despesas: 0, resultado: 0 })
-  return { rows, totals }
+  const byCategory = [...cats.values()].map((c) => ({ ...c, amount: r2(c.amount) }))
+    .sort((a, b) => (a.type === b.type ? b.amount - a.amount : a.type === 'RECEITA' ? -1 : 1))
+  const byGroup = [...groups.values()].map((g) => ({ ...g, receitas: r2(g.receitas), despesas: r2(g.despesas), resultado: r2(g.receitas - g.despesas) }))
+    .sort((a, b) => b.receitas + b.despesas - (a.receitas + a.despesas))
+
+  const list = [...mine].sort((a, b) => b.amount - a.amount).slice(0, 300).map((e, i) => {
+    const hide = !!e.employeeUserId && !p.canSeePayroll
+    return {
+      key: `${e.id}:${e.part ?? ''}:${e.group}:${i}`, entryId: e.id, period: e.period, date: entryDate(e, p.regime),
+      type: e.type, status: e.status, amount: r2(e.amount),
+      description: hide ? PAYROLL_LABEL : e.description ?? null, counterparty: hide ? null : e.counterparty,
+      category: e.categoryId ? refs.catName(e.categoryId) : null, group: DRE_GROUP_BY_KEY[e.group]?.label ?? e.group,
+      dealId: e.dealId, part: partLabel(e.part),
+    }
+  })
+
+  // Centro de serviço: linhas de serviço vendidas no período (cobrado × custo × comissão).
+  const kinds = SERVICE_KINDS.filter((k) => meta?.key && k.center === meta.key).map((k) => k.key)
+  const services = kinds.length ? await servicesReport(p, new Set(kinds)) : null
+
+  return {
+    center: row ?? { id: meta?.id ?? null, key: meta?.key ?? null, name: meta?.name ?? 'Sem centro', kind: meta?.kind ?? null, receitas: 0, despesas: 0, resultado: 0, margem: null, count: 0 },
+    isServiceCenter: !!services,
+    byCategory, byGroup,
+    entries: list, entriesTotal: mine.length,
+    services: services ? { lines: services.lines, rows: services.rows, totals: services.totals } : null,
+  }
+}
+
+// ── Serviços vendidos (cobrado × custo real × comissões) ────────────────────
+type CostStatus = 'PAGO' | 'PREVISTO' | 'CADASTRO' | 'SEM_CUSTO'
+
+export interface ServiceSaleRow {
+  id: string
+  origin: 'SERVICO' | 'DOCUMENTACAO' | 'GARANTIA'
+  kind: string
+  kindLabel: string
+  center: string
+  date: Date
+  dealId: string
+  dealNumber: string | null
+  customer: string | null
+  plate: string | null
+  vehicle: string | null
+  service: string
+  supplier: string | null
+  charged: number
+  cost: number
+  costItems: { description: string; amount: number }[]
+  commissions: number
+  profit: number
+  margin: number | null
+  status: CostStatus
+  /** Garantia de catálogo (WarrantySale): o preço não entra no saldo da negociação nem no rateio da DRE. */
+  outsideBalance: boolean
+}
+
+interface DealCommission { ruleType: string; dealId: string | null; serviceId: string | null; warrantySaleId: string | null; value: number }
+
+/** Comissões não canceladas das negociações (ruleDetails.dealId). */
+async function loadDealCommissions(tenantId: string, dealIds: string[]): Promise<DealCommission[]> {
+  const out: DealCommission[] = []
+  for (let i = 0; i < dealIds.length; i += 2000) {
+    const chunk = dealIds.slice(i, i + 2000)
+    const rows = await prisma.$queryRaw<{ ruleType: string; commissionValue: unknown; ruleDetails: unknown }[]>(Prisma.sql`
+      SELECT "ruleType"::text AS "ruleType", "commissionValue", "ruleDetails"
+      FROM commission_calculations
+      WHERE "tenantId" = ${tenantId} AND status::text <> 'CANCELADO' AND ("ruleDetails"->>'dealId') IN (${Prisma.join(chunk)})`)
+    for (const r of rows) out.push({ ...commissionRefOf(r), value: Number(r.commissionValue ?? 0) })
+  }
+  return out
+}
+
+type CostEntry = { amount: number; status: string; supplier: string | null; items: { description: string; amount: number }[] }
+const costOf = (entries: CostEntry[], fallback: number) => {
+  if (!entries.length) return { cost: r2(fallback), status: (fallback > 0 ? 'CADASTRO' : 'SEM_CUSTO') as CostStatus, items: [] as { description: string; amount: number }[] }
+  return {
+    cost: r2(entries.reduce((s, e) => s + e.amount, 0)),
+    status: (entries.every((e) => e.status === 'PAGO') ? 'PAGO' : 'PREVISTO') as CostStatus,
+    items: entries.flatMap((e) => e.items),
+  }
+}
+
+/**
+ * Serviços vendidos nas negociações do período (data da negociação, mesma
+ * janela da comissão): documentação, cada DealService e as garantias vendidas.
+ */
+async function servicesReport(p: ReportParams, onlyKinds?: Set<string>) {
+  const { start, end } = monthBounds(p.periods[0], p.periods[p.periods.length - 1])
+  const deals = await prisma.deal.findMany({
+    where: {
+      tenantId: p.tenantId, type: { in: [...SALE_DEAL_TYPES] },
+      ...(p.unitId ? { unitId: p.unitId } : {}), ...(p.sellerId ? { sellerId: p.sellerId } : {}),
+      ...commissionEligibleDealWindowWhere({ start, end }),
+    },
+    select: {
+      id: true, dealNumber: true, documentationFee: true, warrantyPaidBy: true,
+      approvedAt: true, releasedAt: true, finalizedAt: true, saleDate: true, createdAt: true,
+      customer: { select: { name: true } },
+      vehicles: { where: { role: 'VENDIDO' }, select: { plate: true, brand: true, model: true } },
+      services: { select: { id: true, name: true, value: true, cost: true, supplier: true, supplierId: true, kind: true } },
+      debts: { select: { id: true, type: true, value: true, responsavel: true, description: true } },
+      warrantySales: { select: { id: true, finalPrice: true, costValue: true, status: true, warranty: { select: { name: true } } } },
+    },
+  })
+  const rows: ServiceSaleRow[] = []
+  const dealIds = deals.map((d) => d.id)
+  const [entries, commissions] = dealIds.length
+    ? await Promise.all([
+        prisma.financialEntry.findMany({
+          where: {
+            tenantId: p.tenantId, dealId: { in: dealIds }, status: { not: 'CANCELADO' }, type: 'DESPESA',
+            OR: [{ source: { startsWith: 'NEG_SERV_' } }, { source: { startsWith: 'NEG_GAR_' } }, { source: { startsWith: 'NEG_DEBITO_' } }],
+          },
+          select: { source: true, amount: true, status: true, supplierId: true, counterparty: true, items: { select: { description: true, amount: true }, orderBy: { sortOrder: 'asc' } } },
+        }),
+        loadDealCommissions(p.tenantId, dealIds),
+      ])
+    : [[], []] as const
+  const supplierIds = [...new Set([...entries.map((e) => e.supplierId), ...deals.flatMap((d) => d.services.map((s) => s.supplierId))].filter((x): x is string => !!x))]
+  const suppliers = supplierIds.length ? await prisma.supplier.findMany({ where: { id: { in: supplierIds }, tenantId: p.tenantId }, select: { id: true, name: true } }) : []
+  const supName = new Map(suppliers.map((s) => [s.id, s.name]))
+  const bySource = new Map<string, CostEntry[]>()
+  for (const e of entries) {
+    const k = e.source ?? ''
+    bySource.set(k, [...(bySource.get(k) ?? []), {
+      amount: Number(e.amount), status: e.status, supplier: (e.supplierId ? supName.get(e.supplierId) : null) ?? e.counterparty ?? null,
+      items: e.items.map((i) => ({ description: i.description, amount: r2(Number(i.amount)) })),
+    }])
+  }
+  const sumCom = (f: (c: DealCommission) => boolean) => r2(commissions.filter(f).reduce((s, c) => s + c.value, 0))
+
+  for (const d of deals) {
+    const date = d.approvedAt ?? d.releasedAt ?? d.finalizedAt ?? d.saleDate ?? d.createdAt
+    const v = d.vehicles[0]
+    const common = {
+      date, dealId: d.id, dealNumber: d.dealNumber, customer: d.customer?.name ?? null,
+      plate: v?.plate ?? null, vehicle: [v?.brand, v?.model].filter(Boolean).join(' ') || null,
+    }
+    const push = (r: Omit<ServiceSaleRow, 'kindLabel' | 'center' | 'profit' | 'margin' | keyof typeof common>) => {
+      if (onlyKinds && !onlyKinds.has(r.kind)) return
+      const def = SERVICE_KIND_BY_KEY[r.kind] ?? SERVICE_KIND_BY_KEY.OUTRO
+      const pr = serviceProfit({ charged: r.charged, cost: r.cost, commissions: r.commissions })
+      rows.push({ ...common, ...r, kindLabel: def.label, center: def.center, profit: pr.profit, margin: pr.margin })
+    }
+
+    // Documentação: taxa + débitos de documentação cobrados do cliente.
+    const docDebts = d.debts.filter(isChargedDocDebt)
+    const docCharged = Number(d.documentationFee ?? 0) + docDebts.reduce((s, x) => s + Number(x.value), 0)
+    const docEntries = docDebts.flatMap((x) => bySource.get(`NEG_DEBITO_${x.id}`) ?? [])
+    if (docCharged > 0 || docEntries.length) {
+      const c = costOf(docEntries, 0)
+      push({
+        id: `doc:${d.id}`, origin: 'DOCUMENTACAO', kind: 'DOCUMENTACAO',
+        service: ['Documentação', ...docDebts.map((x) => x.description?.trim()).filter(Boolean)].join(' · '),
+        supplier: docEntries.find((e) => e.supplier)?.supplier ?? null,
+        charged: r2(docCharged), cost: c.cost, costItems: c.items, status: c.status,
+        commissions: sumCom((x) => x.ruleType === 'DOCUMENTO' && x.dealId === d.id), outsideBalance: false,
+      })
+    }
+    for (const s of d.services) {
+      const ents = bySource.get(`NEG_SERV_${s.id}`) ?? []
+      const c = costOf(ents, Number(s.cost ?? 0))
+      push({
+        id: `serv:${s.id}`, origin: 'SERVICO', kind: serviceKindOf(s), service: s.name,
+        supplier: (s.supplierId ? supName.get(s.supplierId) : null) ?? s.supplier ?? ents.find((e) => e.supplier)?.supplier ?? null,
+        charged: r2(Number(s.value ?? 0)), cost: c.cost, costItems: c.items, status: c.status,
+        commissions: sumCom((x) => x.serviceId === s.id), outsideBalance: false,
+      })
+    }
+    for (const w of d.warrantySales) {
+      if (w.status !== 'ATIVA') continue
+      const ents = bySource.get(`NEG_GAR_${w.id}`) ?? []
+      const c = costOf(ents, Number(w.costValue ?? 0))
+      push({
+        id: `gar:${w.id}`, origin: 'GARANTIA', kind: 'GARANTIA', service: `Garantia ${w.warranty?.name ?? ''}`.trim(),
+        supplier: ents.find((e) => e.supplier)?.supplier ?? null,
+        charged: d.warrantyPaidBy === 'LOJA' ? 0 : r2(Number(w.finalPrice ?? 0)), cost: c.cost, costItems: c.items, status: c.status,
+        commissions: sumCom((x) => x.warrantySaleId === w.id), outsideBalance: true,
+      })
+    }
+  }
+  rows.sort((a, b) => +b.date - +a.date)
+  const lines = aggregateServiceLines(rows)
+  const t = rows.reduce((a, r) => ({ charged: a.charged + r.charged, cost: a.cost + r.cost, commissions: a.commissions + r.commissions }), { charged: 0, cost: 0, commissions: 0 })
+  return {
+    lines, rows: rows.slice(0, 1000),
+    totals: { ...serviceProfit(t), count: rows.length },
+    chart: lines.map((l) => ({ name: l.label, cobrado: l.charged, custo: l.cost, comissoes: l.commissions, lucro: l.profit })),
+  }
+}
+
+// ── Receitas de F&I (por banco e por tipo; contratos) ───────────────────────
+const FI_PREFIXES = ['NEG_RETORNO_', 'NEG_PLUS_', 'NEG_AGREG_']
+const paymentIdOfFi = (s: string | null | undefined) => {
+  const pre = FI_PREFIXES.find((x) => s?.startsWith(x))
+  return pre && s ? s.slice(pre.length).split('_')[0] : null
+}
+
+async function fiRevenues(p: ReportParams, refs: FinanceRefs) {
+  const { entries } = await loadAllocated({ ...p, refs })
+  const fi = entries.filter((e) => inDre(e) && (e.group === 'REC_FI' || !!paymentIdOfFi(e.source) || e.source === 'VEICULO_RETORNO'))
+  const paymentIds = [...new Set(fi.map((e) => paymentIdOfFi(e.source)).filter((x): x is string => !!x))]
+  const payments = paymentIds.length ? await prisma.dealPayment.findMany({ where: { id: { in: paymentIds } }, select: { id: true, bank: true } }) : []
+  const bankOfPayment = new Map(payments.map((x) => [x.id, x.bank]))
+
+  const typeLabel = Object.fromEntries(FI_REVENUE_TYPES.map((t) => [t.key, t.label])) as Record<string, string>
+  const banks = new Map<string, { bank: string; previsto: number; recebido: number; byType: Record<string, number> }>()
+  const types = new Map<string, { type: string; label: string; previsto: number; recebido: number }>()
+  const list: { key: string; entryId: string; date: Date | null; bank: string; type: string; typeLabel: string; description: string | null; status: string; amount: number; dealId: string | null }[] = []
+  for (const [i, e] of fi.entries()) {
+    const pid = paymentIdOfFi(e.source)
+    // Parte de recebimento rateada para F&I = serviço do tipo SEGURO vendido na negociação.
+    const soldInsurance = !!e.part?.startsWith('SERV_')
+    const type = fiRevenueType(e.source, e.categoryId ? refs.catCode(e.categoryId) : null, soldInsurance ? 'SEGURO' : null)
+    const bank = ((pid ? bankOfPayment.get(pid) : null) ?? (soldInsurance ? 'Seguro vendido na negociação' : e.counterparty) ?? '').trim() || 'Não informado'
+    const amount = e.type === 'RECEITA' ? e.amount : -e.amount
+    const received = e.status === 'RECEBIDO' || e.status === 'PAGO'
+    const bk = norm(bank)
+    const b = banks.get(bk) ?? { bank, previsto: 0, recebido: 0, byType: {} }
+    if (received) b.recebido += amount
+    else b.previsto += amount
+    b.byType[type] = (b.byType[type] ?? 0) + amount
+    banks.set(bk, b)
+    const t = types.get(type) ?? { type, label: typeLabel[type] ?? type, previsto: 0, recebido: 0 }
+    if (received) t.recebido += amount
+    else t.previsto += amount
+    types.set(type, t)
+    list.push({ key: `${e.id}:${e.part ?? ''}:${i}`, entryId: e.id, date: entryDate(e, p.regime), bank, type, typeLabel: typeLabel[type] ?? type, description: e.description ?? null, status: e.status, amount: r2(amount), dealId: e.dealId })
+  }
+  const byBank = [...banks.values()].map((b) => ({
+    bank: b.bank, previsto: r2(b.previsto), recebido: r2(b.recebido), total: r2(b.previsto + b.recebido),
+    byType: Object.fromEntries(Object.entries(b.byType).map(([k, v]) => [k, r2(v)])),
+  })).sort((a, b) => b.total - a.total)
+  const byType = FI_REVENUE_TYPES.filter((t) => types.has(t.key)).map((t) => {
+    const x = types.get(t.key)!
+    return { type: x.type, label: x.label, previsto: r2(x.previsto), recebido: r2(x.recebido), total: r2(x.previsto + x.recebido) }
+  })
+  const totals = byBank.reduce((a, b) => ({ previsto: r2(a.previsto + b.previsto), recebido: r2(a.recebido + b.recebido), total: r2(a.total + b.total) }), { previsto: 0, recebido: 0, total: 0 })
+
+  return {
+    totals, byBank, byType, types: FI_REVENUE_TYPES,
+    chart: byBank.slice(0, 12).map((b) => ({ name: b.bank, previsto: b.previsto, recebido: b.recebido })),
+    entries: list.sort((a, b) => b.amount - a.amount).slice(0, 500),
+    ...(await fiContracts(p)),
+  }
+}
+
+/** Contratos de financiamento das negociações do período (ILA/IOF/IRRF só aqui — área do financeiro). */
+async function fiContracts(p: ReportParams) {
+  const { start, end } = monthBounds(p.periods[0], p.periods[p.periods.length - 1])
+  const deals = await prisma.deal.findMany({
+    where: {
+      tenantId: p.tenantId, type: { in: [...SALE_DEAL_TYPES] },
+      ...(p.unitId ? { unitId: p.unitId } : {}), ...(p.sellerId ? { sellerId: p.sellerId } : {}),
+      ...commissionEligibleDealWindowWhere({ start, end }),
+      payments: { some: { type: 'FINANCIAMENTO' } },
+    },
+    select: {
+      id: true, dealNumber: true, approvedAt: true, releasedAt: true, finalizedAt: true, saleDate: true, createdAt: true,
+      returnGrossValue: true, ilaValue: true, iofValue: true, returnNetValue: true,
+      customer: { select: { name: true } },
+      vehicles: { where: { role: 'VENDIDO' }, select: { plate: true } },
+      payments: {
+        where: { type: 'FINANCIAMENTO' },
+        select: { id: true, status: true, bank: true, value: true, contractNumber: true, returnGrossValue: true, ilaValue: true, iofValue: true, irrfValue: true, returnNetValue: true, plusValue: true, addOns: true },
+      },
+    },
+  })
+  const alive = (x: { status: string | null }) => String(x.status ?? '').toUpperCase() !== 'CANCELADO'
+  const live = deals.flatMap((d) => d.payments.filter(alive).map((x) => ({ d, x })))
+  const sources = live.map(({ x }) => `NEG_RETORNO_${x.id}`)
+  const retEntries = sources.length
+    ? await prisma.financialEntry.findMany({ where: { tenantId: p.tenantId, source: { in: sources }, status: { not: 'CANCELADO' } }, select: { source: true, status: true } })
+    : []
+  const retStatus = new Map(retEntries.map((e) => [e.source ?? '', e.status]))
+  const n = (v: unknown) => (v == null ? null : r2(Number(v)))
+  const contracts = live.map(({ d, x }) => {
+    // Sem valor no contrato, o da negociação vale só se houver UM financiamento.
+    const single = d.payments.filter(alive).length === 1
+    const pick = (own: unknown, deal: unknown) => (own != null ? n(own) : single ? n(deal) : null)
+    const gross = pick(x.returnGrossValue, d.returnGrossValue)
+    const ila = pick(x.ilaValue, d.ilaValue)
+    const iof = pick(x.iofValue, d.iofValue)
+    const irrf = n(x.irrfValue)
+    const net = pick(x.returnNetValue, d.returnNetValue)
+    const plus = n(x.plusValue)
+    const fi = summarizeFiContract({ financedAmount: x.value, returnNetValue: net, plusValue: plus, addOns: parseAddOns(x.addOns) })
+    const st = retStatus.get(`NEG_RETORNO_${x.id}`)
+    return {
+      id: x.id, dealId: d.id, dealNumber: d.dealNumber, date: d.approvedAt ?? d.releasedAt ?? d.finalizedAt ?? d.saleDate ?? d.createdAt,
+      customer: d.customer?.name ?? null, plate: d.vehicles[0]?.plate ?? null,
+      bank: x.bank?.trim() || 'Não informado', contractNumber: x.contractNumber ?? null,
+      financed: r2(Number(x.value ?? 0)), gross, ila, iof, irrf, net, plus,
+      addOnsStore: fi.storeRevenueTotal, storeIncome: fi.storeIncome,
+      returnStatus: (st === 'RECEBIDO' ? 'RECEBIDO' : st ? 'PREVISTO' : 'SEM_LANCAMENTO') as 'RECEBIDO' | 'PREVISTO' | 'SEM_LANCAMENTO',
+    }
+  }).sort((a, b) => +b.date - +a.date)
+  const s = (f: (c: (typeof contracts)[number]) => number | null) => r2(contracts.reduce((a, c) => a + (f(c) ?? 0), 0))
+  return {
+    contracts: contracts.slice(0, 1000),
+    contractTotals: {
+      count: contracts.length, financed: s((c) => c.financed), gross: s((c) => c.gross), ila: s((c) => c.ila), iof: s((c) => c.iof),
+      irrf: s((c) => c.irrf), net: s((c) => c.net), plus: s((c) => c.plus), addOnsStore: s((c) => c.addOnsStore), storeIncome: s((c) => c.storeIncome),
+    },
+  }
 }
 
 // ── Fornecedores (ranking de gastos) ────────────────────────────────────────

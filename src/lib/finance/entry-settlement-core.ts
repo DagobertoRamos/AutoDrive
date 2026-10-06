@@ -17,6 +17,10 @@ export const COST_ITEM_KINDS = [
   ['HONORARIO', 'Honorário do despachante'],
   ['CAUTELAR', 'Cautelar / perícia'],
   ['QUITACAO', 'Quitação de financiamento'],
+  ['PECA', 'Peças'],
+  ['MAO_DE_OBRA', 'Mão de obra'],
+  ['MATERIAL', 'Material / insumos'],
+  ['TERCEIRO', 'Serviço de terceiro'],
   ['OUTRO', 'Outros'],
 ] as const
 export type CostItemKind = (typeof COST_ITEM_KINDS)[number][0]
@@ -31,6 +35,29 @@ export const SUGGESTED_ITEMS: Record<string, CostItemKind[]> = {
   MULTA: ['MULTA'],
   CAUTELAR: ['CAUTELAR', 'LAUDO_ECV'],
   FINANCIAMENTO: ['QUITACAO'],
+}
+
+/** Atalhos por tipo de SERVIÇO vendido (DealService.kind / garantia). */
+export const SERVICE_SUGGESTED_ITEMS: Record<string, CostItemKind[]> = {
+  DOCUMENTACAO: SUGGESTED_ITEMS.DOCUMENTACAO,
+  FUNILARIA: ['PECA', 'MAO_DE_OBRA', 'MATERIAL', 'TERCEIRO'],
+  ESTETICA: ['MATERIAL', 'MAO_DE_OBRA', 'TERCEIRO'],
+  ACESSORIO: ['PECA', 'MAO_DE_OBRA', 'TERCEIRO'],
+  GARANTIA: ['TERCEIRO', 'OUTRO'],
+  SEGURO: ['TERCEIRO', 'OUTRO'],
+  OUTRO: ['PECA', 'MAO_DE_OBRA', 'MATERIAL', 'TERCEIRO', 'OUTRO'],
+}
+
+/**
+ * Comissões de UMA garantia vendida: as gravadas com o warrantySaleId dela; se a
+ * negociação só tem comissões de garantia sem vínculo (legado), entram todas.
+ * As de garantia vinda de serviço (serviceId) ficam com o serviço.
+ */
+export function pickWarrantyCommissions<T extends { ruleDetails: unknown }>(rows: T[], warrantySaleId: string): T[] {
+  const rd = (r: T) => (r.ruleDetails ?? {}) as { warrantySaleId?: string | null; serviceId?: string | null }
+  const linked = rows.filter((r) => rd(r).warrantySaleId)
+  if (linked.length) return linked.filter((r) => rd(r).warrantySaleId === warrantySaleId)
+  return rows.filter((r) => !rd(r).serviceId)
 }
 
 /** Débitos que são DOCUMENTAÇÃO (base da comissão de documento e do lucro de despachante). */

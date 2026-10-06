@@ -20,6 +20,7 @@ import { getRetornoConfig, computeReturnFromAutoconf, type RetornoConfig } from 
 import { normalizePhone } from '@/lib/crm/shared'
 import { applyV2Snapshot, type V2Snapshot } from '@/lib/integrations/autoconf-v2'
 import type { LeadStatus } from '@prisma/client'
+import { FI_PRESERVED_KEYS, type FiColumns, fiFromAutoconf, fillFiNulls, matchFinancings, stripFiFromNotes } from '@/lib/finance/fi-receipt-core'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -113,10 +114,13 @@ function paymentsFor(row: AutoconfRow, tenantId: string, dealId: string) {
     .map((p: AutoconfPayment) => {
       const value = num(p.value)
       if (!value || value <= 0) return null
+      const type = normalizePaymentType(p.type ?? p.notes)
+      // ila/irrf/valorRetorno do snapshot (p.raw) → colunas de F&I do contrato.
+      const fi: FiColumns = type === 'FINANCIAMENTO' ? fiFromAutoconf(p.raw as Parameters<typeof fiFromAutoconf>[0]) : {}
       return {
         dealId,
         tenantId,
-        type: normalizePaymentType(p.type ?? p.notes),
+        type,
         status: normalizePaymentStatus(p.status ?? p.notes),
         value,
         bank: safeText(p.bank, 120),
@@ -131,10 +135,35 @@ function paymentsFor(row: AutoconfRow, tenantId: string, dealId: string) {
         firstDueDate: parseDateValue(p.firstDueDate),
         dueDate: parseDateValue(p.dueDate),
         paidAt: parseDateValue(p.paidAt),
-        notes: safeText(p.notes ?? JSON.stringify(p.raw ?? null), 800),
+        notes: p.notes != null ? safeText(stripFiFromNotes(p.notes), 800) : safeText(JSON.stringify(p.raw ?? null), 800),
+        ...fi,
       }
     })
     .filter(Boolean)
+}
+
+type ImportedPayment = NonNullable<ReturnType<typeof paymentsFor>[number]>
+
+/**
+ * Reimportação legada apaga e recria os pagamentos: preserva o F&I que o
+ * financeiro já conferiu nos financiamentos (só completa o que estiver vazio).
+ */
+async function keepFinanceFi(tx: { dealPayment: typeof prisma.dealPayment }, dealId: string, payments: ImportedPayment[]): Promise<ImportedPayment[]> {
+  const old = await tx.dealPayment.findMany({
+    where: { dealId, type: 'FINANCIAMENTO' },
+    orderBy: { createdAt: 'asc' },
+    select: { value: true, bank: true, returnPct: true, returnGrossValue: true, ilaValue: true, iofValue: true, irrfValue: true, returnNetValue: true, plusValue: true, addOns: true, contractNumber: true },
+  })
+  if (!old.length) return payments
+  const match = matchFinancings(payments, old)
+  return payments.map((p, i) => {
+    const o = match[i] >= 0 ? old[match[i]] : null
+    if (!o) return p
+    const kept: Record<string, unknown> = {}
+    for (const k of FI_PRESERVED_KEYS) if (o[k] != null) kept[k] = o[k]
+    const incoming = { returnGrossValue: p.returnGrossValue, ilaValue: p.ilaValue, iofValue: p.iofValue, irrfValue: p.irrfValue, returnNetValue: p.returnNetValue }
+    return { ...p, returnGrossValue: undefined, ilaValue: undefined, iofValue: undefined, irrfValue: undefined, returnNetValue: undefined, ...kept, ...fillFiNulls(o, incoming) } as ImportedPayment
+  })
 }
 
 function debtsFor(row: AutoconfRow, dealId: string) {
@@ -519,6 +548,8 @@ export async function POST(req: Request) {
           }
           const payments = paymentCreates(savedDealId)
           if (!paymentsV2Applied && !paymentsV2Skipped && payments.length) {
+            const merged = await keepFinanceFi(tx, savedDealId, payments as ImportedPayment[])
+            payments.splice(0, payments.length, ...merged)
             await tx.dealPayment.deleteMany({ where: { dealId: savedDealId } })
             await tx.dealPayment.createMany({ data: payments as never })
           }
